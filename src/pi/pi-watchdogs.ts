@@ -17,6 +17,10 @@ interface PiWatchdogDeps {
   tickTimeoutMs: number;
   quietMs: number;
   stallMs: number;
+  /** Give the deadline one extension when a progress event landed within the last
+   * `progressWindowMs` of the base budget (the gate's fresh-session reviewer and conflict
+   * resolver; authoring runs resume next tick and keep one deadline). */
+  extendOnProgress?: boolean;
   /** Kill the run's process tree (terminateChild on the spawned child). */
   kill(): void;
   onToolCallStalled?: (message: string) => void;
@@ -28,6 +32,9 @@ interface PiWatchdogDeps {
 interface PiWatchdogs {
   /** The tick deadline fired. */
   readonly timedOut: boolean;
+  /** The wall-clock budget the deadline actually used: the base budget, doubled when a
+   * progressing gate run took its one extension. Feeds the kill message's seconds. */
+  readonly timeoutBudgetMs: number;
   /** The deadline fired on a run still making progress — same window the quiet watchdog
    * honors, so the two watchdogs agree on what a healthy run looks like (BUGS.md 2026-09-29). */
   readonly timedOutProgressing: boolean;
@@ -57,7 +64,37 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   let timedOutProgressing = false;
   let quietKilled = false;
 
-  const timeout = setTimeout(() => {
+  // A gate run earns one deadline extension while it is still making progress, so a large
+  // diff's review can finish instead of timing out mid-verification and being re-read from
+  // scratch on the next attempt (BUGS.md 2026-10-07). "Still making progress" means a
+  // progress event landed within `progressWindowMs` of the deadline — the quiet watchdog's
+  // own recency window, but never more than half the tick budget, so a quiet window
+  // configured longer than the budget cannot let a run that stopped progressing past the
+  // base deadline. The window does not depend on the quiet watchdog being enabled: a
+  // progressing gate run earns its extension even when quietTimeoutSeconds is 0. One
+  // checkpoint timer snapshots the progress count `progressWindowMs` before the deadline;
+  // only progress since that snapshot counts, so a run that progressed early and then
+  // stalled keeps today's bound.
+  const progressWindowMs =
+    deps.quietMs > 0 ? Math.min(deps.quietMs, deps.tickTimeoutMs / 2) : deps.tickTimeoutMs / 2;
+  let checkpointProgress = 0;
+  const checkpoint = setTimeout(
+    () => {
+      checkpointProgress = deps.progressCount();
+    },
+    Math.max(0, deps.tickTimeoutMs - progressWindowMs),
+  );
+
+  let extended = false;
+  let timeoutBudgetMs = deps.tickTimeoutMs;
+  let timeout: ReturnType<typeof setTimeout>;
+  const fireDeadline = () => {
+    if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
+      extended = true;
+      timeoutBudgetMs = deps.tickTimeoutMs * 2;
+      timeout = setTimeout(fireDeadline, deps.tickTimeoutMs); // one more slice; the next firing is final
+      return;
+    }
     timedOut = true;
     // A deadline that fires on a run still making progress killed a slow run, not a hung
     // one: "recent progress" is the same window the quiet watchdog itself honors, so the
@@ -66,7 +103,8 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     // event — keeps today's discard path: it has not demonstrably begun.
     timedOutProgressing = deps.progressCount() > 0 && Date.now() - lastProgressAt <= deps.quietMs;
     deps.kill();
-  }, deps.tickTimeoutMs);
+  };
+  timeout = setTimeout(fireDeadline, deps.tickTimeoutMs);
 
   // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — messages
   // start and end, turns and tool calls complete. Prolonged lack of progress means a hung
@@ -167,6 +205,9 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     get timedOut() {
       return timedOut;
     },
+    get timeoutBudgetMs() {
+      return timeoutBudgetMs;
+    },
     get timedOutProgressing() {
       return timedOutProgressing;
     },
@@ -185,6 +226,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     },
     stop() {
       clearTimeout(timeout);
+      clearTimeout(checkpoint);
       if (quietCheck) clearInterval(quietCheck);
     },
   };

@@ -90,7 +90,9 @@ interface ReviewConfig {
   thinking?: string;
   /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
    * tickTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
-   * so one wedged reviewer cannot hold the land queue for a whole authoring tick. */
+   * so one wedged reviewer cannot hold the land queue for a whole authoring tick. A reviewer
+   * (and the landing conflict resolver, which shares the gate's wiring) that is still making
+   * progress at the deadline receives one extension of the same length before it is killed. */
   timeoutSeconds?: number;
 }
 

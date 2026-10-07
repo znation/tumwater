@@ -189,6 +189,12 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       tickTimeoutMs: opts.config.tickTimeoutSeconds * 1000,
       quietMs: opts.config.quietTimeoutSeconds * 1000,
       stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
+      // The gate's fresh-session runs (reviewer and conflict resolver) get one deadline
+      // extension while they are still making progress: a large diff's review otherwise
+      // times out mid-verification and the next attempt re-reads it from scratch
+      // (BUGS.md 2026-10-07). Authoring runs resume their session next tick, so one
+      // deadline stays right for them.
+      extendOnProgress: opts.kind === "gate",
       kill: () => terminateChild(child),
       onToolCallStalled: opts.onToolCallStalled,
     });
@@ -353,8 +359,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
               ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
               : wd.timedOut
                 ? wd.timedOutProgressing
-                  ? `timed out after ${opts.config.tickTimeoutSeconds}s while still making progress — session and worktree edits preserved for resume`
-                  : `timed out after ${opts.config.tickTimeoutSeconds}s`
+                  ? `timed out after ${wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
+                  : `timed out after ${wd.timeoutBudgetMs / 1000}s`
                 : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
           // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
           // intact, so the loop resumes them (quiet_killed) instead of discarding them as an

@@ -158,7 +158,9 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
 
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
- * the tick's. A smaller tickTimeoutSeconds still wins. */
+ * the tick's. A smaller tickTimeoutSeconds still wins. A still-progressing gate run gets one
+ * extension of the same length (src/pi/pi-watchdogs.ts), so the effective ceiling on a large
+ * diff's review is twice this budget. */
 export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
   const cfg = reviewConfig(config);
   return {

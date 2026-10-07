@@ -125,6 +125,130 @@ test("a run that never emits a byte is quiet-killed at 30 minutes regardless of 
   }
 });
 
+// BUGS.md 2026-10-07: a gate run (the reviewer, the landing conflict resolver) runs a fresh
+// session every time, so a deadline that fires mid-verification throws away everything it
+// read and the next attempt re-reads a large diff from scratch. A gate run that is still
+// making progress at its deadline therefore gets one extension of the same length. These
+// three tests pin the extension, its one-shot bound, and the discrimination from a run that
+// has stopped progressing — all on logical time.
+test("a gate run still progressing at its deadline gets one extension and finishes", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 2;
+  config.quietTimeoutSeconds = 0; // the extension must not depend on the quiet watchdog
+  const mid = path.join(dir, "mid");
+  const finish = path.join(dir, "finish");
+  const clock = watchdogClock(t, { timeouts: true });
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${assistantLine("reading the diff")}'`,
+      `while [ ! -f '${mid}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
+      `printf '%s\n' '${assistantLine("still reading")}'`,
+      `while [ ! -f '${finish}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: review finished")}'`,
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, kind: "gate" });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "reading the diff");
+    clock.advance(1_500); // past the 1 s checkpoint, still inside the base 2 s budget
+    fs.writeFileSync(mid, "");
+    await waitForLogLines(opts.rawLogFile, "still reading");
+    clock.advance(1_000); // cross the 2 s deadline: progress since the checkpoint extends it
+    fs.writeFileSync(finish, "");
+    const result = await run;
+    assert.equal(result.ok, true, "the extension let the progressing run finish");
+    assert.equal(result.timedOut, false, "the base deadline did not kill the run");
+  } finally {
+    restore();
+  }
+});
+
+test("a gate run that stopped progressing before its deadline is not extended", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 2;
+  const clock = watchdogClock(t, { timeouts: true });
+  const restore = fakePi(
+    [`printf '%s\n' '${assistantLine("reading the diff")}'`, `exec sleep 60`].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, kind: "gate" });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "reading the diff");
+    clock.advance(2_500); // past the 1 s checkpoint AND the base 2 s deadline
+    const result = await run;
+    assert.equal(result.timedOut, true, "a run that stalled keeps the base bound");
+    assert.match(result.errorMessage ?? "", /timed out after 2s/);
+    assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
+  } finally {
+    restore();
+  }
+});
+
+test("a gate run's extension is one-shot: the second deadline kills it at twice the budget", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 2;
+  const mid = path.join(dir, "mid");
+  const clock = watchdogClock(t, { timeouts: true });
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${assistantLine("reading the diff")}'`,
+      `while [ ! -f '${mid}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
+      `printf '%s\n' '${assistantLine("still reading")}'`,
+      `exec sleep 60`,
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, kind: "gate" });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "reading the diff");
+    clock.advance(1_500); // past the checkpoint, still inside the base budget
+    fs.writeFileSync(mid, "");
+    await waitForLogLines(opts.rawLogFile, "still reading");
+    clock.advance(3_000); // base deadline extends it; the re-armed deadline at 2× then kills it
+    const result = await run;
+    assert.equal(result.timedOut, true, "the extension is spent after one slice");
+    assert.match(result.errorMessage ?? "", /timed out after 4s/, "the kill names the real doubled budget");
+    assert.doesNotMatch(result.errorMessage ?? "", /after 2s/);
+  } finally {
+    restore();
+  }
+});
+
+test("an authoring run is not extended even while it is progressing", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 2;
+  const mid = path.join(dir, "mid");
+  const clock = watchdogClock(t, { timeouts: true });
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${assistantLine("working")}'`,
+      `while [ ! -f '${mid}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
+      `printf '%s\n' '${assistantLine("still working")}'`,
+      `exec sleep 60`,
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config }); // kind "author"
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "working");
+    clock.advance(1_500); // past the checkpoint, still inside the base budget
+    fs.writeFileSync(mid, "");
+    await waitForLogLines(opts.rawLogFile, "still working");
+    clock.advance(1_000); // cross the deadline with progress since the checkpoint
+    const result = await run;
+    assert.equal(result.timedOut, true, "only gate runs earn the extension");
+    assert.match(result.errorMessage ?? "", /timed out after 2s/);
+    assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
+  } finally {
+    restore();
+  }
+});
+
 // Open-tool-call tracking feeds the stall warning (BUGS.md 2026-09-13 sibling): a hung
 // command must be nameable while it is still open, and content-free updates must not mask
 // its silence the way they cannot reset the quiet watchdog.
