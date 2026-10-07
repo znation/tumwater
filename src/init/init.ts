@@ -13,7 +13,7 @@ import {
   briefTemplate,
   readInitialPrompt,
   readmeTemplate,
-} from "../readme.js";
+} from "../brief.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "../paths.js";
 import { projectName } from "../project-name.js";
 import { tooLongMessage } from "../text/text.js";

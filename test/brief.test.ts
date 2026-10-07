@@ -12,7 +12,7 @@ import {
   briefTemplate,
   readmeTemplate,
   readInitialPrompt,
-} from "../src/readme.js";
+} from "../src/brief.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 function writeReadme(root: string, text: string): void {

@@ -268,7 +268,7 @@ test("checkBrief reports which file holds the managed sections, and warns when n
 
 test("checkBrief reports a brief file that exists but cannot be read as a failure, not a crash", () => {
   // A directory at the README.md path makes existsSync true and readFileSync fail with
-  // EISDIR, user-independently. briefFile throws (the message is readme.ts's, naming the
+  // EISDIR, user-independently. briefFile throws (the message is brief.ts's, naming the
   // file and the fix), and the check must turn that throw into a fail outcome — a crashed
   // doctor would hide why every loop is about to run without its project brief.
   const dirReadme = makeRepo();

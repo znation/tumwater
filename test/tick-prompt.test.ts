@@ -5,7 +5,7 @@ import path from "node:path";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
-import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
+import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";

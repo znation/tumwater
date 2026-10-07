@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { readJson } from "./json-read.js";
 import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { readInitialPrompt } from "../src/readme.js";
+import { readInitialPrompt } from "../src/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

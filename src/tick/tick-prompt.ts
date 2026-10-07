@@ -3,7 +3,7 @@ import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
-import { readBrief } from "../readme.js";
+import { readBrief } from "../brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
@@ -46,7 +46,7 @@ export function assembleTickPrompt(
   { root, config, role, state, preview = false }: TickPromptInput,
 ): { prompt: string; userPrompt: string | null } | null {
   // One read of the brief yields both the prompt it carries and the owning file's name
-  // (readme.ts's readBrief): readInitialPrompt + briefFile were two full reads of the same
+  // (brief.ts's readBrief): readInitialPrompt + briefFile were two full reads of the same
   // file on this per-tick path.
   const briefState = readBrief(root);
   const initialPrompt = briefState?.prompt ?? "";

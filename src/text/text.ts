@@ -122,7 +122,7 @@ export function squash(s: string, max: number): string {
 /** Text capped for injection into a prompt: past `max` characters it is cut and given a visible
  * `…[<label> truncated at <max> chars]` note naming what was capped and how much survived, so
  * the loss is never silent. The single home of that marker format — the PRINCIPLES.md cap
- * (principles.ts's readPrinciples) and the initial-prompt backstop (readme.ts's extractPrompt) both
+ * (principles.ts's readPrinciples) and the initial-prompt backstop (brief.ts's extractPrompt) both
  * render through it, so the two defensive caps cannot drift apart in wording. A plain slice at
  * `max` (not truncate's ellipsis-and-trim cut): the marker carries the ellipsis, and the cut
  * boundary must stay a stable, predictable prefix of the original text. */

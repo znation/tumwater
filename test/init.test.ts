@@ -9,7 +9,7 @@ import {
   PROMPT_START,
   briefFile,
   readInitialPrompt,
-} from "../src/readme.js";
+} from "../src/brief.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";

@@ -1444,7 +1444,7 @@ test` 1401 pass.
 
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README.
 Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers ("your prompt
-would be lost"), because `readInitialPrompt` (src/readme.ts) reads the project brief only out of
+would be lost"), because `readInitialPrompt` (src/brief.ts) reads the project brief only out of
 README.md's managed section — and the readme role then owns a `## Status` block inside the
 project's own README. For an existing codebase that is a non-starter, and it is why tumwater has
 only ever been pointed at repos it created itself.
@@ -1470,7 +1470,7 @@ only ever been pointed at repos it created itself.
 
 **Approach.**
 - src/paths.ts — `briefCandidates(root)` (the `TUMWATER.md`-then-`README.md` pair).
-- src/readme.ts — `readInitialPrompt` resolves over the candidates; `briefFile(root)` returns
+- src/brief.ts — `readInitialPrompt` resolves over the candidates; `briefFile(root)` returns
   whichever file owns the managed sections (for the readme role and for doctor);
   `briefTemplate(projectName, prompt)`; the status markers become exported so the readme role
   writes to the resolved file.
@@ -1483,11 +1483,11 @@ only ever been pointed at repos it created itself.
 - src/doctor/doctor.ts — report which file holds the brief.
 - Tests: test/init.test.ts (adopt against a repo with its own README and PLANS.md; `--dry-run`
   writes nothing and exits 0; a tumwater-created repo still round-trips through README.md),
-  test/readme.test.ts (resolution order; a `TUMWATER.md` wins over a marked README),
+  test/brief.test.ts (resolution order; a `TUMWATER.md` wins over a marked README),
   test/prompt.test.ts (the resolved brief file is what the prompt names), test/doctor.test.ts.
 
-**Files touched.** src/paths.ts, src/readme.ts, src/init/init.ts, src/cli/cli-args.ts, src/roles/roles.ts,
-src/prompt/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts,
+**Files touched.** src/paths.ts, src/brief.ts, src/init/init.ts, src/cli/cli-args.ts, src/roles/roles.ts,
+src/prompt/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/brief.test.ts, test/prompt.test.ts,
 test/doctor.test.ts.
 
 **Acceptance criteria.**
@@ -1505,7 +1505,7 @@ is four landings behind at `8fd6a85`, and none of the landings since touches an 
 Every anchor verified on this tree; three files are missing from the Files-touched list, one
 claim is wrong, and eight implementation questions the write left open are pinned below.**
 
-Verified as written: `src/readme.ts` is 47 lines — `PROMPT_START`/`PROMPT_END` exported (lines
+Verified as written: `src/brief.ts` is 47 lines — `PROMPT_START`/`PROMPT_END` exported (lines
 7–8), `STATUS_START`/`STATUS_END` module-private (10–11), `readmeTemplate(projectName,
 initialPrompt)` (15) and `readInitialPrompt(root)` (38), the latter reading only
 `path.join(root, "README.md")` and searching the close marker only after the open one.
@@ -1524,7 +1524,7 @@ the initial prompt block in README.md"), and is embedded by BOTH `buildTickPromp
 `src/roles/roles.ts`: `readme.find` names README.md and the status markers at 108; `plan.find` says
 "its initial prompt in README.md" at 94. `src/doctor/doctor.ts`: checks are an array in `runDoctor` (203)
 with `checkInit` at 207; `renderDoctor` pads the name column to 12 (222–224). Tests:
-`test/readme.test.ts` (78 lines, every case through a `writeReadme` helper that writes README.md),
+`test/brief.test.ts` (78 lines, every case through a `writeReadme` helper that writes README.md),
 `test/init.test.ts` (116; the refusal test at 67, the PRINCIPLES seed assertions at 32–42),
 `test/cli-args.test.ts` (341), `test/doctor.test.ts`, `test/prompt.test.ts`. Capability absence
 re-confirmed: `grep -rn 'TUMWATER.md\|briefFile\|briefCandidate\|--adopt\|--dry-run' src/` is empty.
@@ -1558,7 +1558,7 @@ Corrections (pinned in place):
    `briefFile(root): string | null` returns the marked candidate or null. The write's Files bullet
    claim ("the status markers become exported so the readme role writes to the resolved file") is
    wrong and is dropped: the readme role writes through pi, and nothing in `src/` reads the status
-   markers (`grep -rn 'STATUS_START\|tumwater:status' src/` names only readme.ts) —
+   markers (`grep -rn 'STATUS_START\|tumwater:status' src/` names only brief.ts) —
    `readmeTemplate` already embeds them into whichever file, so `briefTemplate` is dropped and
    `readmeTemplate` is reused verbatim for `TUMWATER.md`.
 4. **A fresh repo still gets README.md; `TUMWATER.md` is the adoption-only path.** To keep the
@@ -1605,11 +1605,11 @@ Still one run, no design question left open.
 **Refined 2026-09-23 (plan loop) — 7/7 re-audited against main `e6a4228` (the README's own stamp;
 the 2026-09-18 audit was against `5a99627`, ~30 landings back). The design and all eight pinned
 corrections hold unchanged. Every anchor re-verified and re-pinned below; one stale claim
-corrected (readme.ts grew, and `readInitialPrompt` gained a length cap the resolution change must
+corrected (brief.ts grew, and `readInitialPrompt` gained a length cap the resolution change must
 not disturb); one new pre-adopt validation step named; two test anchors re-pinned.**
 
 Verified as written:
-- `src/readme.ts` is now 60 lines (was 47): since the audit it gained the exported
+- `src/brief.ts` is now 60 lines (was 47): since the audit it gained the exported
   `INITIAL_PROMPT_MAX_CHARS = 4096` (:12) and a truncation backstop inside `readInitialPrompt`
   (:58–60) — a hand-edited README with an over-long prompt truncates with a visible note instead
   of injecting unbounded text into every tick. The resolution change needs no new seam: both
@@ -1646,12 +1646,12 @@ Verified as written:
 - Tests re-pinned: `test/init.test.ts` is 166 lines; the old-failure test ("initProject refuses
   to drop the initial prompt when README has no tumwater markers") is now :108–113 (correction 5
   inverts it); the PRINCIPLES-seed assertions ("seeds PRINCIPLES.md with positive starter
-  principles") are :33–44 (correction 7's added assertions join them). `test/readme.test.ts` is
+  principles") are :33–44 (correction 7's added assertions join them). `test/brief.test.ts` is
   94 lines, every case through the `writeReadme` helper (:14) — it gains the resolution-order
   cases.
 - Capability absence re-confirmed: `grep -rn 'TUMWATER.md\|briefFile\|briefCandidate\|--adopt\|--dry-run\|adopt:\|dryRun' src/` is empty.
 
-One claim corrected: the 09-18 note's "src/readme.ts is 47 lines" and its implication that
+One claim corrected: the 09-18 note's "src/brief.ts is 47 lines" and its implication that
 `readInitialPrompt` returns the raw prompt — it now caps at `INITIAL_PROMPT_MAX_CHARS`, so an
 adopted repo's `TUMWATER.md` gets the same backstop protection with zero additional code.
 
@@ -1666,7 +1666,7 @@ every drifted anchor is re-pinned below and the flag/signature corrections are r
 the new shape.**
 
 Verified as written:
-- `src/readme.ts` (60 lines) is functionally unchanged: `PROMPT_START`/`PROMPT_END` :7–8,
+- `src/brief.ts` (60 lines) is functionally unchanged: `PROMPT_START`/`PROMPT_END` :7–8,
   `INITIAL_PROMPT_MAX_CHARS` :15 (was :12 — its doc comment grew), the end-marker-after-start
   ordering guard :51, the cap check :54, the truncation backstop :59 (was :58–60). Same two
   markers, same parse-trim-cap shape — `briefCandidates` resolution needs no new seam here.
@@ -1674,7 +1674,7 @@ Verified as written:
   identical to the 09-23 audit; `TickPromptInput` :144; `buildTickPrompt` :169 embedding
   COMMON_RULES at :180; `buildDirectorPrompt` :185 embedding at :239 (was :232).
 - `src/roles/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.
-- `test/readme.test.ts` (94): the `writeReadme` helper :14 — unchanged.
+- `test/brief.test.ts` (94): the `writeReadme` helper :14 — unchanged.
 - Doctor's name column is still `padEnd(12)` (src/doctor/doctor.ts:317), so correction 8's "brief" name
   fits.
 - Capability absence re-confirmed: `grep -rn 'TUMWATER\.md\|briefFile\|briefCandidate\|--adopt\|

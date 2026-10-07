@@ -35,7 +35,7 @@ import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
-import { briefFile } from "../readme.js";
+import { briefFile } from "../brief.js";
 
 /** The doctor report contract and the environment/repo pre-flight checks, split out of
  * doctor.ts. The sibling check modules (doctor-orphans.ts, doctor-backlog.ts, and
