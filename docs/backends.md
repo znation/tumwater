@@ -24,8 +24,11 @@ out and pi's own default applies:
 "fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"
 ```
 
-`fallback` names the free model role loops switch to once `maxDailyCostUsd` is spent — the
-budgeted model does the day's paid work, the free one keeps the fleet alive afterwards.
+`fallback` names the free model role loops switch to when the primary cannot carry the work:
+once `maxDailyCostUsd` is spent (the budget gate), and while a role's tier primary keeps
+failing with provider-class errors (model failure fallback, described in
+[how-it-works.md](how-it-works.md)). The budgeted model does the day's paid work; the free one
+keeps the fleet alive afterwards and covers a primary that is down.
 
 When different seams want different models, `model` and `fallback` each take a map listing the
 tiers you have — a tier left out of `model` inherits `default`, and a tier left out of `fallback`
