@@ -129,12 +129,6 @@ export async function mergeToMain(
   return tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
 }
 
-/** True when the resolved tree's diff ahead of main is NOT contained in the reviewed diff: the
- * resolved diff adds a line the reviewed diff never added, or removes a line it never removed
- * (multisets, so duplicated lines are counted, and compared across the whole diff — a
- * resolution that moves the change's own lines between the change's files stays in scope).
- * A subset always skips: a faithful replay of the reviewed change, and a resolution that drops
- * branch edits main has superseded, both stay inside what the reviewer judged. */
 /** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before`,
  * recorded by landing-questions.ts's logNewQuestions alongside this module's `merged` event. */
 async function tryMerge(
