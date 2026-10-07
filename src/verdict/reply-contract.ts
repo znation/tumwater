@@ -8,7 +8,6 @@
  * constants (the shared closing rules and the claims rules) that tell pi what to emit, so the
  * instructions and the detectors cannot drift apart. */
 
-
 /** The claim-discipline rules every authoring run carries, stated just before the reply contract
  * they govern. Written against the budgeted model's review record (GLM-5.3-Flash, 2026-09-25..
  * 10-01: 191 of ~1,100 reviewed changes rejected): the leading cause was not wrong code but a

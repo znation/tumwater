@@ -6,7 +6,6 @@
  * the persisted state file's load/save — and later of the types.ts grab-bag, as LoopState and
  * HarnessEvent were before it. */
 
-
 export type TickResult =
   | "changed" // a landing completed: the change is merged to main
   | "queued" // the tick's change is committed and pinned; the orchestrator's landing slot will pick it up from the durable land queue (plans/merge-queue.md 3/5) — the commit count and final outcome are recorded when the landing completes; never stored as `lastResult`, which keeps the last completed outcome

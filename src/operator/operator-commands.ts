@@ -232,7 +232,6 @@ export async function cmdStop(root: string): Promise<void> {
     say("the orchestrator exited before the stop signal landed — nothing is running");
 }
 
-
 /** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the
  * per-role marker set); without one, lift a fleet pause by removing its marker. Idempotent
  * like pause: with no marker there is nothing to do. No live harness required — resuming

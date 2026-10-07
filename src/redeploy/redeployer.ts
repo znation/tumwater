@@ -22,7 +22,6 @@ import { PrewarmProbes, track, type Tracked } from "./redeploy-probes.js";
  * the behavior contract both halves serve): one Redeployer per orchestrator process. The
  * production effects wiring is createRedeployer in redeploy.ts. */
 
-
 /** Event input as the orchestrator logs it (logEvent stamps ts). */
 export type RedeployEvent = HarnessEventInput;
 

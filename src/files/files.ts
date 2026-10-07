@@ -93,7 +93,6 @@ export function rotateIfLarge(file: string, maxBytes: number): boolean {
   }
 }
 
-
 /** Ensure `dir` exists (created recursively if needed), so a write into it cannot fail on a
  * missing path. The one place for that pre-write step — every writer of harness state/log/
  * inbox/session files goes through this or ensureParentDir instead of mkdirSync itself. */

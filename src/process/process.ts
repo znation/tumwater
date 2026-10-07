@@ -50,7 +50,6 @@ export function pidAlive(pid: number): boolean {
   }
 }
 
-
 /** Terminate a detached child and everything it started: SIGTERM to the process group now,
  * escalating to SIGKILL after 10 s if any of it is still alive. The child is spawned detached
  * (its own process group leader — runPi does this for pi), so a negative PID reaches every
