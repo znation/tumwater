@@ -50,8 +50,9 @@ export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelecto
  * this. Every string `model` — the top level's and a section's — is a selector
  * (`provider/id[:thinking]`, plans/model-tiers.md): parsed into the triple piArgs consumes,
  * with a legacy provider in scope (the section's own, else the top level's) making the whole
- * string a bare id under it — the old configs' meaning. An explicit `thinking` key wins over a selector's `:level` suffix, and a
- * suffix beats the ambient top-level thinking, as the key it overrides would.
+ * string a bare id under it — the old configs' meaning. An explicit `thinking` key wins over
+ * a selector's `:level` suffix, and a suffix beats the ambient top-level thinking, as the
+ * key it overrides would.
  *
  * `tier` is the seam's effective tier, already resolved by the caller from any tier-name
  * override — so `o.model` here is always a selector string, never a tier reference. */
@@ -218,8 +219,9 @@ export function modelSelectorField(
 
 /** The fleet's model wiring as one human-readable label, for the live-reload `model_changed`
  * event: null when no tier resolves to a model (pi's own default), the single selector when
- * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…` list
- * when the tiers differ. Reading EVERY tier makes an edit to any tier's entry change the label. */
+ * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…`
+ * list when the tiers differ. Reading EVERY tier makes an edit to any tier's entry change the
+ * label. */
 export function fleetModelLabel(config: TumwaterConfig): string | null {
   const entries = MODEL_TIERS.map((tier) => {
     const sel = tierModel(config, tier);
