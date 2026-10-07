@@ -3,14 +3,14 @@ import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { squash } from "./text.js";
 import { shortSha, usd } from "./format.js";
 
-/** The single home of each human-facing PHRASE the fleet renders — the wording fragments
- * (a pause reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget
- * transition's "$x of $y", main's red-tip naming, a tool call's one-line label, the plural
- * helper) shared by the event feed (event-format.ts), the failure digest (src/failure/failure-render.ts
- * and src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
- * (operator/operator-commands.ts, cli/cli-run.ts), so their phrasing cannot drift per consumer. Pure
- * presentation: every phrase composes the shared formats format.ts pins (shortSha, usd, squash)
- * into words. Pure value formats — the token a number or hash renders as (compactTokens,
+/** The single home of each human-facing PHRASE the fleet renders — the wording fragments (a pause
+ * reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget transition's "$x
+ * of $y", main's red-tip naming, a tool call's one-line label, the plural helper) shared by the
+ * event feed (event-format.ts), the failure digest (src/failure/failure-render.ts and
+ * src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
+ * (operator/operator-commands.ts, cli/cli-run.ts), so their phrasing cannot drift per consumer.
+ * Pure presentation: every phrase composes the shared formats format.ts pins (shortSha, usd,
+ * squash) into words. Pure value formats — the token a number or hash renders as (compactTokens,
  * shortSha, usd, usdCap) — stay in format.ts; this module is where those tokens become words. */
 
 const NO_REASONS_GIVEN = "no reasons given";
@@ -35,44 +35,42 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
   return typeof first === "string" ? first : NO_REASONS_GIVEN;
 }
 
-/** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
- * the singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
- * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the fleet
- * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the build_stale
- * lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts — the singular/plural
- * wording their tests pin, once "N commit(s)" with the old literal, now "N commits"/"1 commit"),
- * and the stage self-check and dropped-attachment notes (src/tick/tick-stage.ts,
- * inbox/inbox-attachments.ts)
- * all rendered
- * inline before. `many` accepts a whole replacement form (`plural(n, "loop is", "loops are")`)
- * so verb-agreement titles share the helper; the plural-by-`s` default covers regular nouns.
- * (The GUI keeps its own JS copy in gui-client.ts: a separate runtime that cannot import
- * TypeScript.) */
+/** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of the
+ * singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
+ * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the
+ * fleet alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the
+ * build_stale lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts —
+ * the singular/plural wording their tests pin, once "N commit(s)" with the old literal, now "N
+ * commits"/"1 commit"), and the stage self-check and dropped-attachment notes
+ * (src/tick/tick-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. `many` accepts a
+ * whole replacement form (`plural(n, "loop is", "loops are")`) so verb-agreement titles share the
+ * helper; the plural-by-`s` default covers regular nouns. (The GUI keeps its own JS copy in
+ * gui-client.ts: a separate runtime that cannot import TypeScript.) */
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The number form of a word that agrees with `n`, without the count — `agree(1, "is", "are")`
- * → `is`, `agree(2, "cause", "causes")` → `causes` — the companion to plural for the slots
- * plural's count-plus-noun shape cannot fill: a subject or noun whose count is printed
- * elsewhere in the sentence (a subject phrase such as listRoles's role list, a count named
- * earlier) still needs the right number form. The fleet alerts' banner titles
- * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator/operator-commands.ts),
- * the dropped-attachment note (inbox-attachments.ts), the failure digest's loss-cause and
- * cluster remainders (failure/failure-render.ts), the doctor's oh-my-pi and model notes
- * (doctor/doctor-model-checks.ts), and `tumwater role`'s queued-prompt remainder (roles/role-render.ts)
- * all rendered the same `=== 1 ? … : …` selection inline before, so the singular/plural
- * decision now has one home beside plural's. */
+/** The number form of a word that agrees with `n`, without the count — `agree(1, "is", "are")` →
+ * `is`, `agree(2, "cause", "causes")` → `causes` — the companion to plural for the slots plural's
+ * count-plus-noun shape cannot fill: a subject or noun whose count is printed elsewhere in the
+ * sentence (a subject phrase such as listRoles's role list, a count named earlier) still needs the
+ * right number form. The fleet alerts' banner titles (ui/fleet-alerts.ts), the resume
+ * confirmation's still-paused note (operator/operator-commands.ts), the dropped-attachment note
+ * (inbox-attachments.ts), the failure digest's loss-cause and cluster remainders
+ * (failure/failure-render.ts), the doctor's oh-my-pi and model notes
+ * (doctor/doctor-model-checks.ts), and `tumwater role`'s queued-prompt remainder
+ * (roles/role-render.ts) all rendered the same `=== 1 ? … : …` selection inline before, so the
+ * singular/plural decision now has one home beside plural's. */
 export function agree(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }
 
-/** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
- * once so the fleet-wide red-main warning (main-red.ts), the review gate's attribution detail
- * (review.ts), the landing check's attribution error (landing-check-failures.ts), and the redeploy hold's
- * block reason (src/redeploy/redeployer.ts) cannot drift over how main's red is worded. Each caller
- * appends its own consequence — the gate's "— not this change's failure", the hold's
- * " — holding the restart until main is green". */
+/** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here once
+ * so the fleet-wide red-main warning (main-red.ts), the review gate's attribution detail
+ * (review.ts), the landing check's attribution error (landing-check-failures.ts), and the redeploy
+ * hold's block reason (src/redeploy/redeployer.ts) cannot drift over how main's red is worded. Each
+ * caller appends its own consequence — the gate's "— not this change's failure", the hold's " —
+ * holding the restart until main is green". */
 export function mainRedPhrase(sha: unknown): string {
   return `main ${shortSha(sha)} is red`;
 }
@@ -87,12 +85,12 @@ export function mainRedNotMine(sha: unknown): string {
   return `${mainRedPhrase(sha)} — not this change's failure`;
 }
 
-/** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
- * one home so the CLI's confirmation line (operator/operator-commands.ts), the status header's pause
+/** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on — one
+ * home so the CLI's confirmation line (operator/operator-commands.ts), the status header's pause
  * badge (ui/badges.ts), and the paused alert's title (ui/fleet-alerts.ts) cannot drift on the
- * quoting. No reason, no suffix: every caller's reasonless phrasing keeps today's byte-exact
- * form. (The GUI keeps its own JS copies in gui-client.ts: a separate runtime that cannot
- * import TypeScript.) */
+ * quoting. No reason, no suffix: every caller's reasonless phrasing keeps today's byte-exact form.
+ * (The GUI keeps its own JS copies in gui-client.ts: a separate runtime that cannot import
+ * TypeScript.) */
 export function pauseReasonSuffix(reason: string | undefined): string {
   return reason ? ` — "${reason}"` : "";
 }
@@ -106,11 +104,11 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
   return `${count} consecutive tick failures: ${reason}`;
 }
 
-/** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
- * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
+/** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the array
+ * coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
  * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-
- * change lines (src/failure/failure-state-change.ts, whose hold lines cap the list and slice each role), so
- * the two surfaces cannot disagree on how an absent or malformed roles field renders. A
+ * change lines (src/failure/failure-state-change.ts, whose hold lines cap the list and slice each
+ * role), so the two surfaces cannot disagree on how an absent or malformed roles field renders. A
  * non-array falls back to `fallback`; with `max`, extra roles are dropped from the tail; with
  * `format`, each role is rendered through it (the digest passes its byte-slicing field()). */
 export function rolesPhrase(
@@ -125,13 +123,13 @@ export function rolesPhrase(
   return list.length > 0 ? list.join(", ") : fallback;
 }
 
-/** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of
- * that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet
- * state changes lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both
+/** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of that
+ * phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet state changes
+ * lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both
  * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through
- * finiteNumber (a non-number or non-finite value reads as 0, exactly as event-read.ts's
- * eventUsage reads a corrupt usage field) before the cents-pinned money format (usd) renders
- * it — a string or NaN must never reach usd, which would print "$NaN". */
+ * finiteNumber (a non-number or non-finite value reads as 0, exactly as event-read.ts's eventUsage
+ * reads a corrupt usage field) before the cents-pinned money format (usd) renders it — a string or
+ * NaN must never reach usd, which would print "$NaN". */
 export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
   return `${usd(finiteNumber(spentUsd, 0))} of ${usd(finiteNumber(capUsd, 0))}`;
 }
@@ -143,12 +141,12 @@ export function shortSpanPhrase(ms: number): string {
   return ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
 }
 
-/** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one
- * home of that phrasing, shared by the event feed (event-format.ts) and the failure digest's
- * Fleet state changes lines (src/failure/failure-state-change.ts), like budgetPhrase. The duration is shortSpanPhrase
- * (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse count is
- * named only when the storm resumed right after an earlier hold, the one fact that says the
- * hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
+/** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one home of
+ * that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet state
+ * changes lines (src/failure/failure-state-change.ts), like budgetPhrase. The duration is
+ * shortSpanPhrase (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse
+ * count is named only when the storm resumed right after an earlier hold, the one fact that says
+ * the hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
 export function holdPhrase(holdMs: unknown, escalation: unknown): string {
   const ms = Math.max(0, Number(holdMs ?? 0)) || 0;
   const span = shortSpanPhrase(ms);
@@ -198,14 +196,14 @@ export function describeToolCall(toolName: string, args: unknown): string {
 }
 
 /** The ` (+N more)` remainder suffix a capped list appends when `count` entries were omitted —
- * empty when none were, so the item fits an already-built line either way. The single home of
- * that parenthesized remainder, shared by the reviewer suite-rerun warning (review/suite-rerun.ts)
- * and the stage self-check's missing-path and lost-final-newline findings (tick/stage-check.ts),
- * so the three cannot drift on the spacing or the parenthesized form. The other remainder
- * phrasings keep their own wording: the failure digest's bare `+N more` role list and its
- * `_+N more …_` lines (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts),
- * the TUI alert pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra
- * clause sits inside the parentheses (events/event-format.ts). */
+ * empty when none were, so the item fits an already-built line either way. The single home of that
+ * parenthesized remainder, shared by the reviewer suite-rerun warning (review/suite-rerun.ts) and
+ * the stage self-check's missing-path and lost-final-newline findings (tick/stage-check.ts), so the
+ * three cannot drift on the spacing or the parenthesized form. The other remainder phrasings keep
+ * their own wording: the failure digest's bare `+N more` role list and its `_+N more …_` lines
+ * (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts), the TUI alert
+ * pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra clause sits inside the
+ * parentheses (events/event-format.ts). */
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
 }
