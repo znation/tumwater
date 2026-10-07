@@ -177,11 +177,11 @@ export interface FallbackDemotion {
   probeAt: number;
 }
 
-/** What orchestrator.json publishes while the breaker holds the fallback demoted (fleet/fleet-state.ts's
- * OrchestratorInfo.fallbackDemoted). Observers need it because the price check alone would
- * advertise the demoted pair as a working fallback — status/status-data.ts nulls the snapshot's `fallback`
- * from it and `tumwater doctor` names it. Undefined while the fallback is trusted or not
- * engaged. */
+/** What orchestrator.json publishes while the breaker holds the fallback demoted
+ * (fleet/fleet-state.ts's OrchestratorInfo.fallbackDemoted). Observers need it because the price
+ * check alone would advertise the demoted pair as a working fallback — status/status-data.ts nulls
+ * the snapshot's `fallback` from it and `tumwater doctor` names it. Undefined while the fallback is
+ * trusted or not engaged. */
 export function fallbackDemotion(b: FallbackBreaker): FallbackDemotion | undefined {
   return b.pair !== null && b.probeAt !== null
     ? { pair: b.pair, failures: b.failures, probeAt: b.probeAt }
