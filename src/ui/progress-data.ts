@@ -14,7 +14,7 @@ import { statRoleLog, readCompleteLines, type TailState, withTail } from "../fil
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
- * the one `roleLogPath` file — the authoring tick's run in its own worktree, and the review
+ * the one `piLogPath` file — the authoring tick's run in its own worktree, and the review
  * gate's runs (reviewer, conflict resolver) in its `_land-<role>` lander worktree. Every run
  * starts with the harness's `tumwater_run` marker (src/pi/pi.ts), written before pi spawns so
  * it precedes pi's first `session` event; a kind-bearing marker names the run's kind, and a
