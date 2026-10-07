@@ -88,15 +88,15 @@ export function queuedFiles(root: string, role: string): string[] {
 /** Resolve the 1-based position `tumwater prompt --list`'s per-loop numbering shows into one
  * queue file — the shared range-check-and-pick half of cancelRolePrompt (inbox-cancel.ts)
  * and editRolePrompt (inbox-edit.ts), so the two cannot drift on the error or the numbering.
- * Throws for out-of-range positions with no side effects; the pick's null check exists only
- * to satisfy the array-index narrowing and is unreachable (the range check above). */
+ * Throws for out-of-range positions with no side effects. The undefined-pick check folds into
+ * the same condition as the range check (the pick is undefined exactly when out of range), so
+ * the error is thrown from one place and the array-index narrowing is satisfied. */
 export function queuedFileAtPosition(root: string, role: string, position: number): string {
   const files = queuedFiles(root, role);
-  if (position < 1 || position > files.length) {
+  const file = files[position - 1];
+  if (position < 1 || position > files.length || !file) {
     throw new Error(`no prompt at position ${position} (${files.length} queued)`);
   }
-  const file = files[position - 1];
-  if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
   return file;
 }
 
