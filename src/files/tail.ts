@@ -6,10 +6,10 @@ import { piLogPath } from "../paths.js";
  * complete-line window reads, the bounded backwards chunk scan (forEachTailChunk and the
  * readTailText collection loop built on it) that the windowed readers ask for, per-file tail
  * state that folds only appended bytes on each poll (plus the shared stat-and-clear entry
- * point for polling a role's pi log), and byte-offset following for `logs -f`. Split out of src/files/files.ts — which keeps the
- * generic file helpers — because this is one self-contained concern with its own internal
- * structure (readCompleteLines and forEachTailChunk as the primitives; withTail, followFile,
- * and readTailText built on them).
+ * point for polling a role's pi log), and byte-offset following for `logs -f`. Split out of
+ * src/files/files.ts — which keeps the generic file helpers — because this is one
+ * self-contained concern with its own internal structure (readCompleteLines and
+ * forEachTailChunk as the primitives; withTail, followFile, and readTailText built on them).
  * Lives here in src/, not src/ui/: it is core file I/O with no presentation concern, and
  * its consumers — the ui observer layer polling those logs — may import core freely,
  * while the reverse edge would be forbidden (DEVELOPMENT.md Layout). */
