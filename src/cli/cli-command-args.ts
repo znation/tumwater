@@ -262,18 +262,18 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // prompt text (or beside a state change), so it is refused before either branch runs.
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
 
-  // --file only queues a prompt: it is the file-shaped twin of free-form text, so the read-only
-  // and destructive modes must refuse it rather than silently ignore it (an edit's replacement
-  // text is typed, never read from a file).
-  if (fileFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail("--file only queues a prompt");
-
-  // --at only queues a prompt, like --file: a delivery deferral has nothing to mean to a
-  // listing or a cancel.
-  if (atFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail("--at only queues a prompt");
-  // --attach only queues a prompt, like --at: an image attachment has nothing to mean to a
-  // listing, a cancel, or an edit's replacement text.
-  if (attachFlags.length > 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0))
-    fail("--attach only queues a prompt");
+  // The queue-only flags --file, --at, and --attach have nothing to mean in the read-only and
+  // destructive modes (--list, --cancel, --edit): --file is the file-shaped twin of free-form
+  // text (an edit's replacement text is typed, never read from a file), a delivery deferral
+  // has nothing to mean to a listing or a cancel, and an image attachment has nothing to mean
+  // to a listing, a cancel, or an edit's replacement text. One home for the mode predicate and
+  // the `<flag> only queues a prompt` wording, so a new mode or queue-only flag is added here.
+  const refuseQueueOnlyFlag = (flag: string, present: boolean): void => {
+    if (present && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail(`${flag} only queues a prompt`);
+  };
+  refuseQueueOnlyFlag("--file", fileFlag >= 0);
+  refuseQueueOnlyFlag("--at", atFlag >= 0);
+  refuseQueueOnlyFlag("--attach", attachFlags.length > 0);
   // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
   // plumbing the edit carries over), so a --at alongside it has nothing to mean.
   // The pair is claimed like --role's: the flag and its value are never prompt content.
