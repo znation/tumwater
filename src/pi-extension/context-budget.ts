@@ -24,6 +24,7 @@
  */
 
 import { compactTokens } from "../text/format.js";
+import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
 
 /** Context-usage percentages at which the model is told where it stands. */
@@ -92,7 +93,6 @@ export default function contextBudget(pi: PiExtensionApi): void {
     const note = contextNote(usage.percent, usage.tokens, usage.contextWindow, lastWarned);
     if (!note) return undefined;
     lastWarned = note.threshold;
-    const content = Array.isArray(event.content) ? event.content : [];
-    return { content: [...content, { type: "text", text: `\n\n${note.text}` }] };
+    return appendToolResultNote(event.content, note.text);
   });
 }

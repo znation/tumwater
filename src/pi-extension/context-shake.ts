@@ -22,6 +22,7 @@
 
 import { compactTokens } from "../text/format.js";
 import { writeFullOutput } from "./bounded-output.js";
+import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
 
 /** The fill percentage at which the first shake pass runs. */
@@ -324,7 +325,6 @@ export default function contextShake(pi: PiExtensionApi): void {
     if (pendingNote === null) return undefined;
     const note = pendingNote;
     pendingNote = null;
-    const content = Array.isArray(event.content) ? event.content : [];
-    return { content: [...content, { type: "text", text: `\n\n${note}` }] };
+    return appendToolResultNote(event.content, note);
   });
 }
