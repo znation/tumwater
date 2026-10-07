@@ -108,6 +108,29 @@ test("a bash result with no recoverable path is kept rather than lost", () => {
   assert.equal(shakePlan(messages, atPercent(70), () => null).edits.length, 0);
 });
 
+test("a read pointer without a path or offset names the file from line 1", () => {
+  const read: ShakeMessage = { entryId: "r", role: "toolResult", toolName: "read", text: big(60_000) };
+  const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+  const plan = shakePlan(messages, atPercent(70));
+  assert.equal(plan.edits.length, 1);
+  assert.match(plan.edits[0]!.replacement, /60000 chars of the file:1-1; re-read the range/);
+});
+
+test("a read pointer counts the lines of a multi-line result", () => {
+  // Two lines: offset 10 starts the range at 10 and ends it at 11.
+  const read: ShakeMessage = {
+    entryId: "r",
+    role: "toolResult",
+    toolName: "read",
+    text: `${big(30_000)}\n${big(30_000)}`,
+    readInput: { path: "src/big.ts", offset: 10 },
+  };
+  const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+  const plan = shakePlan(messages, atPercent(70));
+  assert.equal(plan.edits.length, 1);
+  assert.match(plan.edits[0]!.replacement, /src\/big\.ts:10-11; re-read the range/);
+});
+
 test("a read pointer names the file and the range it elided", () => {
   const read: ShakeMessage = {
     entryId: "r",
@@ -121,6 +144,20 @@ test("a read pointer names the file and the range it elided", () => {
   assert.equal(plan.edits.length, 1);
   // No newlines in the filler text: one line, so the range is the offset alone.
   assert.match(plan.edits[0]!.replacement, /60000 chars of src\/big\.ts:100-100; re-read the range/);
+});
+
+test("percentOf falls back to tokens/contextWindow when pi gives no percent", () => {
+  const messages = [bash("a"), ...Array.from({ length: 5 }, () => filler(4_000))];
+  // 70k/100k is exactly the first crossing; just under it and an unknowable window both plan
+  // nothing.
+  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
+  assert.equal(shakePlan(messages, { tokens: 69_999, contextWindow: 100_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: 0 }).edits.length, 0);
+});
+
+test("shakePlan skips a bulky result with no session entry to edit", () => {
+  const messages = [bash("a", 60_000, { entryId: undefined }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
 });
 
 test("a fleet-sized context on the 1M primary plans nothing", () => {
@@ -192,6 +229,45 @@ test("shakeMessages maps a read result's input onto its pointer", () => {
   assert.deepEqual(read?.readInput, { path: "src/big.ts", offset: 7, limit: undefined });
 });
 
+test("shakeMessages carries a bash result's full-output path from details", () => {
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        {
+          sourceEntry: { id: "b" },
+          messages: [
+            { role: "toolResult", toolName: "bash", toolCallId: "t2", isError: false, details: { fullOutputPath: "/tmp/b.log" }, content: [{ type: "text", text: "out" }] },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(messages[0]!.fullOutputPath, "/tmp/b.log");
+  assert.equal(messages[0]!.toolName, "bash");
+  assert.equal(messages[0]!.entryId, "b");
+});
+
+test("shakeMessages tolerates entries without ids, missing messages, and non-array content", () => {
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        { sourceEntry: {}, messages: [{ role: "assistant", content: "not-array" }, { content: "no role either" }] },
+        { sourceEntry: { id: "r" }, messages: [{ role: "toolResult", toolName: "read", toolCallId: "t1", content: [{ type: "text", text: big(60_000) }] }] },
+        {},
+      ],
+    },
+  });
+  assert.equal(messages.length, 3, "an entry with no messages contributes nothing");
+  assert.equal(messages[0]!.entryId, undefined, "a missing sourceEntry id leaves the message uneditable");
+  assert.equal(messages[0]!.role, "assistant");
+  assert.equal(messages[0]!.text, "", "a string content is not a text array");
+  assert.equal(messages[1]!.role, undefined);
+  assert.equal(messages[1]!.text, "");
+  // The assistant content was not an array, so no tool call was recorded and the read result
+  // carries no readInput.
+  assert.equal(messages[2]!.readInput, undefined);
+});
+
 test("the adapter shakes once at 70%, again at 85%, and notes the next tool result", () => {
   const handlers = capture();
   assert.ok(handlers.turn_end && handlers.tool_result);
@@ -225,4 +301,7 @@ test("the adapter tolerates missing usage and an empty context", () => {
   assert.equal(handlers.turn_end!({}, { getContextUsage: () => undefined }), undefined);
   assert.equal(handlers.turn_end!({}, { getContextUsage: () => { throw new Error("no session"); } }), undefined);
   assert.equal(handlers.turn_end!({ context: {} }, { getContextUsage: () => atPercent(90) }), undefined);
+  // Usage pi could not reduce to a percentage (no percent, no usable window) is a no-op, not
+  // a shake with an unknown fill.
+  assert.equal(handlers.turn_end!({}, { getContextUsage: () => ({ tokens: 0, contextWindow: 0, percent: null }) }), undefined);
 });
