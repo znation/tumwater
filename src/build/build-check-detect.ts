@@ -108,23 +108,21 @@ function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => 
   return null;
 }
 
-/** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors
- * (default 5) — to the nearest directory containing BOTH a package.json and a node_modules/
- * directory, then preferring scripts.test over scripts.typecheck and scripts.build (npm
- * convention: `test` is the canonical verify command). A configured `check.command`
- * (plans/portability.md §6/7) wins first: the right way to verify a repo is a property of
- * the repo, and the walk cannot know it — a Python, Rust, or Go repo has no npm install for
- * the walk to find, which silently turned every safety gate off there. `config`'s `check`
- * shape is the validated CheckConfig (src/config/config-schema.ts) read structurally so detection needs no
- * import of the config machinery; a blank command (validation rejects one, but a degraded
- * default config could still carry it) falls through to the walk-up.
- * The walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>`
- * with no install of their own (node_modules is gitignored — it exists only where someone
- * ran npm install), so a literal startDir check would silently disable the pre-check forever
- * in dogfood. The FIRST qualifying directory is the project: if its package.json has neither
- * script, there is no check (an unrelated ancestor further up must never be used). Returns
- * null when no ancestor qualifies or the file is missing/unreadable/malformed — detection
- * never throws into the gate. */
+/** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors (default
+ * 5) — to the nearest directory containing BOTH a package.json and a node_modules/ directory, then
+ * preferring scripts.test over scripts.typecheck and scripts.build (npm convention: `test` is the
+ * canonical verify command). A configured `check.command` (plans/portability.md §6/7) wins first:
+ * the right way to verify a repo is a property of the repo, and the walk cannot know it — a Python,
+ * Rust, or Go repo has no npm install for the walk to find, which silently turned every safety gate
+ * off there. `config`'s `check` shape is the validated CheckConfig (src/config/config-schema.ts)
+ * read structurally so detection needs no import of the config machinery; a blank command
+ * (validation rejects one, but a degraded default config could still carry it) falls through to the
+ * walk-up. The walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>`
+ * with no install of their own (node_modules is gitignored — it exists only where someone ran npm
+ * install), so a literal startDir check would silently disable the pre-check forever in dogfood.
+ * The FIRST qualifying directory is the project: if its package.json has neither script, there is
+ * no check (an unrelated ancestor further up must never be used). Returns null when no ancestor
+ * qualifies or the file is missing/unreadable/malformed — detection never throws into the gate. */
 export function detectBuildCheck(
   startDir: string,
   config?: CheckConfigSlice,
@@ -144,12 +142,12 @@ export function detectBuildCheck(
   return root === null ? null : buildCheckFrom(root);
 }
 
-/** The configured per-change gate command (`check.gateCommand`, PLANS.md Land-queue speed 3e)
- * when it is a non-blank string, else undefined — off. Opt-in: a repo that sets it trades a
- * cheaper review-gate pre-check for a full check.command run that happens once per stack at
- * the batch/landing scope instead. One reading shared by runScopedBuildCheck (which runs it at
- * scope "gate") and landing-merge.ts's verifyLanding (which must then never treat the gate's green as
- * the full check's), so the two cannot disagree about whether it is on. */
+/** The configured per-change gate command (`check.gateCommand`, PLANS.md Land-queue speed 3e) when
+ * it is a non-blank string, else undefined — off. Opt-in: a repo that sets it trades a cheaper
+ * review-gate pre-check for a full check.command run that happens once per stack at the
+ * batch/landing scope instead. One reading shared by runScopedBuildCheck (which runs it at scope
+ * "gate") and landing-merge.ts's verifyLanding (which must then never treat the gate's green as the
+ * full check's), so the two cannot disagree about whether it is on. */
 export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   const g = config?.check?.gateCommand;
   return isNonBlankString(g) ? g : undefined;
