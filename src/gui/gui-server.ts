@@ -40,6 +40,16 @@ import {
 } from "./gui-endpoint-commands.js";
 import { sendJson } from "./http-body.js";
 
+/** A dashboard route handler: the one callback shape guiRoutes stores per `METHOD path`, so its
+ * table can hold the page, the JSON GET handlers, and the POST operator handlers together.
+ * `target` is the already-parsed request URL (parseRequestTarget); a handler that needs the
+ * query reads it from there instead of re-parsing req.url. */
+type RouteHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  target: URL,
+) => void | Promise<void>;
+
 /** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
  * on unequal lengths, so the length equality is the guard. A naive `===` string compare
  * would leak the token's length and prefix byte by byte. */
@@ -122,6 +132,40 @@ export function startGui(
   // The serving process's own startup stamp: added to every /api/status payload so the page can
   // notice a newer server (a redeploy or manual build re-execs this process) and reload itself.
   const startupBuild = captureStartupBuild();
+  // The routes as one table, keyed by `METHOD path`: dispatch is a single lookup where the
+  // previous twenty-branch if/else chain restated `req.method === … && pathname === …` on
+  // every arm. Each path appears once (the page's two spellings share servePage), so lookup
+  // order carries no meaning. A handler that needs the query reads the one parsed target
+  // (parseRequestTarget) — routing matched its exact pathname, so the target is non-null.
+  const servePage = (_req: http.IncomingMessage, res: http.ServerResponse): void => {
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(GUI_PAGE);
+  };
+  const guiRoutes: Record<string, RouteHandler> = {
+    "GET /": servePage,
+    "GET /index.html": servePage,
+    "GET /api/status": (_req, res) => {
+      sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null });
+    },
+    "GET /api/report": (_req, res, target) => handleReport(target.searchParams, res, root),
+    "GET /api/failures": (_req, res, target) => handleFailures(target.searchParams, res, root),
+    "GET /api/history": (_req, res, target) => handleHistory(target.searchParams, res, root),
+    "GET /api/transcript": (_req, res, target) => handleTranscript(target.searchParams, res, root),
+    "GET /api/tick": (_req, res, target) => handleTick(target.searchParams, res, root),
+    "GET /api/diff": (_req, res, target) => handleDiff(target.searchParams, res, root),
+    "GET /api/backlog": (_req, res, target) => handleBacklog(target.searchParams, res, root),
+    "GET /api/config": (_req, res) => handleConfig(res, root),
+    "POST /api/config-set": (req, res) => handleConfigSet(req, res, root),
+    "POST /api/prompt": (req, res) => handlePrompt(req, res, root),
+    "POST /api/prompt-role": (req, res) => handlePromptRole(req, res, root),
+    "POST /api/prompt-cancel": (req, res) => handlePromptCancel(req, res, root),
+    "POST /api/budget": (req, res) => handleBudget(req, res, root),
+    "POST /api/pause": (req, res) => handlePause(req, res, root),
+    "POST /api/wake": (req, res) => handleWake(req, res, root),
+    "POST /api/restart": (req, res) => handleRestart(req, res, root),
+    "POST /api/abort": (req, res) => handleAbort(req, res, root),
+    "POST /api/pause-role": (req, res) => handlePauseRole(req, res, root),
+  };
   const server = http.createServer(async (req, res) => {
     try {
       const target = parseRequestTarget(req);
@@ -152,50 +196,9 @@ export function startGui(
         });
         return;
       }
-      if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(GUI_PAGE);
-      } else if (req.method === "GET" && pathname === "/api/status") {
-        sendJson(res, 200, { ...statusPayload(root), serverBuildSha: startupBuild?.sha ?? null });
-      // The GET-data handlers receive the query from the one parsed target (route match
-      // implies target parsed — pathname is non-null only then), not a re-parse of req.url.
-      } else if (req.method === "GET" && pathname === "/api/report") {
-        handleReport(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/failures") {
-        handleFailures(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/history") {
-        handleHistory(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/transcript") {
-        handleTranscript(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/tick") {
-        handleTick(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/diff") {
-        await handleDiff(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/backlog") {
-        handleBacklog(target!.searchParams, res, root);
-      } else if (req.method === "GET" && pathname === "/api/config") {
-        handleConfig(res, root);
-      } else if (req.method === "POST" && pathname === "/api/config-set") {
-        await handleConfigSet(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/prompt") {
-        await handlePrompt(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/prompt-role") {
-        await handlePromptRole(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/prompt-cancel") {
-        await handlePromptCancel(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/budget") {
-        await handleBudget(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/pause") {
-        await handlePause(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/wake") {
-        await handleWake(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/restart") {
-        await handleRestart(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/abort") {
-        await handleAbort(req, res, root);
-      } else if (req.method === "POST" && pathname === "/api/pause-role") {
-        await handlePauseRole(req, res, root);
-      } else {
+      const route = guiRoutes[`${req.method ?? ""} ${pathname ?? ""}`];
+      if (route) await route(req, res, target!);
+      else {
         res.writeHead(404, { "content-type": "text/plain" });
         res.end("not found");
       }
