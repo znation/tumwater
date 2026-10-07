@@ -9,6 +9,15 @@ _None yet._
 
 ## Fixed
 
+### A non-ASCII character split across two stderr `data` events is corrupted to U+FFFD, garbling a run's failure message and the stderr-keyed matchers: `runPi` decoded each stderr chunk with `chunk.toString("utf8")` — the exact hazard its own stdout `StringDecoder` comment warns about — so the reported `errorMessage` and the crash/stream-severed/config detection read a mangled buffer (found by bugfix loop 2026-10-06 latent-bug hunt over the same day's fallback-clone stderr fix 451a8fe7, which added a stderr-side matcher but left its decode unchanged, fixed 2026-10-06 by bugfix loop)
+Symptom: a run whose stderr carries a multi-byte character (an accented word, a CJK path) split across two `data` events reports `boom h\uFFFD\uFFFDllo` in its `errorMessage` instead of `boom héllo`; the same corruption would defeat a stderr-keyed regex whose matched phrase sat across the boundary.
+Reproduce: a fake pi that prints `boom h` plus é's first UTF-8 byte `0xC3` to stderr, sleeps, prints the second byte `0xA9` plus `llo`, then exits non-zero; the run's `errorMessage` read `boom h\uFFFD\uFFFDllo` before the fix.
+Cause: `runPi`'s stderr handler decoded each `Buffer` independently while stdout already used a `StringDecoder`, which holds back an incomplete trailing character until the next chunk completes it.
+
+**Fix:** stderr gets its own `StringDecoder`, and the handler feeds it each chunk before matching and appending, so a straddling character decodes intact.
+
+**Validation gap:** none — the existing fake-pi harness made it a deterministic offline repro: the new test read `boom h\uFFFD\uFFFDllo` before the fix and `boom héllo` after it.
+
 ### A pi fallback-clone warning is lost when a run prints more than 64 KiB of stderr after it: the warning arrives at the very start of the run while `runPi` keeps only the last 64 KiB, so the mispriced model id this feature exists to surface goes unnamed on the chattiest runs (found by bugfix loop 2026-10-06 latent-bug hunt over the same day's model-mispricing commit 5c68b9a8, fixed 2026-10-06 by bugfix loop)
 Symptom: a run whose model id has no exact definition prints `Warning: Model "<id>" not found for provider "<provider>". Using custom model id.` on stderr, and `runPi` records it as `PiRunResult.fallbackClone`; the loop's `warnFallbackClone` then warns. When the same run writes more than 64 KiB of stderr after that line, `stderr` is truncated to its tail before the match is taken, the warning is dropped, and the loop stays silent — exactly the case the feature claims to cover.
 Reproduce: a fake pi that prints the warning, then `yes 'stderr filler line' | head -c 70000 >&2`, then a normal assistant line; the run's `fallbackClone` was `undefined` before the fix.

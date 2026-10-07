@@ -122,6 +122,10 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // corrupting that line's text (commit subjects, summaries, transcripts). StringDecoder
     // holds back the incomplete trailing bytes until the next chunk completes them.
     const decoder = new StringDecoder("utf8");
+    // stderr gets its own incremental decoder for the same reason: the failure message and
+    // the stderr-keyed matchers (crash, stream-severed, config) read this buffer, so a
+    // character whose bytes straddle two 'data' events must not become U+FFFD.
+    const stderrDecoder = new StringDecoder("utf8");
     let stderr = "";
     // The fallback-clone warning arrives at the START of a run, while `stderr` keeps only the
     // last 64 KiB; match each chunk (with a short carried tail for a straddle) so a chatty run
@@ -181,7 +185,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     child.stderr.on("data", (chunk: Buffer) => {
       // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
       wd.noteStderr();
-      const text = chunk.toString("utf8");
+      const text = stderrDecoder.write(chunk);
       fallbackClone ??= MODEL_FALLBACK_CLONE.exec(stderrTail + text)?.[0]?.trim();
       stderrTail = (stderrTail + text).slice(-STDERR_MATCH_TAIL);
       stderr += text;

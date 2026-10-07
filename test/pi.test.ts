@@ -428,6 +428,31 @@ test("a multi-byte character straddling a stdout chunk boundary survives intact"
   }
 });
 
+test("a multi-byte character straddling a stderr chunk boundary survives intact", async () => {
+  // The stderr buffer is built with a raw Buffer.toString("utf8") per chunk — unlike
+  // stdout's StringDecoder — and it is where the run's failure message and the
+  // stderr-keyed matchers (crash, stream-severed, config) read. A non-ASCII character whose
+  // bytes split across two 'data' events is replaced with U+FFFD, garbling that text. The
+  // fake pi writes its stderr in two paced writes with é's UTF-8 bytes (0xC3 0xA9) split
+  // between them, then exits non-zero so the stderr becomes the reported errorMessage.
+  const dir = tmpdir();
+  const restore = fakePi(
+    [
+      `printf 'boom h\\303' >&2`,
+      `sleep 0.3`,
+      `printf '\\251llo' >&2`,
+      `exit 1`,
+    ].join("\n"),
+  );
+  try {
+    const result = await runPi(runPiFixture(dir));
+    assert.equal(result.ok, false);
+    assert.match(result.errorMessage ?? "", /boom héllo/, "the split character decodes intact");
+  } finally {
+    restore();
+  }
+});
+
 // Session lifecycle: every tick starts a fresh pi session (context never accumulates
 // across ticks); --continue exists only for the within-tick transient retry.
 
