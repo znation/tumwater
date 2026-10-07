@@ -9,7 +9,7 @@ import { flagValue, parseRoleFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
 import { repoNotReady } from "../gates/startup-gate.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { parsePositiveInt } from "../text/text.js";
+import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
@@ -152,9 +152,14 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   }
   if (words[0] !== "answer")
     fail(`unknown questions subcommand: ${words[0]} (use "answer <n> <decision>")`);
-  const n = words.length > 1 ? parsePositiveInt(words[1] ?? "") : null;
+  // The offending token carries the same ` (got "...")` suffix every sibling number parser
+  // adds (parsePositiveInt's flag callers, --cancel); the bare `answer` form names none.
+  const raw = words.length > 1 ? words[1] : undefined;
+  const n = raw === undefined ? null : parsePositiveInt(raw);
   if (n === null)
-    fail('questions answer needs a positive question number: questions answer <n> "<decision>"');
+    fail(
+      `questions answer needs a positive question number: questions answer <n> "<decision>"${raw === undefined ? "" : gotSuffix(raw)}`,
+    );
   const decision = words.slice(2).join(" ").trim();
   if (decision === "")
     fail('questions answer needs a decision: questions answer <n> "<decision>"');

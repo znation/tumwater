@@ -198,6 +198,13 @@ test("questions answer refuses a non-integer or non-positive question number", a
       `number usage for ${JSON.stringify(args.slice(1))}`,
     );
   }
+  // The refusal names the offending token, like --cancel's ` (got "...")` suffix; the
+  // bare `answer` form above has no token to name and stays the plain usage line.
+  const named = await cli(repo, "questions", "answer", "0x2", "no");
+  assert.match(
+    named.stderr,
+    /positive question number: questions answer <n> "<decision>" \(got "0x2"\)/,
+  );
   // And every refusal left the question open.
   const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
   assert.match(md, /### Cap the spend\?/, "the open entry stayed open");
