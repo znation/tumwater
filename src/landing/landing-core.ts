@@ -4,7 +4,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
-import { reviewAheadOfMain, type GateResult } from "../review/review.js";
+import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEvent, logEvent } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
@@ -118,6 +118,31 @@ export async function syncPinToMain(
   return { ...req, sha: syncedHead };
 }
 
+/** The ten-field ReviewContext for judging landing request `req` in worktree `wt` — the single
+ * home of that argument object, shared by reviewPinnedChange's pinned vet and
+ * landApprovedChange's re-review of a resolved conflict (its recheckResolved callback), so the
+ * two gate invocations cannot drift on which fields the reviewer sees. Both callers' contexts
+ * (ReviewGateContext and LanderContext) carry the root/mainBranch/config/signal/runGatePi fields
+ * this reads. */
+function reviewContextFor(
+  ctx: Pick<ReviewGateContext, "root" | "mainBranch" | "config" | "signal" | "runGatePi">,
+  req: LandRequest,
+  wt: string,
+): ReviewContext {
+  return {
+    root: ctx.root,
+    role: req.role,
+    wt,
+    mainBranch: ctx.mainBranch,
+    config: ctx.config,
+    tick: req.tick,
+    signal: ctx.signal(),
+    runGatePi: ctx.runGatePi,
+    revisionRound: req.revisionRound,
+    priorReview: req.priorReview,
+  };
+}
+
 /** Run one pinned change through the review gate in its lander worktree `wt` and handle the
  * immediate bookkeeping — the heart of every vet (landing-batch.ts's vetRequest). Persists the
  * verdict at once, folds the reviewer's usage, and routes
@@ -138,7 +163,7 @@ export async function reviewPinnedChange(
   state: LoopState,
   foldUsage: (run: PiRunResult) => void,
 ): Promise<GateOutcome> {
-  const { root, mainBranch, config } = ctx;
+  const { root, config } = ctx;
   const { role } = req;
   const ref = landingRefName(role);
   // Both uses below — a rejection and a strike-cap discard — end a pinned change without
@@ -153,18 +178,7 @@ export async function reviewPinnedChange(
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
-    {
-      root,
-      role,
-      wt,
-      mainBranch,
-      config,
-      tick: req.tick,
-      signal: ctx.signal(),
-      runGatePi: ctx.runGatePi,
-      revisionRound: req.revisionRound,
-      priorReview: req.priorReview,
-    },
+    reviewContextFor(ctx, req, wt),
     state,
     req.summary,
     req.body,
@@ -352,18 +366,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
         // convention as reviewPinnedChange: the reject path records the verdict, resets the
         // worktree to main and logs review_rejected itself; the ref and the lastError are ours.
         const gate = await reviewAheadOfMain(
-          {
-            root: ctx.root,
-            role: req.role,
-            wt: resolvedWt,
-            mainBranch: ctx.mainBranch,
-            config: ctx.config,
-            tick: req.tick,
-            signal: ctx.signal(),
-            runGatePi: ctx.runGatePi,
-            revisionRound: req.revisionRound,
-            priorReview: req.priorReview,
-          },
+          reviewContextFor(ctx, req, resolvedWt),
           ctx.state,
           req.summary,
           req.body,
