@@ -163,6 +163,11 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
     describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: 3 })),
     "build abcdef12 stale — main 12345678 3 commits ahead",
   );
+  // A torn or hand-edited log can carry a non-numeric aheadCommits; the digest must not render
+  // "NaN commits" (event-format.ts's build_stale line has the same guard).
+  const corrupt = describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: "twelve" }));
+  assert.equal(corrupt, "build abcdef12 stale — main 12345678 0 commits ahead");
+  assert.doesNotMatch(corrupt, /NaN/);
   assert.equal(
     describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef" })),
     "restart pending — main 12345678 green; compiling",

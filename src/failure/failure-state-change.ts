@@ -8,7 +8,7 @@
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
-import { stringList } from "../files/json-object.js";
+import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -148,7 +148,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     }
     case "build_stale":
-      text = `build ${shortSha(ev.build)} stale — main ${shortSha(ev.head)} ${plural(Number(ev.aheadCommits ?? 0), "commit")} ahead`;
+      text = `build ${shortSha(ev.build)} stale — main ${shortSha(ev.head)} ${plural(finiteNumber(ev.aheadCommits, 0), "commit")} ahead`;
       break;
     case "restart_pending":
       text = `restart pending — main ${shortSha(ev.head)} green; compiling`;
