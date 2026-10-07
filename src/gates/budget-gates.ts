@@ -5,7 +5,7 @@
  * other fleet gates (src/gates/pause-gates.ts, src/fleet/fleet-hold.ts's fleet hold) — the orchestrator
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
-import type { TumwaterConfig } from "../config/config-schema.js";
+import { MODEL_TIERS, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
 import {
   budgetGate,
   budgetReached,
@@ -28,8 +28,6 @@ import {
   type TierFallbackMap,
 } from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
-import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEvent } from "../events/events.js";
 import { pairFree, readPiProviders } from "../pi/pi-models.js";
 import type { LoopState } from "../loop/loop-state.js";

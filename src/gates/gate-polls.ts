@@ -30,8 +30,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../files/json-files.js";
 import type { OrchestratorInfo } from "../fleet/fleet-state.js";
-import { roleSeamTier } from "../config/config-views.js";
-import type { TierFallbackMap } from "../config/config-views.js";
+import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
  * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure

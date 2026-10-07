@@ -1,11 +1,9 @@
-import type { LandingEntry } from "./landing-queue.js";
+import { dropLanding, type LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../loop/loop-state.js";
+import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
-import { saveLoopState } from "../loop/loop-state.js";
 import { logEvent, usageFragment, warnEvent } from "../events/events.js";
-import { dropLanding } from "./landing-queue.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { removeQuiet } from "../files/files.js";
 import { landingStatePath } from "../paths.js";

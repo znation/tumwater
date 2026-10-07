@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { LoopState } from "../loop/loop-state.js";
+import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { git } from "../git/git-run.js";
@@ -14,7 +14,6 @@ import { buildReviewPrompt } from "../gates/gate-prompts.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
-import { saveLoopState } from "../loop/loop-state.js";
 import { shortSha } from "../text/format.js";
 import type { SleepSampler } from "../scheduling/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";

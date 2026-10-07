@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "./loop-state.js";
+import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { setRef } from "../git/git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
@@ -16,7 +16,6 @@ import { planTickStart } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import {
   modelFallbackActive,
   modelFallbackProbe,
