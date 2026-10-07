@@ -87,11 +87,17 @@ tag. \`none\` is written, never omitted, so a tally has an honest denominator.`;
 export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and the compressed
 \`gap: <tag>\` suffix: \`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c\`.`;
 
+/** The literal prefix every Needs-review note starts with. Exported so a reader that only has
+ * to recognize one (the backlog index's ` [needs review]` mark) can match on it instead of
+ * parsing the date or the wording out of the full template — the same split as
+ * NEEDS_REPLAN_PREFIX. */
+export const NEEDS_REVIEW_PREFIX = `**Needs review `;
+
 /** The markdown note the feature loop appends to a plan it cannot finish in one run, so the plan
  * loop can split it. Mirrors the **Refused …** note convention: a note the next fresh tick reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing
  * clause cannot drift. */
-export const NEEDS_REVIEW_NOTE = `**Needs review <YYYY-MM-DD> by feature: too large for one run**`;
+export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
 
 /** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
  * recognize one (the backlog index's ` [needs replan]` mark) can match on it instead of parsing

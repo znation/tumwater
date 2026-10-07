@@ -54,9 +54,10 @@ export const ROLES: Role[] = [
    1. The prompt's <backlog-index> block lists PLANS.md's \`## Planned\` entries with each
       entry's line range; read the one you pick by that range.
    2. Pick one entry under \`## Planned\`, preferring ones marked ready or with a written plan.
-      Skip plans whose entry carries a Refused note, and skip entries already carrying a
-      **Needs review …** note or a ${NEEDS_REPLAN_NOTE}. If PLANS.md is empty or everything is
-      done, there is nothing to do.
+      Skip entries the index block marks \`[blocked: …]\` (their prerequisite has not landed),
+      \`[refused]\` or \`[needs review]\`. Skip plans whose entry carries a Refused note, and skip
+      entries already carrying a **Needs review …** note or a ${NEEDS_REPLAN_NOTE}. If PLANS.md
+      is empty or everything is done, there is nothing to do.
    3. Read only the chosen entry's line range and the code it names.
    4. A plan too large to finish in this run is not split by you: append the note
       ${NEEDS_REVIEW_NOTE}

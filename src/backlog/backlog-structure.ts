@@ -2,10 +2,10 @@ import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { BACKLOG_FILES, fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
+import { BACKLOG_FILES, fenceTracker, headingMetadata, parseEntryDetails, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
-import { NEEDS_REPLAN_PREFIX } from "../roles/role-guidance.js";
+import { entryHold, type EntryHold } from "./backlog-eligibility.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -270,6 +270,17 @@ function indexTitle(heading: string): string {
   return truncate(collapseWhitespace(heading.replace(ENTRY_STAMP_META_RE, "")), INDEX_TITLE_MAX);
 }
 
+/** The index mark for an entry's eligibility hold (backlog-eligibility.ts's entryHold): empty
+ * when eligible, a bracketed tag for the note holds, and the named prerequisites for a blocked
+ * plan so the reading loop sees why. */
+function holdMark(hold: EntryHold): string {
+  if (hold === null) return "";
+  if (hold === "refused") return " [refused]";
+  if (hold === "needs-review") return " [needs review]";
+  if (hold === "needs-replan") return " [needs replan]";
+  return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
+}
+
 /** The files and sections the actionable index covers, in the order loops read them: PLANS.md's
  * planned features, BUGS.md's open bugs, QUESTIONS.md's open questions. */
 const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
@@ -309,15 +320,18 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
         const entries = actionableEntryRanges(md, section);
         if (entries.length === 0) return [];
         const lines = md.split(/\r?\n/);
+        // A prerequisite clause lives in the heading, and only a Planned entry can name one, so
+        // the Planned section holds its own reference set; the other sections have no series.
+        const planned = section === "Planned" ? parseEntryDetails(md, section) : [];
         return [
           `${file} ## ${section}`,
-          // A Needs-replan note rides in the entry body, not the heading; reading the body here
-          // lets the mark reach both loops without either parsing the file. The body slice is
-          // the lines after the heading through the last body line, so the note is found
-          // whether it sits first or last (the heading is at 1-based line e.start).
+          // A hold rides in the entry heading or body, not the index; reading both here lets the
+          // mark reach both loops without either parsing the file. The body slice is the lines
+          // after the heading through the last body line, so a note is found whether it sits
+          // first or last (the heading is at 1-based line e.start).
           ...entries.map((e) => {
             const body = lines.slice(e.start, e.end).join("\n");
-            const mark = body.includes(NEEDS_REPLAN_PREFIX) ? " [needs replan]" : "";
+            const mark = holdMark(entryHold({ title: e.title, body }, planned));
             return `- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}`;
           }),
         ];

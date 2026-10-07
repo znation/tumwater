@@ -359,55 +359,6 @@ role-cap-gate and config-validation tests.
 - **No regression.** With no instances configured, every existing test passes unchanged.
 - `npm run test` green.
 
-### Parallel work instances, part 2/7: mark backlog entries blocked by an unlanded prerequisite, refused, or needing review (planned 2026-10-07 by operator)
-
-Design: plans/parallel-work-instances.md ("Eligibility").
-
-Context: plan series serialize through heading clauses such as `requires part 1/4 landed`,
-`requires parts 1/5–3/5 landed` and `requires Disk floor 2/4 and Worktree pool 1/5 landed`.
-Nothing parses them today. Every feature tick reads entries it cannot do yet, and the harness
-cannot count how much work is actually available. On 2026-10-07 only 1 of the 7 planned
-entries was unblocked.
-
-**Approach.**
-1. **Module.** New src/backlog/backlog-eligibility.ts, pure over markdown text:
-   - `entryKey(title)`: `ENTRY_STAMP_META_RE` (src/backlog/backlog-structure.ts) stripped,
-     whitespace collapsed, lowercased.
-   - `seriesPart(title)`: `{ series, part, of }` from `<Series>, part i/n:`, or null.
-   - `requiredParts(title)`: parse only the heading's trailing parenthetical.
-     - The clause is `requires <ref>((, | and )<ref>)* landed`, with a ref of
-       `[<Series>] [part|parts] i/n[(–|-)j/n]`. Ranges expand.
-     - A bare ref means the entry's own series.
-     - An unparseable clause gives `[]`.
-   - `entryHold(entry, planned)`: `"refused"` when the body has a `**Refused ` line;
-     `"needs-review"` for the `NEEDS_REVIEW_NOTE` prefix; `"needs-replan"` for the
-     `NEEDS_REPLAN_NOTE` prefix (once the replan entry has landed); `{ blockedBy: string[] }` when a
-     required `(series, part)` is still among `planned`; else `null`.
-   - `eligibleEntries(root, role)`: from `plannedPlanEntries` for feature or `openBugEntries`
-     for bugfix (src/backlog/backlog.ts), each with its key, title and line range (via
-     `actionableEntryRanges`), in file order. It keeps only entries whose `entryHold` is null.
-2. **Index.** `renderBacklogIndexBlock` appends ` [blocked: requires <Series i/n>, …]`,
-   ` [refused]` or ` [needs review]` to held entries.
-3. **Charter.** The feature charter's step 2 (src/roles/role-catalog.ts) says to skip entries
-   marked blocked in the index.
-
-**Files touched.** src/backlog/backlog-eligibility.ts (new),
-src/backlog/backlog-structure.ts, src/roles/role-catalog.ts. Tests:
-test/backlog-eligibility.test.ts (new), using every `requires` form in PLANS.md's history,
-plus cases in the backlog-index test.
-
-**Acceptance criteria.**
-- **Live headings.** Against the 2026-10-07 `## Planned`:
-  - Disk floor 2/4 is eligible;
-  - Disk floor 3/4 and 4/4 are blocked by Disk floor 2/4;
-  - Worktree pool 2/5 is blocked by Disk floor 2/4. Worktree pool 1/5 is not planned, so it
-    does not block;
-  - Worktree pool 4/5 is blocked by 2/5 and 3/5.
-- **Body text** containing "requires" never blocks.
-- **Refused.** An entry with a Refused note is ineligible and indexed `[refused]`.
-- **Unparsed clauses.** A clause like "land that plan first" blocks nothing.
-- `npm run test` green.
-
 ### Parallel work instances, part 4/7: the harness assigns each multi-instance loop one backlog entry and holds the claim through landing (planned 2026-10-07 by operator; requires parts 1/7 and 2/7 landed)
 
 Design: plans/parallel-work-instances.md ("Claims").
@@ -606,6 +557,53 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 2/7: mark backlog entries blocked by an unlanded prerequisite, refused, or needing review (planned 2026-10-07 by operator; done 2026-10-07 by feature)
+
+Design: plans/parallel-work-instances.md ("Eligibility").
+
+Context: plan series serialize through heading clauses such as `requires part 1/4 landed`,
+`requires parts 1/5–3/5 landed` and `requires Disk floor 2/4 and Worktree pool 1/5 landed`.
+Nothing parsed them, so every feature tick read entries it could not do yet.
+src/backlog/backlog-eligibility.ts now parses the clause and the note holds, and the
+`<backlog-index>` block marks each held entry.
+
+**What landed.**
+1. **Module.** src/backlog/backlog-eligibility.ts, pure over markdown text:
+   - `entryKey(title)`: `ENTRY_STAMP_META_RE` stripped, whitespace collapsed, lowercased.
+   - `seriesPart(title)`: `{ series, part, of }` from `<Series>, part i/n:`, or null; the part
+     token keeps the historical lettered forms (`2a/3`).
+   - `requiredParts(title)`: parses only the heading's trailing parenthetical through
+     `requires <ref>((, | and )<ref>)* landed`, refs of `[<Series>] [part|parts] i/n[–j/n]`;
+     ranges expand and a bare ref means the entry's own series. Unparseable → `[]`.
+   - `entryHold(entry, planned)`: `"refused"` for a `**Refused ` body line, `"needs-review"`
+     for the `**Needs review ` prefix, `"needs-replan"` for the `**Needs replan ` prefix,
+     `{ blockedBy }` when a required `(series, part)` is still among `planned`, else `null`.
+     Bodies mentioning "requires" are never consulted.
+   - `eligibleEntries(root, role)`: `plannedPlanEntries` for feature or `openBugEntries` for
+     bugfix, each with key, title and `actionableEntryRanges` range, in file order, minus held
+     entries.
+2. **Index.** `renderBacklogIndexBlock` appends ` [blocked: requires <Series i/n>, …]`,
+   ` [refused]`, ` [needs review]` or ` [needs replan]` to held entries.
+3. **Charter.** The feature charter's step 2 now says to skip entries the index marks blocked,
+   refused or needing review.
+
+**Files touched.** src/backlog/backlog-eligibility.ts (new),
+src/backlog/backlog-structure.ts, src/roles/role-catalog.ts, src/roles/role-guidance.ts
+(`NEEDS_REVIEW_PREFIX`, mirroring `NEEDS_REPLAN_PREFIX`). Tests:
+test/backlog-eligibility.test.ts (new), covering every `requires` form in PLANS.md's history
+(own-series, range, explicit series, `and`/`,` separators, historical lettered parts) and the
+note holds, plus cases in test/backlog-structure.test.ts's backlog-index tests.
+
+**Acceptance criteria.**
+- **Prerequisites.** A heading naming a still-planned `(series, part)` is held with those
+  labels (`{ blockedBy: ["Disk floor 2/4"] }`); the same clause naming a landed or absent part
+  is not. A bare ref resolves to the entry's own series; an unparseable clause blocks nothing.
+- **Body text** containing "requires" never blocks — only the heading's trailing parenthetical.
+- **Refused / Needs review / Needs replan.** Each note holds the entry and indexes
+  `[refused]` / `[needs review]` / `[needs replan]`; `eligibleEntries` drops them.
+- **Ranges.** `eligibleEntries` returns file order with the index's 1-based `start`/`end`.
+- `npm run test` green.
 
 ### Disk floor, part 3/4: reclaim long-idle worktrees, and a `tumwater reclaim` command (planned 2026-10-06 by operator; requires part 2/4 landed; done 2026-10-07 by feature)
 

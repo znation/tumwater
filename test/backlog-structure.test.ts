@@ -388,6 +388,32 @@ test("renderBacklogIndexBlock marks an entry carrying a Needs-replan note", () =
   assert.match(block, /- 5-6: Two \[needs replan\]/);
 });
 
+test("renderBacklogIndexBlock marks a held entry as blocked, refused or needing review", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Base, part 1/2: x (planned 2026-10-01)",
+      "body",
+      "### Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed)",
+      "body",
+      "### Refused one (planned 2026-10-03)",
+      "**Refused 2026-10-07 by feature: no**",
+      "### Review one (planned 2026-10-04)",
+      "**Needs review 2026-10-07 by feature: too large for one run**",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /- 3-4: Base, part 1\/2: x\n/);
+  assert.match(block, /- 5-6: Later, part 2\/2: y \[blocked: requires Base 1\/2\]/);
+  assert.match(block, /- 7-8: Refused one \[refused\]/);
+  assert.match(block, /- 9-10: Review one \[needs review\]/);
+});
+
 test("renderBacklogIndexBlock re-reads a backlog file whose stat changed", () => {
   const dir = tmpdir();
   const bugs = path.join(dir, "BUGS.md");
