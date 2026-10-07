@@ -17,12 +17,6 @@ import { landQueueDir } from "../paths.js";
  * shape (LandingEntry) lives here beside the queue's reader/writer — moved out of the
  * types.ts grab-bag. */
 
-/** One entry in the durable land queue (.tumwater/land-queue/; this module): a commit
- * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
- * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY landing
- * outcome, so the queue holds only unattempted landings. No attempt counter lives in the file —
- * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
- */
 /** The review that rejected the change a revision is revising (plans/revise-rejected.md part
  * 2/2): the rejected head and the numbered objections the reviewer named. It rides the queued
  * entry so the re-review can be shown what the revision had to resolve, plus the interdiff
@@ -33,6 +27,12 @@ export interface PriorReview {
   reasons: string[];
 }
 
+/** One entry in the durable land queue (.tumwater/land-queue/; this module): a commit
+ * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
+ * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY landing
+ * outcome, so the queue holds only unattempted landings. No attempt counter lives in the file —
+ * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
+ */
 export interface LandingEntry {
   /** The owning loop — events, session naming, and the lander worktree all key off it. */
   role: string;
