@@ -11,6 +11,9 @@ export interface Tracked<T> {
   error?: string;
 }
 
+/** Track a promise without awaiting it: the returned snapshot flips `done` on settlement and
+ * carries either the resolved value or the rejection's message. Attaches the rejection
+ * handler, so a probe that fails never surfaces as an unhandled rejection. */
 export function track<T>(promise: Promise<T>): Tracked<T> {
   const t: Tracked<T> = { done: false };
   promise.then(
