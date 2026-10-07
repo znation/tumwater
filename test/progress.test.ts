@@ -10,7 +10,7 @@ import {
 } from "../src/ui/progress-data.js";
 import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine, kindMarker } from "./pi-events.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { sleep } from "./wait.js";
 
@@ -247,6 +247,31 @@ test("the harness's review label line routes following lines to the gate accumul
   const gate = readLiveProgress(root, "clean", "gate");
   assert.equal(gate?.turns, 1, "the labeled run's line folded into gate");
   assert.equal(gate?.currentWork, "reviewer");
+});
+
+test("a kind-bearing marker demuxes by kind when author and gate runs share one cwd", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  // Both runs report the SAME cwd (the shape worktree-pool parts 2/5 and 4/5 create, and the
+  // reason the marker's kind replaced the cwd test); only the marker can tell them apart. The
+  // session cwd here is the author worktree, so a cwd-only demux would fold BOTH into author.
+  const shared = JSON.stringify({ type: "session", version: 3, id: "s", cwd: worktreePath(root, "clean") });
+  writeLogLines(file, [
+      kindMarker("author"),
+      shared,
+      assistantLine("author work", { tokens: 100 }),
+      kindMarker("gate", "review"),
+      shared,
+      assistantLine("review work", { tokens: 200 }),
+    ]);
+  const author = readLiveProgress(root, "clean");
+  assert.equal(author?.turns, 1, "the author run keeps its own count");
+  assert.equal(author?.contextTokens, 100);
+  assert.equal(author?.currentWork, "author work");
+  const gate = readLiveProgress(root, "clean", "gate");
+  assert.equal(gate?.turns, 1, "the gate run folds by its marker, not the shared cwd");
+  assert.equal(gate?.contextTokens, 200);
+  assert.equal(gate?.currentWork, "review work");
 });
 
 test("a review label line starts the gate accumulator fresh — the previous gate run's counts cannot bleed into the next review", () => {

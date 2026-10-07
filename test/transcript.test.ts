@@ -437,3 +437,20 @@ test("a malformed marker line renders nothing and labels nothing", () => {
   ];
   assert.deepEqual(formatTranscript(lines).flat(), [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "  hi"]);
 });
+
+test("a kind-only marker renders nothing and leaves a pending label intact", () => {
+  // Every run now writes a marker; an author's kind-only one must be transparent: a full
+  // re-read keeps the stale "review" pending, so run 2's separator is labeled and the tail
+  // scan (transcript-tail.ts) must walk past the kind-only marker to match.
+  const lines = [
+    JSON.stringify({ type: "tumwater_run", label: "review" }),
+    JSON.stringify({ type: "tumwater_run", kind: "author" }),
+    agentStart(),
+    userLine("p"),
+    assistantBlocks([{ type: "text", text: "hi" }]),
+  ];
+  assert.deepEqual(formatTranscript(lines).flat(), [
+    `── review @ ${expectedTimestamp(FIXED_TS)} ──`,
+    "  hi",
+  ]);
+});

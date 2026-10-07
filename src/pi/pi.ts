@@ -7,11 +7,13 @@ import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../
 import { terminateChild, withoutLaunchServicesCheckIn } from "../process/process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../process/run-marker.js";
 import { piArgs } from "./pi-args.js";
+import type { PiRunKind } from "./pi-event-line.js";
 import { PiStreamParser, STREAM_SEVERED, isPermanentConfigError } from "./pi-stream.js";
 import { startPiWatchdogs } from "./pi-watchdogs.js";
 import type { PiRunResult } from "./pi-run-result.js";
 
 export type { BackendFailureKind } from "./pi-stream.js";
+export type { PiRunKind } from "./pi-event-line.js";
 
 /** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
  * the first 18 days died this way (one of them 2 h 39 m of director work on a fresh steering
@@ -52,10 +54,15 @@ export interface PiRunOptions {
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;
   signal?: AbortSignal;
-  /** Label this run in the role's transcript (the review gate passes "review"): one compact
-   * marker line is written to the raw log before any of pi's output, so every transcript
-   * surface renders a labeled separator for it. No label → no write — author-run logs stay
-   * byte-identical to today's shape. */
+  /** Which kind of run this is: the tick's own authoring run ("author") or the review/landing
+   * gate's run ("gate"). Required, so every call site names it and the dashboards demultiplex
+   * the role's interleaved runs by the raw-log marker instead of the run's worktree path
+   * (plans/worktree-pool.md part 1/5). */
+  kind: PiRunKind;
+  /** Label this run in the role's transcript (the review gate passes "review"): written into
+   * the run's one `tumwater_run` marker line before any of pi's output, so every transcript
+   * surface renders a labeled separator for it. The marker is written for EVERY run (kind
+   * included); a run with no label still gets one, and its separator renders unlabeled. */
   label?: string;
   /** Called once per stalled tool call when it has been open with no content-bearing update
    * for config.toolCallStallSeconds: the harness logs a warning event naming the command
@@ -119,11 +126,17 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     rawLog.on("error", () => {
       rawLogBroken = true;
     });
-    if (opts.label) {
-      // The marker precedes this run's first pi event in file order — written to the same
-      // stream stdout lines flow through, before spawn, so ordering is exact by construction;
-      // on a failed spawn finish() still ends the stream and flushes it.
-      rawLog.write(JSON.stringify({ type: "tumwater_run", label: opts.label }) + "\n");
+    // The marker precedes this run's first pi event in file order — written to the same stream
+    // stdout lines flow through, before spawn, so ordering is exact by construction; on a
+    // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
+    // kind is always there, the label only when the caller set one.
+    {
+      const marker: { type: "tumwater_run"; kind: PiRunKind; label?: string } = {
+        type: "tumwater_run",
+        kind: opts.kind,
+      };
+      if (opts.label) marker.label = opts.label;
+      rawLog.write(JSON.stringify(marker) + "\n");
     }
     const parser = new PiStreamParser(opts.onToolCallStart);
     // The run's cross-group attribution mark, minted before the spawn so the environment can

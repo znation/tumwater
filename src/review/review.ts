@@ -262,6 +262,7 @@ export async function reviewAheadOfMain(
   // them from the pinned commit's message).
   const pi = await ctx.runGatePi({
     cwd: wt,
+    kind: "gate",
     prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness, base),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend

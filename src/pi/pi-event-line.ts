@@ -9,6 +9,14 @@
 import { isJsonObject, parseJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 
+/** Which kind of pi run a raw-log `tumwater_run` marker names (src/pi/pi.ts writes it): the
+ * tick's own authoring run ("author") or the review/landing gate's run ("gate"). A role's
+ * one log interleaves both, and the dashboards demultiplex them by this field rather than by
+ * the run's worktree path (plans/worktree-pool.md part 1/5). Declared in this pure module so
+ * both the subprocess layer (pi.ts) and the display layer (progress-data.ts) can name it
+ * without importing each other. */
+export type PiRunKind = "author" | "gate";
+
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
  * match that exact prefix (a future pi serialization, torn or foreign JSON). Callers use it as

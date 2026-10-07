@@ -497,19 +497,20 @@ test("a context-exceeded error fails the tick with the real cause", async () => 
   }
 });
 
-// Run labels: a labeled run (the review gate) writes one marker line to the shared raw log
-// before any of pi's output, so every transcript surface can render `── review @ <ts> ──` for
-// it. Unlabeled author runs write no marker — their logs stay byte-identical.
+// Run markers: every run writes one marker line to the shared raw log before any of pi's
+// output, carrying the run's kind and (when set) its label, so the dashboards can demultiplex
+// interleaved author and gate runs by marker and every transcript surface can render
+// `── review @ <ts> ──` for a labeled one.
 
-test("runPi with a label writes exactly one marker line as the raw log's first line", async () => {
+test("a labeled run writes exactly one kind+label marker line as the raw log's first line", async () => {
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`);
   try {
-    await runPiVerified(runPiFixture(dir, { label: "review" }));
+    await runPiVerified(runPiFixture(dir, { kind: "gate", label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(
       content,
-      `{"type":"tumwater_run","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
+      `{"type":"tumwater_run","kind":"gate","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
       "the marker precedes every pi output line and appears exactly once",
     );
   } finally {
@@ -517,13 +518,17 @@ test("runPi with a label writes exactly one marker line as the raw log's first l
   }
 });
 
-test("runPi without a label leaves the raw log byte-identical to today's shape", async () => {
+test("an unlabeled run writes one kind-only marker and no label", async () => {
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
   try {
     await runPiVerified(runPiFixture(dir));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
-    assert.equal(content, `${assistantLine("done", { tokens: 5 })}\n`, "no marker line for unlabeled runs");
+    assert.equal(
+      content,
+      `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
+      "the author run's marker carries only its kind",
+    );
   } finally {
     restore();
   }
@@ -531,14 +536,14 @@ test("runPi without a label leaves the raw log byte-identical to today's shape",
 
 test("a failed labeled run still flushes its marker (the stale-marker case)", async () => {
   // A reviewer spawn that dies before emitting anything leaves the marker alone in the log.
-  // The renderer consumes it at the next agent_start, so it can mislabel at most the following
-  // separator and never leaks past one run — pinned here at the source.
+  // The renderer consumes its label at the next agent_start, so it can mislabel at most the
+  // following separator and never leaks past one run — pinned here at the source.
   const dir = tmpdir();
   const restore = fakePi("exit 1");
   try {
-    await runPi(runPiFixture(dir, { label: "review" }));
+    await runPi(runPiFixture(dir, { kind: "gate", label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
-    assert.equal(content, `{"type":"tumwater_run","label":"review"}\n`);
+    assert.equal(content, `{"type":"tumwater_run","kind":"gate","label":"review"}\n`);
   } finally {
     restore();
   }
@@ -579,7 +584,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
     const content = fs.readFileSync(file, "utf8");
     assert.equal(
       content,
-      `${assistantLine("done", { tokens: 5 })}\n`,
+      `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
       "the raw log is complete on the turn runPi resolves — nothing may still be in flight",
     );
   } finally {

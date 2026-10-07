@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { openForRead, statOrNull } from "../files/files.js";
 import { formatTranscript, type TranscriptEntry } from "./transcript.js";
+import { parsePiEventLine } from "../pi/pi-event-line.js";
 import { readCompleteLines } from "../files/tail.js";
 
 /** Rendered tail of a raw pi log for one-shot display (`tumwater logs --role <id>`): the last
@@ -37,6 +38,21 @@ function isEntryCandidate(line: string, includePrompts: boolean): boolean {
   );
 }
 
+/** The one raw line type a backward scan parses for a label: a `tumwater_run` marker. Its label
+ * — never its kind — is what changes the renderer's cross-line state. */
+const MARKER_ONLY = new Set(["tumwater_run"]);
+
+/** True when a `tumwater_run` line carries the non-empty string label the renderer's
+ * pending-label state is set from (transcript.ts). A kind-only marker (every run writes one
+ * since worktree-pool part 1/5) sets no cross-line state, so the backward scan must keep
+ * walking past it to the label — or to the older agent_start — that actually applies to the
+ * arming run: stopping at it would diverge from a full re-read whenever a stale labeled
+ * marker sits just before it. */
+function markerHasLabel(line: string): boolean {
+  const event = parsePiEventLine<{ label?: unknown }>(line, MARKER_ONLY);
+  return typeof event?.label === "string" && event.label.length > 0;
+}
+
 interface TranscriptWindow {
   /** The last `limit` rendered entries, oldest first — identical to
    * formatTranscript(whole file).slice(-limit), except at the zero boundary: a `limit` of
@@ -56,9 +72,12 @@ interface TranscriptWindow {
  * separator and the pending label), so everything from that line on renders identically to a
  * full re-read. A labeled run's marker line sits just before its agent_start, between it and
  * the previous run — so after arming on a qualifying agent_start the scan keeps walking older
- * lines for at most one more run: a tumwater_run marker becomes the boundary (window [marker ..
- * EOF] carries the label), while an older agent_start or EOF means the run was unlabeled and
- * the window stops at the arming agent_start exactly as before. When no such boundary exists
+ * lines for at most one more run: the closest preceding LABEL-bearing tumwater_run marker
+ * becomes the boundary (window [marker .. EOF] carries the label), while an older agent_start
+ * or EOF means the run was unlabeled and the window stops at the arming agent_start exactly as
+ * before. A kind-only marker (every run writes one since worktree-pool part 1/5) carries no
+ * label, so the scan walks past it instead of stopping, exactly as a full re-read lets it pass
+ * through. When no such boundary exists
  * (small log, or fewer than `limit` entries total) the scan reaches EOF and the window is the
  * whole file — still exact, never more I/O than today's read plus one run of lines. Returns
  * null when the file is missing or empty.
@@ -149,15 +168,19 @@ export function readTranscriptTail(
         }
         lines.push(raw);
         if (armed) {
-          // Walking for the marker line preceding the arming agent_start; every line pushed
-          // here sits inside [marker .. EOF] when a marker lands, so keep it.
+          // Walking for the label-bearing marker line preceding the arming agent_start; every
+          // line pushed here sits inside [marker .. EOF] when one lands, so keep it.
           if (raw.includes('"tumwater_run"')) {
-            armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
-            stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
-            break;
-          }
-          if (raw.includes('"agent_start"')) {
-            lines.splice(boundaryIndex + 1); // No marker before the next older run: unlabeled — stop at A.
+            // A kind-only marker carries no label and is skipped — a full re-read lets it
+            // pass through too — so the scan keeps walking to the labeled marker that
+            // actually applies, or to the older agent_start when the run is unlabeled.
+            if (markerHasLabel(raw)) {
+              armed = false; // Boundary found — the post-loop EOF-while-armed fallback must not fire.
+              stoppedAtBoundary = true; // Window [this marker .. EOF] renders identically to a full re-read.
+              break;
+            }
+          } else if (raw.includes('"agent_start"')) {
+            lines.splice(boundaryIndex + 1); // No label before the next older run: unlabeled — stop at A.
             armed = false;
             stoppedAtBoundary = true;
             break;

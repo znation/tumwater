@@ -20,6 +20,7 @@ export function runPiFixture(dir: string, over: Partial<PiRunOptions> = {}): PiR
     sessionDir: path.join(dir, "sessions"),
     sessionName: "t",
     rawLogFile: path.join(dir, "raw.jsonl"),
+    kind: "author",
     ...over,
   };
 }

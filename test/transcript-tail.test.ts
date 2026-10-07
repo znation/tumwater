@@ -11,7 +11,7 @@ import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
-import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
+import { FIXED_TS, agentStart, assistantBlocks, kindMarker, runMarker, userLine } from "./pi-events.js";
 
 test("readTranscriptTail matches a full re-read on a small log", () => {
   const { file } = writeTurnLog(3);
@@ -383,4 +383,56 @@ test("readTranscriptTail stops at the arming agent_start when EOF precedes any m
     `── run @ ${expectedTimestamp(FIXED_TS + 60_000)} ──`,
     "the unlabeled run's separator is stamped from its own user message",
   );
+});
+
+test("readTranscriptTail skips kind-only markers to the label a full re-read applies", () => {
+  // The stale-label shape part 1/5's every-run marker creates: a failed reviewer spawn's
+  // labeled marker, then an author run's own kind-only marker before the same agent_start.
+  // The scan must not stop at the kind-only marker (which sets no label) — a full re-read
+  // lets it pass and applies the stale label to the author run's separator, so the tail must
+  // too. This is the regression a stop-at-any-marker scan would show.
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  const lines = [
+    kindMarker("author"),
+    agentStart(),
+    userLine("prompt 1", FIXED_TS + 60_000),
+    assistantBlocks([{ type: "text", text: "turn 1" }]),
+    runMarker("review"), // stale: its reviewer died before any agent_start
+    kindMarker("author"),
+    agentStart(),
+    userLine("prompt 2", FIXED_TS + 2 * 60_000),
+    assistantBlocks([{ type: "text", text: "turn 2" }]),
+  ];
+  writeLogLines(file, lines);
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  assert.ok(
+    full.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 2 * 60_000)} ──`),
+    "sanity: the stale label applies to run 2 in a full re-read",
+  );
+  for (const limit of [1, 2, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
+});
+
+test("readTranscriptTail matches a full re-read when every run carries a kind-only marker", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  const lines: string[] = [];
+  for (let i = 1; i <= 20; i++) {
+    const gate = i % 2 === 0;
+    lines.push(kindMarker(gate ? "gate" : "author", gate ? "review" : undefined));
+    lines.push(agentStart());
+    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
+    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
+  }
+  writeLogLines(file, lines);
+
+  const size = fs.statSync(file).size;
+  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  for (const limit of [1, 2, 3, 7, 50]) {
+    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
+  }
 });

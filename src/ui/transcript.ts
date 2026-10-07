@@ -103,8 +103,10 @@ interface TranscriptRenderer {
 /** Incremental renderer over pi's streaming JSONL log. Only complete, renderable events ever
  * produce output: `agent_start` (a run separator, stamped from the first user message's
  * epoch-ms timestamp), assistant `message_end` turns, and `auto_retry_start` warnings. A
- * harness-written `tumwater_run` marker renders nothing itself — it sets a pending label that
- * the next agent_start captures into its separator (`── review @ <ts> ──`). Streaming deltas
+ * harness-written `tumwater_run` marker renders nothing itself: one carrying a label sets a
+ * pending label that the next agent_start captures into its separator (`── review @ <ts> ──`),
+ * while a kind-only marker (every run writes one since worktree-pool part 1/5) touches no
+ * cross-line state and is transparent to the rendering. Streaming deltas
  * (`message_update`) and tool-execution/turn bookkeeping are never rendered; feed() skips even
  * parsing them via a fast path over pi's compact `type`-first JSON shape.
  *
@@ -114,10 +116,11 @@ interface TranscriptRenderer {
  * (readTranscript) keeps the default.
  *
  * The renderer's cross-line state is the pending run separator plus that pending label: both
- * are reset/captured by agent_start, so readTranscriptTail (transcript-tail.ts) starts windows
- * at an agent_start — or at the marker line preceding it when one labels that run — and renders
- * identically to a full re-read. Adding another piece of cross-line state here would silently
- * break that one-shot reader — extend its stop boundary too. */
+ * are reset/captured by agent_start — a label only a label-bearing marker changes — so
+ * readTranscriptTail (transcript-tail.ts) starts windows at an agent_start, or at the closest
+ * preceding label-bearing marker, and renders identically to a full re-read. Adding another
+ * piece of cross-line state here would silently break that one-shot reader — extend its stop
+ * boundary too. */
 export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}): TranscriptRenderer {
   const includePrompts = opts.includePrompts === true;
   let runOpen = false; // agent_start seen for this run, separator not yet emitted
@@ -172,8 +175,10 @@ export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}
         }
         case "tumwater_run": {
           const label = event.label;
+          // A kind-only marker (no label) leaves any pending label untouched, exactly as a full
+          // re-read does; it never renders a line of its own.
           if (typeof label === "string" && label) pendingLabel = label;
-          return []; // labels the next run's separator; renders nothing of its own
+          return [];
         }
         default:
           return []; // message_update deltas, tool_execution_*, turn_*, agent_end, session, …

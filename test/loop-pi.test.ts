@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopPi } from "../src/loop/loop-pi.js";
-import { roleNotesPath, sessionDir } from "../src/paths.js";
+import { piLogPath, roleNotesPath, sessionDir } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -114,6 +114,28 @@ test("runRolePi runs a fresh named session and folds one usage into the tick", a
   }
 });
 
+test("runRolePi demuxes as author and runLandingPi as gate (marker kind, not cwd)", async () => {
+  const root = tmpdir();
+  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 1 })}'`);
+  try {
+    const { loopPi } = makeHost(root);
+    // The refusal-note landing's resolver runs in the ROLE worktree via runRolePi; the shared
+    // lander's resolver runs via runLandingPi. Their markers must name author and gate
+    // respectively, since after worktree-pool parts 2/5 and 4/5 the cwd can no longer tell.
+    await loopPi.runRolePi(root, "resolve the conflict", "tumwater-feature-1-conflict");
+    const roleLines = fs.readFileSync(piLogPath(root, "feature"), "utf8").split("\n");
+    assert.equal(roleLines[0], JSON.stringify({ type: "tumwater_run", kind: "author" }));
+    await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-1-conflict");
+    const all = fs.readFileSync(piLogPath(root, "feature"), "utf8").split("\n");
+    assert.ok(
+      all.includes(JSON.stringify({ type: "tumwater_run", kind: "gate" })),
+      "runLandingPi's run writes a gate marker",
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("runRolePi with resume passes --continue so a shutdown-interrupted tick resumes its session", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
@@ -181,6 +203,7 @@ test("conflict, landing, and review runs carry no notebook", async () => {
     await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-1-conflict");
     await loopPi.runGatePi({
       cwd: root,
+      kind: "gate",
       prompt: "review the change",
       config: defaultConfig(),
       sessionDir: sessionDir(root, "feature"),
@@ -380,6 +403,7 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
     const { loopPi, warns, usage, landingUsage, sleeps } = makeHost(root);
     const result = await loopPi.runGatePi({
       cwd: root,
+      kind: "gate",
       prompt: "review the change",
       config: defaultConfig(),
       sessionDir: sessionDir(root, "feature"),

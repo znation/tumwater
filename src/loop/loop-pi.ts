@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { hasResumableSession, runPi, type PiRunOptions } from "../pi/pi.js";
+import { hasResumableSession, runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
@@ -74,6 +74,7 @@ export class LoopPi {
     wt: string,
     prompt: string,
     sessionName: string,
+    kind: PiRunKind,
     resume = false,
     config?: ResolvedModelConfig,
     notesPath?: string,
@@ -81,6 +82,9 @@ export class LoopPi {
     return {
       cwd: wt,
       prompt,
+      // Every run names its kind explicitly; the marker it writes is the dashboards' demux
+      // key, so parts 2/5 and 4/5 may put author and gate runs in the same worktree.
+      kind,
       // A caller-supplied config (the landing conflict resolver's strong-tier one,
       // plans/model-tiers.md part 4/8) replaces the role's own for that one run; the role's
       // config is the default for every other caller.
@@ -118,7 +122,7 @@ export class LoopPi {
   ): Promise<PiRunResult> {
     return this.runWithTransientRetry(
       {
-        ...this.loopPiOpts(wt, prompt, sessionName, false, config),
+        ...this.loopPiOpts(wt, prompt, sessionName, "gate", false, config),
         signal: this.host.signal,
       },
       { authoring: false },
@@ -276,7 +280,9 @@ export class LoopPi {
   ): Promise<PiRunResult> {
     const notesPath =
       this.host.role === DIRECTOR_ROLE ? undefined : roleNotesPath(this.host.root, this.host.role);
-    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume, config, notesPath));
+    return this.runWithTransientRetry(
+      this.loopPiOpts(wt, prompt, sessionName, "author", resume, config, notesPath),
+    );
   }
 
   /** The shared authoring/conflict run wiring WITHOUT the role notebook. The landing merge's
@@ -290,7 +296,12 @@ export class LoopPi {
     resume = false,
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult> {
-    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume, config));
+    // The refusal-note landing (loop.ts's merge) reaches pi here, in the ROLE's own worktree,
+    // so its runs demux as author — exactly the verdict the pre-part-1/5 cwd test gave them.
+    // The shared-worktree conflict resolver goes through runLandingPi and demuxes as gate.
+    return this.runWithTransientRetry(
+      this.loopPiOpts(wt, prompt, sessionName, "author", resume, config),
+    );
   }
 
   /** Hard caps on the SUMMARY follow-up turn: it should take one short reply on a warm session,
@@ -325,7 +336,13 @@ export class LoopPi {
     // The wiring folds every attempt (the failed 429 before the wait), and the returned
     // final run is folded here by the wiring itself — no second fold at the call site.
     return this.runWithTransientRetry({
-      ...this.loopPiOpts(wt, buildSummaryRequestPrompt(), `tumwater-${this.host.role}-${this.host.tickNumber()}-summary`, true),
+      ...this.loopPiOpts(
+        wt,
+        buildSummaryRequestPrompt(),
+        `tumwater-${this.host.role}-${this.host.tickNumber()}-summary`,
+        "author",
+        true,
+      ),
       config: {
         ...cfg,
         ...cappedRequestTimeouts(cfg, LoopPi.SUMMARY_REQUEST_TIMEOUT_S, LoopPi.SUMMARY_REQUEST_QUIET_S),
@@ -349,6 +366,7 @@ export class LoopPi {
         wt,
         buildStageFixPrompt(findings),
         `tumwater-${this.host.role}-${this.host.tickNumber()}-stagefix`,
+        "author",
         true,
       ),
       config: {

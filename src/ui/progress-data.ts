@@ -1,4 +1,10 @@
-import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "../pi/pi-event-line.js";
+import {
+  applyToolExecutionEvent,
+  parsePiEventLine,
+  toolCallCommand,
+  type OpenToolCall,
+  type PiRunKind,
+} from "../pi/pi-event-line.js";
 import { bufferedCommandStallMs, commandBuffersOutput } from "../pi/command-shape.js";
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
@@ -76,8 +82,9 @@ export function findSeedOffset(file: string, size: number, window = TAIL_BYTES):
 
 /** Which of a role's pi run kinds a LiveProgress describes: `author` — the tick's own
  * run in the role's worktree (the working cell's subject) — or `gate` — the review gate's
- * runs in the role's lander worktree (the reviewing cell's subject). */
-export type ProgressRunKind = "author" | "gate";
+ * runs in the role's lander worktree (the reviewing cell's subject). The same union the
+ * raw-log marker carries (pi-event-line.ts's PiRunKind), named here for the display layer. */
+export type ProgressRunKind = PiRunKind;
 
 /** Per-file incremental state for readLiveProgress: where we last stopped reading and
  * the progress accumulated from everything read so far — one accumulator per run kind
@@ -93,10 +100,14 @@ interface RoleLogTail {
   author: LiveProgress;
   gate: LiveProgress;
   cur: ProgressRunKind;
+  /** True once a kind-bearing `tumwater_run` marker fixed the current run's kind, so its
+   * following `session` event keeps that kind instead of the legacy cwd test. Cleared when
+   * the session lands (or when a legacy marker resets the state). */
+  kindFromMarker: boolean;
 }
 
 function freshRoleTail(quietMs: number): RoleLogTail {
-  return { author: freshProgress(quietMs), gate: freshProgress(quietMs), cur: "author" };
+  return { author: freshProgress(quietMs), gate: freshProgress(quietMs), cur: "author", kindFromMarker: false };
 }
 
 /** Max length of a captured work item, ellipsis included (~60 chars). */
@@ -141,9 +152,9 @@ function freshProgress(quietMs: number): LiveProgress {
 /** The event types feedLine acts on — everything else (streaming deltas, turn/agent
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
- * here too. `tumwater_run` is the harness's own label line (src/pi/pi.ts), read only for its
- * run kind — a labeled run ("review") flips the demux, and starts the gate accumulator
- * fresh, before its `session` event lands. */
+ * here too. `tumwater_run` is the harness's own marker (src/pi/pi.ts), read for its run kind:
+ * a kind-bearing marker flips the demux and starts that accumulator fresh before its `session`
+ * event lands, and a legacy label-only marker ("review") still flips the demux to gate. */
 const PROGRESS_TYPES = new Set([
   "session",
   "tumwater_run",
@@ -156,8 +167,12 @@ const PROGRESS_TYPES = new Set([
 /** The fields feedLine reads off a parsed progress event (a structural subset of pi's JSON). */
 interface ProgressEvent {
   type?: string;
-  /** session events only: the worktree the run started in — the run-kind discriminator. */
+  /** session events only: the worktree the run started in — the LEGACY run-kind discriminator
+   * for a session no kind-bearing marker preceded (new logs demux by the marker's kind). */
   cwd?: string;
+  /** tumwater_run events only: the harness's run kind ("author" | "gate") — the primary demux
+   * key for logs written since part 1/5 of the worktree pool. */
+  kind?: string;
   /** tumwater_run events only: the harness's label for the run ("review"). */
   label?: string;
   toolCallId?: string;
@@ -273,28 +288,41 @@ export function stalledToolLabel(
   return undefined;
 }
 
-/** Fold one raw log line into a role log's per-kind tail state (mutates it): a labeled run
- * line or a `session` event switches which accumulator following lines fold into — the
- * `session` event's `cwd` is the authoritative kind discriminator (the lander worktree's
- * path = gate), the harness's `tumwater_run` label line an early hint for the window between
- * the label and the session event (a `review` label also starts the gate accumulator fresh).
- * Everything else folds into the current kind's accumulator. Non-JSON noise is skipped. */
+/** Fold one raw log line into a role log's per-kind tail state (mutates it): the harness's
+ * `tumwater_run` marker or a `session` event switches which accumulator following lines fold
+ * into. A marker carries the run's kind, so a `session` preceded by one keeps that kind even
+ * when author and gate runs share a worktree (part 1/5 of the worktree pool); only a session
+ * no kind-bearing marker preceded falls back to the legacy `cwd` test (the lander worktree
+ * path = gate), which is how logs written before the marker carried a kind still demux. A
+ * marker also starts that kind's accumulator fresh before the session lands, so a previous
+ * run's turns/context can never show in the new run's cell. Everything else folds into the
+ * current kind's accumulator. Non-JSON noise is skipped. */
 function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
   const event = parsePiEventLine<ProgressEvent>(line, PROGRESS_TYPES);
   if (!event) return; // Blank, unparseable, or a type this feed does not act on.
   if (event.type === "session") {
-    tail.cur = event.cwd === gateCwd ? "gate" : "author";
+    // A kind-bearing marker before this session already fixed the run's kind; a legacy
+    // session with no such marker falls back to the cwd test.
+    if (!tail.kindFromMarker) tail.cur = event.cwd === gateCwd ? "gate" : "author";
+    tail.kindFromMarker = false;
     tail[tail.cur] = freshProgress(tail[tail.cur].quietMs);
     return;
   }
   if (event.type === "tumwater_run") {
-    if (event.label === "review") {
-      // A new reviewer run starts HERE, not only at its `session` event: runPi writes this
-      // line before spawning pi, and the landing cell reads the gate accumulator as soon as
-      // the marker's stage says `reviewing` — a poll that can land before the session event.
-      // Resetting at the label means a previous gate run's turns/context (the last review,
-      // or another run the gate spent) can never show in the new review's cell. Safe for the
-      // in-tick reviewing cell too: a role's gate is serial, so a label ends the previous run.
+    const kind = event.kind === "gate" ? "gate" : event.kind === "author" ? "author" : undefined;
+    if (kind) {
+      // Every run writes this marker before pi spawns, and the landing cell reads the
+      // accumulator as soon as the marker's stage says `reviewing` — a poll that can land
+      // before the session event. Resetting here means a previous run's turns/context (the
+      // last review, or another run the gate spent) can never show in the new run's cell.
+      // Safe for the in-tick reviewing cell too: a role's gate is serial, so a marker ends
+      // the previous run.
+      tail.cur = kind;
+      tail.kindFromMarker = true;
+      tail[kind] = freshProgress(tail[kind].quietMs);
+    } else if (event.label === "review") {
+      // Legacy log (no kind): a label-only marker still flips the demux to gate before its
+      // session event, exactly as before this change.
       tail.cur = "gate";
       tail.gate = freshProgress(tail.gate.quietMs);
     }

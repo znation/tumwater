@@ -406,46 +406,6 @@ existing badge, fleet-alert, status-model and status tests.
 - **Missing.** No `disk` field, as with an older orchestrator, renders exactly as today.
 - `npm run test` green.
 
-### Worktree pool, part 1/5: label every pi run's kind and demultiplex progress by the label, not the lander path (planned 2026-10-06 by operator)
-
-Design: plans/worktree-pool.md ("Progress demux"). This is preparation that changes no behavior.
-
-Context: `feedDemuxed` (src/ui/progress-data.ts) decides whether a pi run in a role's raw log
-belongs to the review gate (the reviewing cell) or to the author. It decides by
-`session.cwd === landWorktreePath(root, role)`. Parts 2/5 and 4/5 move vets and role ticks
-into shared pool slots, and after that a path cannot tell the two apart.
-
-**Approach.**
-1. **Kind on every run.** `PiRunOptions` (src/pi/pi.ts) gains a required
-   `kind: "author" | "gate"`, required so that no caller is missed. `runPi` writes one marker
-   line before spawning: `{ "type": "tumwater_run", "kind": <kind> }`, plus today's `label`
-   when one is set, so a run still gets exactly one marker line. Update the option's doc
-   comment, which today says author runs write nothing.
-2. **Callers.**
-   - **Gate:** the reviewer runs and the review follow-up (src/review/*), and the conflict
-     resolver and the post-resolve re-review (src/landing/*).
-   - **Author:** the tick's runs in src/loop/loop-pi.ts: authoring, the transient retry, the
-     summary request and the stage-fix request.
-3. **Demux.** In `feedDemuxed`, a `tumwater_run` line carrying `kind` sets `tail.cur` to that
-   kind and starts that accumulator fresh, generalising today's reset on `review`. The run's
-   following `session` event keeps that kind. The cwd test remains only for a `session` that
-   no kind-bearing marker preceded, as in logs written before this change.
-4. **Transcript.** In src/ui/transcript.ts, a `tumwater_run` line without `label` renders
-   nothing and sets no pending label.
-
-**Files touched.** src/pi/pi.ts, src/loop/loop-pi.ts, the runPi callers in src/review/ and
-src/landing/, src/ui/progress-data.ts, src/ui/transcript.ts. Tests: cases in
-test/progress.test.ts, test/transcript.test.ts and test/pi.test.ts.
-
-**Acceptance criteria.**
-- **Type-checked.** Every runPi call site passes a `kind`.
-- **Same cwd.** A raw log whose author and gate runs share one cwd demultiplexes correctly by
-  marker.
-- **Old logs.** A log with no kind markers demultiplexes exactly as before.
-- **Transcript.** A reviewer run still renders its labeled separator. An author run's
-  kind-only marker renders nothing.
-- `npm run test` green.
-
 ### Worktree pool, part 2/5: landing vets lease pooled slot worktrees; merges use one `_merge` checkout (planned 2026-10-06 by operator; requires Disk floor 2/4 and Worktree pool 1/5 landed)
 
 Design: plans/worktree-pool.md ("Rejected", "Layout", "Config", "Leases", "Vets and merges").
@@ -656,6 +616,55 @@ pool, event-format, status and doctor tests.
 ---
 
 ## Done
+
+### Worktree pool, part 1/5: label every pi run's kind and demultiplex progress by the label, not the lander path (planned 2026-10-06 by operator; done 2026-10-07 by feature)
+
+Design: plans/worktree-pool.md ("Progress demux"). This is preparation: every run's demux
+attribution is unchanged; only the marker that carries it is new.
+
+Context: `feedDemuxed` (src/ui/progress-data.ts) decides whether a pi run in a role's raw log
+belongs to the review gate (the reviewing cell) or to the author. It decides by
+`session.cwd === landWorktreePath(root, role)`. Parts 2/5 and 4/5 move vets and role ticks
+into shared pool slots, and after that a path cannot tell the two apart.
+
+**Approach.**
+1. **Kind on every run.** `PiRunOptions` (src/pi/pi.ts) gains a required
+   `kind: "author" | "gate"`, required so that no caller is missed. `runPi` writes one marker
+   line before spawning: `{ "type": "tumwater_run", "kind": <kind> }`, plus today's `label`
+   when one is set, so a run still gets exactly one marker line. Update the option's doc
+   comment, which today says author runs write nothing.
+2. **Callers.**
+   - **Gate:** the reviewer runs and the review follow-up (src/review/*), and the shared
+     lander's conflict resolver and post-resolve re-review (src/landing/*, reached through
+     runLandingPi in the merge worktree).
+   - **Author:** the tick's runs in src/loop/loop-pi.ts: authoring, the transient retry, the
+     summary request and the stage-fix request — and runRolePi, the refusal-note landing
+     (loop.ts's merge, in the role's own worktree), whose marker keeps the old cwd verdict.
+3. **Demux.** In `feedDemuxed`, a `tumwater_run` line carrying `kind` sets `tail.cur` to that
+   kind and starts that accumulator fresh, generalising today's reset on `review`. The run's
+   following `session` event keeps that kind. The cwd test remains only for a `session` that
+   no kind-bearing marker preceded, as in logs written before this change.
+4. **Transcript.** In src/ui/transcript.ts, a `tumwater_run` line without `label` renders
+   nothing and sets no pending label. The backward scan in src/ui/transcript-tail.ts stops only
+   at a LABEL-bearing marker: a kind-only marker is skipped, so the run's own marker never hides
+   a stale label that a full re-read would still apply, keeping the tail ≡ full-re-read
+   invariant.
+
+**Files touched.** src/pi/pi.ts, src/pi/pi-event-line.ts (the shared PiRunKind),
+src/loop/loop-pi.ts, src/review/review.ts, src/review/review-followup.ts,
+src/ui/progress-data.ts, src/ui/transcript.ts, src/ui/transcript-tail.ts. Tests:
+test/progress.test.ts, test/transcript.test.ts, test/transcript-tail.test.ts, test/pi.test.ts,
+test/loop-pi.test.ts, test/review-followup.test.ts, test/pi-events.ts, test/pi-run-harness.ts.
+
+**Acceptance criteria.**
+- **Type-checked.** Every runPi call site passes a `kind`.
+- **Same cwd.** A raw log whose author and gate runs share one cwd demultiplexes correctly by
+  marker.
+- **Old logs.** A log with no kind markers demultiplexes exactly as before.
+- **Transcript.** A reviewer run still renders its labeled separator. An author run's
+  kind-only marker renders nothing.
+- `npm run test` green.
+
 
 ### Pre-queue self-check, part 2/2: flag stale path references, nonexistent paths, and lost final newlines (planned 2026-10-06 by operator; requires part 1/2 landed; done 2026-10-06 by feature)
 

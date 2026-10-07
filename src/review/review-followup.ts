@@ -36,6 +36,7 @@ async function runFollowupTurn(
   const cfg = reviewRunConfig(ctx.config);
   return ctx.runGatePi({
     cwd: ctx.wt,
+    kind: "gate",
     prompt: opts.prompt,
     config: {
       ...cfg,

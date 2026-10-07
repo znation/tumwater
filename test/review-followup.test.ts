@@ -88,6 +88,7 @@ test("requestVerdict continues the reviewer's session with capped budgets and th
   assert.equal(opts.continueSession, true);
   assert.equal(opts.sessionName, "tumwater-review-feature-7-verdict");
   assert.equal(opts.prompt, buildVerdictRequestPrompt());
+  assert.equal(opts.kind, "gate", "a review follow-up demuxes as a gate run");
   assert.equal(opts.label, "review-verdict");
   assert.equal(opts.rawLogFile, piLogPath(root, "feature"));
   assert.equal(opts.config.tickTimeoutSeconds, 900);

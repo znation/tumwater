@@ -73,10 +73,17 @@ export function userLine(text: string, timestamp: number = FIXED_TS): string {
   });
 }
 
-/** A harness-written run-label marker line — src/pi/pi.ts writes it before an agent_start to
- * label that run ("review", landing review, ...), and the transcript renderers read it. */
+/** A harness-written run-label marker line — the pre-part-1/5 shape (label only), kept for
+ * the old-log tests: the transcript renderers read it and the progress demux falls back to
+ * the session cwd. */
 export function runMarker(label = "review"): string {
   return JSON.stringify({ type: "tumwater_run", label });
+}
+
+/** A harness-written run marker as src/pi/pi.ts now stamps it — the run's kind, plus its label
+ * when it has one (a review run carries both). */
+export function kindMarker(kind: "author" | "gate", label?: string): string {
+  return JSON.stringify(label ? { type: "tumwater_run", kind, label } : { type: "tumwater_run", kind });
 }
 
 /** A pi JSON line for an assistant message_end with arbitrary content blocks (thinking/text/toolCall) and no usage — the richer fixture transcript rendering tests need, in contrast to assistantLine above. */
