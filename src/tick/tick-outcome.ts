@@ -7,20 +7,41 @@
  * HarnessEvent were before it. */
 
 export type TickResult =
-  | "changed" // a landing completed: the change is merged to main
-  | "queued" // the tick's change is committed and pinned; the orchestrator's landing slot will pick it up from the durable land queue (plans/merge-queue.md 3/5) — the commit count and final outcome are recorded when the landing completes; never stored as `lastResult`, which keeps the last completed outcome
-  | "refused" // pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed
-  | "no_change" // pi decided there was nothing to do
-  | "merge_conflict" // change was made but could not be merged; the pin is re-queued next tick, and discarded after MERGE_CONFLICT_LIMIT in a row
-  | "merge_blocked" // fast-forward into main failed (e.g. dirty primary checkout)
-  | "rejected" // the review gate rejected the change; branch reset, reasons recorded
-  | "review_error" // the review gate failed (no parseable verdict); commit left for retry
-  | "error" // pi errored or timed out
-  | "aborted" // harness shutdown killed the run mid-tick; partial work discarded
-  | "quiet_killed" // the quiet watchdog killed a stalled tool call mid-run; session + worktree edits preserved and resumed promptly
-  | "user_aborted" // a user-initiated abort (tumwater abort) killed the run mid-tick; work discarded, loop backed off
-  | "main_red" // main's build/test suite is red: a tick's baseline check skipped the authoring run, or a landing's check failed on a red main (pin kept, no strike)
-  | "skipped"; // nothing to run (e.g. director with an empty inbox);
+  /** A landing completed: the change is merged to main. */
+  | "changed"
+  /** The tick's change is committed and pinned; the orchestrator's landing slot will pick it up
+   * from the durable land queue (plans/merge-queue.md 3/5); the commit count and final outcome
+   * are recorded when the landing completes; never stored as `lastResult`, which keeps the last
+   * completed outcome. */
+  | "queued"
+  /** pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed. */
+  | "refused"
+  /** pi decided there was nothing to do. */
+  | "no_change"
+  /** Change was made but could not be merged; the pin is re-queued next tick, and discarded
+   * after MERGE_CONFLICT_LIMIT in a row. */
+  | "merge_conflict"
+  /** Fast-forward into main failed (e.g. dirty primary checkout). */
+  | "merge_blocked"
+  /** The review gate rejected the change; branch reset, reasons recorded. */
+  | "rejected"
+  /** The review gate failed (no parseable verdict); commit left for retry. */
+  | "review_error"
+  /** pi errored or timed out. */
+  | "error"
+  /** Harness shutdown killed the run mid-tick; partial work discarded. */
+  | "aborted"
+  /** The quiet watchdog killed a stalled tool call mid-run; session + worktree edits
+   * preserved and resumed promptly. */
+  | "quiet_killed"
+  /** A user-initiated abort (tumwater abort) killed the run mid-tick; work discarded,
+   * loop backed off. */
+  | "user_aborted"
+  /** Main's build/test suite is red: a tick's baseline check skipped the authoring run, or
+   * a landing's check failed on a red main (pin kept, no strike). */
+  | "main_red"
+  /** Nothing to run (e.g. director with an empty inbox). */
+  | "skipped";
 
 /** The outcome of one full tick: its result plus what the harness learned from it.
  * Consumed by the orchestrator's dashboards and by tick-apply.ts's post-tick
@@ -47,8 +68,8 @@ export interface TickOutcome {
   recoveryFailure?: string;
   /** The outcome's own cause, written deliberately for this result — never a leftover landing
    * failure (those ride `state.lastError` and the recoveryFailure field above). Set by the
-   * red-main baseline gate (src/baseline/main-red.ts) so the tick's `tick_end` names what broke: the
-   * failure digest's error clusters include main_red ticks, and without a cause on the event
+   * red-main baseline gate (src/baseline/main-red.ts) so the tick's `tick_end` names what broke:
+   * the failure digest's error clusters include main_red ticks, and without a cause on the event
    * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
   error?: string;
   /** Why a resumed session's bridge prompt names its cause, when the resume's result itself is
@@ -59,9 +80,9 @@ export interface TickOutcome {
    * bridge says the run moved back to the primary model. Set only by those outcomes; every
    * other resume cause is derived from state (cut-off streak, restart). */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed";
-  /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the land queue
-   * (or already was there, or could not be pinned) — without an authoring run. No model ran, so
-   * the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
+  /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the land
+   * queue (or already was there, or could not be pinned) — without an authoring run. No model
+   * ran, so the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
   recoveredLeftover?: boolean;
 }
 
