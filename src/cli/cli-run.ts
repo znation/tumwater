@@ -220,7 +220,7 @@ export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): vo
 export function parseRunWindow(args: string[], once: boolean): number | null {
   const raw = flagValue(args, "--for");
   if (raw === null) return null;
-  const ms = parseDurationFlag("--for", raw);
+  const ms = parseDurationFlag("run --for", raw);
   if (once) failRivalShapes("--for", "--once", "a one-round run and a windowed run cannot both apply");
   failOverDurationCap("--for", ms, PAUSE_FOR_MAX_MS);
   return ms;

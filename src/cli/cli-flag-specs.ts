@@ -122,7 +122,10 @@ export const ROLE_FLAG: FlagSpec = {
  * `run` (the windowed run): one definition of the flag's spelling and value shape, beside
  * ROLE_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages cannot
  * drift apart. `label` (e.g. "pause --for", "run --for") names the command in every message,
- * the same command-named pattern sinceFlagSpec follows. validate re-runs the shape parser at
+ * the same command-named pattern sinceFlagSpec follows: it rides into parseDurationFlag's
+ * missing-value and malformed-duration messages as well as the over-cap one, so a trailing
+ * `--for` reads `pause --for needs a value`, not a bare `--for needs a value`. validate
+ * re-runs the shape parser at
  * the gate, so `pause --for xyz` and `run --for xyz` name the typo before the ready-repo gate
  * can mask it, and fails an over-cap value there too, so `pause --for 100d` in an
  * uninitialized directory names the cap instead of the not-initialized hint — the same
@@ -135,6 +138,7 @@ export function durationFlagSpec(label: string, hint?: string): FlagSpec {
     names: ["--for"],
     value: true,
     valueName: "<duration>",
+    missingValue: `${label} needs a value`,
     validate: (value) => {
       failOverDurationCap(label, parseDurationFlag(label, value), PAUSE_FOR_MAX_MS, hint);
     },
@@ -146,11 +150,14 @@ export function durationFlagSpec(label: string, hint?: string): FlagSpec {
  * accepted vocabulary and parseDurationFlag's error messages cannot drift apart. validate
  * re-runs the shape parser at the gate, so `wake --in xyz` names the typo before the
  * ready-repo gate can mask it, and fails an over-cap value there too (the same ceiling
- * `pause --for` honors, the same not-initialized-masking rationale durationFlagSpec records). */
+ * `pause --for` honors, the same not-initialized-masking rationale durationFlagSpec records).
+ * missingValue names the command for a trailing `--in` (`wake --in needs a value`), the same
+ * command-named pattern durationFlagSpec and sinceFlagSpec follow. */
 export const WAKE_IN_FLAG: FlagSpec = {
   names: ["--in"],
   value: true,
   valueName: "<duration>",
+  missingValue: "wake --in needs a value",
   validate: (value) => {
     failOverDurationCap("wake --in", parseDurationFlag("wake --in", value), PAUSE_FOR_MAX_MS);
   },

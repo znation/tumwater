@@ -86,7 +86,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   // writer it feeds. The cap is pause --for's: a longer horizon is a queued prompt or a
   // standing schedule's job, not a one-shot wake.
   const inRaw = flagValue(args, "--in");
-  const inMs = inRaw !== null ? parseDurationFlag("--in", inRaw) : undefined;
+  const inMs = inRaw !== null ? parseDurationFlag("wake --in", inRaw) : undefined;
   if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
   // requestWake takes the duration, not a deadline: it reads the clock once for both the
   // marker's deadline and its "wakes in" phrase, so no tick between two reads can reword
@@ -125,7 +125,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // value — shape and the 90-day cap both, via durationFlagSpec("pause --for")'s validate — so its value is
   // re-parsed here, beside the writers it feeds.
   const forRaw = flagValue(args, "--for");
-  const forMs = forRaw !== null ? parseDurationFlag("--for", forRaw) : undefined;
+  const forMs = forRaw !== null ? parseDurationFlag("pause --for", forRaw) : undefined;
   // `--reason <text>` (the operator pause's why): the gate in cli.ts has already restricted
   // the flag to this command, and its trailing-no-value slip to the spec's wording, so here
   // a valueless or empty reason fails with that same line beside the writer it feeds. The

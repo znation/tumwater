@@ -394,7 +394,7 @@ test("wake keeps the plain --role vocabulary and rejects --in everywhere else", 
   assert.match(r.stderr, /--in needs a duration like 45s, 90m, 1h30m, or 2d/);
   r = await cli(repo, "wake", "--in");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--in needs a value/);
+  assert.match(r.stderr, /wake --in needs a value/);
 
   // The flag belongs to wake alone: pause/reset-counters reject it instead of ignoring it.
   r = await cli(repo, "pause", "--in", "5m");

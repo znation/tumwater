@@ -266,7 +266,10 @@ test("a malformed flag value is named before the ready-repo gate", async () => {
     [["history", "-n", "abc"], /-n needs a positive integer \(got "abc"\)/],
     [["report", "--days", "abc"], /--days needs a positive integer \(got "abc"\)/],
     [["gui", "--port", "abc"], /--port must be an integer between 1 and 65535 \(got "abc"\)/],
-    [["pause", "--for", "xyz"], /--for needs a duration like 45s, 90m, 1h30m, or 2d \(got "xyz"\)/],
+    [["pause", "--for", "xyz"], /pause --for needs a duration like 45s, 90m, 1h30m, or 2d \(got "xyz"\)/],
+    [["pause", "--for"], /pause --for needs a value/],
+    [["run", "--for"], /run --for needs a value/],
+    [["wake", "--in"], /wake --in needs a value/],
   ];
   for (const [args, pattern] of cases) {
     const r = await cli(empty, ...args);
