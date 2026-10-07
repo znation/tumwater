@@ -9,9 +9,9 @@ import type { CheckOutcome } from "./doctor-checks.js";
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
  * environment doctor-checks.ts inspects — fix claims, stranded plans, and duplicated `## `
  * headings. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
- * andMore) and the heading-trim constant, and all three warn instead of failing: damaged documentation is operator signal, not a broken
- * environment. doctor.ts composes them beside the environment checks; the shared CheckOutcome
- * shape is type-imported from doctor-checks.ts. */
+ * andMore) and the heading-trim constant, and all three warn instead of failing: damaged
+ * documentation is operator signal, not a broken environment. doctor.ts composes them beside
+ * the environment checks; the shared CheckOutcome shape is type-imported from doctor-checks.ts. */
 
 /** How many Fixed records the fix-claims check verifies: the newest, since the section is
  * newest-first by template convention. Older records drift as the code evolves — a symbol
