@@ -2,6 +2,7 @@ import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui/gui-client-composer.js";
+import { promptImageExtensionProblem } from "../src/inbox/inbox-attachments.js";
 import { clientRegion, ESC_LINE } from "./gui-client-scope.js";
 
 // The dashboard's composer, browser-side (src/ui/gui/gui-client-composer.ts): the target selector
@@ -42,6 +43,7 @@ type ComposerFns = {
   draftForDirector(text: string): void;
   focusComposer(): void;
   addPromptImages(files: Array<{ name: string; type: string; size: number }>): number;
+  isImageFile(f: { name: unknown }): boolean;
   fmtImageSize(n: number): string;
 };
 
@@ -106,7 +108,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
     }
   }
   const code = [ESC_LINE, clientRegion("format"), GUI_CLIENT_COMPOSER_JS,
-    `return { renderComposer, setTarget, draftForDirector, focusComposer, addPromptImages, fmtImageSize };`]
+    `return { renderComposer, setTarget, draftForDirector, focusComposer, addPromptImages, isImageFile, fmtImageSize };`]
     .join("\n");
   const keys = ["$", "window", "location", "activeView", "drawer", "closeDrawer", "showFlash", "refresh", "postJson", "Element", "FileReader"];
   const run = new Function(...keys, code) as (...args: unknown[]) => ComposerFns;
@@ -238,14 +240,18 @@ test("focusComposer routes to the fleet view from anywhere and closes the drawer
   assert.deepEqual(wide.closeDrawerCalls, []);
 });
 
-test("image attachments: only images are kept, four at most, as removable chips sized for humans", () => {
+test("image attachments: only the server's extensions are kept, four at most, as removable chips sized for humans", () => {
   const s = composerScope();
   const added = s.scope.addPromptImages([
     IMG,
     { name: "notes.txt", type: "text/plain", size: 10 },
     { name: "shot.webp", type: "", size: 1536 },
+    { name: "icon.svg", type: "image/svg+xml", size: 10 },
   ]);
-  assert.equal(added, 2, "a non-image file is ignored; an image extension alone is enough");
+  assert.equal(added, 2, "a non-image file is ignored; an accepted extension alone is enough");
+  assert.match(s.flashes[0] ?? "", /Did not attach 2 files/, "the files left behind are named, not dropped silently");
+  assert.match(s.flashes[0] ?? "", /images only/, "the flash names the rule that refused them");
+  assert.doesNotMatch(s.images().innerHTML, /icon\.svg/, "a MIME type the server does not accept is refused at drop time");
   const box = s.images();
   assert.equal(box.hidden, false);
   assert.match(box.innerHTML, /<span class='mono'>a\.png<\/span><span class='dim'>1\.0 MB<\/span>/);
@@ -254,10 +260,12 @@ test("image attachments: only images are kept, four at most, as removable chips 
   assert.match(box.innerHTML, /aria-label='Remove a\.png'/);
   assert.equal(s.scope.fmtImageSize(999), "999 B");
 
-  // The cap: only the two free slots of four are filled, the rest are dropped.
+  // The cap: only the two free slots of four are filled, the rest are dropped and flashed.
   const more = s.scope.addPromptImages([IMG, IMG, IMG, IMG]);
   assert.equal(more, 2);
   assert.equal((box.innerHTML.match(/data-idx=/g) ?? []).length, 4);
+  assert.match(s.flashes[1] ?? "", /Did not attach 2 files/);
+  assert.match(s.flashes[1] ?? "", /at most 4 per prompt/);
 
   // Clicking a chip's × removes that one image and re-renders the chips.
   const button = new s.ElementCtor();
@@ -269,6 +277,20 @@ test("image attachments: only images are kept, four at most, as removable chips 
   // A click that is not on a chip button (bubbled from elsewhere) removes nothing.
   s.fire(box, "click", { target: {} });
   assert.equal((box.innerHTML.match(/data-idx=/g) ?? []).length, 3);
+});
+
+test("the composer accepts exactly the image names the server's validator accepts", () => {
+  const s = composerScope();
+  // Leading-dot names are the trap: path.extname('.png') is "", so the server refuses a file
+  // named ".png" even though it ends in an accepted extension; the client must too.
+  for (const name of [
+    ".png", ".PNG", "..png", "...png", ".a.png", "a.png", "a.PNG", "a", "a.", "a..png",
+    ".gitignore", "x.svg", "a.tar.gz", "shot.webp", "p.jpg", "p.jpeg", "p.gif", "p.bmp", "noext",
+  ]) {
+    const clientAccepts = s.scope.isImageFile({ name });
+    const serverAccepts = promptImageExtensionProblem(name) === null;
+    assert.equal(clientAccepts, serverAccepts, `client and server disagree on ${JSON.stringify(name)}`);
+  }
 });
 
 test("dropping or pasting files onto the composer attaches the images and ignores the rest", () => {

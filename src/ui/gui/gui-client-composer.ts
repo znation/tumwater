@@ -9,7 +9,7 @@
  * after the fleet view, reaching its helpers ($, esc, postJson, plural, showFlash, refresh)
  * and the fleet view's activeView/drawer state through that concatenation. */
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../../inbox/inbox-submit.js";
-import { PROMPT_IMAGES_MAX_COUNT } from "../../inbox/inbox-attachments.js";
+import { PROMPT_IMAGE_EXTENSIONS, PROMPT_IMAGES_MAX_COUNT } from "../../inbox/inbox-attachments.js";
 export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single loop ----
   const PROMPT_MAX = ${DIRECTOR_PROMPT_MAX_CHARS};
   const promptInput = $("prompt");
@@ -93,15 +93,40 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // the bytes off .file. Cleared only on a successful submit or manual removal — a rejected
   // submit keeps text and images so they can be fixed and resent, like the text draft.
   const promptImages = [];
-  const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name);
+  // The server's accepted image extensions (inbox-attachments.ts), interpolated at build time
+  // so the composer's drop check and the endpoint's validator cannot drift: a file the client
+  // accepts but the server refuses would sit in an unsendable chip. The name's extension is
+  // what the server validates, so a MIME type alone is not enough.
+  const IMAGE_EXTENSIONS = ${JSON.stringify(PROMPT_IMAGE_EXTENSIONS)};
+  // The server (promptImageExtensionProblem → path.extname) treats a single leading dot as a
+  // hidden name, not an extension: ".png" has none and is refused. Matching that here keeps a
+  // dropped file from becoming a chip the endpoint later rejects. A File's name is always a
+  // basename, so the last dot alone is enough to find the extension.
+  const isImageFile = (f) => {
+    const name = String(f.name);
+    const dot = name.lastIndexOf(".");
+    return dot > 0 && IMAGE_EXTENSIONS.includes(name.slice(dot).toLowerCase());
+  };
+  // Attach the supported images up to the cap and flash whatever was left behind, so a dropped
+  // file never vanishes silently. Returns how many were attached (the paste handler's
+  // preventDefault gate).
   function addPromptImages(files) {
     let added = 0;
+    let notImage = 0;
+    let overCap = 0;
     for (const f of files) {
-      if (!isImageFile(f) || promptImages.length >= ${PROMPT_IMAGES_MAX_COUNT}) continue;
+      if (!isImageFile(f)) { notImage++; continue; }
+      if (promptImages.length >= ${PROMPT_IMAGES_MAX_COUNT}) { overCap++; continue; }
       promptImages.push({ name: f.name, size: f.size, file: f });
       added++;
     }
     if (added) renderPromptImages();
+    if (notImage || overCap) {
+      const why = [];
+      if (notImage) why.push(IMAGE_EXTENSIONS.join(" ") + " images only");
+      if (overCap) why.push("at most " + ${PROMPT_IMAGES_MAX_COUNT} + " per prompt");
+      showFlash("Did not attach " + plural(notImage + overCap, "file") + " — " + why.join(", "));
+    }
     return added;
   }
   function fmtImageSize(n) {
@@ -121,8 +146,9 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     renderPromptImages();
   });
   // Drop an image file onto the composer (or paste one from the clipboard) to attach it;
-  // anything that is not an image is ignored. preventDefault on dragover is what makes the
-  // composer a valid drop target instead of the browser navigating to the file.
+  // anything that is not one of the accepted image types is refused with a flash naming the
+  // rule (addPromptImages). preventDefault on dragover is what makes the composer a valid
+  // drop target instead of the browser navigating to the file.
   const promptForm = $("promptform");
   promptForm.addEventListener("dragover", (ev) => {
     ev.preventDefault();
