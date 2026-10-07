@@ -248,11 +248,11 @@ export interface StatusSnapshot {
 }
 
 /** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
- * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. */
-/** `now` pins the poll's clock for the budget figures (the persisted day-stamp check and the
- * burn-rate projection) — one instant for the whole block, and the seam that keeps a test's
- * expected projection from racing the snapshot's own `Date.now()`; production callers take the
- * default and read the live clock, as always. */
+ * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. `now` pins
+ * the poll's clock for the budget figures (the persisted day-stamp check and the burn-rate
+ * projection) — one instant for the whole block, and the seam that keeps a test's expected
+ * projection from racing the snapshot's own `Date.now()`; production callers take the default
+ * and read the live clock, as always. */
 export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   const cfg = configForStatus(root);
   const roles = enabledRoleIds(cfg);
