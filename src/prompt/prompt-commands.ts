@@ -87,13 +87,6 @@ function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, 
   return ` (queued ${humanSeconds(ageSeconds)} ago)`;
 }
 
-/** The user-facing reply for one resolved cancel or edit — the four branches of cmdPrompt's
- * cancel and edit modes (list-wide and `--role`-scoped each): a concurrent dequeue is a normal
- * race, not an error, so it is reported and exited clean; a resolved one previews the text it
- * removed (a cancel's `text`) or wrote (an edit's `newText`). When `labelRole` the line names
- * the loop — the no-`--role` command resolves across every loop, so its output must say where
- * the prompt went — while a `--role`-scoped command already names it in the user's own
- * command. One helper so the cancel and edit wordings cannot drift. */
 /** The loop order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
  * the director first, then the remaining cached catalog ids — the per-loop sections `--list`
  * prints, each numbered from 1. The single home of that scope, shared by the cancel and edit
@@ -133,6 +126,13 @@ function runRolePromptCommand<O extends CancelOutcome | EditOutcome>(
   }
 }
 
+/** The user-facing reply for one resolved cancel or edit — the four branches of cmdPrompt's
+ * cancel and edit modes (list-wide and `--role`-scoped each): a concurrent dequeue is a normal
+ * race, not an error, so it is reported and exited clean; a resolved one previews the text it
+ * removed (a cancel's `text`) or wrote (an edit's `newText`). When `labelRole` the line names
+ * the loop — the no-`--role` command resolves across every loop, so its output must say where
+ * the prompt went — while a `--role`-scoped command already names it in the user's own
+ * command. One helper so the cancel and edit wordings cannot drift. */
 function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
   if (outcome.status === "gone") {
     say(`prompt ${position} is no longer queued — ${role} already took it`);
