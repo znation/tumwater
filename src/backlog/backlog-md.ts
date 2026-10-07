@@ -63,9 +63,9 @@ export function fenceTracker(): { inside(line: string): boolean; open(): boolean
  * code block. The single home of the fence-aware heading guard (`!fenced.inside(line) &&
  * line.startsWith(prefix)` plus the slice/trim) that every line-level reader of the backlog
  * docs repeats: sectionLines' section boundaries and parseEntryDetails' entry boundaries here,
- * and question-commands.ts's five walks of QUESTIONS.md (the Open/Answered scan, the Open
- * section's end, the `### ` block split, the Answered section's start, and the section's
- * end when a moved block is inserted). Readers that walk
+ * and question-commands.ts's walks of QUESTIONS.md (the Open/Answered scan, the `### ` block
+ * split, and the Answered section's start); that file's two pure next-`## ` boundary walks
+ * go through nextSectionHeading below instead. Readers that walk
  * whole documents collecting heading lines go through fenceAwareHeadingLines instead; callers
  * that only need "is this a heading" pass a tracker and compare the title or test for null. */
 export function fencedHeadingTitle(
@@ -95,6 +95,23 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
     if (inSection) lines.push(line);
   }
   return lines;
+}
+
+/** The index of the next `## ` section heading at or after `from`, fence-aware through the
+ * caller's `fenced` tracker — or `lines.length` when none follows. The section-end boundary
+ * rule as an index, for readers that must cut or splice at the boundary rather than collect
+ * its content (question-commands.ts cuts the Open section at its end and inserts a moved
+ * block before Answered's next `## `). Shares fencedHeadingTitle's guard with sectionLines, so
+ * a boundary found here is the same boundary sectionLines would stop at. */
+export function nextSectionHeading(
+  lines: readonly string[],
+  from: number,
+  fenced: ReturnType<typeof fenceTracker>,
+): number {
+  for (let i = from; i < lines.length; i++) {
+    if (fencedHeadingTitle(lines[i] ?? "", fenced, "## ") !== null) return i;
+  }
+  return lines.length;
 }
 
 /** The body lines of one `## <sectionTitle>` section with fenced content stripped: the

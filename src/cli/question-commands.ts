@@ -7,7 +7,7 @@
  * round trip never corrupts the file the loops read at their next tick. */
 import path from "node:path";
 import { fail, say, sayJson } from "./cli-output.js";
-import { fencedHeadingTitle, fenceTracker } from "../backlog/backlog-md.js";
+import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "../backlog/backlog-md.js";
 import { openQuestionEntries } from "../backlog/backlog.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
@@ -92,13 +92,7 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   // parseEntryDetails) and the blocks `answer` moves can never disagree about where Open
   // stops. Ending at the first `## Answered` instead would run the walk through any
   // intermediate section and let one answer move another section's entries.
-  let openEnd = lines.length;
-  for (let i = openIdx + 1; i < lines.length; i++) {
-    if (fencedHeadingTitle(lines[i] ?? "", fencedBlocks, "## ") !== null) {
-      openEnd = i;
-      break;
-    }
-  }
+  const openEnd = nextSectionHeading(lines, openIdx + 1, fencedBlocks);
   const blocks: OpenEntryBlock[] = [];
   // A fresh tracker for this walk too: the openEnd walk consumed the lines up to the section's
   // end, so a fence in Open left unclosed at that boundary (an unclosed fence runs openEnd to
@@ -213,13 +207,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
     rebuilt.length = 0;
     rebuilt.push(...stripped);
   }
-  let insertAt = rebuilt.length;
-  for (let i = answeredAt + 1; i < rebuilt.length; i++) {
-    if (fencedHeadingTitle(rebuilt[i] ?? "", fenced2, "## ") !== null) {
-      insertAt = i;
-      break;
-    }
-  }
+  const insertAt = nextSectionHeading(rebuilt, answeredAt + 1, fenced2);
   const head = rebuilt.slice(0, insertAt);
   const tail = rebuilt.slice(insertAt);
   trimTrailingBlankLines(head);
