@@ -672,3 +672,18 @@ test("runPi captures pi's fallback-clone stderr warning for an undefined model i
   const clean = await runFakePi(`printf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`);
   assert.equal(clean.fallbackClone, undefined);
 });
+
+// The clone warning arrives at the START of a run, and runPi keeps only stderr's last 64 KiB
+// to bound memory. A chatty run that prints more than that after the warning must still
+// surface the mispriced id — otherwise the feature goes silent on exactly the noisiest runs.
+test("runPi keeps a fallback-clone warning printed before a large stderr tail", async () => {
+  const r = await runFakePi(
+    [
+      `printf '%s\\n' 'Warning: Model "x:deepinfra" not found for provider "huggingface". Using custom model id.' >&2`,
+      `yes 'stderr filler line' | head -c 70000 >&2`,
+      `printf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`,
+    ].join("\n"),
+  );
+  assert.equal(r.ok, true);
+  assert.match(r.fallbackClone ?? "", /not found for provider "huggingface"/);
+});

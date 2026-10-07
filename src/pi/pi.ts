@@ -26,6 +26,11 @@ export const TRANSIENT_PI_CRASH =
  * tests. */
 export const MODEL_FALLBACK_CLONE = /not found for provider[^\n]*Using custom model id/i;
 
+/** How many trailing stderr characters are carried into the next chunk's fallback-clone match,
+ * so a warning split across two `data` events is still seen. The warning is one short line, so
+ * a few hundred characters always cover a straddle. */
+const STDERR_MATCH_TAIL = 512;
+
 /** Options for one non-interactive pi run (runPi). Exported so a caller that builds the
  * same wiring in several places (loop.ts's author run and SUMMARY follow-up) can share one
  * construction helper typed against this exact shape. */
@@ -118,6 +123,11 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // holds back the incomplete trailing bytes until the next chunk completes them.
     const decoder = new StringDecoder("utf8");
     let stderr = "";
+    // The fallback-clone warning arrives at the START of a run, while `stderr` keeps only the
+    // last 64 KiB; match each chunk (with a short carried tail for a straddle) so a chatty run
+    // that pushes the warning out of that window still surfaces the mispriced id.
+    let fallbackClone: string | undefined;
+    let stderrTail = "";
     let settled = false;
 
     // plans/portability.md §5/7: the agent binary is configurable. resolveAgentBin
@@ -171,7 +181,10 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     child.stderr.on("data", (chunk: Buffer) => {
       // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
       wd.noteStderr();
-      stderr += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      fallbackClone ??= MODEL_FALLBACK_CLONE.exec(stderrTail + text)?.[0]?.trim();
+      stderrTail = (stderrTail + text).slice(-STDERR_MATCH_TAIL);
+      stderr += text;
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);
     });
 
@@ -231,7 +244,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       configError: parser.configError,
       retryAfterSeconds: parser.retryAfterSeconds,
       transientPiCrash: false,
-      fallbackClone: MODEL_FALLBACK_CLONE.exec(stderr)?.[0]?.trim(),
+      fallbackClone,
       finalMessageContentless: parser.finalMessageContentless,
       producedAssistantContent: parser.producedAssistantContent,
       compacted: parser.compacted,

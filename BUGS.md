@@ -9,6 +9,15 @@ _None yet._
 
 ## Fixed
 
+### A pi fallback-clone warning is lost when a run prints more than 64 KiB of stderr after it: the warning arrives at the very start of the run while `runPi` keeps only the last 64 KiB, so the mispriced model id this feature exists to surface goes unnamed on the chattiest runs (found by bugfix loop 2026-10-06 latent-bug hunt over the same day's model-mispricing commit 5c68b9a8, fixed 2026-10-06 by bugfix loop)
+Symptom: a run whose model id has no exact definition prints `Warning: Model "<id>" not found for provider "<provider>". Using custom model id.` on stderr, and `runPi` records it as `PiRunResult.fallbackClone`; the loop's `warnFallbackClone` then warns. When the same run writes more than 64 KiB of stderr after that line, `stderr` is truncated to its tail before the match is taken, the warning is dropped, and the loop stays silent — exactly the case the feature claims to cover.
+Reproduce: a fake pi that prints the warning, then `yes 'stderr filler line' | head -c 70000 >&2`, then a normal assistant line; the run's `fallbackClone` was `undefined` before the fix.
+Cause: `runPi`'s stderr handler appended a chunk and immediately sliced the buffer to its last 64 KiB, and `resultFromParser` read the warning from that already-truncated `stderr`.
+
+**Fix:** the stderr handler matches each chunk (plus a 512-character carried tail, for a warning split across two chunks) before the buffer is capped, keeping the first hit in a standing `fallbackClone`; `resultFromParser` reports that instead of re-matching the truncated text.
+
+**Validation gap:** none — the existing fake-pi harness made it a deterministic offline repro: the new test read an empty `fallbackClone` before the fix and the warning after it.
+
 ### The daily budget was wrong in both directions and nothing flagged it: a configured model id with no exact pi entry silently runs on the provider default's price and context window (Kimi-K2.6's, for huggingface), and a `cacheRead: 0` price reads as free, so the fleet hit its $20 cap at 05:04 on 2026-10-06 after about $6 of real spend (found by human log analysis 2026-10-06; fixed 2026-10-06 by bugfix loop)
 Symptom: there were two pricing errors, in opposite directions.
 - **Overcount (DeepSeek).** tumwater.json's `model` is `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`,
