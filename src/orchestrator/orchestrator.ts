@@ -55,19 +55,21 @@ interface RunOptions {
   /** Poll interval in ms (default POLL_MS). Tests pass a short value so multi-cycle behavior
    * resolves quickly; production callers omit it and keep the real cadence. */
   pollMs?: number;
-  /** Self-redeploy state machine (src/redeploy/redeployer.ts; the policy it decides with lives in src/redeploy/redeploy-policy.ts) for a self-hosting fleet; null/absent when the
+  /** Self-redeploy state machine (src/redeploy/redeployer.ts; the policy it decides with
+   * lives in src/redeploy/redeploy-policy.ts) for a self-hosting fleet; null/absent when the
    * running dist carries no build stamp. Consulted every poll with main's head. */
   redeploy?: Redeployer | null;
-  /** launchservicesd's port watch (src/process/launch-services.ts), stepped every poll; null/absent runs
-   * without one — a `--once` round, and every in-process test, so none reads the real Mac. */
+  /** launchservicesd's port watch (src/process/launch-services.ts), stepped every poll;
+   * null/absent runs without one — a `--once` round, and every in-process test, so none
+   * reads the real Mac. */
   launchServicesWatch?: LaunchServicesWatch | null;
   /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
    * configured fallback model is actually cost-free — a test seam, like status/status-data.ts's
    * snapshot(). */
   modelsPath?: string;
   /** The fallback breaker's thresholds (src/budget/fallback-breaker.ts, default
-   * FALLBACK_BREAKER_POLICY) — a
-   * test seam, like pollMs: e2e tests shrink the cool-down so a probe fits in a test. */
+   * FALLBACK_BREAKER_POLICY) — a test seam, like pollMs: e2e tests shrink the cool-down so a
+   * probe fits in a test. */
   fallbackBreakerPolicy?: FallbackBreakerPolicy;
   /** The fallback breaker's clock (default Date.now) — a test seam, like pollMs: the cool-down
    * deadline and its elapsed check both read it, so a test can elapse a cool-down by advancing
