@@ -11,12 +11,15 @@ import type { TickOutcome } from "./tick-outcome.js";
 import type { FlowResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { isDirty } from "../git/git.js";
+import { isDirty, deleteRef } from "../git/git.js";
 import { applyConfigRequest } from "../config/config-write.js";
 import { diagnoseNoChange } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { recordFlow } from "./qa-coverage.js";
+import { resetWorktreeToMain } from "../git/worktree.js";
+import { rejectedRefName } from "../paths.js";
+import { logEvent } from "../events/events.js";
 
 interface TickVerdictContext {
   root: string;
@@ -31,6 +34,11 @@ interface TickVerdictContext {
   turns: number;
   /** The raw director prompt this tick is executing (null for role loops). */
   userPrompt: string | null;
+  /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
+   * undefined when the tick is not a revision. A per-role user-request or resume tick leaves
+   * `state.revision` set by design but passes undefined here, so the drop branch can never
+   * discard a pending revision from a tick that did not apply it. */
+  revisionRound?: number;
   wt: string;
   pi: PiRunResult;
   flow: FlowResult | null;
@@ -177,6 +185,19 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
         ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
       );
     return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
+  }
+  // A revision tick that declares nothing-to-do drops the rejected change (plans/revise-rejected.md):
+  // the author judged the objections show the change should not exist, so reset the re-applied diff
+  // away, delete the rejected ref, and end no_change without staging anything. Guarded on the
+  // tick's own revisionRound, not state.revision: a dirty user-request tick that happens to leave
+  // a pending revision untouched must not drop it.
+  if (changed && ctx.revisionRound !== undefined && s.revision && pi.nothingToDo) {
+    const { sha } = s.revision;
+    s.revision = undefined;
+    await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
+    await deleteRef(ctx.root, rejectedRefName(ctx.role));
+    logEvent(ctx.root, { loop: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
+    return { result: "no_change" };
   }
   return null;
 }

@@ -4,11 +4,11 @@ import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { setRef } from "../git/git.js";
+import { setRef, deleteRef } from "../git/git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { buildConflictDiscardNote } from "../gates/gate-prompts.js";
+import { buildConflictDiscardNote, buildRevisionNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole, fallbackRoleConfig, modelSelectorField, reviewRunConfig, type ResolvedModelConfig } from "../config/config-views.js";
@@ -27,11 +27,12 @@ import { clearBackoff } from "../scheduling/backoff.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
+import { applyRevision, REVISION_LIMIT } from "./revision.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { mergeToMain } from "../landing/landing-merge.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
 import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
-import { landingRefName } from "../paths.js";
+import { landingRefName, rejectedRefName } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 
@@ -645,6 +646,33 @@ export class LoopRunner {
     }
 
     const piStartedAt = Date.now();
+    // A rejected change owes a revision (plans/revise-rejected.md): re-apply its diff to current
+    // main as uncommitted edits so this tick revises it instead of authoring from scratch, and
+    // append the revision note the prompt skipped. `revisionRound` records that THIS tick holds
+    // the rejected diff — set only when the revision is applied here, or a resume carries the
+    // prior attempt's already-applied edits — so the post-run handlers read the tick rather than
+    // `state.revision`, which a per-role user-request tick leaves set by design. A conflict (or a
+    // gone object) clears the revision, deletes the rejected ref, and falls back to the plain
+    // rejection note.
+    let revisionRound: number | undefined;
+    if (s.revision && this.role !== DIRECTOR_ROLE && userPrompt === null) {
+      const { sha, round } = s.revision;
+      if (resuming) {
+        // The interrupted revision run's applied edits are still in the worktree (the resume
+        // path keeps uncommitted work), so this tick still owns the revision.
+        revisionRound = round;
+      } else if (await applyRevision(wt, this.mainBranch, sha)) {
+        revisionRound = round;
+        logEvent(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
+        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
+      } else {
+        s.revision = undefined;
+        await deleteRef(this.root, rejectedRefName(this.role));
+        logEvent(this.root, { loop: this.role, type: "revision", action: "conflict", round, sha });
+        prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] })}`;
+        prompt += `\n\nThe rejected diff no longer applies to current main.`;
+      }
+    }
     const pi = await this.pi.runAuthoringPi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming, cfg);
     // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
     // post-run handlers spend any more pi runs: only this run is evidence about the primary.
@@ -654,7 +682,7 @@ export class LoopRunner {
     // failed tick must not advance the rotation. The harness records it, never pi.
     const flow = this.role === "qa" ? extractFlow(pi.finalText) : null;
 
-    return this.handlePiResult(pi, userPrompt, wt, flow, piStartedAt, cfg);
+    return this.handlePiResult(pi, userPrompt, revisionRound, wt, flow, piStartedAt, cfg);
   }
 
   /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so
@@ -662,11 +690,13 @@ export class LoopRunner {
    * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change)
    * lives in resolveTickVerdict (src/tick/tick-verdict.ts), and the fulfillable path — staging —
    * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
-   * loops) so unfulfilled outcomes can re-queue it; `flow` is the qa observer's FLOW line
+   * loops) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick
+   * holds (undefined when it is not a revision); `flow` is the qa observer's FLOW line
    * (null for every other role). */
   private async handlePiResult(
     pi: PiRunResult,
     userPrompt: string | null,
+    revisionRound: number | undefined,
     wt: string,
     flow: FlowResult | null,
     piStartedAt: number,
@@ -681,6 +711,7 @@ export class LoopRunner {
       pending: this.pending,
       turns: this.usage.turns,
       userPrompt,
+      revisionRound,
       wt,
       pi,
       flow,
@@ -708,6 +739,7 @@ export class LoopRunner {
       config: this.config,
       tickTurns: this.usage.turns,
       userPrompt,
+      revisionRound,
       wt,
       finalText: pi.finalText,
       flow,

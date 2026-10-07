@@ -160,6 +160,10 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "review_failed":
       return `review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;
+    case "revision":
+      // A rejected change's revision round (plans/revise-rejected.md): applied onto current main,
+      // conflicted with it, dropped by its author, or exhausted its rounds.
+      return `revision ${String(e.round)} ${String(e.action)} ${shortSha(String(e.sha))}`;
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
       // review gate, the red-main baseline check of main itself, or the merge lock's

@@ -273,6 +273,14 @@ export function landingRefName(role: string): string {
   return `refs/tumwater/landing/${role}`;
 }
 
+/** The ref naming a role's rejected change while a revision is due (plans/revise-rejected.md):
+ * written at the gate's rejection, read by the author's next tick to re-apply the rejected diff,
+ * and deleted once the revision lands, is dropped, conflicts, or exhausts its rounds. Keeping
+ * the head reachable here stops git gc from collecting the one commit the revision re-applies. */
+export function rejectedRefName(role: string): string {
+  return `refs/tumwater/rejected/${role}`;
+}
+
 /** Where redeploy stages compiled builds before swapping one into dist/ — under .tumwater/ so a
  * build in progress never dirties the primary checkout (dist/ is gitignored, a sibling would not be). */
 export function stagingRootDir(root: string): string {

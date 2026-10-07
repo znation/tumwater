@@ -3,7 +3,7 @@ import type { Semaphore } from "../concurrency/semaphore.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { deleteRef, removeLandWorktree } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
-import { landingRefName, landWorktreePath } from "../paths.js";
+import { landingRefName, landWorktreePath, rejectedRefName } from "../paths.js";
 import type { AbortableLanding } from "../operator/operator-requests.js";
 import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
@@ -170,7 +170,7 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
  * no settled entry can keep a stale marker or lose its outcome write. The pinned-ref discard
  * stays with the callers: only a user abort throws work away, and the merge discards its whole
  * stack at once rather than change by change. */
-export function settleLandingOutcome(
+export async function settleLandingOutcome(
   root: string,
   entry: LandingEntry,
   state: LoopState,
@@ -178,7 +178,15 @@ export function settleLandingOutcome(
   durationMs: number,
   usage: { tokens: number; cost: number },
   file: string,
-): void {
+): Promise<void> {
   writeLandingOutcome(root, entry, state, result, durationMs, usage, file);
+  // A revision that lands ends the rejected change's life: drop the rejected ref (plans/revise-
+  // rejected.md). A rejection repoints or deletes it in landing-core.ts, so this is the only
+  // ref cleanup a landed revision needs here. Guarded on the entry's revisionRound, not just a
+  // `changed` result: a fresh change can land while a different rejection's revision is still
+  // pending, and its landing must leave that pending revision's ref alone.
+  if (result === "changed" && entry.revisionRound !== undefined) {
+    await deleteRef(root, rejectedRefName(entry.role));
+  }
   removeLandingChange(root, entry.role);
 }

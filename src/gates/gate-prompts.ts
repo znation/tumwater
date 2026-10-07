@@ -3,7 +3,7 @@ import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../text/datetime.js";
-import { SUMMARY_BLOCK, VERDICT_ENDING } from "../verdict/reply-contract.js";
+import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-contract.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
@@ -233,6 +233,9 @@ export function buildRejectedReviewNote(review: {
   reasons: string[];
   at?: number;
   head?: string;
+  /** True when the change already used its last revision round: the rejected diff is gone, so
+   * the note must not read as an invitation to revise it again. */
+  exhausted?: boolean;
 }): string {
   const list =
     review.reasons.length > 0
@@ -244,7 +247,37 @@ export function buildRejectedReviewNote(review: {
     if (review.head) context += `, head ${shortSha(review.head)}`;
     context += ")";
   }
-  return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.`;
+  const finality = review.exhausted
+    ? " This was the change's final revision round — the rejected diff and ref are gone, so if the change is still needed, re-author it from current main."
+    : "";
+  return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
+}
+
+/** The note injected into a role's tick prompt when its rejected change has been re-applied to
+ * current main as uncommitted edits (plans/revise-rejected.md, loop.ts's applyRevision): this
+ * tick's one task is to revise the change already in the worktree, not author a new one. The
+ * prior objections are numbered so the author can work through them; a revision round past the
+ * first also reaches here. A pure function so its shape is pinned in tests. */
+export function buildRevisionNote(
+  review: { reasons: string[] },
+  round: number,
+  limit: number,
+): string {
+  const list =
+    review.reasons.length > 0
+      ? review.reasons.map((r, i) => `${i + 1}. ${r}`).join("\n")
+      : "(no reasons recorded)";
+  return `Your previously rejected change is already in the worktree as uncommitted edits — this
+is revision ${round} of ${limit}. This tick's ONE task is to revise it; do not author anything else.
+The review objections were:\n${list}
+Fix each numbered objection with the smallest edit that resolves it, and keep everything else as it
+is. When an objection is about a build-check failure in a test the change does not touch that you
+cannot reproduce, say so in RISK and keep the change as it is. Rewrite the closing block so it
+describes the WHOLE change as it now stands:
+${SUMMARY_BLOCK}
+When an objection shows the change should not exist (its premise is disproven, it duplicates main,
+or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} instead, and the
+harness drops the change.`;
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change

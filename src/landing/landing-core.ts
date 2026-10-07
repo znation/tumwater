@@ -1,14 +1,16 @@
 import { deleteRef, headOf, removeLandWorktree, setRef } from "../git/git.js";
-import { landWorktreePath, landingRefName } from "../paths.js";
+import { landWorktreePath, landingRefName, rejectedRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
 import { reviewAheadOfMain, type GateResult } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
-import { warnEvent } from "../events/events.js";
+import { warnEvent, logEvent } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { REVISION_LIMIT } from "../loop/revision.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { setLandingStage } from "./landing-slot.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -41,6 +43,10 @@ export interface LandRequest {
    * is gone); a hand-made or pre-contract commit has none. */
   body?: string;
   highFriction?: boolean;
+  /** The revision round this change is, absent for a fresh change (plans/revise-rejected.md):
+   * carried from the LandingEntry so a rejection at round N records round N+1, and a round past
+   * REVISION_LIMIT exhausts the revision instead of continuing. */
+  revisionRound?: number;
   /** The head its vet's gate pre-check ran green on, when it ran one on exactly `sha`
    * (GateResult.verifiedHead, carried by landing-batch.ts's VetVerdict) — so a landing whose
    * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
@@ -153,6 +159,13 @@ export async function reviewPinnedChange(
   // reviewer's last turns left in the cell would accrue a false `no pi output` flag for as long
   // as the change waits.
   setLandingStage(root, role, "merging");
+  // A rejection keeps the rejected commit alive while a revision is due (plans/revise-rejected.md):
+  // point the rejected ref at the head the gate judged and record the round, so the author's next
+  // tick re-applies it. Past REVISION_LIMIT the rejection is final: clear the state, delete the
+  // ref, and log `exhausted`. Done before the save below so the round rides the persisted state.
+  if (gate.decision === "rejected") {
+    await recordRejectedChange(root, role, state, state.lastReview?.head ?? req.sha, req.revisionRound);
+  }
   // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
   // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
   // note into the next prompt), and this tick's tail — the landing plus the still-to-come
@@ -246,6 +259,35 @@ export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
   "merge_blocked",
 ]);
 
+/** Record a gate rejection for the revise-rejected feature (plans/revise-rejected.md): while
+ * the round is within REVISION_LIMIT, point `refs/tumwater/rejected/<role>` at the head the gate
+ * judged and set LoopState.revision so the author's next tick re-applies it; past the limit,
+ * clear the revision, delete the ref and log `exhausted`. Shared by a pinned change's rejection
+ * (reviewPinnedChange) and the in-lock re-review rejection of a resolved conflict
+ * (landApprovedChange), so both send the change back for revision the same way. A rejection
+ * with no `revisionRound` is a fresh change's first round (1). The director never revises. */
+async function recordRejectedChange(
+  root: string,
+  role: string,
+  state: LoopState,
+  rejectedHead: string,
+  revisionRound?: number,
+): Promise<void> {
+  if (role === DIRECTOR_ROLE) return;
+  const nextRound = (revisionRound ?? 0) + 1;
+  if (nextRound <= REVISION_LIMIT) {
+    await setRef(root, rejectedRefName(role), rejectedHead);
+    state.revision = { sha: rejectedHead, round: nextRound, at: Date.now() };
+    return;
+  }
+  state.revision = undefined;
+  await deleteRef(root, rejectedRefName(role));
+  // The next tick gets the plain rejected note, not a revision note; mark it final so that
+  // note says the rejected diff is gone rather than inviting another revision.
+  if (state.lastReview) state.lastReview.exhausted = true;
+  logEvent(root, { loop: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
+}
+
 /** Land a head that already passed its OWN gate in its vet — the merge slot's one-change landing
  * and each landing of an abandoned stack's one-at-a-time fallback (landing-batch.ts's landVetted)
  * — without a second gate. Re-gating would rebase first, and by then main has usually moved (a
@@ -318,6 +360,18 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
           return { verdict: "approved", verifiedHead: gate.verifiedHead };
         }
         if (gate.decision === "rejected") {
+          // A rejection here is a gate rejection too: send the resolved change back to its
+          // author for revision (plans/revise-rejected.md), exactly as a pinned change's
+          // rejection does, then drop this pin. Persist before returning — the state save above
+          // predates this bookkeeping.
+          await recordRejectedChange(
+            ctx.root,
+            req.role,
+            ctx.state,
+            ctx.state.lastReview?.head ?? req.sha,
+            req.revisionRound,
+          );
+          saveLoopState(ctx.root, ctx.state);
           await deleteRef(ctx.root, landingRefName(req.role)); // the verdict is final for this pin
           await removeLandWorktree(ctx.root, resolvedWt);
           ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";

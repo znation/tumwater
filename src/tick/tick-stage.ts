@@ -41,6 +41,11 @@ interface TickStageContext {
   /** The raw user prompt a director tick is executing (null for role loops), so an aborted
    * summary follow-up can finalize through the loop's requeue path. */
   userPrompt: string | null;
+  /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
+   * undefined when the tick is not a revision. Set by loop.ts only when the revision was applied
+   * this tick (or a resume carried its already-applied edits), never read from `state.revision`:
+   * a per-role user-request tick leaves that field set by design. */
+  revisionRound?: number;
   wt: string;
   /** The pi run's final reply text, the summary's source. */
   finalText: string;
@@ -71,6 +76,11 @@ interface TickStageContext {
  * outcome without anything queued. */
 export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutcome> {
   const s = ctx.state;
+  // A revision tick carries the round it applied on its context (loop.ts): it rides onto the
+  // queued landing so a rejection of this change records the NEXT round (plans/revise-rejected.md).
+  // Undefined for a fresh change — including a user-request tick that leaves a pending revision
+  // untouched — so only the tick that actually held the rejected diff is labeled a revision.
+  const revisionRound = ctx.revisionRound;
   // The commit subject and body come from the reply's closing block. A run that changed files
   // without one — a cut-off final message, or plain non-compliance — gets one bounded follow-up
   // turn in its own session to produce it (the session still holds everything the run did);
@@ -156,7 +166,14 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   const message = buildCommitMessage(
     stampedSubject(ctx.role, summary),
     body,
-    commitTrailer(ctx.role, s.ticks, authoringTurns, s.peakContextTokens, highFriction ? minutes : undefined),
+    commitTrailer(
+      ctx.role,
+      s.ticks,
+      authoringTurns,
+      s.peakContextTokens,
+      highFriction ? minutes : undefined,
+      revisionRound,
+    ),
   );
   const commit = await commitAll(ctx.wt, message);
 
@@ -185,8 +202,14 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     summary,
     body: body ? formatCommitBody(body) : undefined,
     highFriction: highFriction || undefined,
+    ...(revisionRound !== undefined ? { revisionRound } : {}),
     enqueuedAt: Date.now(),
   });
+  // The revision is now in flight: the rejected ref's lifecycle continues in the lander
+  // (landing-core.ts), which deletes it when this landing lands and repoints it on a rejection.
+  // The round is also stamped on the commit's Revision trailer above, so leftover recovery can
+  // rebuild a retriable revision's landing entry with its round when the queue marker is lost.
+  if (revisionRound !== undefined) s.revision = undefined;
   logEvent(ctx.root, { loop: ctx.role, type: "land_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;
   // lastSummary and the tick_end event carry it too for dashboards and logs.

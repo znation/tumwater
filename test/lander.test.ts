@@ -7,7 +7,7 @@ import { LANDING_CHECK_FAILURE_LIMIT } from "../src/landing/landing-check-failur
 import { landApprovedChange, reviewPinnedChange } from "../src/landing/landing-core.js";
 import type { BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
-import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
+import { landingRefName, landWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
@@ -259,6 +259,11 @@ test("a resolution the re-review rejects deletes the pin and lands nothing", asy
     );
     assert.equal(state.lastReview?.verdict, "reject", "the re-review's verdict is recorded");
     assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
+    // A re-review rejection sends the resolved change back for revision too (plans/revise-
+    // rejected.md): round 1 is recorded and the rejected ref keeps the head the re-review judged
+    // alive, even though the landing pin itself is deleted.
+    assert.equal(state.revision?.round, 1, "a re-review rejection owes one revision");
+    assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
     // The resolution run went through the wiring stub; the re-review was a real gate run.
     assert.equal(calls.length, 1);
     // Terminal rejection removes the disposable lander worktree with the pin — the resolution

@@ -152,14 +152,17 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
 
     // Tick 2: the machine-generated reasons are the cross-tick memory of what broke — every
-    // tick starts a fresh pi session, so they must ride along on this tick's prompt. The
+    // tick starts a fresh pi session. Since revise-rejected, the rejected diff is re-applied
+    // as uncommitted edits and the revision note carries the reasons; the idle run then
+    // declares nothing-to-do, so the revision is dropped and the worktree reset clean. The
     // prompts log holds exactly the two author runs: the landing spent none.
     assert.equal((await runner.tick()).result, "no_change");
     const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 2, "two author runs and nothing from the landing");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
     const second = runs[1] ?? "";
-    assert.match(second, /Your previous change was rejected in review \(/);
+    assert.match(second, /is already in the worktree as uncommitted edits/);
+    assert.match(second, /revision 1 of 2/);
     assert.match(second, /build check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/);
   } finally {
     restore();

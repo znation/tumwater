@@ -168,6 +168,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
             summary: entry.summary,
             body: entry.body,
             highFriction: entry.highFriction,
+            ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
           },
           { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runLandingPi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
         );
@@ -194,7 +195,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
         setLandingChangeStatus(root, role, "vetted");
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
-        settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
+        await settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);
         if (vet.userAborted) await discardPinnedRefs(root, [role]);
       }
     } finally {

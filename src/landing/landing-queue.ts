@@ -38,6 +38,10 @@ export interface LandingEntry {
   highFriction?: boolean;
   /** Enqueue time (epoch ms) — the filename orders the queue by it across processes. */
   enqueuedAt: number;
+  /** The revision round this change is, absent for a fresh change (plans/revise-rejected.md):
+   * 1 for the first revision of a rejected change, 2 for the second. Carried onto the
+   * LandRequest so a rejection of round N sets round N+1, and past REVISION_LIMIT exhausts. */
+  revisionRound?: number;
 }
 
 let seq = 0;
@@ -86,7 +90,8 @@ function isLandingEntry(v: unknown): v is LandingEntry {
     typeof e.summary === "string" &&
     typeof e.enqueuedAt === "number" &&
     (e.body === undefined || typeof e.body === "string") &&
-    (e.highFriction === undefined || typeof e.highFriction === "boolean")
+    (e.highFriction === undefined || typeof e.highFriction === "boolean") &&
+    (e.revisionRound === undefined || typeof e.revisionRound === "number")
   );
 }
 

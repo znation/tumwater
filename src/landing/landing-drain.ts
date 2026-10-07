@@ -43,7 +43,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
   for (const [role, v] of [...p.vetted]) {
     if (!v.userAborted) continue;
     p.vetted.delete(role);
-    settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
+    await settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
     await discardPinnedRefs(root, [role]);
   }
 }
@@ -130,6 +130,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           summary: v.entry.summary,
           body: v.entry.body,
           highFriction: v.entry.highFriction,
+          ...(v.entry.revisionRound !== undefined ? { revisionRound: v.entry.revisionRound } : {}),
           ...(v.verifiedHead !== undefined ? { verifiedHead: v.verifiedHead } : {}),
         })),
         (role) => wiring.get(role)!,
@@ -142,20 +143,21 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       saveLoopState(root, head.state);
     }
     try {
-      picks.forEach((v, s) => {
+      for (let s = 0; s < picks.length; s++) {
+        const v = picks[s]!;
         const { role } = v.entry;
         const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
         if (result === undefined && !threw) {
           p.vetted.set(role, v);
           setLandingChangeStatus(root, role, "vetted");
-          return;
+          continue;
         }
         if (result !== undefined) {
-          settleLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+          await settleLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
         } else {
           removeLandingChange(root, role);
         }
-      });
+      }
     } finally {
       if (merge.userAborted) await discardPinnedRefs(root, merge.roles);
       p.merge = null;

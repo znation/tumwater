@@ -145,7 +145,7 @@ export function assembleTickPrompt(
   // A change rejected in review is the only cross-tick memory of what was built and why it
   // failed — every tick starts a fresh session, so the full reasons ride along on the next
   // prompt until the role's next reviewed change replaces them.
-  if (state.lastReview?.verdict === "reject") {
+  if (state.lastReview?.verdict === "reject" && !state.revision) {
     prompt += `\n\n${buildRejectedReviewNote(state.lastReview)}`;
   }
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues

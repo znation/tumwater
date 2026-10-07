@@ -17,7 +17,7 @@ import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
-test("a rejected change rides along on the role's next tick prompt with its reasons", async () => {
+test("a rejected change is re-applied on the role's next tick and its reasons ride along", async () => {
   const repo = await initializedRepo();
   // The reviewer (any run whose prompt asks for a VERDICT) rejects with two numbered
   // reasons. Author runs record their full argv — the prompt is pi's last argument — so
@@ -47,16 +47,21 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");
 
     // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi
-    // session, so its full reasons must ride along on this tick's prompt.
+    // session. Since revise-rejected, the rejected diff is re-applied to current main as
+    // uncommitted edits and the revision note carries the full reasons; the idle run then
+    // declares nothing-to-do, so the revision is dropped and the worktree reset clean.
     assert.equal((await runner.tick()).result, "no_change");
     const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
+    assert.ok(!runs[0]?.includes("already in the worktree as uncommitted edits"), "tick 1 had no revision yet");
     const second = runs[1] ?? "";
-    assert.match(second, /Your previous change was rejected in review \(/);
+    assert.match(second, /is already in the worktree as uncommitted edits/);
+    assert.match(second, /revision 1 of 2/);
     assert.match(second, /1\. breaks the zero-dep rule/);
     assert.match(second, /2\. no regression test/);
-    assert.match(second, /Address the objections or take a different approach\./);
+    assert.ok(!runs[1]?.includes("was rejected in review"), "the plain rejected note is replaced by the revision note");
+    assertClean(wt, "a dropped revision leaves the worktree clean at main");
   });
 });
 

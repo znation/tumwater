@@ -6,122 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Revise rejected changes, part 1/2: a rejected change goes back to its author as uncommitted edits instead of being discarded (planned 2026-10-06 by operator)
-
-Context: a 2026-10-06 audit of the review gate covered events.jsonl since 2026-09-22.
-- **Volume.** Of about 2,070 landing attempts, 1,658 landed and 292 were rejected (14%).
-  Rejected changes consumed about 21% of recorded authoring spend. The feature loop's
-  rejection rate was 37%, about 44% of its authoring hours.
-- **Fixability.** Each of the window's 301 rejections was labelled by hand. Of the 260 that
-  were not build-check failures, 77% were fixable by a message fix, a BUGS/PLANS fix or a
-  few-line code change. Only 32 said the change should not exist.
-- **What happens instead.** The reject path discards the work. `reviewAheadOfMain`'s `reject`
-  closure (src/review/review.ts) resets the branch to main, and `reviewPinnedChange`
-  (src/landing/landing-core.ts) deletes the pin. The author's next tick gets only the reasons
-  (`buildRejectedReviewNote`) and re-derives the whole change from scratch. Each rewrite tends
-  to add new defects, and a fresh reviewer finds different ones:
-  - feature's timed pause was rejected eight times between 09-25 13:35 and 09-28 04:11, a
-    different bug each round, before it landed at 07:35;
-  - plan 4a/7 was rejected five times on 09-22, and per-role prompts four times on 09-25;
-  - 65 rejections were followed directly by another rejection.
-- **The earlier fix.** BUGS.md "A review rejection is invisible to every loop-level alarm"
-  (fixed 2026-10-01) bounded how often a role re-authors after rejections, but not what each
-  attempt costs. Its own analysis noted each attempt "pays the full authoring price instead of
-  a cheap correction".
-
-Why the author revises and not the reviewer:
-- The reviewer's only output channel is its verdict, so every byte that lands was judged by a
-  run that did not write it.
-- An in-slot build-fix run was tried and removed in 4e9bf7f1 ("Attribute a repeat gate-check
-  failure through main's baseline instead of an in-slot fix run"). It held the landing slot for
-  hours and never led to a landing.
-
-A revision instead runs on the author's own slot at its normal cadence, and goes through the
-full gate again. Check-failure rejections become revisions too. That covers the compile breaks a
-clean rebase cannot see, such as organize's 10-05 23:26 TS2307: a file another loop had just
-added still imported a module organize moved.
-
-**Goal.** A rejected change goes back to its author for at most two revision rounds. The
-author's next tick starts with the rejected diff re-applied onto current main as uncommitted
-edits. It fixes the named objections or drops the change. Whatever it produces lands through
-the normal gate.
-
-**Approach.**
-1. **Keep the commit.**
-   - `src/paths.ts` gets `rejectedRefName(role)` → `refs/tumwater/rejected/<role>`.
-   - In `reviewPinnedChange`'s `rejected` branch (src/landing/landing-core.ts), point that ref at
-     the rejected head (`state.lastReview.head`) before the landing ref is deleted, so the
-     object survives gc.
-2. **Count rounds.**
-   - `LandingEntry` (src/landing/landing-queue.ts) and `LandRequest` (landing-core.ts) gain
-     `revisionRound?: number`, absent for a fresh change. On a rejection,
-     `next = (req.revisionRound ?? 0) + 1`.
-   - When `next <= REVISION_LIMIT` (2, a constant in a new `src/loop/revision.ts`), set
-     `LoopState.revision = { sha, round: next, at }` (src/loop/loop-state.ts).
-   - Past the limit, clear `revision`, delete the rejected ref, and log `exhausted` (step 7).
-     The plain rejected note then says the change was rejected after its last revision.
-3. **Re-apply at tick start.** In `LoopRunner.runTick` (src/loop/loop.ts), after
-   `resetWorktreeToMain` and the red-main gate, and before `runRolePi`, call
-   `applyRevision(wt, mainBranch, sha)` (src/loop/revision.ts) when all of these hold: `s.revision`
-   is set, the role is not the director, and this tick dequeued no user request.
-   - It runs `git cherry-pick --no-commit <merge-base>..<sha>`, leaving the edits uncommitted.
-   - On a conflict it runs `git cherry-pick --abort`, resets to main, and returns false.
-4. **Prompt.** When `s.revision` is set, src/tick/tick-prompt.ts skips `buildRejectedReviewNote`
-   and runTick appends one note after the apply.
-   - **The diff applied.** Append `buildRevisionNote(lastReview, round, REVISION_LIMIT)`
-     (src/gates/gate-prompts.ts). It says:
-     - this tick's one task is revising the change already in the worktree;
-     - fix each numbered objection with the smallest edit that resolves it, and keep everything
-       else;
-     - rewrite the closing SUMMARY/WHY/RISK/VERIFIED block so it describes the whole change as
-       it now stands;
-     - for a build-check failure in a test the change does not touch that you cannot reproduce,
-       say so in RISK and keep the change as is;
-     - when an objection shows the change should not exist (its premise disproven, it
-       duplicates main, it has no reachable benefit), end with the nothing-to-do sentinel
-       instead.
-   - **The diff did not apply.** Clear `revision`, delete the ref, and append today's
-     `buildRejectedReviewNote` plus one sentence saying the rejected diff no longer applies to
-     current main.
-5. **Drop.** In `resolveTickVerdict` (src/tick/tick-verdict.ts), a revision tick
-   (`revisionRound` carried in its context) whose reply declares nothing-to-do while the
-   worktree is dirty:
-   - resets the worktree to main, clears `revision` and deletes the rejected ref;
-   - ends `no_change` and does not stage. Today a dirty worktree always stages.
-6. **Stage.**
-   - `stageTickLanding` (src/tick/tick-stage.ts) copies the tick's `revisionRound` onto the
-     `LandingEntry`.
-   - The tick clears `s.revision`, since the revision is now in flight.
-   - When that landing lands, delete the rejected ref.
-7. **Events.** One `revision` event: `action` (`"applied" | "conflict" | "dropped" |
-   "exhausted"`), `round` and `sha`. src/events/event-format.ts renders it, `tumwater logs` shows
-   it, and the digest can measure revision yield.
-
-**Files touched.** src/paths.ts, src/loop/revision.ts (new), src/loop/loop-state.ts,
-src/loop/loop.ts, src/landing/landing-core.ts, src/landing/landing-queue.ts,
-src/tick/tick-prompt.ts, src/tick/tick-verdict.ts, src/tick/tick-stage.ts,
-src/gates/gate-prompts.ts, src/events/event-format.ts. Tests: test/revision.test.ts (new), plus
-cases in test/lander.test.ts, test/tick-verdict.test.ts, test/tick-stage.test.ts,
-test/tick-prompt.test.ts and test/gate-prompts.test.ts.
-
-**Acceptance criteria.**
-- **Rejection.** A gate rejection of a fresh change sets `refs/tumwater/rejected/<role>` to
-  the rejected head and `LoopState.revision.round` to 1. A rejection of a round-2 revision
-  clears `revision`, deletes the ref and logs `revision` `exhausted`.
-- **Apply.** The role's next tick starts with the rejected diff applied as uncommitted edits
-  on a main that moved in an unrelated file, and its prompt carries the revision note instead
-  of the plain rejected note.
-- **Conflict.** When the diff conflicts with current main, the worktree is clean main,
-  `revision` is cleared, the prompt carries the plain note plus the no-longer-applies sentence,
-  and `revision` `conflict` is logged.
-- **Drop.** A revision tick that replies nothing-to-do ends `no_change` with a clean worktree,
-  no landing queued, and `revision` `dropped` logged.
-- **Stage.** A revision tick that stages queues a `LandingEntry` carrying its `revisionRound`.
-  That landing's rejection yields round 2, and its landing deletes the rejected ref.
-- **Exclusions.** The director never revises. A tick that dequeued a per-role user request
-  leaves `revision` untouched.
-- `npm run test` green.
-
 ### Revise rejected changes, part 2/2: the re-review sees the prior objections and what the revision changed (planned 2026-10-06 by operator; requires part 1/2 landed and running)
 
 Context: the same audit found reviews of one idea flip between rounds, because each reviewer
@@ -537,6 +421,130 @@ pool, event-format, status and doctor tests.
 ---
 
 ## Done
+
+### Revise rejected changes, part 1/2: a rejected change goes back to its author as uncommitted edits instead of being discarded (planned 2026-10-06 by operator; done 2026-10-07 by feature)
+
+Context: a 2026-10-06 audit of the review gate covered events.jsonl since 2026-09-22.
+- **Volume.** Of about 2,070 landing attempts, 1,658 landed and 292 were rejected (14%).
+  Rejected changes consumed about 21% of recorded authoring spend. The feature loop's
+  rejection rate was 37%, about 44% of its authoring hours.
+- **Fixability.** Each of the window's 301 rejections was labelled by hand. Of the 260 that
+  were not build-check failures, 77% were fixable by a message fix, a BUGS/PLANS fix or a
+  few-line code change. Only 32 said the change should not exist.
+- **What happens instead.** The reject path discards the work. `reviewAheadOfMain`'s `reject`
+  closure (src/review/review.ts) resets the branch to main, and `reviewPinnedChange`
+  (src/landing/landing-core.ts) deletes the pin. The author's next tick gets only the reasons
+  (`buildRejectedReviewNote`) and re-derives the whole change from scratch. Each rewrite tends
+  to add new defects, and a fresh reviewer finds different ones:
+  - feature's timed pause was rejected eight times between 09-25 13:35 and 09-28 04:11, a
+    different bug each round, before it landed at 07:35;
+  - plan 4a/7 was rejected five times on 09-22, and per-role prompts four times on 09-25;
+  - 65 rejections were followed directly by another rejection.
+- **The earlier fix.** BUGS.md "A review rejection is invisible to every loop-level alarm"
+  (fixed 2026-10-01) bounded how often a role re-authors after rejections, but not what each
+  attempt costs. Its own analysis noted each attempt "pays the full authoring price instead of
+  a cheap correction".
+
+Why the author revises and not the reviewer:
+- The reviewer's only output channel is its verdict, so every byte that lands was judged by a
+  run that did not write it.
+- An in-slot build-fix run was tried and removed in 4e9bf7f1 ("Attribute a repeat gate-check
+  failure through main's baseline instead of an in-slot fix run"). It held the landing slot for
+  hours and never led to a landing.
+
+A revision instead runs on the author's own slot at its normal cadence, and goes through the
+full gate again. Check-failure rejections become revisions too. That covers the compile breaks a
+clean rebase cannot see, such as organize's 10-05 23:26 TS2307: a file another loop had just
+added still imported a module organize moved.
+
+**Goal.** A rejected change goes back to its author for at most two revision rounds. The
+author's next tick starts with the rejected diff re-applied onto current main as uncommitted
+edits. It fixes the named objections or drops the change. Whatever it produces lands through
+the normal gate.
+
+**Approach.**
+1. **Keep the commit.**
+   - `src/paths.ts` gets `rejectedRefName(role)` → `refs/tumwater/rejected/<role>`.
+   - In `reviewPinnedChange`'s `rejected` branch (src/landing/landing-core.ts), point that ref at
+     the rejected head (`state.lastReview.head`) before the landing ref is deleted, so the
+     object survives gc.
+2. **Count rounds.**
+   - `LandingEntry` (src/landing/landing-queue.ts) and `LandRequest` (landing-core.ts) gain
+     `revisionRound?: number`, absent for a fresh change. On a rejection,
+     `next = (req.revisionRound ?? 0) + 1`.
+   - When `next <= REVISION_LIMIT` (2, a constant in a new `src/loop/revision.ts`), set
+     `LoopState.revision = { sha, round: next, at }` (src/loop/loop-state.ts).
+   - Past the limit, clear `revision`, delete the rejected ref, and log `exhausted` (step 7).
+     The plain rejected note then says the change was rejected after its last revision.
+3. **Re-apply at tick start.** In `LoopRunner.runTick` (src/loop/loop.ts), after
+   `resetWorktreeToMain` and the red-main gate, and before `runRolePi`, call
+   `applyRevision(wt, mainBranch, sha)` (src/loop/revision.ts) when all of these hold: `s.revision`
+   is set, the role is not the director, and this tick dequeued no user request.
+   - It runs `git cherry-pick --no-commit <merge-base>..<sha>`, leaving the edits uncommitted.
+   - On a conflict it runs `git cherry-pick --abort`, resets to main, and returns false.
+4. **Prompt.** When `s.revision` is set, src/tick/tick-prompt.ts skips `buildRejectedReviewNote`
+   and runTick appends one note after the apply.
+   - **The diff applied.** Append `buildRevisionNote(lastReview, round, REVISION_LIMIT)`
+     (src/gates/gate-prompts.ts). It says:
+     - this tick's one task is revising the change already in the worktree;
+     - fix each numbered objection with the smallest edit that resolves it, and keep everything
+       else;
+     - rewrite the closing SUMMARY/WHY/RISK/VERIFIED block so it describes the whole change as
+       it now stands;
+     - for a build-check failure in a test the change does not touch that you cannot reproduce,
+       say so in RISK and keep the change as is;
+     - when an objection shows the change should not exist (its premise disproven, it
+       duplicates main, it has no reachable benefit), end with the nothing-to-do sentinel
+       instead.
+   - **The diff did not apply.** Clear `revision`, delete the ref, and append today's
+     `buildRejectedReviewNote` plus one sentence saying the rejected diff no longer applies to
+     current main.
+5. **Drop.** In `resolveTickVerdict` (src/tick/tick-verdict.ts), a revision tick
+   (`revisionRound` carried in its context) whose reply declares nothing-to-do while the
+   worktree is dirty:
+   - resets the worktree to main, clears `revision` and deletes the rejected ref;
+   - ends `no_change` and does not stage. Today a dirty worktree always stages.
+6. **Stage.**
+   - `stageTickLanding` (src/tick/tick-stage.ts) copies the tick's `revisionRound` onto the
+     `LandingEntry`.
+   - The tick clears `s.revision`, since the revision is now in flight.
+   - When that landing lands, delete the rejected ref.
+7. **Events.** One `revision` event: `action` (`"applied" | "conflict" | "dropped" |
+   "exhausted"`), `round` and `sha`. src/events/event-format.ts renders it, `tumwater logs` shows
+   it, and the digest can measure revision yield.
+
+**Files touched.** src/paths.ts, src/loop/revision.ts (new), src/loop/loop-state.ts,
+src/loop/loop.ts, src/landing/landing-core.ts, src/landing/landing-queue.ts,
+src/tick/tick-prompt.ts, src/tick/tick-verdict.ts, src/tick/tick-stage.ts,
+src/gates/gate-prompts.ts, src/events/event-format.ts, src/git/commit-message.ts. Tests:
+test/revision.test.ts (new), plus cases in test/lander.test.ts, test/tick-verdict.test.ts,
+test/tick-stage.test.ts, test/tick-prompt.test.ts and test/gate-prompts.test.ts.
+
+**Acceptance criteria.**
+- **Rejection.** A gate rejection of a fresh change sets `refs/tumwater/rejected/<role>` to
+  the rejected head and `LoopState.revision.round` to 1. A rejection of a round-2 revision
+  clears `revision`, deletes the ref and logs `revision` `exhausted`.
+- **Apply.** The role's next tick starts with the rejected diff applied as uncommitted edits
+  on a main that moved in an unrelated file, and its prompt carries the revision note instead
+  of the plain rejected note.
+- **Conflict.** When the diff conflicts with current main, the worktree is clean main,
+  `revision` is cleared, the prompt carries the plain note plus the no-longer-applies sentence,
+  and `revision` `conflict` is logged.
+- **Drop.** A revision tick that replies nothing-to-do ends `no_change` with a clean worktree,
+  no landing queued, and `revision` `dropped` logged.
+- **Stage.** A revision tick that stages queues a `LandingEntry` carrying its `revisionRound`.
+  That landing's rejection yields round 2, and its landing deletes the rejected ref.
+- **Exclusions.** The director never revises. A tick that dequeued a per-role user request
+  leaves `revision` untouched.
+- `npm run test` green.
+
+**Landed 2026-10-07 — two adjustments from the first attempt's review.** (1) The revision round
+also rides the commit's harness-stamped `Revision: N` trailer (src/git/commit-message.ts), and
+leftover recovery reads it back, so a retriable revision whose queue marker is lost keeps its
+round instead of resetting to 1, and its eventual landing still deletes the rejected ref. (2) A
+conflict-resolution re-review rejection (landApprovedChange) records the rejected change for
+revision through the same shared `recordRejectedChange` helper as a pinned change's rejection,
+rather than silently discarding it.
 
 ### Disk floor, part 1/4: hold new work when the worktrees volume runs low on free space (planned 2026-10-06 by operator; done 2026-10-07 by feature)
 

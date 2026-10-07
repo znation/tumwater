@@ -99,11 +99,17 @@ export function commitTrailer(
   turns: number,
   peakCtx: number,
   highFrictionMinutes?: number,
+  revisionRound?: number,
 ): string {
   const base = `Tick: ${role} #${tick} · turns ${turns} · ctx ${compactTokens(peakCtx)}`;
-  return highFrictionMinutes === undefined
-    ? base
-    : `${base}\nFriction: high (${turns} turns / ${Math.round(highFrictionMinutes)}m)`;
+  const friction =
+    highFrictionMinutes === undefined
+      ? ""
+      : `\nFriction: high (${turns} turns / ${Math.round(highFrictionMinutes)}m)`;
+  // The revision line is last and absent on a fresh change: leftover recovery reads it back to
+  // keep the rejected change's round when the queue marker is lost (plans/revise-rejected.md).
+  const revision = revisionRound === undefined ? "" : `\nRevision: ${revisionRound}`;
+  return `${base}${friction}${revision}`;
 }
 
 /** The high-friction trailer line a flagged tick's commit carries (see commitTrailer) — the
@@ -116,6 +122,19 @@ export function hasFrictionTrailer(message: string): boolean {
   return FRICTION_TRAILER.test(message);
 }
 
+/** The revision trailer line a revision commit carries (see commitTrailer). Anchored to the
+ * whole line so prose cannot claim a round. */
+const REVISION_TRAILER = /^Revision: (\d+)$/m;
+
+/** The revision round a commit message records — the harness-stamped `Revision: N` line — or
+ * undefined for a fresh change. Leftover recovery reads this off the pinned commit so a
+ * retriable revision keeps its round (and its rejected ref's cleanup) across a lost queue
+ * marker (plans/revise-rejected.md). */
+function revisionRoundOf(message: string): number | undefined {
+  const m = message.match(REVISION_TRAILER);
+  return m ? Number(m[1]) : undefined;
+}
+
 /** The fields a landing request needs that a commit message can supply: the commit's
  * subject (WHAT landed — recovery rides it into its `merged` summary so the failure digest
  * can name recovered work, BUGS.md 2026-09-21), the author's body (WHY/RISK/VERIFIED,
@@ -124,6 +143,8 @@ export interface CommitMetadata {
   subject?: string;
   body?: string;
   highFriction?: boolean;
+  /** The revision round this commit is, absent for a fresh change (plans/revise-rejected.md). */
+  revisionRound?: number;
 }
 
 /** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part loop.ts (and
@@ -158,10 +179,12 @@ export function commitSubject(message: string): string | undefined {
  * message carries none of them (e.g. a hand-made or non-compliant commit). */
 export function parseCommitMetadata(message: string): CommitMetadata {
   const body = extractCommitBody(message);
+  const revisionRound = revisionRoundOf(message);
   return {
     subject: commitSubject(message),
     body: body ? formatCommitBody(body) : undefined,
     highFriction: hasFrictionTrailer(message) || undefined,
+    ...(revisionRound !== undefined ? { revisionRound } : {}),
   };
 }
 

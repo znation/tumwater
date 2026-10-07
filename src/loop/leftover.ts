@@ -143,6 +143,10 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       : `recovered leftover work from ${ctx.role}`,
     body: meta.body,
     highFriction: meta.highFriction || undefined,
+    // A retriable revision keeps its round from the commit's Revision trailer, so its next
+    // rejection records the following round (not round 1 again) and a recovered landing still
+    // deletes the rejected ref (plans/revise-rejected.md). Absent on a fresh change.
+    ...(meta.revisionRound !== undefined ? { revisionRound: meta.revisionRound } : {}),
     enqueuedAt: Date.now(),
   };
   enqueueLanding(ctx.root, entry);

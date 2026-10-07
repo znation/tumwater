@@ -111,7 +111,17 @@ export interface LoopState {
    * branch HEAD it covered. A reject's reasons are injected into the role's next tick prompt
    * — every tick starts a fresh session, so this is the only cross-tick memory of what was
    * built and why it failed. */
-  lastReview?: { verdict: string; reasons: string[]; head?: string; at: number };
+  lastReview?: {
+    verdict: string;
+    reasons: string[];
+    head?: string;
+    at: number;
+    /** Set on a rejection that used up the change's last revision round (plans/revise-
+     * rejected.md): the rejected diff is gone, so the next prompt's rejected note says so and
+     * no longer reads as an invitation to revise. Cleared implicitly on the next rejection,
+     * which writes a fresh lastReview object. */
+    exhausted?: boolean;
+  };
   /** Branch HEAD that passed review most recently. Leftover commits at exactly this HEAD
    * merge without re-review (a merge_blocked retry must not burn another review run). */
   lastApprovedHead?: string;
@@ -164,6 +174,13 @@ export interface LoopState {
    * NOT zeroed by reset-counters: the budget is a safety valve, not an observation window. */
   dayCostUsd?: number;
   lastError?: string;
+  /** The rejected change this loop owes a revision to (plans/revise-rejected.md): its head, how
+   * many revision rounds have been attempted, and when the rejection was recorded. Set at a gate
+   * rejection while the round is within REVISION_LIMIT; consumed when the revision stages, drops,
+   * or conflicts; cleared when the rejected change exhausts its rounds. Persisted: the rejected
+   * diff is re-applied on a later tick, which can follow a restart. Absent for a loop with no
+   * outstanding rejection, so existing state files read unchanged. */
+  revision?: { sha: string; round: number; at: number };
 }
 
 /** A new LoopState for one role, before its first tick. */
