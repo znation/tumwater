@@ -10,7 +10,7 @@ import {
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { cacheReadUnpriced, fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { MODEL_TIERS, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { findOnPath } from "../files/files.js";
@@ -310,7 +310,9 @@ export async function piProviderAuth(
  * reviewer's while review is on. A pair with no model is pi's own default and out of scope;
  * fallback pairs are the sibling check's (checkFallbackModel prices the cap pair). Levels:
  * an unresolvable pair fails, a provider that is not ready warns (credentials are fixable
- * without a config edit), a probe that cannot run warns rather than guesses. When one of
+ * without a config edit), a probe that cannot run warns rather than guesses, and a priced
+ * model whose cache reads declare $0 warns — the daily budget would undercount it
+ * (BUGS.md 2026-10-06). When one of
  * PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is set the check also reports that tumwater
  * does not read it — the variables are oh-my-pi's, pi ignores them, and with omp as
  * `agentBin` they still reach omp through the inherited environment (src/pi/pi.ts) — pointing
@@ -371,9 +373,20 @@ export async function checkTierModels(
       fails.push(`provider ${provider} is not in pi's definitions (${modelsPath})`);
       continue;
     }
-    if (!defs.some((d) => d.id === model)) {
-      fails.push(`${provider}/${model} does not resolve in pi's definitions (${modelsPath})`);
+    const def = defs.find((d) => d.id === model);
+    if (!def) {
+      // No exact entry: pi clones the provider's default model for the id, inheriting that
+      // default's price and context window (BUGS.md 2026-10-06) — name that consequence
+      // instead of only the failed lookup.
+      fails.push(
+        `${provider}/${model} does not resolve in pi's definitions (${modelsPath}) — pi would price it at the provider default's rates and context window`,
+      );
       continue;
+    }
+    if (cacheReadUnpriced(providers, provider, model)) {
+      // A priced model whose cache reads declare $0: pi bills cache-read tokens at zero and
+      // the daily budget undercounts the real spend (BUGS.md 2026-10-06).
+      warns.push(`${provider}/${model} prices cache reads at $0 — the daily budget will undercount its spend`);
     }
     if (!checkedProviders.has(provider)) {
       checkedProviders.add(provider);

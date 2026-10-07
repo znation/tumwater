@@ -299,7 +299,7 @@ function writeModels(): string {
     JSON.stringify({
       providers: {
         local: { models: [{ id: "free-model" }] },
-        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } }] },
       },
     }),
   );
@@ -630,6 +630,51 @@ test("checkTierModels fails a pair pi cannot resolve and warns on an unready pro
   const roleModel = await checkTierModels(roleRoot, models, async () => "ready");
   assert.equal(roleModel.level, "fail");
   assert.match(roleModel.detail, /paid\/no-such-qa-model does not resolve/);
+});
+
+test("checkTierModels warns when a priced model's cache reads are declared free", async () => {
+  const dir = tmpdir("doctor-models-");
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      providers: {
+        local: { models: [{ id: "free-model" }] },
+        paid: {
+          models: [
+            { id: "zero-cache", cost: { input: 0.15, output: 0.5, cacheRead: 0 } },
+            { id: "missing-cache", cost: { input: 0.15, output: 0.5 } },
+            { id: "priced-cache", cost: { input: 0.15, output: 0.5, cacheRead: 0.03 } },
+          ],
+        },
+      },
+    }),
+  );
+
+  // `cacheRead: 0` on a priced model means "billed free", not "unpriced": the daily budget
+  // undercounts every cached prompt token (BUGS.md 2026-10-06), so the check warns.
+  const zero = readyRepo();
+  writeConfig(zero, { model: "paid/zero-cache" });
+  const zeroOutcome = await checkTierModels(zero, file, async () => "ready");
+  assert.equal(zeroOutcome.level, "warn");
+  assert.match(zeroOutcome.detail, /paid\/zero-cache prices cache reads at \$0/);
+
+  // An absent cacheRead field is the same hazard.
+  const missing = readyRepo();
+  writeConfig(missing, { model: "paid/missing-cache" });
+  const missingOutcome = await checkTierModels(missing, file, async () => "ready");
+  assert.equal(missingOutcome.level, "warn");
+  assert.match(missingOutcome.detail, /paid\/missing-cache prices cache reads at \$0/);
+
+  // A model that declares a cache price stays silent.
+  const priced = readyRepo();
+  writeConfig(priced, { model: "paid/priced-cache" });
+  assert.equal((await checkTierModels(priced, file, async () => "ready")).level, "ok");
+
+  // An unpriced model's real spend is zero, so its zero cache price undercounts nothing.
+  const free = readyRepo();
+  writeConfig(free, { model: "local/free-model" });
+  assert.equal((await checkTierModels(free, file, async () => "ready")).level, "ok");
 });
 
 test("checkTierModels degrades to a warning when the definitions file is unreadable", async () => {

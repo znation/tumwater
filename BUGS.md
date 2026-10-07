@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The daily budget was wrong in both directions and nothing flagged it: a configured model id with no exact pi entry silently runs on the provider default's price and context window (Kimi-K2.6's, for huggingface), and a `cacheRead: 0` price reads as free, so the fleet hit its $20 cap at 05:04 on 2026-10-06 after about $6 of real spend (found by human log analysis 2026-10-06)
+_None yet._
+
+## Fixed
+
+### The daily budget was wrong in both directions and nothing flagged it: a configured model id with no exact pi entry silently runs on the provider default's price and context window (Kimi-K2.6's, for huggingface), and a `cacheRead: 0` price reads as free, so the fleet hit its $20 cap at 05:04 on 2026-10-06 after about $6 of real spend (found by human log analysis 2026-10-06; fixed 2026-10-06 by bugfix loop)
 Symptom: there were two pricing errors, in opposite directions.
 - **Overcount (DeepSeek).** tumwater.json's `model` is `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`,
   but ~/.pi/agent/models.json defined only `deepseek-ai/DeepSeek-V4.1-Flash`, without the
@@ -83,7 +87,16 @@ Suggested fix (harness half):
 Expected state: `tumwater doctor` flags the pre-fix config (`models.json.bak-pre-pricing-fix-2026-10-06`)
 on both counts and stays silent on the fixed one.
 
-## Fixed
+**Fix:** `tumwater doctor`'s tier-models check now warns when a priced model declares
+`cacheRead: 0` (or omits it) and names the provider-default price and context window when an
+id has no exact definition. Every pi run also captures pi's own "not found for provider …
+Using custom model id" stderr warning and emits a loop warning event, so a clone is visible
+from the feed alone. The suggested fleet-start/config-change sampling was not added; the
+per-run warning covers the runtime gap.
+
+**Validation gap:** no-observability — pi neither logged nor surfaced the pricing
+substitution, so the wrong budget left no trace to assert against until the doctor and
+run-level checks were added.
 
 ### A reviewer failing on a permanent config error is retried in a tight loop, and every retry pays for a full gate check first: four suite runs in 2 min went to a `400 model_not_supported` that no retry could fix (found by human log analysis 2026-10-06; fixed 2026-10-06 by bugfix loop)
 Symptom: with the fleet on the rejected model id above (03:35:50–03:38:44 PDT on 2026-10-06), bugfix's

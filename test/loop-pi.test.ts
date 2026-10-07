@@ -358,6 +358,30 @@ test("a backend-kind failure the retry does not cover warns once and earns no re
   }
 });
 
+test("a fallback-clone warning from pi surfaces as one loop warning", async () => {
+  const root = tmpdir();
+  // The run itself succeeds; only stderr carries the undefined-id warning pi emits before it
+  // falls back to the provider default (BUGS.md 2026-10-06). The loop must surface it so a
+  // silently mispriced id is visible from the feed alone.
+  const restore = fakePi(
+    [
+      `printf '%s\\n' 'Warning: Model "x:deepinfra" not found for provider "huggingface". Using custom model id.' >&2`,
+      `printf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`,
+    ].join("\n"),
+  );
+  try {
+    const { loopPi, warns, usage } = makeHost(root);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-10-author");
+    assert.equal(result.ok, true);
+    assert.equal(warns.length, 1, "one warning for the one run");
+    assert.match(warns[0]!, /could not resolve the model id exactly/);
+    assert.match(warns[0]!, /not found for provider "huggingface"/);
+    assert.equal(usage.length, 1, "the warning does not change the run's accounting");
+  } finally {
+    restore();
+  }
+});
+
 test("a severed stream (terminated) warns and earns the one retry like the other transient kinds", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  MODEL_FALLBACK_CLONE,
   TRANSIENT_PI_CRASH,
   runPi,
 } from "../src/pi/pi.js";
@@ -652,4 +653,22 @@ test("runPi flags undici's bare terminated on stderr as a stream-severed backend
   const unrelated = await runFakePi(`echo 'worker terminated with exit code 1' >&2\nexit 1`);
   assert.equal(unrelated.transientBackend, false);
   assert.equal(unrelated.backendKind, undefined);
+});
+
+// pi's stderr warning when a requested model id has no exact definition: pi clones the
+// provider's default model, inheriting that default's price and context window, so a
+// mistyped or vendor-suffixed id silently misprices the run (BUGS.md 2026-10-06). Captured
+// from stderr so the loop's warning event can name it.
+test("runPi captures pi's fallback-clone stderr warning for an undefined model id", async () => {
+  const r = await runFakePi(
+    `printf '%s\\n' 'Warning: Model "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra" not found for provider "huggingface". Using custom model id.' >&2\nprintf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`,
+  );
+  assert.equal(r.ok, true);
+  assert.match(r.fallbackClone ?? "", /not found for provider "huggingface"/);
+  // The pattern itself is what the loop relies on: pin the spelling pi emits.
+  assert.ok(MODEL_FALLBACK_CLONE.test(r.fallbackClone ?? ""));
+
+  // An ordinary run that prints no such line carries no clone.
+  const clean = await runFakePi(`printf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`);
+  assert.equal(clean.fallbackClone, undefined);
 });

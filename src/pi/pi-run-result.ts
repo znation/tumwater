@@ -50,6 +50,10 @@ export interface PiRunResult {
   timedOutProgressing: boolean;
   /** The run was killed because the harness is shutting down. */
   aborted: boolean;
+  /** The stderr line pi printed when the requested model id had no exact definition and pi
+   * cloned the provider's default model, inheriting that default's price and context window —
+   * the silent mispricing of BUGS.md 2026-10-06. Undefined when pi printed no such warning. */
+  fallbackClone?: string;
   /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
    * typically one hung tool call (a command waiting on input or scanning far more than
    * intended), not a slow run. Distinct from timedOut (the whole-run tick budget): the session

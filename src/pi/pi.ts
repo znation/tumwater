@@ -20,6 +20,12 @@ export type { BackendFailureKind } from "./pi-stream.js";
 export const TRANSIENT_PI_CRASH =
   /Unexpected end of JSON input|is not valid JSON|(Unterminated string|Unexpected non-whitespace|Expected ('|")|Bad (control|escaped) character)[^\n]* in JSON/;
 
+/** pi's stderr warning when a requested model id has no exact definition and pi falls back to
+ * the provider's default model, inheriting that default's price and context window — the silent
+ * mispricing of BUGS.md 2026-10-06. Matched against the child's stderr at exit; exported for
+ * tests. */
+export const MODEL_FALLBACK_CLONE = /not found for provider[^\n]*Using custom model id/i;
+
 /** Options for one non-interactive pi run (runPi). Exported so a caller that builds the
  * same wiring in several places (loop.ts's author run and SUMMARY follow-up) can share one
  * construction helper typed against this exact shape. */
@@ -225,6 +231,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       configError: parser.configError,
       retryAfterSeconds: parser.retryAfterSeconds,
       transientPiCrash: false,
+      fallbackClone: MODEL_FALLBACK_CLONE.exec(stderr)?.[0]?.trim(),
       finalMessageContentless: parser.finalMessageContentless,
       producedAssistantContent: parser.producedAssistantContent,
       compacted: parser.compacted,

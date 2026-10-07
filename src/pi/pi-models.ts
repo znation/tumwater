@@ -102,6 +102,28 @@ export function pairFree(
   return def !== undefined && costIsFree(def.cost);
 }
 
+/** True when `provider`/`model` resolves in pi's definitions to a model priced above zero whose
+ * cache reads carry no price — the undercount half of BUGS.md 2026-10-06: pi's cost fold then
+ * bills every cache-read token at $0, so the daily budget can never see the real spend. False
+ * for a pair that does not resolve (the sibling resolvers flag that), an unpriced model (its
+ * spend is genuinely zero, so a zero cache price undercounts nothing), or a cost shape this
+ * cannot read — the check reports a declared zero, never guesses one. */
+export function cacheReadUnpriced(
+  providers: Map<string, PiModelDef[]> | null,
+  provider: string | undefined,
+  model: string | undefined,
+): boolean {
+  if (!providers || !provider || !model) return false;
+  const def = providers.get(provider)?.find((m) => m.id === model);
+  if (!def || !isJsonObject(def.cost)) return false;
+  const input = def.cost.input;
+  const cacheRead = def.cost.cacheRead;
+  const inputPriced = typeof input === "number" && Number.isFinite(input) && input > 0;
+  const cacheUnpriced =
+    cacheRead === undefined || (typeof cacheRead === "number" && cacheRead === 0);
+  return inputPriced && cacheUnpriced;
+}
+
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
  * actually engage: configured at all, resolvable to a provider/model pair, and priced at zero in
  * pi's definitions. False for every other case — no fallback, a half-named pair that would fall

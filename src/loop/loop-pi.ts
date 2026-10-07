@@ -163,6 +163,7 @@ export class LoopPi {
     const fold = (run: PiRunResult): void =>
       authoring ? this.host.foldUsage(run) : this.host.foldLandingUsage(run);
     const pi = await runPi(opts);
+    this.warnFallbackClone(pi);
     if (
       !pi.aborted &&
       !pi.timedOut &&
@@ -212,6 +213,7 @@ export class LoopPi {
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
+      this.warnFallbackClone(retry);
       if (foldFinal) fold(retry);
       return retry;
     }
@@ -234,6 +236,17 @@ export class LoopPi {
     }
     if (foldFinal) fold(pi);
     return pi;
+  }
+
+  /** One warning per run whose model id pi could not resolve exactly (BUGS.md 2026-10-06):
+   * pi cloned the provider's default model, so the run is priced and windowed as that default
+   * while the operator's config says otherwise — unconditionally visible from the feed alone.
+   * A no-op for the ordinary run that printed no such stderr line. */
+  private warnFallbackClone(run: PiRunResult): void {
+    if (!run.fallbackClone) return;
+    this.host.warn(
+      `pi could not resolve the model id exactly (${run.fallbackClone}) — the run uses the provider default's price and context window; add an exact entry to ~/.pi/agent/models.json`,
+    );
   }
 
   /** Run pi for this loop's authoring run in worktree `wt`: the shared per-loop wiring and
