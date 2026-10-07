@@ -4,7 +4,7 @@ import { unlinkAllMissingTolerant } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { roleInboxDir } from "../paths.js";
 import { isNonBlankString } from "../text/text.js";
-import { agree } from "../text/phrases.js";
+import { agree, plural } from "../text/phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
  * beside the prompt's queue file (same stem, an image extension — the `.md` filter in
@@ -136,7 +136,7 @@ export function stripVanishedImageReferences(text: string): { text: string; drop
   if (dropped === 0) return { text, dropped: 0 };
   const body = kept.join("\n").replace(/\n+$/, "");
   const note =
-    `[image attachments dropped: ${dropped} image file${dropped === 1 ? "" : "s"} ${agree(dropped, "was", "were")} consumed` +
+    `[image attachments dropped: ${plural(dropped, "image file")} ${agree(dropped, "was", "were")} consumed` +
     ` when an earlier tick dequeued this prompt and ${agree(dropped, "is", "are")} no longer on disk]`;
   return { text: `${body}\n\n${note}`, dropped };
 }

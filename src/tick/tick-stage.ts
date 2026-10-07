@@ -16,6 +16,7 @@ import {
 } from "../git/commit-message.js";
 import { logEvent } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
+import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
@@ -123,8 +124,8 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     const remaining = await ctx.stageCheck(ctx.wt);
     ctx.warn(
       remaining.length === 0
-        ? `stage self-check: ${before} finding${before === 1 ? "" : "s"} — fixed by the follow-up turn`
-        : `stage self-check: ${before} finding${before === 1 ? "" : "s"}; ${remaining.length} still open, queued for the gate`,
+        ? `stage self-check: ${plural(before, "finding")} — fixed by the follow-up turn`
+        : `stage self-check: ${plural(before, "finding")}; ${remaining.length} still open, queued for the gate`,
     );
   }
 

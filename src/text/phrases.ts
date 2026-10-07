@@ -18,7 +18,9 @@ import { shortSha, usd } from "./format.js";
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the fleet
  * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the build_stale
  * lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts — the singular/plural
- * wording their tests pin, once "N commit(s)" with the old literal, now "N commits"/"1 commit")
+ * wording their tests pin, once "N commit(s)" with the old literal, now "N commits"/"1 commit"),
+ * and the stage self-check and dropped-attachment notes (src/tick/tick-stage.ts,
+ * inbox/inbox-attachments.ts)
  * all rendered
  * inline before. `many` accepts a whole replacement form (`plural(n, "loop is", "loops are")`)
  * so verb-agreement titles share the helper; the plural-by-`s` default covers regular nouns.
