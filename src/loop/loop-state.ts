@@ -63,8 +63,10 @@ export interface LoopState {
   resumePending?: boolean;
   /** Why a pending resume happened when it was not a cut-off: "hung-tool" when the quiet
    * watchdog killed a run on a stalled tool call, so the bridge prompt names that cause (and
-   * warns against re-running the hung command unchanged); "budget-resumed" when the budget
-   * gate reopened and the in-flight fallback tick was handed back to the primary model
+   * warns against re-running the hung command unchanged); "timeout" when the tick deadline
+   * fired on a run still making progress — a slow run, not a failed one — so the bridge asks
+   * for the smallest finish against the same limit; "budget-resumed" when the budget gate
+   * reopened and the in-flight fallback tick was handed back to the primary model
    * (PLANS.md 2026-09-30). Cleared with resumePending at tick start; absent for restart/cut-off
    * resumes, whose causes are derived. */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed";
