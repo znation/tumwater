@@ -1,3 +1,5 @@
+import { textOr } from "./text.js";
+
 /** Shared number, money, and hash FORMATS for human-facing text — the display layer's token
  * counts (compactTokens), abbreviated commit hashes (shortSha), and money strings (usd,
  * usdCap). Split from text.ts beside the other single-format homes it already names:
@@ -20,9 +22,11 @@ export function compactTokens(n: number): string {
  * The single home of this format: the event feed's merged/review lines and the review gate's
  * discard warning all render hashes through it, so the abbreviation length cannot drift per
  * consumer. Takes unknown because harness events carry their fields loosely typed (the
- * index signature), coercing exactly as the inline `String(…).slice(0, 8)` did before. */
+ * index signature): a string or finite number abbreviates as the inline `String(…).slice(0, 8)`
+ * did before, while a missing or foreign value reads as "?" (textOr), never String(undefined)'s
+ * literal "undefined". */
 export function shortSha(sha: unknown): string {
-  return String(sha).slice(0, 8);
+  return textOr(sha).slice(0, 8);
 }
 
 /** A USD amount with its dollar sign and exactly two decimals ($12.34) — the single home of

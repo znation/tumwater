@@ -35,8 +35,13 @@ test("compactTokens renders one-decimal M at and above 1,000,000", () => {
 test("shortSha abbreviates a hash to its first 8 characters", () => {
   assert.equal(shortSha("abcdef1234567890"), "abcdef12");
   // Harness events carry fields loosely typed: coercion matches the old inline
-  // String(...).slice(0, 8) exactly, and a non-string still renders.
+  // String(...).slice(0, 8) exactly, and a finite number still renders.
   assert.equal(shortSha(123456789), "12345678");
+  // A torn or hand-edited event with no hash (or a foreign value) reads as "?", the same
+  // corrupt-value stand-in eventRole/outcomeText use, never String(undefined)'s "undefined".
+  for (const sha of [undefined, null, {}, NaN, Number.POSITIVE_INFINITY] as const) {
+    assert.equal(shortSha(sha), "?", `corrupt sha ${String(sha)} must read ?`);
+  }
 });
 
 test("usd always keeps two decimals; usdCap drops a whole-dollar .00", () => {

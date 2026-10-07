@@ -19,6 +19,19 @@ export function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** An untrusted JSON field rendered as display text: a string as-is, a finite number as its
+ * decimal text, and anything else (absent, null, a boolean/object/array, NaN/Infinity) as
+ * `fallback` — "?" by default, the same corrupt-value stand-in eventRole/outcomeText use.
+ * The one home of the "a torn or hand-edited field reads as a visible placeholder, never
+ * String(undefined)'s literal 'undefined'" coercion the event feed's free-text fields and
+ * shortSha apply. Numbers stay admitted because events legitimately carry numeric fields
+ * (a tick number, a pid) that a display line renders as text. */
+export function textOr(value: unknown, fallback = "?"): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return fallback;
+}
+
 /** The human-facing message of whatever was thrown: its `.message` when it is an Error,
  * `String(err)` otherwise (a thrown string or other value). Every catch site that surfaces a
  * failure as text renders unknown throws through this one coercion instead of repeating the

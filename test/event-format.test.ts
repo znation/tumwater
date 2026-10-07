@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { eventResult, formatEvent, outcomeText, usageText } from "../src/events/event-format.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import { formatTimestamp } from "../src/text/datetime.js";
 import { displayWidth } from "../src/text/text-width.js";
 
@@ -277,9 +278,11 @@ test("formatEvent renders prompt_cancelled plainly with the preview", () => {
   assert.match(line, /director\s+user prompt cancelled: add dark mode/, `the preview must show: ${line}`);
   assert.ok(!line.includes("warning"), `a cancelled prompt is routine, not a warning: ${line}`);
 
-  // A torn or hand-edited event line could carry no preview; the fallback must still render.
+  // A torn or hand-edited event line could carry no preview; the fallback must render "?",
+  // never String(undefined)'s literal "undefined".
   const bare = formatEvent({ ts: 0, loop: "director", type: "prompt_cancelled" } as never);
-  assert.match(bare, /user prompt cancelled:/);
+  assert.match(bare, /user prompt cancelled: \?$/);
+  assert.ok(!bare.includes("undefined"), `corrupt preview must not render undefined: ${bare}`);
 });
 
 test("formatEvent renders the resume event", () => {
@@ -633,6 +636,56 @@ test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
   assert.match(build, /build check \(merge\): test \?$/);
 });
 
+// Every free-text payload eventMessage interpolates must survive a torn or hand-edited line:
+// a missing field renders textOr's "?" (and a missing sha shortSha's) rather than the literal
+// "undefined" that String(undefined) would print, and a foreign value (object/array) renders
+// the same placeholder rather than String(...)'s "[object Object]". Both reach the feed, the
+// TUI, and the GUI through formatEvent/eventMessage.
+test("formatEvent never renders undefined or [object Object] for corrupt event fields", () => {
+  const corrupt: HarnessEvent[] = [
+    { ts: 0, loop: "clean", type: "merged", commit: "abcdef1234567890" } as never,
+    { ts: 0, loop: "clean", type: "land_queued" } as never,
+    { ts: 0, loop: "feature", type: "question_posted" } as never,
+    { ts: 0, loop: "feature", type: "wake" } as never,
+    { ts: 0, loop: "harness", type: "orchestrator_start" } as never,
+    { ts: 0, loop: "director", type: "prompt_enqueued" } as never,
+    { ts: 0, loop: "feature", type: "review_start" } as never,
+    { ts: 0, loop: "feature", type: "review_failed" } as never,
+    { ts: 0, loop: "feature", type: "revision" } as never,
+    { ts: 0, loop: "harness", type: "build_check" } as never,
+    { ts: 0, loop: "harness", type: "max_concurrent_changed" } as never,
+    { ts: 0, loop: "harness", type: "retention_changed" } as never,
+    { ts: 0, loop: "harness", type: "restart_refused" } as never,
+    { ts: 0, loop: "harness", type: "restart_blocked" } as never,
+    { ts: 0, loop: "harness", type: "supervisor_exit" } as never,
+    { ts: 0, loop: "harness", type: "warning" } as never,
+  ];
+  for (const e of corrupt) {
+    const line = formatEvent(e);
+    assert.ok(!line.includes("undefined"), `${e.type} must not render undefined: ${line}`);
+  }
+  // A hand-edited field can also hold a foreign value, which String(...) would render as
+  // "[object Object]"; textOr substitutes its placeholder instead.
+  const foreign: HarnessEvent[] = [
+    { ts: 0, loop: "feature", type: "tick_end", tick: 5, result: "changed", summary: { a: 1 } } as never,
+    { ts: 0, loop: "feature", type: "tick_end", tick: 5, result: "error", error: ["boom"] } as never,
+    { ts: 0, loop: "feature", type: "review_verdict", head: "abcdef12", reason: { a: 1 } } as never,
+    { ts: 0, loop: "harness", type: "dep_install", status: "failed", error: { a: 1 } } as never,
+    { ts: 0, loop: "harness", type: "budget_paused", fallbackRejected: { a: 1 } } as never,
+    { ts: 0, loop: "harness", type: "budget_paused", fallbackDemoted: "free/model", failures: { a: 1 } } as never,
+    { ts: 0, loop: "harness", type: "role_streak_paused", role: { a: 1 }, streak: { a: 1 } } as never,
+    { ts: 0, loop: "harness", type: "model_fallback_started", provider: { a: 1 }, model: { a: 1 }, reason: { a: 1 } } as never,
+  ];
+  for (const e of foreign) {
+    const line = formatEvent(e);
+    assert.ok(!line.includes("[object Object]"), `${e.type} with foreign values must render a placeholder: ${line}`);
+  }
+  // parseEventLine admits any JSON object, so a typeless event reaches eventMessage's default
+  // branch; it must read the placeholder, not "undefined".
+  const typeless = formatEvent({ ts: 0, loop: "harness" } as never);
+  assert.ok(!typeless.includes("undefined"), `a typeless event must not render undefined: ${typeless}`);
+});
+
 // usageText's either-part-omitted rule has a third shape the tick_end/landed tests never hit:
 // cost without tokens (a provider that reports spend but not token counts). The separator
 // must not appear before the money, and a fully empty usage must contribute nothing at all.
@@ -661,9 +714,11 @@ test("formatEvent renders prompt_edited plainly with the preview", () => {
   assert.match(line, /director\s+user prompt edited: add dark mode, then verify/, `the edited text must show: ${line}`);
   assert.ok(!line.includes("warning"), `an edited prompt is routine, not a warning: ${line}`);
 
-  // A torn or hand-edited event line could carry no preview; the fallback must still render.
+  // A torn or hand-edited event line could carry no preview; the fallback must render "?",
+  // never String(undefined)'s literal "undefined".
   const bare = formatEvent({ ts: 0, loop: "director", type: "prompt_edited" } as never);
-  assert.match(bare, /user prompt edited:/);
+  assert.match(bare, /user prompt edited: \?$/);
+  assert.ok(!bare.includes("undefined"), `corrupt preview must not render undefined: ${bare}`);
 });
 
 // The root install's dep_install event (build/dep-install.ts syncRootInstall): the operator's

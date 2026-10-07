@@ -111,8 +111,9 @@ const FORMAT_JS = String.raw`  // format:start
   const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   const fmtUsd = (n) => "$" + n.toFixed(2);
   // An abbreviated commit hash: its first 8 characters — format.ts's shortSha, so the page's sha
-  // cells abbreviate exactly like the event feed's and the review gate's.
-  const shortSha = (sha) => String(sha).slice(0, 8);
+  // cells abbreviate exactly like the event feed's and the review gate's. A missing or foreign
+  // value reads "?" (textOr's corrupt-value stand-in), never String(undefined).
+  const shortSha = (sha) => (typeof sha === "string" ? sha : typeof sha === "number" && Number.isFinite(sha) ? String(sha) : "?").slice(0, 8);
   // A cap: whole dollars stay bare ($15), fractional ones keep their cents — format.ts's usdCap.
   const fmtCap = (n) => "$" + n.toFixed(2).replace(/\.00$/, "");
   // The number-agreeing word form when the count prints elsewhere in the markup — phrases.ts's

@@ -3,6 +3,7 @@ import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, firstReason, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
+import { textOr } from "../text/text.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -122,22 +123,22 @@ export function formatEvent(e: HarnessEvent): string {
 export function eventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "tick_start":
-      return `tick #${eventTick(e)} started${e.model !== undefined ? ` on ${String(e.model)}` : ""}`;
+      return `tick #${eventTick(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
     case "tick_end": {
       // The payload that explains the outcome: summary for changed/refused/rejected/
       // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
       // for every result that carries one keeps the event feed self-explanatory — a bare
       // "tick #N refused" would force operators to open the transcript for the reason.
-      const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
+      const extra = e.summary ? ` — ${textOr(e.summary)}` : e.error ? ` — ${textOr(e.error)}` : "";
       // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went.
       return `tick #${eventTick(e)} ${outcomeText(e)}${extra}${usagePhrase(e)}`;
     }
     case "merged":
-      return `merged ${shortSha(e.commit)} to main — ${e.summary}`;
+      return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
     case "land_queued":
       // Merge queue 3/5: routine state change (the tick committed and the landing slot is
       // ahead) — no warning prefix. The landing's own events follow it.
-      return `queued ${shortSha(e.commit)} for landing — ${e.summary}`;
+      return `queued ${shortSha(e.commit)} for landing — ${textOr(e.summary)}`;
     case "landed":
       // The landing slot finished with the change on main; the usage is the landing's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
@@ -149,25 +150,25 @@ export function eventMessage(e: HarnessEvent): string {
       return `landing of ${shortSha(e.commit)} did not land (${outcomeText(e)})${elapsed(e.durationMs)}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
-      return `question posted: ${e.question}`;
+      return `question posted: ${textOr(e.question)}`;
     case "wake":
-      return `woke (${e.reason})`;
+      return `woke (${textOr(e.reason)})`;
     case "tick_deferred":
       // Routine state change (need-based prioritization), like counters_reset — no warning
       // prefix. One per deferral episode; the tick's own events cover the episode's end.
       return `deferred — ${deferredReasonText(e)}`;
     case "orchestrator_start":
-      return `orchestrator started (pid ${e.pid}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
+      return `orchestrator started (pid ${textOr(e.pid)}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
     case "orchestrator_stop":
       return `orchestrator stopped`;
     case "prompt_enqueued":
-      return `user prompt queued: ${String(e.preview)}`;
+      return `user prompt queued: ${textOr(e.preview)}`;
     case "prompt_cancelled":
       // Routine operation (the user removed a queued prompt), not a warning.
-      return `user prompt cancelled: ${String(e.preview)}`;
+      return `user prompt cancelled: ${textOr(e.preview)}`;
     case "prompt_edited":
       // Routine operation (the user corrected a queued prompt), not a warning.
-      return `user prompt edited: ${String(e.preview)}`;
+      return `user prompt edited: ${textOr(e.preview)}`;
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.
@@ -180,9 +181,9 @@ export function eventMessage(e: HarnessEvent): string {
       // warning prefix. The resulting tick_end line carries the user_aborted outcome.
       return `tick aborted by user`;
     case "review_start":
-      return `reviewing ${shortSha(e.head)}${e.revision !== undefined ? ` (revision ${e.revision})` : ""} before merge${e.model !== undefined ? ` on ${String(e.model)}` : ""}`;
+      return `reviewing ${shortSha(e.head)}${e.revision !== undefined ? ` (revision ${textOr(e.revision)})` : ""} before merge${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
     case "review_verdict":
-      return `review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`;
+      return `review approved ${shortSha(e.head)}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
       const reasons = stringList(e.reasons);
       // Only the first reason renders; when more exist, say so instead of letting the
@@ -195,11 +196,11 @@ export function eventMessage(e: HarnessEvent): string {
       return `review rejected ${shortSha(e.head)} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
     }
     case "review_failed":
-      return `review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;
+      return `review failed for ${shortSha(e.head)}: ${textOr(e.message)} (commit kept for re-review)${elapsed(e.durationMs)}`;
     case "revision":
       // A rejected change's revision round (plans/revise-rejected.md): applied onto current main,
       // conflicted with it, dropped by its author, or exhausted its rounds.
-      return `revision ${String(e.round)} ${String(e.action)} ${shortSha(String(e.sha))}`;
+      return `revision ${textOr(e.round)} ${textOr(e.action)} ${shortSha(e.sha)}`;
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
       // review gate, the red-main baseline check of main itself, or the merge lock's
@@ -207,12 +208,12 @@ export function eventMessage(e: HarnessEvent): string {
       // for an npm check but the FULL configured command otherwise (checkScriptName in
       // build/build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
       // for both kinds ("npm test" would misrender a cargo or make-based project's check).
-      return `build check (${e.scope}): ${e.script} ${outcomeText(e)}${elapsed(e.durationMs)}`;
+      return `build check (${textOr(e.scope)}): ${textOr(e.script)} ${outcomeText(e)}${elapsed(e.durationMs)}`;
     case "dep_install": {
       // The root checkout's install catching up with a landed lockfile change — routine on
       // success; a failure also rides its own warning, which says what happens meanwhile.
       const pkgs = stringList(e.packages).join(", ");
-      return `root install (${pkgs}) ${outcomeText(e)}${e.error ? ` — ${e.error}` : ""}${elapsed(e.durationMs)}`;
+      return `root install (${pkgs}) ${outcomeText(e)}${e.error ? ` — ${textOr(e.error)}` : ""}${elapsed(e.durationMs)}`;
     }
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
@@ -225,9 +226,9 @@ export function eventMessage(e: HarnessEvent): string {
       // free fallback the breaker demoted because its ticks kept failing (BUGS.md 2026-09-20):
       // the backend, not the price, is what to fix, and the fleet retries it on its own.
       const refused = e.fallbackRejected
-        ? ` (fallback ${e.fallbackRejected} is not a cost n/a model in pi's models.json)`
+        ? ` (fallback ${textOr(e.fallbackRejected)} is not a cost n/a model in pi's models.json)`
         : e.fallbackDemoted
-          ? ` (fallback ${e.fallbackDemoted} is not serving — ${e.failures ?? "?"} consecutive ticks failed on it; one probe tick retries it after a cool-down)`
+          ? ` (fallback ${textOr(e.fallbackDemoted)} is not serving — ${textOr(e.failures)} consecutive ticks failed on it; one probe tick retries it after a cool-down)`
           : "";
       return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
     }
@@ -240,7 +241,7 @@ export function eventMessage(e: HarnessEvent): string {
       const tierEntries = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
       if (tierEntries.length >= 2)
         return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${tierEntries.join(", ")} (cost n/a)`;
-      return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
+      return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${textOr(e.provider, "pi's default provider")}/${textOr(e.model, "pi's default model")} (cost n/a)`;
     }
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
@@ -258,21 +259,21 @@ export function eventMessage(e: HarnessEvent): string {
       return `fleet resumed — role loops tick again`;
     case "role_paused":
       // Routine state change, like fleet_paused — no warning prefix.
-      return `role ${e.role ?? "?"} paused — it stops starting new ticks (the rest of the fleet keeps running)`;
+      return `role ${textOr(e.role)} paused — it stops starting new ticks (the rest of the fleet keeps running)`;
     case "role_resumed":
-      return `role ${e.role ?? "?"} resumed — it ticks again`;
+      return `role ${textOr(e.role)} resumed — it ticks again`;
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the
       // operator knows why the loop stopped and what to do about it.
-      return `role ${e.role ?? "?"} paused — ${e.streak ?? "?"} ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
+      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
     case "role_cap_paused":
       // Routine state change, like budget_paused — no warning prefix: the pause IS the harness
       // holding the role's own spend line. Names the role, its spend vs its cap, and the two
       // lift paths, so the operator knows why the loop stopped and what to do about it.
-      return `role ${e.role ?? "?"} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
+      return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
-      return `role ${e.role ?? "?"} resumed — it is under its daily cap again and ticks again`;
+      return `role ${textOr(e.role)} resumed — it is under its daily cap again and ticks again`;
     case "disk_low":
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the low disk, and naming the free space and the floor tells the operator
@@ -284,7 +285,7 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine maintenance, no warning prefix: the pass freed space so the hold need not
       // engage. Naming the mode, the worktrees, and the delta tells the operator what and why.
       const names = Array.isArray(e.worktrees) ? e.worktrees.join(", ") : "?";
-      return `disk reclaim (${e.mode ?? "pressure"}) — freed ${gigabytes(e.freedGB)} GB from ${names}; ${gigabytes(e.freeGB)} GB free now`;
+      return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} GB from ${names}; ${gigabytes(e.freeGB)} GB free now`;
     }
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
@@ -306,11 +307,11 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
-      return `maxConcurrent changed: ${e.from} → ${e.to}`;
+      return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;
     }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
-      return `sessionRetentionDays changed: ${e.from} → ${e.to}`;
+      return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;
     }
     case "config_changed": {
       // Routine state change, like its maxConcurrent/retention siblings — no warning prefix.
@@ -321,14 +322,14 @@ export function eventMessage(e: HarnessEvent): string {
     case "model_changed":
       // The live-edit sibling of config_changed: names the new selector, the one fact the key
       // list cannot show. The per-role diffs stay structured on the event.
-      return `model changed — now ${e.to ?? "pi's default"}`;
+      return `model changed — now ${textOr(e.to, "pi's default")}`;
     case "model_fallback_started":
       // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
       // failure. Names the pair the role now runs on and why the primary was abandoned.
-      return `model fallback — ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} engaged (primary failing: ${e.reason ?? "backend failure"})`;
+      return `model fallback — ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
     case "model_fallback_ended":
       // The return counterpart: names the pair ticks resume on and how long the episode ran.
-      return `model fallback ended — back on ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} after ${minutes(e.durationMs)}m`;
+      return `model fallback ended — back on ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} after ${minutes(e.durationMs)}m`;
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
@@ -344,16 +345,16 @@ export function eventMessage(e: HarnessEvent): string {
     case "restart_refused":
       // The restart is refused, not failed: the running build stays and the gate is re-asked
       // every poll, so the line names both builds and what the operator must repair.
-      return `restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${e.reason}; staying on build ${shortSha(e.from)} until it can`;
+      return `restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${textOr(e.reason)}; staying on build ${shortSha(e.from)} until it can`;
     case "restart_blocked":
       // The restart is blocked, not refused: a verdict latched this head, so the line names
       // what failed and that only main moving can end it.
-      return `restart blocked for main ${shortSha(e.to)} — ${e.reason}; staying on build ${shortSha(e.from)} until main moves`;
+      return `restart blocked for main ${shortSha(e.to)} — ${textOr(e.reason)}; staying on build ${shortSha(e.from)} until main moves`;
     case "supervisor_exit": {
       // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.
-      const how = e.signal ? `was killed by ${e.signal}` : `exited ${e.code}`;
-      return `fleet down — generation ${e.generation} ${how}${e.reason ? `: ${e.reason}` : ""}; the supervisor exited (restart with \`tumwater run\`)`;
+      const how = e.signal ? `was killed by ${textOr(e.signal)}` : `exited ${textOr(e.code)}`;
+      return `fleet down — generation ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; the supervisor exited (restart with \`tumwater run\`)`;
     }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator
@@ -362,8 +363,11 @@ export function eventMessage(e: HarnessEvent): string {
         ? "resuming the run cut off at the context ceiling (compacted pi session, same worktree)"
         : "resuming the tick a shutdown interrupted (same pi session and worktree)";
     case "warning":
-      return `warning: ${e.message}`;
+      return `warning: ${textOr(e.message)}`;
     default:
-      return `${e.type}`;
+      // An unrecognized type is normally a newer build's string and renders as-is; a torn or
+      // hand-edited event object with no type at all must read the "?" stand-in, never
+      // String(undefined)'s literal "undefined" (parseEventLine admits any JSON object).
+      return textOr(e.type);
   }
 }
