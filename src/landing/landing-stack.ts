@@ -8,7 +8,7 @@
 
 import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
 import { branchHead, deleteRef, gitLines, headOf } from "../git/git.js";
-import { landingRefName } from "../paths.js";
+import { landingRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
@@ -17,7 +17,6 @@ import { logEvent } from "../events/events.js";
 import { ffMainTo } from "./landing-git.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
-import { mergeLockDir } from "../paths.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { BuildCheck } from "../build/build-check-detect.js";

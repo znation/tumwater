@@ -3,13 +3,10 @@
  * resolves to, and which timeout a reviewer run gets. No I/O and no caching — the
  * persistence side (defaults, loading, saving, the role-selection helpers) lives in
  * config.ts, the write side in config-write.ts. */
-import type { FallbackModelConfig, ModelTier, TumwaterConfig } from "./config-schema.js";
-import { MODEL_TIERS } from "./config-schema.js";
-import { parseModelSelector } from "./model-selector.js";
-import type { ModelSelector } from "./model-selector.js";
+import { MODEL_TIERS, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
+import { formatModelSelector, parseModelSelector, type ModelSelector } from "./model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
-import { formatModelSelector } from "./model-selector.js";
 import { roleById } from "../roles/roles.js";
 import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fallback.js";
 

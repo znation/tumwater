@@ -6,12 +6,11 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
 import type { SpendCell } from "./time-spend.js";
-import type { ColumnAlign } from "../text/markdown.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { dayKey, dayLabel, formatTime, monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
-import { markdownTable } from "../text/markdown.js";
+import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;

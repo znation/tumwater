@@ -7,16 +7,14 @@ import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
 import { reviewAheadOfMain, type GateResult } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEvent } from "../events/events.js";
-import type { GateRunsPi } from "../loop/loop-pi.js";
-import { saveLoopState } from "../loop/loop-state.js";
+import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
+import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { setLandingStage } from "./landing-slot.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { PiRunWiring } from "../loop/loop-pi.js";
-import type { LoopState } from "../loop/loop-state.js";
 
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,

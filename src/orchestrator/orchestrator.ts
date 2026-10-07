@@ -9,7 +9,7 @@ import {
 } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { modelPairName } from "../budget/budget.js";
-import { roleSeamTier } from "../config/config-views.js";
+import { roleSeamTier, reviewRunConfig } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs, plannedPlans } from "../backlog/backlog.js";
@@ -44,7 +44,6 @@ import {
 } from "../tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
 import { heldProviders } from "../fleet/fleet-hold.js";
-import { reviewRunConfig } from "../config/config-views.js";
 
 const POLL_MS = 2000;
 

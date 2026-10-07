@@ -10,11 +10,11 @@ import {
   ROLE_ENTRY_KEYS,
   TOP_LEVEL_KEYS,
   ROLE_INSTRUCTIONS_MAX_CHARS,
+  TIER_MAP_KEYS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../files/json-object.js";
-import { isNonBlankString } from "../text/text.js";
-import { tooLongMessage } from "../text/text.js";
+import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { parseModelSelector } from "./model-selector.js";
 import {
@@ -36,7 +36,6 @@ import {
   show,
   typeName,
 } from "./config-field-checks.js";
-import { TIER_MAP_KEYS } from "./config-schema.js";
 
 /** Schema validation for tumwater.json: validateConfig, the gate every load and save passes
  * through (config.ts's load/save, config-write.ts's budget editing and director config
