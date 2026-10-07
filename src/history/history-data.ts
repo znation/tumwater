@@ -79,31 +79,6 @@ export interface TickRow {
   detail: string;
 }
 
-/** A queued tick_end's row resolves to its change's landing outcome (BUGS.md 2026-09-30):
- * a `queued` result is a transient pipeline state, not a completed outcome — the tick pinned
- * its commit and the landing slot resolved it later, so rendering `queued` as final leaves a
- * landed change labeled "Queued to land" forever. The join the log already supports: the
- * tick's own `land_queued` event (logged during the tick, so at or before its tick_end) pins
- * the commit sha, and the later `landed`/`land_failed` event for the same loop+sha carries
- * the landing's final result. Rows are built newest-first, so each queued tick_end claims
- * the newest land_queued at or before its ts that no newer row has claimed — the one logged
- * during that tick. On a since-shaped scan the pins come from the WIDER join read (TickRowJoin):
- * the row set's own cutoff can sit between a spanning tick's pin and its tick_end, and the
- * claim rule is only sound while every row's own pin is actually present — a loop runs one
- * tick at a time, so pins at or before a row's end from other ticks are all OLDER than its
- * own, and a missing pin would claim one of those. The guard is the row's tick_start: one
- * that sits BEFORE the join read's floor means the tick block crosses the read's lower bound,
- * where the day-keyed over-read makes presence non-monotonic — the pin may be gone while
- * older ticks' pins are still in the set — so the row keeps the raw label rather than
- * mis-claim. A MISSING start is safe and joins: rotation drops a prefix, so every pin older
- * than the lost start is lost with it and nothing can be mis-claimed (and a skipped tick has
- * no start at all but is never queued).
- * No outcome event (the landing still in the pipeline, or its event outside the join set)
- * leaves the raw label too: the conservative fallback for a landing whose verdict is simply
- * not visible here. Returns the resolved result string plus the claimed pin's commit sha
- * (callers match further evidence — a review_rejected's reasons — onto the same change), or
- * null to keep the tick_end's own. The failure digest's time-and-spend fold shares this join
- * so a review-rejected change's authoring hours stop reading as landed (BUGS.md 2026-09-30). */
 /** The landing bookkeeping resolveQueuedResult joins over: per loop, the `land_queued` pins
  * and the `landed`/`land_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly two call sites — readTickRows' history-row join and the failure
@@ -136,9 +111,13 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
  * at or before its end, so several queued ticks cannot claim one pin. `joinStarts` maps
  * loop#tick to its tick_start's ts; when `floorTs` (a since-window's cutoff, null in the
  * count view) sits after that start, the row's join evidence is not whole in the windowed
- * read and the row keeps its raw "queued" label (null). Returns the outcome's result text
- * and the landed sha, or null when the landing has not happened yet or the outcome cannot
- * be matched. Pure apart from the cursor it owns. */
+ * read and the row keeps its raw "queued" label (null). A MISSING start needs no guard — it
+ * joins, because rotation drops a prefix, so every pin older than the lost start is lost with
+ * it and nothing can be mis-claimed (and a skipped tick has no start at all but is never
+ * queued). A landing with no outcome event in the join set also keeps the raw label: the
+ * conservative fallback for a verdict simply not visible here. Returns the outcome's result
+ * text and the landed sha, or null to keep the raw label. Pure apart from the cursor it
+ * owns. */
 export function resolveQueuedResult(
   end: HarnessEvent,
   landQueuedByLoop: Map<string, HarnessEvent[]>,
