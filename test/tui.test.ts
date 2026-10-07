@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { logEvent } from "../src/events/events.js";
@@ -10,7 +11,9 @@ import { runTui } from "../src/ui/tui/tui.js";
 import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { CLI, cli } from "./cli-harness.js";
+import { waitFor } from "./wait.js";
+import { exitWithOwnerEnv } from "./victim-fixture.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { makeTuiRepo, startTui, withTui } from "./tui-fixtures.js";
 
@@ -708,4 +711,55 @@ test("tui gates on repo readiness, rejects extra args, and fails cleanly without
   r = await cli(repo, "tui", "--json");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /takes no arguments/);
+});
+
+// --- `tui` through the real CLI entry point in a fake TTY: the no-TTY test above stops at
+// runTui's terminal check, so it never reaches the `break` after `case "tui"` — the dispatch's
+// own return path, which runs only when runTui resolves. This spawns the compiled CLI with a
+// --require shim that stands in for a terminal (isTTY on both streams, setRawMode, a window
+// size), waits for the first frame, sends the quit key (Ctrl+D), and requires exit 0: runTui
+// tears down and returns, the switch breaks, and main() resolves cleanly.
+
+test("tui exits 0 after its quit key: main()'s tui case returns once the TUI ends", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli tui tty test");
+  const dir = tmpdir("tw-tui-tty-");
+  const shim = path.join(dir, "fake-tty.cjs");
+  await fs.promises.writeFile(
+    shim,
+    [
+      "// A spawned child has no terminal; runTui's TTY gate and ink's render/useInput need one.",
+      "process.stdin.isTTY = true;",
+      "process.stdout.isTTY = true;",
+      "process.stdin.setRawMode = () => {};",
+      "process.stdout.columns = 120;",
+      "process.stdout.rows = 40;",
+    ].join("\n"),
+  );
+  const env = exitWithOwnerEnv({ ...process.env });
+  env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ""} --require ${shim}`.trim();
+  const child = spawn(process.execPath, [CLI, "tui"], { cwd: repo, env, detached: true });
+  let out = "";
+  child.stdout?.on("data", (d) => (out += d));
+  try {
+    await waitFor(() => out.includes("[Activity]"), "the TUI's first frame");
+    child.stdin?.write("\x04"); // Ctrl+D quits (tui-keys.ts)
+    const code = await new Promise<number | null>((resolve) => {
+      const t = setTimeout(() => resolve(null), 20_000);
+      child.once("close", (c) => {
+        clearTimeout(t);
+        resolve(c);
+      });
+    });
+    assert.equal(code, 0, `the tui command should exit 0; output so far:\n${out}`);
+  } finally {
+    // A regression that left the TUI running must not strand the child in its own group.
+    if (child.exitCode === null && child.signalCode === null && child.pid !== undefined) {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // The group is already gone.
+      }
+    }
+  }
 });
