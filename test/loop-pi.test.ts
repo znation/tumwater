@@ -531,6 +531,33 @@ test("a provider request timeout (Request timed out.) warns and earns the one re
   }
 });
 
+test("a provider request timeout on pi's stderr earns the same retry and warning as the event spelling", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    // pi dying on the provider's own request timeout with the text only on stderr and no pi
+    // event carrying it: the same failure the event-side test above drives, arriving the other
+    // way. Both shapes must classify as the timeout backend kind and take the retry (BUGS.md
+    // 2026-10-07).
+    firstRun: `printf '%s\\n' 'Request timed out.' >&2\nexit 1`,
+  });
+  try {
+    const { loopPi, warns, usage, sleeps } = makeHost(root);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-10-author");
+    assert.equal(result.ok, true, "the retry succeeds — a fresh attempt on the intact session");
+    assert.equal(runArgs(args).length, 2, "the stderr-arrived timeout is retried once");
+    assert.match(runArgs(args)[1]!, /--continue/, "the retry resumes the first attempt's session");
+    assert.ok(
+      warns.some((w) => /provider request timed out after accepting the connection/.test(w)),
+      `the warning names the timeout: ${warns.join(" | ")}`,
+    );
+    assert.deepEqual(sleeps, [60_000], "the retry waits the minute-scale refill pause");
+    assert.equal(usage.length, 2, "both attempts fold — the failed one before the pause");
+  } finally {
+    restore();
+  }
+});
+
 test("a successful run that merely saw a backend error mid-stream stays silent", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

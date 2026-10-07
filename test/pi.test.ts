@@ -685,6 +685,25 @@ test("runPi flags undici's bare terminated on stderr as a stream-severed backend
   assert.equal(unrelated.backendKind, undefined);
 });
 
+// A provider-wide backend failure on stderr with no pi event for it: pi dies on the provider's
+// own request timeout, the 2026-10-07 window's #1 loss cause, and previously fell through
+// every transient layer because the close handler matched only the crash and stream-severed
+// stderr spellings (BUGS.md 2026-10-07). The stderr text now classifies through the same
+// TRANSIENT_BACKEND/backendKind rule as a pi event errorMessage.
+test("runPi classifies a request timeout on stderr as the timeout backend kind", async () => {
+  const r = await runFakePi(`echo 'Request timed out.' >&2\nexit 1`);
+  assert.equal(r.ok, false);
+  assert.equal(r.transientBackend, true);
+  assert.equal(r.backendKind, "timeout");
+  assert.equal(r.transientPiCrash, false, "one exit has one cause — this is not the JSON-parse crash");
+  assert.equal(r.errorMessage, "Request timed out.");
+  // The same rule covers every backend spelling the event path already classifies, not just
+  // the timeout: a connection failure on stderr carries the connection kind too.
+  const connection = await runFakePi(`echo 'Connection error.' >&2\nexit 1`);
+  assert.equal(connection.transientBackend, true);
+  assert.equal(connection.backendKind, "connection");
+});
+
 // pi's stderr warning when a requested model id has no exact definition: pi clones the
 // provider's default model, inheriting that default's price and context window, so a
 // mistyped or vendor-suffixed id silently misprices the run (BUGS.md 2026-10-06). Captured

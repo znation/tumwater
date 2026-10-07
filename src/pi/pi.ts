@@ -8,7 +8,7 @@ import { terminateChild, withoutLaunchServicesCheckIn } from "../process/process
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../process/run-marker.js";
 import { piArgs } from "./pi-args.js";
 import type { PiRunKind } from "./pi-event-line.js";
-import { PiStreamParser, STREAM_SEVERED, isPermanentConfigError } from "./pi-stream.js";
+import { PiStreamParser, isPermanentConfigError, matchBackendFailure } from "./pi-stream.js";
 import { startPiWatchdogs } from "./pi-watchdogs.js";
 import type { PiRunResult } from "./pi-run-result.js";
 
@@ -322,26 +322,30 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // chunk: transient, retryable with --continue (the loop decides). Never set for a run the
       // harness itself killed — those have their own cause.
       const crashed = !aborted && !wd.timedOut && !wd.quietKilled && code !== 0 && TRANSIENT_PI_CRASH.test(stderr);
-      // The provider severing the in-flight HTTP stream — undici's bare "terminated" — can
-      // arrive on pi's stderr (pi dying on the cut, nonzero exit) as well as in a pi event
-      // errorMessage (pi catching it): classify the stderr spelling through the same anchored
-      // pattern, so either shape gets the same transientBackend treatment. Never on a run the
-      // harness itself killed, and never when the JSON-parse crash pattern already named the
-      // cause — one exit has one cause (BUGS.md 2026-09-30).
-      const streamSevered =
-        !aborted && !wd.timedOut && !wd.quietKilled && !crashed && STREAM_SEVERED.test(stderr.trim());
+      // A provider-wide backend failure printed on pi's stderr — a severed stream (undici's
+      // bare "terminated"), the provider's own request timeout, a connection failure, a 5xx,
+      // or a model-load failure — can arrive with no pi event for it (pi dying on the cut,
+      // nonzero exit) as well as in an event errorMessage (pi catching it): classify the
+      // stderr text through the same TRANSIENT_BACKEND/backendKind rule the event path uses,
+      // so either shape gets the same transientBackend treatment. Never on a run the harness
+      // itself killed, and never when the JSON-parse crash pattern already named the cause —
+      // one exit has one cause (BUGS.md 2026-09-30, 2026-10-07).
+      const stderrBackend =
+        !aborted && !wd.timedOut && !wd.quietKilled && !crashed
+          ? matchBackendFailure(stderr.trim())
+          : undefined;
       // A permanent 4xx config error pi printed on stderr (pi dying on the rejected request)
       // classifies through the same one rule as an event errorMessage. Never on a run the
       // harness itself killed, and never when another exit cause already claimed it.
       const configError =
-        !aborted && !wd.timedOut && !wd.quietKilled && !crashed && !streamSevered &&
+        !aborted && !wd.timedOut && !wd.quietKilled && !crashed && !stderrBackend &&
         (parser.configError || isPermanentConfigError(stderr.trim()));
       finish(
         resultFromParser({
           ok: !failed,
           transientPiCrash: crashed,
-          transientBackend: parser.transientBackend || streamSevered,
-          backendKind: parser.backendFailureKind ?? (streamSevered ? "stream-severed" : undefined),
+          transientBackend: parser.transientBackend || stderrBackend !== undefined,
+          backendKind: parser.backendFailureKind ?? stderrBackend,
           configError,
           errorMessage: aborted
             ? "aborted by harness shutdown"

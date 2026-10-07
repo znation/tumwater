@@ -126,9 +126,9 @@ export type BackendFailureKind =
  * "terminated" — the 2026-08-22 idle-timeout diagnosis. Anchored to the END of the error text
  * on purpose: the real message is the bare word, optionally behind a prefix and closing
  * punctuation, while an unrelated error that merely contains the word ("worker terminated
- * with exit code 1") must not read as a backend failure. Exported because the same spelling
- * can arrive on pi's stderr without any pi event for it (src/pi/pi.ts's close handler). */
-export const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
+ * with exit code 1") must not read as a backend failure. Module-private: matchBackendFailure
+ * below, the parser, and backendKind all share the one instance. */
+const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
 
 /** The backend-failure error texts pi actually surfaces, matched against every error text
  * feedLine sees — the same shapes as the rate-limit regex's various renderings: pi renders the
@@ -138,9 +138,8 @@ export const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
  * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
  * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
  * and never counts as a backend failure. Composed so the stream-severed spelling lives in
- * STREAM_SEVERED alone — src/pi/pi.ts classifies stderr through the same one regex. Only
- * PiStreamParser.feedLine matches the result; backendKind below classifies which phrase
- * matched. */
+ * STREAM_SEVERED alone. Only matchBackendFailure and PiStreamParser.feedLine match it;
+ * backendKind below classifies which phrase matched. */
 const TRANSIENT_BACKEND = new RegExp(
   `connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|failed to load model|${STREAM_SEVERED.source}`,
   "i",
@@ -155,6 +154,14 @@ export function backendKind(text: string): BackendFailureKind {
   if (/internal server error|bad gateway|service unavailable|gateway timeout/i.test(text)) return "server";
   if (STREAM_SEVERED.test(text)) return "stream-severed";
   return "model-load";
+}
+
+/** The backend-failure kind `text` names, or undefined when it names none — the stderr
+ * classifier (src/pi/pi.ts's close handler) needs "no match" distinct from backendKind's
+ * "model-load" default. Gated by TRANSIENT_BACKEND, so a text the event path ignores is
+ * ignored on stderr too. Pure; exported for src/pi/pi.ts's close handler. */
+export function matchBackendFailure(text: string): BackendFailureKind | undefined {
+  return TRANSIENT_BACKEND.test(text) ? backendKind(text) : undefined;
 }
 
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
