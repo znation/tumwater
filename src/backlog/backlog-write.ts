@@ -153,6 +153,11 @@ export async function fileAndAnnounce(
   let json = false;
   for (const arg of args) {
     if (arg === "--json") {
+      // The "each flag at most once" rule every spec-parsed command and the questions
+      // parser apply (cli-flag-specs.ts's rejectUnknownArgs, cli-command-args.ts's
+      // rejectDuplicateFlags): a second --json was silently collapsed here while
+      // `backlog --json --json` and `questions --json --json` refuse it.
+      if (json) fail("--json may only be given once");
       json = true;
       continue;
     }

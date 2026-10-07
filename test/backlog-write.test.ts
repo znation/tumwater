@@ -151,6 +151,17 @@ test("tumwater bug --json prints the {file, title, stamp} payload", async () => 
   assert.match(payload.stamp, /^reported by the operator \d{4}-\d{2}-\d{2}$/);
 });
 
+test("a repeated --json fails with the shared duplicate-flag wording and writes nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli bug dup json");
+  const r = await cli(repo, "bug", "a symptom", "--json", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json may only be given once/);
+  // The refusal precedes the write and the wake: the entry never lands and no prompt queues.
+  assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
+  assert.equal(queuedRolePrompts(repo, "bugfix").length, 0);
+});
+
 test("a symptom that fits the cap but whose wake prompt does not fails before any write", async () => {
   // The boundary the preflight exists for: the title itself is under the submission cap,
   // but title plus the wake template's fixed overhead is one char over — the exact window
