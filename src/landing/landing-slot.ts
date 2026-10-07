@@ -19,17 +19,16 @@ import { consecutiveFailuresWarning } from "../text/phrases.js";
  * outcome into the authoring role's state and drops its queue entry. A landing's pi runs charge
  * to the authoring runner (foldLandingUsage). */
 
-/** Where a landing is in its flow, as far as an observer can tell: `merging` — the git steps
- * (lander checkout, rebase onto main, the in-lock re-check and fast-forward); `build-check` —
- * a deterministic check (the gate's pre-check over the change's tree, its one re-run, and the
- * attribution check of main's tip behind a repeat failure, or a stack's shared check); `reviewing` — the adversarial reviewer's pi run,
- * whose live turns/context/tool the dashboards read from the role's raw log. Everything else a
- * landing does (verdict parsing, state saves) is sub-second bookkeeping between these. */
 /** What the pipeline is doing with one change right now. A vet opens at `rebasing` (its
- * checkout and rebase onto main) and moves through `build-check` and `reviewing`; `check-wait`
- * covers any wait for a process-wide check permit (check-permit.ts) before a check starts, so a
- * queued check never reads as a running one. `merging` is the merge slot only — the stack's
- * assembly, the in-lock re-check's git steps, and the fast-forward onto main. */
+ * checkout and rebase onto main) and moves through `build-check` — a deterministic check (the
+ * gate's pre-check over the change's tree, its one re-run, and the attribution check of main's
+ * tip behind a repeat failure, or a stack's shared check) — and `reviewing`, the adversarial
+ * reviewer's pi run, whose live turns/context/tool the dashboards read from the role's raw log;
+ * `check-wait` covers any wait for a process-wide check permit (check-permit.ts) before a check
+ * starts, so a queued check never reads as a running one. `merging` is the merge slot only —
+ * the stack's assembly, the in-lock re-check's git steps, and the fast-forward onto main.
+ * Everything else a landing does (verdict parsing, state saves) is sub-second bookkeeping
+ * between these. */
 export type LandingStage = "rebasing" | "check-wait" | "build-check" | "reviewing" | "merging";
 
 /** Where one change stands in the landing pipeline (land-queue speed 2c) — the per-change status
