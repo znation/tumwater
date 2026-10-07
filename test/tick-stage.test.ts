@@ -168,6 +168,41 @@ test("a follow-up that yields no SUMMARY falls back to the changed files", async
   assert.match(sh(wt, "git", "log", "-1", "--format=%s"), /feature\.ts/);
 });
 
+test("a follow-up that failed names its error instead of claiming 'gave none'", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "no summary anywhere",
+    followUp: okPi({
+      ok: false,
+      errorMessage: "400 model_not_supported: the provider or policy is not valid",
+    }),
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued", "the tick still commits with a derived subject");
+  assert.match(outcome.summary!, /feature\.ts/);
+  assert.match(calls.warnings[0]!, /the follow-up run failed/);
+  assert.match(calls.warnings[0]!, /400 model_not_supported/);
+  assert.doesNotMatch(calls.warnings[0]!, /gave none/, "the failure is not reported as an empty reply");
+});
+
+test("a missing SUMMARY with no follow-up session says so", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "no summary anywhere",
+    followUp: null,
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.match(outcome.summary!, /feature\.ts/);
+  assert.match(calls.warnings[0]!, /no follow-up session was available/);
+});
+
 test("an aborted follow-up finalizes through the loop and queues nothing", async () => {
   const { root, wt } = await setup();
   const state: LoopState = freshLoopState("improve");

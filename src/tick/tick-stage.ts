@@ -82,7 +82,12 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
       `reply had no SUMMARY line — ` +
         (followUp && extractSummary(followUp.finalText) !== null
           ? "recovered it with a follow-up turn"
-          : `follow-up gave none; subject derived from the changed files: "${summary}"`),
+          : followUp && !followUp.ok
+            ? `the follow-up run failed (${followUp.errorMessage || "no error message"}); ` +
+              `subject derived from the changed files: "${summary}"`
+            : followUp
+              ? `follow-up gave none; subject derived from the changed files: "${summary}"`
+              : `no follow-up session was available; subject derived from the changed files: "${summary}"`),
     );
   }
 
