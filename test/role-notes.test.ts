@@ -101,6 +101,13 @@ test("executing role_notes replaces the note and rejects an oversized one withou
     );
     assert.equal(fs.readFileSync(notes, "utf8"), "where things live", "the rejected note leaves the old one intact");
 
+    // A malformed call must not be read as "clear the notebook": reject it and keep the note.
+    await assert.rejects(
+      async () => tool.execute("call-bad", { text: 123 }),
+      /requires a string "text" \(got 123\)/,
+    );
+    assert.equal(fs.readFileSync(notes, "utf8"), "where things live", "a malformed call leaves the old one intact");
+
     const cleared = await tool.execute("call-3", { text: "" });
     assert.match(cleared.content[0]!.text, /notebook cleared/);
     assert.equal(fs.readFileSync(notes, "utf8"), "");

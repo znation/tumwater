@@ -20,6 +20,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { gotSuffix } from "../text/text.js";
 
 /** The cap on a role's note, in UTF-8 bytes. Small enough to cost little on every turn, large
  * enough for the codebase facts a role wants to keep. */
@@ -95,7 +96,17 @@ export default function roleNotes(pi: PiExtensionApi): void {
       `${ROLE_NOTES_MAX_BYTES} bytes). Pass the full replacement text; empty text clears it.`,
     parameters: ROLE_NOTES_PARAMETERS,
     execute(_toolCallId, params) {
-      const text = typeof params?.text === "string" ? params.text : "";
+      // The parameter schema asks for a string, but pi does not guarantee it enforced every
+      // tool call's shape — and coercing a malformed `text` to "" cleared the notebook, the
+      // destructive reading of a typo the model never sees. Reject it instead, naming the
+      // offending value and the fix, so a bad call is retried rather than silently wiping the
+      // continuity the tool exists to keep.
+      const text = params?.text;
+      if (typeof text !== "string") {
+        throw new Error(
+          `role_notes requires a string "text"${text === undefined ? "" : gotSuffix(text)} — pass the full replacement note, or "" to clear it`,
+        );
+      }
       const error = validateRoleNote(text);
       if (error) throw new Error(error);
       writeRoleNote(notesPath, text);
