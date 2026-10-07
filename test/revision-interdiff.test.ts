@@ -5,6 +5,7 @@ import path from "node:path";
 import { revisionInterdiff } from "../src/git/git-diff.js";
 import { headOf } from "../src/git/git.js";
 import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
+import { hasLoneSurrogate } from "./oracles.js";
 
 /** Unit coverage for the revision interdiff (plans/revise-rejected.md part 2/2): the re-review
  * compares a rejected change with its revision over each version's own base..tip range, so
@@ -44,20 +45,6 @@ test("revisionInterdiff returns an empty string when the prior object is gone", 
 
   assert.equal(await revisionInterdiff(root, "main", "0".repeat(40), head), "");
 });
-
-/** True when `s` carries a lone UTF-16 surrogate: a high one not followed by a low, or a low
- * one not preceded by a high. A capped prefix must never emit one (the terminal shows a box). */
-function hasLoneSurrogate(s: string): boolean {
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c >= 0xd800 && c <= 0xdbff) {
-      const next = s.charCodeAt(i + 1);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
-      i++;
-    } else if (c >= 0xdc00 && c <= 0xdfff) return true;
-  }
-  return false;
-}
 
 test("revisionInterdiff caps its total length and never splits a surrogate pair", async () => {
   const root = makeRepo();

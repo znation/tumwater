@@ -50,3 +50,22 @@ export function expectedTimestamp(ts: number): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
+
+/** True when `s` carries a lone UTF-16 surrogate unit: a high one not followed by a low, or a
+ * low one not preceded by a high. The truncation and clipping tests assert on this — a cut
+ * between an astral character's two units leaves a replacement box on a terminal. Test-local,
+ * built from raw code-unit ranges rather than text.ts's pairing helpers, so a drift in the
+ * production rule fails an assertion instead of matching its own predicate. */
+export function hasLoneSurrogate(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = s.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      i++; // the low half is consumed; a later lone low is still caught below
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}

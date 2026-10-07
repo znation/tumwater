@@ -9,6 +9,7 @@ import {
   sortedRoles,
   truncateExample,
 } from "../src/failure/failure-cluster.js";
+import { hasLoneSurrogate } from "./oracles.js";
 
 // src/failure/failure-cluster.ts is the shared grouping engine behind the failure digest and the
 // error-storm reducer; both count by its normalized keys, so a wrong rule here silently
@@ -66,18 +67,6 @@ test("truncateExample keeps the hard cut when no whitespace exists inside the bu
   assert.ok(out.startsWith("x".repeat(EXAMPLE_MAX)));
   assert.ok(out.endsWith("… (+37 chars)"));
 });
-
-/** True when `s` carries a lone UTF-16 surrogate unit — the replacement-box garbage a cut
- * between an astral character's two units would emit. */
-function hasLoneSurrogate(s: string): boolean {
-  for (const ch of s) {
-    if (ch.length === 1) {
-      const c = ch.charCodeAt(0);
-      if (c >= 0xd800 && c <= 0xdfff) return true;
-    }
-  }
-  return false;
-}
 
 test("truncateExample never leaves a lone surrogate when the budget splits an astral character", () => {
   // The 120-unit budget lands on the emoji's high surrogate with no whitespace to cut at, so

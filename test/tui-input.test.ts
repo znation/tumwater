@@ -10,6 +10,7 @@ import {
 } from "../src/ui/tui/tui-input.js";
 import { cutSplitsSurrogatePair } from "../src/text/text.js";
 import { displayWidth } from "../src/text/text-width.js";
+import { hasLoneSurrogate } from "./oracles.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 
@@ -249,7 +250,6 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
   assert.equal(renderInputView("ab\u{1f600}\u{1f600}", 4, 4), "\u{1f600}");
   assert.equal(renderInputView("\u{1f600}\u{1f600}", 4, 4), "\u{1f600}");
 
-  const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
   // "你好世界你好" is 6 UTF-16 units but 12 display columns — the unit-vs-column mismatch
   // this suite's samples once missed entirely.
   const samples = [
@@ -268,7 +268,7 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
         if (cutSplitsSurrogatePair(text, cursor)) continue;
         const where = `width ${width}, cursor ${cursor}`;
         const view = renderInputView(text, cursor, width);
-        assert.ok(!loneSurrogate.test(view), `${where}: ${JSON.stringify(view)} has a lone surrogate`);
+        assert.ok(!hasLoneSurrogate(view), `${where}: ${JSON.stringify(view)} has a lone surrogate`);
         // Measured in display columns, not UTF-16 units — the unit spelling passed while a
         // wide-character line still wrapped the terminal.
         assert.ok(displayWidth("> " + view) <= width, `${where}: ${JSON.stringify(view)} exceeds the width`);

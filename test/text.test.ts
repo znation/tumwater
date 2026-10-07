@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, truncate } from "../src/text/text.js";
+import { hasLoneSurrogate } from "./oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)
@@ -63,15 +64,7 @@ test("truncate never splits a surrogate pair (no lone surrogates in clipped labe
   for (let max = 1; max <= s.length + 2; max++) {
     const out = truncate(s, max);
     assert.ok(out.length <= max, `max ${max}: ${out.length} chars: ${JSON.stringify(out)}`);
-    for (let i = 0; i < out.length; i++) {
-      const code = out.charCodeAt(i);
-      if (code >= 0xd800 && code <= 0xdbff) {
-        assert.ok(
-          out.charCodeAt(i + 1) >= 0xdc00 && out.charCodeAt(i + 1) <= 0xdfff,
-          `lone surrogate at ${i} in ${JSON.stringify(out)}`,
-        );
-      }
-    }
+    assert.ok(!hasLoneSurrogate(out), `max ${max}: lone surrogate in ${JSON.stringify(out)}`);
   }
 });
 

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clipToWidth, displayWidth, padToWidth } from "../src/text/text-width.js";
+import { hasLoneSurrogate } from "./oracles.js";
 
 // text-width.ts is the single home of terminal-column geometry — the wcwidth table and the
 // displayWidth/padToWidth/clipToWidth clippers every aligned table and TUI line relies on.
@@ -34,15 +35,7 @@ test("clipToWidth never splits a surrogate pair (no lone surrogates in clipped l
     const clipped = clipToWidth(text, width);
     assert.ok(clipped.length <= width, `width ${width} violated: ${clipped.length}`);
     assert.ok(displayWidth(clipped) <= width, `column width ${width} violated: ${JSON.stringify(clipped)}`);
-    for (let i = 0; i < clipped.length - 1; i++) {
-      const code = clipped.charCodeAt(i);
-      if (code >= 0xd800 && code <= 0xdbff) {
-        assert.ok(
-          clipped.charCodeAt(i + 1) >= 0xdc00 && clipped.charCodeAt(i + 1) <= 0xdfff,
-          `lone surrogate at ${i} in ${JSON.stringify(clipped)}`,
-        );
-      }
-    }
+    assert.ok(!hasLoneSurrogate(clipped), `lone surrogate in ${JSON.stringify(clipped)}`);
   }
 });
 
@@ -68,13 +61,7 @@ test("clipToWidth counts wide characters as two columns and holds the invariant 
     for (let width = 0; width <= 10; width++) {
       const clipped = clipToWidth(text, width);
       assert.ok(displayWidth(clipped) <= width, `column width ${width} exceeded: ${JSON.stringify(clipped)}`);
-      for (let i = 0; i < clipped.length - 1; i++) {
-        const code = clipped.charCodeAt(i);
-        if (code >= 0xd800 && code <= 0xdbff) {
-          assert.ok(clipped.charCodeAt(i + 1) >= 0xdc00 && clipped.charCodeAt(i + 1) <= 0xdfff,
-            `lone surrogate at ${i} in ${JSON.stringify(clipped)}`);
-        }
-      }
+      assert.ok(!hasLoneSurrogate(clipped), `lone surrogate in ${JSON.stringify(clipped)}`);
     }
   }
 });
