@@ -15,6 +15,7 @@ import {
 import { parseVerdict } from "../src/review/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { TEST_RUNNER_RULE } from "../src/prompt/prompt.js";
+import { NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
 import { oneLine } from "./oracles.js";
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
@@ -160,6 +161,17 @@ test("buildRejectedReviewNote dates the verdict and names the reviewed head", ()
 test("buildRejectedReviewNote omits the context when the review recorded neither time nor head", () => {
   const note = buildRejectedReviewNote({ reasons: ["md-only edit"] });
   assert.match(note, /rejected in review:/);
+});
+
+// A feature change that used its last revision round must not be re-authored from scratch: the
+// plan the reviewer kept objecting to would come back unchanged. Feature is sent to replan the
+// entry instead; every other role keeps the plain re-author sentence.
+test("an exhausted feature rejection tells feature to replan, not re-author", () => {
+  const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "feature");
+  assert.ok(note.includes(NEEDS_REPLAN_NOTE), "names the replan note");
+  assert.match(note, /do not re-author it/);
+  assert.doesNotMatch(note, /re-author it from current main/);
+  assert.ok(!buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix").includes(NEEDS_REPLAN_NOTE));
 });
 
 // The red-main handoff note is the only signal a red main reaches the healer through: the

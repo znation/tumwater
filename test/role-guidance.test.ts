@@ -6,6 +6,7 @@ import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
 import { roleById } from "../src/roles/roles.js";
 import {
   DECOMPOSITION_GUIDANCE,
+  NEEDS_REPLAN_NOTE,
   NEEDS_REVIEW_NOTE,
   PLAN_SIZING,
   searchGuidance,
@@ -125,6 +126,12 @@ test("the Needs review marker is embedded in the feature, plan, and director pro
   assert.ok(oneLine(roleById("feature")!.find).includes(NEEDS_REVIEW_NOTE));
   assert.ok(oneLine(roleById("plan")!.find).includes(NEEDS_REVIEW_NOTE));
   assert.ok(oneLine(buildDirectorPrompt("split plan X", "a project")).includes(NEEDS_REVIEW_NOTE));
+});
+
+test("the Needs replan marker is embedded in the feature, plan, and director prompts", () => {
+  assert.ok(oneLine(roleById("feature")!.find).includes(NEEDS_REPLAN_NOTE));
+  assert.ok(oneLine(roleById("plan")!.find).includes(NEEDS_REPLAN_NOTE));
+  assert.ok(oneLine(buildDirectorPrompt("replan plan X", "a project")).includes(NEEDS_REPLAN_NOTE));
 });
 
 test("the plan role and the director size plans to one implementation run via the shared constant", () => {

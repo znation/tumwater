@@ -93,6 +93,17 @@ export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and
  * clause cannot drift. */
 export const NEEDS_REVIEW_NOTE = `**Needs review <YYYY-MM-DD> by feature: too large for one run**`;
 
+/** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
+ * recognize one (the backlog index's ` [needs replan]` mark) can match on it instead of parsing
+ * the date or the round count out of the full template. */
+export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
+
+/** The markdown note the feature loop appends under a plan whose change was rejected after its
+ * final revision round, carrying the reviewer's objections back to the strong-tier plan loop
+ * instead of letting feature re-author the same plan. Same convention as NEEDS_REVIEW_NOTE: a
+ * note a later fresh tick reads, with no code parsing it. */
+export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds**`;
+
 /** How a role with no backlog (organize, clean, dry, perf, security, robustness, improve)
  * finds its one task, as numbered steps. Written
  * against the observed failure: with nothing to point at, a local model reads the codebase file

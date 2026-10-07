@@ -2,7 +2,7 @@ import path from "node:path";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { Role } from "../roles/roles.js";
-import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../roles/role-guidance.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../roles/role-guidance.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { worktreePath } from "../paths.js";
@@ -73,7 +73,8 @@ export const TEST_RUNNER_RULE = `- Run tests only through the project's declared
 /** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
- * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's <YYYY-MM-DD>, a plan deadline)
+ * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's and NEEDS_REPLAN_NOTE's
+ * <YYYY-MM-DD>, a plan deadline)
  * inferred it from the newest dates in the repo, which were themselves drifting: the fleet
  * stamped entries days into the future and each wrong date seeded the next. The day is
  * todayStamp's — the same local-day computation as the daily cost budget window — and every
@@ -345,8 +346,9 @@ work yourself:
 - A decision about a refused entry (e.g. "clear the refusal on plan X", "reconsider plan Y"):
   clear its **Refused …** note from PLANS.md/BUGS.md — or revise the entry per the user's
   direction — so loops can pick it up again.
-- A decision about a marked plan (e.g. "split plan X", "keep plan X whole"): split it into
-  independently landable sub-plans per PLAN_SIZING, or clear the ${NEEDS_REVIEW_NOTE} note, per
+- A decision about a marked plan (e.g. "split plan X", "keep plan X whole", "replan X"):
+  split it into independently landable sub-plans per PLAN_SIZING, or clear the
+  ${NEEDS_REVIEW_NOTE} note, or clear a ${NEEDS_REPLAN_NOTE} note and rewrite the entry — per
   the user's direction.
 - A request to manage user-defined loops ("add a loop named X that does Y", "remove X",
   "move X before Y"): write the FULL replacement customLoops array to

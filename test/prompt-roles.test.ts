@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { NEEDS_REVIEW_NOTE } from "../src/roles/role-guidance.js";
+import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../src/roles/role-guidance.js";
 import { oneLine } from "./oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
@@ -375,6 +375,7 @@ test("the feature role reads its plan from the injected index, matches the revie
   assert.match(find, /The reviewer checks your diff against the entry's files-touched list and acceptance criteria/);
   assert.match(find, /A plan too large to finish in this run is not split by you/);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "feature embeds the marker");
+  assert.ok(find.includes(NEEDS_REPLAN_NOTE), "feature embeds the replan marker");
   assert.match(find, /append the note .* under its heading, skip it, and implement the next available plan that fits/);
   assert.match(find, /land exactly one plan/);
   assert.match(find, /skip entries already carrying a \*\*Needs review …\*\* note/i);
@@ -403,11 +404,12 @@ test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading
 test("the plan role prioritizes a Needs review plan, clears the note after splitting, and stops while plans wait", () => {
   const find = oneLine(roleById("plan")!.find);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
+  assert.ok(find.includes(NEEDS_REPLAN_NOTE), "plan embeds the replan marker");
   assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently landable sub-plans that cross-reference each other/);
   assert.match(find, /then remove the note/);
   assert.ok(!/refining the weakest/.test(find), "the refine-the-weakest clause is gone");
-  assert.match(find, /two or more plans without a Needs-review note, end with/);
+  assert.match(find, /two or more plans without a Needs-review or Needs-replan note, end with/);
   assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
   assert.match(find, /refined by the feature run that picks it up/);
 });
@@ -416,6 +418,7 @@ test("the director routes a user ruling on a marked plan", () => {
   assert.match(prompt, /A decision about a marked plan/);
   assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
   assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run\*\* note/);
+  assert.match(prompt, /or clear a \*\*Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds\*\* note and rewrite the entry/);
 });
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
   const find = oneLine(roleById("bugfix")!.find);

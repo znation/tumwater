@@ -8,6 +8,7 @@
 import {
   backlogMoveGuidance,
   DECOMPOSITION_GUIDANCE,
+  NEEDS_REPLAN_NOTE,
   NEEDS_REVIEW_NOTE,
   PLAN_SIZING,
   searchGuidance,
@@ -54,7 +55,8 @@ export const ROLES: Role[] = [
       entry's line range; read the one you pick by that range.
    2. Pick one entry under \`## Planned\`, preferring ones marked ready or with a written plan.
       Skip plans whose entry carries a Refused note, and skip entries already carrying a
-      **Needs review …** note. If PLANS.md is empty or everything is done, there is nothing to do.
+      **Needs review …** note or a ${NEEDS_REPLAN_NOTE}. If PLANS.md is empty or everything is
+      done, there is nothing to do.
    3. Read only the chosen entry's line range and the code it names.
    4. A plan too large to finish in this run is not split by you: append the note
       ${NEEDS_REVIEW_NOTE}
@@ -109,9 +111,15 @@ within that budget, there is nothing to do.`,
       - A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
         independently landable sub-plans that cross-reference each other (per PLAN_SIZING below,
         each with its own acceptance criteria), then remove the note. That split is this run's task.
+      - A plan carrying a ${NEEDS_REPLAN_NOTE} note also outranks adding another plan: read the
+        quoted objections and the code they name, then rewrite the plan so an implementation
+        following it would answer them — correcting the approach or the anchors, tightening the
+        acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the objection
+        recorded when it should not be done — and remove both the note and the quoted objections.
       - Otherwise, when PLANS.md \`## Planned\` already holds two or more plans without a
-        Needs-review note, end with ${NOTHING_TO_DO} — feature has work, and a waiting plan is
-        refined by the feature run that picks it up, against the code as it stands then.
+        Needs-review or Needs-replan note, end with ${NOTHING_TO_DO} — feature has work, and a
+        waiting plan is refined by the feature run that picks it up, against the code as it
+        stands then.
    2. Choose ONE unplanned feature or improvement worth doing, guided by the initial prompt in the
       project brief (TUMWATER.md when it exists with the tumwater:prompt markers, else README.md)
       and by what already exists.

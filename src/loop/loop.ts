@@ -685,7 +685,7 @@ export class LoopRunner {
         s.revision = undefined;
         await deleteRef(this.root, rejectedRefName(this.role));
         logEvent(this.root, { loop: this.role, type: "revision", action: "conflict", round, sha });
-        prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] })}`;
+        prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] }, this.role)}`;
         prompt += `\n\nThe rejected diff no longer applies to current main.`;
       }
     }

@@ -1,5 +1,6 @@
 import { shortSha } from "../text/format.js";
 import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
+import { NEEDS_REPLAN_NOTE } from "../roles/role-guidance.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -303,7 +304,7 @@ export function buildRejectedReviewNote(review: {
   /** True when the change already used its last revision round: the rejected diff is gone, so
    * the note must not read as an invitation to revise it again. */
   exhausted?: boolean;
-}): string {
+}, role?: string): string {
   const list = numberedList(review.reasons, NO_REASONS);
   let context = "";
   if (review.at !== undefined) {
@@ -311,9 +312,20 @@ export function buildRejectedReviewNote(review: {
     if (review.head) context += `, head ${shortSha(review.head)}`;
     context += ")";
   }
-  const finality = review.exhausted
-    ? " This was the change's final revision round — the rejected diff and ref are gone, so if the change is still needed, re-author it from current main."
-    : "";
+  // On exhaustion the rejected diff is gone. Feature's rejected change often implemented a
+  // PLANS.md entry, and re-authoring the same plan from scratch is what produced the long
+  // rejection runs this note exists to end, so feature is sent to replan the entry instead.
+  // Every other role keeps the plain re-author sentence. The markdown-only replan note lands
+  // review-exempt, but a landed change clears the standing rejection
+  // (clearSupersededRejection, tick-apply.ts), so the instruction does not re-inject once the
+  // note has landed.
+  let finality = "";
+  if (review.exhausted) {
+    finality =
+      role === "feature"
+        ? ` This was the change's final revision round — the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and land that markdown-only change and nothing else so the plan loop can rewrite the plan. Otherwise, redo the change against current main.`
+        : " This was the change's final revision round — the rejected diff and ref are gone, so if the change is still needed, re-author it from current main.";
+  }
   return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
 }
 

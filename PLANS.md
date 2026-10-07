@@ -135,64 +135,6 @@ plus one with real branches: a pinned change and a main commit that edit the sam
 - **Bound.** A change that conflicts again after one hand-back is discarded with the warning.
 - `npm run test` green.
 
-### Replan a plan whose change used up its review rounds, instead of re-authoring the same plan from scratch (planned 2026-10-07 by operator)
-
-Context: when a change is rejected after its last revision round (`REVISION_LIMIT` = 2,
-src/loop/revision.ts), `recordRejectedChange` (src/landing/landing-core.ts) logs `revision`
-`exhausted`. `buildRejectedReviewNote` (src/gates/gate-prompts.ts) then tells the author to
-"re-author it from current main". The plan text never changes, so the next attempt starts from
-the same plan the reviewer kept objecting to. Over the 14 days before 2026-10-07 this produced
-long rejection runs before a landing:
-- feature: 8 rejections in a row over 66 h (the timed-pause plan, from 09-25);
-- feature: 6 in a row over 4.4 h (ink TUI part 1/3, 10-01);
-- feature: 4 and 3 in a row on four other plans.
-
-Those runs predate revise-rejected. Revisions shorten them, but on exhaustion nothing feeds the
-reviewer's objections back into the plan. The only plan-changing path today is the author's
-**Needs review … too large for one run** note, which the plan loop splits.
-
-**Approach.**
-1. **Note.** In src/roles/role-guidance.ts, add `NEEDS_REPLAN_NOTE =
-   "**Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds**"`. Add it to the
-   date-stamp list in src/prompt/prompt.ts beside `NEEDS_REVIEW_NOTE`.
-2. **Author on exhaustion.** `buildRejectedReviewNote` gains an optional `role`. When
-   `exhausted` is true and the role is `feature`, the finality sentence becomes:
-   - if the rejected change implemented a PLANS.md entry, do not re-author it;
-   - append the `NEEDS_REPLAN_NOTE` under that entry's heading, followed by the reviewer's
-     numbered objections, quoted;
-   - land that markdown-only change and nothing else.
-
-   Pass the role from both call sites, src/tick/tick-prompt.ts and src/loop/loop.ts. Other roles
-   keep today's sentence.
-3. **Feature skips it.** Step 2 of the feature charter (src/roles/role-catalog.ts) skips entries
-   carrying a Needs-replan note, as it skips Needs-review ones.
-4. **Plan loop owns it.** In step 1 of the plan charter, a Needs-replan entry outranks adding a
-   plan, alongside Needs-review. The task:
-   - read the quoted objections and the code they name;
-   - rewrite the plan so an implementation following it would answer them. That can mean
-     correcting the approach or the anchors, tightening the acceptance criteria, splitting the
-     plan per PLAN_SIZING, or refusing the plan with the objection recorded when it should not
-     be done;
-   - then remove the note and the quoted objections.
-
-   The plan loop runs on the strong tier, which is the right seat for this judgment.
-5. **Index.** `renderBacklogIndexBlock` (src/backlog/backlog-structure.ts) marks such an entry
-   ` [needs replan]`, so both loops see it without reading the body.
-
-**Files touched.** src/roles/role-guidance.ts, src/roles/role-catalog.ts,
-src/gates/gate-prompts.ts, src/tick/tick-prompt.ts, src/loop/loop.ts, src/prompt/prompt.ts,
-src/backlog/backlog-structure.ts. Tests: cases in the gate-prompts, tick-prompt,
-role-catalog and backlog-index tests.
-
-**Acceptance criteria.**
-- **Feature, exhausted.** A feature tick whose `lastReview.exhausted` is true gets the
-  replan instruction naming `NEEDS_REPLAN_NOTE`, not "re-author it from current main".
-- **Other roles.** A bugfix or clean tick in the same state gets today's sentence unchanged.
-- **Charters.** The feature charter tells feature to skip Needs-replan entries, and the plan
-  charter ranks them with Needs-review entries above writing a new plan.
-- **Index.** The backlog index marks a Needs-replan entry `[needs replan]`.
-- `npm run test` green.
-
 ### Disk floor, part 3/4: reclaim long-idle worktrees, and a `tumwater reclaim` command (planned 2026-10-06 by operator; requires part 2/4 landed)
 
 Design: plans/disk-floor.md ("Reclaiming build outputs": idle mode and the command).
@@ -802,6 +744,69 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Replan a plan whose change used up its review rounds, instead of re-authoring the same plan from scratch (planned 2026-10-07 by operator; done 2026-10-07 by feature)
+
+Context: when a change is rejected after its last revision round (`REVISION_LIMIT` = 2,
+src/loop/revision.ts), `recordRejectedChange` (src/landing/landing-core.ts) logs `revision`
+`exhausted`. `buildRejectedReviewNote` (src/gates/gate-prompts.ts) then tells the author to
+"re-author it from current main". The plan text never changes, so the next attempt starts from
+the same plan the reviewer kept objecting to. Over the 14 days before 2026-10-07 this produced
+long rejection runs before a landing:
+- feature: 8 rejections in a row over 66 h (the timed-pause plan, from 09-25);
+- feature: 6 in a row over 4.4 h (ink TUI part 1/3, 10-01);
+- feature: 4 and 3 in a row on four other plans.
+
+Those runs predate revise-rejected. Revisions shorten them, but on exhaustion nothing feeds the
+reviewer's objections back into the plan. The only plan-changing path today is the author's
+**Needs review … too large for one run** note, which the plan loop splits.
+
+**Approach.**
+1. **Note.** In src/roles/role-guidance.ts, add `NEEDS_REPLAN_NOTE =
+   "**Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds**"`. Add it to the
+   date-stamp list in src/prompt/prompt.ts beside `NEEDS_REVIEW_NOTE`.
+2. **Author on exhaustion.** `buildRejectedReviewNote` gains an optional `role`. When
+   `exhausted` is true and the role is `feature`, the finality sentence becomes:
+   - if the rejected change implemented a PLANS.md entry, do not re-author it;
+   - append the `NEEDS_REPLAN_NOTE` under that entry's heading, followed by the reviewer's
+     numbered objections, quoted;
+   - land that markdown-only change and nothing else. Its landing is review-exempt, so no
+     verdict is recorded; the landing fold's `clearSupersededRejection`
+     (src/tick/tick-apply.ts, landed 2026-10-07) clears the standing rejection, and a
+     tick-prompt test pins that the instruction does not re-inject once the note lands.
+
+   Pass the role from both call sites, src/tick/tick-prompt.ts and src/loop/loop.ts. Other roles
+   keep today's sentence.
+3. **Feature skips it.** Step 2 of the feature charter (src/roles/role-catalog.ts) skips entries
+   carrying a Needs-replan note, as it skips Needs-review ones.
+4. **Plan loop owns it.** In step 1 of the plan charter, a Needs-replan entry outranks adding a
+   plan, alongside Needs-review. The task:
+   - read the quoted objections and the code they name;
+   - rewrite the plan so an implementation following it would answer them. That can mean
+     correcting the approach or the anchors, tightening the acceptance criteria, splitting the
+     plan per PLAN_SIZING, or refusing the plan with the objection recorded when it should not
+     be done;
+   - then remove the note and the quoted objections.
+
+   The plan loop runs on the strong tier, which is the right seat for this judgment.
+5. **Index.** `renderBacklogIndexBlock` (src/backlog/backlog-structure.ts) marks such an entry
+   ` [needs replan]`, so both loops see it without reading the body.
+
+**Files touched.** src/roles/role-guidance.ts, src/roles/role-catalog.ts,
+src/gates/gate-prompts.ts, src/tick/tick-prompt.ts, src/loop/loop.ts, src/prompt/prompt.ts,
+src/backlog/backlog-structure.ts. Tests: cases in the gate-prompts, tick-prompt,
+role-catalog and backlog-index tests.
+
+**Acceptance criteria.**
+- **Feature, exhausted.** A feature tick whose `lastReview.exhausted` is true gets the
+  replan instruction naming `NEEDS_REPLAN_NOTE`, not "re-author it from current main".
+- **Other roles.** A bugfix or clean tick in the same state gets today's sentence unchanged.
+- **Charters.** The feature charter tells feature to skip Needs-replan entries, and the plan
+  charter ranks them with Needs-review entries above writing a new plan.
+- **Index.** The backlog index marks a Needs-replan entry `[needs replan]`.
+- **Retires.** Once the markdown-only replan note lands, the next feature tick no longer
+  carries the replan instruction.
+- `npm run test` green.
 
 ### Disk floor, part 4/4: show free space, the disk hold and the last reclaim on status, TUI and GUI (planned 2026-10-06 by operator; done 2026-10-07 by feature)
 

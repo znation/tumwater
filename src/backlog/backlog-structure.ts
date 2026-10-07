@@ -5,6 +5,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
+import { NEEDS_REPLAN_PREFIX } from "../roles/role-guidance.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -311,9 +312,18 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
         if (md === null) return null; // Unreadable: nothing to cache for this stat.
         const entries = actionableEntryRanges(md, section);
         if (entries.length === 0) return [];
+        const lines = md.split(/\r?\n/);
         return [
           `${file} ## ${section}`,
-          ...entries.map((e) => `- ${e.start}-${e.end}: ${indexTitle(e.title)}`),
+          // A Needs-replan note rides in the entry body, not the heading; reading the body here
+          // lets the mark reach both loops without either parsing the file. The body slice is
+          // the lines after the heading through the last body line, so the note is found
+          // whether it sits first or last (the heading is at 1-based line e.start).
+          ...entries.map((e) => {
+            const body = lines.slice(e.start, e.end).join("\n");
+            const mark = body.includes(NEEDS_REPLAN_PREFIX) ? " [needs replan]" : "";
+            return `- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}`;
+          }),
         ];
       },
       (v) => v.slice(), // A copy: callers may treat the result as their own.

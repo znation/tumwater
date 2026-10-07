@@ -10,6 +10,7 @@ import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.
 import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { applyLandingOutcome } from "../src/tick/tick-apply.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs
@@ -287,6 +288,43 @@ test("a rejected review rides along on the next tick's prompt, reasons intact", 
   });
   assert.ok(result);
   assert.match(result.prompt, /the test lies about coverage/);
+});
+
+test("an exhausted feature rejection carries the replan instruction on the next tick", () => {
+  const result = assembleTickPrompt({
+    root: root(),
+    config: defaultConfig(),
+    role: "feature",
+    state: state({ lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true } }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /Needs replan/);
+  assert.match(result.prompt, /do not re-author it/);
+});
+
+// Feature is told to land a markdown-only Needs-replan note when a change exhausts its revision
+// rounds. That landing is review-exempt, so it records no verdict; the landing fold clears the
+// standing rejection instead (clearSupersededRejection, tick-apply.ts). This pins that the
+// instruction retires after the note lands rather than re-injecting and letting feature re-mark
+// an entry the plan loop has already replanned.
+test("the exhausted-feature replan instruction retires once the markdown-only note lands", () => {
+  const dir = root();
+  const s = state({
+    role: "feature",
+    lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true },
+  });
+  const before = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "feature", state: s });
+  assert.ok(before);
+  // The feature charter itself names "Needs replan", so the note is recognized by its
+  // exhausted-rejection sentence, not the bare phrase.
+  assert.match(before.prompt, /do not re-author it/);
+  // The markdown-only replan note lands review-exempt: no model verdict is recorded, only the
+  // landing fold fires.
+  applyLandingOutcome(s, "changed", { sha: "a".repeat(40), summary: "marked plan X for replan" });
+  const after = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "feature", state: s });
+  assert.ok(after);
+  assert.doesNotMatch(after.prompt, /do not re-author it/);
+  assert.doesNotMatch(after.prompt, /rejected in review/);
 });
 
 // The note must carry the rejection's timestamp and head: an undated verdict rides every later
