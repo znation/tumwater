@@ -73,6 +73,14 @@ export function assertClean(dir: string, message?: string): void {
   else assert.equal(status, "", message);
 }
 
+/** Assert a worktree has no merge or rebase left in progress and is back on its committed
+ * branch state — the landing tests' shared "settled" assertion (landing-git and landing-merge
+ * each declared their own copy of this wrapper). The message names the rebase so a
+ * mid-conflict leftover is not mistaken for a stray edit. */
+export function assertWorktreeSettled(wt: string): void {
+  assertClean(wt, "worktree clean, no rebase in progress");
+}
+
 /** A scratch bin dir whose only entry is a symlink to the real git: a restricted PATH that
  * keeps git working (repo checks, landing, the worktree helpers) while dropping every other
  * binary — pi, npm — so a test can isolate exactly one missing tool. Tests that need the dir

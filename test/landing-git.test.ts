@@ -10,7 +10,7 @@ import {
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing/landing-git.js";
-import { assertClean, commitIn, initializedWorktree, sh } from "./repo-fixtures.js";
+import { assertWorktreeSettled, commitIn, initializedWorktree, sh } from "./repo-fixtures.js";
 
 // Behavioral coverage for the landing flow's git plumbing (landing-git.ts). The export pin in
 // landing-merge.test.ts only checks that these helpers exist; these tests drive real rebases,
@@ -27,11 +27,6 @@ async function conflictingSetup(): Promise<{ root: string; wt: string }> {
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch line\n");
   commitIn(wt, "branch edit");
   return { root, wt };
-}
-
-/** No merge or rebase left in progress and the worktree back on its committed branch state. */
-function assertWorktreeSettled(wt: string): void {
-  assertClean(wt, "worktree clean, no rebase in progress");
 }
 
 test("conflictedFiles is empty on a clean worktree", async () => {
