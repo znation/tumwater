@@ -4,7 +4,14 @@ import type { LoopRunner } from "../loop/loop.js";
 import { logEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
-import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath, STATE_DIR } from "../paths.js";
+import {
+  abortRequestPath,
+  reclaimRequestPath,
+  resetRequestPath,
+  restartRequestPath,
+  wakeRequestPath,
+  STATE_DIR,
+} from "../paths.js";
 
 /** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The
  * orchestrator's `InFlightLanding` carries exactly these plus its `promise`, and the vetting
@@ -93,6 +100,17 @@ export function consumeRestartRequest(root: string, redeployer: { forceRestart()
   const markerFile = restartRequestPath(root);
   if (!fs.existsSync(markerFile)) return;
   redeployer?.forceRestart();
+  removeQuiet(markerFile);
+}
+
+/** Consume a pending manual reclaim request from `tumwater reclaim` (plans/disk-floor.md, part
+ * 3/4), if any: arm one background pass over every candidate on the controller — the same
+ * single-flight runner as pressure and idle reclaim — then remove the marker. With no
+ * controller (a fleet that predates the feature) the marker is still cleaned up. */
+export function consumeReclaimRequest(root: string, reclaim: { requestManual(): void } | null | undefined): void {
+  const markerFile = reclaimRequestPath(root);
+  if (!fs.existsSync(markerFile)) return;
+  reclaim?.requestManual();
   removeQuiet(markerFile);
 }
 

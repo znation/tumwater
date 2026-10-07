@@ -654,6 +654,16 @@ test("diskReclaimGB accepts 0 or a number at least diskHoldGB and rejects a lowe
   );
 });
 
+test("worktreeIdleReclaimHours accepts 0 or a positive number and rejects a negative one", () => {
+  // plans/disk-floor.md part 3/4: 0 disables idle reclaim; a negative value is meaningless.
+  assert.equal(validateConfig({ ...defaultConfig(), worktreeIdleReclaimHours: 0 }), undefined);
+  assert.equal(validateConfig({ ...defaultConfig(), worktreeIdleReclaimHours: 24 }), undefined);
+  assert.match(
+    validationError({ ...defaultConfig(), worktreeIdleReclaimHours: -1 }),
+    /worktreeIdleReclaimHours must be a number of 0 or more \(got -1\)/,
+  );
+});
+
 test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INTEGER", () => {
   // BUGS.md 2026-10-02: 1e24 is finite, so the old NON_NEGATIVE_OR_DISABLED rule admitted
   // it, and `config set`/the GUI's /api/config-set wrote an effectively uncapped budget

@@ -79,46 +79,6 @@ plus one with real branches: a pinned change and a main commit that edit the sam
 - **Bound.** A change that conflicts again after one hand-back is discarded with the warning.
 - `npm run test` green.
 
-### Disk floor, part 3/4: reclaim long-idle worktrees, and a `tumwater reclaim` command (planned 2026-10-06 by operator; requires part 2/4 landed)
-
-Design: plans/disk-floor.md ("Reclaiming build outputs": idle mode and the command).
-
-**Goal.** Reclaim worktrees that have been unused for a day even when the disk is not low.
-Those are worktrees of paused, retired, disabled or rarely due roles, and lander worktrees of
-roles that seldom land. Also give the operator a manual reclaim.
-
-**Approach.**
-1. **Idle mode.** `reclaimPass(root, "idle", …)` in src/fleet/reclaim.ts cleans each
-   candidate unused for `worktreeIdleReclaimHours` or longer, unless its `reclaimedAt` is
-   already later than its `lastUsedAt`. It never cleans a resume-pending role's worktree.
-2. **Scheduling.** The orchestrator runs an idle pass at most hourly, on the same single-flight
-   background runner as pressure passes.
-3. **Config.** Add `worktreeIdleReclaimHours`, default 24, where 0 disables idle mode. It
-   touches the same spots as part 1/4.
-4. **Command.** Add `tumwater reclaim [--dry-run]`:
-   - **Fleet running:** drop `.tumwater/reclaim.json`, through a new `reclaimRequestPath(root)`
-     in src/paths.ts. The orchestrator consumes it like the wake marker and runs one
-     `"manual"` pass over every candidate.
-   - **No fleet:** run the manual pass in-process.
-   - **`--dry-run`:** print each candidate with its idle age and the number of paths
-     `git clean -ndX` lists, and clean nothing.
-   - Wiring goes in src/cli/cli-marker-commands.ts, and help text in src/cli/help.ts.
-
-**Files touched.** src/fleet/reclaim.ts, src/orchestrator/orchestrator.ts, src/paths.ts,
-src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
-src/cli/cli-marker-commands.ts, src/cli/help.ts, docs/how-it-works.md. Tests: cases in
-test/reclaim.test.ts, plus config and CLI cases.
-
-**Acceptance criteria.**
-- **Idle mode.** A worktree idle 25 h is cleaned once, and skipped on the next pass. It is
-  cleaned again only after a new use followed by 24 h idle. A resume-pending worktree is never
-  cleaned in idle mode.
-- **Off.** `worktreeIdleReclaimHours: 0` never runs idle passes.
-- **Command.** `tumwater reclaim --dry-run` cleans nothing and lists the candidates.
-  `tumwater reclaim` with a running fleet results in one `disk_reclaim` with mode `manual`.
-  With no fleet running, it cleans directly.
-- `npm run test` green.
-
 ### Worktree pool, part 2/5: landing vets lease pooled slot worktrees; merges use one `_merge` checkout (planned 2026-10-06 by operator; requires Disk floor 2/4 and Worktree pool 1/5 landed)
 
 Design: plans/worktree-pool.md ("Rejected", "Layout", "Config", "Leases", "Vets and merges").
@@ -646,6 +606,46 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Disk floor, part 3/4: reclaim long-idle worktrees, and a `tumwater reclaim` command (planned 2026-10-06 by operator; requires part 2/4 landed; done 2026-10-07 by feature)
+
+Design: plans/disk-floor.md ("Reclaiming build outputs": idle mode and the command).
+
+**Goal.** Reclaim worktrees that have been unused for a day even when the disk is not low.
+Those are worktrees of paused, retired, disabled or rarely due roles, and lander worktrees of
+roles that seldom land. Also give the operator a manual reclaim.
+
+**Approach.**
+1. **Idle mode.** `reclaimPass(root, "idle", …)` in src/fleet/reclaim.ts cleans each
+   candidate unused for `worktreeIdleReclaimHours` or longer, unless its `reclaimedAt` is
+   already later than its `lastUsedAt`. It never cleans a resume-pending role's worktree.
+2. **Scheduling.** The orchestrator runs an idle pass at most hourly, on the same single-flight
+   background runner as pressure passes.
+3. **Config.** Add `worktreeIdleReclaimHours`, default 24, where 0 disables idle mode. It
+   touches the same spots as part 1/4.
+4. **Command.** Add `tumwater reclaim [--dry-run]`:
+   - **Fleet running:** drop `.tumwater/reclaim.json`, through a new `reclaimRequestPath(root)`
+     in src/paths.ts. The orchestrator consumes it like the wake marker and runs one
+     `"manual"` pass over every candidate.
+   - **No fleet:** run the manual pass in-process.
+   - **`--dry-run`:** print each candidate with its idle age and the number of paths
+     `git clean -ndX` lists, and clean nothing.
+   - Wiring goes in src/cli/cli-marker-commands.ts, and help text in src/cli/help.ts.
+
+**Files touched.** src/fleet/reclaim.ts, src/orchestrator/orchestrator.ts, src/paths.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
+src/cli/cli-marker-commands.ts, src/cli/help.ts, docs/how-it-works.md. Tests: cases in
+test/reclaim.test.ts, plus config and CLI cases.
+
+**Acceptance criteria.**
+- **Idle mode.** A worktree idle 25 h is cleaned once, and skipped on the next pass. It is
+  cleaned again only after a new use followed by 24 h idle. A resume-pending worktree is never
+  cleaned in idle mode.
+- **Off.** `worktreeIdleReclaimHours: 0` never runs idle passes.
+- **Command.** `tumwater reclaim --dry-run` cleans nothing and lists the candidates.
+  `tumwater reclaim` with a running fleet results in one `disk_reclaim` with mode `manual`.
+  With no fleet running, it cleans directly.
+- `npm run test` green.
 
 ### Parallel work instances, part 3/7: insert-only conflicts in PLANS.md, BUGS.md and QUESTIONS.md resolve without a model run (planned 2026-10-07 by operator; done 2026-10-07 by feature)
 

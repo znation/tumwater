@@ -234,6 +234,10 @@ export const JSON_FLAG: FlagSpec = { names: ["--json"] };
  * vocabulary cannot drift from the command body's `args.includes("--force")`. */
 export const FORCE_FLAG: FlagSpec = { names: ["--force"] };
 
+/** The `--dry-run` flag spec: preview a reclaim pass without deleting anything. Beside
+ * FORCE_FLAG so its spelling lives with the other boolean flags the gate admits. */
+export const DRY_RUN_FLAG: FlagSpec = { names: ["--dry-run"] };
+
 /** The `--last` flag spec for `tumwater tick <role> --last`: one definition of the flag's
  * spelling, beside JSON_FLAG, so tick's gate and cmdTick's arity guards cannot disagree on
  * what the command admits. Like --json it takes no value and needs no wording — the

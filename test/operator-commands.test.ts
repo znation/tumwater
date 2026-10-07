@@ -4,9 +4,11 @@ import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import {
   cmdAbort,
   cmdPause,
+  cmdReclaim,
   cmdResetCounters,
   cmdResume,
   cmdStop,
@@ -16,7 +18,7 @@ import {
 import { pidAlive } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { PAUSE_REASON_MAX } from "../src/fleet/fleet-state.js";
-import { writeJsonFile } from "../src/files/json-files.js";
+import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
 import {
@@ -28,10 +30,12 @@ import {
   abortRequestPath,
   pausedPath,
   pausedRolesPath,
+  reclaimRequestPath,
   resetRequestPath,
   wakeRequestPath,
+  worktreeUsePath,
 } from "../src/paths.js";
-import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir, worktreeAt, writeMalformedJson } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
@@ -544,4 +548,43 @@ test("signalOrchestrator reads a vanished pid as gone, never throwing", () => {
   // A pid beyond any pid space (Linux caps pids at 2^22, macOS at 99999): the signal finds
   // nothing and the ESRCH mapping answers "gone" — the caller reports the goal as met.
   assert.equal(signalOrchestrator(999_999_999), "gone");
+});
+
+/** A registered worktree with a committed .gitignore and one ignored build artifact. */
+function seedReclaimWorktree(root: string): string {
+  const wt = worktreeAt(root, "feature");
+  fs.writeFileSync(path.join(wt, ".gitignore"), "build/\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "ignore build output");
+  fs.mkdirSync(path.join(wt, "build"));
+  fs.writeFileSync(path.join(wt, "build", "out.bin"), "artifact\n");
+  // Register it so reclaimCandidates does not exclude it as used-at-first-sight.
+  writeJsonAtomic(worktreeUsePath(root), { feature: { lastUsedAt: 1 } });
+  return wt;
+}
+
+test("cmdReclaim with no fleet cleans ignored files in-process", async () => {
+  const root = makeRepo();
+  const wt = seedReclaimWorktree(root);
+  const { stdout } = await expectOk(() => cmdReclaim(root, []));
+  assert.match(stdout, /reclaimed feature/);
+  assert.equal(fs.existsSync(path.join(wt, "build")), false);
+});
+
+test("cmdReclaim --dry-run lists candidates and deletes nothing", async () => {
+  const root = makeRepo();
+  const wt = seedReclaimWorktree(root);
+  const { stdout } = await expectOk(() => cmdReclaim(root, ["--dry-run"]));
+  assert.match(stdout, /feature: idle [\d.]+h, 1 ignored path/);
+  assert.equal(fs.existsSync(path.join(wt, "build")), true);
+});
+
+test("cmdReclaim with a live fleet drops the reclaim marker instead of cleaning", async () => {
+  const root = makeRepo();
+  const wt = seedReclaimWorktree(root);
+  markLive(root);
+  const { stdout } = await expectOk(() => cmdReclaim(root, []));
+  assert.match(stdout, /reclaim requested/);
+  assert.equal(fs.existsSync(reclaimRequestPath(root)), true);
+  assert.equal(fs.existsSync(path.join(wt, "build")), true, "the running fleet does the cleaning");
 });

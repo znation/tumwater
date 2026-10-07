@@ -181,6 +181,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // engaged. Both fields' own type checks report non-numbers above, so this rebukes only a
   // valid number pair.
   checkNumber(r, "", "diskReclaimGB", NON_NEGATIVE);
+  // Idle reclaim (plans/disk-floor.md, part 3/4): 0 disables it, so only a negative value or a
+  // non-number is a problem.
+  checkNumber(r, "", "worktreeIdleReclaimHours", NON_NEGATIVE);
   if (
     typeof r.diskHoldGB === "number" &&
     typeof r.diskReclaimGB === "number" &&

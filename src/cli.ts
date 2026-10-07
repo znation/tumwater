@@ -249,15 +249,16 @@ async function main(): Promise<void> {
       await cmdPrompt(root, args);
       break;
     case "reset-counters":
-    // Fall through: the five marker commands share one guard+dispatch shape — unknown-args
-    // rejection against the optional --role flag, the ready-repo gate, then the
-    // operator-commands core — so runMarkerCommand holds it once instead of five copies
-    // drifting. The case labels above are exactly MarkerCommand's members, which is what
+    // Fall through: the six marker commands share one guard+dispatch shape — unknown-args
+    // rejection against the command's flag set, the ready-repo gate, then the
+    // operator-commands core — so runMarkerCommand holds it once instead of six copies
+    // drifting. The case labels here are exactly MarkerCommand's members, which is what
     // makes the cast below exhaustive.
     case "wake":
     case "abort":
     case "pause":
-    case "resume": {
+    case "resume":
+    case "reclaim": {
       await runMarkerCommand(root, command as MarkerCommand, args);
       break;
     }

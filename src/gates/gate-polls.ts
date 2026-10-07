@@ -311,6 +311,10 @@ export function pollFleetGates(
   // controller starts one pass per drop, so a settled pass lets the hold engage rather than
   // starting another pass forever.
   const waitForReclaim = ctx.reclaim?.poll(freeBytes, liveConfig.diskReclaimGB) ?? false;
+  // Idle reclaim (plans/disk-floor.md, part 3/4): at most hourly, delete the build outputs of
+  // worktrees unused for `worktreeIdleReclaimHours` whatever the free space. On the same
+  // single-flight runner as pressure reclaim, so the two never overlap.
+  ctx.reclaim?.pollIdle(liveConfig.worktreeIdleReclaimHours);
   const diskHeld = pollDiskGate(
     root,
     freeBytes,

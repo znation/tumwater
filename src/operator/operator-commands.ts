@@ -17,11 +17,13 @@ import {
   resumeRole,
 } from "../fleet/fleet-state.js";
 import { pidAlive } from "../process/process.js";
+import { inspectReclaimCandidates, reclaimPass } from "../fleet/reclaim.js";
 import {
   markerApplyNote,
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
   requestAbort,
+  requestReclaim,
   requestResetCounters,
   requestWake,
   rolePauseMessage,
@@ -92,6 +94,44 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   // marker's deadline and its "wakes in" phrase, so no tick between two reads can reword
   // "45m" as "2699999ms".
   say(requestWake(root, targetRoles(root, args), inMs));
+}
+
+/** `tumwater reclaim [--dry-run]`: run one manual reclaim pass over every harness worktree
+ * (plans/disk-floor.md, part 3/4). `--dry-run` lists each candidate with its idle age and how
+ * many ignored paths `git clean -ndX` would remove, and cleans nothing. With a live fleet the
+ * pass is requested through the marker the orchestrator consumes, so in-use worktrees are
+ * respected; with none running it runs in-process, since nothing is in use. */
+export async function cmdReclaim(root: string, args: string[]): Promise<void> {
+  const dryRun = args.includes("--dry-run");
+  const idleHours = loadConfig(root).worktreeIdleReclaimHours;
+  if (dryRun) {
+    const candidates = await inspectReclaimCandidates(root, idleHours);
+    if (candidates.length === 0) {
+      say("nothing to reclaim — no reclaimable worktrees");
+      return;
+    }
+    for (const c of candidates) {
+      const notes = [
+        `idle ${c.idleHours.toFixed(1)}h`,
+        `${c.paths} ignored path${c.paths === 1 ? "" : "s"}`,
+        ...(c.resumePending ? ["resume pending"] : []),
+        ...(c.reclaimable ? [] : ["not idle-reclaimable"]),
+      ];
+      say(`${c.name}: ${notes.join(", ")}`);
+    }
+    return;
+  }
+  const { live } = markerApplyNote(root);
+  if (live) {
+    say(requestReclaim(root));
+    return;
+  }
+  const result = await reclaimPass(root, "manual", { reclaimGB: 0 });
+  if (!result) {
+    say("nothing to reclaim");
+    return;
+  }
+  say(`reclaimed ${result.worktrees.join(", ")} — freed ${result.freedGB.toFixed(1)} GB`);
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot

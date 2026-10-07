@@ -25,6 +25,7 @@ import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
 import {
   consumeAbortRequests,
+  consumeReclaimRequest,
   consumeRestartRequest,
   consumeResetRequest,
   consumeWakeRequest,
@@ -284,6 +285,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       consumeResetRequest(root, runners);
       consumeWakeRequest(root, runners);
       consumeRestartRequest(root, redeploy);
+      consumeReclaimRequest(root, reclaim);
       consumeAbortRequests(root, runners, abortableLandings(landings));
       await settleAbortedVetted(root, landings);
 

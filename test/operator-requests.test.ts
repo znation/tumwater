@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   consumeAbortRequests,
+  consumeReclaimRequest,
   consumeResetRequest,
   consumeWakeRequest,
   type AbortableLanding,
@@ -11,6 +12,7 @@ import {
 import { readEvents } from "../src/events/event-read.js";
 import {
   abortRequestPath,
+  reclaimRequestPath,
   resetRequestPath,
   wakeRequestPath,
   STATE_DIR,
@@ -254,4 +256,29 @@ test("consumeAbortRequests ignores non-abort files in the state directory", () =
   consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(readEvents(root).length, 0);
+});
+
+test("consumeReclaimRequest arms one manual pass and removes the marker", () => {
+  const root = tmpdir();
+  const marker = reclaimRequestPath(root);
+  writeMarker(marker, { at: 1 });
+  let manual = 0;
+  consumeReclaimRequest(root, {
+    requestManual() {
+      manual++;
+    },
+  });
+  assert.equal(manual, 1);
+  assert.equal(fs.existsSync(marker), false, "the marker is consumed");
+});
+
+test("consumeReclaimRequest with no marker changes nothing", () => {
+  const root = tmpdir();
+  let manual = 0;
+  consumeReclaimRequest(root, {
+    requestManual() {
+      manual++;
+    },
+  });
+  assert.equal(manual, 0);
 });

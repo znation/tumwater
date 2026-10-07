@@ -127,6 +127,14 @@ export function restartRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "restart.json");
 }
 
+/** Marker file `tumwater reclaim` drops for a running fleet to consume: presence means "run
+ * one manual reclaim pass over every candidate." Like the restart marker, presence is the
+ * request and the content is just `{ at }` — one untyped flag. A fleet that is not running
+ * cannot consume it, so `cmdReclaim` runs the pass in-process instead. */
+export function reclaimRequestPath(root: string): string {
+  return path.join(tumwaterDir(root), "reclaim.json");
+}
+
 /** Per-role marker file `tumwater abort --role <id>` drops for a running fleet to consume:
  * kill that loop's in-flight tick. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared

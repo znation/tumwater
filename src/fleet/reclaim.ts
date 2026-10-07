@@ -29,6 +29,8 @@ import {
  * ordinary candidates — their wrapped runs mark them in use exactly like a role tick. */
 const RESERVED_WORKTREES = new Set(["_main", "_build"]);
 
+const HOUR_MS = 60 * 60 * 1000;
+
 /** A worktree the registry has never seen counts as used at first sight: seeding it with
  * `lastUsedAt = now` and excluding it from this pass means an upgrade under pressure does not
  * sweep every warm build at once. The next pass sees it in the registry and may reclaim it
@@ -39,6 +41,9 @@ interface ReclaimCandidate {
   /** The worktree's basename, as the durable registry and the event name it. */
   name: string;
   lastUsedAt: number;
+  /** The last time a reclaim pass cleaned this worktree; absent until one has. Idle reclaim
+   * skips a worktree already reclaimed since its last use (part 3/4). */
+  reclaimedAt?: number;
   /** A role whose loop state has a pending resume; cleaned last. */
   resumePending: boolean;
 }
@@ -73,6 +78,7 @@ export function reclaimCandidates(root: string, now = Date.now()): ReclaimCandid
       dir: wt,
       name,
       lastUsedAt: record.lastUsedAt,
+      ...(typeof record.reclaimedAt === "number" ? { reclaimedAt: record.reclaimedAt } : {}),
       resumePending: loadLoopState(root, name).resumePending === true,
     });
   }
@@ -86,6 +92,15 @@ export function reclaimCandidates(root: string, now = Date.now()): ReclaimCandid
     return a.lastUsedAt - b.lastUsedAt;
   });
   return candidates;
+}
+
+/** True when idle reclaim may clean this candidate: unused for `idleHours` or longer, not
+ * cleaned since that last use, and not holding a pending resume. `idleHours` 0 disables idle
+ * mode outright. Shared by `reclaimPass` (idle mode) and `inspectReclaimCandidates`. */
+function isIdleExpired(candidate: ReclaimCandidate, idleHours: number, now: number): boolean {
+  if (idleHours <= 0 || candidate.resumePending) return false;
+  if (now - candidate.lastUsedAt < idleHours * HOUR_MS) return false;
+  return (candidate.reclaimedAt ?? 0) < candidate.lastUsedAt;
 }
 
 /** True when `dir` is a linked worktree and not the primary checkout: `git rev-parse --git-dir`
@@ -142,15 +157,24 @@ interface ReclaimPassResult {
 export async function reclaimPass(
   root: string,
   mode: "pressure" | "idle" | "manual",
-  opts: { reclaimGB: number; sample?: (root: string) => number | null; candidates?: readonly ReclaimCandidate[] },
+  opts: {
+    reclaimGB: number;
+    /** Idle mode only: clean a candidate once it has been unused this many hours. 0 disables
+     * idle mode, so the pass cleans nothing (part 3/4). */
+    idleHours?: number;
+    sample?: (root: string) => number | null;
+    candidates?: readonly ReclaimCandidate[];
+  },
 ): Promise<ReclaimPassResult | null> {
   const sample = opts.sample ?? sampleFreeBytes;
   const candidates = opts.candidates ?? reclaimCandidates(root);
-  const before = sample(root);
   const startedAt = Date.now();
+  const before = sample(root);
   const cleaned: string[] = [];
   for (const candidate of candidates) {
-    if (mode !== "idle") {
+    if (mode === "idle") {
+      if (!isIdleExpired(candidate, opts.idleHours ?? 0, startedAt)) continue;
+    } else {
       const free = sample(root);
       if (free !== null && opts.reclaimGB > 0 && free >= opts.reclaimGB * BYTES_PER_GB) break;
     }
@@ -184,6 +208,46 @@ export async function reclaimPass(
   return result;
 }
 
+/** One candidate as `tumwater reclaim --dry-run` reports it: its idle age in hours, how many
+ * paths `git clean -ndX` would remove, and whether idle mode would clean it right now. */
+interface ReclaimInspection {
+  name: string;
+  dir: string;
+  idleHours: number;
+  paths: number;
+  resumePending: boolean;
+  reclaimable: boolean;
+}
+
+/** Dry run: every reclaim candidate with its idle age and what `git clean -ndX` would remove,
+ * so `tumwater reclaim --dry-run` lists candidates without deleting. Uses the same candidate
+ * list (in-use and reserved worktrees excluded) and the idle-mode rule at `idleHours`. */
+export async function inspectReclaimCandidates(
+  root: string,
+  idleHours: number,
+  now = Date.now(),
+): Promise<ReclaimInspection[]> {
+  const out: ReclaimInspection[] = [];
+  for (const candidate of reclaimCandidates(root, now)) {
+    let paths = 0;
+    try {
+      const listing = await git(candidate.dir, "clean", "-ndX");
+      paths = listing.split("\n").filter((line) => line.startsWith("Would remove ")).length;
+    } catch {
+      // A candidate that stopped being a worktree lists nothing; the real pass would skip it.
+    }
+    out.push({
+      name: candidate.name,
+      dir: candidate.dir,
+      idleHours: Math.max(0, (now - candidate.lastUsedAt) / HOUR_MS),
+      paths,
+      resumePending: candidate.resumePending,
+      reclaimable: isIdleExpired(candidate, idleHours, now),
+    });
+  }
+  return out;
+}
+
 /** Starts pressure passes and tells the disk hold whether to wait for one. One pass at a time,
  * never awaited by the poll — a clean that deletes 100k files can take a minute, the same
  * reason `launchServicesWatch.poll()` is never awaited.
@@ -198,6 +262,8 @@ export class ReclaimController {
   private wasLow = false;
   /** True once the armed pass has settled while still below `reclaimGB`. */
   private settled = false;
+  /** The last time an idle pass was armed, so idle reclaim runs at most hourly (part 3/4). */
+  private lastIdleAt = 0;
   /** The most recent pressure pass that cleaned at least one worktree, for the published
    * disk status (plans/disk-floor.md, part 4/4). null until one runs. */
   lastReclaim: { at: number; mode: "pressure" | "idle" | "manual"; freedGB: number } | null = null;
@@ -241,6 +307,51 @@ export class ReclaimController {
     } finally {
       this.active = null;
       this.settled = true;
+    }
+  }
+
+  /** Arm one idle pass at most hourly, on the shared single-flight runner. `idleHours` 0
+   * (disabled) never runs one; a pass already in flight defers this arm to a later poll, so
+   * the throttle window starts when the pass is armed, not when it settles. */
+  pollIdle(idleHours: number): void {
+    if (idleHours <= 0 || this.active) return;
+    const now = Date.now();
+    if (now - this.lastIdleAt < HOUR_MS) return;
+    this.lastIdleAt = now;
+    this.active = this.runIdle(idleHours);
+  }
+
+  private async runIdle(idleHours: number): Promise<void> {
+    try {
+      const result = await reclaimPass(this.root, "idle", {
+        reclaimGB: 0,
+        idleHours,
+        sample: this.sample,
+      });
+      if (result) this.lastReclaim = { at: Date.now(), mode: "idle", freedGB: result.freedGB };
+    } catch {
+      // Reclaim is opportunistic; it must never crash the orchestrator's poll loop.
+    } finally {
+      this.active = null;
+    }
+  }
+
+  /** Arm one manual pass over every candidate for `tumwater reclaim`. Single-flight with the
+   * pressure and idle passes: a request while another pass runs is dropped (the operator can
+   * re-request). */
+  requestManual(): void {
+    if (this.active) return;
+    this.active = this.runManual();
+  }
+
+  private async runManual(): Promise<void> {
+    try {
+      const result = await reclaimPass(this.root, "manual", { reclaimGB: 0, sample: this.sample });
+      if (result) this.lastReclaim = { at: Date.now(), mode: "manual", freedGB: result.freedGB };
+    } catch {
+      // Reclaim is opportunistic; it must never crash the orchestrator's poll loop.
+    } finally {
+      this.active = null;
     }
   }
 }

@@ -7,7 +7,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
-import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
+import { abortRequestPath, reclaimRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that
  * writes one (the `cmd*` CLI commands in src/operator/operator-commands.ts, the dashboard's POST
@@ -125,6 +125,17 @@ export function requestRestart(root: string): RequestResult {
     `restart requested — ${applyClause(live, when, "applies it")}` +
     (live ? " (the restart cooldown is waived; a blocked restart still blocks)" : "");
   return { ok: true, message };
+}
+
+/** The marker-writing core of `tumwater reclaim` (plans/disk-floor.md, part 3/4): drop the
+ * marker a running orchestrator consumes within one poll and run one manual pass over every
+ * candidate, in-use worktrees respected. Returns the confirmation the CLI prints. A caller
+ * with no live fleet must run the pass in-process instead (cmdReclaim), because nothing would
+ * consume the marker. */
+export function requestReclaim(root: string): string {
+  writeJsonAtomic(reclaimRequestPath(root), { at: Date.now() });
+  const { live, when } = markerApplyNote(root);
+  return `reclaim requested — ${applyClause(live, when, "reclaims idle worktrees")}`;
 }
 
 /** Queue a prompt for one loop and wake that loop — the one workflow `tumwater prompt

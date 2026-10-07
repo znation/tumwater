@@ -156,6 +156,13 @@ discards a role's in-flight landing.
   the pass to settle, and with `diskReclaimGB` 0 it engages immediately. It must be at least
   `diskHoldGB` unless it is 0. `tumwater doctor` warns between the hold floor and this
   threshold.
+- `worktreeIdleReclaimHours` (default 24; 0 disables) is how long a worktree may sit unused
+  before an hourly idle pass deletes its gitignored build outputs whatever the free space,
+  catching paused, retired, and rarely due roles. A worktree already reclaimed since its last
+  use is skipped, and one with a pending resume is never idle-reclaimed. `tumwater reclaim`
+  runs one manual pass over every candidate: with a live fleet it drops a marker the
+  orchestrator consumes within a poll, and with none running it cleans in-process; `--dry-run`
+  lists each candidate with its idle age and ignored-path count and cleans nothing.
 - `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not

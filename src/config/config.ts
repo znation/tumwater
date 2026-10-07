@@ -91,6 +91,11 @@ export function defaultConfig(): ResolvedModelConfig {
     // pass deletes gitignored build outputs from idle worktrees before the 10 GB hold engages.
     // 40 GB leaves room for a build-heavy fleet to keep working; 0 disables reclaim.
     diskReclaimGB: 40,
+    // Idle reclaim (plans/disk-floor.md, part 3/4): an hourly background pass deletes a
+    // worktree's gitignored build outputs once it has been unused for this many hours,
+    // whatever the free space. A day catches paused, retired and rarely due roles without
+    // sweeping a worktree that merely slept through the night. 0 disables idle reclaim.
+    worktreeIdleReclaimHours: 24,
     // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop/loop.ts): the
     // absolute turn count alone measures model speed, so a fast model's ordinary 40+ turn /
     // few-minute tick stays unflagged, while a genuinely hard tick that burned 40+ turns over

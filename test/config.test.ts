@@ -152,6 +152,8 @@ test("defaultConfig carries the disk floor and validation guards it", () => {
   assert.equal(defaultConfig().diskHoldGB, 10);
   // Part 2/4: pressure reclaim defaults to 40 GB and must sit at or above the hold floor.
   assert.equal(defaultConfig().diskReclaimGB, 40);
+  // Part 3/4: idle reclaim defaults to 24 hours; 0 disables it.
+  assert.equal(defaultConfig().worktreeIdleReclaimHours, 24);
   assert.doesNotThrow(() => validateConfig({ diskHoldGB: 0 }));
   for (const bad of [-1, "10", null]) {
     assert.match(
@@ -168,6 +170,7 @@ test("defaultConfig carries the disk floor and validation guards it", () => {
   writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfig(dir).diskHoldGB, 10);
   assert.equal(loadConfig(dir).diskReclaimGB, 40);
+  assert.equal(loadConfig(dir).worktreeIdleReclaimHours, 24);
 });
 
 test("loadConfig without a file returns defaults", () => {

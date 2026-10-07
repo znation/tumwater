@@ -10,6 +10,7 @@ import path from "node:path";
 
 import {
   ReclaimController,
+  inspectReclaimCandidates,
   isLinkedWorktree,
   reclaimCandidates,
   reclaimPass,
@@ -186,4 +187,90 @@ test("ReclaimController runs one pass per drop, then lets the disk hold engage",
   assert.equal(controller.poll(low, 40), false, "settled while still low: the hold may engage");
   assert.equal(fs.existsSync(path.join(wt, "build")), false, "the pass cleaned the worktree");
   assert.equal(controller.poll(low, 0), false, "0 disables pressure reclaim: never wait");
+});
+
+test("reclaimPass idle mode cleans only worktrees unused past the threshold", async () => {
+  const root = makeRepo();
+  const stale = worktreeAt(root, "feature");
+  const recent = worktreeAt(root, "bugfix");
+  const pending = worktreeAt(root, "cleanup");
+  const already = worktreeAt(root, "docs");
+  for (const wt of [stale, recent, pending, already]) seedWorktree(wt);
+  const now = Date.now();
+  const hour = 3600_000;
+  const candidates = [
+    { dir: stale, name: "feature", lastUsedAt: now - 25 * hour, resumePending: false },
+    { dir: recent, name: "bugfix", lastUsedAt: now - 1 * hour, resumePending: false },
+    { dir: pending, name: "cleanup", lastUsedAt: now - 25 * hour, resumePending: true },
+    {
+      dir: already,
+      name: "docs",
+      lastUsedAt: now - 25 * hour,
+      reclaimedAt: now - 20 * hour,
+      resumePending: false,
+    },
+  ];
+  const result = await reclaimPass(root, "idle", { reclaimGB: 0, idleHours: 24, candidates });
+  assert.ok(result);
+  assert.deepEqual(result.worktrees, ["feature"]);
+  assert.equal(fs.existsSync(path.join(stale, "build")), false, "idle worktree cleaned");
+  assert.equal(fs.existsSync(path.join(recent, "build")), true, "recently used survives");
+  assert.equal(fs.existsSync(path.join(pending, "build")), true, "resume-pending survives");
+  assert.equal(fs.existsSync(path.join(already, "build")), true, "already reclaimed survives");
+  const event = readEvents(root, 100).find((e) => e.type === "disk_reclaim")!;
+  assert.equal(event.mode, "idle");
+  assert.deepEqual(event.worktrees, ["feature"]);
+});
+
+test("reclaimPass idle mode with idleHours 0 cleans nothing", async () => {
+  const root = makeRepo();
+  const wt = worktreeAt(root, "feature");
+  seedWorktree(wt);
+  const candidates = [{ dir: wt, name: "feature", lastUsedAt: 0, resumePending: false }];
+  const result = await reclaimPass(root, "idle", { reclaimGB: 0, idleHours: 0, candidates });
+  assert.equal(result, null);
+  assert.equal(fs.existsSync(path.join(wt, "build")), true);
+});
+
+test("inspectReclaimCandidates lists idle age and ignored-path count without cleaning", async () => {
+  const root = makeRepo();
+  const wt = worktreeAt(root, "feature");
+  seedWorktree(wt);
+  const now = Date.now();
+  const hour = 3600_000;
+  writeJsonAtomic(worktreeUsePath(root), { feature: { lastUsedAt: now - 25 * hour } });
+  const rows = await inspectReclaimCandidates(root, 24, now);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.name, "feature");
+  assert.equal(rows[0]!.paths, 2, "build/ and debug.log would be removed");
+  assert.equal(rows[0]!.reclaimable, true);
+  assert.ok(rows[0]!.idleHours > 24 && rows[0]!.idleHours < 26);
+  assert.equal(fs.existsSync(path.join(wt, "build")), true, "dry run deletes nothing");
+});
+
+test("ReclaimController.pollIdle cleans once, throttles the next arm, and honors reclaimedAt", async () => {
+  const root = makeRepo();
+  const wt = worktreeAt(root, "feature");
+  seedWorktree(wt);
+  const hour = 3600_000;
+  writeJsonAtomic(worktreeUsePath(root), { feature: { lastUsedAt: Date.now() - 25 * hour } });
+  const controller = new ReclaimController(root, () => 100_000_000_000);
+
+  controller.pollIdle(24);
+  for (let i = 0; i < 500 && fs.existsSync(path.join(wt, "build")); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(fs.existsSync(path.join(wt, "build")), false, "idle pass cleaned the worktree");
+  assert.equal(controller.lastReclaim?.mode, "idle");
+
+  // Make the candidate eligible again by both rules, then arm immediately: the hourly throttle
+  // must stop the second pass.
+  fs.mkdirSync(path.join(wt, "build"));
+  fs.writeFileSync(path.join(wt, "build", "out.bin"), "again\n");
+  writeJsonAtomic(worktreeUsePath(root), { feature: { lastUsedAt: Date.now() - 25 * hour } });
+  controller.pollIdle(24);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(fs.existsSync(path.join(wt, "build")), true, "second idle pass is throttled");
+
+  controller.pollIdle(0); // 0 disables idle mode: a no-op, never starts a pass
 });

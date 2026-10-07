@@ -259,6 +259,12 @@ export interface TumwaterConfig {
    * unless it is 0, which disables pressure reclaim (the hold then engages immediately).
    * Default 40. */
   diskReclaimGB: number;
+  /** Idle reclaim (plans/disk-floor.md, "Disk floor 3/4"): how many hours a worktree may sit
+   * unused before the hourly idle pass deletes its gitignored build outputs, whatever the free
+   * space — catching paused, retired and rarely due roles. A worktree already reclaimed since
+   * its last use is skipped, and one with a pending resume is never idle-reclaimed. 0 disables
+   * idle mode. Default 24. */
+  worktreeIdleReclaimHours: number;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
    * (budget_paused, role_streak_paused, land_failed, restart_blocked — the states where the
    * fleet or one of its changes is stopped and only a human can act; src/events/notify.ts owns the
@@ -334,6 +340,7 @@ export const TOP_LEVEL_KEYS = [
   "quietHoursPerRole",
   "diskHoldGB",
   "diskReclaimGB",
+  "worktreeIdleReclaimHours",
   "notify",
   "fallback",
   "fallbackModel",
