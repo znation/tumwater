@@ -68,11 +68,17 @@ export const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_st
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
 export const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"];
 
+/** The build-check results that read as routine rather than problem in `eventKind` — one home
+ * of the list, interpolated into gui-client-model.ts's browser eventKind exactly as
+ * PROBLEM_RESULTS is. */
+export const ROUTINE_BUILD_RESULTS = ["passed", "skipped"];
+
 // The set forms for the server-side matcher; the lists above stay the exported source the
 // browser twin is generated from.
 const PROBLEM_RESULT_SET = new Set(PROBLEM_RESULTS);
 const ROUTINE_EVENT_SET = new Set(ROUTINE_EVENTS);
 const PROBLEM_EVENT_SET = new Set(PROBLEM_EVENTS);
+const ROUTINE_BUILD_RESULT_SET = new Set(ROUTINE_BUILD_RESULTS);
 
 /** Which EventKind one event is, checked in precedence order: the two hard-coded news types
  * first (merged, question_posted), then the result-carrying types by their result — a tick_end
@@ -83,7 +89,7 @@ export function eventKind(type: string, result?: string): EventKind {
   if (type === "merged") return "landing";
   if (type === "question_posted") return "attention";
   if (type === "tick_end") return result !== undefined && PROBLEM_RESULT_SET.has(result) ? "problem" : "routine";
-  if (type === "build_check") return result === "passed" || result === "skipped" ? "routine" : "problem";
+  if (type === "build_check") return result !== undefined && ROUTINE_BUILD_RESULT_SET.has(result) ? "routine" : "problem";
   if (PROBLEM_EVENT_SET.has(type)) return "problem";
   if (ROUTINE_EVENT_SET.has(type)) return "routine";
   return "info";

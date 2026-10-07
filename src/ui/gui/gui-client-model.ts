@@ -11,7 +11,7 @@
  * browser regex cannot drift from the server twin the tests pin it against. */
 import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-structure.js";
 import { STALL_SOURCE } from "../tick-progress-model.js";
-import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_EVENTS } from "../tone.js";
+import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_BUILD_RESULTS, ROUTINE_EVENTS } from "../tone.js";
 import { LOOP_RANK_RULES } from "../status-model.js";
 
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
@@ -66,6 +66,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // The problem results and the named event sets are tone.ts's lists, interpolated at module
   // build (like STALL above) so the page cannot drift from the server's eventKind.
   const PROBLEM_RESULTS = ${JSON.stringify(PROBLEM_RESULTS)};
+  const ROUTINE_BUILD_RESULTS = ${JSON.stringify(ROUTINE_BUILD_RESULTS)};
   // What explains a loop's last result: its summary, or — for a problem that carries none — the
   // last error the loop recorded.
   const resultWhy = (l) => l.lastSummary || (PROBLEM_RESULTS.includes(l.lastResult) || l.phase === "failing" ? l.lastError || "" : "");
@@ -135,7 +136,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (item.type === "merged") return "landing";
     if (item.type === "question_posted") return "attention";
     if (item.type === "tick_end") return PROBLEM_RESULTS.includes(item.result) ? "problem" : "routine";
-    if (item.type === "build_check") return item.result === "passed" || item.result === "skipped" ? "routine" : "problem";
+    if (item.type === "build_check") return ROUTINE_BUILD_RESULTS.includes(item.result) ? "routine" : "problem";
     if (PROBLEM_EVENTS.includes(item.type)) return "problem";
     if (ROUTINE_EVENTS.includes(item.type)) return "routine";
     return "info";
