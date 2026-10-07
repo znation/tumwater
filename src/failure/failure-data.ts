@@ -418,4 +418,3 @@ function total(counts: Partial<Record<TickResult, number>>): number {
   for (const v of Object.values(counts)) n += v ?? 0;
   return n;
 }
-

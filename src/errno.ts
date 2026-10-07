@@ -13,4 +13,3 @@ export function errCode(err: unknown): string | undefined {
     ? (err as NodeJS.ErrnoException).code
     : undefined;
 }
-

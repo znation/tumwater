@@ -143,4 +143,3 @@ export interface AutoRestartRecord {
    * "restart": the process exits right after, so no later cleanup could write it. */
   record(at: number): void;
 }
-

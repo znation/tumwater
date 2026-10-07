@@ -320,4 +320,3 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
     for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
   }
 }
-

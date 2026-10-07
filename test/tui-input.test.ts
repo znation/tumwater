@@ -323,4 +323,3 @@ test("tuiTerminalError names the missing stream and points at the non-interactiv
     "tumwater tui needs an interactive terminal: stdout (the dashboard) is not a TTY — use `tumwater status` or `tumwater gui` for a non-interactive view",
   );
 });
-

@@ -358,4 +358,3 @@ can make.`,
   parts.push(commonRules(check, briefFile).trim());
   return parts.join("\n\n");
 }
-

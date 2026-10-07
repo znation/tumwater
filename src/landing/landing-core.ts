@@ -330,4 +330,3 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   if (result !== "rejected") ctx.state.lastError = `merge failed: ${result}`;
   return result;
 }
-

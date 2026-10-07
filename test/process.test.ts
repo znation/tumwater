@@ -490,4 +490,3 @@ test("terminateChild takes a live process group down promptly with the SIGTERM l
   if (outcome === "timeout") assert.fail("the child was left running after terminateChild");
   assert.equal(outcome.signal, "SIGTERM", "the SIGTERM leg did the killing");
 });
-

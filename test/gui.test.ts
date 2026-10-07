@@ -754,4 +754,3 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
   assert.equal(GUI_PAGE.match(/setTimeout\(pollLoop, 1000\)/g)?.length ?? 0, 1, "one poll timer");
   assert.doesNotMatch(GUI_PAGE, /setInterval\(/, "no stacked polls");
 });
-

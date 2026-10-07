@@ -548,4 +548,3 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
   assert.ok(!out.includes("rotated"), "a missing log must not claim events rotated out");
   assert.match(out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
 });
-

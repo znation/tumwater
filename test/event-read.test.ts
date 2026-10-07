@@ -76,5 +76,3 @@ test("tickSpanMs measures start→end, clamps negatives to 0, and reads an unpai
   assert.equal(tickSpanMs(ev({ tick: 2, ts: 900 }), starts), null);
   assert.equal(tickSpanMs(ev({ tick: 1, ts: 600 }), tickStartMap([])), null);
 });
-
-

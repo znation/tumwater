@@ -469,4 +469,3 @@ test("a shutdown mid-landing fails closed: the pinned commit survives for next-s
     restore();
   }
 });
-

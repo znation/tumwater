@@ -346,4 +346,3 @@ test("rejectUnknownArgs names the equals form of a known flag instead of 'unknow
   assert.match(unknown.stderr, /unknown argument: --rol=feature/);
   assert.match(unknown.stderr, /valid flags for tumwater logs/);
 });
-

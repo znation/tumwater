@@ -103,4 +103,3 @@ test("the config write-back is restore-only-when-absent: a newer write wins", as
     "the newer bytes win",
   );
 });
-

@@ -131,4 +131,3 @@ export function withoutLaunchServicesCheckIn(
   const nodeOptions = current.trim() === "" ? NO_LAUNCH_SERVICES_CHECK_IN : `${current} ${NO_LAUNCH_SERVICES_CHECK_IN}`;
   return { ...base, NODE_OPTIONS: nodeOptions };
 }
-

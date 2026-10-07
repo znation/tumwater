@@ -274,5 +274,3 @@ test("logs --role -f prints each turn exactly once across the initial window and
     s.kill();
   }
 });
-
-

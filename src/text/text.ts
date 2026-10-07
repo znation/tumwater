@@ -176,5 +176,3 @@ export function parseNonNegativeInt(raw: string): number | null {
 export function tooLongMessage(subject: string, n: number, max: number, tail: string): string {
   return `${subject} is ${n} chars — shorten it to at most ${max}: ${tail}`;
 }
-
-

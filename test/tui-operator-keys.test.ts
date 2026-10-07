@@ -154,4 +154,3 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     assert.match(tui.lastFrame(), /error: /);
   });
 });
-

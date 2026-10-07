@@ -329,5 +329,3 @@ export function dequeuePrompt(root: string): string | null {
 export function queuedPrompts(root: string): string[] {
   return queuedRolePrompts(root, DIRECTOR_ROLE);
 }
-
-

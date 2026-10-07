@@ -141,4 +141,3 @@ export function pendingFeature(): ReturnType<typeof freshLoopState> {
   applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
   return s;
 }
-

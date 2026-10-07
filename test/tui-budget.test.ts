@@ -159,4 +159,3 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
     assert.equal(cfg.maxDailyCostUsd, 30);
   });
 });
-

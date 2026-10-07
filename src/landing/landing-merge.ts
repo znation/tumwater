@@ -333,4 +333,3 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
   }
   return true;
 }
-

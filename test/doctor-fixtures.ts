@@ -45,5 +45,3 @@ export function hermeticHostBins(psRan: string): string {
   writeScript(path.join(dir, "ps"), `: > "${psRan}"\nexit 0\n`);
   return dir;
 }
-
-
