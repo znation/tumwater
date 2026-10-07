@@ -18,13 +18,12 @@ import { landingChanges, type LandingChange, type LandingStage } from "../landin
 /** The status DISPLAY MODEL: the loop's cycle position (the phase ladder), its landing cell,
  * and its per-loop row derivation (the header badges live next door in badges.ts, the
  * in-flight tick's live progress detail in tick-progress-model.ts) — derived from the status
- * data (status/status-data.ts)
- * and shared by BOTH
- * observer surfaces: the terminal table (status-render.ts's renderStatus/stateCell) and the
- * JSON/GUI payload (status-payload.ts). Kept apart from status-render.ts so the GUI payload
- * depends on the shared model, not on the TUI table module — "what to show" (here) is separate
- * from "how a terminal lays it out" (status-render.ts). Depends on status/status-data.ts one way: deriving
- * reads the snapshot and never collects fleet state itself (live tick detail is display-only). */
+ * data (status/status-data.ts) and shared by BOTH observer surfaces: the terminal table
+ * (status-render.ts's renderStatus/stateCell) and the JSON/GUI payload (status-payload.ts).
+ * Kept apart from status-render.ts so the GUI payload depends on the shared model, not on the
+ * TUI table module — "what to show" (here) is separate from "how a terminal lays it out"
+ * (status-render.ts). Depends on status/status-data.ts one way: deriving reads the snapshot
+ * and never collects fleet state itself (live tick detail is display-only). */
 
 type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
 
@@ -33,9 +32,9 @@ type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
  * keeping it for the merge slot (`vetted`) — and null otherwise, including once the merge is
  * `done` with it (a change that reached its outcome must not keep a live label while the rest of
  * its stack lands — BUGS.md 2026-09-23). An older generation's one-change marker reads as one
- * `landing` record (landingChanges). The single home of the "is this role landing" filter — every phase call
- * site derives its `landing` argument through this so the filtering cannot drift between
- * them. */
+ * `landing` record (landingChanges). The single home of the "is this role landing" filter —
+ * every phase call site derives its `landing` argument through this so the filtering cannot
+ * drift between them. */
 export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: string): LandingCell | null {
   if (!landQueue.inFlight) return null;
   const change = landingChanges(landQueue.inFlight).find((c) => c.role === role);
@@ -87,10 +86,10 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
  * and its stage scopes the cell to the phase the landing is actually in: `reviewing` carries
  * the reviewer run's live detail exactly as a reviewing tick does (`landing 3m · reviewing ·
  * turn 2 · ctx 18.0k · bash npm test`); `build-check` and `merging` render just the stage
- * (`landing 1m · build check`) and never read the log — no reviewer is running then, and the log's newest run is
- * typically a finished one (the author's, a previous review) whose turns are stale and whose
- * silence would read as a false stall; a record with no stage (an older writer mid-upgrade)
- * keeps the bare elapsed label. */
+ * (`landing 1m · build check`) and never read the log — no reviewer is running then, and the
+ * log's newest run is typically a finished one (the author's, a previous review) whose turns
+ * are stale and whose silence would read as a false stall; a record with no stage (an older
+ * writer mid-upgrade) keeps the bare elapsed label. */
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
@@ -316,9 +315,9 @@ export function loopRank(phase: string): number {
  * pipeline, then loops that need attention, then paused, then idle); within a rank by last tick
  * most-recent-first, a never-ticked (null) row after any timestamp, ties broken by role
  * ascending. This is the TUI/status table's comparator; the GUI page's browser copy
- * (`sortLoops`, gui-client-model.ts) cannot import TS, so test/gui.test.ts cross-checks the two over
- * the same fixtures to keep them in lockstep. /api/status and `status --json` keep their payload
- * (config) order — only the rendered tables sort. */
+ * (`sortLoops`, gui-client-model.ts) cannot import TS, so test/gui.test.ts cross-checks the
+ * two over the same fixtures to keep them in lockstep. /api/status and `status --json` keep
+ * their payload (config) order — only the rendered tables sort. */
 export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[] {
   return loops.slice().sort((a, b) => {
     const ra = loopRank(a.phase);
