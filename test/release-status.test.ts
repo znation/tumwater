@@ -22,8 +22,12 @@ function seedPackage(root: string, version: string): void {
   sh(root, "git", "commit", "-m", "package");
 }
 
+function runRelease(root: string, args: string[]): { status: number | null; stdout: string; stderr: string } {
+  return spawnSync(process.execPath, [SCRIPT, ...args], { cwd: root, encoding: "utf8" });
+}
+
 function status(root: string): { status: number | null; stdout: string; stderr: string } {
-  return spawnSync(process.execPath, [SCRIPT, "--status"], { cwd: root, encoding: "utf8" });
+  return runRelease(root, ["--status"]);
 }
 
 test("--status reports local state with no origin instead of leaking a git fatal", () => {
@@ -76,6 +80,17 @@ test("--status reports an origin/main it cannot count instead of leaking a git f
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /origin\/main: unavailable \(remote main not fetched locally\)/);
   assert.doesNotMatch(r.stderr, /fatal:/, "no raw git fatal line leaks beside the report");
+});
+
+test("--status refuses a bump instead of silently reporting and changing nothing", () => {
+  const root = makeRepo();
+  seedPackage(root, "0.1.0");
+
+  const r = runRelease(root, ["--status", "bump"]);
+
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /--status only reports state and never bumps/);
+  assert.equal(r.stdout, "", "the report is not printed when the arguments conflict");
 });
 
 test("the release path still refuses to act offline rather than treating the tag as free", () => {

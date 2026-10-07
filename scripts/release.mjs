@@ -114,6 +114,10 @@ const statusOnly = flags.includes("--status");
 if (flags.some((f) => f !== "--status")) die(`unknown flag: ${flags.find((f) => f !== "--status")}\n${usage}`);
 if (positional.length > 2 || (positional[0] && positional[0] !== "bump")) die(`unknown argument(s): ${positional.join(" ")}\n${usage}`);
 const bumpMode = positional[0] === "bump";
+// --status reports and exits before the bump path runs, so `--status bump` would silently
+// report state and change nothing — a no-op a user reads as a successful bump. The two are
+// mutually exclusive; refuse the combination instead of dropping the bump.
+if (statusOnly && bumpMode) die(`--status only reports state and never bumps — drop \`bump\`, or drop --status to bump\n${usage}`);
 if (bumpMode && positional[1] && !LEVELS.includes(positional[1])) {
   die(`unknown bump level: ${positional[1]}\n${usage}`);
 }
