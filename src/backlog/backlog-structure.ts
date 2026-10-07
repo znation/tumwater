@@ -1,6 +1,7 @@
 import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
@@ -280,22 +281,44 @@ const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
   { file: "QUESTIONS.md", section: "Open" },
 ];
 
+/** One index file's rendered section lines, cached per file stat (stat-cache.cachedByStat):
+ * both branches of every tick prompt render this block, and the backlog files — BUGS.md above
+ * all, since its closed history grows without bound — change only at a landing. An unchanged
+ * file then costs one stat per tick instead of a full read, a split into lines, and a
+ * section walk proportional to the whole file. The value is the section's `file ## section`
+ * header plus one line per entry, or `[]` when the section holds none; keyed by the file path
+ * so distinct roots never collide. Bounded inside cachedByStat. */
+const indexSectionCache = new Map<string, StatKeyedValue<string[]>>();
+
 /** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
  * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
  * checkout `root`. Replaces the per-tick `grep -n '^##'` heading map, whose pattern also matched
  * every `###` title in BUGS.md's closed history and so re-sent ~108 KB on every turn (BUGS.md
  * 2026-10-06). A missing or unreadable file contributes no sections; undefined when no section
- * has entries, so an empty backlog leaves the prompt unchanged. */
+ * has entries, so an empty backlog leaves the prompt unchanged. The per-file section lines are
+ * stat-cached (indexSectionCache), so an unchanged backlog file is not re-read or re-walked. */
 export function renderBacklogIndexBlock(root: string): string | undefined {
   const listed: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {
-    // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
-    const md = readTextOrNull(path.join(root, file));
-    if (md === null) continue; // Absent or unreadable file: contributes nothing.
-    const entries = actionableEntryRanges(md, section);
-    if (entries.length === 0) continue;
-    listed.push(`${file} ## ${section}`);
-    for (const e of entries) listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
+    const full = path.join(root, file);
+    const lines = cachedByStat(
+      indexSectionCache,
+      full,
+      full,
+      () => {
+        // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
+        const md = readTextOrNull(full);
+        if (md === null) return null; // Unreadable: nothing to cache for this stat.
+        const entries = actionableEntryRanges(md, section);
+        if (entries.length === 0) return [];
+        return [
+          `${file} ## ${section}`,
+          ...entries.map((e) => `- ${e.start}-${e.end}: ${indexTitle(e.title)}`),
+        ];
+      },
+      (v) => v.slice(), // A copy: callers may treat the result as their own.
+    );
+    if (lines) listed.push(...lines);
   }
   if (listed.length === 0) return undefined;
   return `Actionable backlog — each entry with the 1-based line range it occupies in its file.

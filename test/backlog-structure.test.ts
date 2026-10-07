@@ -375,6 +375,19 @@ test("renderBacklogIndexBlock lists actionable entries with ranges and strips st
   assert.doesNotMatch(block, /## Fixed/);
 });
 
+test("renderBacklogIndexBlock re-reads a backlog file whose stat changed", () => {
+  const dir = tmpdir();
+  const bugs = path.join(dir, "BUGS.md");
+  fs.writeFileSync(bugs, "# Bugs\n## Open\n### First (reported 2026-10-02)\nRepro.\n## Fixed\n_None._\n");
+  assert.match(renderBacklogIndexBlock(dir) ?? "", /BUGS\.md ## Open\n- 3-4: First/);
+  // A larger rewrite guarantees a new size (and mtime) even on a filesystem with coarse
+  // clocks, so the stat-keyed section cache must miss and re-read.
+  fs.writeFileSync(bugs, "# Bugs\n## Open\n### Second (reported 2026-10-03)\nA longer repro line.\n## Fixed\n_None._\n");
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /BUGS\.md ## Open\n- 3-4: Second/);
+  assert.doesNotMatch(block, /First/);
+});
+
 test("renderBacklogIndexBlock returns undefined when the actionable sections are empty", () => {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "PLANS.md"), "# Plans\n## Planned\n_None yet._\n");
