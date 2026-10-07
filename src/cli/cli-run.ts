@@ -1,8 +1,8 @@
 /** The fleet-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
- * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every other
- * command it dispatches already delegates to a module (operator/operator-commands.ts, prompt-commands.ts,
- * config-commands.ts, log-commands.ts,
- * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
+ * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every
+ * other command it dispatches already delegates to a module (operator/operator-commands.ts,
+ * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were the
+ * only implementations living in the dispatcher itself. */
 import { increment } from "../collections.js";
 import { enabledRoleIds } from "../config/config.js";
 import { fail, say } from "./cli-output.js";
@@ -224,11 +224,11 @@ export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): vo
   return { clear: () => clearTimeout(timer) };
 }
 
-/** Parse `run --for <duration>` (the windowed run): the parsed duration in milliseconds, or
- * null when the flag is absent. The two body-level rules fail fast, before any repo gate or
- * boot: the value must parse as a duration (parseDurationFlag's own wording, the same messages
- * the dispatcher's durationFlagSpec("run --for") gate already ran), and `--for` and `--once` are rivals — a
- * one-round run and a windowed run cannot both apply. The 90-day ceiling is `pause --for`'s
+/** Parse `run --for <duration>` (the windowed run): the parsed duration in milliseconds, or null
+ * when the flag is absent. The two body-level rules fail fast, before any repo gate or boot: the
+ * value must parse as a duration (parseDurationFlag's own wording, the same messages the
+ * dispatcher's durationFlagSpec("run --for") gate already ran), and `--for` and `--once` are rivals
+ * — a one-round run and a windowed run cannot both apply. The 90-day ceiling is `pause --for`'s
  * (PAUSE_FOR_MAX_MS), the same cap every scheduled window in the harness honors. Exported for
  * tests, exactly as onceSummary below is. */
 export function parseRunWindow(args: string[], once: boolean): number | null {
@@ -291,11 +291,11 @@ export function onceSummary(
   return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
-/** The supervisor half of `tumwater run` (src/process/supervisor.ts): spawn the orchestrator as a child
- * generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself. Ctrl+C
- * reaches the child directly from the terminal, so only SIGTERM is forwarded; the supervisor's
- * own exit code is whatever the last generation's was. A fleet that goes down without the
- * operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
+/** The supervisor half of `tumwater run` (src/process/supervisor.ts): spawn the orchestrator as a
+ * child generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself.
+ * Ctrl+C reaches the child directly from the terminal, so only SIGTERM is forwarded; the
+ * supervisor's own exit code is whatever the last generation's was. A fleet that goes down without
+ * the operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
  * generation's stderr reached only this terminal, which nobody may be watching. */
 async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null): Promise<void> {
   // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
