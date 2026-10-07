@@ -20,9 +20,9 @@ import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
  * prompt's text (`prompt --edit`, position-addressed like cancel and sharing its
  * resolveListedQueue) lives in inbox-edit.ts; the submission pipeline that validates and
  * logs a user-submitted prompt lives in inbox-submit.ts; the image side of a submission in
- * inbox-attachments.ts. The not-before
- * marker vocabulary for deferred prompts lives in prompt-not-before.ts (compose, parse, strip,
- * and the deliverableNow predicate this module filters on). */
+ * inbox-attachments.ts. The not-before marker vocabulary for deferred prompts lives in
+ * prompt-not-before.ts (compose, parse, strip, and the deliverableNow predicate this module
+ * filters on). */
 
 import { deliverableAt, deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 
@@ -32,9 +32,9 @@ const PROMPT_PREVIEW_MAX = 80;
 
 /** One-line preview of a queued prompt — the single width shared by the prompt_enqueued
  * event preview (this module) and the prompt_cancelled preview (inbox-cancel.ts),
- * the dashboards' inboxPrompts (status/status-data.ts), and
- * the CLI's cancel output (cli.ts). Surrogate-safe via truncate: an over-long prompt is marked
- * with an ellipsis like every other label and never carries a lone surrogate at the cut point. */
+ * the dashboards' inboxPrompts (status/status-data.ts), and the CLI's cancel output (cli.ts).
+ * Surrogate-safe via truncate: an over-long prompt is marked with an ellipsis like every other
+ * label and never carries a lone surrogate at the cut point. */
 export function promptPreview(text: string): string {
   // The queued preview never shows the marker line — plumbing, not content.
   return truncate(stripNotBeforeMarker(text), PROMPT_PREVIEW_MAX);
@@ -44,14 +44,13 @@ let seq = 0;
 
 /** Append a prompt to a loop's queue as one timestamped file (creating the queue dir if needed)
  * and return its path. The filename orders prompts across processes by wall-clock time; the
- * per-process counter and pid break ties within one process. No event is logged — inbox-submit.ts's
- * submitPrompt and submitRolePrompt are the user-facing wrappers that add the prompt_enqueued
- * line, and
- * loop.ts's re-queue of an unfulfilled prompt calls this directly. The write is atomic
- * (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll, `tumwater prompt
- * --list`, and the dequeuing loop — run in other processes, and a read that raced a plain
- * writeFileSync could see a truncated prompt and run a tick on a half user request. The
- * optional decorate hook runs before that one write with the file's path and may return the
+ * per-process counter and pid break ties within one process. No event is logged —
+ * inbox-submit.ts's submitPrompt and submitRolePrompt are the user-facing wrappers that add the
+ * prompt_enqueued line, and loop.ts's re-queue of an unfulfilled prompt calls this directly.
+ * The write is atomic (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll,
+ * `tumwater prompt --list`, and the dequeuing loop — run in other processes, and a read that
+ * raced a plain writeFileSync could see a truncated prompt and run a tick on a half user request.
+ * The optional decorate hook runs before that one write with the file's path and may return the
  * final text instead — submitPromptWithImages uses it to save the prompt's images beside the
  * queue file and append their reference lines, so the queue file is born complete and no
  * reader can ever see a prompt whose image lines point at not-yet-written files. An optional
@@ -77,10 +76,11 @@ export function enqueueRolePrompt(
   return file;
 }
 
-/** Every queued prompt file for one loop as a path joined onto the loop's inbox dir, oldest first (listQueueFiles
- * over the loop's inbox dir, .md entries only). Prompts still deferred by a not-before marker
- * are included — deliverability filtering is the callers' job (deliverablePredicate,
- * deliverablePromptCount) — and a missing inbox dir reads as an empty queue. */
+/** Every queued prompt file for one loop as a path joined onto the loop's inbox dir, oldest
+ * first (listQueueFiles over the loop's inbox dir, .md entries only). Prompts still deferred by
+ * a not-before marker are included — deliverability filtering is the callers' job
+ * (deliverablePredicate, deliverablePromptCount) — and a missing inbox dir reads as an empty
+ * queue. */
 export function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
@@ -200,11 +200,11 @@ export function queuedRolePromptRecords(
  * filename sort dequeueRolePrompt pops by. A not-yet-deliverable prompt (the not-before marker
  * still in the future) is not part of the execution order: it is skipped here, so peek and
  * dequeue can never hand a tick a prompt its time has not reached. A missing queue directory
- * reads as an empty queue,
- * like inboxSize and dequeueRolePrompt; a file that vanishes between listing and reading (a
- * concurrent dequeue or cancel) is skipped rather than throwing, so a polled snapshot can never
- * crash on it. Unchanged files are served from the stat-keyed cache above — fresh content
- * requires an actual write to the path, which enqueueRolePrompt never does for an existing file. */
+ * reads as an empty queue, like inboxSize and dequeueRolePrompt; a file that vanishes between
+ * listing and reading (a concurrent dequeue or cancel) is skipped rather than throwing, so a
+ * polled snapshot can never crash on it. Unchanged files are served from the stat-keyed cache
+ * above — fresh content requires an actual write to the path, which enqueueRolePrompt never
+ * does for an existing file. */
 export function queuedRolePrompts(root: string, role: string): string[] {
   const now = Date.now();
   return queuedRolePromptRecords(root, role)
@@ -240,10 +240,9 @@ export function queuedRolePromptCount(root: string, role: string): number {
  * (ENOENT — a cancel or a prior dequeue won) or when the removal itself finds it gone (a
  * concurrent cancel won after our read). Any other read error propagates — it is not a race.
  * Shared by inbox-cancel.ts's cancel paths (position- and file-addressed), dequeueRolePrompt
- * (oldest-first pop), and
- * loop.ts's resume reclaim — which calls this for one exact queue file instead of popping
- * oldest-first, so the prompt recorded at requeue time is the one reclaimed, whatever else
- * was enqueued or cancelled meanwhile — so the race policy lives once. */
+ * (oldest-first pop), and loop.ts's resume reclaim — which calls this for one exact queue file
+ * instead of popping oldest-first, so the prompt recorded at requeue time is the one reclaimed,
+ * whatever else was enqueued or cancelled meanwhile — so the race policy lives once. */
 export function takeQueuedFile(file: string): string | null {
   const text = readQueueText(file);
   if (text === null) return null; // Cancelled mid-listing.
@@ -258,10 +257,10 @@ export function takeQueuedFile(file: string): string | null {
  * (n a digit run), checked against inbox-attachments.ts's PROMPT_IMAGE_EXTENSIONS. A bare
  * prefix match is never enough: a hand-placed sibling prompt's file may share the stem followed
  * by a hyphen (`a-notes.md` beside `a.md`), and deleting it would take another prompt with
- * this one — files like that are left alone. ENOENT-tolerant
- * through removeQueueFile, and a queue directory that is already gone leaves nothing to
- * clean. Called by takeQueuedFile, so both dequeue and cancel take the attachments with the
- * prompt — an image never outlives the prompt that referenced it. */
+ * this one — files like that are left alone. ENOENT-tolerant through removeQueueFile, and a
+ * queue directory that is already gone leaves nothing to clean. Called by takeQueuedFile, so
+ * both dequeue and cancel take the attachments with the prompt — an image never outlives the
+ * prompt that referenced it. */
 function removeSameStemSiblings(file: string): void {
   const dir = path.dirname(file);
   const stem = path.basename(file, ".md");
