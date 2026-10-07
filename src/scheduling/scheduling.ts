@@ -16,9 +16,8 @@ import {
   DEFERRABLE_ROLES,
   DIRECTOR_ROLE,
   roleTier,
-  yieldScaledRole,
 } from "../roles/roles.js";
-import { yieldMultiplier } from "./backoff.js";
+import { yieldMultiplierFor } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
 interface EligibilityOptions {
@@ -89,9 +88,7 @@ export function isEligible(
   // One landing in the last ten counted ticks restores the plain gap; error-class results
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
-  const mult = yieldScaledRole(runner.role)
-    ? yieldMultiplier((runner.state.recentOutcomes ?? "").split(""))
-    : 1;
+  const mult = yieldMultiplierFor(runner.state);
   const minGap = opts.once
     ? 0
     : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000 * mult;

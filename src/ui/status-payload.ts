@@ -7,7 +7,7 @@ import { dailyCost } from "../budget/budget.js";
 import { snapshot } from "../status/status-data.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells } from "./status-model.js";
-import { yieldMultiplierFor } from "./tick-progress-model.js";
+import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { fleetAlerts } from "./fleet-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to

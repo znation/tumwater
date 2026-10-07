@@ -1,6 +1,4 @@
 import type { LoopState } from "../loop/loop-state.js";
-import { yieldScaledRole } from "../roles/roles.js";
-import { yieldMultiplier } from "../scheduling/backoff.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
 
@@ -93,17 +91,6 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
  * run the phase label does). status-model's loopRowCells is its only reader. */
 export function progressKind(s: LoopState): ProgressRunKind {
   return s.phase === "review" ? "gate" : "author";
-}
-
-/** The yield multiplier a loop's row surfaces beside its next-run time (yield-scaled
- * clocks, PLANS.md): the role's recent-yield multiplier when its role is scalable, else 1.
- * One home for the rule so the TUI's next-run cell (status-render.ts), the JSON payload
- * (status-payload.ts), and the GUI's JS twin cannot disagree about whether a quiet role's
- * next run is stretched. */
-export function yieldMultiplierFor(s: LoopState): number {
-  return yieldScaledRole(s.role)
-    ? yieldMultiplier((s.recentOutcomes ?? "").split(""))
-    : 1;
 }
 
 /** progressOfTick with the tail read folded in — the one home for the

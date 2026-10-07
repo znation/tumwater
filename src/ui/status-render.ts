@@ -8,7 +8,8 @@ import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "..
 import { projectName } from "../project-name.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
-import { tickProgress, yieldMultiplierFor } from "./tick-progress-model.js";
+import { tickProgress } from "./tick-progress-model.js";
+import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by

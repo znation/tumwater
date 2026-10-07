@@ -1,6 +1,7 @@
 import type { BackoffConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { TickResult } from "../tick/tick-outcome.js";
+import { yieldScaledRole } from "../roles/roles.js";
 
 /** The loop's CLOCK policy: when a loop runs next — the wake semantics (clearBackoff,
  * restoreMidTickWake), the backoff ladders (nextBackoffSeconds, scheduleBackoff, the error
@@ -86,6 +87,16 @@ export function yieldMultiplier(recent: string[]): number {
   const empty = recent.filter((c) => c !== YIELD_LAND).length;
   if (empty < 10) return 1;
   return Math.min(YIELD_MAX, 2 ** (Math.floor((empty - 10) / 5) + 1));
+}
+
+/** The yield multiplier a loop's state earns: the role's recent-yield multiplier when
+ * yieldScaledRole(role) holds, else 1 (a role outside the scalable set keeps its plain gap
+ * whatever its ring says). The one assembly of the scalable-role test with yieldMultiplier,
+ * so the scheduler's gap (isEligible) and the mirrors that DISPLAY that gap — the TUI's
+ * next-run cell (status-render.ts's nextRunCell) and the JSON/GUI payload
+ * (status-payload.ts) — cannot disagree about whether a quiet role's next run is stretched. */
+export function yieldMultiplierFor(s: LoopState): number {
+  return yieldScaledRole(s.role) ? yieldMultiplier((s.recentOutcomes ?? "").split("")) : 1;
 }
 
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */

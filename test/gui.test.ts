@@ -676,7 +676,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
   const { freshLoopState } = await import("../src/loop/loop-state.js");
-  const { yieldMultiplierFor } = await import("../src/ui/tick-progress-model.js");
+  const { yieldMultiplierFor } = await import("../src/scheduling/backoff.js");
   type LoopState = ReturnType<typeof freshLoopState>;
 
   // The status pill's "wakes in 12m" line and the drawer's Next run both render from the
