@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { tmpdir } from "./repo-fixtures.js";
 import {
   ELIDED_PREFIX,
   SHAKE_MAX_PERCENT,
@@ -304,4 +307,111 @@ test("the adapter tolerates missing usage and an empty context", () => {
   // Usage pi could not reduce to a percentage (no percent, no usable window) is a no-op, not
   // a shake with an unknown fill.
   assert.equal(handlers.turn_end!({}, { getContextUsage: () => ({ tokens: 0, contextWindow: 0, percent: null }) }), undefined);
+});
+
+test("a read pointer clamps a non-positive or missing offset to line 1", () => {
+  // `replacementFor`'s guard is `typeof offset === "number" && offset > 0`: an offset of 0 or
+  // below is a number that never starts a range, so the pointer must say line 1 — the same as
+  // a read input that names only the file — rather than "big.ts:0-0".
+  for (const readInput of [{ path: "src/big.ts", offset: 0 }, { path: "src/big.ts", offset: -5 }, { path: "src/big.ts" }]) {
+    const read: ShakeMessage = {
+      entryId: "r",
+      role: "toolResult",
+      toolName: "read",
+      text: big(60_000),
+      readInput,
+    };
+    const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+    const plan = shakePlan(messages, atPercent(70));
+    assert.equal(plan.edits.length, 1);
+    assert.match(plan.edits[0]!.replacement, /src\/big\.ts:1-1; re-read the range/, JSON.stringify(readInput));
+  }
+});
+
+test("shakePlan tolerates a message with no text", () => {
+  // `messages[i]?.text ?? ""` guards a projected context whose message flattened to no text
+  // (an empty or unrecognized content shape): the token estimate must treat it as empty
+  // rather than throwing on an undefined string.
+  const messages = [bash("a"), { role: "user" } as ShakeMessage, ...Array.from({ length: 5 }, () => filler(4_000))];
+  assert.equal(shakePlan(messages, atPercent(70)).edits.length, 1);
+});
+
+test("shakePlan plans nothing for an empty message list", () => {
+  assert.deepEqual(shakePlan([], atPercent(70)), { edits: [], reclaimedTokens: 0, elidedCount: 0 });
+});
+
+test("a result exactly at the size floor is skipped while an over-floor companion is elided", () => {
+  // SHAKE_MIN_CHARS is inclusive: `text.length <= SHAKE_MIN_CHARS` skips the boundary itself.
+  // The 60k-char companion clears SHAKE_MIN_RECLAIM_TOKENS on its own, so the plan is not empty
+  // for an unrelated reason and the boundary is observable: under an exclusive `<` the 2,000-char
+  // result would join the edits, changing the target list below.
+  const messages = [bash("edge", SHAKE_MIN_CHARS), bash("big", 60_000), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const plan = shakePlan(messages, atPercent(70));
+  assert.deepEqual(plan.edits.map((e) => e.targetId), ["big"]);
+});
+
+test("shakeMessages leaves fullOutputPath unset when details carry no path", () => {
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        { sourceEntry: { id: "empty" }, messages: [{ role: "toolResult", toolName: "bash", toolCallId: "t1", details: {}, content: [{ type: "text", text: "out" }] }] },
+        { sourceEntry: { id: "absent" }, messages: [{ role: "toolResult", toolName: "bash", toolCallId: "t2", content: [{ type: "text", text: "out" }] }] },
+      ],
+    },
+  });
+  assert.equal(messages[0]!.fullOutputPath, undefined);
+  assert.equal(messages[1]!.fullOutputPath, undefined);
+});
+
+test("shakeMessages joins only the text parts of a mixed content array", () => {
+  // A content array can interleave text with images, bare strings, and malformed text parts;
+  // only objects carrying a string `text` on a `text` part belong in the flattened message.
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        {
+          sourceEntry: { id: "m" },
+          messages: [
+            {
+              role: "user",
+              content: [{ type: "text", text: "first" }, "bare string", null, { type: "image" }, { type: "text", text: 42 }, { type: "text", text: "second" }],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(messages[0]!.text, "first\nsecond");
+});
+
+test("the adapter writes a bash result's full output and points the edit at it", () => {
+  // The adapter wires the real bounded-output writer into shakePlan. A bash result pi has not
+  // persisted yet must be written under the harness root and the pointer must name that path;
+  // a temp `.tumwater/` fixture keeps the write off the repository's own state directory.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const prevCwd = process.cwd();
+  const handlers = capture();
+  const bashEntry = {
+    sourceEntry: { id: "b" },
+    messages: [
+      { role: "assistant", content: [{ type: "toolCall", id: "t9", name: "bash", arguments: { command: "cat big" } }] },
+      { role: "toolResult", toolName: "bash", toolCallId: "t9", isError: false, content: [{ type: "text", text: big(60_000) }] },
+    ],
+  };
+  const fillerEntry = (i: number) => ({ sourceEntry: { id: `f${i}` }, messages: [{ role: "user", content: [{ type: "text", text: big(16_000) }] }] });
+  const event = { context: { contextEntries: [bashEntry, ...[0, 1, 2, 3, 4].map(fillerEntry)] } };
+  process.chdir(dir);
+  try {
+    const result = handlers.turn_end!(event, { getContextUsage: () => atPercent(72) }) as
+      | { entries: Array<{ type: string; targetId?: string; replacement?: { content: string } }> }
+      | undefined;
+    assert.ok(result, "the bash crossing shakes");
+    assert.equal(result.entries[0]!.targetId, "b");
+    assert.match(result.entries[0]!.replacement!.content, /60000 chars; full output in .*t9\.log\]/);
+    const written = fs.readFileSync(path.join(dir, ".tumwater", "log", "tool-output", "t9.log"), "utf8");
+    assert.equal(written, big(60_000));
+  } finally {
+    process.chdir(prevCwd);
+  }
 });
