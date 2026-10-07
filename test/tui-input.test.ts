@@ -7,7 +7,7 @@ import {
   parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
-} from "../src/ui/tui-input.js";
+} from "../src/ui/tui/tui-input.js";
 import { cutSplitsSurrogatePair } from "../src/text/text.js";
 import { displayWidth } from "../src/text/text-width.js";
 

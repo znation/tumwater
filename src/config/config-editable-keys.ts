@@ -9,6 +9,6 @@
  * browser-editable — so it lives beside the other config-key lists (config-schema.ts's
  * TOP_LEVEL_KEYS, config-write.ts's per-key validators) rather than in the endpoint module
  * that first consumed it. The browser side mirrors the set for its labels
- * (ui/gui-client-settings.ts's SETTINGS_KEYS); the round-trip test pins the two together.
+ * (ui/gui/gui-client-settings.ts's SETTINGS_KEYS); the round-trip test pins the two together.
  */
 export const EDITABLE_CONFIG_KEYS = ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify"] as const;

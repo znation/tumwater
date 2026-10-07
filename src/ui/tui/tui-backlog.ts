@@ -3,10 +3,10 @@ import {
   openQuestionEntries,
   plannedPlanEntries,
   type BacklogEntry,
-} from "../backlog/backlog.js";
-import { clipToWidth } from "../text/text-width.js";
+} from "../../backlog/backlog.js";
+import { clipToWidth } from "../../text/text-width.js";
 
-/** Pure project-status pane logic for the TUI (src/ui/tui.tsx): the three-section backlog body
+/** Pure project-status pane logic for the TUI (src/ui/tui/tui.tsx): the three-section backlog body
  * (`backlogLines`) and the entry browser — selection movement and the entry body's scroll
  * window. Split out of tui-input.ts — which keeps the prompt line editor and the terminal
  * guard — because the pane renders and navigates the project backlog (plans/bugs/questions), a
@@ -15,7 +15,7 @@ import { clipToWidth } from "../text/text-width.js";
 
 /** The project-status pane's flat entry list (plans, then bugs, then questions), each labeled
  * with its section, read fresh — the one definition shared by the keypress handlers and the
- * render (src/ui/tui-keys.ts, src/ui/tui.tsx), so stale-selection clamping cannot drift. */
+ * render (src/ui/tui/tui-keys.ts, src/ui/tui/tui.tsx), so stale-selection clamping cannot drift. */
 export function labeledBacklogEntries(root: string): Array<{ label: string } & BacklogEntry> {
   return [
     ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),

@@ -71,7 +71,7 @@ test("the token gate accepts the credential as a Bearer header or ?token=, then 
 test("the dashboard client sends the Bearer token and strips ?token= from the address bar", async () => {
   // The token plumbing lives in the served page's inline script; asserted against
   // GUI_PAGE, where it actually runs, alongside the existing inline-script assertions.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   assert.match(
     GUI_PAGE,
     /new URLSearchParams\(location\.search\)\.get\("token"\)/,

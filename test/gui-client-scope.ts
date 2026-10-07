@@ -1,9 +1,9 @@
 /** Load pieces of the dashboard's browser script into a test. The script is one blob the page
- * inlines (src/ui/gui-client.ts), so its testable parts are marked regions (`// <name>:start`
+ * inlines (src/ui/gui/gui-client.ts), so its testable parts are marked regions (`// <name>:start`
  * … `// <name>:end`); clientScope runs the chosen regions in one function scope — after the
  * script's own esc() — with stand-ins for whatever else they reach (the DOM, postJson, …),
  * and hands back the names asked for. Pure regions need no stand-ins at all. */
-import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
+import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 
 /** The source of one marked region of the served script. Exported for tests that run a
  * region alongside code outside the marked regions (the drawer blob). */

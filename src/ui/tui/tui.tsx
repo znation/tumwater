@@ -1,9 +1,9 @@
 import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
-import { openQuestions } from "../backlog/backlog.js";
-import { snapshot } from "../status/status-data.js";
-import { renderStatusSpans, type StatusLine } from "./status-render.js";
-import { fleetAlerts } from "./fleet-alerts.js";
+import { openQuestions } from "../../backlog/backlog.js";
+import { snapshot } from "../../status/status-data.js";
+import { renderStatusSpans, type StatusLine } from "../status-render.js";
+import { fleetAlerts } from "../fleet-alerts.js";
 import {
   captureStartupBuild,
   createReloadWatch,
@@ -11,7 +11,7 @@ import {
   type ReloadWatchSeams,
   type SupervisorWatchSeams,
   watchReloadSupervisor,
-} from "../redeploy/self-reload.js";
+} from "../../redeploy/self-reload.js";
 import {
   renderInputView,
   tuiTerminalError,
@@ -105,7 +105,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     resolveMain?.();
   }, seams.supervisor);
 
-  // The framework-free keypress handler (src/ui/tui-keys.ts, extracted from runTui): it owns
+  // The framework-free keypress handler (src/ui/tui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
   // data and line budgets in and reads the resulting state out each frame.
   const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });

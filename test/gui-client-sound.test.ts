@@ -1,12 +1,12 @@
-/** The dashboard's sound layer (src/ui/gui-client-sound.ts, wired through gui-client-model.ts's
+/** The dashboard's sound layer (src/ui/gui/gui-client-sound.ts, wired through gui-client-model.ts's
  * needs-you helpers, gui-client-fleet.ts's cue diff, and gui-client-operator.ts's toggle): the
  * regions run against a stubbed AudioContext, the pattern test/gui-client-scope.ts serves. The
  * script's AudioContext binding lives in its own closure, so the stub records its instances in
  * a list the assertions read back. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GUI_CLIENT_SOUND_JS } from "../src/ui/gui-client-sound.js";
-import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
+import { GUI_CLIENT_SOUND_JS } from "../src/ui/gui/gui-client-sound.js";
+import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { clientScope, iconStub } from "./gui-client-scope.js";
 
 test("GUI_CLIENT_JS carries the sound module verbatim", () => {

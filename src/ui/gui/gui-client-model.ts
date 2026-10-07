@@ -9,9 +9,9 @@
  * concatenation. The stamp-metadata pattern is interpolated from backlog-structure.ts's
  * ENTRY_STAMP_META_SOURCE — String.raw interpolates substitutions normally — so the
  * browser regex cannot drift from the server twin the tests pin it against. */
-import { ENTRY_STAMP_META_SOURCE } from "../backlog/backlog-structure.js";
-import { STALL_SOURCE } from "./tick-progress-model.js";
-import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_EVENTS } from "./tone.js";
+import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-structure.js";
+import { STALL_SOURCE } from "../tick-progress-model.js";
+import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_EVENTS } from "../tone.js";
 
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // How a loop's phase label (status-model.ts loopPhase) reads here: a status word and tone for

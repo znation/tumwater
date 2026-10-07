@@ -1,4 +1,4 @@
-/** The framework-free keypress factory (src/ui/tui-keys.ts) driven directly — no terminal, no
+/** The framework-free keypress factory (src/ui/tui/tui-keys.ts) driven directly — no terminal, no
  * readline event emitter, no ink: the factory only needs a root for its disk actions, a quit
  * callback, a render-request recorder, and (for the flash-expiry case) an injectable clock.
  * One case per handler family, per PLANS.md "TUI moves to ink, part 2a/3": prompt editing,
@@ -9,8 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui-keymap.js";
-import { createTuiKeys } from "../src/ui/tui-keys.js";
+import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
+import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";

@@ -347,7 +347,7 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   // Regression: the page is authored inside a TS template literal, where a bare \n becomes a
   // REAL newline in the served page — splitting the page's own string literals and killing the
   // whole script with a syntax error ("Unexpected EOF"). Parse every <script> body for real.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const scripts = [...GUI_PAGE.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
   assert.ok(scripts.length >= 1, "page has an inline script");
   for (const body of scripts) {
@@ -356,7 +356,7 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
 });
 
 test("the GUI last tick cell shows absolute time plus relative age, mirroring the TUI", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { lastTickCell } = await import("../src/ui/status-render.js");
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test and
@@ -503,7 +503,7 @@ test("apiError renders the operator-facing message for every error-body shape", 
   // the server sends: JSON {error}, plain text (the 404's "not found"), and an empty body.
   // Extracted like the esc test: the client script's header region up to fmtTokens holds
   // esc/apiError/apiFetch/getJson/postJson, whose only external dependency is fetch.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const script = GUI_PAGE.slice(GUI_PAGE.indexOf("<script>\n") + "<script>\n".length);
   const head = script.slice(0, script.indexOf("const fmtTokens"));
   let respond: (path: string, init?: unknown) => unknown = () => ({ ok: true, status: 200 });
@@ -551,7 +551,7 @@ test("the dashboard's periodic fetches ride a bounded wait — pollSignal bounds
   // forever (fetch has no default timeout), freezing the page on stale data with no offline
   // alert. The periodic fetches pass pollSignal()'s AbortSignal.timeout through getJson's init
   // into fetch; this pins the thread-through and the bound without waiting real time.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const script = GUI_PAGE.slice(GUI_PAGE.indexOf("<script>\n") + "<script>\n".length);
   const head = script.slice(0, script.indexOf("const fmtTokens"));
   // A stub AbortSignal whose timeout() records the requested bound and returns a plain marker.
@@ -589,7 +589,7 @@ test("the poll chain survives a rejected refresh — pollLoop always reschedules
   // exactly like the wedged server the bounded wait exists to survive. This runs the page's
   // own pollLoop body against a refresh that rejects on its first call and succeeds on its
   // second, with setTimeout captured so no real time passes.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const src = GUI_PAGE.match(/\/\/ One poll in flight[\s\S]*?setTimeout\(pollLoop, 1000\);\n  \}/)?.[0];
   assert.ok(src, "the poll chain is present in the page script");
   const scheduled: Array<{ fn: () => unknown; ms: number }> = [];
@@ -627,7 +627,7 @@ test("the poll chain survives a rejected refresh — pollLoop always reschedules
 // esc() (the drawer renders bodies through renderMarkdown, which escapes first — pinned in
 // gui-client.test.ts); the server hands the raw text over unchanged.
 test("the dashboard page escapes dynamic text, and /api/backlog serves bodies raw", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // The capture anchors at the statement's terminating semicolon (end of line), not the first
   // `;` — the replacement map contains one inside its "&amp;" string literal.
   const m = GUI_PAGE.match(/const esc = \((\w+)\) => (.+);$/m);
@@ -661,7 +661,7 @@ test("the dashboard page escapes dynamic text, and /api/backlog serves bodies ra
 });
 
 test("the dashboard page reloads itself when the serving build sha changes", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // The serving process's own startup sha is remembered beside lastStatus (first non-null wins).
   assert.match(GUI_PAGE, /let lastStatus = null;[\s\S]{0,200}let serverBuildSha = null;/);
   // A later successful poll whose sha differs reloads before any render; the failed-poll catch
@@ -673,7 +673,7 @@ test("the dashboard page reloads itself when the serving build sha changes", asy
 });
 
 test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
   const { freshLoopState } = await import("../src/loop/loop-state.js");
   const { yieldMultiplierFor } = await import("../src/scheduling/backoff.js");
@@ -737,7 +737,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
 });
 
 test("the dashboard page is one self-contained document: sidebar, views, composer, drawer, one poll", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // The sidebar carries the four views as #fragment links, so Back/Forward and bookmarks work.
   for (const [id, href] of [["tab-fleet", "#fleet"], ["tab-history", "#history"], ["tab-usage", "#usage"], ["tab-failures", "#failures"]]) {
     assert.match(GUI_PAGE, new RegExp(`<a href="${href}" id="${id}" class="tab`), `${id} links to ${href}`);

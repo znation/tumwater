@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GUI_CLIENT_MARKDOWN_JS } from "../src/ui/gui-client-markdown.js";
-import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
+import { GUI_CLIENT_MARKDOWN_JS } from "../src/ui/gui/gui-client-markdown.js";
+import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { clientScope } from "./gui-client-scope.js";
 
-// The dashboard's Markdown renderer (src/ui/gui-client-markdown.ts): it renders the loops'
+// The dashboard's Markdown renderer (src/ui/gui/gui-client-markdown.ts): it renders the loops'
 // Markdown (backlog bodies, the failure digest) browser-side, and everything it renders came
 // from a model, so its escaping and its link handling are safety properties, not cosmetics.
 // gui-client.test.ts covers the renderer's happy paths; these pin the edges it leaves open.

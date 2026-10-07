@@ -1,7 +1,7 @@
-import { cutSplitsSurrogatePair, gotSuffix } from "../text/text.js";
-import { displayWidth } from "../text/text-width.js";
+import { cutSplitsSurrogatePair, gotSuffix } from "../../text/text.js";
+import { displayWidth } from "../../text/text-width.js";
 
-/** Pure prompt-line editing for the TUI (src/ui/tui.tsx): the line editor, its display window,
+/** Pure prompt-line editing for the TUI (src/ui/tui/tui.tsx): the line editor, its display window,
  * the daily-budget input parser, and the terminal guard message runTui throws at startup.
  * Split out of tui.tsx — which keeps the terminal lifecycle, rendering, and input dispatch —
  * so this TTY-free logic is testable in isolation and the run loop reads as orchestration

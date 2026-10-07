@@ -141,7 +141,7 @@ TOP_LEVEL_KEYS, validation), src/state.ts (`freshLoopState` defaults; `todayStam
 `dailyCost`, `recordDailyCost`, `fleetDailyCost`, `budgetPaused`), src/loop.ts (`foldUsage`
 records the daily window), src/orchestrator.ts (gate in poll loop + transition events),
 src/status.ts (snapshot `budget` field), src/status-render.ts (header badge; `loopPhase`
-param), src/gui.ts (pass paused into phase payload), src/ui/gui-page.ts (header badge JS),
+param), src/gui.ts (pass paused into phase payload), src/ui/gui/gui-page.ts (header badge JS),
 src/events/event-format.ts (two render cases), test/config.test.ts, test/state.test.ts,
 test/orchestrator.test.ts, test/status-render.test.ts, test/event-format.test.ts,
 test/gui.test.ts, README.md.

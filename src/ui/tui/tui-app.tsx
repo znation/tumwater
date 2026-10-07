@@ -7,7 +7,7 @@
  * handler (tui-keys.ts).
  */
 import { Box, Text, useInput } from "ink";
-import type { StatusLine, StatusSpan } from "./status-render.js";
+import type { StatusLine, StatusSpan } from "../status-render.js";
 import { inkKeyToReadline } from "./tui-keymap.js";
 import type { TuiKeys } from "./tui-keys.js";
 

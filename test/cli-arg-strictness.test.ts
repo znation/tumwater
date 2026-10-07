@@ -329,7 +329,7 @@ test("tui rejects unknown arguments before anything launches", async () => {
 });
 
 test("tui gates on a ready repo before the ink import", async () => {
-  // The gate precedes the lazy `await import("./ui/tui.js")`: a bare directory answers with
+  // The gate precedes the lazy `await import("./ui/tui/tui.js")`: a bare directory answers with
   // readiness.ts's wording instead of the TUI failing on a missing state file mid-render.
   const dir = tmpdir();
   const r = await cli(dir, "tui");

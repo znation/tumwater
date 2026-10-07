@@ -1,21 +1,21 @@
-import { collectReport } from "../report/report-data.js";
-import { renderReportMarkdown } from "../report/report-render.js";
-import { REPORT_DEFAULT_DAYS } from "../events/event-window.js";
-import { collectFailureReport } from "../failure/failure-data.js";
-import { renderFailureMarkdown } from "../failure/failure-render.js";
-import { submitPrompt } from "../inbox/inbox-submit.js";
-import { setDailyBudgetUsd } from "../config/config-write.js";
-import { pausedRoles, pauseRole, resumeRole } from "../fleet/fleet-state.js";
+import { collectReport } from "../../report/report-data.js";
+import { renderReportMarkdown } from "../../report/report-render.js";
+import { REPORT_DEFAULT_DAYS } from "../../events/event-window.js";
+import { collectFailureReport } from "../../failure/failure-data.js";
+import { renderFailureMarkdown } from "../../failure/failure-render.js";
+import { submitPrompt } from "../../inbox/inbox-submit.js";
+import { setDailyBudgetUsd } from "../../config/config-write.js";
+import { pausedRoles, pauseRole, resumeRole } from "../../fleet/fleet-state.js";
 import {
   requestAbort,
   requestWake,
   rolePauseMessage,
   roleResumeMessage,
   submitRolePromptAndWake,
-} from "../operator/operator-intent.js";
-import { errorMessage } from "../text/text.js";
-import { usdCap } from "../text/format.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
+} from "../../operator/operator-intent.js";
+import { errorMessage } from "../../text/text.js";
+import { usdCap } from "../../text/format.js";
+import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import {
   applyKey,
   parseBudgetInput,
@@ -42,7 +42,7 @@ const FLASH_MS = 3000;
  * and the line budgets render feeds back. It takes only the seams it cannot own itself: the
  * repo root the disk actions run against, the quit callback (Ctrl+D), a render request callback
  * (every branch that painted a frame), and an injectable clock so the flash expiry is
- * testable without waiting the real 3 s. Rendering (src/ui/tui.tsx) stays the caller: it
+ * testable without waiting the real 3 s. Rendering (src/ui/tui/tui.tsx) stays the caller: it
  * syncs snapshot data and line budgets in, and reads the resulting state out to compose the
  * frame — the same data flow, one module boundary added. */
 interface TuiKeysDeps {

@@ -129,7 +129,7 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
 });
 
 test("the Usage and Failures views fetch their window on activation, never on a timer", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // Both views have a container and a sidebar link; the window pickers choose the days.
   assert.match(GUI_PAGE, /<section id="report" class="view" aria-label="Usage" hidden><\/section>/);
   assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
@@ -142,7 +142,7 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   assert.equal(GUI_PAGE.match(/setTimeout\(pollLoop, 1000\)/g)?.length ?? 0, 1, "the only poll is the 1 s status refresh");
 });
 test("the report charts carry a cursor-following hover label", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // The shared chip: fixed in viewport coordinates, inert to the pointer (so it cannot flicker
   // away the instant the cursor reaches it), hidden until a segment shows it.
   assert.match(GUI_PAGE, /#report-tip \{[^}]*position: ?fixed[^}]*pointer-events: ?none[^}]*display: ?none[^}]*\}/);
@@ -261,7 +261,7 @@ test("the dashboard page abbreviates millions with M, in lockstep with compactTo
   // TypeScript (a separate browser runtime), so its copy is pinned here from the page's own
   // source — same regex-extract + new Function pattern as the esc test — and every value is
   // cross-checked against the shared compactTokens so the deliberate duplicate cannot drift.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const m = GUI_PAGE.match(/const fmtTokens = \((\w+)\) => (.+);$/m);
   assert.ok(m, "fmtTokens definition found in the page");
   const fmtTokens = new Function(m[1]!, `return (${m[2]});`) as (n: number) => string;

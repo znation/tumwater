@@ -5,7 +5,7 @@ import {
   entryBodyWindow,
   moveEntrySelection,
   stepEntryScroll,
-} from "../src/ui/tui-backlog.js";
+} from "../src/ui/tui/tui-backlog.js";
 
 test("backlogLines renders subheaders with counts, entries in order", () => {
   assert.deepEqual(backlogLines(["plan A"], ["bug B"], []), [

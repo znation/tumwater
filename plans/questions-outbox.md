@@ -73,7 +73,7 @@ ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new
 parsing), `src/backlog/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
 `src/status.ts` (`StatusSnapshot.questions`, as inbox does today),
 `src/status-render.ts` (header badge in renderStatus), `src/gui.ts` (statusPayload gains a
-fresh-per-poll `questions` list beside `plans`/`bugs`), `src/ui/gui-page.ts` (header badge + open-
+fresh-per-poll `questions` list beside `plans`/`bugs`), `src/ui/gui/gui-page.ts` (header badge + open-
 questions section in the project status panel), `src/tui.ts` (highlighted line + open-questions
 list in the Ctrl+T project-status view),
 `src/merge.ts` (post-merge count diff → event in tryMerge; extracted from loop.ts 2026-08-29),

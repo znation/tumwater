@@ -6,7 +6,7 @@ import {
   recallPromptHistory,
   resetPromptRecall,
   settlePromptRecall,
-} from "../src/ui/prompt-history.js";
+} from "../src/ui/tui/prompt-history.js";
 
 test("recallPromptHistory walks back and forward with readline's draft rule", () => {
   const h = newPromptHistory();

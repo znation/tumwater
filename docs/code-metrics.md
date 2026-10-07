@@ -87,10 +87,10 @@ Comment share is comment lines divided by comment plus code lines.
 - **Most complex functions:**
   - `runOrchestrator`: complexity 78, cognitive complexity 157, 307 lines ([src/orchestrator/orchestrator.ts](../src/orchestrator/orchestrator.ts)).
   - `eventMessage`: 72, mostly one flat switch ([src/events/event-format.ts](../src/events/event-format.ts)).
-  - The TUI key handler: 60 ([src/ui/tui-keys.ts](../src/ui/tui-keys.ts)).
+  - The TUI key handler: 60 ([src/ui/tui/tui-keys.ts](../src/ui/tui/tui-keys.ts)).
   - `main`: 57 ([src/cli.ts](../src/cli.ts)).
   - `reviewAheadOfMain`: 50 ([src/review/review.ts](../src/review/review.ts)).
-- **File sizes:** median 94 code lines, largest 474 (`src/ui/gui-styles.ts`), none over 500.
+- **File sizes:** median 94 code lines, largest 474 (`src/ui/gui/gui-styles.ts`), none over 500.
 
 ESLint's own `complexity` rule, run over `src/` as a cross-check, agrees closely: 1,517 functions
 (it also counts class field initializers), mean 3.58, median 2, 90th percentile 7, max 79, 5.5%

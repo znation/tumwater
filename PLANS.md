@@ -460,7 +460,7 @@ the TUI, and the dashboard without reading the event log.
 **Approach.**
 1. **`src/status/status-data.ts`** — add the active fallback (resolved pair, `since`, reason) to
    each loop row from `LoopState.modelFallback`; absent leaves the row shape byte-identical.
-2. **`src/ui/status-payload.ts`, `src/ui/status-render.ts`, `src/ui/gui-client-loops.ts`** — a
+2. **`src/ui/status-payload.ts`, `src/ui/status-render.ts`, `src/ui/gui/gui-client-loops.ts`** — a
    `fallback` tag on the loop row (status/TUI cell and GUI row) while an episode is active.
 3. **`src/roles/role-view.ts` + `src/roles/role-render.ts`** — `tumwater role <id>` names the
    effective fallback pair and "on fallback since <time> (primary failing: <reason>)".
@@ -471,7 +471,7 @@ the TUI, and the dashboard without reading the event log.
    longer calls failure fallback out of scope.
 
 **Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/status-render.ts,
-src/ui/gui-client-loops.ts, src/roles/role-view.ts, src/roles/role-render.ts, README.md,
+src/ui/gui/gui-client-loops.ts, src/roles/role-view.ts, src/roles/role-render.ts, README.md,
 docs/how-it-works.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md,
 plans/fallback-model.md, and their tests.
 
@@ -614,7 +614,7 @@ test/event-format.test.ts.
 only when a tier map is declared. The per-row model selector was attached only when the
 top-level `model` is a tier-map object (`src/status/status-data.ts`'s `snapshot`, the
 `isJsonObject(cfg.model)` gate), so the common single-string model (`model: "provider/id"`)
-was invisible: the GUI sub line and the TUI name suffix stayed bare. (`src/ui/gui-client-loops.ts`'s
+was invisible: the GUI sub line and the TUI name suffix stayed bare. (`src/ui/gui/gui-client-loops.ts`'s
 `loopCells` already renders `l.model` when present, and `src/ui/status-payload.ts` already
 forwards `s.model`; its stale comment was corrected to match.)
 
@@ -629,7 +629,7 @@ forwards `s.model`; its stale comment was corrected to match.)
    that also renders a lone model: with `s.modelTier` it keeps today's ` (tier · selector)` text
    byte-for-byte; otherwise with `s.model` it appends ` (${s.model})`; with neither it appends
    nothing.
-3. **`src/ui/gui-client-loops.ts` needed no change** — verified it already renders `l.model`.
+3. **`src/ui/gui/gui-client-loops.ts` needed no change** — verified it already renders `l.model`.
    **`src/ui/status-payload.ts`** already forwarded `s.model`; only its comment was corrected.
 
 **Files touched.** src/status/status-data.ts, src/ui/status-render.ts, src/ui/status-payload.ts,
@@ -722,11 +722,11 @@ The CLI answers "what is each loop about to land" with `tumwater diff` (`--json`
 
 **Approach.** The landed change follows the plan; where the anchors named the wrong module it was corrected in place rather than refused.
 1. **`src/gui/gui-endpoints.ts`** — the `async handleDiff(q, res, root)` handler: no `role` param → `sendJson(res, 200, await collectFleetChanges(root))` (the same payload `tumwater diff --json` prints); `?role=<id>` → `rejectBadRole` first (the same target validation and 400 wording as `/api/transcript` and `/api/tick`, so a traversal-shaped id never reaches the collector) and then `collectRoleChange(root, <id>)` (the full patch view, as `tumwater diff --role <id> --json` prints). Every /api handler lives in this module by its own contract, so the plan's `gui-server.ts` handler note was corrected; **`src/gui/gui-server.ts`** routes `GET /api/diff` to it.
-2. **`src/ui/gui-page.ts`** — a `Pending` tab in `viewnav` (after Failures) and a `<section id="pending" class="view" aria-label="Pending" hidden>` container, mirroring the Failures section.
-3. **`src/ui/gui-client-boot.ts`** — `pending` registered in `VIEWS` and `fetchPending()` called from `switchView`, alongside `fetchHistory`/`fetchReport`/`fetchFailures`.
-4. **`src/ui/gui-client-pending.ts`** (new section, spliced into gui-client.ts like its siblings) — `fetchPending` loads `/api/diff`; `renderPending` paints a pure roster (loop, branch, state, ahead count with commit subjects, dirty-file count; `ready` with no work shows idle; `absent`/`no-base` show their degraded line), and each row opens the loop drawer. **`src/ui/gui-client-drawer.ts`** adds the drawer's "Pending change" section — it fetches `/api/diff?role=<id>` once on open and renders the full patch (commits, ahead-of-main diff, uncommitted files and diff), and it renders even for a role absent from `statusPayload.loops` (a disabled loop), so those roster rows can show their patch too. **`src/ui/gui-styles.ts`** styles the scrollable diff. The roster renderer stays pure so it is unit-testable without a server.
+2. **`src/ui/gui/gui-page.ts`** — a `Pending` tab in `viewnav` (after Failures) and a `<section id="pending" class="view" aria-label="Pending" hidden>` container, mirroring the Failures section.
+3. **`src/ui/gui/gui-client-boot.ts`** — `pending` registered in `VIEWS` and `fetchPending()` called from `switchView`, alongside `fetchHistory`/`fetchReport`/`fetchFailures`.
+4. **`src/ui/gui/gui-client-pending.ts`** (new section, spliced into gui-client.ts like its siblings) — `fetchPending` loads `/api/diff`; `renderPending` paints a pure roster (loop, branch, state, ahead count with commit subjects, dirty-file count; `ready` with no work shows idle; `absent`/`no-base` show their degraded line), and each row opens the loop drawer. **`src/ui/gui/gui-client-drawer.ts`** adds the drawer's "Pending change" section — it fetches `/api/diff?role=<id>` once on open and renders the full patch (commits, ahead-of-main diff, uncommitted files and diff), and it renders even for a role absent from `statusPayload.loops` (a disabled loop), so those roster rows can show their patch too. **`src/ui/gui/gui-styles.ts`** styles the scrollable diff. The roster renderer stays pure so it is unit-testable without a server.
 
-**Files touched.** src/gui/gui-endpoints.ts, src/gui/gui-server.ts, src/ui/gui-page.ts, src/ui/gui-client.ts, src/ui/gui-client-boot.ts, src/ui/gui-client-pending.ts (new), src/ui/gui-client-drawer.ts, src/ui/gui-styles.ts, test/gui-endpoints.test.ts, test/gui-client-pending.test.ts (new), test/gui-client-boot.test.ts, test/gui-client-drawer.test.ts, docs/how-it-works.md.
+**Files touched.** src/gui/gui-endpoints.ts, src/gui/gui-server.ts, src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-pending.ts (new), src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-styles.ts, test/gui-endpoints.test.ts, test/gui-client-pending.test.ts (new), test/gui-client-boot.test.ts, test/gui-client-drawer.test.ts, docs/how-it-works.md.
 
 **Acceptance criteria.**
 - `GET /api/diff` returns a document matching `tumwater diff --json` for the same tree (same `mainBranch` and `roles` arrays, no per-role patch fields); `GET /api/diff?role=<id>` matches `tumwater diff --role <id> --json` for a role holding work and for an absent/no-base role.
@@ -833,10 +833,10 @@ at and what that tier resolves to — without reading tumwater.json.
 so single-model configs keep today's row shape byte-for-byte. Both dashboards render it: the
 TUI/status table appends ` (tier · selector)` to the loop name cell (src/ui/status-render.ts),
 the GUI's loop row carries a tier tag beside the name and the selector in the sub line
-(src/ui/status-payload.ts, src/ui/gui-client-loops.ts).
+(src/ui/status-payload.ts, src/ui/gui/gui-client-loops.ts).
 
 **Files touched.** src/roles/role-view.ts, src/roles/role-render.ts, src/status/status-data.ts,
-src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/gui-client-loops.ts, and tests
+src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, and tests
 (test/role-view.test.ts, test/status-data.test.ts, test/status-render.test.ts,
 test/gui-client-loops.test.ts).
 

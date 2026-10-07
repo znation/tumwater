@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./gui-client-scope.js";
 
-// The dashboard's loops table, row by row (src/ui/gui-client-loops.ts's loops-table region):
+// The dashboard's loops table, row by row (src/ui/gui/gui-client-loops.ts's loops-table region):
 // the status pill's second line (what the phase carried, when an idle loop wakes, the
 // backoff and yield-scaled-clock notes) and each row's cells — the activity line's choice
 // between live work, the landing placeholder, and the last result, the stalled-work red

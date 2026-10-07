@@ -2,7 +2,7 @@ import { sleep, waitFor } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/tui.js";
+import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/tui/tui.js";
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";

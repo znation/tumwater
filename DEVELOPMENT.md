@@ -112,8 +112,10 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,
   `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
-- `src/ui/`: TUI, GUI, status table, backlog report, and transcript rendering. Imported only by
-  each other and the CLI command layer that drives it (`cli.ts` and the `src/cli/` command bodies).
+- `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
+  holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
+  renderer. Imported only by each other and the CLI command layer that drives it (`cli.ts` and
+  the `src/cli/` command bodies).
 - `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`, `tick`, and `report`
   CLI command bodies, beside the collector modules (`history-data.ts`, `src/tick/tick-detail-data.ts`,
   `src/report/report-data.ts`) whose payloads they print, `src/cli/log-commands.ts` (the `logs` command body),

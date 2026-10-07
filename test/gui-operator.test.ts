@@ -159,8 +159,8 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
 // dashboard script while the module and its region tests all still pass. Pin the splice:
 // the assembled script must contain the module's constant verbatim, end to end.
 test("GUI_CLIENT_JS carries the operator module as a byte-exact contiguous splice", async () => {
-  const { GUI_CLIENT_JS } = await import("../src/ui/gui-client.js");
-  const { GUI_CLIENT_OPERATOR_JS } = await import("../src/ui/gui-client-operator.js");
+  const { GUI_CLIENT_JS } = await import("../src/ui/gui/gui-client.js");
+  const { GUI_CLIENT_OPERATOR_JS } = await import("../src/ui/gui/gui-client-operator.js");
   assert.ok(
     GUI_CLIENT_JS.includes(GUI_CLIENT_OPERATOR_JS),
     "the operator module's constant must appear verbatim in the assembled script " +

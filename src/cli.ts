@@ -92,7 +92,7 @@ async function main(): Promise<void> {
       // Imported lazily: the TUI module pulls in ink (the one runtime dependency the
       // tree carries), and an install whose node_modules is absent must still reach
       // every other command's own broken-install reporting instead of dying on import.
-      const { runTui } = await import("./ui/tui.js");
+      const { runTui } = await import("./ui/tui/tui.js");
       await runTui(root);
       break;
     case "gui":

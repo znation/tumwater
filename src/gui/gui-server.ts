@@ -5,7 +5,7 @@
  * which imports startGui from here, so the server and the command that boots it stay adjacent. */
 import crypto from "node:crypto";
 import http from "node:http";
-import { GUI_PAGE } from "../ui/gui-page.js";
+import { GUI_PAGE } from "../ui/gui/gui-page.js";
 import { statusPayload } from "../ui/status-payload.js";
 import {
   captureStartupBuild,

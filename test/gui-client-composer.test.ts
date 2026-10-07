@@ -1,10 +1,10 @@
 import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui-client-composer.js";
+import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui/gui-client-composer.js";
 import { clientRegion, ESC_LINE } from "./gui-client-scope.js";
 
-// The dashboard's composer, browser-side (src/ui/gui-client-composer.ts): the target selector
+// The dashboard's composer, browser-side (src/ui/gui/gui-client-composer.ts): the target selector
 // with its per-target unsent drafts, the hint and character counter, the image attachments
 // (dropped or pasted onto the box, rendered as removable chips, capped), and the submit that
 // reads the bytes and queues the prompt through the same endpoints the CLI's "prompt" and

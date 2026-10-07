@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GUI_CLIENT_PENDING_JS } from "../src/ui/gui-client-pending.js";
-import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
+import { GUI_CLIENT_PENDING_JS } from "../src/ui/gui/gui-client-pending.js";
+import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { clientScope } from "./gui-client-scope.js";
 
-// The dashboard's Pending view (src/ui/gui-client-pending.ts): the roster it paints from
+// The dashboard's Pending view (src/ui/gui/gui-client-pending.ts): the roster it paints from
 // /api/diff's fleet document — each role's branch, state, commits ahead with their subjects,
 // and uncommitted-file count — and its place in the assembled script. The drawer's full-patch
 // half lives beside the drawer (test/gui-client-drawer.test.ts).
