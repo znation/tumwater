@@ -7,17 +7,17 @@ export type { BacklogEntry } from "./backlog-md.js";
 
 /** The stat-cached file readers of the project backlog data shown on both dashboards: planned
  * features (PLANS.md), open bugs (BUGS.md), and open questions (QUESTIONS.md). These are tracked
- * markdown that loops edit, so readers must never show a stale entry — but the dashboards poll
- * them every second while the files change only when a loop lands an edit. Each reader therefore
- * serves an unchanged file from a stat-keyed cache: one syscall per file per poll instead of
- * re-reading and re-parsing markdown that grows without bound over the project's lifetime
- * (PLANS/BUGS are append-only durable memory). Any write invalidates it via dev/ino/mtime/size
- * (stat-cache.cachedByStat, same freshness check as files/tail.ts's incremental log readers). The pure
- * markdown parsing underneath lives in src/backlog/backlog-md.ts — this module owns only reading and
- * caching. Each dashboard formats this data for its own surface (the TUI's lines live in
- * tui.tsx; the GUI renders HTML in gui-page.ts). The open-question count shown in the status
- * headers is just `openQuestions(root).length`, so the badge and the list always come from
- * one parse. */
+ * markdown that loops edit, so readers must never show a stale entry — but the dashboards poll them
+ * every second while the files change only when a loop lands an edit. Each reader therefore serves
+ * an unchanged file from a stat-keyed cache: one syscall per file per poll instead of re-reading
+ * and re-parsing markdown that grows without bound over the project's lifetime (PLANS/BUGS are
+ * append-only durable memory). Any write invalidates it via dev/ino/mtime/size
+ * (stat-cache.cachedByStat, same freshness check as files/tail.ts's incremental log readers). The
+ * pure markdown parsing underneath lives in src/backlog/backlog-md.ts — this module owns only
+ * reading and caching. Each dashboard formats this data for its own surface (the TUI's lines live
+ * in tui.tsx; the GUI renders HTML in gui-page.ts). The open-question count shown in the status
+ * headers is just `openQuestions(root).length`, so the badge and the list always come from one
+ * parse. */
 
 /** Parsed sections keyed by file + section title (a future reader of a second section from the
  * same file must not collide with the first). Bounded inside cachedByStat: many short-lived
