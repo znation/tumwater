@@ -6,70 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Revise rejected changes, part 2/2: the re-review sees the prior objections and what the revision changed (planned 2026-10-06 by operator; requires part 1/2 landed and running)
-
-Context: the same audit found reviews of one idea flip between rounds, because each reviewer
-starts with no memory of the previous review.
-- On 09-28, bugfix's 2464b72f was rejected only for a wrong test count. Its re-land, 612848d4,
-  was then rejected for real bugs the first review had missed, such as `commandBuffersOutput`
-  misreading `2>>`.
-- On the core→ui digest move, one rejection implied the change could re-land once its records
-  were fixed. The next rejected it as a rule violation.
-- Feature's timed pause got a different set of objections in each of its eight rounds.
-
-Once part 1/2 keeps the rejected diff, the reviewer can be shown which objections a revision
-had to resolve and what it changed to resolve them.
-
-**Goal.** When a landing is a revision (`revisionRound` ≥ 1), the reviewer gets two things:
-- the prior review's numbered objections, with the instruction to check each one first (one
-  left unresolved is a rejection on its own);
-- the interdiff between the rejected version and the revision.
-
-It still reviews the whole diff as usual.
-
-**Approach.**
-1. **`src/landing/landing-queue.ts`, `src/landing/landing-core.ts`.**
-   - `LandingEntry` and `LandRequest` gain `priorReview?: { sha: string; reasons: string[] }`.
-   - `stageTickLanding` (src/tick/tick-stage.ts) fills it from `state.lastReview` when the tick
-     was a revision.
-   - A recovery landing reads it back as absent, so an orphaned revision is reviewed like a
-     fresh change.
-2. **`src/git/git-diff.ts`.** Add `revisionInterdiff(wt, mainBranch, priorSha, head)`:
-   - it runs `git range-diff <changeBaseRev(prior)>..<prior> <changeBaseRev(head)>..<head>`;
-   - it applies `aheadOfMainDiff`'s cap and truncation note;
-   - it never throws, and returns empty on any git failure, including a prior object that is
-     gone. Part 1/2's rejected ref keeps the object alive until the revision lands.
-3. **`src/review/review.ts`.** `reviewAheadOfMain` takes the optional prior review and passes it,
-   with the interdiff, to `buildReviewPrompt`.
-4. **`src/gates/gate-prompts.ts`.** `buildReviewPrompt` gains an optional `priorReview`
-   parameter. Its block goes right after the author's commit body:
-   - this change is revision N of one rejected in review;
-   - the objections, numbered, and the interdiff;
-   - every objection must be resolved, and an unresolved one is a finding by itself;
-   - new findings must be concrete and verifiable, as always.
-
-   The prompt keeps the literal "VERDICT:" exactly twice, because test/gate-prompts.test.ts
-   derives the accepted forms from it.
-5. **`src/events/event-format.ts`.** A revision's `review_start` carries `revision: N`, rendered
-   as `review (revision N)`.
-
-**Files touched.** src/landing/landing-queue.ts, src/landing/landing-core.ts,
-src/tick/tick-stage.ts, src/git/git-diff.ts, src/review/review.ts, src/gates/gate-prompts.ts,
-src/events/event-format.ts. Tests: test/gate-prompts.test.ts, test/review.test.ts,
-test/tick-stage.test.ts, and a new test/revision-interdiff.test.ts.
-
-**Acceptance criteria.**
-- **Prompt.** With a prior review, `buildReviewPrompt` contains each objection, the interdiff
-  and the resolve-first instruction. Without one it is byte-identical to today's prompt, and
-  "VERDICT:" still appears exactly twice.
-- **Interdiff.** On a scratch repo where a commit is rebased onto a moved main and then
-  amended, `revisionInterdiff` shows only the amendment, not main's movement. A missing prior
-  sha yields an empty string, not a throw.
-- **Events.** A revision landing's `review_start` carries `revision`; a fresh landing's does
-  not.
-- **Recovery.** A recovery landing of a revision is reviewed without the prior block.
-- `npm run test` green.
-
 ### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed)
 
 Design: plans/disk-floor.md ("Reclaiming build outputs").
@@ -421,6 +357,78 @@ pool, event-format, status and doctor tests.
 ---
 
 ## Done
+
+### Revise rejected changes, part 2/2: the re-review sees the prior objections and what the revision changed (planned 2026-10-06 by operator; requires part 1/2 landed and running; done 2026-10-07 by feature)
+
+Context: the same audit found reviews of one idea flip between rounds, because each reviewer
+starts with no memory of the previous review.
+- On 09-28, bugfix's 2464b72f was rejected only for a wrong test count. Its re-land, 612848d4,
+  was then rejected for real bugs the first review had missed, such as `commandBuffersOutput`
+  misreading `2>>`.
+- On the core→ui digest move, one rejection implied the change could re-land once its records
+  were fixed. The next rejected it as a rule violation.
+- Feature's timed pause got a different set of objections in each of its eight rounds.
+
+Once part 1/2 keeps the rejected diff, the reviewer can be shown which objections a revision
+had to resolve and what it changed to resolve them.
+
+**Goal.** When a landing is a revision (`revisionRound` ≥ 1), the reviewer gets two things:
+- the prior review's numbered objections, with the instruction to check each one first (one
+  left unresolved is a rejection on its own);
+- the interdiff between the rejected version and the revision.
+
+It still reviews the whole diff as usual.
+
+**Approach.**
+1. **`src/landing/landing-queue.ts`, `src/landing/landing-core.ts`.**
+   - `LandingEntry` and `LandRequest` gain `priorReview?: { sha: string; reasons: string[] }`.
+   - `stageTickLanding` (src/tick/tick-stage.ts) fills it from `state.lastReview` when the tick
+     was a revision.
+   - A recovery landing reads it back as absent, so an orphaned revision is reviewed like a
+     fresh change.
+2. **`src/git/git-diff.ts`.** Add `revisionInterdiff(wt, mainBranch, priorSha, head)`:
+   - it runs `git range-diff <changeBaseRev(prior)>..<prior> <changeBaseRev(head)>..<head>`;
+   - it applies `aheadOfMainDiff`'s cap and truncation note;
+   - it never throws, and returns empty on any git failure, including a prior object that is
+     gone. Part 1/2's rejected ref keeps the object alive until the revision lands.
+3. **`src/review/review.ts`.** `reviewAheadOfMain` takes the optional prior review and passes it,
+   with the interdiff, to `buildReviewPrompt`.
+4. **`src/gates/gate-prompts.ts`.** `buildReviewPrompt` gains an optional `priorReview`
+   parameter. Its block goes right after the author's commit body:
+   - this change is revision N of one rejected in review;
+   - the objections, numbered, and the interdiff;
+   - every objection must be resolved, and an unresolved one is a finding by itself;
+   - new findings must be concrete and verifiable, as always.
+
+   The prompt keeps the literal "VERDICT:" exactly twice, because test/gate-prompts.test.ts
+   derives the accepted forms from it.
+5. **`src/events/event-format.ts`.** A revision's `review_start` carries `revision: N`, rendered
+   as `review (revision N)`.
+
+**Files touched.** src/landing/landing-queue.ts, src/landing/landing-core.ts,
+src/tick/tick-stage.ts, src/git/git-diff.ts, src/git/git.ts (changeBaseRev gains a `rev`
+argument), src/review/review.ts, src/gates/gate-prompts.ts, src/events/event-format.ts,
+src/events/events.ts (comment), src/landing/landing-vetting.ts and src/landing/landing-drain.ts
+(carry PriorReview from the queue entry onto the LandRequest). Tests: test/gate-prompts.test.ts,
+test/review.test.ts, test/event-format.test.ts, test/tick-stage.test.ts, and a new
+test/revision-interdiff.test.ts.
+
+**Acceptance criteria.**
+- **Prompt.** With a prior review, `buildReviewPrompt` contains each objection, the interdiff
+  and the resolve-first instruction. Without one it is byte-identical to today's prompt, and
+  "VERDICT:" still appears exactly twice.
+- **Interdiff.** On a scratch repo where a commit is rebased onto a moved main and then
+  amended, `revisionInterdiff` shows only the amendment, not main's movement. A missing prior
+  sha yields an empty string, not a throw.
+- **Events.** A revision landing's `review_start` carries `revision`; a fresh landing's does
+  not.
+- **Recovery.** A recovery landing of a revision is reviewed without the prior block.
+- `npm run test` green.
+
+**Implementation note (2026-10-07):** `revisionInterdiff` passes `--creation-factor=100` to
+`git range-diff`. At the default 60% a two-line change can fail to pair with its revision and
+render as two unrelated commits, which is exactly the small-revision case; the acceptance
+criterion's scratch-repo scenario fails without it.
 
 ### Revise rejected changes, part 1/2: a rejected change goes back to its author as uncommitted edits instead of being discarded (planned 2026-10-06 by operator; done 2026-10-07 by feature)
 

@@ -81,6 +81,15 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // Undefined for a fresh change — including a user-request tick that leaves a pending revision
   // untouched — so only the tick that actually held the rejected diff is labeled a revision.
   const revisionRound = ctx.revisionRound;
+  // A revision landing carries the review that rejected the change (plans/revise-rejected.md
+  // part 2/2): the prior head and its numbered objections ride the queued entry so the re-review
+  // can check each one against the interdiff. Only a tick that actually held the rejected diff
+  // attaches it; a fresh change — including a user-request tick that leaves a pending revision
+  // untouched — and a recovery landing carry none.
+  const priorReview =
+    revisionRound !== undefined && s.lastReview?.head
+      ? { sha: s.lastReview.head, reasons: s.lastReview.reasons }
+      : undefined;
   // The commit subject and body come from the reply's closing block. A run that changed files
   // without one — a cut-off final message, or plain non-compliance — gets one bounded follow-up
   // turn in its own session to produce it (the session still holds everything the run did);
@@ -203,6 +212,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     body: body ? formatCommitBody(body) : undefined,
     highFriction: highFriction || undefined,
     ...(revisionRound !== undefined ? { revisionRound } : {}),
+    ...(priorReview !== undefined ? { priorReview } : {}),
     enqueuedAt: Date.now(),
   });
   // The revision is now in flight: the rejected ref's lifecycle continues in the lander

@@ -144,7 +144,7 @@ export function eventMessage(e: HarnessEvent): string {
       // warning prefix. The resulting tick_end line carries the user_aborted outcome.
       return `tick aborted by user`;
     case "review_start":
-      return `reviewing ${shortSha(e.head)} before merge${e.model !== undefined ? ` on ${String(e.model)}` : ""}`;
+      return `reviewing ${shortSha(e.head)}${e.revision !== undefined ? ` (revision ${e.revision})` : ""} before merge${e.model !== undefined ? ` on ${String(e.model)}` : ""}`;
     case "review_verdict":
       return `review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {

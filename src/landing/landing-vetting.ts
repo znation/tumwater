@@ -169,6 +169,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
             body: entry.body,
             highFriction: entry.highFriction,
             ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
+            ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
           },
           { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runLandingPi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
         );

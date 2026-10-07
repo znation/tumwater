@@ -196,6 +196,34 @@ test("buildReviewPrompt omits optional sections when their arguments are absent"
   assert.ok(!prompt.includes("<principles>"), "no principles block without a file");
 });
 
+test("buildReviewPrompt shows a revision's prior objections and interdiff, and is unchanged without one", () => {
+  const bare = buildReviewPrompt("diff body");
+  const prior = buildReviewPrompt(
+    "diff body",
+    undefined,
+    "body-marker",
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { round: 2, reasons: ["first objection", "second objection"], interdiff: "interdiff-marker" },
+  );
+  const flat = oneLine(prior);
+  assert.match(flat, /revision 2 of one previously rejected in review/);
+  assert.match(flat, /1\. first objection/);
+  assert.match(flat, /2\. second objection/);
+  assert.match(flat, /prior review's numbered objections FIRST/);
+  assert.match(flat, /an unresolved one is a rejection on its own/);
+  assert.ok(prior.includes("<interdiff>\ninterdiff-marker\n</interdiff>"));
+  assert.equal([...prior.matchAll(/VERDICT:/g)].length, 2, "the verdict contract is untouched");
+  // Without a prior review the block is absent entirely, so a fresh change's prompt carries
+  // nothing from the revision machinery.
+  assert.ok(!bare.includes("previously rejected in review"));
+  assert.ok(!bare.includes("<interdiff>"));
+  assert.equal([...bare.matchAll(/VERDICT:/g)].length, 2);
+});
+
 test("buildReviewPrompt freezes and names the comparison base so a moved main cannot read as the change", () => {
   // BUGS.md 2026-10-06: the reviewer double-checked scope with `git diff main`; a merge that
   // landed while the review ran showed up reversed, and the change was rejected for edits it

@@ -23,6 +23,16 @@ import { landQueueDir } from "../paths.js";
  * outcome, so the queue holds only unattempted landings. No attempt counter lives in the file —
  * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
  */
+/** The review that rejected the change a revision is revising (plans/revise-rejected.md part
+ * 2/2): the rejected head and the numbered objections the reviewer named. It rides the queued
+ * entry so the re-review can be shown what the revision had to resolve, plus the interdiff
+ * between the two versions. Absent on a fresh change and read back as absent on a recovery
+ * landing, which is reviewed like a fresh change. */
+export interface PriorReview {
+  sha: string;
+  reasons: string[];
+}
+
 export interface LandingEntry {
   /** The owning loop — events, session naming, and the lander worktree all key off it. */
   role: string;
@@ -42,6 +52,10 @@ export interface LandingEntry {
    * 1 for the first revision of a rejected change, 2 for the second. Carried onto the
    * LandRequest so a rejection of round N sets round N+1, and past REVISION_LIMIT exhausts. */
   revisionRound?: number;
+  /** The prior rejection this landing is revising, absent for a fresh change
+   * (plans/revise-rejected.md part 2/2). Filled by tick-stage.ts from LoopState.lastReview only
+   * on a tick that held the rejected diff; a recovery landing never carries one. */
+  priorReview?: PriorReview;
 }
 
 let seq = 0;
@@ -80,6 +94,15 @@ const entryCache = new Map<string, StatKeyedValue<LandingEntry>>();
  * happened to carry those two fields was handed downstream with `tick` and `summary`
  * undefined, which surface as bogus session names (`tumwater-<role>-undefined-review`) and
  * `undefined` in the reviewer's prompt. Optional fields are checked only when present. */
+function isPriorReview(v: unknown): v is PriorReview {
+  if (!isJsonObject(v)) return false;
+  return (
+    typeof v.sha === "string" &&
+    Array.isArray(v.reasons) &&
+    v.reasons.every((r) => typeof r === "string")
+  );
+}
+
 function isLandingEntry(v: unknown): v is LandingEntry {
   if (!isJsonObject(v)) return false;
   const e = v;
@@ -91,7 +114,8 @@ function isLandingEntry(v: unknown): v is LandingEntry {
     typeof e.enqueuedAt === "number" &&
     (e.body === undefined || typeof e.body === "string") &&
     (e.highFriction === undefined || typeof e.highFriction === "boolean") &&
-    (e.revisionRound === undefined || typeof e.revisionRound === "number")
+    (e.revisionRound === undefined || typeof e.revisionRound === "number") &&
+    (e.priorReview === undefined || isPriorReview(e.priorReview))
   );
 }
 

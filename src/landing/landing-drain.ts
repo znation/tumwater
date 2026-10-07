@@ -131,6 +131,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           body: v.entry.body,
           highFriction: v.entry.highFriction,
           ...(v.entry.revisionRound !== undefined ? { revisionRound: v.entry.revisionRound } : {}),
+          ...(v.entry.priorReview !== undefined ? { priorReview: v.entry.priorReview } : {}),
           ...(v.verifiedHead !== undefined ? { verifiedHead: v.verifiedHead } : {}),
         })),
         (role) => wiring.get(role)!,

@@ -362,6 +362,9 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
 
   assert.equal(recovered?.kind, "enqueued");
   assert.equal(recovered?.kind === "enqueued" ? recovered.entry.revisionRound : undefined, 1);
+  // A recovery landing carries no prior review: the re-review sees it like a fresh change
+  // (plans/revise-rejected.md part 2/2).
+  assert.equal(recovered?.kind === "enqueued" ? recovered.entry.priorReview : undefined, undefined);
 });
 
 test("a landed revision deletes the rejected ref", async () => {

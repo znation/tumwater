@@ -2,7 +2,7 @@
  * in git.ts and its callers: porcelain-status path decoding, worktree change listing, and
  * ahead-of-main diff extraction (including its oversized-diff truncation). Everything here
  * interprets git output; spawning git stays in git.ts. */
-import { gitLines } from "./git.js";
+import { changeBaseRev, gitLines } from "./git.js";
 import { gitTry } from "./git-run.js";
 
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
@@ -161,4 +161,43 @@ export async function aheadOfMainDiff(
     out += `\n${d}\n`;
   }
   return out;
+}
+
+/** The interdiff between a rejected change and its revision, for the re-review prompt
+ * (plans/revise-rejected.md part 2/2): `git range-diff` over each version's own
+ * base..tip range, where the base is its merge-base with main (changeBaseRev). Because each
+ * side is measured from its own base, main's movement between the versions is not shown as
+ * part of the revision — only what the author changed in response. Capped like
+ * aheadOfMainDiff; returns "" on any git failure, including a prior object that is gone, so
+ * a vanished prior never throws into the gate. `--creation-factor=100` makes range-diff pair
+ * the two versions even when the change is tiny: at the default 60% a two-line addition can
+ * fail to pair and render as two unrelated commits (`<`/`>`), which is exactly the case a
+ * small revision is. */
+export async function revisionInterdiff(
+  wt: string,
+  mainBranch: string,
+  priorSha: string,
+  head: string,
+  maxBytes = 200_000,
+): Promise<string> {
+  try {
+    const priorBase = await changeBaseRev(wt, mainBranch, priorSha);
+    const headBase = await changeBaseRev(wt, mainBranch, head);
+    const out =
+      (await gitTry(
+        wt,
+        "range-diff",
+        "--creation-factor=100",
+        `${priorBase}..${priorSha}`,
+        `${headBase}..${head}`,
+      )) ?? "";
+    if (out.length <= maxBytes) return out;
+    return (
+      `[interdiff truncated: the full interdiff is ${out.length} bytes; showing the first ` +
+      `${maxBytes}]\n` +
+      out.slice(0, maxBytes)
+    );
+  } catch {
+    return "";
+  }
 }

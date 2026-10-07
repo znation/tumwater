@@ -17,6 +17,7 @@ import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
+import type { PriorReview } from "./landing-queue.js";
 
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
@@ -47,6 +48,10 @@ export interface LandRequest {
    * carried from the LandingEntry so a rejection at round N records round N+1, and a round past
    * REVISION_LIMIT exhausts the revision instead of continuing. */
   revisionRound?: number;
+  /** The prior rejection this landing is revising, absent for a fresh change
+   * (plans/revise-rejected.md part 2/2): carried from the LandingEntry so the re-review sees the
+   * prior objections and the interdiff. Absent on a recovery landing. */
+  priorReview?: PriorReview;
   /** The head its vet's gate pre-check ran green on, when it ran one on exactly `sha`
    * (GateResult.verifiedHead, carried by landing-batch.ts's VetVerdict) — so a landing whose
    * in-lock rebase is a no-op seeds the red-main baseline with the SHA that becomes main. */
@@ -148,7 +153,18 @@ export async function reviewPinnedChange(
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
-    { root, role, wt, mainBranch, config, tick: req.tick, signal: ctx.signal(), runGatePi: ctx.runGatePi },
+    {
+      root,
+      role,
+      wt,
+      mainBranch,
+      config,
+      tick: req.tick,
+      signal: ctx.signal(),
+      runGatePi: ctx.runGatePi,
+      revisionRound: req.revisionRound,
+      priorReview: req.priorReview,
+    },
     state,
     req.summary,
     req.body,
@@ -345,6 +361,8 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
             tick: req.tick,
             signal: ctx.signal(),
             runGatePi: ctx.runGatePi,
+            revisionRound: req.revisionRound,
+            priorReview: req.priorReview,
           },
           ctx.state,
           req.summary,

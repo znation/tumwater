@@ -4,7 +4,8 @@ import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { changeBaseRev, headOf, patchId } from "../git/git.js";
-import { aheadOfMainDiff, aheadOfMainFiles } from "../git/git-diff.js";
+import { aheadOfMainDiff, aheadOfMainFiles, revisionInterdiff } from "../git/git-diff.js";
+import type { PriorReview } from "../landing/landing-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { piLogPath, reviewSessionDir } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -60,6 +61,13 @@ export interface ReviewContext {
   /** The sleep clock the pre-check measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep?: SleepSampler;
+  /** The revision round this landing is, absent for a fresh change — labeled on `review_start`
+   * and paired with `priorReview` (plans/revise-rejected.md part 2/2). */
+  revisionRound?: number;
+  /** The rejected change's head and objections when this landing is a revision, absent
+   * otherwise: built from the landing entry's PriorReview and used to show the re-review what
+   * the revision had to resolve. A recovery landing carries none. */
+  priorReview?: PriorReview;
   /** The reviewer's pi runs (the review run and the verdict follow-up), through the owning
    * loop's shared transient-retry wiring (LoopPi.runGatePi — BUGS.md 2026-10-01: a 429 in the
    * gate gets the same retry as an authoring run). Every caller supplies it; the tests'
@@ -233,6 +241,7 @@ export async function reviewAheadOfMain(
     loop: role,
     type: "review_start",
     head,
+    ...(ctx.revisionRound !== undefined ? { revision: ctx.revisionRound } : {}),
     ...modelSelectorField(reviewCfg),
   });
   // Persist the phase BEFORE the run so a dashboard mid-review shows "reviewing" and a crash
@@ -247,6 +256,17 @@ export async function reviewAheadOfMain(
   // and tells the reviewer to compare against it instead.
   const base = await changeBaseRev(wt, mainBranch);
   const diff = await aheadOfMainDiff(wt, mainBranch);
+  // A revision's re-review gets the prior review's objections and the interdiff between the two
+  // versions (plans/revise-rejected.md part 2/2), so it checks what the revision had to resolve
+  // instead of starting from no memory. A missing prior object yields an empty interdiff, never
+  // a throw (revisionInterdiff).
+  const priorReview = ctx.priorReview
+    ? {
+        round: ctx.revisionRound ?? 1,
+        reasons: ctx.priorReview.reasons,
+        interdiff: await revisionInterdiff(wt, mainBranch, ctx.priorReview.sha, head),
+      }
+    : undefined;
   // The reviewer run's wall time rides on its verdict event: a reviewer that takes an hour per
   // merge on local hardware is a fleet-level cost an operator must be able to see.
   const reviewStartedAt = Date.now();
@@ -263,7 +283,17 @@ export async function reviewAheadOfMain(
   const pi = await ctx.runGatePi({
     cwd: wt,
     kind: "gate",
-    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness, base),
+    prompt: buildReviewPrompt(
+      diff,
+      summary,
+      commitBody,
+      readPrinciples(root),
+      highFriction,
+      verifiedByHarness,
+      base,
+      undefined,
+      priorReview,
+    ),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
     // path below — commit kept, no strike — and re-lands through the author's next tick

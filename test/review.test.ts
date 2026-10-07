@@ -257,6 +257,37 @@ test("gate approves a good diff, records the HEAD, and discards the reviewer's s
   });
 });
 
+test("a revision's review carries its round and shows the prior objections and interdiff", async () => {
+  const { root, wt, head } = await gateFixture();
+  const prompts: string[] = [];
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`, async () => {
+    const { result } = await reviewGate(root, wt, {
+      revisionRound: 2,
+      priorReview: { sha: head, reasons: ["the first bug"] },
+      // Capture the assembled prompt through the gate's wiring seam (the fake pi ignores it).
+      runGatePi: async (opts) => {
+        prompts.push(opts.prompt);
+        return gateCtx(root, wt).runGatePi(opts);
+      },
+    });
+    assert.equal(result.decision, "approved");
+    assert.match(prompts[0]!, /revision 2 of one previously rejected in review/);
+    assert.match(prompts[0]!, /1\. the first bug/);
+    assert.ok(prompts[0]!.includes("<interdiff>"), "the interdiff block is present");
+    const start = readEvents(root).find((e) => e.type === "review_start");
+    assert.equal(start?.revision, 2);
+  });
+});
+
+test("a fresh landing's review_start carries no revision marker", async () => {
+  const { root, wt } = await gateFixture();
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`, async () => {
+    await reviewGate(root, wt);
+    const start = readEvents(root).find((e) => e.type === "review_start");
+    assert.equal(start?.revision, undefined);
+  });
+});
+
 test("the reviewer's pi run goes through the loop's runGatePi wiring, not bare runPi", async () => {
   // BUGS.md 2026-10-01: the gate called runPi directly, so a 429 in the landing gate failed
   // the review with no transient retry and no rate-limit hold stamp — the one surface the

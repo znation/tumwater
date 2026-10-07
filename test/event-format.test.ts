@@ -154,6 +154,13 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   );
   assert.match(startWithModel, /reviewing 01234567 before merge on prov\/r1:high$/);
 
+  // A revision landing labels its round (plans/revise-rejected.md part 2/2); a fresh one has
+  // no revision field and renders exactly as before.
+  const startRevision = formatEvent(
+    { ts: 0, loop: "feature", type: "review_start", head, revision: 2 } as never,
+  );
+  assert.match(startRevision, /reviewing 01234567 \(revision 2\) before merge$/);
+
   // Approvals carry reason = verdict.reasons[0], which is undefined when the reviewer gave
   // none: the suffix must vanish, not print "— undefined".
   const bareApproval = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head } as never);

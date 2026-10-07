@@ -67,7 +67,16 @@ ${TEST_RUNNER_RULE}
  * 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins the
  * date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must contain
  * the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt test derives
- * the accepted forms from it. */
+ * the accepted forms from it. `priorReview` is present only when this landing is a revision of a
+ * previously rejected change (plans/revise-rejected.md part 2/2): it names the round and shows
+ * the prior objections plus the interdiff so the re-review checks each one first. Omitted, the
+ * prompt is unchanged from a fresh change's. */
+interface PriorReviewPrompt {
+  round: number;
+  reasons: string[];
+  interdiff: string;
+}
+
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
@@ -77,6 +86,7 @@ export function buildReviewPrompt(
   verifiedByHarness?: string,
   baseRev?: string,
   today?: string,
+  priorReview?: PriorReviewPrompt,
 ): string {
   const parts = [
     `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
@@ -97,6 +107,19 @@ not just whether it is correct.`,
     parts.push(
       `The author's commit body (claimed motivation, risk, verification — check these claims against the diff):\n${commitBody}`,
     );
+  if (priorReview) {
+    const list =
+      priorReview.reasons.length > 0
+        ? priorReview.reasons.map((r, i) => `${i + 1}. ${r}`).join("\n")
+        : "(no reasons recorded)";
+    parts.push(
+      `This change is revision ${priorReview.round} of one previously rejected in review. Check each
+of the prior review's numbered objections FIRST — an unresolved one is a rejection on its own —
+then review the whole diff as usual. The prior objections were:\n${list}\nThe interdiff
+between the rejected version and this revision (what the revision changed, main's own movement
+excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
+    );
+  }
   if (verifiedByHarness)
     parts.push(
       `The harness already ran the project's own check on this exact tree and it passed:

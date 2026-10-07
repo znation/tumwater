@@ -33,6 +33,7 @@ interface CtxOverrides {
   tickTurns?: number;
   piStartedAt?: number;
   userPrompt?: string | null;
+  revisionRound?: number;
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
   followUp?: PiRunResult | null;
@@ -97,6 +98,7 @@ function buildCtx(
     config,
     tickTurns: over.tickTurns ?? 4,
     userPrompt: over.userPrompt ?? null,
+    revisionRound: over.revisionRound,
     wt,
     finalText: over.finalText ?? "",
     piStartedAt: over.piStartedAt ?? Date.now(),
@@ -167,6 +169,29 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
   assert.equal(queued[0]!.tick, 3);
   assert.equal(queued[0]!.summary, "add the feature");
   assert.equal(queued[0]!.highFriction, undefined);
+  assert.equal(queued[0]!.priorReview, undefined, "a fresh tick carries no prior review");
+});
+
+test("a revision tick's queued landing carries the prior review's objections", async () => {
+  const { root, wt } = await setup();
+  const rejected = "a".repeat(40);
+  const state: LoopState = {
+    ...freshLoopState("improve"),
+    lastReview: { verdict: "reject", reasons: ["fix the bug", "add a test"], head: rejected, at: Date.now() },
+    revision: { sha: rejected, round: 1, at: Date.now() },
+  };
+  const { ctx } = makeCtx(root, wt, state, {
+    revisionRound: 1,
+    finalText: "SUMMARY: revise the feature\n",
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  const queued = queuedLandings(root);
+  assert.equal(queued[0]!.revisionRound, 1);
+  assert.deepEqual(queued[0]!.priorReview, { sha: rejected, reasons: ["fix the bug", "add a test"] });
+  assert.equal(state.revision, undefined, "the revision is now in flight");
 });
 
 test("a missing SUMMARY is recovered with one follow-up turn", async () => {

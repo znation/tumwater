@@ -124,9 +124,15 @@ export async function branchExists(root: string, branch: string): Promise<boolea
  * main's tip" policy shared by falseFixReason's BUGS.md base read and
  * backlogStructureReason's per-file base reads — both judge a backlog edit against the
  * tree the change builds on, so a stacked batch's earlier landing cannot make an
- * Open→Fixed restoration compare as already done (BUGS.md 2026-09-23). */
-export async function changeBaseRev(wt: string, mainBranch: string): Promise<string> {
-  return (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
+ * Open→Fixed restoration compare as already done (BUGS.md 2026-09-23). `rev` is the commit
+ * whose merge-base with main is wanted; it defaults to the worktree's HEAD, and the rejected
+ * change's revision interdiff asks for its own prior commit instead (git-diff.ts). */
+export async function changeBaseRev(
+  wt: string,
+  mainBranch: string,
+  rev = "HEAD",
+): Promise<string> {
+  return (await gitTry(wt, "merge-base", rev, mainBranch)) ?? mainBranch;
 }
 
 /** A file's content at a revision, or "" when the run fails (the file did not exist at that
