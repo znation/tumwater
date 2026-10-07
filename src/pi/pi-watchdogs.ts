@@ -44,6 +44,11 @@ interface PiWatchdogs {
   stop(): void;
 }
 
+/** Start one pi run's two watchdog clocks: the tick deadline (kills the process tree when it
+ * fires, recording whether the run was still progressing) and the quiet/stall interval
+ * (quiet-kills a run that stopped making progress and warns on stalled tool calls). Returns
+ * the live flags the run's close handler reads and the note/stop calls its data handlers and
+ * settle path make. */
 export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   let lastProgressAt = Date.now();
   let lastProgressCount = 0;
