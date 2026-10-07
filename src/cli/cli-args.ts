@@ -8,16 +8,15 @@ import { gotSuffix, parsePositiveInt } from "../text/text.js";
  * layer calls these before running a command, so a bad flag fails fast with an actionable
  * message instead of the command silently running with default behavior. The plain-decimal
  * integer core (parsePositiveInt/parseNonNegativeInt) lives in text.ts — shared by these flags
- * and gui/gui-args.ts's query-param validation, so one definition of a valid count/position covers both
- * input surfaces without the UI layer importing this module. The two commands whose positionals
- * are free-form prompt text (`init`, `prompt`) parse their own args in cli/cli-command-args.ts —
- * their rules contradict this module's reject-everything-left-over contract, and `--file`'s
- * readFileSync would be this module's only I/O. The declarative flag-vocabulary layer — the
- * FlagSpec shape, the per-flag specs, and the unknown-argument gate — lives in
- * cli/cli-flag-specs.ts; this module keeps the imperative single-flag parsers its specs re-run.
- * Terminal output and the failure exit live in
- * cli/cli-output.ts — this module's parsers fail through fail() from there, but they do not
- * write output of their own. */
+ * and gui/gui-args.ts's query-param validation, so one definition of a valid count/position
+ * covers both input surfaces without the UI layer importing this module. The two commands
+ * whose positionals are free-form prompt text (`init`, `prompt`) parse their own args in
+ * cli/cli-command-args.ts — their rules contradict this module's reject-everything-left-over
+ * contract, and `--file`'s readFileSync would be this module's only I/O. The declarative
+ * flag-vocabulary layer — the FlagSpec shape, the per-flag specs, and the unknown-argument
+ * gate — lives in cli/cli-flag-specs.ts; this module keeps the imperative single-flag parsers
+ * its specs re-run. Terminal output and the failure exit live in cli/cli-output.ts — this
+ * module's parsers fail through fail() from there, but they do not write output of their own. */
 
 /** The raw value token that follows a valued flag in `args`: null when the flag is absent,
  * the following token when present (undefined when the flag is the final argument, so the
