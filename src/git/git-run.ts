@@ -41,6 +41,8 @@ export class GitError extends Error {
 export const GIT_MISSING_MESSAGE =
   "git not found on PATH — install git first, or add its bin directory to your PATH";
 
+let resolvedGit: string | null | undefined;
+
 /** The git binary the harness spawns, resolved once per process. On macOS the first git on
  * PATH is routinely /usr/bin/git — the xcode-select stub, which re-resolves the developer
  * directory on every exec before running the real binary (the same cost
@@ -53,8 +55,6 @@ export const GIT_MISSING_MESSAGE =
  * deliberate exception is build/build-check.ts's toolchain probe, which must keep spawning PATH's
  * stub — its "broken" verdict exists to catch exactly the stub's exit-69-on-invalid-license
  * failure, which the real binary would never surface. */
-let resolvedGit: string | null | undefined;
-
 export function resolvedGitBin(): string {
   if (resolvedGit !== undefined) return resolvedGit ?? "git";
   let bin: string | null = null;
