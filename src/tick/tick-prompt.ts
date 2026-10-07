@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
@@ -13,6 +12,7 @@ import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
+import { readTextOrNull } from "../files/files.js";
 import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
@@ -28,14 +28,12 @@ export interface TickPromptInput {
   preview?: boolean;
 }
 
-/** Read a role's notebook, or undefined when it is missing, empty, or unreadable. The
- * degradation is deliberate: a torn or absent runtime-state file must never fail a tick. */
+/** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
+ * step — or undefined when it is missing or unreadable (an empty or whitespace-only note is
+ * left for buildTickPrompt to omit). The degradation is deliberate: a torn or absent
+ * runtime-state file must never fail a tick. */
 function readRoleNote(root: string, role: string): string | undefined {
-  try {
-    return fs.readFileSync(roleNotesPath(root, role), "utf8");
-  } catch {
-    return undefined;
-  }
+  return readTextOrNull(roleNotesPath(root, role)) ?? undefined;
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"

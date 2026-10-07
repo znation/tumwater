@@ -9,7 +9,6 @@
  * fresh state, a missing queue directory an empty inbox — so the command works with the
  * fleet stopped and never throws on a torn repo. */
 
-import fs from "node:fs";
 import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
@@ -27,6 +26,7 @@ import {
 } from "../config/config-views.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
 import { roleNotesPath } from "../paths.js";
+import { readTextOrNull } from "../files/files.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -112,12 +112,8 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // missing, empty, or unreadable file is simply "no note yet". The director has none.
   let note: string | null = null;
   if (role !== DIRECTOR_ROLE) {
-    try {
-      const text = fs.readFileSync(roleNotesPath(root, role), "utf8");
-      note = text.trim() === "" ? null : text;
-    } catch {
-      note = null;
-    }
+    const text = readTextOrNull(roleNotesPath(root, role));
+    note = text !== null && text.trim() !== "" ? text : null;
   }
   return {
     id: role,
