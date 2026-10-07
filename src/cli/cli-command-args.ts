@@ -108,15 +108,6 @@ const INIT_FLAG_SPECS: readonly FlagSpec[] = [
 /** init's valueless flags, derived from the vocabulary so the two lists cannot drift. */
 const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.value).flatMap((s) => s.names);
 
-/** The free-form-prompt commands' bespoke argument parsers: `tumwater init` and
- * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
- * can't be used wholesale. The rules instead: a double-dash token must be a known flag from
- * INIT_FLAG_SPECS (`--file`, `--branch`, `--template`, `--adopt`, `--dry-run` or
- * `--list-templates`), each given at most once; with `--file` present nothing but the other
- * flags may accompany it; a `--branch <name>` pair and the valueless flags are never prompt
- * content; single-dash positionals are prompt content, not flags. Without these checks a
- * misspelled --file would be baked into the initial prompt — injected into every tick of every
- * loop until someone edits the project brief. */
 /** The two parsers' shared "each flag at most once" rule: refuse a repeated flag with the
  * same "may only be given once" wording parseFlagSpecs' spec-driven check applies to the
  * spec-parsed commands. Two call sites: parseInitArgs (over every known flag) and
@@ -126,6 +117,15 @@ function rejectDuplicateFlags(args: readonly string[], flags: readonly string[])
     if (args.filter((a) => a === flag).length > 1) fail(`${flag} may only be given once`);
 }
 
+/** `tumwater init` argument handling. Init's positionals are free-form prompt text, so
+ * rejectUnknownArgs (which rejects ANY unconsumed token) can't be used wholesale. The rules
+ * instead: a double-dash token must be a known flag from INIT_FLAG_SPECS (`--file`,
+ * `--branch`, `--template`, `--adopt`, `--dry-run` or `--list-templates`), each given at most
+ * once; with `--file` present nothing but the other flags may accompany it; a `--branch
+ * <name>` pair and the valueless flags are never prompt content; single-dash positionals are
+ * prompt content, not flags. Without these checks a misspelled --file would be baked into the
+ * initial prompt — injected into every tick of every loop until someone edits the project
+ * brief. */
 export function parseInitArgs(args: string[]): {
   prompt: string;
   branch: string | null;
