@@ -43,6 +43,18 @@ const soft = (...args) => {
   }
 };
 
+/** git that reports failure instead of dying and swallows git's own stderr — for `--status`'s
+ * remote probes, whose read-only report must not leak a raw `fatal:` line beside its own. A
+ * failed probe (no origin remote, unreachable host) returns null; a successful probe with no
+ * match returns "", so the caller can tell the two apart. */
+const probe = (...args) => {
+  try {
+    return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  } catch {
+    return null;
+  }
+};
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function gh(args) {
@@ -52,14 +64,31 @@ function gh(args) {
   return JSON.parse(out.stdout);
 }
 
-/** The latest CI run row for a commit, or null when none exists yet. Selects the greatest
- * databaseId rather than trusting `gh run list`'s array order: the contract here is "latest",
- * and a commit triggered more than once (a re-run, a re-dispatch) must report the newest row's
- * verdict instead of whichever element gh happened to put last. */
-function ciRun(commit) {
-  const runs = gh(["run", "list", "--workflow", "CI", "--commit", commit, "--json", "databaseId,status,conclusion"]);
+/** gh for `--status`: the latest run, or the reason gh could not answer (absent from PATH, or
+ * output that is not JSON). A non-zero exit stays "no run yet", matching the strict gh(). The
+ * release path keeps strict gh(), which dies. */
+function ghSoft(args) {
+  const out = spawnSync("gh", args, { cwd: root, encoding: "utf8" });
+  if (out.error?.code === "ENOENT") return { error: "`gh` is not on PATH" };
+  if (out.status !== 0) return { run: null };
+  try {
+    return { run: latestRun(JSON.parse(out.stdout)) };
+  } catch {
+    return { error: "gh returned non-JSON output" };
+  }
+}
+
+/** The latest of a `gh run list` array, or null when it holds no rows. Selects the greatest
+ * databaseId rather than trusting the array order: the contract here is "latest", and a commit
+ * triggered more than once (a re-run, a re-dispatch) must report the newest row's verdict
+ * instead of whichever element gh happened to put last. */
+function latestRun(runs) {
   if (!runs?.length) return null;
   return runs.reduce((latest, run) => (run.databaseId > latest.databaseId ? run : latest));
+}
+
+function ciRun(commit) {
+  return latestRun(gh(["run", "list", "--workflow", "CI", "--commit", commit, "--json", "databaseId,status,conclusion"]));
 }
 
 async function ciWait(runId) {
@@ -95,7 +124,13 @@ const bumpLevel = bumpMode ? (positional[1] ?? "patch") : null;
 const head = () => sh("rev-parse", "HEAD");
 const { version } = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const tag = `v${version}`;
-const tagTaken = Boolean(sh("tag", "-l", tag) || sh("ls-remote", "--tags", "origin", `refs/tags/${tag}`));
+
+/** Whether the version's tag already exists locally or on the remote. The release path calls
+ * this after guardMain and stays strict: `sh` dies on an unreachable origin, so a release never
+ * proceeds as if a tag it cannot see were free. `--status` does its own tolerant probes. */
+function tagTaken() {
+  return Boolean(sh("tag", "-l", tag) || sh("ls-remote", "--tags", "origin", `refs/tags/${tag}`));
+}
 
 function guardMain() {
   const branch = sh("rev-parse", "--abbrev-ref", "HEAD");
@@ -112,13 +147,31 @@ function guardMain() {
 if (statusOnly) {
   const branch = sh("rev-parse", "--abbrev-ref", "HEAD");
   const dirty = sh("status", "--porcelain");
-  const remoteMain = sh("ls-remote", "origin", "refs/heads/main").split(/\s+/)[0];
+  // A probe returns null when git could not reach origin (no remote, offline) and "" when the
+  // remote answered with no match. Only a reachable remote is worth asking gh about, and only
+  // then can the remote tag state be known.
+  const remoteMainProbe = probe("ls-remote", "origin", "refs/heads/main");
+  const remoteReachable = remoteMainProbe !== null;
+  const remoteMain = remoteMainProbe ? remoteMainProbe.split(/\s+/)[0] : null;
   const ahead = remoteMain ? Number(sh("rev-list", "--count", `${remoteMain}..HEAD`)) : "?";
-  const run = ciRun(head());
+  const ci = remoteReachable
+    ? ghSoft(["run", "list", "--workflow", "CI", "--commit", head(), "--json", "databaseId,status,conclusion"])
+    : { error: "origin unavailable" };
+  const localTag = Boolean(sh("tag", "-l", tag));
+  const remoteTagProbe = remoteReachable ? probe("ls-remote", "--tags", "origin", `refs/tags/${tag}`) : null;
+  const tagLine = localTag
+    ? "already exists"
+    : remoteTagProbe
+      ? "already exists on origin"
+      : !remoteReachable
+        ? "not created locally (origin unavailable)"
+        : remoteTagProbe === null
+          ? "local state only (remote tag probe failed)"
+          : "not yet created";
   console.log(`version ${version} → tag ${tag} @ ${head().slice(0, 8)} on ${branch}${dirty ? " (dirty!)" : ""}`);
-  console.log(`origin/main: ${ahead} commit(s) to push`);
-  console.log(`CI: ${run ? `run ${run.databaseId}: ${run.status} ${run.conclusion ?? ""}` : "no run yet for HEAD"}`);
-  console.log(`tag: ${tagTaken ? "already exists" : "not yet created"}`);
+  console.log(`origin/main: ${remoteMain ? `${ahead} commit(s) to push` : "unavailable (no origin remote, or unreachable)"}`);
+  console.log(`CI: ${ci.error ? ci.error : ci.run ? `run ${ci.run.databaseId}: ${ci.run.status} ${ci.run.conclusion ?? ""}` : "no run yet for HEAD"}`);
+  console.log(`tag: ${tagLine}`);
   process.exit(0);
 }
 
@@ -145,7 +198,7 @@ if (bumpMode) {
 // --- release: tag what main already carries ----------------------------------
 
 const ahead = guardMain();
-if (tagTaken) die(`tag ${tag} already exists — if it is wrong, delete it on both sides and re-cut.`);
+if (tagTaken()) die(`tag ${tag} already exists — if it is wrong, delete it on both sides and re-cut.`);
 
 console.log(`releasing ${version} → tag ${tag} @ ${head().slice(0, 8)} (${ahead} commit(s) to push)`);
 
