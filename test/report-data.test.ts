@@ -516,7 +516,7 @@ test("collectReportSince rejects an out-of-range window and accepts the exact ca
   // past-the-cap windows are refused with the offending value named — never silently
   // truncated into a report that reads as complete.
   const root = tmpdir();
-  assert.throws(() => collectReportSince(root, 0), /sinceMs must be between 1 and REPORT_SINCE_MAX_MS \(got 0\)/);
+  assert.throws(() => collectReportSince(root, 0), /sinceMs must be between 1 and 7d \(got 0\)/);
   assert.throws(() => collectReportSince(root, -HOUR), /\(got -3600000\)/);
   assert.throws(
     () => collectReportSince(root, REPORT_SINCE_MAX_MS + 1),

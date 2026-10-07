@@ -13,7 +13,7 @@ import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
-import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
+import { dayAt, dayKey, dayWindow, formatDate, humanSeconds } from "../text/datetime.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window
@@ -291,7 +291,9 @@ export interface SinceReport {
  * zero-filled series and backlog-file reads have no place in a window totals view. */
 export function collectReportSince(root: string, sinceMs: number): SinceReport {
   if (sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
-    throw new Error(`sinceMs must be between 1 and REPORT_SINCE_MAX_MS (got ${sinceMs})`);
+    throw new Error(
+      `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`,
+    );
   const now = Date.now();
   const cutoff = now - sinceMs;
   // The window key is the cutoff's local calendar day, from the shared dayKey helper
