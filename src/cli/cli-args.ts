@@ -117,6 +117,10 @@ function parseDurationMs(raw: string): number | null {
     if (order <= prevOrder) return null; // repeated or out-of-order unit
     prevOrder = order;
     ms += Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS];
+    // A digit run past Number's range overflows the sum to Infinity; returning it would let
+    // parseDurationFlag report a total no operator wrote and the cap check render the
+    // nonsense "got Infinityms". No honest duration to return here either, so fail the shape.
+    if (!Number.isFinite(ms)) return null;
     consumed = re.lastIndex;
   }
   return consumed === raw.length && consumed > 0 ? ms : null;

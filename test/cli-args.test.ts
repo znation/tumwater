@@ -287,6 +287,14 @@ test("parseDurationFlag rejects malformed composites: gaps, out-of-order and rep
   }
 });
 
+test("parseDurationFlag rejects a digit run past Number's range instead of parsing to Infinity", () => {
+  // "9"×400 overflows Number to Infinity; returning it made the cap check render the nonsense
+  // "got Infinityms" rather than the malformed-duration message naming the token.
+  const r = expectFail(() => parseDurationFlag("--for", "9".repeat(400) + "d"));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--for needs a duration like 45s, 90m, 1h30m, or 2d/);
+});
+
 // --- the gate-level 90-day cap (durationFlagSpec / WAKE_IN_FLAG validate) ---
 
 test("the gate fails an over-cap --for/--in before the ready-repo gate can mask it", () => {
