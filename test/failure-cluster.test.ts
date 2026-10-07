@@ -67,6 +67,28 @@ test("truncateExample keeps the hard cut when no whitespace exists inside the bu
   assert.ok(out.endsWith("… (+37 chars)"));
 });
 
+/** True when `s` carries a lone UTF-16 surrogate unit — the replacement-box garbage a cut
+ * between an astral character's two units would emit. */
+function hasLoneSurrogate(s: string): boolean {
+  for (const ch of s) {
+    if (ch.length === 1) {
+      const c = ch.charCodeAt(0);
+      if (c >= 0xd800 && c <= 0xdfff) return true;
+    }
+  }
+  return false;
+}
+
+test("truncateExample never leaves a lone surrogate when the budget splits an astral character", () => {
+  // The 120-unit budget lands on the emoji's high surrogate with no whitespace to cut at, so
+  // a bare slice would emit the high half alone — a replacement box in the failure digest.
+  const message = `${"x".repeat(EXAMPLE_MAX - 1)}😀${"y".repeat(10)}`;
+  const out = truncateExample(message);
+  assert.ok(!hasLoneSurrogate(out), `no lone surrogate: ${JSON.stringify(out)}`);
+  // The whole emoji is dropped, and the marker still names the true number of dropped units.
+  assert.equal(out, `${"x".repeat(EXAMPLE_MAX - 1)} … (+12 chars)`);
+});
+
 test("truncateExample honors a caller's own cap, as the landed summaries do", () => {
   const message = "alpha beta gamma delta";
   const out = truncateExample(message, 10);

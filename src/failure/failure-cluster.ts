@@ -4,6 +4,7 @@
  * pooling, and the grouping engine live here rather than inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
 import { rankByCount } from "./rank.js";
+import { cutSplitsSurrogatePair } from "../text/text.js";
 
 /** The verbatim example's trim bound, shared by the normalized key and each cluster's example.
  * The digest's other caps (top-N counts, summary width) live beside their consumers in
@@ -20,7 +21,10 @@ export const NO_ERROR_TEXT = "(no error text recorded)";
  * example's tail is often the repro (the failing assertion's file, the recovery action, a
  * rejection's distinguishing clause), so a cut example always carries `… (+N chars)` naming
  * what was dropped (BUGS.md 2026-09-30). The body is cut at the last whitespace inside the
- * budget when one exists, so the cut never lands mid-word where a boundary is available.
+ * budget when one exists, so the cut never lands mid-word where a boundary is available. A
+ * hard cut that would land between an astral character's two UTF-16 units backs off one unit
+ * — dropping the whole character rather than leaving a lone high surrogate the terminal
+ * renders as a replacement box (text.ts's truncate rule, shared rather than re-derived).
  * The final string may exceed `max` by the marker's width; the cap governs the body. Cluster
  * keys keep their bare slice (normalizeClusterKey) because grouping wants byte-stable
  * prefixes, not marked display text. */
@@ -29,7 +33,8 @@ export function truncateExample(message: string, max: number = EXAMPLE_MAX): str
   if (trimmed.length <= max) return trimmed;
   const head = trimmed.slice(0, max);
   const boundary = head.lastIndexOf(" ");
-  const kept = boundary > 0 ? head.slice(0, boundary) : head;
+  let kept = boundary > 0 ? head.slice(0, boundary) : head;
+  if (cutSplitsSurrogatePair(trimmed, kept.length)) kept = kept.slice(0, -1);
   return `${kept.trimEnd()} … (+${trimmed.length - kept.length} chars)`;
 }
 
