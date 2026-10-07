@@ -34,7 +34,7 @@ import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { attemptAsync } from "./exit-capture.js";
+import { expectFailAsync, expectOkAsync as expectOk } from "./exit-capture.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator/operator-intent.ts, with the
@@ -42,18 +42,6 @@ import { exitWithOwnerEnv } from "./victim-fixture.js";
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
  * were only exercised by spawning the real binary (test/cli.test.ts), which cannot assert
  * the marker contents or the untouched scheduling fields in-process. */
-
-async function expectOk<T>(fn: () => Promise<T>): Promise<{ value: T; stdout: string; stderr: string }> {
-  const o = await attemptAsync(fn);
-  if (o.exited) assert.fail(`expected success, but process.exit(${o.code}) with:\n${o.stderr}`);
-  return o;
-}
-
-async function expectFail(fn: () => Promise<unknown>): Promise<{ code: number; stderr: string }> {
-  const o = await attemptAsync(fn);
-  if (!o.exited) assert.fail(`expected process.exit, but the call returned ${JSON.stringify(o.value)}`);
-  return o;
-}
 
 /** Mark a harness live for orchestratorAlive: its info file names a pid that is provably alive
  * (this test process). */
@@ -165,8 +153,7 @@ test("marker commands with --role <builtin> work while tumwater.json is malforme
 test("marker commands with a custom/unknown --role still report the broken config", async () => {
   const root = tmpdir();
   writeMalformedJson(configPath(root));
-  const { code, stderr } = await expectFail(() => cmdWake(root, ["--role", "docs"]));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdWake(root, ["--role", "docs"]));
   assert.match(stderr, /tumwater\.json is not valid JSON/);
 });
 
@@ -174,16 +161,14 @@ test("marker commands with a custom/unknown --role still report the broken confi
 
 test("cmdAbort without --role fails before writing any marker", async () => {
   const root = tmpdir();
-  const { code, stderr } = await expectFail(() => cmdAbort(root, []));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdAbort(root, []));
   assert.match(stderr, /abort requires --role/);
   assert.equal(fs.existsSync(abortRequestPath(root, "coverage")), false);
 });
 
 test("cmdAbort with no live harness fails instead of leaving an unconsumable marker", async () => {
   const root = tmpdir();
-  const { code, stderr } = await expectFail(() => cmdAbort(root, ["--role", "coverage"]));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "coverage"]));
   assert.match(stderr, /no harness is running/);
   assert.equal(fs.existsSync(abortRequestPath(root, "coverage")), false);
 });
@@ -207,8 +192,7 @@ test("cmdAbort for the director warns that its in-flight prompt is discarded", a
 test("cmdAbort rejects an unknown role id", async () => {
   const root = tmpdir();
   markLive(root);
-  const { code, stderr } = await expectFail(() => cmdAbort(root, ["--role", "ghost"]));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "ghost"]));
   assert.match(stderr, /unknown role: ghost/);
 });
 
@@ -330,12 +314,10 @@ test("cmdResume (fleet) while roles are individually paused names the still-paus
 
 test("per-role pause and resume reject unknown role ids like abort does", async () => {
   const root = tmpdir();
-  const { code, stderr } = await expectFail(() => cmdPause(root, ["--role", "ghost"]));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdPause(root, ["--role", "ghost"]));
   assert.match(stderr, /unknown role: ghost/);
-  const r = await expectFail(() => cmdResume(root, ["--role", "ghost"]));
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown role: ghost/);
+  const r = await expectFailAsync(() => cmdResume(root, ["--role", "ghost"]));
+  assert.match(r, /unknown role: ghost/);
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "no marker on failure");
 });
 
@@ -439,8 +421,7 @@ test("cmdPause --reason on a standing pause stays the no-op and keeps the standi
 
 test("cmdPause --role --reason fails fast and writes no role marker", async () => {
   const root = tmpdir();
-  const { code, stderr } = await expectFail(() => cmdPause(root, ["--role", "clean", "--reason", "why"]));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdPause(root, ["--role", "clean", "--reason", "why"]));
   assert.match(stderr, /pause --reason states why the whole fleet is paused/);
   assert.match(stderr, /a per-role pause carries no reason/);
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "no role pause was recorded");
@@ -449,8 +430,7 @@ test("cmdPause --role --reason fails fast and writes no role marker", async () =
 
 test("cmdPause --reason without a value fails with the gate's own wording", async () => {
   const root = tmpdir();
-  const { code, stderr } = await expectFail(() => cmdPause(root, ["--reason"]));
-  assert.equal(code, 1);
+  const stderr = await expectFailAsync(() => cmdPause(root, ["--reason"]));
   assert.match(stderr, /pause --reason needs a reason/);
   assert.ok(!fs.existsSync(pausedPath(root)), "nothing was written");
 });
@@ -463,15 +443,13 @@ test("cmdPause --reason without a value fails with the gate's own wording", asyn
 
 test("cmdStop fails closed with no info file, and with a torn one naming a dead pid", async () => {
   const root = tmpdir();
-  const absent = await expectFail(() => cmdStop(root));
-  assert.equal(absent.code, 1);
-  assert.match(absent.stderr, /no harness is running/);
+  const absent = await expectFailAsync(() => cmdStop(root));
+  assert.match(absent, /no harness is running/);
 
   // A torn or stale info file (a pid that is not running) is the same "nothing to stop".
   writeOrchestratorMarker(root, [], { pid: 999_999_999 });
-  const dead = await expectFail(() => cmdStop(root));
-  assert.equal(dead.code, 1);
-  assert.match(dead.stderr, /no harness is running/);
+  const dead = await expectFailAsync(() => cmdStop(root));
+  assert.match(dead, /no harness is running/);
 });
 
 test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", async () => {

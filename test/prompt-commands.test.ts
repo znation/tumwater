@@ -11,14 +11,14 @@ import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { attemptAsync } from "./exit-capture.js";
+import { expectFailAsync, expectOkAsync as expectOk } from "./exit-capture.js";
 
 /** src/prompt/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process
  * coverage (only the store behind it, inbox.ts, was pinned directly), so its list render,
  * per-loop position numbering, cancel resolution, and enqueue confirmations are exercised
  * here against real queue files in a temp project root. cmdPrompt spawns no child process —
- * every branch reads or writes queue/marker files — so attemptAsync's in-process capture is
- * safe for it (see test/exit-capture.ts's scope limit). */
+ * every branch reads or writes queue/marker files — so the exit-capture helpers' in-process
+ * capture is safe for it (see test/exit-capture.ts's scope limit). */
 
 function makeRoot(): string {
   const root = tmpdir();
@@ -28,17 +28,6 @@ function makeRoot(): string {
   return root;
 }
 
-async function expectOk(fn: () => Promise<unknown>): Promise<{ stdout: string; stderr: string }> {
-  const o = await attemptAsync(fn);
-  if (o.exited) assert.fail(`expected success, but process.exit(${o.code}) with:\n${o.stderr}`);
-  return o;
-}
-
-async function expectFail(fn: () => Promise<unknown>): Promise<{ code: number; stderr: string }> {
-  const o = await attemptAsync(fn);
-  if (!o.exited) assert.fail(`expected process.exit, but the call returned`);
-  return o;
-}
 
 function dirOf(root: string, role: string): string {
   return roleInboxDir(root, role);
@@ -129,9 +118,8 @@ test("prompt enqueue defaults to the director queue and confirms; --role aims at
 
 test("prompt enqueue with an unknown --role fails with the shared unknown-role message", async () => {
   const root = makeRoot();
-  const o = await expectFail(() => cmdPrompt(root, ["--role", "no-such-loop", "hello"]));
-  assert.equal(o.code, 1);
-  assert.match(o.stderr, /tumwater: .*no-such-loop/);
+  const o = await expectFailAsync(() => cmdPrompt(root, ["--role", "no-such-loop", "hello"]));
+  assert.match(o, /tumwater: .*no-such-loop/);
   assert.equal(inboxSize(root, "no-such-loop"), 0);
 });
 
@@ -151,10 +139,9 @@ test("prompt cancel without --role reports an ambiguous position with a --role e
   const root = makeRoot();
   enqueueRolePrompt(root, DIRECTOR_ROLE, "one");
   enqueueRolePrompt(root, "clean", "two");
-  const o = await expectFail(() => cmdPrompt(root, ["--cancel", "1"]));
-  assert.equal(o.code, 1);
-  assert.match(o.stderr, /position 1 is queued for more than one loop/);
-  assert.match(o.stderr, /--role/);
+  const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "1"]));
+  assert.match(o, /position 1 is queued for more than one loop/);
+  assert.match(o, /--role/);
   // Nothing was removed by the refused cancel.
   assert.equal(inboxSize(root, DIRECTOR_ROLE), 1);
   assert.equal(inboxSize(root, "clean"), 1);
@@ -163,9 +150,8 @@ test("prompt cancel without --role reports an ambiguous position with a --role e
 test("prompt cancel without --role misses cleanly when no loop's queue reaches the position", async () => {
   const root = makeRoot();
   enqueueRolePrompt(root, "clean", "only one");
-  const o = await expectFail(() => cmdPrompt(root, ["--cancel", "3"]));
-  assert.equal(o.code, 1);
-  assert.match(o.stderr, /no prompt at position 3 \(1 queued across all loops\)/);
+  const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "3"]));
+  assert.match(o, /no prompt at position 3 \(1 queued across all loops\)/);
 });
 
 test("prompt cancel --role succeeds in scope and fails out of range with the queue count", async () => {
@@ -176,9 +162,8 @@ test("prompt cancel --role succeeds in scope and fails out of range with the que
   // A --role-scoped cancel already names the loop in the command, so the reply does not repeat it.
   assert.equal(stdout, "cancelled: a\n");
   assert.equal(inboxSize(root, "clean"), 1);
-  const o = await expectFail(() => cmdPrompt(root, ["--cancel", "5", "--role", "clean"]));
-  assert.equal(o.code, 1);
-  assert.match(o.stderr, /no prompt at position 5 \(1 queued\)/);
+  const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "5", "--role", "clean"]));
+  assert.match(o, /no prompt at position 5 \(1 queued\)/);
 });
 
 test("prompt --file queues the file's contents verbatim for the director", async () => {
@@ -246,15 +231,15 @@ test("prompt --list --json carries notBeforeMs for a deferred role prompt", asyn
 
 test("prompt --at is refused in the read-only and destructive modes", async () => {
   const root = makeRoot();
-  const list = await expectFail(() => cmdPrompt(root, ["--list", "--at", "90m"]));
-  assert.match(list.stderr, /--at only queues a prompt/);
-  const cancel = await expectFail(() => cmdPrompt(root, ["--cancel", "1", "--at", "90m"]));
-  assert.match(cancel.stderr, /--at only queues a prompt/);
+  const list = await expectFailAsync(() => cmdPrompt(root, ["--list", "--at", "90m"]));
+  assert.match(list, /--at only queues a prompt/);
+  const cancel = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "1", "--at", "90m"]));
+  assert.match(cancel, /--at only queues a prompt/);
   // A malformed duration fails with parseDurationFlag's message before anything is queued.
-  const bad = await expectFail(() => cmdPrompt(root, ["--at", "nope", "hello"]));
-  assert.match(bad.stderr, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
-  const zero = await expectFail(() => cmdPrompt(root, ["--at", "0m", "hello"]));
-  assert.match(zero.stderr, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
+  const bad = await expectFailAsync(() => cmdPrompt(root, ["--at", "nope", "hello"]));
+  assert.match(bad, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
+  const zero = await expectFailAsync(() => cmdPrompt(root, ["--at", "0m", "hello"]));
+  assert.match(zero, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
   assert.equal(inboxSize(root), 0, "nothing was queued by the refused shapes");
 });
 
@@ -304,12 +289,12 @@ test("prompt --edit with no --role resolves by the --list numbering: ambiguity a
   enqueueRolePrompt(root, "clean", "also first");
 
   // Two loops show "1." in --list: the ambiguity names them and the --role escape hatch.
-  const ambiguous = await expectFail(() => cmdPrompt(root, ["--edit", "1", "edited"]));
-  assert.match(ambiguous.stderr, /position 1 is queued for more than one loop \(director, clean\) — name one with --role <id>/);
+  const ambiguous = await expectFailAsync(() => cmdPrompt(root, ["--edit", "1", "edited"]));
+  assert.match(ambiguous, /position 1 is queued for more than one loop \(director, clean\) — name one with --role <id>/);
   assert.deepEqual(queuedRolePrompts(root, "clean"), ["also first"], "an ambiguity edits nothing");
 
-  const missing = await expectFail(() => cmdPrompt(root, ["--edit", "5", "edited"]));
-  assert.match(missing.stderr, /no prompt at position 5 \(1 queued across all loops\)/);
+  const missing = await expectFailAsync(() => cmdPrompt(root, ["--edit", "5", "edited"]));
+  assert.match(missing, /no prompt at position 5 \(1 queued across all loops\)/);
 
   // Cancel clean's entry, so only the director holds position 1: the edit resolves there
   // and its confirmation names the loop, since the caller scoped nothing.
@@ -324,12 +309,12 @@ test("prompt --edit refuses the sibling modes and out-of-range positions exit no
   const root = makeRoot();
   enqueueRolePrompt(root, "bugfix", "queued");
 
-  assert.match((await expectFail(() => cmdPrompt(root, ["--list", "--edit", "1", "x"]))).stderr, /--list and --edit are mutually exclusive/);
-  assert.match((await expectFail(() => cmdPrompt(root, ["--edit", "1", "fix", "--file", "x.txt"]))).stderr, /--file only queues a prompt/);
-  assert.match((await expectFail(() => cmdPrompt(root, ["old", "--edit", "1", "new"]))).stderr, /unexpected argument "old"/);
+  assert.match((await expectFailAsync(() => cmdPrompt(root, ["--list", "--edit", "1", "x"]))), /--list and --edit are mutually exclusive/);
+  assert.match((await expectFailAsync(() => cmdPrompt(root, ["--edit", "1", "fix", "--file", "x.txt"]))), /--file only queues a prompt/);
+  assert.match((await expectFailAsync(() => cmdPrompt(root, ["old", "--edit", "1", "new"]))), /unexpected argument "old"/);
 
-  const outOfRange = await expectFail(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));
-  assert.match(outOfRange.stderr, /no prompt at position 9 \(1 queued\)/);
+  const outOfRange = await expectFailAsync(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));
+  assert.match(outOfRange, /no prompt at position 9 \(1 queued\)/);
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
 
@@ -371,25 +356,24 @@ test("prompt --attach repeats up to 4 and fails the fifth with the count-cap mes
   assert.match(stdout, /with 2 image\(s\)/);
   const fifth = path.join(root, "img5.png");
   fs.writeFileSync(fifth, "x");
-  const over = await expectFail(() =>
+  const over = await expectFailAsync(() =>
     cmdPrompt(root, ["--attach", paths[0] as string, "--attach", paths[1] as string, "--attach", paths[2] as string, "--attach", paths[3] as string, "--attach", fifth, "note"]),
   );
-  assert.equal(over.code, 1);
-  assert.match(over.stderr, /at most 4 images per prompt \(got 5\)/);
+  assert.match(over, /at most 4 images per prompt \(got 5\)/);
   assert.equal(inboxSize(root), 1, "only the earlier successful enqueue is in the queue");
 });
 
 test("prompt --attach fails on a nonexistent path, an unsupported extension, and an oversized image — queue untouched", async () => {
   const root = makeRoot();
-  const missing = await expectFail(() => cmdPrompt(root, ["--attach", path.join(root, "nope.png"), "hello"]));
-  assert.match(missing.stderr, /cannot read attached image/);
+  const missing = await expectFailAsync(() => cmdPrompt(root, ["--attach", path.join(root, "nope.png"), "hello"]));
+  assert.match(missing, /cannot read attached image/);
   const badExt = path.join(root, "notes.txt");
   fs.writeFileSync(badExt, "x");
-  const ext = await expectFail(() => cmdPrompt(root, ["--attach", badExt, "hello"]));
-  assert.match(ext.stderr, /unsupported image type "\*\.txt"/);
+  const ext = await expectFailAsync(() => cmdPrompt(root, ["--attach", badExt, "hello"]));
+  assert.match(ext, /unsupported image type "\*\.txt"/);
   const big = path.join(root, "big.png");
   fs.writeFileSync(big, Buffer.alloc(5 * 1024 * 1024 + 1));
-  const size = await expectFail(() => cmdPrompt(root, ["--attach", big, "hello"]));
-  assert.match(size.stderr, /at most 5242880 \(5 MiB\) per image/);
+  const size = await expectFailAsync(() => cmdPrompt(root, ["--attach", big, "hello"]));
+  assert.match(size, /at most 5242880 \(5 MiB\) per image/);
   assert.equal(inboxSize(root), 0, "none of the refused shapes queued anything");
 });
