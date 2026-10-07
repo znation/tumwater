@@ -86,6 +86,20 @@ test("shakePlan leaves short and already-elided results alone", () => {
   assert.equal(shakePlan(elided, atPercent(70)).edits.length, 0);
 });
 
+test("shakePlan leaves a long already-elided result alone instead of re-eliding it", () => {
+  // The case above stops at the size floor, so it never reaches the startsWith(ELIDED_PREFIX)
+  // guard. A pointer long enough to clear SHAKE_MIN_CHARS is the shape a bash result takes
+  // once its full text is appended, and a second pass must still skip it: without the guard
+  // the planner would replace a pointer with another pointer. The text is long enough that
+  // the unguarded path would clear SHAKE_MIN_RECLAIM_TOKENS on its own, so the empty plan
+  // below pins the guard rather than the recovery floor.
+  const pointer = `${ELIDED_PREFIX} 60000 chars; full output in /tmp/old.log] ${big(60_000)}`;
+  const messages = [bash("again", 0, { text: pointer }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  assert.ok(pointer.length > SHAKE_MIN_CHARS);
+  assert.ok(estimateTokens(pointer) > 10_000);
+  assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
+});
+
 test("shakePlan is empty when the whole pass would reclaim under the floor", () => {
   // ~5k tokens of result is below SHAKE_MIN_RECLAIM_TOKENS once the pointer is subtracted.
   const messages = [bash("small", 20_000), ...Array.from({ length: 5 }, () => filler(4_000))];
@@ -248,6 +262,22 @@ test("shakeMessages carries a bash result's full-output path from details", () =
   assert.equal(messages[0]!.fullOutputPath, "/tmp/b.log");
   assert.equal(messages[0]!.toolName, "bash");
   assert.equal(messages[0]!.entryId, "b");
+});
+
+test("shakeMessages tolerates a tool result with no tool call id", () => {
+  // A toolResult pi did not pair with an assistant call carries no toolCallId; the message
+  // map must leave that field unset and skip the call lookup rather than reading a call for
+  // an id it does not have. With no paired read call there is no readInput to attach.
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        { sourceEntry: { id: "r" }, messages: [{ role: "toolResult", toolName: "read", content: [{ type: "text", text: "body" }] }] },
+      ],
+    },
+  });
+  assert.equal(messages[0]!.toolCallId, undefined);
+  assert.equal(messages[0]!.readInput, undefined);
+  assert.equal(messages[0]!.text, "body");
 });
 
 test("shakeMessages tolerates entries without ids, missing messages, and non-array content", () => {
