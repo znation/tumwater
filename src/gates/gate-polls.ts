@@ -39,11 +39,13 @@ import type { OrchestratorInfo } from "../fleet/fleet-state.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
- * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure
- * hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
- * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts, src/gates/pause-gates.ts,
- * src/scheduling/quiet-hours.ts, and the fleet-health trio in src/fleet/fleet-polls.ts); this owns the wiring
- * half — one poll advances every gate's state in place. Split out of orchestrator.ts so the
+ * budget gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the
+ * fleet-wide failure hold, and the two observational storm alarms. Each gate's reads,
+ * edge-triggered events, and cross-poll bookkeeping live in its own module
+ * (src/gates/budget-gates.ts, src/gates/pause-gates.ts, src/gates/streak-gate.ts,
+ * src/gates/role-cap-gates.ts, src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the
+ * fleet-health trio in src/fleet/fleet-polls.ts); this owns the wiring half — one poll advances
+ * every gate's state in place. Split out of orchestrator.ts so the
  * poll loop reads as phases (reload → requests → gates → redeploy → landings → schedule →
  * start) and the gate family's wiring sits in one place, the same split fleet/fleet-polls.ts made
  * for the fleet-health trio. Dependency direction: orchestrator → gate-polls → the gate
