@@ -103,6 +103,29 @@ export function guiBindHost(allInterfaces: boolean): string | undefined {
   return allInterfaces ? undefined : "127.0.0.1";
 }
 
+/** Whether a request's `Host` header names the loopback-bound server itself — `localhost`,
+ * `127.0.0.1`, or `::1`, each with or without its port (`[::1]:7180` bracketed). The check
+ * exists for a loopback-bound server only (see startGui): a browser that resolves an
+ * attacker-controlled name to 127.0.0.1 (DNS rebinding) reaches a loopback socket while its
+ * page's origin and the request's Host both name the attacker's domain, so crossOriginRequest's
+ * Origin/Host comparison calls the forged request same-origin. The Host is the one header the
+ * rebinding browser must set to that domain, so refusing a non-loopback Host closes both the
+ * read endpoints and the state-changing POSTs to a server reachable only from this machine.
+ * A non-bracketed IPv6 literal is malformed per RFC 7230 and is not accepted. Pure, so the
+ * parsing is testable without a socket. */
+export function loopbackHostAllowed(hostHeader: string): boolean {
+  let host = hostHeader.trim().toLowerCase();
+  if (host.startsWith("[")) {
+    const end = host.indexOf("]");
+    if (end === -1) return false;
+    host = host.slice(1, end);
+  } else {
+    const colon = host.lastIndexOf(":");
+    if (colon !== -1) host = host.slice(0, colon);
+  }
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the fleet —
@@ -170,6 +193,20 @@ export function startGui(
     try {
       const target = parseRequestTarget(req);
       const pathname = target?.pathname ?? null;
+      // DNS-rebinding gate, ahead of every route on a loopback-bound server: a hostile page
+      // whose domain resolves to 127.0.0.1 is same-origin with this server, so the
+      // cross-origin gate below cannot tell its requests from the dashboard's — but its
+      // Host header must name the attacker's domain, which a request to the loopback
+      // dashboard never legitimately does. Refusing that Host blocks the read endpoints
+      // (status, config, transcripts) and the state-changing POSTs together. An
+      // all-interfaces server is deliberately network-facing, so it keeps accepting every
+      // Host (the operator's exposure choice); a token, if set, still gates it.
+      if (!allInterfaces && !loopbackHostAllowed(req.headers.host ?? "")) {
+        sendJson(res, 403, {
+          error: "request Host is not this loopback dashboard's — a rebinding name is refused",
+        });
+        return;
+      }
       // Opt-in shared-token gate, ahead of every route: with a token set, the page and all
       // /api endpoints require it as `Authorization: Bearer <token>` or `?token=`; anything
       // else — including `GET /` — gets the same JSON 401 every handler uses, deliberately

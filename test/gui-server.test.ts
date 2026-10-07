@@ -14,7 +14,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
-import { startGui } from "../src/gui/gui-server.js";
+import { loopbackHostAllowed, startGui } from "../src/gui/gui-server.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
@@ -113,6 +113,61 @@ test("gui refuses a POST whose Origin header does not parse as a URL", async () 
   } finally {
     server.close();
   }
+});
+
+test("gui refuses a DNS-rebinding Host on a loopback-bound server, on reads and writes alike", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui rebinding test");
+  const { server, base, port } = await startLocalGui(repo);
+  try {
+    // A rebinding page's domain resolves to 127.0.0.1, so its requests reach the loopback
+    // socket with Origin and Host BOTH naming the attacker's domain — the two agree, so the
+    // cross-origin gate cannot tell the forged request from the dashboard's own. A raw socket
+    // is required: fetch always sets Host to the address it connects to, never a forged name.
+    // Before loopbackHostAllowed this POST queued the prompt (200); the gate refuses it.
+    const send = (headers: string): Promise<string> =>
+      new Promise<string>((resolve, reject) => {
+        const socket = net.connect(port, "127.0.0.1");
+        let response = "";
+        socket.on("data", (d: Buffer) => {
+          response += d.toString("ascii");
+        });
+        socket.on("end", () => {
+          socket.destroy();
+          resolve(response);
+        });
+        socket.once("error", reject);
+        socket.write(headers, () => {});
+      });
+    const body = JSON.stringify({ text: "forged by a rebinding page" });
+    const rebound = await send(
+      "POST /api/prompt HTTP/1.1\r\nHost: evil.example\r\nOrigin: http://evil.example\r\n" +
+        `Content-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n` +
+        body,
+    );
+    assert.match(rebound, /^HTTP\/1\.1 403/, `expected 403, got: ${rebound.split("\r\n")[0]}`);
+    assert.equal(inboxSize(repo), 0, "the rebound prompt queued nothing");
+
+    // A rebound GET reads the same data the state-changing POST could write, so the gate
+    // covers every method, not just POST.
+    const read = await send("GET /api/status HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n");
+    assert.match(read, /^HTTP\/1\.1 403/, `expected 403, got: ${read.split("\r\n")[0]}`);
+
+    // The loopback names the dashboard is actually reached by still pass — no legitimate
+    // access is locked out.
+    const ok = await postJson(base, "/api/prompt", { text: "from the dashboard" });
+    assert.equal(ok.status, 200);
+    assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("loopbackHostAllowed accepts the loopback Host spellings and refuses foreign names", () => {
+  for (const allowed of ["127.0.0.1", "127.0.0.1:7180", "localhost", "localhost:7180", "[::1]", "[::1]:7180", "LOCALHOST:7180"])
+    assert.equal(loopbackHostAllowed(allowed), true, `${allowed} is the dashboard's own Host`);
+  for (const refused of ["evil.example", "evil.example:7180", "127.0.0.1.evil.example", "dns-rebind.test:7180", "", "[::1", "[2001:db8::1]:7180"])
+    assert.equal(loopbackHostAllowed(refused), false, `${JSON.stringify(refused)} is not the dashboard's own Host`);
 });
 
 test("gui answers 400 for an over-long prompt and queues nothing", async () => {
