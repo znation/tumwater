@@ -1,15 +1,16 @@
 /** The orchestrator's launch pass: the half of the per-poll runner sweep that admits due
  * roles to their ticks. The decision half (isEligible, the pause/backoff/deferral gates,
- * once-mode settling) stays in runOrchestrator (src/orchestrator/orchestrator.ts) — it reads the poll's
- * gate verdicts and the backlog state; this module takes its output, the `reasons` map of
- * due runners, and turns each into a reserved, semaphore-gated, in-flight tick: the probe
- * admission for the fallback breaker, the wake event, the reservation/parking bookkeeping,
- * runTimedRoleTick's wiring (slot acquisition, the start gate, breaker evidence), and the
- * in-flight-bucket bookkeeping the drain and the p75 duration sample read. Split out of
- * orchestrator.ts — whose poll loop otherwise reads as one decision after another — so the
- * launch mechanics read as one step of that loop. The shared in-flight state (buckets,
- * permit holders, duration samples, gateStates) is passed in and mutated in place, exactly
- * as the inline version did: the drain's `finally` and the redeployer read it between polls. */
+ * once-mode settling) stays in runOrchestrator (src/orchestrator/orchestrator.ts) — it reads
+ * the poll's gate verdicts and the backlog state; this module takes its output, the
+ * `reasons` map of due runners, and turns each into a reserved, semaphore-gated, in-flight
+ * tick: the probe admission for the fallback breaker, the wake event, the
+ * reservation/parking bookkeeping, runTimedRoleTick's wiring (slot acquisition, the start
+ * gate, breaker evidence), and the in-flight-bucket bookkeeping the drain and the p75
+ * duration sample read. Split out of orchestrator.ts — whose poll loop otherwise reads as
+ * one decision after another — so the launch mechanics read as one step of that loop. The
+ * shared in-flight state (buckets, permit holders, duration samples, gateStates) is passed
+ * in and mutated in place, exactly as the inline version did: the drain's `finally` and the
+ * redeployer read it between polls. */
 import {
   abandonFallbackProbeAt,
   recordFallbackTickAt,
@@ -102,10 +103,11 @@ export function launchDueTicks(ctx: LaunchContext): void {
   } = ctx;
   let admittedProbe = false;
   for (const runner of fairOrder([...reasons.keys()])) {
-    if (signal.aborted) continue;    // The probe goes to the first runner whose tier resolves to the probed pair (part 5c/8);
+    if (signal.aborted) continue;
+    let probe = false;
+    // The probe goes to the first runner whose tier resolves to the probed pair (part 5c/8);
     // every other runner launches normally, and only a further eligible runner waits — the
     // probe claim is one per poll, so the rest of this pass skips just them.
-    let probe = false;
     if (probePair !== null && probeRoles.has(runner.role)) {
       if (admittedProbe) continue; // this poll's claim is taken: the next eligible runner waits
       const b = gateStates.budget.breakers[probePair];
