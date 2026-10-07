@@ -2,8 +2,8 @@
  * The dashboard's POST operator endpoint handlers (src/gui/gui-server.ts routes to them): prompt,
  * prompt-role, prompt-cancel, budget, config-set, pause, wake, restart, abort, pause-role —
  * everything that writes state or queues work — plus the shared request-body helpers
- * (readPostBody, readRoleBody, checkedPromptImages) each mutating handler guards its inputs
- * with. The GET data endpoints (transcript, backlog, report, failures, history, tick, config)
+ * (readPostBody, readRoleBody, checkedPromptImages, checkedPromptFields) each mutating handler
+ * guards its inputs with. The GET data endpoints (transcript, backlog, report, failures, history, tick, config)
  * stay in gui/gui-endpoints.ts; each handler answers its request and touches no socket beyond its
  * own `res`,
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
@@ -69,11 +69,9 @@ async function readRoleBody(
 export async function handlePrompt(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"text": "..."}');
   if (!body) return;
-  const text = requirePromptText(res, body);
-  if (text === null) return;
-  const images = checkedPromptImages(res, body);
-  if (images === null) return;
-  submitPrompt(root, text, images);
+  const fields = checkedPromptFields(res, body);
+  if (!fields) return;
+  submitPrompt(root, fields.text, fields.images);
   sendJson(res, 200, { ok: true });
 }
 
@@ -93,6 +91,22 @@ function checkedPromptImages(res: http.ServerResponse, body: Record<string, unkn
   return body.images as PromptImageInput[];
 }
 
+/** The prompt endpoints' shared body tail: requirePromptText (400 on a null return) then
+ * checkedPromptImages (400 on a null return), so /api/prompt and /api/prompt-role read the
+ * same two fields in the same order and a body wrong in both still answers the text problem
+ * first. Null means a 400 is already sent; callers keep their own `if (!fields) return` bail. */
+function checkedPromptFields(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+  role: string = DIRECTOR_ROLE,
+): { text: string; images: PromptImageInput[] | undefined } | null {
+  const text = requirePromptText(res, body, role);
+  if (text === null) return null;
+  const images = checkedPromptImages(res, body);
+  if (images === null) return null;
+  return { text, images };
+}
+
 /** Handle POST /api/prompt-role: queue a prompt for one loop — the dashboard's per-row
  * prompt affordance submits here, calling the same path `tumwater prompt --role <id>` uses
  * (submitRolePrompt enqueues into that loop's own queue and logs under it, then a single-role
@@ -105,11 +119,9 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const body = await readRoleBody(req, res, '{"role": "feature", "text": "..."}', root);
   if (!body) return;
   const role = body.role as string;
-  const text = requirePromptText(res, body, role);
-  if (text === null) return;
-  const images = checkedPromptImages(res, body);
-  if (images === null) return;
-  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, text, images) });
+  const fields = checkedPromptFields(res, body, role);
+  if (!fields) return;
+  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, fields.text, fields.images) });
 }
 
 /** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —
