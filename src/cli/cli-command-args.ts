@@ -108,6 +108,12 @@ const INIT_FLAG_SPECS: readonly FlagSpec[] = [
 /** init's valueless flags, derived from the vocabulary so the two lists cannot drift. */
 const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.value).flatMap((s) => s.names);
 
+/** The refusal both `--list-templates` prompt conflicts share: the flag only lists the catalog,
+ * so it takes no prompt. Two call sites in parseInitArgs: the `--file` branch and the
+ * positional-token branch. */
+const LIST_TEMPLATES_PROMPT_ERROR =
+  "--list-templates takes no prompt — run `tumwater init --list-templates` alone";
+
 /** The two parsers' shared "each flag at most once" rule: refuse a repeated flag with the
  * same "may only be given once" wording parseFlagSpecs' spec-driven check applies to the
  * spec-parsed commands. Two call sites: parseInitArgs (over every known flag) and
@@ -170,7 +176,7 @@ export function parseInitArgs(args: string[]): {
     failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
     const contents = readPromptFileChecked(file);
     if (listTemplates) {
-      fail("--list-templates takes no prompt — run `tumwater init --list-templates` alone");
+      fail(LIST_TEMPLATES_PROMPT_ERROR);
     }
     return { prompt: contents, branch, template, listTemplates, adopt, dryRun };
   }
@@ -185,7 +191,7 @@ export function parseInitArgs(args: string[]): {
   }
   const prompt = promptTokens.join(" ");
   if (listTemplates && prompt.trim() !== "") {
-    fail("--list-templates takes no prompt — run `tumwater init --list-templates` alone");
+    fail(LIST_TEMPLATES_PROMPT_ERROR);
   }
   return { prompt, branch, template, listTemplates, adopt, dryRun };
 }
