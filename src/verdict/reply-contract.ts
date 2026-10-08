@@ -94,9 +94,10 @@ export const VERDICT_ENDING = `VERDICT: approve   or   VERDICT: reject
 followed by numbered reasons (for an approval, state what you checked and why it holds).`;
 
 /** The trimmed remainder of the first line that starts with `<label>:` (leading whitespace on
- * the line allowed); null when no such line carries content. Shared by every parser that pulls a
- * labeled field out of pi's final reply — SUMMARY/WHY/RISK/VERIFIED in git/commit-message.ts and the
- * TUMWATER_REFUSED reason here — so the anchored-line shape lives in one place instead of drifting. */
+ * the line allowed); null when no such line carries content. Shared by every parser that pulls
+ * a labeled field out of pi's final reply — SUMMARY/WHY/RISK/VERIFIED in git/commit-message.ts
+ * and the TUMWATER_REFUSED reason here — so the anchored-line shape lives in one place instead
+ * of drifting. */
 export function labeledLine(text: string, label: string): string | null {
   const match = text.match(new RegExp(`^\\s*${label}:\\s*(.+)\\s*$`, "m"));
   return match?.[1] ? match[1].trim() : null;
@@ -232,7 +233,8 @@ export interface VerdictMatch {
 }
 
 /** Every verdict line in `text`, in order (the prompt asks for exactly one, and the last
- * wins — review-verdict.ts's parseVerdict takes the final match and reads its reasons from after it). */
+ * wins — review-verdict.ts's parseVerdict takes the final match and reads its reasons from
+ * after it). */
 export function verdictLines(text: string): VerdictMatch[] {
   const out: VerdictMatch[] = [];
   for (const m of text.matchAll(VERDICT_LINES)) {
