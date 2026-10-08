@@ -293,6 +293,40 @@ test("a demoted fallback keeps the gate paused and the role view: demotion never
   assert.equal(events[0]!.failures, 3);
 });
 
+test("a demoted strong-tier pair names itself as the pause cause when only strong declares a fallback", () => {
+  const root = tmpdir("budget-gates-strong-pause-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  // Only the strong tier declares a fallback, so the legacy default pair (fallbackPair, the
+  // map's `default` entry) is null while strong's price-only resolution still holds the pair.
+  // Default and small borrow strong's pair, so demoting it resolves every tier to pause; the
+  // event must name the strong pair the tiers would have run on, not read as the default
+  // pair's own demotion.
+  cfg.fallback = { strong: "free/llama-free" };
+  cfg.fallbackModel = undefined;
+  const state = newBudgetGateState(cfg);
+  state.breakers = {
+    "free/llama-free": {
+      ...IDLE_FALLBACK_BREAKER,
+      pair: "free/llama-free",
+      capUsd: 10,
+      failures: 3,
+      probeAt: 0, // demoted; the probe is already due
+    },
+  };
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "paused");
+  assert.equal(p.priceResolved.strong.pair?.model, "llama-free", "the price-only resolution keeps the pair");
+  assert.equal(p.servingResolved.strong.pair, null, "the breaker demotion drops it from the serving view");
+
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
+  assert.equal(events[0]!.fallbackDemoted, "free/llama-free");
+  assert.equal(events[0]!.fallbackRejected, undefined, "not the default pair's own refusal");
+  assert.equal(events[0]!.failures, 3);
+});
+
 // The per-tier gate semantics (part 5c/8): the gate folds the DEMOTION-AWARE resolution of
 // the `default` and `strong` tiers — a tier resolved to pause holds its own roles beside the
 // per-role cap set, and with review on an unresolvable strong tier pauses the whole gate
