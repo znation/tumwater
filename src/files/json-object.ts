@@ -32,11 +32,14 @@ export function stringList(value: unknown): string[] {
  * absent, not a number, or not finite (NaN/±Infinity poison arithmetic and comparisons: a
  * NaN costUsd makes every budget-cap comparison false, so the cap never trips) — the one
  * home of the "the field is the number or it is nothing" read. The exact call sites:
- * event-read.ts's eventUsage (tokens, costUsd → 0), phrases.ts's budgetPhrase (spentUsd,
- * capUsd → 0), redeploy.ts's autoRestartRecord (lastAt → null), build/build-info.ts's
- * readBuildInfo (builtAt → 0), budget/budget.ts's spendNumber (dayCostUsd/usd → 0),
- * loop/loop-state.ts's healNumber (every top-level numeric state field → 0), and
- * test/test-runner.ts's orderByDuration cost (→ Infinity, the "no recorded duration" marker).
+ * event-read.ts's eventTick (tick → 0) and eventUsage (tokens, costUsd → 0); event-format.ts's
+ * gigabytes (v → 0), minutes (ms → 0), and the build_stale/restart renderers (aheadCommits and
+ * abortedTicks → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
+ * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
+ * budget/budget.ts's spendNumber (dayCostUsd/usd → 0); loop/loop-state.ts's healNumber (every
+ * top-level numeric state field → 0); tick/tick-usage.ts's counter (each persisted count → 0);
+ * failure/failure-state-change.ts's build_stale aheadCommits → 0; and test/test-runner.ts's
+ * orderByDuration cost (→ Infinity, the "no recorded duration" marker).
  * Fields that carry an extra constraint beyond finiteness keep their own check beside the
  * call (pi/pi-stream.ts's usageNumber, failure/time-spend.ts's tickDurationMs and
  * budget/budget.ts's spendNumber additionally require >= 0). */
