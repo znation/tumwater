@@ -141,12 +141,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
     });
     if (created) return dir;
   }
-  clearStaleIndexLock(dir);
-  await abortSync(dir);
-  await git(dir, "checkout", "--detach", ref);
-  await git(dir, "reset", "--hard", ref);
-  await git(dir, "clean", "-fd");
-  pruneStaleBuildDir(dir);
+  await hardResetWorktree(dir, ref, true);
   return dir;
 }
 
@@ -213,15 +208,23 @@ function clearStaleIndexLock(wt: string): void {
   }
 }
 
-/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive; the
- * stale `dist/` build dir is reaped by age).
- * An interrupted merge or rebase is aborted first — otherwise the next tick would wedge on
- * "you are already rebasing" / "merge in progress" — and a stale index.lock left by a killed
- * git is cleared first, or the reset below would fail on it forever. */
-export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
+/** Hard-reset a worktree to `ref`, self-healing the two wedges a killed git leaves behind: a
+ * stale index.lock is cleared first (or the reset fails "Unable to create '…/index.lock'"
+ * forever), and an interrupted merge or rebase is aborted (or the tick wedges on "you are
+ * already rebasing"). With `detach`, the worktree is checked out detached at `ref` first —
+ * ensureDetachedWorktree's repair path for a worktree left on a branch; resetWorktreeToMain
+ * leaves its branch checked out. Untracked files are dropped (ignored files survive; the stale
+ * `dist/` build dir is reaped by age). */
+async function hardResetWorktree(wt: string, ref: string, detach = false): Promise<void> {
   clearStaleIndexLock(wt);
   await abortSync(wt);
-  await git(wt, "reset", "--hard", mainBranch);
+  if (detach) await git(wt, "checkout", "--detach", ref);
+  await git(wt, "reset", "--hard", ref);
   await git(wt, "clean", "-fd");
   pruneStaleBuildDir(wt);
+}
+
+/** Hard-reset a worktree's branch to main — the fresh-tick reset. */
+export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
+  await hardResetWorktree(wt, mainBranch);
 }
