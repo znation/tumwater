@@ -8,6 +8,7 @@ import {
   removeQuiet,
   rotateIfLarge,
   statOrNull,
+  unlinkAllMissingTolerant,
   writeTextAtomic,
 } from "../src/files/files.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
@@ -101,6 +102,36 @@ test("removeQuiet swallows every failure — an escape would crash the poll that
   fs.writeFileSync(marker, "x");
   removeQuiet(marker);
   assert.ok(!fs.existsSync(marker));
+});
+
+test("unlinkAllMissingTolerant removes every file and tolerates one already gone", () => {
+  const dir = tmpdir();
+  const first = path.join(dir, "a.png");
+  const second = path.join(dir, "b.png");
+  fs.writeFileSync(first, "a");
+  fs.writeFileSync(second, "b");
+
+  // The middle path is the rollback's raced-deletion case: a file vanished between the save
+  // that recorded it and this unwind, which must not abort the deletion of the rest.
+  unlinkAllMissingTolerant([first, path.join(dir, "vanished.png"), second]);
+
+  assert.ok(!fs.existsSync(first), "the first file is removed");
+  assert.ok(!fs.existsSync(second), "a missing entry does not stop the later removals");
+});
+
+test("unlinkAllMissingTolerant rethrows a real removal failure", () => {
+  const dir = tmpdir();
+  const sub = path.join(dir, "subdir");
+  fs.mkdirSync(sub);
+
+  // unlinkSync on a directory fails EISDIR/EPERM — a removal the caller cannot treat as
+  // "already gone", so it must surface instead of being swallowed like ENOENT.
+  assert.throws(
+    () => unlinkAllMissingTolerant([sub]),
+    (err: NodeJS.ErrnoException) => err.code !== "ENOENT",
+    "a non-ENOENT failure is rethrown",
+  );
+  assert.ok(fs.existsSync(sub), "the failed target is left in place");
 });
 
 test("pruneOldFiles skips files it cannot delete instead of crashing the session cleanup", () => {
