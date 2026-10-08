@@ -213,7 +213,8 @@ function clearStaleIndexLock(wt: string): void {
   }
 }
 
-/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive; the stale `dist/` build dir is reaped by age).
+/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive; the
+ * stale `dist/` build dir is reaped by age).
  * An interrupted merge or rebase is aborted first — otherwise the next tick would wedge on
  * "you are already rebasing" / "merge in progress" — and a stale index.lock left by a killed
  * git is cleared first, or the reset below would fail on it forever. */
