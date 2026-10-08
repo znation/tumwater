@@ -258,7 +258,7 @@ test("ReclaimController.pollIdle cleans once, throttles the next arm, and honors
 
   controller.pollIdle(24);
   // Wait for the pass to settle, not merely for the build dir to vanish: reclaimPass deletes
-  // the outputs before runIdle records lastReclaim, so under a loaded suite the two can be
+  // the outputs before runPass records lastReclaim, so under a loaded suite the two can be
   // observed out of order.
   for (let i = 0; i < 500 && controller.lastReclaim?.mode !== "idle"; i++) {
     await new Promise((resolve) => setTimeout(resolve, 10));

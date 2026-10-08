@@ -294,19 +294,30 @@ export class ReclaimController {
     }
     if (this.active) return true;
     if (this.settled) return false;
-    this.active = this.run(reclaimGB);
+    this.active = this.runPass("pressure", { reclaimGB }, () => {
+      this.settled = true;
+    });
     return true;
   }
 
-  private async run(reclaimGB: number): Promise<void> {
+  /** The body shared by the pressure, idle, and manual arms: run one pass, publish its result
+   * as `lastReclaim`, swallow a failed pass (reclaim is opportunistic and never crashes the
+   * orchestrator's poll loop), and clear `active` however it settles. `onSettled` runs after
+   * that clear — the pressure arm latches `settled` there. `opts` carries no `sample`: every
+   * arm samples free space through this controller's injected sampler. */
+  private async runPass(
+    mode: "pressure" | "idle" | "manual",
+    opts: { reclaimGB: number; idleHours?: number },
+    onSettled?: () => void,
+  ): Promise<void> {
     try {
-      const result = await reclaimPass(this.root, "pressure", { reclaimGB, sample: this.sample });
-      if (result) this.lastReclaim = { at: Date.now(), mode: "pressure", freedGB: result.freedGB };
+      const result = await reclaimPass(this.root, mode, { ...opts, sample: this.sample });
+      if (result) this.lastReclaim = { at: Date.now(), mode, freedGB: result.freedGB };
     } catch {
       // Reclaim is opportunistic; it must never crash the orchestrator's poll loop.
     } finally {
       this.active = null;
-      this.settled = true;
+      onSettled?.();
     }
   }
 
@@ -318,22 +329,7 @@ export class ReclaimController {
     const now = Date.now();
     if (now - this.lastIdleAt < HOUR_MS) return;
     this.lastIdleAt = now;
-    this.active = this.runIdle(idleHours);
-  }
-
-  private async runIdle(idleHours: number): Promise<void> {
-    try {
-      const result = await reclaimPass(this.root, "idle", {
-        reclaimGB: 0,
-        idleHours,
-        sample: this.sample,
-      });
-      if (result) this.lastReclaim = { at: Date.now(), mode: "idle", freedGB: result.freedGB };
-    } catch {
-      // Reclaim is opportunistic; it must never crash the orchestrator's poll loop.
-    } finally {
-      this.active = null;
-    }
+    this.active = this.runPass("idle", { reclaimGB: 0, idleHours });
   }
 
   /** Arm one manual pass over every candidate for `tumwater reclaim`. Single-flight with the
@@ -341,17 +337,6 @@ export class ReclaimController {
    * re-request). */
   requestManual(): void {
     if (this.active) return;
-    this.active = this.runManual();
-  }
-
-  private async runManual(): Promise<void> {
-    try {
-      const result = await reclaimPass(this.root, "manual", { reclaimGB: 0, sample: this.sample });
-      if (result) this.lastReclaim = { at: Date.now(), mode: "manual", freedGB: result.freedGB };
-    } catch {
-      // Reclaim is opportunistic; it must never crash the orchestrator's poll loop.
-    } finally {
-      this.active = null;
-    }
+    this.active = this.runPass("manual", { reclaimGB: 0 });
   }
 }
