@@ -18,10 +18,17 @@ export interface PromptHistory {
   draftCursor: number;
 }
 
+/** The live-draft state: recall parked at the end of `items` with no saved draft. The neutral
+ * state a session starts from, the state a submit returns to, and the state every mode switch
+ * resets to. */
+function liveDraft(items: string[]): PromptHistory {
+  return { items, index: items.length, draft: "", draftCursor: 0 };
+}
+
 /** A fresh, empty history: no entries and recall at the live draft — the neutral state a
  * session starts from before any prompt is submitted. */
 export function newPromptHistory(): PromptHistory {
-  return { items: [], index: 0, draft: "", draftCursor: 0 };
+  return liveDraft([]);
 }
 
 /** Record one submitted prompt and return to the live-draft state. Pure: the input state is
@@ -29,7 +36,7 @@ export function newPromptHistory(): PromptHistory {
  * either — and a repeat of the newest entry only resets the recall position. */
 export function pushPromptHistory(h: PromptHistory, text: string): PromptHistory {
   const items = text !== "" && h.items[h.items.length - 1] !== text ? [...h.items, text] : h.items;
-  return { items, index: items.length, draft: "", draftCursor: 0 };
+  return liveDraft(items);
 }
 
 /** One step through the history: `older` (Up) walks back from the live line or the current
@@ -68,7 +75,7 @@ export function recallPromptHistory(
   }
   // Back past the newest entry: the saved draft returns, cursor and all, and browsing ends.
   return {
-    history: { items: h.items, index, draft: "", draftCursor: 0 },
+    history: liveDraft(h.items),
     text: h.draft,
     cursor: h.draftCursor,
   };
@@ -86,7 +93,7 @@ export function settlePromptRecall(
 ): { history: PromptHistory; text: string; cursor: number } {
   if (h.index >= h.items.length) return { history: h, text: current, cursor };
   return {
-    history: { items: h.items, index: h.items.length, draft: "", draftCursor: 0 },
+    history: liveDraft(h.items),
     text: h.draft,
     cursor: h.draftCursor,
   };
@@ -96,5 +103,5 @@ export function settlePromptRecall(
  * the restored line is the draft now, so the next Up saves it afresh instead of resuming a
  * stale browse (whose saved draft could belong to the other editor's line). Pure. */
 export function resetPromptRecall(h: PromptHistory): PromptHistory {
-  return { items: h.items, index: h.items.length, draft: "", draftCursor: 0 };
+  return liveDraft(h.items);
 }
