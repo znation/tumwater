@@ -55,7 +55,7 @@ const setupQueues = new Map<string, Promise<unknown>>();
  * .git/worktrees a moment before it writes the `locked` file that shields it from prune, and a
  * `git worktree prune` landing in between deletes the registration: the add then dies with
  * "could not open '.git/worktrees/<name>/locked' for writing". The landing pipeline vets its
- * changes concurrently, each vet ensuring its own lander worktree, so two vets' clear-and-add
+ * changes concurrently, each vet ensuring its own leased pool slot, so two vets' clear-and-add
  * steps did interleave — and the loser's vet ended in a terminal "error" that dropped its queue
  * entry. Serializing the harness's own setups per repository closes that; the usable-worktree
  * fast path never takes the queue. */
