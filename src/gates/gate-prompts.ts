@@ -374,9 +374,11 @@ Implement or fix only that entry. If it is too large for one run, append ${NEEDS
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
- * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): the landing failures were harness-level, so without
- * it the author would never learn its work is gone — or that redoing it from memory of the old
- * diff would conflict again. A pure function so its shape is pinned in tests. */
+ * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): at the cap recovery ordinarily hands the
+ * change back to its author with markers instead, so a discard means that lineage already used
+ * its hand-back. The landing failures were harness-level, so without the note the author would
+ * never learn its work is gone — or that redoing it from memory of the old diff would conflict
+ * again. A pure function so its shape is pinned in tests. */
 export function buildConflictDiscardNote(summary: string, attempts: number): string {
   return (
     `Your previous change ("${summary}") was discarded without landing: it conflicted with main ` +
