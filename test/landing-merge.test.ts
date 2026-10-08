@@ -14,6 +14,7 @@ import { readEvents } from "../src/events/event-read.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
+import { advanceMain } from "./lander-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { assertWorktreeSettled, commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
@@ -481,14 +482,6 @@ function declareBuildCheck(root: string, wt: string, toolBody = "exit 0", commit
   }
   writeScript(path.join(binDir, "buildcheck-tool"), toolBody);
   fs.writeFileSync(path.join(wt, "package.json"), manifest);
-}
-
-/** Advance main (the primary checkout) by one commit touching exactly `file` — a targeted add,
- * never `-A`, so the untracked build-check fixture at root is not swept into the commit. */
-function advanceMain(root: string, file: string, content: string): void {
-  fs.writeFileSync(path.join(root, file), content);
-  sh(root, "git", "add", file);
-  sh(root, "git", "commit", "-m", `main moves (${file})`);
 }
 
 /** Seed the 2026-09-25 duplicate-`## Done` conflict shape: the worktree commits a Planned
