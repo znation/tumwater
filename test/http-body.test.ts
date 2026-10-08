@@ -186,3 +186,22 @@ test("a read error surfaces as 413 (the client-fixable bucket), not a hang or a 
   assert.match(res.body, /socket hang up/);
   assert.equal(bufferedBodyBytes(), 0, "a failed read releases whatever it had buffered");
 });
+
+// An abandoned POST body — a client that disconnects mid-upload, or the server's own
+// requestTimeout destroying the socket — emits `aborted`/`close` with neither `end` nor
+// `error`. readBody must settle on those too: otherwise the handler awaits forever and the
+// request's buffered bytes stay counted, one leak per abandoned upload. The timeout makes a
+// regression fail loudly here instead of hanging the whole suite.
+for (const event of ["close", "aborted"] as const) {
+  test(`a request that emits ${event} before its body ends settles and releases its bytes`, { timeout: 2000 }, async () => {
+    const req = new FakeReq();
+    const res = new FakeRes();
+    const pending = readJsonObject(asReq(req), asRes(res), "{}");
+    req.emit("data", Buffer.alloc(100, 0x61));
+    assert.equal(bufferedBodyBytes(), 100, "bytes held while the body is under the cap");
+    req.emit(event);
+    assert.equal(await pending, null);
+    assert.equal(res.status, 413, "an abandoned read answers the client-fixable bucket, not a hang");
+    assert.equal(bufferedBodyBytes(), 0, "a closed read releases whatever it had buffered");
+  });
+}

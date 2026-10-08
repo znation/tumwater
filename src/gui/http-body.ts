@@ -62,6 +62,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
       req.off("data", onData);
       req.off("end", onEnd);
       req.off("error", onError);
+      req.off("aborted", onClose);
+      req.off("close", onClose);
     };
     function onData(chunk: Buffer): void {
       if (settled) return; // over the cap: discard — only memory would grow
@@ -101,9 +103,25 @@ function readBody(req: http.IncomingMessage): Promise<string> {
       releaseBuffer();
       reject(err);
     }
+    // A request whose body never completes emits `aborted`/`close` with neither `end` nor
+    // `error`: a client that disconnects mid-upload, or the server's own requestTimeout
+    // destroying the socket on a stalled body. Without these, the promise never settles, the
+    // handler awaits forever, and this request's buffered bytes (and its req/res closures) stay
+    // alive — one leak per abandoned upload. `close` also fires after a normal `end`, but
+    // onEnd has settled by then, so this is the premature-close arm alone. Listen to both:
+    // `aborted` names the client-side abort and `close` the underlying connection teardown.
+    function onClose(): void {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      releaseBuffer();
+      reject(new Error("request closed before its body was fully read"));
+    }
     req.on("data", onData);
     req.on("end", onEnd);
     req.on("error", onError);
+    req.on("aborted", onClose);
+    req.on("close", onClose);
   });
 }
 
