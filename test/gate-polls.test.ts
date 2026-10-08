@@ -20,6 +20,7 @@ import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fake-pi.js";
 import { MODELS_JSON } from "./models-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
@@ -41,7 +42,6 @@ test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplica
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["docs"] },
-    infoFile: path.join(root, "orchestrator.json"),
   };
 
   // Poll 1: the breaker trips — the scheduler's paused-roles view must block the role on
@@ -128,7 +128,6 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
     modelsPath,
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["feature", "docs", DIRECTOR_ROLE] },
-    infoFile: path.join(root, "orchestrator.json"),
   };
 
   // Poll 1: the cap is reached — the fallback engages, role loops are assigned the
@@ -201,7 +200,6 @@ test("pollFleetGates: a fallback episode's failures key the hold on the fallback
     modelsPath,
     now,
     info: { pid: process.pid, startedAt: 0, roles: ["feature", "docs", "perf"] },
-    infoFile: path.join(root, "orchestrator.json"),
   };
   pollFleetGates(states, ctx);
 
@@ -235,7 +233,6 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", DIRECTOR_ROLE] },
-    infoFile: path.join(root, "orchestrator.json"),
   };
 
   const first = pollFleetGates(states, ctx);
@@ -295,7 +292,6 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
     modelsPath,
     now: Date.now(),
     info,
-    infoFile: path.join(root, "orchestrator.json"),
   };
 
   const first = pollFleetGates(states, ctx);
@@ -348,7 +344,6 @@ test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", "qa", DIRECTOR_ROLE] },
-    infoFile: path.join(root, "orchestrator.json"),
   };
   // A mid-day poll: docs' near-all-day window holds, coverage's empty window is off, qa's
   // wrapping window only holds late night. `now` is pinned to a fixed local mid-day instead
@@ -388,7 +383,6 @@ test("pollFleetGates: a low disk holds new work; recovery and a live floor edit 
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: [] },
-    infoFile: path.join(root, "orchestrator.json"),
     sampleFree: () => 9 * BYTES_PER_GB,
   };
   const states = newFleetGateStates(config);
@@ -434,11 +428,10 @@ test("pollFleetGates publishes the measured disk state for observers", () => {
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: [] } satisfies OrchestratorInfo,
-    infoFile: path.join(root, "orchestrator.json"),
     sampleFree: () => 9 * BYTES_PER_GB,
   };
   const states = newFleetGateStates(config);
-  const readDisk = () => JSON.parse(fs.readFileSync(ctx.infoFile, "utf8")).disk;
+  const readDisk = () => JSON.parse(fs.readFileSync(orchestratorStatePath(root), "utf8")).disk;
   pollFleetGates(states, ctx);
   assert.deepEqual(readDisk(), { freeGB: 9, holdGB: 10, reclaimGB: 40, held: true });
   pollFleetGates(states, { ...ctx, sampleFree: () => 100 * BYTES_PER_GB });

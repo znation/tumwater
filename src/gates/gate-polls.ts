@@ -37,8 +37,7 @@ import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { logEvent } from "../events/events.js";
-import { writeJsonFile } from "../files/json-files.js";
-import { assignInfoFieldIfChanged, type OrchestratorInfo } from "../fleet/fleet-state.js";
+import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/fleet-state.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
@@ -143,7 +142,6 @@ interface FleetGatePollCtx {
   modelsPath: string;
   now: number;
   info: OrchestratorInfo;
-  infoFile: string;
   /** The free-bytes sampler for the disk floor: production reads statfs through
    * sampleFreeBytes; tests inject a fixed sample. */
   sampleFree?: (root: string) => number | null;
@@ -157,7 +155,7 @@ export function pollFleetGates(
   states: FleetGateStates,
   ctx: FleetGatePollCtx,
 ): FleetGatePoll {
-  const { root, runners, liveConfig, modelsPath, now, info, infoFile } = ctx;
+  const { root, runners, liveConfig, modelsPath, now, info } = ctx;
 
   // Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
   // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
@@ -199,7 +197,7 @@ export function pollFleetGates(
   const demotionsChanged = assignInfoFieldIfChanged(info, "fallbackDemotions", demotions);
   const engagedChanged = assignInfoFieldIfChanged(info, "fallbackDemoted", engagedDemotion);
   const budgetChanged = assignInfoFieldIfChanged(info, "budget", budget);
-  if (demotionsChanged || engagedChanged || budgetChanged) writeJsonFile(infoFile, info);
+  if (demotionsChanged || engagedChanged || budgetChanged) writeOrchestratorInfo(root, info);
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
@@ -333,7 +331,7 @@ export function pollFleetGates(
           held: diskHeld,
           ...(ctx.reclaim?.lastReclaim ? { lastReclaim: ctx.reclaim.lastReclaim } : {}),
         };
-  if (assignInfoFieldIfChanged(info, "disk", disk)) writeJsonFile(infoFile, info);
+  if (assignInfoFieldIfChanged(info, "disk", disk)) writeOrchestratorInfo(root, info);
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier

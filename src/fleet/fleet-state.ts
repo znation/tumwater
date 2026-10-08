@@ -313,8 +313,8 @@ export interface OrchestratorInfo {
  * from what it already carries, and report whether it changed. This is the shared rule for the
  * fields observers cannot recompute (build, budget, fallback demotions, disk): an unchanged
  * poll leaves the file untouched, while a changed one stages the value so the caller can write
- * once after several fields. The comparison uses JSON serialization, matching the info file's
- * own writeJsonFile format, so a value equal to the stored one is never treated as a change. */
+ * once after several fields. The comparison uses JSON serialization, matching writeOrchestratorInfo's
+ * own output, so a value equal to the stored one is never treated as a change. */
 export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
   info: OrchestratorInfo,
   field: K,
@@ -330,6 +330,15 @@ export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
  * that poll this every second (TUI, GUI, status). */
 export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
   return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
+}
+
+/** Publish the running orchestrator's info file atomically (writeJsonAtomic's tmp + rename).
+ * The only writer of that path, so a process killed mid-write — the orchestrator's own poll
+ * publishes budget/disk/build changes while `tumwater run` in another terminal reads it to
+ * refuse a second fleet — leaves either the previous complete file or the new one, never a
+ * torn body that readOrchestratorInfo reports as no running orchestrator. */
+export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): void {
+  writeJsonAtomic(orchestratorStatePath(root), info);
 }
 
 /** True when the recorded orchestrator's pid is still alive (see pidAlive). Callers that have

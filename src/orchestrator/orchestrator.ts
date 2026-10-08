@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { assignInfoFieldIfChanged, type OrchestratorInfo } from "../fleet/fleet-state.js";
+import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/fleet-state.js";
 import { enabledRoleIds } from "../config/config.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
@@ -20,7 +20,6 @@ import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js"
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
-import { writeJsonFile } from "../files/json-files.js";
 import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
 import {
@@ -163,7 +162,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   if (redeploy) info.build = redeploy.status();
-  writeJsonFile(infoFile, info);
+  writeOrchestratorInfo(root, info);
   logEvent(root, {
     loop: "harness",
     type: "orchestrator_start",
@@ -340,7 +339,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         modelsPath,
         now,
         info,
-        infoFile,
         reclaim,
       });
       // The latest poll's disk verdict, hoisted for tickStartHeld's permit-time reads
@@ -389,7 +387,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           now,
         );
         const build = redeploy.status(now);
-        if (assignInfoFieldIfChanged(info, "build", build)) writeJsonFile(infoFile, info);
+        if (assignInfoFieldIfChanged(info, "build", build)) writeOrchestratorInfo(root, info);
         if (action === "restart") {
           restart = true;
           // Only permit holders have a pi run to cut off (the director is guaranteed finished by

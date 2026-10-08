@@ -17,6 +17,7 @@ import {
   pauseFleet,
   resumeFleet,
   readOrchestratorInfo,
+  writeOrchestratorInfo,
   orchestratorAlive,
   type OrchestratorInfo,
 } from "../src/fleet/fleet-state.js";
@@ -77,6 +78,32 @@ test("readOrchestratorInfo parses a valid info file", () => {
   const info: OrchestratorInfo = { pid: 42, startedAt: 1234, roles: ["feature", "qa"] };
   fs.writeFileSync(file, JSON.stringify(info));
   assert.deepEqual(readOrchestratorInfo(root), info);
+});
+
+test("writeOrchestratorInfo leaves the previous file intact when a write is killed mid-flight", (t) => {
+  const root = tmpdir("orchestrator-info-atomic-");
+  const first: OrchestratorInfo = { pid: 1, startedAt: 1, roles: ["docs"] };
+  writeOrchestratorInfo(root, first);
+  assert.deepEqual(readOrchestratorInfo(root), first, "the seed is on disk");
+
+  // Model a process killed between write and close (SIGKILL, ENOSPC, EIO): the writer leaves a
+  // partial prefix of the JSON, then throws. The atomic seam must surface the failure without
+  // replacing the good file, so `tumwater run`'s liveness read still sees the running fleet
+  // instead of booting a second one.
+  const realWriteFileSync = fs.writeFileSync;
+  t.mock.method(fs, "writeFileSync", ((file: fs.PathOrFileDescriptor, data: string | Uint8Array) => {
+    realWriteFileSync(file, typeof data === "string" ? data.slice(0, 10) : data.subarray(0, 10));
+    throw new Error("simulated mid-write failure");
+  }) as typeof fs.writeFileSync);
+  try {
+    assert.throws(
+      () => writeOrchestratorInfo(root, { pid: 2, startedAt: 2, roles: ["qa"] }),
+      /simulated mid-write failure/,
+    );
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.deepEqual(readOrchestratorInfo(root), first, "the torn write never replaced the good file");
 });
 
 test("orchestratorAlive is false with no info and reflects pid liveness otherwise", () => {
