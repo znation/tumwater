@@ -68,6 +68,23 @@ function runnerlessTargets(root: string, markerFile: string, runners: LoopRunner
   );
 }
 
+/** Best-effort write of one operator-request event. The request's side effects have already
+ * applied by the time this runs, so an unwritable events log must neither un-acknowledge the
+ * marker nor escape the orchestrator's poll body (whose loop has no catch) and end the fleet.
+ * One wake consumer logs per role, so a throw that escaped would also starve the roles after
+ * the first. A failure is still reported on the same feed when that feed is writable. */
+function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): void {
+  try {
+    logEvent(root, event);
+  } catch (err) {
+    try {
+      warnEvent(root, "harness", `could not record ${event.type} request: ${errorMessage(err)}`);
+    } catch {
+      // The event feed is the failure; there is nothing left to report on.
+    }
+  }
+}
+
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI zeroed the
  * state files only when no fleet was running; this zeroes the affected runners' in-memory
  * copies (which then re-save), or their next tick's save would resurrect the pre-reset values,
@@ -84,8 +101,8 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   if (applied.length > 0) {
     const [only] = applied;
     // One role → filed under that loop; several → one harness-level event listing them.
-    if (applied.length === 1 && only) logEvent(root, { loop: only, type: "counters_reset" });
-    else logEvent(root, { loop: "harness", type: "counters_reset", roles: applied });
+    if (applied.length === 1 && only) logRequestEvent(root, { loop: only, type: "counters_reset" });
+    else logRequestEvent(root, { loop: "harness", type: "counters_reset", roles: applied });
   }
   removeQuiet(markerFile);
 }
@@ -118,11 +135,11 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   if (affected === null) return;
   for (const r of affected) {
     r.wake();
-    logEvent(root, { loop: r.role, type: "wake", reason: "operator" });
+    logRequestEvent(root, { loop: r.role, type: "wake", reason: "operator" });
   }
   for (const role of runnerlessTargets(root, markerFile, runners)) {
     saveLoopState(root, clearBackoff(loadLoopState(root, role), Date.now()));
-    logEvent(root, { loop: role, type: "wake", reason: "operator" });
+    logRequestEvent(root, { loop: role, type: "wake", reason: "operator" });
   }
   removeQuiet(markerFile);
 }

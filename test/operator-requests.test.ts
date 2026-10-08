@@ -219,6 +219,33 @@ test("consumeWakeRequest reads a non-numeric notBeforeMs as immediate", () => {
   assert.equal(fs.existsSync(wakeRequestPath(root)), false);
 });
 
+test("consumeWakeRequest wakes every named role when a wake event cannot be logged", () => {
+  const root = tmpdir();
+  // events.jsonl as a directory makes logEvent throw (EISDIR) on the first role's wake event.
+  // Pre-fix the throw escaped the consumer, ending the orchestrator poll and starving the
+  // second role and the marker removal.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  const a = fakeRunner("coverage");
+  const b = fakeRunner("clean");
+  const marker = wakeRequestPath(root);
+  writeMarker(marker, { roles: ["coverage", "clean"] });
+  assert.doesNotThrow(() => consumeWakeRequest(root, asRunners(a, b)));
+  assert.equal(a.wakes, 1);
+  assert.equal(b.wakes, 1, "one role's failed log must not skip the next");
+  assert.equal(fs.existsSync(marker), false, "the applied wake is acknowledged despite the failed log");
+});
+
+test("consumeResetRequest resets and acknowledges when its event cannot be logged", () => {
+  const root = tmpdir();
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  const a = fakeRunner("coverage");
+  const marker = resetRequestPath(root);
+  writeMarker(marker, { roles: ["coverage"] });
+  assert.doesNotThrow(() => consumeResetRequest(root, asRunners(a)));
+  assert.equal(a.resets, 1);
+  assert.equal(fs.existsSync(marker), false, "the applied reset is acknowledged despite the failed log");
+});
+
 test("consumeAbortRequests tolerates a missing .tumwater directory", () => {
   const root = tmpdir(); // never created — the fresh-repo case the catch exists for
   const a = fakeRunner("coverage", true);
