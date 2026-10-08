@@ -39,7 +39,7 @@ import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
-import { APPROVE_PI, assistantLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, leasedRoleShell } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
 
@@ -496,7 +496,8 @@ test("an abort for one queued role stops only that role's vet and discards its p
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `case "$PWD" in *_land-clean) touch '${dir}/clean-reviewing';; *_land-dry) touch '${dir}/dry-reviewing';; esac`,
+      leasedRoleShell(),
+      `case "$role" in clean) touch '${dir}/clean-reviewing';; dry) touch '${dir}/dry-reviewing';; esac`,
       `i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
@@ -640,22 +641,30 @@ test("a lander worktree that can no longer be created is contained: the healthy 
   // assembly still throws, and the merge's catch must keep every entry queued (un-vetted, so
   // each is vetted afresh next poll) instead of escaping as an unhandled rejection; a lone
   // merge's landApprovedChange (or clean's own vet) degrades the same failure to an "error"
-  // outcome. Which of them the pipeline meets depends on whether the two vets finish before
-  // one poll's merge — either way the queue must drain: clean, whose worktree cannot be
-  // re-created, drops as a terminal error, and dry lands. Trigger: clean's own review run
-  // deletes clean's lander worktree and makes its parent unwritable before it approves, so no
-  // merge of clean can ever find the worktree.
+  // outcome. Either way the queue must drain: clean, whose merge worktree and re-leasable slot
+  // cannot be re-created, drops as a terminal error, and dry lands. Trigger: clean's own review
+  // run deletes clean's just-freed slot and merge worktree and makes the worktrees parent
+  // unwritable before it approves, after seeding dry's merge worktree so the healthy change can
+  // still land.
   const repo = await makeFastRepo("lander worktree throw recovery test", ["clean", "dry"]);
   await seedLandQueue(repo, "clean", "dry");
   const worktrees = path.join(repo, ".tumwater", "worktrees");
   const headWt = path.join(worktrees, "_land-clean");
+  const dryWt = path.join(worktrees, "_land-dry");
   const armed = path.join(tmpdir(), "worktree-throw-armed");
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in`,
       `*"VERDICT:"*)`,
-      `case "$PWD" in *_land-clean) if [ ! -e '${armed}' ]; then`,
-      `  touch '${armed}'; cd /; rm -rf '${headWt}'; chmod 555 '${worktrees}'`,
+      leasedRoleShell(),
+      `case "$role" in clean) if [ ! -e '${armed}' ]; then`,
+      `  touch '${armed}'; slot="$PWD"; cd /;`,
+      // The healthy change's merge worktree must exist before the parent is locked (the vet on
+      // a pooled slot no longer creates it): seed it, then remove clean's own merge worktree
+      // and its just-freed slot and lock the parent, so clean can neither re-vet (its slot
+      // cannot be re-created) nor merge, while dry's seeded worktree survives and lands.
+      `  git -C '${repo}' worktree add --detach '${dryWt}' main >/dev/null 2>&1;`,
+      `  rm -rf "$slot" '${headWt}'; chmod 555 '${worktrees}'`,
       `fi;; esac`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,

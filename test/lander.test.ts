@@ -7,6 +7,7 @@ import { LANDING_CHECK_FAILURE_LIMIT } from "../src/landing/landing-check-failur
 import { landApprovedChange, reviewPinnedChange } from "../src/landing/landing-core.js";
 import type { BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
+import { readSlotsState } from "../src/git/slots-state.js";
 import { landingRefName, landWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -369,8 +370,10 @@ test("a synced rebase moves the landing ref so a failed gate keeps the tree that
     assert.equal(await vetAndLand(ctx, request(sha)), "review_error");
 
     // Nothing landed (main still holds the fix commit), so the synced head is not main's
-    // head — it is the rebased commit the lander worktree sits at.
-    const syncedHead = sh(landWorktreePath(root, ROLE), "git", "rev-parse", "HEAD").trim();
+    // head — it is the rebased commit the vet's pooled slot sits at.
+    const slot = readSlotsState(root).slots.find((s) => s.lastRole === ROLE)?.dir;
+    assert.ok(slot, "the vet released the pooled slot it leased");
+    const syncedHead = sh(slot, "git", "rev-parse", "HEAD").trim();
     assert.notEqual(syncedHead, sha, "the rebase rewrote the pin onto main's fix");
     assert.equal(
       await refSha(root, REF),

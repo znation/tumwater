@@ -361,7 +361,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     const wt = worktreePath(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");
     assertClean(wt, "no uncommitted edits remain");
-    const landWt = path.join(repo, ".tumwater/worktrees/_land-improve");
+    const landWt = path.join(repo, ".tumwater/worktrees/_slot-1");
     assert.ok(!fs.existsSync(path.join(landWt, "stray.txt")), "the reviewer's stray file is cleaned on re-landing");
     const failed = eventsOfType(repo, "review_failed");
     assert.equal(failed.length, 2, "both the tick's review and its recovery review failed");
@@ -503,8 +503,8 @@ test("a shutdown mid-landing fails closed: the pinned commit survives for next-s
     const head = headLanding(repo);
     assert.ok(head, "the landing is queued");
     const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-    // Abort only once the lander worktree exists: an earlier abort would hit nothing.
-    await waitForFile(path.join(repo, ".tumwater/worktrees/_land-director"));
+    // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
+    await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
     controller.abort();
     assert.equal(await landing, "aborted", "a mid-review shutdown is an abort, not a failed review");
 

@@ -17,7 +17,7 @@ import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrche
 import { makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine, leasedRoleShell } from "./pi-events.js";
 
 function readOrder(runDir: string): string[] {
   try {
@@ -51,21 +51,23 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
       `f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
       `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-      `case "$PWD" in`,
-      `*_land-clean*)`,
+      leasedRoleShell(),
+      `if [ "$role" = clean ]; then`,
       `  sleep 3`,
       `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
-      `  ;;`,
-      `*clean*)`,
-      `  echo change >> clean-change.txt`,
-      `  sleep 1`,
-      `  printf '%s\\n' '${assistantLine("clean work\nSUMMARY: add clean change")}'`,
-      `  ;;`,
-      `*)`,
-      `  sleep 1.5`,
-      `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `  ;;`,
-      `esac`,
+      `else`,
+      `  case "$PWD" in`,
+      `  *clean*)`,
+      `    echo change >> clean-change.txt`,
+      `    sleep 1`,
+      `    printf '%s\\n' '${assistantLine("clean work\nSUMMARY: add clean change")}'`,
+      `    ;;`,
+      `  *)`,
+      `    sleep 1.5`,
+      `    printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `    ;;`,
+      `  esac`,
+      `fi`,
       `rm -f "$f"`,
     ].join("\n"),
   );

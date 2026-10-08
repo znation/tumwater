@@ -16,7 +16,7 @@ import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { runPi } from "../src/pi/pi.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine, leasedRoleShell } from "./pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-restack.test.ts and
@@ -264,14 +264,15 @@ export function runBatch(
 /** The shell that prints `reply` as a review run's one assistant turn. */
 export const replyLine = (reply: string): string => `printf '%s\\n' '${assistantLine(reply)}'`;
 
-/** A reviewer shim whose review run behaves per change: pi's cwd is the gate's
- * `_land-<role>` worktree, so `$PWD` names the change under review. `byRole` maps a role to
+/** A reviewer shim whose review run behaves per change: a vet holds a pooled `_slot-<n>`
+ * lease, so `$role` (from slots.json) names the change under review. `byRole` maps a role to
  * the shell its review run executes; every other role runs `otherwise` (approve at once). */
 export function reviewerByRole(byRole: Record<string, string>, otherwise = replyLine("VERDICT: approve")): string {
   return [
     `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-    `case "$PWD" in`,
-    ...Object.entries(byRole).map(([role, body]) => `*_land-${role}) ${body} ;;`),
+    leasedRoleShell(),
+    `case "$role" in`,
+    ...Object.entries(byRole).map(([role, body]) => `"${role}") ${body} ;;`),
     `*) ${otherwise} ;;`,
     `esac; exit 0;;`,
     `esac; done`,
@@ -324,12 +325,13 @@ export function advanceMain(root: string, file: string, content: string): string
   return mainSha(root);
 }
 
-/** A reviewer shim that answers per lander worktree: `replies[role]` for the review running
- * in that role's `_land-<role>` worktree, an approval for every other role. */
+/** A reviewer shim that answers per change: `replies[role]` for the review running under that
+ * role's pooled-lease, an approval for every other role. */
 export const perRoleReviewerPi = (replies: Record<string, string>): string =>
   [
+    leasedRoleShell(),
     `r='${assistantLine("VERDICT: approve")}'`,
-    ...Object.entries(replies).map(([role, reply]) => `case "$PWD" in *_land-${role}) r='${assistantLine(reply)}';; esac`),
+    ...Object.entries(replies).map(([role, reply]) => `case "$role" in "${role}") r='${assistantLine(reply)}';; esac`),
     `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' "$r"; exit 0;; esac; done`,
   ].join("\n");
 

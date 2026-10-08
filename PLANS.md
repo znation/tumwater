@@ -6,34 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Worktree pool, part 2b/5: vets lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed)
-
-Design: plans/worktree-pool.md ("Vets and merges").
-
-**Context.** A vet passes its result on through the landing ref and `VettedLanding`, never
-through the worktree, and every merge-side step re-ensures at a commit, so the vet's checkout
-is free to be a pooled slot.
-
-**Approach.**
-1. In `vetRequest` (src/landing/landing-batch.ts), acquire
-   `leaseSlot(ctx.root, { role: req.role, purpose: "vet", ref: req.sha, signal: ctx.signal() })`,
-   and have `vetRequestIn` use the leased `dir` instead of `useWorktree` on
-   `landWorktreePath(...)` plus `ensureDetachedWorktree(...)`. Release it in a `finally`,
-   whatever the outcome (approved, rejected or error).
-2. Update the vet-side tests whose fake-pi shims and session `cwd` match `_land-<role>`:
-   test/landing-drain-vetting.test.ts, test/landing-fixtures.ts and any loop test asserting the
-   vet cwd.
-
-**Files touched.** src/landing/landing-batch.ts. Tests: test/landing-drain-vetting.test.ts,
-test/landing-fixtures.ts and the loop tests asserting the vet cwd.
-
-**Acceptance criteria.**
-- A vet runs in a `_slot-<n>` directory; no `_land-<role>` is created for it.
-- slots.json shows purpose `vet` during the run and no lease after it, for every outcome.
-- A vet prefers the slot its role released most recently.
-- Vet outcomes and the drain's write-back are unchanged.
-- `npm run test` green.
-
 ### Worktree pool, part 2c/5: merge-side landing work uses one `_merge` checkout (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed)
 
 Design: plans/worktree-pool.md ("Vets and merges").
@@ -324,6 +296,36 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 2b/5: vets lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed; done 2026-10-07 by feature)
+
+Design: plans/worktree-pool.md ("Vets and merges").
+
+**What landed (2026-10-07).** `vetRequest` leases a pooled slot
+(`leaseSlot(ctx.root, { role, purpose: "vet", ref: req.sha, signal: ctx.signal() })`) and releases
+it in a `finally`, whatever the outcome. `vetRequestIn` takes the leased `dir` and no longer
+calls `useWorktree`/`ensureDetachedWorktree`; an abort while waiting for a free slot settles as
+the terminal `aborted` verdict, and a lease failure (the lost-pin checkout, say) keeps the
+terminal `error` outcome. One anchor the entry missed: `reviewPinnedChange`'s discard on a
+rejection or strike-cap discard removed the worktree it ran in — correct for the old
+per-role lander, but it would delete a pooled slot, so that cleanup now drops only the pin ref
+(src/landing/landing-core.ts), and the lease's own release frees the slot.
+
+**Files touched.** src/landing/landing-batch.ts, src/landing/landing-core.ts. Tests:
+test/pi-events.ts and test/landing-fixtures.ts (a `leasedRoleShell` helper reads the reviewing
+role from the slot lease, since the cwd no longer names it), test/lander-fixtures.ts,
+test/landing-drain-vetting.test.ts, test/landing-pipeline.test.ts, test/lander.test.ts,
+test/loop-4.test.ts, test/loop-5.test.ts, test/loop-leftover-recovery.test.ts,
+test/orchestrator-3.e2e.test.ts, test/orchestrator-permits.e2e.test.ts.
+
+**Acceptance criteria.**
+- A vet runs in a `_slot-<n>` directory; no `_land-<role>` is created for it.
+- slots.json shows purpose `vet` during the run and no lease after it, for every outcome.
+- A vet prefers the slot its role released most recently (the pool's own order, pinned by
+test/worktree-pool.test.ts).
+- Vet outcomes and the drain's write-back are unchanged.
+- `npm run test` green.
+
 
 ### Worktree pool, part 2a/5: the slot pool and its `worktreeSlots` config (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires Disk floor 2/4 and Worktree pool 1/5 landed; done 2026-10-07 by feature)
 

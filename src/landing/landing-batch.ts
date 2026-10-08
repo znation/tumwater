@@ -6,8 +6,7 @@
  * beside it in landing-stack.ts. The shared review gate (reviewPinnedChange) and the
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
-import { ensureDetachedWorktree } from "../git/worktree.js";
-import { useWorktree } from "../git/worktree-use.js";
+import { leaseSlot, type SlotLeaseHandle } from "../git/worktree-pool.js";
 import { removeLandWorktree } from "../git/git.js";
 import { landWorktreePath } from "../paths.js";
 import {
@@ -57,25 +56,29 @@ export type VetVerdict =
   | { kind: "stack"; sha: string; verifiedHead?: string }
   | { kind: "result"; result: TickResult; discarded?: true };
 
-/** Vet one request — the whole of a vetting-stage task: check its pin out detached in the
- * role's own lander worktree, rebase it onto main's current tip (syncPinToMain — so the head
+/** Vet one request — the whole of a vetting-stage task: lease a pooled slot for the role, check
+ * its pin out detached there, rebase it onto main's current tip (syncPinToMain — so the head
  * approved here is the head its merge starts from, and a conflict leaves the pin for the gate
  * and, at the merge, mergeToMain's resolver), and run the review gate, the verdict persisted
  * immediately by reviewPinnedChange (the drain's write-back of an approved change happens only
- * once it lands, so a crash must not lose what the vet earned). The rebase touches only this
- * role's worktree and ref, onto main itself, so two vets rebasing at once — or one rebasing
- * while a merge moves main — cannot interfere. */
+ * once it lands, so a crash must not lose what the vet earned). The lease is released in every
+ * outcome (plans/worktree-pool.md, "Vets and merges"): the vet passes its result on through the
+ * landing ref and VettedLanding, never through the slot, and every merge-side step re-ensures at
+ * a commit. leaseSlot holds the slot through the disk-floor registry and resets it to the pin, so
+ * two vets rebasing at once — or one rebasing while a merge moves main — cannot interfere. */
 export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<VetVerdict> {
-  // Hold the lander worktree from before ensureDetachedWorktree (its reset is part of the
-  // use) to the vet's end (plans/disk-floor.md, part 2/4).
-  return useWorktree(ctx.root, landWorktreePath(ctx.root, req.role), () => vetRequestIn(ctx, req, w));
-}
-
-async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<VetVerdict> {
-  let wt: string;
+  let lease: SlotLeaseHandle;
   try {
-    wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+    lease = await leaseSlot(ctx.root, {
+      role: req.role,
+      purpose: "vet",
+      ref: req.sha,
+      signal: ctx.signal(),
+    });
   } catch (err) {
+    // An abort while waiting for a free slot is the vet never starting — the same terminal
+    // "aborted" reviewPinnedChange returns when it observes an already-fired signal.
+    if (err instanceof Error && err.name === "AbortError") return { kind: "result", result: "aborted" };
     // The queue entry outlived its pinned commit — the land queue outlives the ref by design
     // (a crash between pin and drop, or an outside gc), so a checkout of `req.sha` can fail
     // with the commit gone. Degrade to a terminal "error" for this request so the drain drops
@@ -85,6 +88,14 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
     w.state.lastError = errorMessage(err);
     return { kind: "result", result: "error" };
   }
+  try {
+    return await vetRequestIn(ctx, req, w, lease.dir);
+  } finally {
+    lease.release();
+  }
+}
+
+async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring, wt: string): Promise<VetVerdict> {
   const synced = await syncPinToMain(ctx, wt, req);
   const outcome = await reviewPinnedChange(ctx, synced, wt, w.state, w.foldUsage);
   if (outcome.kind === "result") return outcome;

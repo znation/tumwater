@@ -23,7 +23,7 @@ import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
-import { assistantLine, reviewerPi } from "./pi-events.js";
+import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
 /** Shared fixtures for the landing-drain tests — landing-drain.test.ts and
  * landing-pipeline.test.ts, which node --test runs as parallel processes (top-level tests
@@ -137,15 +137,17 @@ export async function queueChanges(root: string, roles: string[]): Promise<Recor
   return shas;
 }
 
-/** A fake reviewer that tells the roles apart by their lander worktree: each touches
- * `<role>-reviewing`, a `held` role then waits (bounded, ~60 s) for `<role>-release`, and each
- * replies with its own verdict (approve by default). */
+/** A fake reviewer that tells the roles apart by the lease on its pooled checkout (a vet no
+ * longer runs in `_land-<role>`): each role touches `<role>-reviewing`, a `held` role then
+ * waits (bounded, ~60 s) for `<role>-release`, and each replies with its own verdict (approve
+ * by default). */
 export function reviewers(flags: string, roles: string[], verdicts: Record<string, string> = {}, held: string[] = []): string {
   return [
-    `case "$PWD" in`,
+    leasedRoleShell(),
+    `case "$role" in`,
     ...roles.map(
       (role) =>
-        `*_land-${role}) touch '${path.join(flags, `${role}-reviewing`)}'; ` +
+        `"${role}") touch '${path.join(flags, `${role}-reviewing`)}'; ` +
         (held.includes(role)
           ? `i=0; while [ ! -f '${path.join(flags, `${role}-release`)}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; `
           : "") +

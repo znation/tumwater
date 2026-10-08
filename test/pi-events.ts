@@ -31,6 +31,23 @@ export const reviewerPi = (reply: string, recordTo?: string): string =>
 /** The common approver: a reviewer stub that approves. */
 export const APPROVE_PI = reviewerPi("VERDICT: approve");
 
+/** Shell that prints the role leasing the current pooled checkout into `$role`, read from
+ * slots.json — how a fake-pi shim names the change under review now that a vet runs in a
+ * pooled `_slot-<n>` instead of a `_land-<role>` path (plans/worktree-pool.md, part 2b/5). A
+ * slot sits at `<root>/.tumwater/worktrees/_slot-<n>`, so the root is three levels up; the role
+ * is the lease record whose slot dir realpaths to this cwd. Prints nothing when the cwd is not
+ * a leased slot (the merge-side `_land-<role>` path). */
+export function leasedRoleShell(): string {
+  return (
+    `role=$(node -e 'const fs=require("fs"),path=require("path");` +
+    `const cwd=fs.realpathSync(process.cwd());` +
+    `const root=path.resolve(cwd,"../../..");` +
+    `let s={slots:[]};try{s=JSON.parse(fs.readFileSync(path.join(root,".tumwater/state/slots.json"),"utf8"))}catch{};` +
+    `const m=(s.slots||[]).find(x=>{try{return fs.realpathSync(x.dir)===cwd}catch{return false}});` +
+    `process.stdout.write(m&&m.lease?m.lease.role:"")' 2>/dev/null)`
+  );
+}
+
 /** A pi JSON line for an assistant message_end whose content is thinking-only — the
  * signature of a generation cut off mid-stream (e.g. output clamped to the sliver left
  * under the declared context window); a compliant finish always ends with a text block. */

@@ -5,7 +5,8 @@ import path from "node:path";
 import { drainLandings } from "../src/landing/landing-drain.js";
 import { abortableLandings, landingTasks } from "../src/landing/landing-pipeline.js";
 import { queuedLandingFiles } from "../src/landing/landing-queue.js";
-import { landingRefName } from "../src/paths.js";
+import { landingRefName, landWorktreePath, slotsStatePath } from "../src/paths.js";
+import { readSlotsState } from "../src/git/slots-state.js";
 import { refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readLandingMarker } from "../src/landing/landing-slot.js";
@@ -27,6 +28,7 @@ import {
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
+import { leasedRoleShell } from "./pi-events.js";
 import { waitFor, waitForFile, within } from "./wait.js";
 
 /** Second slice of the landing-drain suite — the vet-permit and merge-slot tests beside
@@ -89,13 +91,14 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
     const flags = tmpdir("vet-permits-");
     const awaitAlpha =
       ticks === 0
-        ? `*_land-beta) i=0; while [ ! -f '${flags}/alpha-reviewing' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done;;`
+        ? `beta) i=0; while [ ! -f '${flags}/alpha-reviewing' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done;;`
         : "";
     const restore = fakePi(
       [
+        leasedRoleShell(),
         `d='${flags}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
         `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${flags}/samples.log'`,
-        `case "$PWD" in *_land-alpha) touch '${flags}/alpha-reviewing'; i=0; while [ ! -f '${flags}/alpha-release' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done;; ${awaitAlpha} esac`,
+        `case "$role" in alpha) touch '${flags}/alpha-reviewing'; i=0; while [ ! -f '${flags}/alpha-release' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done;; ${awaitAlpha} esac`,
         `rm -f "$f"`,
         APPROVE(),
       ].join("\n"),
@@ -237,6 +240,36 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
     );
     assert.equal(events.filter((e) => e.type === "landed").length, 3, "each change's outcome written once");
     assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
+  } finally {
+    restore();
+  }
+});
+
+test("a vet runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>", async () => {
+  const root = makeRepo();
+  const role = "alpha";
+  await queueChanges(root, [role]);
+  const flags = tmpdir("vet-slot-");
+  const restore = fakePi(
+    [
+      `printf '%s\\n' "$PWD" >> '${flags}/cwd'`,
+      `cp '${slotsStatePath(root)}' '${flags}/during.json' 2>/dev/null`,
+      APPROVE(),
+    ].join("\n"),
+  );
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]));
+  try {
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to land");
+    const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
+    assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
+    assert.equal(fs.existsSync(landWorktreePath(root, role)), false, "no _land-<role> was created for the vet");
+    const during = JSON.parse(fs.readFileSync(path.join(flags, "during.json"), "utf8")) as {
+      slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
+    };
+    const leased = during.slots.find((s) => fs.realpathSync(s.dir) === fs.realpathSync(cwd));
+    assert.equal(leased?.lease?.role, role, "the slot was leased for the change's role while the vet ran");
+    assert.equal(leased?.lease?.purpose, "vet", "the lease's purpose was vet");
+    assert.equal(readSlotsState(root).slots.every((s) => s.lease === null), true, "no lease survives the landing");
   } finally {
     restore();
   }

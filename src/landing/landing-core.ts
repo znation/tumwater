@@ -171,12 +171,13 @@ export async function reviewPinnedChange(
   const { role } = req;
   const ref = landingRefName(role);
   // Both uses below — a rejection and a strike-cap discard — end a pinned change without
-  // keeping it: drop the held-selector note, the pin ref, and the lander worktree together,
-  // so the three-part cleanup cannot drift between them.
+  // keeping it: drop the held-selector note and the pin ref together, so the two-part cleanup
+  // cannot drift between them. The vet's checkout is a pooled slot (plans/worktree-pool.md,
+  // "Vets and merges"): vetRequest releases the lease in its finally, and a slot is reused, so
+  // this path must not remove the worktree it ran in.
   const discardPin = async () => {
     state.landingReviewError = undefined;
     await deleteRef(root, ref);
-    await removeLandWorktree(root, wt);
   };
   // Already stopping: the gate never starts, so nothing is persisted or folded — the ref stays
   // (fail closed) exactly as for an abort mid-review below.

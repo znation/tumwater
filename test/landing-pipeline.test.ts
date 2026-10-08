@@ -38,7 +38,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { sleep, waitFor, waitForFile, within } from "./wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine, leasedRoleShell } from "./pi-events.js";
 
 /** Second slice of the landing-drain suite (landing-drain.test.ts carries the first) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
@@ -209,9 +209,10 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
   const order = path.join(flags, "order");
   const restore = fakePi(
     [
+      leasedRoleShell(),
       `for a in "$@"; do case "$a" in`,
       `tumwater-*-conflict) echo resolved > alpha.txt; echo resolver >> '${order}'; printf '%s\\n' '${assistantLine("resolved")}'; exit 0;;`,
-      `*"VERDICT:"*) case "$PWD" in *_land-beta) echo beta-review >> '${order}';; esac; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
+      `*"VERDICT:"*) case "$role" in beta) echo beta-review >> '${order}';; esac; printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
     ].join("\n"),
   );
@@ -706,8 +707,9 @@ test("a git failure inside the gate's reject path settles the vet as an error ou
   // must turn it into the terminal "error" outcome — never a rejected task promise, which
   // would leave the entry queued and its author interlocked forever.
   const shim = [
-    `case "$PWD" in`,
-    `*_land-${role}) gd=$(sed 's/^gitdir: //' "$PWD/.git"); touch "$gd/index.lock"; ` +
+    leasedRoleShell(),
+    `case "$role" in`,
+    `"${role}") gd=$(sed 's/^gitdir: //' "$PWD/.git"); touch "$gd/index.lock"; ` +
       `printf '%s\\n' '${assistantLine("VERDICT: reject\\n1. no")}'; exit 0;;`,
     `esac`,
   ].join("\n");

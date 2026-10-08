@@ -233,8 +233,8 @@ test("a user-abort mid-review discards the committed work too", async () => {
     const head = headLanding(repo);
     assert.ok(head, "the landing is queued");
     const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-    // Abort only once the lander worktree exists: an earlier abort would hit nothing.
-    await waitForFile(path.join(repo, ".tumwater/worktrees/_land-director"));
+    // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
+    await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
     controller.abort();
     assert.equal(await landing, "aborted", "a mid-review abort is an abort, not a failed review");
 

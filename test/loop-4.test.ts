@@ -19,7 +19,7 @@ import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
-import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./pi-events.js";
 
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
   const repo = await initializedRepo();
@@ -257,15 +257,19 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
   const approveLine = assistantLine("VERDICT: approve");
   const restore = fakePi(
     [
-      `case "$PWD" in`,
-      // The lander worktrees come first: their paths also end in the role name.
-      // A's landing's reviewer run (_land-improve): hold the lock while reviewing.
-      `*_land-improve)`,
+      leasedRoleShell(),
+      // The review runs hold a pooled slot, so they come first, keyed on the leased role.
+      // A's landing's reviewer run (slot for improve): hold the lock while reviewing.
+      `case "$role" in`,
+      `improve)`,
       `  touch '${marker}'; i=0; while [ ! -f '${bDone}' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
-      // B's landing's reviewer run (_land-organize): plain approve.
-      `*_land-organize)`,
+      // B's landing's reviewer run (slot for organize): plain approve.
+      `organize)`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
+      `esac`,
+      // The role worktrees cover the authoring ticks.
+      `case "$PWD" in`,
       `*improve)`,
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
