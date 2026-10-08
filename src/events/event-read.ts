@@ -68,10 +68,10 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number 
 
 /** Pair the tick_start events of `events` by tick, keyed `${loop}#${tick}` → start epoch ms —
  * the one home of that pairing and its key format, shared by `tumwater history`'s rows
- * (history-data.ts) and the failure digest's time-and-spend fold
- * (src/failure/failure-data.ts), so the two consumers cannot drift into different notions
- * of a tick's span. A tick_end whose start is not in `events` (log rotation cut it, or the
- * tick was skipped before any start logged) has no entry; callers decide what an unpaired
+ * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the tick
+ * drill-down's duration (tick-detail-data.ts), so those consumers cannot drift into different
+ * notions of a tick's span. A tick_end whose start is not in `events` (log rotation cut it, or
+ * the tick was skipped before any start logged) has no entry; callers decide what an unpaired
  * end costs. Lives in the read module, not in a ui module, so core collectors can share it
  * without a core→ui import. */
 export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
