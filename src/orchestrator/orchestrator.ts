@@ -19,7 +19,7 @@ import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEvent, type HarnessEventInput } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
@@ -264,6 +264,20 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // disposed beside the orchestrator_stop event below.
   const notifier = newNotifier(root);
 
+  // Best-effort event logging in the poll loop (the same "logging must not throw" policy as
+  // config-live.ts, gui-server.ts and operator-requests.ts): this loop and its finally run with
+  // no catch, so an unwritable feed (ENOSPC, EACCES, the path replaced by a directory) must not
+  // end the fleet — and, in the finally, must not skip the notifier/quiet-file cleanup or mask
+  // an in-flight error. The feed is the failure; the poll and the shutdown still run.
+  const emit = (event: HarnessEventInput): void => {
+    try {
+      logEvent(root, event);
+    } catch {
+      // The event feed is the failure; the poll and the shutdown cleanup must still run.
+    }
+  };
+  const warn = (message: string): void => emit({ loop: "harness", type: "warning", message });
+
   try {
     while (!signal.aborted) {
       // Live-reload tumwater.json — the single reload point shared by all loops.
@@ -307,11 +321,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       if (liveBranch !== null && liveBranch !== mainBranch) {
         if (!warnedBranchDivergence) {
           warnedBranchDivergence = true;
-          warnEvent(
-            root,
-            "harness",
-            `primary checkout moved to ${liveBranch} — the fleet keeps merging into ${mainBranch}`,
-          );
+          warn(`primary checkout moved to ${liveBranch} — the fleet keeps merging into ${mainBranch}`);
         }
       } else {
         warnedBranchDivergence = false;
@@ -541,7 +551,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
       () => internalStop.abort(),
     );
-    logEvent(root, { loop: "harness", type: "orchestrator_stop" });
+    emit({ loop: "harness", type: "orchestrator_stop" });
     notifier.dispose();
     removeQuiet(infoFile);
   }

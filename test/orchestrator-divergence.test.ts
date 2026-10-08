@@ -69,3 +69,36 @@ test("branch divergence: warns once per episode and re-arms when main returns", 
     await done.catch(() => undefined);
   }
 });
+
+test("an unwritable event log does not end the fleet on a divergence warning", async () => {
+  const repo = await makeFastRepo("divergence unwritable log test", ["clean"]);
+  const restore = fakePiIdle();
+  const controller = new AbortController();
+  const done = runRepoOrchestrator(repo, { signal: controller.signal, pollMs: FAST_POLL_MS });
+  // How the run settles, if it does — handled so a rejection does not kill the suite first.
+  let settled: "resolved" | "rejected" | null = null;
+  void done.then(
+    () => {
+      settled = "resolved";
+    },
+    () => {
+      settled = "rejected";
+    },
+  );
+  try {
+    await awaitFirstTick(repo, "clean");
+    // Replace the event feed with a directory: every append inside the poll loop now throws
+    // EISDIR (ENOSPC/EACCES behave the same). The divergence warning is a direct poll-loop
+    // emission, so it must not take the fleet down with it.
+    fs.rmSync(eventsLogPath(repo), { force: true });
+    fs.mkdirSync(eventsLogPath(repo), { recursive: true });
+    execFileSync("git", ["-C", repo, "checkout", "-b", "wander"]);
+    await sleep(5 * FAST_POLL_MS);
+    assert.equal(settled, null, "an unwritable event feed must not end the orchestrator");
+  } finally {
+    fs.rmSync(eventsLogPath(repo), { recursive: true, force: true });
+    controller.abort();
+    restore();
+    await done.catch(() => undefined);
+  }
+});
