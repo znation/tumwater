@@ -338,6 +338,22 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
   assert.equal(data.rejections.clusters.reduce((n, c) => n + c.count, 0), 2);
 });
 
+test("a nonzero error rate never rounds to 0%, and a partial rate never to 100%", () => {
+  // Whole-percent rounding would erase a real difference in both windows: one error in 400
+  // ticks is 0.25%, which rounds to "0%" (a role that had an error read as error-free), and
+  // 399 errors in 400 ticks is 99.75%, which rounds to "100%". Those two keep one decimal.
+  const root = tmpdir();
+  const events: object[] = [];
+  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "feature", type: "tick_end", result: "changed" });
+  events.push({ ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" });
+  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "bugfix", type: "tick_end", result: "error", error: "boom" });
+  events.push({ ts: at(0), loop: "bugfix", type: "tick_end", result: "changed" });
+  writeEvents(root, events);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  assert.match(md, /\| feature \| — → 400 \| — → 0\.3% \|/);
+  assert.match(md, /\| bugfix \| — → 400 \| — → 99\.8% \|/);
+});
+
 test("the top-N cluster sections mark their cut: remainder line, no silent truncation", () => {
   // The 2026-09-22 digest bug: 13 review_rejected events in the window, but `## Review
   // rejections` itemized only the 5 alphabetically-first clusters with no marker — the

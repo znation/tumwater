@@ -65,11 +65,31 @@ function rejectionCell(prevTicks: number, prevRejections: number, ticks: number,
   return `${prev} → ${cur}`;
 }
 
+/** A ratio as a whole percent — but whole-percent rounding must not erase a real
+ * difference, the same argument spendCell makes for one-decimal hours: a nonzero ratio
+ * below half a percent would render "0%" (a role that had an error read as error-free),
+ * and a partial ratio above 99.5% would render "100%". In those two windows it keeps one
+ * decimal, and if even that rounds away (`0.0%`/`100.0%`) it says `<0.1%`/`>99.9%` rather
+ * than claim an impossible exactness. Every other ratio rounds to the nearest whole percent. */
+function percent(part: number, whole: number): string {
+  const pct = (100 * part) / whole;
+  const rounded = Math.round(pct);
+  if (rounded === 0 && part > 0) {
+    const oneDecimal = pct.toFixed(1);
+    return oneDecimal === "0.0" ? "<0.1%" : `${oneDecimal}%`;
+  }
+  if (rounded === 100 && part < whole) {
+    const oneDecimal = pct.toFixed(1);
+    return oneDecimal === "100.0" ? ">99.9%" : `${oneDecimal}%`;
+  }
+  return `${rounded}%`;
+}
+
 /** An error rate as a whole percent, or "—" when the role ran no ticks (an absence is not
  * a 0% rate, for the same reason deltaCell says "—"). */
 function rate(errors: number, ticks: number): string {
   if (ticks === 0) return "—";
-  return `${Math.round((100 * errors) / ticks)}%`;
+  return percent(errors, ticks);
 }
 
 /** One time-and-spend cell: `x.x h · $y.yy`, or "—" when the role ended no tick on that
@@ -201,9 +221,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     lines.push("");
     lines.push("## Prompt tokens by role");
     for (const row of data.promptStats) {
-      const share = Math.round(row.preEditShare * 100);
+      const share = percent(row.preEditShare, 1);
       lines.push(
-        `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/tick · ${share}% before first edit`,
+        `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/tick · ${share} before first edit`,
       );
     }
   }
