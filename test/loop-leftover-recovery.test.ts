@@ -162,6 +162,51 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
   }
 });
 
+// The other side of the same cap: when the lineage already used its one hand-back and still
+// conflicts, recovery drops the pin and the prompt tells the author its work is gone, so it
+// redoes the change against current main instead of re-applying the stale diff.
+test("a pin at the cap whose lineage already used its hand-back is discarded and the author starts fresh", async () => {
+  const repo = await initializedRepo();
+  // The pin edits seed.txt; main then moves the same line, so re-applying the pin would conflict.
+  const sha = await pinLeftover(repo, "seed.txt", "branch version\n", "work main outgrew");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
+  sh(repo, "git", "commit", "-am", "main moved the same line");
+
+  const prompts = path.join(tmpdir(), "prompts.log");
+  const restore = fakePi(
+    [
+      `printf '%s\n' "$@" >> "${prompts}"`,
+      `echo fresh > fresh.txt`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: redid the change on current main")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = makeLoopRunner(repo, "improve");
+    runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
+    // A hand-back is already on record for this lineage, so the cap means discard, not hand back.
+    runner.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: false };
+    const outcome = await runner.tick();
+
+    assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
+    assert.notEqual(outcome.commit, sha);
+    const prompt = fs.readFileSync(prompts, "utf8");
+    assert.match(prompt, /was discarded without landing/);
+    assert.match(prompt, /"work main outgrew"/, "the note names the discarded change by its subject");
+    assert.doesNotMatch(prompt, /conflict-handback/);
+    assert.equal(runner.state.mergeConflicts, undefined, "the conflict streak is cleared");
+    assert.equal(runner.state.conflictHandback, undefined, "the stale hand-back is cleared");
+    assert.equal(runner.state.conflictDiscard, undefined, "the delivered note is cleared once the author commits");
+    assert.equal(headLanding(repo)?.entry.sha, outcome.commit, "the queue holds only the fresh change");
+    assert.deepEqual(eventsOfType(repo, "land_queued").map((e) => e.commit), [outcome.commit]);
+    assert.ok(
+      eventsOfType(repo, "warning").some((e) => /discarding leftover/.test(String(e.message))),
+      "a warning names the discard",
+    );
+  } finally {
+    restore();
+  }
+});
+
 // BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its body),
 // so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are already stamped
 // into the pinned commit's message; recovery must read them back and present them to the same
