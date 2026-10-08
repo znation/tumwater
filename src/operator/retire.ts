@@ -13,6 +13,7 @@ import { errorMessage } from "../text/text.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { branchName, landingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
+import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";
 import { resumeRole } from "../fleet/fleet-state.js";
 import { git } from "../git/git-run.js";
 
@@ -43,9 +44,14 @@ export interface RetireStatus {
 /** Collect what exists today for `role`, with every probe tolerant of partial state — a retired
  * role's leftovers are exactly the messy half-state this command exists to clean up. */
 export async function collectRetire(root: string, role: string): Promise<RetireStatus> {
-  const wt = worktreePath(root, role);
-  const present = fs.existsSync(wt);
-  const usable = present && (await isUsableWorktree(wt));
+  // The role's checkout comes from the pool resolver (slots-state.ts), so a retired role's
+  // pinned slot is found too. `roleWorktreeDir` returns only usable legacy worktrees, so an
+  // unusable legacy directory (the half-state the rails must catch) is recovered from the raw
+  // legacy path when it still exists.
+  const legacy = worktreePath(root, role);
+  const wt = (await roleWorktreeDir(root, role)) ?? (fs.existsSync(legacy) ? legacy : null);
+  const present = wt !== null && fs.existsSync(wt);
+  const usable = present && wt !== null && (await isUsableWorktree(wt));
   const config = loadConfigSafe(root);
   if (config.error !== undefined) {
     throw new Error(`cannot read tumwater.json: ${errorMessage(config.error)}`);
@@ -61,7 +67,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
   const ahead = branchThere
     ? Number.parseInt(await git(root, "rev-list", "--count", `${mainBranch}..${branch}`), 10)
     : 0;
-  const dirty = usable ? await isDirty(wt) : false;
+  const dirty = usable && wt !== null ? await isDirty(wt) : false;
   const landing = await refSha(root, landingRefName(role));
   // A landing ref pins a committed-but-unlanded sha (plans/merge-queue.md invariant 4): count
   // it as unlanded work too — the branch can sit at main while the pin holds the crash survivor.
@@ -122,10 +128,26 @@ export async function retireRole(root: string, role: string, { force }: { force?
   const skipped: string[] = [];
   const mark = (name: (typeof ARTIFACTS)[number], wasThere: boolean) =>
     (wasThere ? removed : skipped).push(name);
-  // Always prune first: even without a directory, a stale registration may still hold the
-  // branch checked out — removeWorktree's absent-dir path clears it before the branch
+  // A pooled slot is reused, never removed (plans/worktree-pool.md): clear its pin and hand it
+  // back clean and detached so the next lease starts fresh. A legacy worktree is removed as
+  // today; always prune first — even without a directory, a stale registration may still hold
+  // the branch checked out, and removeWorktree's absent-dir path clears it before the branch
   // deletion below.
-  await removeWorktree(root, status.role);
+  const wt = status.worktreePresent ? await roleWorktreeDir(root, status.role) : null;
+  const slot = wt !== null ? slotForDir(root, wt) : undefined;
+  if (slot !== undefined) {
+    updateSlotsState(root, (state) => {
+      const rec = state.slots.find((s) => s.dir === slot.dir);
+      if (rec) rec.pinnedFor = null;
+    });
+    if (status.worktreeUsable) {
+      await git(slot.dir, "reset", "--hard", "HEAD");
+      await git(slot.dir, "clean", "-fd");
+      await git(slot.dir, "checkout", "--detach");
+    }
+  } else {
+    await removeWorktree(root, status.role);
+  }
   mark("worktree", status.worktreePresent);
   if (status.branchPresent) {
     await git(root, "branch", "-D", branchName(status.role));
@@ -143,7 +165,9 @@ export async function retireRole(root: string, role: string, { force }: { force?
 export function artifactPhrase(name: string, role: string): string {
   switch (name) {
     case "worktree":
-      return `the worktree (.tumwater/worktrees/${role}/)`;
+      // A role's checkout may be a legacy `.tumwater/worktrees/<role>/` or a pooled `_slot-<n>`
+      // (plans/worktree-pool.md), so the phrase names neither path.
+      return `the worktree`;
     case "branch":
       return `the branch (${branchName(role)})`;
     case "landingRef":

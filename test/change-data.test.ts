@@ -5,7 +5,9 @@ import path from "node:path";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
-import { ensureWorktree } from "../src/git/worktree.js";
+import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
+import { slotWorktreePath } from "../src/paths.js";
+import { writeSlotsState } from "../src/git/slots-state.js";
 import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 
 // `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests reach
@@ -70,6 +72,40 @@ test("a commit with an empty message parses to a sha with an empty subject", asy
   assert.equal(view.commits[0]?.subject, "a real subject");
   assert.equal(view.commits[1]?.subject, "");
   assert.match(view.commits[1]?.sha ?? "", /^[0-9a-f]+$/);
+});
+
+test("a slot leased for a role's tick serves its change to the diff reader", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "change-data slot lease");
+  // The role's legacy worktree stays at main; its only work lives in the detached pool slot,
+  // the way a role tick holds it. The reader must read the slot, not the stale legacy worktree.
+  const legacy = await ensureWorktree(repo, "feature", "main");
+  const slot = slotWorktreePath(repo, 1);
+  await ensureDetachedWorktree(repo, slot, "main");
+  fs.writeFileSync(path.join(slot, "feature.md"), "work\n");
+  commitIn(slot, "feature work");
+  writeSlotsState(repo, {
+    slots: [
+      {
+        dir: slot,
+        lease: { role: "feature", purpose: "tick", since: Date.now(), pid: process.pid },
+        pinnedFor: null,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+
+  // The legacy checkout still points at main, so only the resolver can yield the slot's work.
+  assert.equal(sh(legacy, "git", "rev-parse", "HEAD"), sh(repo, "git", "rev-parse", "main"));
+  const view = await collectRoleChange(repo, "feature");
+  assert.equal(view.state, "ready");
+  assert.equal(view.ahead, 1);
+  assert.deepEqual(
+    view.commits.map((c) => c.subject),
+    ["feature work"],
+    "the slot's ahead-of-main commit is read",
+  );
 });
 
 test("the fleet view keeps the counts and drops the patch fields", async () => {

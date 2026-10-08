@@ -8,6 +8,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Worktree pool, part 2/5: landing vets lease pooled slot worktrees; merges use one `_merge` checkout (planned 2026-10-06 by operator; requires Disk floor 2/4 and Worktree pool 1/5 landed)
 
+**Needs review 2026-10-07 by feature: too large for one run** — the landing rewiring touches ~10
+source files plus ~15 test files whose fake-pi shims match on the `_land-<role>` cwd, so no single
+run can land it reviewably; split it into smaller landing-side steps.
+
 Design: plans/worktree-pool.md ("Rejected", "Layout", "Config", "Leases", "Vets and merges").
 
 Context: every landing role keeps its own `_land-<role>` checkout with its own build outputs,
@@ -77,48 +81,6 @@ src/orchestrator/orchestrator.ts, docs/how-it-works.md. Tests: test/worktree-poo
   e2e landing tests pass unchanged in outcome.
 - **State file.** slots.json shows the lease during a vet and none after it. A lease left by a
   dead pid is cleared at startup.
-- `npm run test` green.
-
-### Worktree pool, part 3/5: readers find a role's checkout through `roleWorktreeDir` (planned 2026-10-06 by operator; requires part 2/5 landed)
-
-Design: plans/worktree-pool.md ("Readers find a role's checkout").
-
-Context: `tumwater diff`, the GUI's `/api/diff` (both through `collectRoleChange`), `retire`
-and `doctor` find a role's checkout as `worktreePath(root, role)`, and they run in processes
-other than the orchestrator. Part 4/5 moves role ticks into pool slots. This part moves the
-readers first, so the GUI's diff view never breaks in between. Until part 4/5 lands it changes
-no behavior.
-
-**Approach.**
-1. **Resolver.** Add `readSlotsState(root)` and `roleWorktreeDir(root, role)` in a module that
-   separate processes can import without the pool's in-memory state, e.g.
-   src/git/slots-state.ts. `roleWorktreeDir` resolves, in order:
-   - a slot that slots.json lists as leased by the role with purpose `tick`, or pinned for the
-     role, gives its dir;
-   - else the legacy `worktreePath(root, role)` when `isUsableWorktree`;
-   - else `null`.
-2. **Diff.** `collectRoleChange` (src/change/change-data.ts) uses `roleWorktreeDir`. `null`
-   gives the existing "absent" shape.
-3. **Retire.** In src/operator/retire.ts:
-   - `worktreePresent`, `worktreeUsable` and `dirty` come from `roleWorktreeDir`.
-   - **Removal, when the dir is a slot:** under the slots lock, clear `pinnedFor`, then run
-     `git reset --hard`, `git clean -fd` and `git checkout --detach` in the slot. Never remove
-     a slot directory.
-   - **Removal, when the dir is legacy:** `removeWorktree` as today.
-   - Branch deletion is unchanged. Update the literal `.tumwater/worktrees/${role}/` message.
-4. **Doctor.** Any doctor code that probes a role's worktree uses `roleWorktreeDir`.
-
-**Files touched.** src/git/slots-state.ts (new), src/git/worktree-pool.ts (moves its state
-read/write here if convenient), src/change/change-data.ts, src/operator/retire.ts,
-src/doctor/*. Tests: cases in test/change-data.test.ts, test/retire.test.ts and a fabricated
-slots.json fixture.
-
-**Acceptance criteria.**
-- **Slot lease.** With a slots.json that lists `_slot-1` leased by `feature` for a tick,
-  `tumwater diff --role feature` reports the changes in `_slot-1`.
-- **Fallback.** With no slots.json, every reader behaves exactly as before.
-- **Retire a pinned slot.** It leaves `_slot-1` on disk, clean, detached and unpinned, and
-  deletes the branch.
 - `npm run test` green.
 
 ### Worktree pool, part 4/5: role ticks lease pooled slot worktrees (planned 2026-10-06 by operator; requires parts 1/5–3/5 landed)
@@ -340,6 +302,63 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 3/5: readers find a role's checkout through `roleWorktreeDir` (planned 2026-10-06 by operator; done 2026-10-07 by feature; landed before part 2/5, which is flagged too large — slots-state.ts owns the shared format)
+
+**What landed (2026-10-07).** New src/git/slots-state.ts owns the pool's persisted layout and its
+cross-process lock: `readSlotsState`/`writeSlotsState`/`updateSlotsState`, `slotForDir`, and
+`roleWorktreeDir` (a slot leased for a tick, then a slot pinned for the role, then the usable
+legacy worktree, then null). `collectRoleChange` reads through it, so `tumwater diff` and the
+GUI's `/api/diff` follow a role's slot. `retire` resolves the checkout through it and, for a
+slot, clears `pinnedFor` under the slots lock and resets the slot clean and detached instead of
+removing it; legacy worktrees are removed as before, and an unusable legacy directory still trips
+the safety rail. `doctor` has no role-worktree probe (doctor-orphans.ts walks worktree directories
+generically), so there was nothing to retarget. `paths.ts` gains `slotWorktreePath`,
+`slotsStatePath` and `slotsLockPath`. Until role ticks lease slots (part 4/5) no behavior changes:
+with no slots.json every reader falls back exactly as before. The state writer lives in
+slots-state.ts, ready for the later pool module to import.
+
+Tests: a slot-leased diff case in test/change-data.test.ts and a pinned-slot retire case in
+test/retire.test.ts.
+
+Design: plans/worktree-pool.md ("Readers find a role's checkout").
+
+Context: `tumwater diff`, the GUI's `/api/diff` (both through `collectRoleChange`), `retire`
+and `doctor` find a role's checkout as `worktreePath(root, role)`, and they run in processes
+other than the orchestrator. Part 4/5 moves role ticks into pool slots. This part moves the
+readers first, so the GUI's diff view never breaks in between. Until part 4/5 lands it changes
+no behavior.
+
+**Approach.**
+1. **Resolver.** Add `readSlotsState(root)` and `roleWorktreeDir(root, role)` in a module that
+   separate processes can import without the pool's in-memory state, e.g.
+   src/git/slots-state.ts. `roleWorktreeDir` resolves, in order:
+   - a slot that slots.json lists as leased by the role with purpose `tick`, or pinned for the
+     role, gives its dir;
+   - else the legacy `worktreePath(root, role)` when `isUsableWorktree`;
+   - else `null`.
+2. **Diff.** `collectRoleChange` (src/change/change-data.ts) uses `roleWorktreeDir`. `null`
+   gives the existing "absent" shape.
+3. **Retire.** In src/operator/retire.ts:
+   - `worktreePresent`, `worktreeUsable` and `dirty` come from `roleWorktreeDir`.
+   - **Removal, when the dir is a slot:** under the slots lock, clear `pinnedFor`, then run
+     `git reset --hard`, `git clean -fd` and `git checkout --detach` in the slot. Never remove
+     a slot directory.
+   - **Removal, when the dir is legacy:** `removeWorktree` as today.
+   - Branch deletion is unchanged. Update the literal `.tumwater/worktrees/${role}/` message.
+4. **Doctor.** Any doctor code that probes a role's worktree uses `roleWorktreeDir`.
+
+**Files touched.** src/git/slots-state.ts (new), src/change/change-data.ts,
+src/operator/retire.ts, src/doctor/* (no role-worktree probe to retarget). Tests: cases in
+test/change-data.test.ts, test/retire.test.ts and a fabricated slots.json fixture.
+
+**Acceptance criteria.**
+- **Slot lease.** With a slots.json that lists `_slot-1` leased by `feature` for a tick,
+  `tumwater diff --role feature` reports the changes in `_slot-1`.
+- **Fallback.** With no slots.json, every reader behaves exactly as before.
+- **Retire a pinned slot.** It leaves `_slot-1` on disk, clean, detached and unpinned, and
+  deletes the branch.
+- `npm run test` green.
 
 ### Robust conflict landing, part 2/2: a conflict the resolver cannot settle goes back to its author with the markers in place, instead of being discarded (planned 2026-10-07 by operator; requires part 1/2 landed; done 2026-10-07 by feature)
 

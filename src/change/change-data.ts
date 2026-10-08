@@ -11,8 +11,9 @@ import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { aheadOfMain, branchExists, currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { aheadOfMainDiff, changedFiles } from "../git/git-diff.js";
-import { branchName, worktreePath } from "../paths.js";
+import { branchName } from "../paths.js";
 import { isUsableWorktree } from "../git/worktree.js";
+import { roleWorktreeDir } from "../git/slots-state.js";
 
 /** One unlanded commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {
@@ -109,11 +110,12 @@ export async function collectRoleChange(root: string, role: string): Promise<Rol
     uncommittedDiff: "",
   };
   if (!(await branchExists(root, mainBranch))) return { ...empty, state: "no-base" };
-  const wt = worktreePath(root, role);
-  // A missing directory or a dead worktree registration (pruned, half-deleted) is the same
-  // operator situation: this loop holds nothing inspectable yet — worktree.ts's shared
-  // usability probe answers both with one predicate.
-  if (!(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
+  // The role's checkout comes from the pool resolver (slots-state.ts): a slot leased for its
+  // tick or pinned for it, else the legacy worktree. A null or unusable directory is the same
+  // operator situation — this loop holds nothing inspectable yet — so worktree.ts's shared
+  // usability probe still answers the final question.
+  const wt = await roleWorktreeDir(root, role);
+  if (wt === null || !(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
   const ahead = await aheadOfMain(wt, mainBranch);
   const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`));
   const diff = ahead === 0 ? "" : await aheadOfMainDiff(wt, mainBranch);

@@ -9,10 +9,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { branchName, landingRefName, pausedRolesPath, worktreePath } from "../src/paths.js";
+import { branchName, landingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
 import { collectRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
 import { landingRefExists } from "./orchestrator-fixtures.js";
-import { initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
+import { initializedRepo, initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
+import { ensureDetachedWorktree } from "../src/git/worktree.js";
+import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./cli-harness.js";
 import { setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -132,6 +134,33 @@ test("a second retire is idempotent: skipped artifacts, exit 0", async () => {
   const text = await cli(root, "retire", "--role", "improve");
   assert.equal(text.code, 0);
   assert.match(text.stdout, /nothing to remove: the worktree/);
+});
+
+test("retire a pinned slot clears the pin and resets it in place instead of removing it", async () => {
+  const root = await initializedRepo();
+  disableRole(root, "improve");
+  sh(root, "git", "branch", branchName("improve"), "main");
+  const slot = slotWorktreePath(root, 1);
+  await ensureDetachedWorktree(root, slot, branchName("improve"));
+  writeSlotsState(root, {
+    slots: [
+      { dir: slot, lease: null, pinnedFor: "improve", lastRole: null, lastReleasedAt: null },
+    ],
+  });
+  // A stray untracked file the reset must clean; --force carries past the dirty rail.
+  fs.writeFileSync(path.join(slot, "scratch.txt"), "stray\n");
+
+  const r = await cli(root, "retire", "--role", "improve", "--force", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(fs.existsSync(slot), "the slot directory survives");
+  assert.equal(sh(slot, "git", "status", "--porcelain").trim(), "", "the slot is left clean");
+  assert.equal(
+    sh(slot, "git", "rev-parse", "--abbrev-ref", "HEAD").trim(),
+    "HEAD",
+    "the slot is left detached",
+  );
+  assert.equal(readSlotsState(root).slots.find((s) => s.dir === slot)?.pinnedFor, null, "the pin is cleared");
+  assert.equal(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "", "the branch is deleted");
 });
 
 test("retire drops a paused-state marker entry for the role", async () => {

@@ -293,6 +293,27 @@ export function landWorktreePath(root: string, role: string): string {
   return path.join(worktreesDir(root), `_land-${role}`);
 }
 
+/** One slot of the worktree pool (plans/worktree-pool.md): a fixed `.tumwater/worktrees/_slot-<n>`
+ * checkout that ticks and vets lease and switch commits in place, instead of one `_land-<role>`
+ * per role. The leading underscore keeps it from colliding with a role worktree. */
+export function slotWorktreePath(root: string, n: number): string {
+  return path.join(worktreesDir(root), `_slot-${n}`);
+}
+
+/** The worktree pool's persisted layout (git/slots-state.ts): which slots exist, who leases each
+ * one, and which role each is pinned for. Runtime state under .tumwater/state/, never committed —
+ * the orchestrator, `tumwater diff`, `retire` and the dashboards all read it. */
+export function slotsStatePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "slots.json");
+}
+
+/** The cross-process lock serializing read-modify-write updates of slots.json: the orchestrator
+ * leases slots while `retire` (a separate CLI process) clears a pin, and an unguarded last-writer
+ * overwrite would drop one side's change. Same mkdir-and-pid mutex as pausedRolesLockPath. */
+export function slotsLockPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "slots.lock");
+}
+
 /** The ref pinning a role's committed-but-unlanded sha (plans/merge-queue.md invariant 4):
  * written right after the tick's commit, before its branch resets to main, so the reset cannot
  * orphan the work. Deleted on every terminal landing outcome; kept until re-landed otherwise. */
