@@ -8,7 +8,7 @@ import { collectReport } from "../src/report/report-data.js";
 import { renderReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { writeLogLines } from "./log-fixtures.js";
+import { writeEvents, writeLogLines } from "./log-fixtures.js";
 
 // `readWindowEvents` scans the append-only event log BACKWARDS in 8 KB chunks and early-stops
 // once the oldest complete line in hand predates the window. The subtle parts — a line torn by
@@ -17,12 +17,6 @@ import { writeLogLines } from "./log-fixtures.js";
 
 function eventLine(ts: number, extra: Record<string, unknown> = {}): string {
   return JSON.stringify({ ts, loop: "feature", type: "tick_end", ...extra });
-}
-
-/** Write events.jsonl under the fixture root's .tumwater/log/. Raw strings pass through so a
- * test can plant a malformed or blank line. */
-function writeLog(root: string, lines: string[]): void {
-  writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl"), lines);
 }
 
 /** Write the rotated archive (events.jsonl.1) beside the fixture root's live log. */
@@ -49,7 +43,7 @@ test("a missing or empty log reads as an empty window that does not cover", () =
   });
 
   const empty = tmpdir();
-  writeLog(empty, []);
+  writeEvents(empty, []);
   assert.deepEqual(readWindowEvents(empty, dayKey(tsDaysAgo(0))), {
     events: [],
     coversFullWindow: false,
@@ -60,7 +54,7 @@ test("a missing or empty log reads as an empty window that does not cover", () =
 test("a single-chunk log returns in-window events oldest-first and skips bad lines", () => {
   const root = tmpdir();
   const oldest = tsDaysAgo(2);
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(oldest, { tick: 1 }),
     "this line is not json", // torn/corrupt line: skipped
     "", // blank line: skipped
@@ -81,7 +75,7 @@ test("a single-chunk log returns in-window events oldest-first and skips bad lin
 test("a one-line log is dated from its own single line, not discarded as torn", () => {
   const within = tmpdir();
   const recent = tsDaysAgo(1);
-  writeLog(within, [eventLine(recent, { tick: 1 })]);
+  writeEvents(within, [eventLine(recent, { tick: 1 })]);
   assert.deepEqual(readWindowEvents(within, dayKey(tsDaysAgo(5))), {
     events: [{ ts: recent, loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
@@ -89,7 +83,7 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
   });
 
   const before = tmpdir();
-  writeLog(before, [eventLine(tsDaysAgo(10), { tick: 1 })]);
+  writeEvents(before, [eventLine(tsDaysAgo(10), { tick: 1 })]);
   const { events, coversFullWindow } = readWindowEvents(before, dayKey(tsDaysAgo(5)));
   assert.deepEqual(events, []);
   assert.equal(coversFullWindow, true);
@@ -97,7 +91,7 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
 
 test("a single-chunk log whose own oldest line predates the window reports full coverage", () => {
   const root = tmpdir();
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(tsDaysAgo(10), { tick: 1 }),
     eventLine(tsDaysAgo(1), { tick: 2 }),
     eventLine(tsDaysAgo(0), { tick: 3 }),
@@ -115,7 +109,7 @@ test("the backwards scan early-stops when a line spanning chunks is older than t
   // old1 is the file's first line; hugeOld straddles every chunk boundary so the scan must
   // stitch it back together from several parts before it can date it; recent sits after it.
   const recent = tsDaysAgo(0);
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(tsDaysAgo(20), { tick: 1 }),
     eventLine(tsDaysAgo(15), { tick: 2, pad: "y".repeat(20000) }),
     eventLine(recent, { tick: 3, note: "recent" }),
@@ -129,7 +123,7 @@ test("the backwards scan early-stops when a line spanning chunks is older than t
 
 test("a multi-chunk log with no line before the window reports an uncovered window", () => {
   const root = tmpdir();
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(tsDaysAgo(2), { tick: 1, pad: "a".repeat(20000) }),
     eventLine(tsDaysAgo(1), { tick: 2, pad: "b".repeat(20000) }),
     eventLine(tsDaysAgo(0), { tick: 3 }),
@@ -154,7 +148,7 @@ test("a window spanning the rotation boundary reads both files, oldest-first, in
     eventLine(tsDaysAgo(6), { tick: 1 }),
     eventLine(tsDaysAgo(3), { tick: 2 }),
   ]);
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(tsDaysAgo(1), { tick: 3 }),
     eventLine(tsDaysAgo(0), { tick: 4 }),
   ]);
@@ -175,7 +169,7 @@ test("the report's per-day series sums to the seeded totals across the boundary"
     eventLine(tsDaysAgo(3), { tick: 1, loop: "feature", tokens: 10 }),
     eventLine(tsDaysAgo(3), { tick: 2, loop: "bugfix", tokens: 20 }),
   ]);
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(tsDaysAgo(0), { tick: 3, loop: "feature", tokens: 30 }),
   ]);
   const report = collectReport(root, 5);
@@ -194,7 +188,7 @@ test("coversFullWindow is false when even the archive starts inside the window",
     eventLine(tsDaysAgo(3), { tick: 1 }),
     eventLine(tsDaysAgo(2), { tick: 2 }),
   ]);
-  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
   const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     events.map((e) => e.tick),
@@ -211,7 +205,7 @@ test("the day report says so when even the archive starts inside the window", ()
   // outran the single kept archive generation in silence.
   const root = tmpdir();
   writeArchive(root, [eventLine(tsDaysAgo(3), { tick: 1, loop: "feature", tokens: 10 })]);
-  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 2, loop: "feature", tokens: 20 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(0), { tick: 2, loop: "feature", tokens: 20 })]);
   const report = collectReport(root, 5);
   assert.equal(report.coversFullWindow, false, "both files' oldest events lie inside the window");
   assert.match(renderReportMarkdown(report), /older events may have rotated out/);
@@ -220,7 +214,7 @@ test("the day report says so when even the archive starts inside the window", ()
 test("the day report stays silent when the archive proves the window's coverage", () => {
   const root = tmpdir();
   writeArchive(root, [eventLine(tsDaysAgo(6), { tick: 1, loop: "feature", tokens: 10 })]);
-  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 2, loop: "feature", tokens: 20 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(0), { tick: 2, loop: "feature", tokens: 20 })]);
   const report = collectReport(root, 5);
   assert.equal(report.coversFullWindow, true, "the archive's day-6 event predates the window's first day");
   assert.ok(!renderReportMarkdown(report).includes("rotated out"), "a fully covered window claims no truncation");
@@ -228,7 +222,7 @@ test("the day report stays silent when the archive proves the window's coverage"
 
 test("a missing or empty archive leaves the live file's window behavior unchanged", () => {
   const missingArchive = tmpdir();
-  writeLog(missingArchive, [
+  writeEvents(missingArchive, [
     eventLine(tsDaysAgo(1), { tick: 1 }),
     eventLine(tsDaysAgo(1, 13), { tick: 2 }),
   ]);
@@ -243,7 +237,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
 
   const emptyArchive = tmpdir();
   writeArchive(emptyArchive, []);
-  writeLog(emptyArchive, [eventLine(tsDaysAgo(1), { tick: 1 })]);
+  writeEvents(emptyArchive, [eventLine(tsDaysAgo(1), { tick: 1 })]);
   assert.deepEqual(readWindowEvents(emptyArchive, dayKey(tsDaysAgo(1))), {
     events: [{ ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
@@ -260,7 +254,7 @@ test("the archive follows the live file's skip policy, and a covered window neve
   ]);
   // The live file's own oldest line predates the window, so the read never needs the archive —
   // and anything the archive holds must not leak into the result.
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(tsDaysAgo(10), { tick: 99 }),
     eventLine(tsDaysAgo(0), { tick: 2 }),
   ]);
@@ -277,7 +271,7 @@ test("the archive follows the live file's skip policy, and a covered window neve
     "still not json",
     eventLine(tsDaysAgo(2), { tick: 1 }),
   ]);
-  writeLog(archiveInside, [eventLine(tsDaysAgo(0), { tick: 2 })]);
+  writeEvents(archiveInside, [eventLine(tsDaysAgo(0), { tick: 2 })]);
   const spanned = readWindowEvents(archiveInside, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     spanned.events.map((e) => e.tick),
@@ -296,7 +290,7 @@ test("the archive follows the live file's skip policy, and a covered window neve
 test("readEventsSince filters the day-keyed over-read by the cutoff instant", () => {
   const root = tmpdir();
   const t0 = Date.now();
-  writeLog(root, [
+  writeEvents(root, [
     eventLine(t0 - 120_000, { tick: 1 }), // before the cutoff: the ts filter drops it (it sits
     // inside the cutoff's local day for every run except one within 2 minutes of midnight,
     // where the day key drops it instead — the assertion holds either way)
@@ -326,7 +320,7 @@ test("readEventsSince filters the day-keyed over-read by the cutoff instant", ()
 
 test("an empty window reads as covered — an idle fleet prints no rotation note", () => {
   const root = tmpdir();
-  writeLog(root, []);
+  writeEvents(root, []);
   const { events, covered } = readEventsSince(root, 60_000);
   assert.deepEqual(events, []);
   // eventWindowCovers' vacuous case: with no retained events nothing can have rotated away,
@@ -336,7 +330,7 @@ test("an empty window reads as covered — an idle fleet prints no rotation note
 
 test("a log born inside a wide --since window reads as uncovered", () => {
   const root = tmpdir();
-  writeLog(root, [eventLine(tsDaysAgo(1), { tick: 1 }), eventLine(tsDaysAgo(0), { tick: 2 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(1), { tick: 1 }), eventLine(tsDaysAgo(0), { tick: 2 })]);
   const { events, covered } = readEventsSince(root, 3 * 24 * 60 * 60 * 1000);
   assert.deepEqual(
     events.map((e) => e.tick),
@@ -350,7 +344,7 @@ test("a log born inside a wide --since window reads as uncovered", () => {
 test("a --since window spanning the rotation boundary reads the archive through the same filter", () => {
   const root = tmpdir();
   writeArchive(root, [eventLine(tsDaysAgo(4), { tick: 1 }), eventLine(tsDaysAgo(2), { tick: 2 })]);
-  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
   const { events, covered } = readEventsSince(root, 3 * 24 * 60 * 60 * 1000);
   // Archive first (strictly older), the pre-window 4-days-ago event dropped, the in-window
   // 2-days-ago one kept: the instant filter applies to the concatenation, not just the live file.
