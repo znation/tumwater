@@ -8,7 +8,7 @@ import { landApprovedChange, reviewPinnedChange } from "../src/landing/landing-c
 import type { BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { readSlotsState } from "../src/git/slots-state.js";
-import { landingRefName, landWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
+import { landingRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
@@ -267,9 +267,10 @@ test("a resolution the re-review rejects deletes the pin and lands nothing", asy
     assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
     // The resolution run went through the wiring stub; the re-review was a real gate run.
     assert.equal(calls.length, 1);
-    // Terminal rejection removes the disposable lander worktree with the pin — the resolution
-    // is discarded with it, nothing of it survives to the next tick.
-    assert.equal(fs.existsSync(landWorktreePath(root, ROLE)), false, "_land-<role> is removed on rejection");
+    // Terminal rejection deletes the pin; the shared `_merge` checkout persists (plans/
+    // worktree-pool.md, part 2c) — the resolution is discarded by dropping the pin, not the
+    // checkout, so the next merge reuses it.
+    assert.equal(fs.existsSync(mergeWorktreePath(root)), true, "the shared _merge checkout persists on rejection");
   } finally {
     restore();
   }
@@ -385,7 +386,7 @@ test("a synced rebase moves the landing ref so a failed gate keeps the tree that
   }
 });
 
-test("the lander worktree is per-role, kept detached at a non-terminal outcome, and removed at a terminal one", async () => {
+test("the merge checkout is shared, kept detached, and persists at a terminal outcome", async () => {
   const restore = fakePi(
     reviewerPi("VERDICT: approve"),
   );
@@ -399,12 +400,17 @@ test("the lander worktree is per-role, kept detached at a non-terminal outcome, 
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
     ctx.config = { ...ctx.config, check: { command: "echo 'error: planted landing failure'; exit 1" } };
-    const landWt = landWorktreePath(root, ROLE);
+    const landWt = mergeWorktreePath(root);
 
-    // Non-terminal: the first red keeps the pin and the disposable worktree for a re-land.
+    // Non-terminal: the first red keeps the pin for a re-land; the merge checkout persists.
     assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
     assert.equal(await refSha(root, REF), sha, "the pin names the original pinned sha");
-    assert.ok(fs.existsSync(landWt), "_land-<role> exists after a non-terminal outcome");
+    assert.ok(fs.existsSync(landWt), "_merge exists after a non-terminal outcome");
+    assert.equal(
+      fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${ROLE}`)),
+      false,
+      "no legacy _land-<role> checkout is created for a merge",
+    );
     // Detached: no branch ref is checked out there — rebasing it never moves a role branch.
     let detached = false;
     try {
@@ -412,13 +418,13 @@ test("the lander worktree is per-role, kept detached at a non-terminal outcome, 
     } catch {
       detached = true; // a detached HEAD makes symbolic-ref exit nonzero
     }
-    assert.ok(detached, "_land-<role> is detached (rebasing never moves a role branch)");
+    assert.ok(detached, "_merge is detached (rebasing never moves a role branch)");
 
-    // Terminal: at the failure limit a green main rejects the change — the pin and the
-    // disposable worktree are removed together.
+    // Terminal: at the failure limit a green main rejects the change — the pin goes, the
+    // shared checkout stays for the next merge.
     assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "at the failure limit a green main rejects");
     assert.equal(await refSha(root, REF), null, "the pin is gone on rejection");
-    assert.ok(!fs.existsSync(landWt), "_land-<role> is removed at the terminal rejection");
+    assert.ok(fs.existsSync(landWt), "_merge persists at the terminal rejection");
     assert.equal(mainSha(root), tip, "nothing landed");
   } finally {
     restore();

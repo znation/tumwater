@@ -6,38 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Worktree pool, part 2c/5: merge-side landing work uses one `_merge` checkout (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed)
-
-Design: plans/worktree-pool.md ("Vets and merges").
-
-**Context.** Merge-side steps already re-ensure their worktree at a commit, so the move is a
-path change. The drain is serial, so one dedicated checkout is enough, and holding a pool slot
-there could deadlock against permit holders waiting for a slot.
-
-**Approach.**
-1. `landApprovedChange`/`landApprovedChangeIn` (src/landing/landing-core.ts), `landStack` /
-   `landStackIn` (src/landing/landing-stack.ts) and `attributeRedCheck`
-   (src/landing/landing-batch.ts, and the stack's `wtPath`) use
-   `mergeWorktreePath(ctx.root)` instead of `landWorktreePath(ctx.root, role)`.
-2. Drop the `removeLandWorktree` calls on those merge paths: a terminal merge in
-   landing-core.ts and landing-batch.ts, the rejection/strike discard in landing-core.ts, and
-   the red check in landing-check-failures.ts. `_merge` persists across merges, like
-   `_gate-main`.
-3. Update the merge/review fixtures and e2e shims that match `_land-<role>` cwd:
-   test/landing-merge.test.ts, test/lander.test.ts, test/landing-pipeline.test.ts,
-   test/landing-fixtures.ts, test/orchestrator-3.e2e.test.ts and
-   test/loop-leftover-recovery.test.ts.
-
-**Files touched.** src/landing/landing-core.ts, src/landing/landing-stack.ts,
-src/landing/landing-batch.ts, src/landing/landing-check-failures.ts. Tests: the fixtures above.
-
-**Acceptance criteria.**
-- A single merge, a stack with its bisect, and red attribution all run in `_merge`; no
-  `_land-<role>` is created for a merge.
-- `_merge` survives a merge (it is not removed) and is reused by the next one.
-- Existing landing outcomes (changed, red, merge_blocked, conflict, rejected) are unchanged.
-- `npm run test` green.
-
 ### Worktree pool, part 2d/5: remove the `_land-*` machinery and legacy checkouts (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2b/5 and 2c/5 landed)
 
 Design: plans/worktree-pool.md ("Vets and merges").
@@ -357,6 +325,35 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 2c/5: merge-side landing work uses one `_merge` checkout (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed; done 2026-10-07 by feature)
+
+Design: plans/worktree-pool.md ("Vets and merges").
+
+**What landed (2026-10-07).** `landApprovedChange`/`landApprovedChangeIn`
+(src/landing/landing-core.ts) and the stack assembly's `wtPath` (src/landing/landing-batch.ts)
+resolve `mergeWorktreePath(ctx.root)` (`.tumwater/worktrees/_merge`) instead of a per-role
+`_land-<role>`. The merge-side `removeLandWorktree` calls are gone — the terminal merge, the
+conflict-resolution rejection and strike-cap discard (landing-core.ts), and red attribution's
+`rejectChange` (landing-check-failures.ts) — so `_merge` persists across merges like `_gate-main`
+and the next merge reuses it. `rejectChange` and `attributeRedCheck` no longer take a worktree.
+Anchors the entry missed: test/landing-pipeline.test.ts and test/loop-leftover-recovery.test.ts
+had no merge-side `_land-<role>` shim left to update (part 2b/5 had already moved them), and
+test/lander-fixtures.ts's reviewer keys on the slot lease; test/orchestrator-3.e2e.test.ts's
+containment test now seeds the shared `_merge` checkout rather than a per-role one and drops the
+legacy `_land-clean` deletion.
+
+**Files touched.** src/landing/landing-core.ts, src/landing/landing-stack.ts,
+src/landing/landing-batch.ts, src/landing/landing-check-failures.ts. Tests: test/lander.test.ts,
+test/landing-merge.test.ts, test/orchestrator-3.e2e.test.ts,
+test/loop-leftover-recovery.test.ts, test/landing-pipeline.test.ts, test/pi-events.ts.
+
+**Acceptance criteria.**
+- A single merge, a stack with its bisect, and red attribution all run in `_merge`; no
+  `_land-<role>` is created for a merge.
+- `_merge` survives a merge (it is not removed) and is reused by the next one.
+- Existing landing outcomes (changed, red, merge_blocked, conflict, rejected) are unchanged.
+- `npm run test` green.
 
 ### Worktree pool, part 2b/5: vets lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed; done 2026-10-07 by feature)
 

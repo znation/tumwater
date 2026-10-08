@@ -7,7 +7,7 @@ import { diffLineMultiset } from "../src/landing/landing-diff.js";
 import { mergeToMain, type MergeContext } from "../src/landing/landing-merge.js";
 import { defaultConfig } from "../src/config/config.js";
 import { checkMainBaseline } from "../src/baseline/main-baseline.js";
-import { branchName, landWorktreePath } from "../src/paths.js";
+import { branchName, mergeWorktreePath } from "../src/paths.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -389,9 +389,9 @@ function detachedAheadOfMain(repo: string): string {
  * ff'ing to the worktree's post-rebase HEAD lands cleanly. */
 test("a detached worktree's pinned sha lands when main moved after the commit (ff to post-rebase tip)", async () => {
   const root = await initializedRepo();
-  // A lander-style detached worktree at its production path: checked out at a bare sha, not on
+  // A merge-style detached worktree at its production path: checked out at a bare sha, not on
   // a branch ref. Under root so .tumwater/ exists for the merge lock (as in the real flow).
-  const wt = await ensureDetachedWorktree(root, landWorktreePath(root, "improve"), "main");
+  const wt = await ensureDetachedWorktree(root, mergeWorktreePath(root), "main");
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "detached work");
   const pinnedSha = sh(wt, "git", "rev-parse", "HEAD").trim();

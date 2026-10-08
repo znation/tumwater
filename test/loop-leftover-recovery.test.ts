@@ -328,8 +328,8 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
   const m1 = path.join(tmpdir(), "phase1");
   // Phase 0 (any run whose prompt asks for a VERDICT — the review gate): reply without a
   // VERDICT line, failing closed under the strike cap both times. The FIRST review run only
-  // leaves an untracked stray file in the worktree it runs in (_land-improve) — guarded so the
-  // recovery review does not recreate it and mask the cleanup assertion below. Phase 1 (tick
+  // leaves an untracked stray file in the pooled slot it runs in — guarded so the recovery
+  // review does not recreate it and mask the cleanup assertion below. Phase 1 (tick
   // 1): edit seed.txt on the branch — its commit is pinned when the tick's own review fails.
   const strayOnce = path.join(tmpdir(), "stray-once");
   const restore = fakePi(
@@ -355,8 +355,8 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
 
     // The failed recovery review (under the strike cap) deliberately kept its pin for
     // re-review — a plain ref deletion would have discarded it. The role worktree stays
-    // clean at main whatever recovery does, and the reviewer's stray file in _land-improve
-    // is cleaned by the next landing's ensureDetachedWorktree.
+    // clean at main whatever recovery does, and the reviewer's stray file in the pooled slot
+    // is cleaned by the next landing's lease (the slot's ensureDetachedWorktree reset).
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = worktreePath(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");

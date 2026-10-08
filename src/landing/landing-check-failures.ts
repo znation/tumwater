@@ -1,4 +1,4 @@
-import { deleteRef, headOf, patchId, removeLandWorktree } from "../git/git.js";
+import { deleteRef, headOf, patchId } from "../git/git.js";
 import { landingRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
@@ -75,22 +75,22 @@ async function keepPinOrAttribute(
 
 /** The terminal deterministic-reject sink shared by landingBlocked and attributeRedCheck:
  * record the reject review, reset the unreviewed-failure streak, persist state, delete the
- * landing ref, release the disposable lander worktree when one is held, and log
- * review_rejected. Returns "rejected". review.ts's reject path is a different sink — it
- * resets the branch instead of deleting the ref — and keeps its own copy deliberately. */
+ * landing ref, and log review_rejected. The shared `_merge` checkout is left in place
+ * (plans/worktree-pool.md, part 2c): it persists across merges like `_gate-main`, and a
+ * rejection discards the pinned ref, not the checkout. Returns "rejected". review.ts's reject
+ * path is a different sink — it resets the branch instead of deleting the ref — and keeps its
+ * own copy deliberately. */
 async function rejectChange(
   ctx: { root: string },
   role: string,
   head: string,
   reasons: string[],
   state: LoopState,
-  wt?: string,
 ): Promise<TickResult> {
   recordReview(state, "reject", reasons, head);
   state.unreviewFailures = 0;
   saveLoopState(ctx.root, state);
   await deleteRef(ctx.root, landingRefName(role));
-  if (wt) await removeLandWorktree(ctx.root, wt);
   logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
   return "rejected";
 }
@@ -123,7 +123,7 @@ export async function landingCheckRed(
     return "merge_blocked";
   }
   return keepPinOrAttribute(ctx, wt, firstCheckReason(red), (head) =>
-    attributeRedCheck(ctx, role, head, "landing check", red, ctx.state, wt),
+    attributeRedCheck(ctx, role, head, "landing check", red, ctx.state),
   );
 }
 
@@ -143,7 +143,7 @@ export async function landingBlocked(
   blocked: string,
 ): Promise<TickResult> {
   return keepPinOrAttribute(ctx, wt, blocked, (head) =>
-    rejectChange(ctx, role, head, [`landing blocked: ${blocked}`], ctx.state, wt),
+    rejectChange(ctx, role, head, [`landing blocked: ${blocked}`], ctx.state),
   );
 }
 
@@ -164,7 +164,6 @@ export async function attributeRedCheck(
   label: "batch check" | "landing check",
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
   state: LoopState,
-  wt?: string,
 ): Promise<TickResult> {
   // An unverified red — a run that spanned a host sleep, the tree never judged — is not the
   // change's failure and not a strike: keep the ref for recovery's re-land and name the sleep
@@ -185,7 +184,6 @@ export async function attributeRedCheck(
   if (main.status === "unavailable") {
     reasons.push(`main's own baseline was unavailable (${main.why}), so the red ${label} is attributed to this change`);
   }
-  // Terminal rejection: the sink releases the disposable lander worktree too, matching the
-  // other rejected/discarded sinks (reviewPinnedChange, landApprovedChange).
-  return rejectChange(ctx, role, head, reasons, state, wt);
+  // Terminal rejection: the sink deletes the pin; the shared `_merge` checkout persists.
+  return rejectChange(ctx, role, head, reasons, state);
 }

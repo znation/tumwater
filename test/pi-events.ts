@@ -36,7 +36,7 @@ export const APPROVE_PI = reviewerPi("VERDICT: approve");
  * pooled `_slot-<n>` instead of a `_land-<role>` path (plans/worktree-pool.md, part 2b/5). A
  * slot sits at `<root>/.tumwater/worktrees/_slot-<n>`, so the root is three levels up; the role
  * is the lease record whose slot dir realpaths to this cwd. Prints nothing when the cwd is not
- * a leased slot (the merge-side `_land-<role>` path). */
+ * a leased slot (the merge-side `_merge` path). */
 export function leasedRoleShell(): string {
   return (
     `role=$(node -e 'const fs=require("fs"),path=require("path");` +

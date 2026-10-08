@@ -660,7 +660,7 @@ test("a plumbing throw in the merge keeps every entry queued and un-vetted, reco
     await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 2, "both changes to be vetted");
 
     // Break the merge's plumbing: the registered-worktrees home becomes a plain file, so the
-    // stack's worktree setup (its vet already ran from this very path) fails hard in git —
+    // stack's worktree setup (the vet ran in a different pooled slot) fails hard in git —
     // not a verdict, a throw, out of landVetted's first attempt.
     fs.rmSync(worktreesHome, { recursive: true, force: true });
     fs.writeFileSync(worktreesHome, "not a directory");

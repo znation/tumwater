@@ -1,5 +1,5 @@
-import { deleteRef, headOf, removeLandWorktree, setRef } from "../git/git.js";
-import { landWorktreePath, landingRefName, rejectedRefName } from "../paths.js";
+import { deleteRef, headOf, setRef } from "../git/git.js";
+import { landingRefName, mergeWorktreePath, rejectedRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./landing-merge.js";
@@ -23,8 +23,9 @@ import type { PriorReview } from "./landing-queue.js";
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
  * resets that worktree to main, and queues the sha for the ORCHESTRATOR's landing pipeline
- * (landing-vetting.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached in
- * the role's own `_land-<role>` worktree and runs it through the review gate here
+ * (landing-vetting.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached —
+ * a pooled `_slot-<n>` for the vet and the shared `_merge` checkout for the landing
+ * (plans/worktree-pool.md) — and runs it through the review gate here
  * (reviewPinnedChange, from landing-batch.ts's vetRequest) and then the landing
  * (landApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
  * nothing is rebased inside a role worktree any more. Leftover recovery re-queues its pin onto
@@ -35,7 +36,7 @@ import type { PriorReview } from "./landing-queue.js";
  * the owning loop (events, session naming, lander worktree) — the lander itself is not a role. */
 export interface LandRequest {
   role: string;
-  /** The pinned commit to land — checked out detached in this role's lander worktree. */
+  /** The pinned commit to land — checked out detached in the shared `_merge` checkout. */
   sha: string;
   /** Current tick number, for the unique per-run session names (review + conflict resolution). */
   tick: number;
@@ -347,11 +348,11 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   if (ctx.signal().aborted) return "aborted";
   // Hold the lander worktree from before ensureDetachedWorktree (its reset is part of the
   // use) through the merge (plans/disk-floor.md, part 2/4).
-  return useWorktree(ctx.root, landWorktreePath(ctx.root, req.role), () => landApprovedChangeIn(ctx, req));
+  return useWorktree(ctx.root, mergeWorktreePath(ctx.root), () => landApprovedChangeIn(ctx, req));
 }
 
 async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
-  const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
+  const wt = await ensureDetachedWorktree(ctx.root, mergeWorktreePath(ctx.root), req.sha);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
   let blocked: string | undefined;
   const result = await mergeToMain(
@@ -406,7 +407,6 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
           );
           saveLoopState(ctx.root, ctx.state);
           await deleteRef(ctx.root, landingRefName(req.role)); // the verdict is final for this pin
-          await removeLandWorktree(ctx.root, resolvedWt);
           ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
           return { verdict: "rejected" };
         }
@@ -416,7 +416,6 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
         ctx.state.lastError = `merge failed: re-review failed: ${gate.detail}`;
         if (gate.discarded) {
           await deleteRef(ctx.root, landingRefName(req.role));
-          await removeLandWorktree(ctx.root, resolvedWt);
           return { verdict: "rejected" };
         }
         return { verdict: "retry" };
@@ -428,7 +427,6 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
   );
   if (result === "changed") {
     await deleteRef(ctx.root, landingRefName(req.role)); // landed: the pin has done its job
-    await removeLandWorktree(ctx.root, wt);
     return result;
   }
   if (result === "merge_blocked" && red) return landingCheckRed(ctx, req.role, wt, red);

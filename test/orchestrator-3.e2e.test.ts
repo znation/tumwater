@@ -636,21 +636,19 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
   }
 });
 
-test("a lander worktree that can no longer be created is contained: the healthy change lands, the other drops as an error", async () => {
+test("a vet slot that can no longer be created is contained: the healthy change lands, the other drops as an error", async () => {
   // landVetted degrades failed landings to results, but a git-level failure in a stack's
   // assembly still throws, and the merge's catch must keep every entry queued (un-vetted, so
-  // each is vetted afresh next poll) instead of escaping as an unhandled rejection; a lone
-  // merge's landApprovedChange (or clean's own vet) degrades the same failure to an "error"
-  // outcome. Either way the queue must drain: clean, whose merge worktree and re-leasable slot
-  // cannot be re-created, drops as a terminal error, and dry lands. Trigger: clean's own review
-  // run deletes clean's just-freed slot and merge worktree and makes the worktrees parent
-  // unwritable before it approves, after seeding dry's merge worktree so the healthy change can
-  // still land.
+  // each is vetted afresh next poll) instead of escaping as an unhandled rejection; clean's
+  // own re-vet degrades the same failure to an "error" outcome. Either way the queue must
+  // drain: clean, whose just-freed slot cannot be re-created, drops as a terminal error, and
+  // dry lands. Trigger: clean's own review run deletes its just-freed slot and makes the
+  // worktrees parent unwritable before it approves, after seeding the shared `_merge` checkout
+  // so dry's merge (part 2c) can still land.
   const repo = await makeFastRepo("lander worktree throw recovery test", ["clean", "dry"]);
   await seedLandQueue(repo, "clean", "dry");
   const worktrees = path.join(repo, ".tumwater", "worktrees");
-  const headWt = path.join(worktrees, "_land-clean");
-  const dryWt = path.join(worktrees, "_land-dry");
+  const mergeWt = path.join(worktrees, "_merge");
   const armed = path.join(tmpdir(), "worktree-throw-armed");
   const restore = fakePi(
     [
@@ -659,12 +657,12 @@ test("a lander worktree that can no longer be created is contained: the healthy 
       leasedRoleShell(),
       `case "$role" in clean) if [ ! -e '${armed}' ]; then`,
       `  touch '${armed}'; slot="$PWD"; cd /;`,
-      // The healthy change's merge worktree must exist before the parent is locked (the vet on
-      // a pooled slot no longer creates it): seed it, then remove clean's own merge worktree
-      // and its just-freed slot and lock the parent, so clean can neither re-vet (its slot
-      // cannot be re-created) nor merge, while dry's seeded worktree survives and lands.
-      `  git -C '${repo}' worktree add --detach '${dryWt}' main >/dev/null 2>&1;`,
-      `  rm -rf "$slot" '${headWt}'; chmod 555 '${worktrees}'`,
+      // The shared merge checkout must exist before the parent is locked (a vet on a pooled
+      // slot does not create it): seed it, then remove clean's just-freed slot and lock the
+      // parent, so clean can no longer re-vet (its slot cannot be re-created) while the seeded
+      // shared `_merge` checkout survives and dry's change lands.
+      `  git -C '${repo}' worktree add --detach '${mergeWt}' main >/dev/null 2>&1;`,
+      `  rm -rf "$slot"; chmod 555 '${worktrees}'`,
       `fi;; esac`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,

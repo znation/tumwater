@@ -7,8 +7,7 @@
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
 import { leaseSlot, type SlotLeaseHandle } from "../git/worktree-pool.js";
-import { removeLandWorktree } from "../git/git.js";
-import { landWorktreePath } from "../paths.js";
+import { mergeWorktreePath } from "../paths.js";
 import {
   landApprovedChange,
   reviewPinnedChange,
@@ -115,7 +114,7 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
  * re-check whenever main moved since its vet (and a seeded baseline when it did not and its vet's
  * pre-check ran green on exactly that head).
  *
- * Two or more — assemble the stack in S[0]'s lander worktree, checked out detached at main's
+ * Two or more — assemble the stack in the shared `_merge` checkout, checked out detached at main's
  * CURRENT tip, then cherry-pick each change's full range from that tip to its head to land, in
  * queue order — `base..sha`, every commit ahead of main (normally one), capturing each
  * post-pick tip — and run ONE scope-`batch` runScopedBuildCheck over the combined tree: the
@@ -205,12 +204,12 @@ export async function landVetted(
     return results;
   }
 
-  // ── Assemble the stack in S[0]'s lander worktree: ONE check over the whole tree, and on a
+  // ── Assemble the stack in the shared `_merge` checkout: ONE check over the whole tree, and on a
   // red one, the largest passing prefix
-  // S[0]'s lander worktree hosts every assembly (its vet used it too) and the attribution's
-  // baseline check: the merge owns it for the whole stack — no vet runs for a role while its
-  // change is being merged.
-  const wtPath = landWorktreePath(ctx.root, vetted[0]!.role);
+  // The shared `_merge` checkout hosts every assembly and the attribution's baseline check:
+  // the drain is serial, so one checkout is enough, and no vet runs for a role while its
+  // change is being merged (plans/worktree-pool.md, part 2c).
+  const wtPath = mergeWorktreePath(ctx.root);
   const entries: StackEntry[] = vetted.map((req) => ({ role: req.role, sha: req.sha, summary: req.summary }));
   let abandon = false;
   // Every stacked change is landing now: they share the assembly, the check, and the ff.
@@ -232,7 +231,7 @@ export async function landVetted(
         // after it unattempted for the next drain.
         const { state } = wiringFor(entries[front]!.role);
         const entry = entries[front]!;
-        results[front] = await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state, wtPath);
+        results[front] = await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state);
         report(front, "done");
         break;
       }
@@ -252,8 +251,7 @@ export async function landVetted(
         report(s, "done");
       }
       landedCount += size;
-      // Terminal outcome once the whole stack is on main: release the shared lander worktree.
-      if (front + size === entries.length) await removeLandWorktree(ctx.root, wtPath);
+      // The shared `_merge` checkout persists across merges, so a landed stack leaves it.
       // What broke the red run is still in its remainder, unless this prefix WAS that run —
       // then the red did not reproduce, and the rest are tried together.
       suspect = suspect !== null && suspect > size ? suspect - size : null;

@@ -40,7 +40,8 @@ export const BATCH_RESTACK_ATTEMPTS = 2;
 /** One stacked change as the fast-forward lands it: its role, its post-pick sha, its summary. */
 export type StackEntry = { role: string; sha: string; summary: string };
 
-/** Assemble a batch's stack in `wtPath` (S[0]'s lander worktree) on main's CURRENT tip, once
+/** Assemble a batch's stack in `wtPath` (the shared `_merge` checkout a landing drain passes)
+ * on main's CURRENT tip, once
  * per attempt — a re-stack after a lost fast-forward race is the same assembly on the tip that
  * won. `entries` carry each change's head to land (its synced pin); the result carries that
  * base (`base` — the tip the stack's own delta is measured against) plus each change's
@@ -131,7 +132,7 @@ export type StackOutcome =
  * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyLanding's
  * exempt arm. The check's events log under the first entry's role. */
 export async function landStack(ctx: LandingScopeContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
-  // Hold the lander worktree from before assembleStack (its reset is part of the use) through
+  // Hold the merge checkout from before assembleStack (its reset is part of the use) through
   // the ff (plans/disk-floor.md, part 2/4).
   return useWorktree(ctx.root, wtPath, () => landStackIn(ctx, wtPath, entries));
 }
