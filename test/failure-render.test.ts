@@ -31,7 +31,7 @@ test("collectFailureReport tallies tick_end results per role", () => {
 
 test("equal-total roles tie in ascending key order in the outcome and time-spend tables", () => {
   // The outcome table ranks by total tick count, the time-spend table by summed wall-clock
-  // ms; both must break ties by ascending role name, matching the rank.ts rule everywhere
+  // ms; both must break ties by ascending role name, matching the rank rule everywhere
   // else that ranks counters (the old sort-ascending-then-reverse idiom here flipped ties
   // into reverse-alphabetical order).
   const root = tmpdir();

@@ -3,17 +3,16 @@
  * data — no I/O, no clock reads — so the bounds argued at collection hold here unchanged). The
  * command half (cmdReport) lives in report.ts, alongside it in src/report/. report-render.ts
  * sits beside src/failure/failure-render.ts — the failure digest's Markdown render of the same
- * shape — because it is a pure render with no ink or UI dependency, and core modules (rank.ts,
- * history-data.ts) name it in their contracts. */
+ * shape — because it is a pure render with no ink or UI dependency, and core modules
+ * (collections.ts, history-data.ts) name it in their contracts. */
 import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-data.js";
-import { rankCountEntries } from "../failure/rank.js";
+import { addTo, rankCountEntries } from "../collections.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { formatTimestamp, monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { markdownTable } from "../text/markdown.js";
-import { addTo } from "../collections.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -23,7 +22,8 @@ function barWidth(v: number, max: number): number {
 }
 
 /** Rank one role map by total desc then name asc so identical totals render deterministically —
- * rank.ts's rule, so the report cannot drift from the other counters that rank the same way.
+ * collections.ts's rank rule, so the report cannot drift from the other counters that rank the
+ * same way.
  * Callers filter/format the ranked pairs. */
 function rankedRoleMap(totals: Record<string, number>): [string, number][] {
   return rankCountEntries(Object.entries(totals));

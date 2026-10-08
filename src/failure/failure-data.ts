@@ -16,8 +16,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
-import { rankByCount } from "./rank.js";
-import { addTo, getOrCreate } from "../collections.js";
+import { addTo, getOrCreate, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N

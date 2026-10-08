@@ -8,10 +8,9 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
-import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
 import { stringList } from "../files/json-object.js";
-import { getOrCreate, groupBy } from "../collections.js";
+import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
  * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
