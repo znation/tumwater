@@ -25,6 +25,27 @@ function liveDraft(items: string[]): PromptHistory {
   return { items, index: items.length, draft: "", draftCursor: 0 };
 }
 
+/** A recall step's result: the history to keep and the prompt line's text and cursor. */
+interface PromptLineState {
+  history: PromptHistory;
+  text: string;
+  cursor: number;
+}
+
+/** Keep the saved draft while recall moves to `index` — the state a step returns while still
+ * browsing (Up within the entries, Down to a newer one), so the draft the first Up saved
+ * survives every intermediate step. */
+function browsingState(h: PromptHistory, index: number): PromptHistory {
+  return { items: h.items, index, draft: h.draft, draftCursor: h.draftCursor };
+}
+
+/** The saved draft restored onto the line: recall ends (the live-draft state) and the text and
+ * cursor return. The one home of readline's "walk past the newest entry" result, shared by
+ * recallPromptHistory's Down step and settlePromptRecall's mid-recall hand-off. */
+function restoredDraft(h: PromptHistory): PromptLineState {
+  return { history: liveDraft(h.items), text: h.draft, cursor: h.draftCursor };
+}
+
 /** A fresh, empty history: no entries and recall at the live draft — the neutral state a
  * session starts from before any prompt is submitted. */
 export function newPromptHistory(): PromptHistory {
@@ -49,7 +70,7 @@ export function recallPromptHistory(
   current: string,
   cursor: number,
   dir: "older" | "newer",
-): { history: PromptHistory; text: string; cursor: number } | null {
+): PromptLineState | null {
   if (dir === "older") {
     if (h.items.length === 0) return null;
     const browsing = h.index < h.items.length;
@@ -57,7 +78,7 @@ export function recallPromptHistory(
     const text = h.items[index]!;
     return {
       history: browsing
-        ? { items: h.items, index, draft: h.draft, draftCursor: h.draftCursor }
+        ? browsingState(h, index)
         : { items: h.items, index, draft: current, draftCursor: cursor },
       text,
       cursor: text.length,
@@ -68,17 +89,13 @@ export function recallPromptHistory(
   if (index < h.items.length) {
     const text = h.items[index]!;
     return {
-      history: { items: h.items, index, draft: h.draft, draftCursor: h.draftCursor },
+      history: browsingState(h, index),
       text,
       cursor: text.length,
     };
   }
   // Back past the newest entry: the saved draft returns, cursor and all, and browsing ends.
-  return {
-    history: liveDraft(h.items),
-    text: h.draft,
-    cursor: h.draftCursor,
-  };
+  return restoredDraft(h);
 }
 
 /** Hand the prompt line over to another editor (role-prompt or budget mode) mid-recall: if
@@ -90,13 +107,9 @@ export function settlePromptRecall(
   h: PromptHistory,
   current: string,
   cursor: number,
-): { history: PromptHistory; text: string; cursor: number } {
+): PromptLineState {
   if (h.index >= h.items.length) return { history: h, text: current, cursor };
-  return {
-    history: liveDraft(h.items),
-    text: h.draft,
-    cursor: h.draftCursor,
-  };
+  return restoredDraft(h);
 }
 
 /** Put the history back to the live-draft state after a mode switch restored a saved draft:
