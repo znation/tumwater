@@ -13,7 +13,7 @@ import { landingRefName } from "../src/paths.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { logEvent } from "../src/events/events.js";
-import { type RedeployDeps } from "../src/redeploy/redeploy-policy.js";
+import type { RedeployDeps } from "../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { fakePiIdle } from "./fake-pi.js";

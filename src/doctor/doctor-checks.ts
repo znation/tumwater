@@ -7,7 +7,7 @@ import {
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
+import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { findOnPath } from "../files/files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
