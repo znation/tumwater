@@ -24,3 +24,16 @@ export function fakeRes(): { res: http.ServerResponse; captured: Captured } {
   } as unknown as http.ServerResponse;
   return { res, captured };
 }
+
+/** Run one endpoint handler against a fresh fake response and return the captured response with
+ * its JSON body already parsed — the one home of the "fakeRes → invoke handler →
+ * JSON.parse(captured.body)" idiom the dashboard's endpoint tests repeat for every serveX
+ * helper. `run` receives the response to hand the handler and may be sync or async, so both the
+ * read-only GET handlers and the body-reading POST handlers share this helper. */
+export async function captureJson(
+  run: (res: http.ServerResponse) => void | Promise<void>,
+): Promise<{ captured: Captured; data: unknown }> {
+  const { res, captured } = fakeRes();
+  await run(res);
+  return { captured, data: JSON.parse(captured.body) };
+}

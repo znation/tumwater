@@ -21,7 +21,7 @@ import { startLocalGui } from "./gui-fixtures.js";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { fakeRes, type Captured } from "./fake-res.js";
+import { captureJson } from "./fake-res.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -30,13 +30,11 @@ import { fakeRes, type Captured } from "./fake-res.js";
 // parseRequestTarget call) and write one JSON response, so a fake res that captures
 // writeHead/end is enough; the domain work runs for real against a seeded repo.
 
-function serveReport(root: string, query = ""): { captured: Captured; data: unknown } {
-  const { res, captured } = fakeRes();
-  handleReport(new URLSearchParams(query), res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveReport(root: string, query = "") {
+  return captureJson((res) => handleReport(new URLSearchParams(query), res, root));
 }
 
-test("handleReport serves seeded usage as JSON: status, content-type, and real totals", () => {
+test("handleReport serves seeded usage as JSON: status, content-type, and real totals", async () => {
   const root = tmpdir();
   writeEvents(root, [
     // Out of the 5-day window — must not count in any total.
@@ -50,7 +48,7 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
     { heading: "## Done", body: `### Something (planned 2026-09-20, done ${dayKey(at(0))}; commit abc1234)` },
   ]);
 
-  const { captured, data } = serveReport(root, "?days=5");
+  const { captured, data } = await serveReport(root, "?days=5");
   const report = data as { days: number; series: { date: string; tokensOut: number; commits: number; featuresDone: number; costByRole: Record<string, number> }[]; totals: { tokensOut: number; ticks: number; commits: number; featuresDone: number; costUsd: number } };
 
   assert.equal(captured.status, 200);
@@ -65,7 +63,7 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
   assert.deepEqual(report.series[0]?.costByRole, { feature: 0.5 });
 });
 
-test("handleReport degrades a bad days value to the default and clamps the range", () => {
+test("handleReport degrades a bad days value to the default and clamps the range", async () => {
   const root = tmpdir();
   // windowDays's documented rule: the default (14) on any non-plain-digit spelling — hex,
   // scientific, signed — and a clamp into [1, REPORT_MAX_DAYS] for real counts. A URL typo
@@ -81,7 +79,7 @@ test("handleReport degrades a bad days value to the default and clamps the range
     [`?days=${REPORT_MAX_DAYS + 1}`, REPORT_MAX_DAYS],
   ];
   for (const [query, expectedDays] of cases) {
-    const { captured, data } = serveReport(root, query);
+    const { captured, data } = await serveReport(root, query);
     const report = data as { days: number; series: unknown[] };
     assert.equal(captured.status, 200, query);
     assert.equal(report.days, expectedDays, query);
@@ -89,10 +87,10 @@ test("handleReport degrades a bad days value to the default and clamps the range
   }
 });
 
-test("handleFailures serves the digest as JSON markdown, empty and after an error tick", () => {
+test("handleFailures serves the digest as JSON markdown, empty and after an error tick", async () => {
   // Empty log: the digest still answers 200 with its header, not an error.
   const empty = tmpdir();
-  const { captured, data } = serveFailures(empty);
+  const { captured, data } = await serveFailures(empty);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
   assert.match((data as { markdown: string }).markdown, /^# tumwater failure digest/);
@@ -102,17 +100,15 @@ test("handleFailures serves the digest as JSON markdown, empty and after an erro
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 1, result: "error" }),
   ]);
-  const seeded = serveFailures(root);
+  const seeded = await serveFailures(root);
   const markdown = (seeded.data as { markdown: string }).markdown;
   assert.match(markdown, /^# tumwater failure digest/);
   assert.match(markdown, /bugfix/);
   assert.match(markdown, /error/);
 });
 
-function serveFailures(root: string, query = ""): { captured: Captured; data: unknown } {
-  const { res, captured } = fakeRes();
-  handleFailures(new URLSearchParams(query), res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveFailures(root: string, query = "") {
+  return captureJson((res) => handleFailures(new URLSearchParams(query), res, root));
 }
 
 // ---- POST /api/restart: the build-stale alert's refresh button ----
@@ -127,10 +123,8 @@ function fakeReq(body: string): http.IncomingMessage {
   return req;
 }
 
-async function serveRestart(root: string, body = "{}"): Promise<{ captured: Captured; data: unknown }> {
-  const { res, captured } = fakeRes();
-  await handleRestart(fakeReq(body), res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveRestart(root: string, body = "{}") {
+  return captureJson((res) => handleRestart(fakeReq(body), res, root));
 }
 
 /** Seed an orchestrator info file whose pid is this test process (alive, by definition) with
@@ -205,13 +199,11 @@ test("the live server routes POST /api/restart to the handler and refuses other 
   }
 });
 
-function serveTick(root: string, query: string): { captured: Captured; data: unknown } {
-  const { res, captured } = fakeRes();
-  handleTick(new URLSearchParams(query), res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveTick(root: string, query: string) {
+  return captureJson((res) => handleTick(new URLSearchParams(query), res, root));
 }
 
-test("handleTick serves one tick's collector payload plus its pre-rendered text", () => {
+test("handleTick serves one tick's collector payload plus its pre-rendered text", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "tick_start", tick: 3 }),
@@ -220,7 +212,7 @@ test("handleTick serves one tick's collector payload plus its pre-rendered text"
     // Another loop's same-numbered tick must not leak into clean's block.
     JSON.stringify({ ts: 48_000, loop: "feature", type: "tick_end", tick: 3, result: "no_change" }),
   ]);
-  const { captured, data } = serveTick(root, "?role=clean&tick=3");
+  const { captured, data } = await serveTick(root, "?role=clean&tick=3");
   const detail = readTickDetail(root, "clean", 3);
   assert.ok(detail);
   assert.equal(captured.status, 200);
@@ -235,27 +227,27 @@ test("handleTick serves one tick's collector payload plus its pre-rendered text"
   assert.match(d.text, /tidy up/);
 });
 
-test("handleTick's error cases: role and tick 400s, a missed tick 404", () => {
+test("handleTick's error cases: role and tick 400s, a missed tick 404", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "tick_start", tick: 3 }),
     JSON.stringify({ ts: 2_000, loop: "clean", type: "tick_end", tick: 3, result: "no_change" }),
   ]);
   // The role is a target here, not a filter: missing and unknown are 400s naming the valid ids.
-  assert.equal(serveTick(root, "?tick=3").captured.status, 400);
-  const unknown = serveTick(root, "?role=nope&tick=3");
+  assert.equal((await serveTick(root, "?tick=3")).captured.status, 400);
+  const unknown = await serveTick(root, "?role=nope&tick=3");
   assert.equal(unknown.captured.status, 400);
   assert.match((unknown.data as { error: string }).error, /unknown role "nope"/);
   // The tick is an explicit count: required, and a positive integer through intQuery.
-  assert.equal(serveTick(root, "?role=clean").captured.status, 400);
+  assert.equal((await serveTick(root, "?role=clean")).captured.status, 400);
   for (const bad of ["abc", "0", "-5", "1e3"]) {
-    const r = serveTick(root, `?role=clean&tick=${bad}`);
+    const r = await serveTick(root, `?role=clean&tick=${bad}`);
     assert.equal(r.captured.status, 400, `tick=${bad} → 400`);
     assert.match((r.data as { error: string }).error, /tick must be a positive integer/);
   }
   // A tick the scanned window does not hold — never ran, or rotation ate it — is a not-found
   // status with the CLI's wording, not a crash.
-  const missing = serveTick(root, "?role=clean&tick=9");
+  const missing = await serveTick(root, "?role=clean&tick=9");
   assert.equal(missing.captured.status, 404);
   assert.match((missing.data as { error: string }).error, /no tick #9 for clean in the scanned window/);
 });
@@ -278,22 +270,18 @@ test("consumeRestartRequest forces the redeployer once and removes the marker", 
 // reads through the same load path `tumwater config get` uses; POST /api/config-set writes
 // through setConfigKey, so the browser cannot drift from the CLI's rules.
 
-function serveConfig(root: string): { captured: Captured; data: unknown } {
-  const { res, captured } = fakeRes();
-  handleConfig(res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveConfig(root: string) {
+  return captureJson((res) => handleConfig(res, root));
 }
 
-async function serveConfigSet(root: string, body: unknown): Promise<{ captured: Captured; data: unknown }> {
-  const { res, captured } = fakeRes();
-  await handleConfigSet(fakeReq(JSON.stringify(body)), res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveConfigSet(root: string, body: unknown) {
+  return captureJson((res) => handleConfigSet(fakeReq(JSON.stringify(body)), res, root));
 }
 
-test("handleConfig returns exactly the six curated keys, resolved values with null for unset", () => {
+test("handleConfig returns exactly the six curated keys, resolved values with null for unset", async () => {
   const root = tmpdir();
   writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customLoops: [{ name: "watch", task: "watch" }] });
-  const { captured, data } = serveConfig(root);
+  const { captured, data } = await serveConfig(root);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
   assert.deepEqual(Object.keys(data as Record<string, unknown>).sort(), [...EDITABLE_CONFIG_KEYS].sort());
@@ -309,10 +297,10 @@ test("handleConfig returns exactly the six curated keys, resolved values with nu
   assert.equal("customLoops" in cfg, false);
 });
 
-test("handleConfig answers 500 with validateConfig's message on a broken tumwater.json", () => {
+test("handleConfig answers 500 with validateConfig's message on a broken tumwater.json", async () => {
   const root = tmpdir();
   fs.writeFileSync(configPath(root), "{ not json");
-  const { captured, data } = serveConfig(root);
+  const { captured, data } = await serveConfig(root);
   assert.equal(captured.status, 500);
   assert.match((data as { error: string }).error, /./); // an actionable message, not an empty body
 });
@@ -323,7 +311,7 @@ test("handleConfigSet round-trips: set, then GET shows the new value and the fil
   const { captured, data } = await serveConfigSet(root, { key: "maxDailyCostUsd", value: 30 });
   assert.equal(captured.status, 200);
   assert.deepEqual(data, { ok: true, key: "maxDailyCostUsd", value: 30, oldValue: 25 });
-  const after = serveConfig(root);
+  const after = await serveConfig(root);
   assert.equal((after.data as Record<string, unknown>).maxDailyCostUsd, 30);
   // The file on disk is what the running fleet polls — the write went through setConfigKey.
   const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
@@ -335,8 +323,7 @@ test("handleBudget refuses a finite-but-unrepresentable cap with the shared scre
   // TUI's parseBudgetInput guards — 1e24 is finite, so the old checkDailyBudgetUsd admitted
   // it and the write made the daily spend cap effectively uncapped.
   const root = tmpdir();
-  const { res, captured } = fakeRes();
-  await handleBudget(fakeReq(JSON.stringify({ maxDailyCostUsd: 1e24 })), res, root);
+  const { captured } = await captureJson((res) => handleBudget(fakeReq(JSON.stringify({ maxDailyCostUsd: 1e24 })), res, root));
   assert.equal(captured.status, 400);
   assert.match(captured.body, /at most 9007199254740991/);
   assert.match(captured.body, /got 1e\+24/);
@@ -372,10 +359,8 @@ test("handleConfigSet refuses a bad value through setConfigKey's validator, nami
 // fleet document matches collectFleetChanges (same mainBranch/roles, no per-role patch fields)
 // and the role document matches collectRoleChange — the documents `tumwater diff --json` and
 // `tumwater diff --role <id> --json` print. The role is a target, so an unknown id is a 400.
-async function serveDiff(root: string, query = ""): Promise<{ captured: Captured; data: unknown }> {
-  const { res, captured } = fakeRes();
-  await handleDiff(new URLSearchParams(query), res, root);
-  return { captured, data: JSON.parse(captured.body) };
+function serveDiff(root: string, query = "") {
+  return captureJson((res) => handleDiff(new URLSearchParams(query), res, root));
 }
 
 test("handleDiff serves the fleet roster with no patch fields, matching collectFleetChanges", async () => {
