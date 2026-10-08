@@ -15,6 +15,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
 import type { LoopRunner } from "../src/loop/loop.js";
@@ -265,4 +266,45 @@ test("a rejected tick task is logged and un-reserved, not an unhandled rejection
   const warnings = readEvents(c.root).filter((e) => e.type === "warning");
   assert.equal(warnings.length, 1, "one warning names the rejection");
   assert.match(String(warnings[0]!.message), /boom during finalize/);
+});
+
+test("a warning whose event write throws is reported to stderr, not left as an unhandled rejection", async () => {
+  // The rejection handler reports the rejected tick through warnEvent, which writes the
+  // events log. On a full or unwritable disk that write throws — inside the rejection
+  // handler of a detached `void task.catch(...).finally(...)` chain — so the reporting
+  // error would become the chain's own rejection, unhandled and fleet-ending, unless the
+  // handler contains it. Sabotage the log (the root becomes a regular file, so
+  // ensureParentDir cannot create .tumwater/log under it) and watch where the failure goes.
+  const runner = fakeRunner("organize", async () => {
+    throw new Error("boom during finalize");
+  });
+  const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
+  const stderrWrites: string[] = [];
+  const originalWrite = process.stderr.write;
+  process.stderr.write = ((chunk: unknown) => {
+    stderrWrites.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown): void => {
+    rejections.push(reason);
+  };
+  process.on("unhandledRejection", onRejection);
+  try {
+    launchDueTicks(c);
+    fs.rmSync(c.root, { recursive: true, force: true });
+    fs.writeFileSync(c.root, "");
+    await waitFor(() => c.roleInFlight.size === 0, "the rejected task to leave the bucket");
+    // Give a leaked rejection a turn to surface before the assertions.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  } finally {
+    process.stderr.write = originalWrite;
+    process.off("unhandledRejection", onRejection);
+  }
+  assert.equal(runner.state.running, false, "the rejected reservation is handed back");
+  assert.equal(rejections.length, 0, "no unhandled rejection escaped the detached chain");
+  assert.ok(
+    stderrWrites.some((line) => /boom during finalize/.test(line)),
+    "the rejection is still reported, to stderr, when the event log is unwritable",
+  );
 });
