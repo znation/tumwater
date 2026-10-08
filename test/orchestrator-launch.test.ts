@@ -247,3 +247,22 @@ test("an already-aborted signal launches nothing", async () => {
   assert.equal(c.roleInFlight.size, 0, "no task was started");
   assert.equal(runner.state.running ?? false, false, "no reservation was taken");
 });
+
+test("a rejected tick task is logged and un-reserved, not an unhandled rejection", async () => {
+  // A LoopRunner.tick normally folds every failure into an `error` outcome, but a throw
+  // before or after runTick (a finalize-time file write, a bug) rejects the task. The
+  // launch pass chains its bucket cleanup off a detached `void task.finally(...)`, so the
+  // rejection would surface as an unhandled rejection and kill the whole fleet. The drain
+  // already awaits these with allSettled, so mirror that here.
+  const runner = fakeRunner("organize", async () => {
+    throw new Error("boom during finalize");
+  });
+  const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
+  launchDueTicks(c);
+  await Promise.allSettled([...c.roleInFlight]);
+  await waitFor(() => c.roleInFlight.size === 0, "the rejected task to leave the bucket");
+  assert.equal(runner.state.running, false, "the rejected reservation is handed back");
+  const warnings = readEvents(c.root).filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 1, "one warning names the rejection");
+  assert.match(String(warnings[0]!.message), /boom during finalize/);
+});

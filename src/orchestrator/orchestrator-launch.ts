@@ -18,7 +18,8 @@ import {
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
 import type { FleetGateStates } from "../gates/gate-polls.js";
-import { logEvent } from "../events/events.js";
+import { logEvent, warnEvent } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
@@ -218,12 +219,24 @@ export function launchDueTicks(ctx: LaunchContext): void {
     })();
     const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
     bucket.add(task);
-    void task.finally(() => {
-      bucket.delete(task);
-      if (bucket === roleInFlight && durationMs !== null) {
-        roleTickDurationsMs.push(durationMs);
-        if (roleTickDurationsMs.length > ROLE_TICK_DURATION_SAMPLES) roleTickDurationsMs.shift();
-      }
-    });
+    // A LoopRunner.tick folds every failure it handles into an `error` outcome, so this task
+    // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
+    // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
+    // off a bare `void task.finally(...)` would leave the derived promise's rejection
+    // unhandled and take the whole fleet down. Surface it as a warning and hand the
+    // reservation back so the role can schedule again, exactly as the unstarted path above
+    // does; the drain's allSettled is otherwise silent about the failure.
+    void task
+      .catch((err) => {
+        runner.state.running = false;
+        warnEvent(root, runner.role, `tick task rejected: ${errorMessage(err)}`);
+      })
+      .finally(() => {
+        bucket.delete(task);
+        if (bucket === roleInFlight && durationMs !== null) {
+          roleTickDurationsMs.push(durationMs);
+          if (roleTickDurationsMs.length > ROLE_TICK_DURATION_SAMPLES) roleTickDurationsMs.shift();
+        }
+      });
   }
 }
