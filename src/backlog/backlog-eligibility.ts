@@ -10,7 +10,7 @@ import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
-import { type BacklogEntry } from "./backlog-md.js";
+import { trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
 import { ENTRY_STAMP_META_RE, actionableEntryRanges } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
 
@@ -41,16 +41,6 @@ export interface PartRef {
  * `**Refused …` note prefix a refusing tick writes — matched as line prefixes so a mention in
  * prose never holds an entry. */
 const REFUSED_PREFIX = "**Refused ";
-
-/** The heading's trailing parenthetical — the last `(…)` when the heading ends with `)`, the
- * only place a plan's stamp and prerequisite clause live. null when the heading has none or
- * does not end in `)`, so a clause half-written mid-heading is not read. */
-function trailingParenthetical(title: string): string | null {
-  const end = title.lastIndexOf(")");
-  if (end !== title.length - 1) return null;
-  const start = title.lastIndexOf("(", end);
-  return start < 0 ? null : title.slice(start + 1, end);
-}
 
 /** One prerequisite ref, resolved against the entry's own series when it names none. */
 function parseRef(chunk: string, ownSeries: string | null): PartRef[] {
@@ -98,7 +88,7 @@ export function seriesPart(title: string): PartRef | null {
  * an unparseable clause, exactly as it does today. Only the heading is read, never the body. */
 export function requiredParts(title: string): PartRef[] {
   const meta = trailingParenthetical(title);
-  if (meta === null) return [];
+  if (meta === "") return [];
   const m = /requires\s+(.+?)\s+landed\b/i.exec(meta);
   if (m === null) return [];
   const ownSeries = seriesPart(title)?.series ?? null;

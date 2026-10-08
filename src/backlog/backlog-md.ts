@@ -250,14 +250,16 @@ export function headingMetadata(lines: string[], start: number): { text: string;
   return { text: meta.join(" "), next: j };
 }
 
-/** A `- ` line's trailing parenthetical's inner text, nesting-aware: a backward scan from the
- * line's closing ")" to its matching "(" returns the group's FULL inner text, so an epitaph
- * that quotes a parenthetical of its own — "(planned …, done …; commit abc1234 (re-landed
- * after review fix))" — still yields its date-bearing text. The previous flat `\([^()]*\)$`
- * match saw only the innermost group ("" when the line ended in two closes) and silently
- * dropped the epitaph's date from the day report (BUGS.md 2026-09-29). Unbalanced text (no
- * matching open paren) yields "" — the guard then treats the bullet as body text, as before. */
-function trailingParenthetical(line: string): string {
+/** A `- ` line's or `### ` heading's trailing parenthetical's inner text, nesting-aware: a
+ * backward scan from the text's closing ")" to its matching "(" returns the group's FULL inner
+ * text, so an epitaph that quotes a parenthetical of its own — "(planned …, done …; commit
+ * abc1234 (re-landed after review fix))" — still yields its date-bearing text. The previous
+ * flat `\([^()]*\)$` match saw only the innermost group ("" when the line ended in two closes)
+ * and silently dropped the epitaph's date from the day report (BUGS.md 2026-09-29). Unbalanced
+ * text (no matching open paren) yields "" — the guard then treats the bullet as body text, as
+ * before. The one home for this rule: entryDates reads it for `- ` epitaphs and
+ * backlog-eligibility.ts's requiredParts for a heading's prerequisite clause. */
+export function trailingParenthetical(line: string): string {
   if (!line.endsWith(")")) return "";
   let depth = 0;
   for (let i = line.length - 1; i >= 0; i--) {
