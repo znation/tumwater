@@ -441,6 +441,17 @@ test("parseConfigKey rejects dotted shapes outside the per-role maps and roles e
     assert.equal(parsed.kind, "error", key);
     if (parsed.kind === "error") assert.match(parsed.error, /dotted keys/);
   }
+  // A typo'd head gets the shared did-you-mean; a valid head with a wrong shape does not
+  // (the typo there is the shape, so suggesting the head back would mislead).
+  const mapTypo = parseConfigKey("maxDailyCostUsdPerRoll.feature");
+  assert.equal(mapTypo.kind, "error");
+  if (mapTypo.kind === "error") assert.match(mapTypo.error, /— did you mean `maxDailyCostUsdPerRole`\?/);
+  const headTypo = parseConfigKey("modle.small");
+  assert.equal(headTypo.kind, "error");
+  if (headTypo.kind === "error") assert.match(headTypo.error, /— did you mean `model`\?/);
+  const wrongShape = parseConfigKey("roles.qa");
+  assert.equal(wrongShape.kind, "error");
+  if (wrongShape.kind === "error") assert.doesNotMatch(wrongShape.error, /did you mean/);
 });
 
 // Model tiers part 8/8 — `model.<tier>` merges one entry of the tier map, the way

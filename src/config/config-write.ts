@@ -108,6 +108,12 @@ export function setDailyBudgetUsd(
  * value validator runs before the write, the same screening a bare top-level key gets. */
 const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const;
 
+/** The valid first segments of a dotted config key — the per-role maps plus the `roles.` and
+ * `model.` sections. The generic dotted-shape error suggests against these so a typo'd head
+ * (`modle.small`, `maxDailyCostUsdPerRoll.feature`) gets the same did-you-mean the sibling
+ * unknown-key errors attach. */
+const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model"] as const;
+
 /** A parsed config key: a bare top-level key (whole-value semantics, unchanged), a dotted
  * per-role map entry, a dotted role-entry field, or the error a malformed dotted shape
  * produces. The parser checks shape only — an unknown role id or an invalid value is left
@@ -145,10 +151,16 @@ export function parseConfigKey(key: string): ParsedConfigKey {
       error: `unknown model tier "${second ?? ""}" — a dotted \`model.<tier>\` names one of ${TIER_MAP_KEYS.join(", ")} (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`)${typoSuffix(second ?? "", TIER_MAP_KEYS)}`,
     };
   }
+  // A typo'd first segment is the common miss (`maxDailyCostUsdPerRoll.feature`,
+  // `modle.small`); when the head is one of the valid ones the shape itself is wrong, so
+  // suggesting that head back would mislead — the generic wording is the whole story there.
+  const headHint = (DOTTED_KEY_HEADS as readonly string[]).includes(first)
+    ? ""
+    : typoSuffix(first, DOTTED_KEY_HEADS);
   return {
     kind: "error",
     error:
-      `unknown config key "${key}" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. \`maxDailyCostUsdPerRole.feature 1.5\`, \`roles.qa.model x\`); a bare key names a whole top-level value`,
+      `unknown config key "${key}" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. \`maxDailyCostUsdPerRole.feature 1.5\`, \`roles.qa.model x\`); a bare key names a whole top-level value${headHint}`,
   };
 }
 
