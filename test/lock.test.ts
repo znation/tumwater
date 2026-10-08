@@ -236,6 +236,87 @@ test("withLock fails fast on a filesystem error that waiting cannot fix", async 
   assert.ok(!fs.existsSync(lock), "no lock dir is left behind");
 });
 
+test("withLock retries an acquire that loses the publish race", async () => {
+  // A lock published between our existsSync(dir) and our rename makes the rename fail with
+  // EEXIST/ENOTEMPTY. Waiting is the fix — the holder may finish and release — so the acquire
+  // must retry instead of surfacing the rename error to the caller.
+  const lock = path.join(tmpdir(), "race-publish.lock");
+  const origRename = fs.renameSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).renameSync = (a: unknown, b: unknown) => {
+    if (!hit && String(b) === lock) {
+      hit = true;
+      throw errnoError("EEXIST", "simulated publish race");
+    }
+    return (origRename as (x: unknown, y: unknown) => void)(a, b);
+  };
+  let ran = false;
+  try {
+    await withLock(
+      lock,
+      async () => {
+        ran = true;
+      },
+      5000,
+    );
+  } finally {
+    (fs as Record<string, unknown>).renameSync = origRename;
+  }
+  assert.ok(hit, "the simulated publish race fired");
+  assert.ok(ran, "the acquire retried after losing the publish race and entered the section");
+  assert.ok(!fs.existsSync(lock), "the lock is released after the retried acquire");
+});
+
+test("withLock sweeps stale acquiring temps but keeps fresh or unrelated ones", async () => {
+  // Atomic publication can leave a `.acquiring-*` temp behind when a creator crashes before
+  // its rename. The sweep reclaims only temps past STALE_MS, far beyond any scheduling stall,
+  // so a live creator's in-flight temp is never removed.
+  const root = tmpdir();
+  const lock = path.join(root, "sweep.lock");
+  const stale = `${lock}.acquiring-999999991`;
+  const fresh = `${lock}.acquiring-999999992`;
+  const unrelated = `${lock}.not-a-temp`;
+  fs.mkdirSync(stale);
+  fs.mkdirSync(fresh);
+  fs.mkdirSync(unrelated);
+  backdate(stale, 11 * 60 * 1000);
+
+  let ran = false;
+  await withLock(lock, async () => {
+    ran = true;
+  });
+
+  assert.ok(ran, "the acquire proceeds after the sweep");
+  assert.ok(!fs.existsSync(stale), "a stale acquiring temp is removed");
+  assert.ok(fs.existsSync(fresh), "a fresh acquiring temp (a live creator) is kept");
+  assert.ok(fs.existsSync(unrelated), "an unrelated sibling is never touched");
+});
+
+test("withLock reports a missing lock parent and survives a temp that vanishes mid-sweep", async () => {
+  // No parent directory: sweepStaleTemps's readdir fails, and the acquire's own mkdir then
+  // reports the real cause (ENOENT) instead of spinning to the deadline blaming a phantom
+  // holder.
+  const missing = path.join(tmpdir(), "no-such-parent", "x.lock");
+  await assert.rejects(withLock(missing, async () => {}, 700), /cannot acquire lock .*ENOENT/);
+
+  // A `.acquiring-*` temp that vanishes (or turns unreadable) between readdir and stat: the
+  // sweep must swallow the stat error and let the acquire proceed rather than crash.
+  const root = tmpdir();
+  const lock = path.join(root, "race.lock");
+  const vanished = `${lock}.acquiring-999999993`;
+  fs.mkdirSync(vanished);
+  const origStat = fs.statSync.bind(fs);
+  (fs as Record<string, unknown>).statSync = (p: unknown, ...rest: unknown[]) => {
+    if (p === vanished) throw errnoError("ENOENT", "simulated sweep race");
+    return (origStat as (x: unknown, ...r: unknown[]) => unknown)(p, ...rest);
+  };
+  try {
+    assert.equal(withSyncLock(lock, () => "acquired"), "acquired");
+  } finally {
+    (fs as Record<string, unknown>).statSync = origStat;
+  }
+});
+
 test("withLock removes its own temp dir when the pid write fails", async () => {
   const lock = path.join(tmpdir(), "pid-fail.lock");
 
