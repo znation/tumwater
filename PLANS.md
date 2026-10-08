@@ -6,45 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Organize the test suite, part 1/6: support fakes move to `test/fakes/` (planned 2026-10-07 by plan; split from the 2026-10-07 "Organize the test suite's support modules" entry; parts 1–6 land in order)
-
-**Umbrella goal (parts 1–6).** Move the 30 flat non-test support modules out of the `test/` root
-into `test/fakes/`, `test/fixtures/`, and a new `test/helpers/`, leaving runner infrastructure
-(`test-runner.ts`, `test-durations-reporter.ts`, `coverage-table.ts`) and every `*.test.ts` at the
-root. `selectTestFiles` (test/test-runner.ts, `fs.readdirSync(distDir)` at the `dist/test` root)
-reads non-recursively and keeps only `*.test.js`, so support modules compiled into
-subdirectories are ignored and the selected test set is unchanged. Each part moves one group and
-updates **every** reference to the modules it moves: a root test file uses `./<dir>/<name>.js`, a
-module already in a subdirectory uses `../<dir>/<name>.js`, and each moved module's own relative
-imports and `import.meta.url` constants are re-based for its new depth. No `*.test.ts` file moves,
-so filter names do not change. Parts land in order 1→6, each green on its own.
-
-**Goal.** Move `test/fake-pi.ts`, `test/fake-commands.ts`, `test/fake-res.ts` into the existing
-`test/fakes/` (joining `log.ts`, `process.ts`, `time.ts`, `transient.ts`).
-
-**Approach.**
-- `git mv` the three modules into `test/fakes/`.
-- Rewrite every importer's `./fake-pi.js`, `./fake-commands.js`, `./fake-res.js` specifier to
-  `./fakes/<name>.js` (≈86 specifiers across `test/`, including fixture modules that move later).
-- Re-base the moved modules' own imports for `test/fakes/`: `fake-pi.ts`'s `./pi-events.js` and
-  `./repo-fixtures.js` become `../pi-events.js` and `../repo-fixtures.js` (those move in parts 5
-  and 4); its `./fake-commands.js` stays a sibling; `fake-res.ts` has no relative imports.
-- `fake-commands.ts`'s `SCRIPT_SHIM` literal `../../test/fixtures/script-shim` becomes
-  `../../../test/fixtures/script-shim`, because compiled it now runs from `dist/test/fakes/`
-  (BUGS.md 2026-09-30 pinned this constant; a wrong depth silently disables every fake command).
-  `test/fake-commands.test.ts`'s relocated-tree refusal copies the compiled module two levels deep
-  (`dist/test`) and must copy three levels deep instead.
-- `test/fake-pi.test.ts`'s embedded generated path `./fake-pi.js` becomes `./fakes/fake-pi.js`.
-
-**Files touched.** The three modules; every `test/*.ts` importing them; the two test files with
-embedded paths.
-
-**Acceptance criteria.**
-- The three modules live in `test/fakes/`; no `test/*.ts` specifier names any of them at the root.
-- `test/fake-commands.ts` resolves `SCRIPT_SHIM` at the new depth and `test/fake-commands.test.ts`'s
-  relocated-tree case still fails loudly when the shim is absent.
-- `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
-
 ### Organize the test suite, part 2/6: utility modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires part 1/6 landed)
 
 **Goal.** Create `test/helpers/` and move `test/wait.ts`, `test/sleep-clock.ts`,
@@ -182,7 +143,7 @@ BUGS.md references.
     `../../src/...`.
   - `models-fixtures.ts` has no relative imports.
 - Update the remaining doc/comment references to moved paths: `DEVELOPMENT.md`'s
-  `writeScript (test/fake-commands.ts)`, BUGS.md's `test/repo-fixtures.ts` /
+  `writeScript (test/fakes/fake-commands.ts)`, BUGS.md's `test/repo-fixtures.ts` /
   `test/doctor-fixtures.ts` / `test/gui-fixtures.ts` citations,
   `src/landing/landing-vetting.ts`'s `test/orchestrator-fixtures.ts` comment, and any `docs/` or
   `src/` comment naming an old flat path.
@@ -276,6 +237,8 @@ pool, event-format, status and doctor tests.
 ---
 
 ### Parallel work instances, part 5/7: `roles.<id>.instances` runs several feature or bugfix loops, each active only while unclaimed work exists; the plan target scales (planned 2026-10-07 by operator; requires parts 3/7 and 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed)
+**Needs review 2026-10-08 by feature: too large for one run**
+
 
 Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
 ahead").
@@ -400,6 +363,46 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Organize the test suite, part 1/6: support fakes move to `test/fakes/` (planned 2026-10-07 by plan; split from the 2026-10-07 "Organize the test suite's support modules" entry; parts 1–6 land in order; done 2026-10-08 by feature)
+
+**Umbrella goal (parts 1–6).** Move the 30 flat non-test support modules out of the `test/` root
+into `test/fakes/`, `test/fixtures/`, and a new `test/helpers/`, leaving runner infrastructure
+(`test-runner.ts`, `test-durations-reporter.ts`, `coverage-table.ts`) and every `*.test.ts` at the
+root. `selectTestFiles` (test/test-runner.ts, `fs.readdirSync(distDir)` at the `dist/test` root)
+reads non-recursively and keeps only `*.test.js`, so support modules compiled into
+subdirectories are ignored and the selected test set is unchanged. Each part moves one group and
+updates **every** reference to the modules it moves: a root test file uses `./<dir>/<name>.js`, a
+module already in a subdirectory uses `../<dir>/<name>.js`, and each moved module's own relative
+imports and `import.meta.url` constants are re-based for its new depth. No `*.test.ts` file moves,
+so filter names do not change. Parts land in order 1→6, each green on its own.
+
+**Goal.** Move the three fake support modules — `fake-pi`, `fake-commands`, `fake-res` — from the
+`test/` root into the existing `test/fakes/` (joining `log.ts`, `process.ts`, `time.ts`,
+`transient.ts`).
+
+**Approach.**
+- `git mv` the three modules into `test/fakes/`.
+- Rewrite every importer's `./fake-pi.js`, `./fake-commands.js`, `./fake-res.js` specifier to
+  `./fakes/<name>.js` (≈86 specifiers across `test/`, including fixture modules that move later).
+- Re-base the moved modules' own imports for `test/fakes/`: `fake-pi.ts`'s `./pi-events.js` and
+  `./repo-fixtures.js` become `../pi-events.js` and `../repo-fixtures.js` (those move in parts 5
+  and 4); its `./fake-commands.js` stays a sibling; `fake-res.ts` has no relative imports.
+- `fake-commands.ts`'s `SCRIPT_SHIM` literal `../../test/fixtures/script-shim` becomes
+  `../../../test/fixtures/script-shim`, because compiled it now runs from `dist/test/fakes/`
+  (BUGS.md 2026-09-30 pinned this constant; a wrong depth silently disables every fake command).
+  `test/fake-commands.test.ts`'s relocated-tree refusal copies the compiled module two levels deep
+  (`dist/test`) and must copy three levels deep instead.
+- `test/fake-pi.test.ts`'s embedded generated path `./fake-pi.js` becomes `./fakes/fake-pi.js`.
+
+**Files touched.** The three modules; every `test/*.ts` importing them; the two test files with
+embedded paths.
+
+**Acceptance criteria.**
+- The three modules live in `test/fakes/`; no `test/*.ts` specifier names any of them at the root.
+- `test/fakes/fake-commands.ts` resolves `SCRIPT_SHIM` at the new depth and `test/fake-commands.test.ts`'s
+  relocated-tree case still fails loudly when the shim is absent.
+- `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
 
 ### Worktree pool, part 4b/5: role ticks lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5, 3/5 and part 4a/5 landed; done 2026-10-07 by feature)
 

@@ -31,7 +31,7 @@ import { loadLoopState } from "../src/loop/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { STATE_DIR } from "../src/paths.js";
 import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";

@@ -11,7 +11,7 @@ import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts 
 import { makeLoopRunner, pinWorktreeAsSlot } from "./loop-fixtures.js";
 import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
 // PLANS.md "Per-role prompts 1/2" criterion (b), red-gate arm: a per-role prompt is dequeued

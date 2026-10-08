@@ -18,7 +18,7 @@ import { pausedPath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { sh } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle } from "./fake-pi.js";
+import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 

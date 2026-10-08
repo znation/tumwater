@@ -17,7 +17,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
 import { reviewGate, ROLE } from "./gate-fixtures.js";
-import { fakePi, piRanMarker } from "./fake-pi.js";
+import { fakePi, piRanMarker } from "./fakes/fake-pi.js";
 
 // Regression coverage for the 2026-09-22 false-fix record (BUGS.md): commit 9cea8c3 was an
 // md-only BUGS.md edit that moved a bug to Fixed with a Fix paragraph naming runScriptGroup

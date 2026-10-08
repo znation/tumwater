@@ -4,7 +4,7 @@ import { TickUsage } from "../src/tick/tick-usage.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { piRunResult } from "./fake-pi.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 
 // TickUsage's accounting (src/tick/tick-usage.ts): the once-per-run choke point every pi run of a
 // tick folds through. Pure in-memory logic — no filesystem, no pi — so each clause is pinned

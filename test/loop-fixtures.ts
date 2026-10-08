@@ -10,7 +10,7 @@ import { LoopRunner } from "../src/loop/loop.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
-import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
+import { pathPrepend, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { readSlotsState, updateSlotsState } from "../src/git/slots-state.js";
 import { worktreePath } from "../src/paths.js";

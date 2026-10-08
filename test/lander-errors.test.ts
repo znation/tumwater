@@ -14,7 +14,7 @@ import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing/lan
 import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { mainSha } from "./repo-fixtures.js";
-import { withApprovePi } from "./fake-pi.js";
+import { withApprovePi } from "./fakes/fake-pi.js";
 import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./lander-fixtures.js";
 
 /** The fixture's wiring with a conflict resolver that always throws — the merge stage's pi

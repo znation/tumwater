@@ -17,7 +17,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { fastConfig, makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { mainSha, makeRepo } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle } from "./fake-pi.js";
+import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
 

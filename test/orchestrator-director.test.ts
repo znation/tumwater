@@ -39,7 +39,7 @@ import {
   startRedeployRun,
   stopOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { fakePi, fakePiIdle, logPromptsTo, readPromptRuns } from "./fake-pi.js";
+import { fakePi, fakePiIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { waitFor } from "./wait.js";

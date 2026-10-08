@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { diagnoseNoChange } from "../src/verdict/no-change.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import { piRunResult } from "./fake-pi.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A no-change pi run result; tests override only what they exercise. */
 function noChangePi(over: Partial<PiRunResult> = {}): PiRunResult {

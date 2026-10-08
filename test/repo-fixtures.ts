@@ -17,7 +17,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
+import { pathPrepend, projManifest, writeScript } from "./fakes/fake-commands.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
  * process exit. A full suite run (one worker process per test file) therefore abandons at most

@@ -13,8 +13,8 @@ import {
 } from "../src/gates/readiness.js";
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
-import { pathReplace } from "./fake-commands.js";
+import { fakePi } from "./fakes/fake-pi.js";
+import { pathReplace } from "./fakes/fake-commands.js";
 
 // `tumwater run`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdRun fails
 // fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation with

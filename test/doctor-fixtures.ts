@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { writeScript } from "./fake-commands.js";
+import { writeScript } from "./fakes/fake-commands.js";
 // The process-table fake's single home is the shared test-fake catalog (test/fakes/process.ts,
 // PLANS.md 2026-10-04); these re-exports keep the doctor files' existing import surface while
 // the fake itself lives with its siblings. That host-facing fixture was doctor-fixtures's only

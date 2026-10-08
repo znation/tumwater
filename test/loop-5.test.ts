@@ -20,7 +20,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

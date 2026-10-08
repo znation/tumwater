@@ -9,7 +9,7 @@ import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
-import { projManifest } from "./fake-commands.js";
+import { projManifest } from "./fakes/fake-commands.js";
 
 /** The production WIRING half of the self-redeploy tests, mirroring the src split
  * (src/redeploy/redeployer.ts / src/redeploy/redeploy.ts): redeployDeps's real mainGreen/buildRed — the mirror

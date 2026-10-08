@@ -6,7 +6,7 @@ import { checkFallbackModel, checkTierModels, piProviderAuth } from "../src/doct
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { readyRepo } from "./doctor-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { writeScript } from "./fakes/fake-commands.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's

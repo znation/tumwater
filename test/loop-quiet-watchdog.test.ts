@@ -15,7 +15,7 @@ import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { ownerAliveSh } from "./victim-fixture.js";

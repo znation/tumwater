@@ -35,7 +35,7 @@ import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, piRunResult } from "./fake-pi.js";
+import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,

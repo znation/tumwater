@@ -21,7 +21,7 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { fakePi, piRunResult } from "./fake-pi.js";
+import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { commitIn, initializedWorktree, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./lander-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

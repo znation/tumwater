@@ -34,7 +34,7 @@ import {
   startIdleOrchestrator,
   stopOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { fakePiIdle } from "./fake-pi.js";
+import { fakePiIdle } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { waitFor } from "./wait.js";
 

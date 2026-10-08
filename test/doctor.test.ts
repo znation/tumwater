@@ -8,7 +8,7 @@ import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { pathPrepend } from "./fake-commands.js";
+import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
 import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
 

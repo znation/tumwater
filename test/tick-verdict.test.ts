@@ -8,7 +8,7 @@ import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { loadConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import { piRunResult } from "./fake-pi.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 import { initializedWorktree } from "./repo-fixtures.js";
 
 /** A TickVerdictContext for a finished, uneventful run: pi declared nothing-to-do on a clean

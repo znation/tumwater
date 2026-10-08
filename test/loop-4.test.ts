@@ -14,10 +14,10 @@ import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { projManifest, writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fake-pi.js";
+import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./pi-events.js";
 

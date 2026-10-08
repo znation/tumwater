@@ -47,7 +47,7 @@ async function pinLeftover(
   await setRef(repo, landingRefName(role), sha);
   return sha;
 }
-import { conflictingMainEdit, fakePi, firstRunThenIdle, seedBranchEdit } from "./fake-pi.js";
+import { conflictingMainEdit, fakePi, firstRunThenIdle, seedBranchEdit } from "./fakes/fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll

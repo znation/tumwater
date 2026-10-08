@@ -21,7 +21,7 @@ import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { fakePiIdle } from "./fake-pi.js";
+import { fakePiIdle } from "./fakes/fake-pi.js";
 
 test("once: an idle fleet exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {
   const repo = await makeFastRepo("once exit contract test", ["clean", "dry"]);

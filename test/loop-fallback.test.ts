@@ -10,7 +10,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { initializedRepo, tmpdir } from "./repo-fixtures.js";
-import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fake-pi.js";
+import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { transientErrorText } from "./fakes/transient.js";
 import { assistantLine, errorLine } from "./pi-events.js";

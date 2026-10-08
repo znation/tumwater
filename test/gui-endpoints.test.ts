@@ -21,7 +21,7 @@ import { startLocalGui } from "./gui-fixtures.js";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { captureJson } from "./fake-res.js";
+import { captureJson } from "./fakes/fake-res.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives

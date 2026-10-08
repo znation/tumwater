@@ -16,7 +16,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo } from "./fake-pi.js";
+import { fakePi, logFlagsTo } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 

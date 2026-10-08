@@ -8,7 +8,7 @@ import { runPi } from "../src/pi/pi.js";
 import { pidAlive, signalTree } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { runPiFixture } from "./pi-run-harness.js";
 import { ownerAliveSh } from "./victim-fixture.js";

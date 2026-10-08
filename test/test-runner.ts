@@ -273,7 +273,7 @@ export function probeRealGit(timeoutMs: number = SUITE_XCRUN_TIMEOUT_MS): string
  * - TUMWATER_PI_BIN outranks PATH in resolveAgentBin, so an operator's override (a wrapper
  *   around the real pi, plans/portability.md) displaced every fake pi the suite puts on PATH:
  *   the fake-pi tests ran the agent it named (BUGS.md 2026-09-28). Tests of the variable set it
- *   themselves; test/fake-pi.ts drops it too, for a file run directly with `node --test`.
+ *   themselves; test/fakes/fake-pi.ts drops it too, for a file run directly with `node --test`.
  * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
  *   supervisor half. test/cli-harness.ts also drops it from every CLI child it starts.
  * - TUMWATER_NOTES_PATH makes the bundled role-notes extension register the `role_notes` tool,

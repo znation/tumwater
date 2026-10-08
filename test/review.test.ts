@@ -13,7 +13,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fake-pi.js";
+import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";

@@ -8,14 +8,15 @@ import { tmpdir } from "./repo-fixtures.js";
 
 test("a compiled fake-commands copied outside the checkout refuses to import instead of leaving every fake a dangling symlink", () => {
   // BUGS.md 2026-09-30: SCRIPT_SHIM resolves relative to the compiled file
-  // (../../test/fixtures/script-shim), which exists only when the compiled tests sit inside
+  // (../../../test/fixtures/script-shim), which exists only when the compiled tests sit inside
   // the checkout. A tree compiled to an --outDir elsewhere (the coverage loop's /tmp build)
   // resolved it to a path that was not there, writeScript symlinked every fake to the missing
   // shim anyway, and PATH lookups fell through to the REAL binaries — 291 real `pi` agents
   // against a live backend. The module must fail on its first import with the rule, loudly.
-  const compiled = fileURLToPath(new URL("./fake-commands.js", import.meta.url));
-  // Two levels deep, like dist/test/ inside a checkout — so the ../.. climb lands outside.
-  const relocatedDir = path.join(tmpdir("relocated-fakes-"), "dist", "test");
+  const compiled = fileURLToPath(new URL("./fakes/fake-commands.js", import.meta.url));
+  // Three levels deep, like dist/test/fakes/ inside a checkout — so the ../../.. climb lands
+  // outside.
+  const relocatedDir = path.join(tmpdir("relocated-fakes-"), "dist", "test", "fakes");
   fs.mkdirSync(relocatedDir, { recursive: true });
   const relocated = path.join(relocatedDir, "fake-commands.js");
   fs.copyFileSync(compiled, relocated);

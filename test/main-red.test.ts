@@ -8,7 +8,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, fakeNpm, runsOf } from "./loop-fixtures.js";
-import { pathReplace } from "./fake-commands.js";
+import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
 

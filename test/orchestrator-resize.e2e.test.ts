@@ -13,7 +13,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

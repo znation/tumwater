@@ -7,7 +7,7 @@ import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, withApprovePi } from "./fake-pi.js";
+import { fakePi, withApprovePi } from "./fakes/fake-pi.js";
 import {
   request,
   checkRunNumber,

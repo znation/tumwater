@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
-import { projManifest } from "./fake-commands.js";
+import { projManifest } from "./fakes/fake-commands.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
   detectBuildCheck,

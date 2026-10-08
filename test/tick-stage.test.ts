@@ -15,7 +15,7 @@ import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { piRunResult } from "./fake-pi.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A fresh initialized repo plus the improve role's worktree with one changed file — the
  * staged change stageTickLanding commits in these tests. */

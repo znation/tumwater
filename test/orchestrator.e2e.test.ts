@@ -40,7 +40,7 @@ import {
   stopOrchestrator,
 } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fake-pi.js";
+import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

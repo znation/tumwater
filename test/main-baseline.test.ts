@@ -11,7 +11,7 @@ import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
-import { pathReplace, projManifest } from "./fake-commands.js";
+import { pathReplace, projManifest } from "./fakes/fake-commands.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/baseline/main-baseline.ts): the

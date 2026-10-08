@@ -36,7 +36,7 @@ import {
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine, leasedRoleShell } from "./pi-events.js";
 

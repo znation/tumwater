@@ -12,10 +12,10 @@ import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
+import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logPromptsTo } from "./fake-pi.js";
+import { fakePi, logPromptsTo } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 // --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing

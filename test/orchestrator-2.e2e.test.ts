@@ -23,7 +23,7 @@ import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { roleWt, seedCounters } from "./loop-fixtures.js";
 import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, readRunLines, recordingFakePi } from "./fake-pi.js";
+import { fakePi, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";

@@ -6,7 +6,7 @@ import { runBuildCheck } from "../src/build/build-check.js";
 import { errCode } from "../src/errno.js";
 import { pidAlive } from "../src/process/process.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
-import { projManifest } from "./fake-commands.js";
+import { projManifest } from "./fakes/fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
 import { ownerAliveSh } from "./victim-fixture.js";

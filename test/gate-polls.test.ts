@@ -21,7 +21,7 @@ import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { piRunResult } from "./fake-pi.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 import { MODELS_JSON } from "./models-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";

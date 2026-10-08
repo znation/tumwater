@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
-import { fakePiIdle } from "./fake-pi.js";
+import { fakePiIdle } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 
 /** Every divergence warning in the repo's event log so far. */

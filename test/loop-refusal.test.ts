@@ -9,7 +9,7 @@ import path from "node:path";
 import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 
 // Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a

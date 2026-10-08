@@ -13,7 +13,7 @@ import path from "node:path";
 /** The suite's one committed executable (test/fixtures/script-shim): every fake command a
  * test installs through writeScript is a symlink to it. Resolved from the source tree, which
  * sits beside dist/ whenever the compiled tests run. */
-const SCRIPT_SHIM = fileURLToPath(new URL("../../test/fixtures/script-shim", import.meta.url));
+const SCRIPT_SHIM = fileURLToPath(new URL("../../../test/fixtures/script-shim", import.meta.url));
 // The shim path is relative to the compiled file, so it only exists when the compiled tests
 // sit inside the checkout (dist/test beside the repo's test/). A tree compiled elsewhere
 // (an --outDir under /tmp) resolves it to a path that is not there, and every writeScript

@@ -12,7 +12,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { withPi } from "./fake-pi.js";
+import { withPi } from "./fakes/fake-pi.js";
 import { failingThenIdle } from "./fakes/transient.js";
 import { sleepRecorder } from "./fakes/time.js";
 import { warningMessages } from "./log-fixtures.js";

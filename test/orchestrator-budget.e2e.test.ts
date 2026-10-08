@@ -21,7 +21,7 @@ import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { awaitSettledTick, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 

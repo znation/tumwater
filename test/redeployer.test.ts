@@ -26,7 +26,7 @@ import {
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { projManifest } from "./fake-commands.js";
+import { projManifest } from "./fakes/fake-commands.js";
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps, false);

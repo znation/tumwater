@@ -21,7 +21,7 @@ import {
 import { makeRunMarker, runMarkerEnv } from "../src/process/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
-import { pathReplace } from "./fake-commands.js";
+import { pathReplace } from "./fakes/fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead

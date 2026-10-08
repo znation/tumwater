@@ -7,7 +7,7 @@ import { NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { runStartupProblem } from "../src/gates/startup-gate.js";
 import { BUILD, HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./redeploy-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi } from "./fakes/fake-pi.js";
 
 // The startup gate (BUGS.md 2026-09-23): a green, compiled build that cannot START here — the
 // environment fails `tumwater run`'s preconditions, not the code — must never be swapped in.

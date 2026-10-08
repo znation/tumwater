@@ -12,7 +12,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { gitOnlyBinDir, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { pathReplace } from "./fake-commands.js";
+import { pathReplace } from "./fakes/fake-commands.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
 

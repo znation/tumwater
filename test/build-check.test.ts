@@ -12,7 +12,7 @@ import { detectBuildCheck } from "../src/build/build-check-detect.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
-import { pathPrepend, pathReplace, projManifest, writeScript } from "./fake-commands.js";
+import { pathPrepend, pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
