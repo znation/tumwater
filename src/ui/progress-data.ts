@@ -87,7 +87,7 @@ export function findSeedOffset(file: string, size: number, window = TAIL_BYTES):
 
 /** Which of a role's pi run kinds a LiveProgress describes: `author` — the tick's own
  * run in the role's worktree (the working cell's subject) — or `gate` — the review gate's
- * runs in the role's lander worktree (the reviewing cell's subject). The same union the
+ * runs in a leased pool slot (the reviewing cell's subject). The same union the
  * raw-log marker carries (pi-event-line.ts's PiRunKind), named here for the display layer. */
 export type ProgressRunKind = PiRunKind;
 
@@ -337,8 +337,8 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
 }
 
 /** Live progress for one of a loop's pi run kinds (`author` — the in-flight tick's run in
- * the role's own worktree, the default; `gate` — the review gate's runs in the role's lander
- * worktree, what the reviewing cell shows), or null when there is no log yet. The raw log is
+ * the role's own worktree, the default; `gate` — the review gate's runs in a leased pool
+ * slot, what the reviewing cell shows), or null when there is no log yet. The raw log is
  * append-only while pi runs and every run starts with a `tumwater_run` marker (src/pi/pi.ts),
  * so after seeding from the tail window once we only read and parse bytes appended since the
  * last poll — observers that call this every second (TUI, GUI) stop rescanning up to TAIL_BYTES
