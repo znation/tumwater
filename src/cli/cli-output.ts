@@ -3,23 +3,40 @@
  * `--json` documents, and the uniform failure exit) so the write targets and exit
  * convention cannot drift per call site. Argument parsing lives beside it in
  * cli/cli-args.ts — a parser that fails calls fail() from this module. */
+import { stripTerminalControls } from "../text/text.js";
 
-/** Write one line to stdout — the `say(text)` idiom every CLI command's user-facing output
- * renders through (status lines, confirmations, report bodies, log events), the stdout twin
- * of fail() below: `process.stdout.write(text + "\n")`, spelled once so the trailing newline
- * and the write target cannot drift per call site. Text carrying its own interior newlines
- * (multi-line reports) passes through verbatim; say() only supplies the final newline. */
-export function say(text: string): void {
+/** The raw stdout write every helper below funnels through: one `process.stdout.write(text +
+ * "\n")`, so the trailing newline and write target cannot drift per call site and the one
+ * boundary that sanitizes (say) and the ones that must not (the JSON writers) share it. */
+function writeLine(text: string): void {
   process.stdout.write(text + "\n");
 }
 
+/** Write one line to stdout — the `say(text)` idiom every CLI command's user-facing output
+ * renders through (status lines, confirmations, report bodies, log events), the stdout twin
+ * of fail() below. This is a terminal boundary: the text is stripped of terminal control
+ * characters (stripTerminalControls) so model-written summaries, errors, backlog titles, and
+ * transcripts cannot emit an OSC/CSI sequence into the operator's shell. Text carrying its own
+ * interior newlines (multi-line reports) keeps them; say() only supplies the final newline and
+ * never touches data — `--json` goes through sayJson/sayJsonLine below. */
+export function say(text: string): void {
+  writeLine(stripTerminalControls(text));
+}
+
 /** Print a value as pretty-printed (2-space) JSON — the `--json` output every CLI query
- * command (status, history, report, config) renders through: say()'s stdout line, with the
- * pretty-print spelling (indent 2) decided once so the machine-readable surface cannot
- * drift per command. The compact prints that are part of a sentence (config get's one-line
- * value) stay hand-rolled — this helper is the whole-document form. */
+ * command (status, history, report, config) renders through: the pretty-print spelling
+ * (indent 2) decided once so the machine-readable surface cannot drift per command. Writes
+ * raw, deliberately bypassing say()'s terminal sanitization: JSON is a data surface, and
+ * JSON.stringify escapes C0 but not DEL/C1, so sanitizing here would alter the bytes. */
 export function sayJson(value: unknown): void {
-  say(JSON.stringify(value, null, 2));
+  writeLine(JSON.stringify(value, null, 2));
+}
+
+/** One compact JSON document per line — the raw NDJSON/compact-value twin of sayJson, for
+ * `--json` streams (logs) and single machine values (config get). Also bypasses say()'s
+ * terminal sanitization so the data surface stays byte-exact. */
+export function sayJsonLine(value: unknown): void {
+  writeLine(JSON.stringify(value));
 }
 
 /** Print a query command's result as `--json` or human text — the shared convention behind

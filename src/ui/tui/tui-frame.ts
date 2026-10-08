@@ -10,10 +10,22 @@ import { eventResult } from "../../events/event-format.js";
 import { eventKind, resultTone, type Tone } from "../tone.js";
 import type { FleetAlert } from "../fleet-alerts.js";
 import { displayWidth } from "../../text/text-width.js";
+import { stripTerminalControls } from "../../text/text.js";
 
 /** A plain line clipped to the pane, in one tone. */
 export function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): StatusLine {
   return clipSpans([{ text, ...(tone ? { tone } : {}) }], width);
+}
+
+/** Strip terminal control characters from every span of a composed frame — the TUI's single
+ * terminal boundary, applied in tui.tsx to the whole line list (status table, attention
+ * lines, queued-prompt previews, the pane body, flash/hint/input) just before ink draws it.
+ * This is what closes the same gap say() closes for the CLI: model-written text (tick
+ * summaries, lastError, backlog/QUESTION titles, transcript turns) reaches the terminal
+ * through fleetAlerts, renderStatusSpans, and paneBody, not through say(), so sanitizing the
+ * final spans — rather than each producer — covers every current and future line builder. */
+export function sanitizeFrameLines(lines: readonly StatusLine[]): StatusLine[] {
+  return lines.map((line) => line.map((span) => ({ ...span, text: stripTerminalControls(span.text) })));
 }
 
 const ALERT_MARKS: Record<FleetAlert["tone"], { mark: string; tone: Tone | undefined }> = {

@@ -13,7 +13,9 @@ import {
   hintLine,
   prefixWidth,
   promptPrefix,
+  sanitizeFrameLines,
   tabStrip,
+  toneLine,
   transcriptTone,
 } from "../src/ui/tui/tui-frame.js";
 import { makeRepo } from "./repo-fixtures.js";
@@ -134,6 +136,25 @@ test("activity and transcript lines take the tones of what they report", () => {
   assert.equal(transcriptTone("· thinking about it"), "dim");
   assert.equal(transcriptTone("⚠ retry 1/3: 429"), "yellow");
   assert.equal(transcriptTone("  plain assistant text"), undefined);
+});
+
+test("sanitizeFrameLines strips terminal controls from attention and pane lines", () => {
+  // The two TUI paths the review flagged: a QUESTIONS.md title in a fleet alert's detail, and
+  // a backlog line (backlogLines -> toneLine). Both are composed into the final line list that
+  // tui.tsx runs through sanitizeFrameLines before ink draws it.
+  const osc = "\u001b]52;c;AAAA\u0007";
+  const attention = alertLines(
+    [{ key: "questions", tone: "indigo", title: `${osc}2 questions need your answer`, detail: `${osc}title`, actions: [] }],
+    200,
+  );
+  const backlog = toneLine(`${osc}open questions (1):`, 200);
+  const out = sanitizeFrameLines([...attention, backlog]);
+  const rendered = out.map(plain).join("\n");
+  assert.ok(!rendered.includes("\u001b"), "ESC must not survive the TUI boundary");
+  assert.ok(!rendered.includes("\u0007"), "BEL must not survive the TUI boundary");
+  // The visible text around the removed controls is preserved.
+  assert.ok(rendered.includes("2 questions need your answer"));
+  assert.ok(rendered.includes("open questions (1):"));
 });
 
 test("the page's event kinds are tone's", () => {

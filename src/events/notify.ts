@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { subscribeEvents, warnEvent, type HarnessEvent } from "./events.js";
 import { formatEvent } from "./event-format.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, stripTerminalControls } from "../text/text.js";
 
 /** The operator notify hook (PLANS.md "Operator notify hook"): one configured shell command
  * (tumwater.json's `notify`) that the orchestrator runs whenever a notable event fires — the
@@ -72,7 +72,7 @@ export function newNotifier(
           ...process.env,
           TUMWATER_EVENT_TYPE: event.type,
           TUMWATER_EVENT_LOOP: event.loop,
-          TUMWATER_EVENT_MESSAGE: formatEvent(event),
+          TUMWATER_EVENT_MESSAGE: stripTerminalControls(formatEvent(event)),
         },
         stdio: "ignore",
         detached: true,

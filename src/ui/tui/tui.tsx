@@ -23,6 +23,7 @@ import {
   hintLine,
   prefixWidth,
   promptPrefix,
+  sanitizeFrameLines,
   tabStrip,
   toneLine,
   type TuiView,
@@ -176,7 +177,11 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // around the cursor so its position stays visible.
     const prefix = promptPrefix(mode);
     lines.push([...prefix, { text: renderInputView(s.input, s.cursor, width - prefixWidth(prefix) + 2) }]);
-    const frame: TuiAppView = { lines };
+    // The terminal boundary: every composed line, from every builder, loses terminal control
+    // characters here (tui-frame.ts's sanitizeFrameLines) so model-written text cannot drive
+    // the operator's terminal. Kept out of the builders so the status payload/--json data
+    // surfaces, which reuse their inputs, stay byte-exact.
+    const frame: TuiAppView = { lines: sanitizeFrameLines(lines) };
     inkApp.rerender(<TuiApp view={frame} noColor={noColor} keys={keys} />);
   };
 

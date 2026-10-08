@@ -1,5 +1,5 @@
 import { loadConfigSafe, knownRoleIds } from "../config/config.js";
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import {
   setConfigKey,
   parseConfigKey,
@@ -75,7 +75,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
                 parsed.field
               ]
             : record[k];
-    say(JSON.stringify(value === undefined ? null : value)); // Absent optional key → JSON null.
+    sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
     return;
   }
   if (sub === "set") {

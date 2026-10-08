@@ -19,6 +19,18 @@ export function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** Strip the terminal control characters an untrusted string (a model reply, a repo file, a
+ * subprocess error) could otherwise use to drive the operator's terminal: every C0 control
+ * except the two layout characters `\n` and `\t`, DEL (U+007F), and the C1 block
+ * (U+0080–U+009F, which includes the single-byte CSI introducer U+009B). ESC (U+001B) is
+ * removed with the rest, so an OSC 52 clipboard write, a CSI cursor/title sequence, or a bare
+ * carriage-return overwrite cannot survive. Applied at the terminal display boundaries — the
+ * CLI's say() and the final composed TUI frame — never to data (event JSON, statusPayload),
+ * so machine-readable output stays byte-exact. */
+export function stripTerminalControls(s: string): string {
+  return s.replace(/[\u0000-\u0008\u000b-\u001f\u007f\u0080-\u009f]/g, "");
+}
+
 /** An untrusted JSON field rendered as display text: a string as-is, a finite number as its
  * decimal text, and anything else (absent, null, a boolean/object/array, NaN/Infinity) as
  * `fallback` — "?" by default, the same corrupt-value stand-in eventRole/outcomeText use.

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, truncate } from "../src/text/text.js";
+import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -124,6 +124,16 @@ test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
   for (const raw of ["9".repeat(400), "1".repeat(17)]) {
     assert.equal(parseNonNegativeInt(raw), null, `expected over-long ${raw.slice(0, 8)}… to be rejected`);
   }
+});
+
+test("stripTerminalControls removes ESC/C0/C1/DEL and keeps only newline and tab", () => {
+  // The exact shapes the bug entry names: an OSC 52 clipboard write and a CSI title change.
+  assert.equal(stripTerminalControls("\u001b]52;c;AAAA\u0007clip"), "]52;c;AAAAclip");
+  assert.equal(stripTerminalControls("\u001b]0;pwned\u0007title"), "]0;pwnedtitle");
+  assert.equal(stripTerminalControls("\u001b[31mred\u001b[0m"), "[31mred[0m");
+  // The two layout characters survive; every other C0, DEL, and the C1 block does not.
+  assert.equal(stripTerminalControls("a\nb\tc"), "a\nb\tc");
+  assert.equal(stripTerminalControls("cr\r\bdel\u007fnel\u0085csi\u009b"), "crdelnelcsi");
 });
 
 // (describeToolCall and backendKindPhrase moved with their module to test/phrases.test.ts;

@@ -1,4 +1,4 @@
-import { fail, say } from "./cli-output.js";
+import { fail, say, sayJsonLine } from "./cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
@@ -27,7 +27,8 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * the three cannot drift on what `logs --json` emits (the sayJson precedent: one place decides
  * what the machine-readable form looks like). */
 function sayEventLine(e: HarnessEvent, json: boolean): void {
-  say(json ? JSON.stringify(e) : formatEvent(e));
+  if (json) sayJsonLine(e); // Raw event JSON, not the operator-facing formatEvent line.
+  else say(formatEvent(e));
 }
 
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:
