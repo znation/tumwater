@@ -277,3 +277,45 @@ test("ReclaimController.pollIdle cleans once, throttles the next arm, and honors
 
   controller.pollIdle(0); // 0 disables idle mode: a no-op, never starts a pass
 });
+
+test("reclaimPass continues past a guard-failing candidate and one with nothing to clean", async () => {
+  // A candidate that stopped being a linked worktree makes reclaimWorktree throw, and one with
+  // no ignored paths makes it return false: neither may abort the pass before the real candidate.
+  const root = makeRepo();
+  const empty = worktreeAt(root, "cleanup");
+  const seeded = worktreeAt(root, "feature");
+  seedWorktree(seeded);
+  // A plain primary repo inside worktreesDir (not a linked worktree) makes reclaimWorktree
+  // throw its guard error.
+  const stale = path.join(worktreesDir(root), "stale");
+  makeRepo(stale);
+  const candidates = [
+    { dir: stale, name: "stale", lastUsedAt: 0, resumePending: false },
+    { dir: empty, name: "cleanup", lastUsedAt: 1, resumePending: false },
+    { dir: seeded, name: "feature", lastUsedAt: 2, resumePending: false },
+  ];
+  const result = await reclaimPass(root, "pressure", { reclaimGB: 0, candidates });
+  assert.ok(result);
+  assert.deepEqual(result.worktrees, ["feature"], "only the real candidate is recorded as cleaned");
+  assert.equal(fs.existsSync(path.join(seeded, "build")), false, "the pass reached the real candidate");
+  const event = readEvents(root, 100).find((e) => e.type === "disk_reclaim")!;
+  assert.deepEqual(event.worktrees, ["feature"]);
+});
+
+test("ReclaimController.requestManual runs a manual pass over every candidate", async () => {
+  const root = makeRepo();
+  const wt = worktreeAt(root, "feature");
+  seedWorktree(wt);
+  writeJsonAtomic(worktreeUsePath(root), { feature: { lastUsedAt: 1 } });
+  const controller = new ReclaimController(root, () => 100_000_000_000);
+
+  controller.requestManual();
+  for (let i = 0; i < 500 && controller.lastReclaim?.mode !== "manual"; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(fs.existsSync(path.join(wt, "build")), false, "manual pass cleaned the worktree");
+  assert.equal(controller.lastReclaim?.mode, "manual");
+  const event = readEvents(root, 100).find((e) => e.type === "disk_reclaim")!;
+  assert.equal(event.mode, "manual");
+  assert.deepEqual(event.worktrees, ["feature"]);
+});
