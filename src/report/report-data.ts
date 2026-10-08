@@ -1,11 +1,12 @@
 /** Collection half of the usage report: read the harness's event log and backlog history over
  * a window of local calendar days and distill it into a `ReportData` — per-day tick/token/
  * commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and BUGS.md.
- * The Markdown rendering of this data lives in src/report/report-render.ts, a pure function of it; the split
- * mirrors the failure report's (src/failure/failure-data.ts / src/failure/failure-render.ts) and keeps "what happened"
- * (window math, aggregation, bounds) apart from "how it prints" (bars, cell wording), which
- * change for different reasons — and keeps core data collection out of the presentation
- * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
+ * The Markdown rendering of this data lives in src/report/report-render.ts, a pure function
+ * of it; the split mirrors the failure report's (src/failure/failure-data.ts /
+ * src/failure/failure-render.ts) and keeps "what happened" (window math, aggregation, bounds)
+ * apart from "how it prints" (bars, cell wording), which change for different reasons — and
+ * keeps core data collection out of the presentation layer, so a core consumer (as
+ * /api/report already is) never forces a core→ui import. */
 import { statOrNull } from "../files/files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
