@@ -113,7 +113,7 @@ export function loopPhase(
     if (!landing.stage) return head;
     const staged = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;
     if (landing.stage !== "reviewing") return staged;
-    // The reviewer writes the role's own log from its lander worktree: the GATE accumulator,
+    // The reviewer writes the role's own log from its leased pooled slot: the GATE accumulator,
     // read here rather than taken from `live` — the landing role's tick has ended, so the
     // frame's per-running-loop tail is not this run's (callers pass null for it).
     return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
