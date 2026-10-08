@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LandingEntry } from "../landing/landing-queue.js";
-import type { LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import {
@@ -241,8 +241,7 @@ export function applyTickOutcome(
   if (
     s.conflictHandback &&
     outcome.result !== "queued" &&
-    s.revision === undefined &&
-    s.resumePending !== true
+    !hasOutstandingWork(s)
   ) {
     s.conflictHandback = undefined;
   }

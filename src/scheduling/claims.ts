@@ -7,7 +7,7 @@
  * resume, revision and leftover recovery. */
 
 import path from "node:path";
-import type { LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { type EligibleEntry, entryKey } from "../backlog/backlog-eligibility.js";
 import { actionableEntryRanges } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
@@ -96,8 +96,7 @@ export function claimReleaseReason(
   const idle =
     !runner.state.running &&
     !ctx.hasQueuedLanding &&
-    runner.state.revision === undefined &&
-    runner.state.resumePending !== true;
+    !hasOutstandingWork(runner.state);
   if (!ctx.listedKeys.has(claim.key)) return "left";
   if (!ctx.eligibleKeys.has(claim.key)) return "ineligible";
   if (!ctx.enabled && idle) return "disabled";

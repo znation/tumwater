@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { branchHead } from "../git/git.js";
 import { logEvent, usageFragment, warnEvent } from "../events/events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
@@ -84,8 +84,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   if (
     s.claim &&
     CLAIM_RELEASING.has(outcome.result) &&
-    s.revision === undefined &&
-    s.resumePending !== true
+    !hasOutstandingWork(s)
   ) {
     const title = s.claim.title;
     s.claim = undefined;

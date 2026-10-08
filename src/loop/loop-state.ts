@@ -278,3 +278,12 @@ export function stateSkipReason(
   if (s.backoffSeconds > 0) return "backoff";
   return "idle";
 }
+
+/** True when the loop still owes follow-up work for its current task after a tick: a rejected
+ * change it must revise (state.revision) or a session it must resume (state.resumePending).
+ * Both keep the instance bound to the same task, so the claim-release rule
+ * (tick/tick-finalize.ts), the conflict-handback rule (tick/tick-apply.ts), and claims.ts's
+ * idle test all read this one predicate instead of repeating the revision/resume conjunction. */
+export function hasOutstandingWork(s: Pick<LoopState, "revision" | "resumePending">): boolean {
+  return s.revision !== undefined || s.resumePending === true;
+}
