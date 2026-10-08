@@ -20,7 +20,7 @@ import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
-import { hasConflictMarkers } from "../landing/landing-git.js";
+import { conflictMarkerReason } from "../landing/landing-git.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "../landing/landing-slot.js";
@@ -190,8 +190,8 @@ export async function reviewAheadOfMain(
   // "Robust conflict landing, part 2/2") must not land raw `<<<<<<<` lines. The stage check
   // flags them for one fix-up turn, but only this deterministic gate rejection makes it a
   // hard stop — an md-only diff skips the reviewer entirely, so nothing else would catch it.
-  const marked = files.filter((f) => hasConflictMarkers(wt, [f]));
-  if (marked.length > 0) return reject([`conflict markers remain in: ${marked.join(", ")}`]);
+  const markerReason = conflictMarkerReason(wt, files);
+  if (markerReason !== undefined) return reject([markerReason]);
   if (isExemptDiff(files, config.review.exemptPaths)) {
     // The exemption is a fast path, not a blind eye: an md-only diff that moves a bug to
     // Fixed must have its fix's symbols on this tree, or it records code that does not

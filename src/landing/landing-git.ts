@@ -140,6 +140,17 @@ export function hasConflictMarkers(wt: string, files: string[]): boolean {
   });
 }
 
+/** The reason naming every changed file that still carries a conflict marker, or undefined when
+ * none do — the one home of the wording, shared by the stage check's pre-queue finding
+ * (stage-check.ts) and the review gate's hard rejection (review.ts), so the two surfaces cannot
+ * name the same leftover marker differently. Committing or landing one would put raw `<<<<<<<`
+ * lines on main (PLANS.md "Robust conflict landing, part 2/2"). Builds on hasConflictMarkers
+ * above, the shared definition of what a marker is. */
+export function conflictMarkerReason(wt: string, files: string[]): string | undefined {
+  const marked = files.filter((f) => hasConflictMarkers(wt, [f]));
+  return marked.length > 0 ? `conflict markers remain in: ${marked.join(", ")}` : undefined;
+}
+
 /** Conclude an in-progress rebase with everything in the worktree as the resolution.
  * GIT_EDITOR=true so `rebase --continue` can never block on a commit-message prompt. A
  * resolution that leaves no unique content (the branch's change was fully superseded by

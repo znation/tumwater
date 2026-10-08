@@ -20,7 +20,7 @@
  * than failing the tick. */
 
 import { changedFiles } from "../git/git-diff.js";
-import { hasConflictMarkers } from "../landing/landing-git.js";
+import { conflictMarkerReason } from "../landing/landing-git.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
@@ -59,18 +59,9 @@ export async function stageCheckFindings(
     if (falseFix) findings.push(falseFix);
   }
   findings.push(...(await gitLevelFindings(wt, mainBranch).catch(() => [])));
-  findings.push(...conflictMarkerFindings(wt, files));
+  const markers = conflictMarkerReason(wt, files);
+  if (markers !== undefined) findings.push(markers);
   return findings;
-}
-
-/** A conflict marker left in a changed file: the pre-queue check's guard for a change handed
- * back to its author with markers in place (PLANS.md "Robust conflict landing, part 2/2") —
- * committing one would land raw markers. Reuses hasConflictMarkers (src/landing/landing-git.ts)
- * so the stage check and the landing resolver agree on what a marker is. One fix-up turn. */
-function conflictMarkerFindings(wt: string, files: string[]): string[] {
-  const marked = files.filter((f) => hasConflictMarkers(wt, [f]));
-  if (marked.length === 0) return [];
-  return [`conflict markers remain in: ${marked.join(", ")}`];
 }
 
 /** The staging finding for a tick that holds a claim but moved a different backlog entry
