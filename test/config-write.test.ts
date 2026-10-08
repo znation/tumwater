@@ -100,6 +100,33 @@ test("setDailyBudgetUsd reports a failed write and leaves the config untouched",
   }
 });
 
+// The writeJsonAtomic arm specifically: the lock (under .tumwater/state) must still be
+// acquirable while the repo root is not writable, so the failure lands in writeConfigMutation's
+// atomic-write catch rather than the outer lock catch. Pre-creating the state dir makes the two
+// separable — chmod on the root does not change the state dir's own permissions.
+test("setDailyBudgetUsd surfaces an atomic-write failure after the lock is taken", (t) => {
+  if (runningAsRoot()) {
+    t.skip("chmod cannot stop a root process");
+    return;
+  }
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.maxDailyCostUsd = 7;
+  saveConfig(dir, base);
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  fs.mkdirSync(path.join(dir, ".tumwater", "state"), { recursive: true });
+  fs.chmodSync(dir, 0o555); // root read-only; .tumwater/state stays writable, so the lock succeeds
+  try {
+    const r = setDailyBudgetUsd(dir, 25);
+    assert.equal(r.ok, false, "the failed atomic write is surfaced, never thrown");
+    if (!r.ok) assert.ok(r.error.length > 0, "a non-empty error string for the UI to flash");
+    assert.equal(fs.readFileSync(file, "utf8"), before, "the old config is untouched");
+  } finally {
+    fs.chmodSync(dir, 0o755); // restore so temp-dir cleanup can remove it
+  }
+});
+
 // setConfigKey — `tumwater config set`'s engine: one top-level key, the value JSON-parsed
 // when parseable and the literal string otherwise, the whole merged candidate validated
 // before any write.
@@ -514,6 +541,22 @@ test("setConfigKey never adds legacy provider or fallbackModel to a config that 
     if (!r.ok) assert.match(r.error, /writer never adds legacy/);
   }
   assert.equal(fs.readFileSync(file, "utf8"), before, "a refused legacy add changes nothing");
+});
+
+// A broken on-disk config takes the legacy-key closure's load catch: it cannot decide the key
+// is "absent", so the refusal comes from writeConfigMutation's own load error rather than the
+// misleading "writer never adds legacy" message.
+test("setConfigKey reports the load error, not a legacy-add refusal, on a broken config", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ still editing");
+  for (const key of ["provider", "fallbackModel"]) {
+    const r = setConfigKey(dir, key, "x");
+    assert.equal(r.ok, false, key);
+    if (!r.ok) {
+      assert.match(r.error, /not valid JSON/, key);
+      assert.doesNotMatch(r.error, /writer never adds legacy/, key);
+    }
+  }
 });
 
 test("setConfigKey updates legacy provider on a config that already has it", () => {
