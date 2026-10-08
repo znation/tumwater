@@ -1,6 +1,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { finiteNumber } from "../files/json-object.js";
 import { statePath } from "../paths.js";
 
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
@@ -237,11 +238,41 @@ export function freshLoopState(role: string): LoopState {
   };
 }
 
+/** A persisted numeric field, healed to a finite non-negative number (the fallback when it is
+ * absent, foreign, NaN/±Infinity, or negative). Every top-level numeric field on LoopState is a
+ * count, a duration, an epoch-ms stamp, or an amount, so zero is the only sensible repair; the
+ * `tick-usage.ts` and `budget.ts` writers floor the same three quantities they own. */
+function healNumber(value: unknown, fallback: number): number {
+  const n = finiteNumber(value, fallback);
+  return n >= 0 ? n : fallback;
+}
+
 /** Load the loop's persisted state; never throws — a missing or unreadable file yields a
- * fresh state, and fields absent from an older file fall back to defaults. */
+ * fresh state, fields absent from an older file fall back to defaults, and a top-level numeric
+ * field that is present but not a finite non-negative number is healed to 0. The load is the
+ * one read boundary for the state file (readJsonFile returns an unchecked cast), so healing
+ * here keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
+ * arithmetic instead of relying on each reader to guard it. Optional fields that are absent
+ * stay absent, so an older state file's shape is preserved. */
 export function loadLoopState(root: string, role: string): LoopState {
   const saved = readJsonFile<Partial<LoopState>>(statePath(root, role));
-  return { ...freshLoopState(role), ...(saved ?? {}) };
+  const s: LoopState = { ...freshLoopState(role), ...(saved ?? {}) };
+  s.ticks = healNumber(s.ticks, 0);
+  s.commits = healNumber(s.commits, 0);
+  s.nextRunAt = healNumber(s.nextRunAt, 0);
+  s.backoffSeconds = healNumber(s.backoffSeconds, 0);
+  s.generatedTokens = healNumber(s.generatedTokens, 0);
+  s.peakContextTokens = healNumber(s.peakContextTokens, 0);
+  s.totalCostUsd = healNumber(s.totalCostUsd, 0);
+  s.dayCostUsd = healNumber(s.dayCostUsd, 0);
+  if (s.lastTickStartedAt !== undefined) s.lastTickStartedAt = healNumber(s.lastTickStartedAt, 0);
+  if (s.lastTickEndedAt !== undefined) s.lastTickEndedAt = healNumber(s.lastTickEndedAt, 0);
+  if (s.wokenAt !== undefined) s.wokenAt = healNumber(s.wokenAt, 0);
+  if (s.cutOffStreak !== undefined) s.cutOffStreak = healNumber(s.cutOffStreak, 0);
+  if (s.quietKillStreak !== undefined) s.quietKillStreak = healNumber(s.quietKillStreak, 0);
+  if (s.consecutiveErrors !== undefined) s.consecutiveErrors = healNumber(s.consecutiveErrors, 0);
+  if (s.unreviewFailures !== undefined) s.unreviewFailures = healNumber(s.unreviewFailures, 0);
+  return s;
 }
 
 /** Persist the loop's state atomically via writeJsonAtomic, so a crash mid-write cannot

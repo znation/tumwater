@@ -142,6 +142,59 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   // A file written before the daily budget window existed reads $0 through dailyCost —
   // spend recorded before dayStamp/dayCostUsd were fields is unknown, not infinite.
   assert.equal(dailyCost(s), 0);
+  // Optional fields absent from the file stay absent rather than being injected as 0.
+  assert.equal("lastTickStartedAt" in s, false);
+});
+
+test("loadLoopState heals a corrupt persisted numeric field", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "dirty");
+  ensureParentDir(file);
+  // A hand-edited or foreign-typed state file. Each top-level numeric field is a count,
+  // duration, epoch-ms stamp, or amount, and all of them feed scheduling arithmetic or a
+  // dashboard cell, so an unusable value heals to 0 rather than rendering NaN or a total
+  // that runs backwards.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      role: "dirty",
+      ticks: "12",
+      commits: null,
+      nextRunAt: -1,
+      backoffSeconds: "30",
+      generatedTokens: { count: 3 },
+      peakContextTokens: -5,
+      totalCostUsd: "1.23",
+      dayCostUsd: 4, // a real number is kept, not healed away
+      lastTickStartedAt: "yesterday",
+      lastTickEndedAt: null,
+      wokenAt: -9,
+      cutOffStreak: "2",
+      quietKillStreak: [1],
+      consecutiveErrors: -1,
+      unreviewFailures: "lots",
+    }),
+  );
+  const s = loadLoopState(dir, "dirty");
+  for (const key of [
+    "ticks",
+    "commits",
+    "nextRunAt",
+    "backoffSeconds",
+    "generatedTokens",
+    "peakContextTokens",
+    "totalCostUsd",
+    "lastTickStartedAt",
+    "lastTickEndedAt",
+    "wokenAt",
+    "cutOffStreak",
+    "quietKillStreak",
+    "consecutiveErrors",
+    "unreviewFailures",
+  ] as const) {
+    assert.equal(s[key], 0, `field ${key} should heal to 0`);
+  }
+  assert.equal(s.dayCostUsd, 4);
 });
 
 test("loadLoopState recovers from torn or non-object JSON", () => {

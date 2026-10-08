@@ -31,8 +31,9 @@ function spendNumber(value: unknown): number {
 /** This loop's spend for the local day (the daily cost budget window): $0 when its stamp is
  * stale or missing — a loop that hasn't ticked since yesterday reads as $0 today with no save
  * required, and spend recorded before this field existed is unknown. A non-number,
- * non-finite, or negative value reads as $0 too: the state file is read through an unchecked
- * cast, and a hand-edited or torn `dayCostUsd` would otherwise concatenate into
+ * non-finite, or negative value reads as $0 too: `loadLoopState` heals the field on read, but
+ * this is the budget gate's own guard, and a hand-edited or torn `dayCostUsd` (or an in-memory
+ * state) would otherwise concatenate into
  * fleetDailyCost's sum (or make every `>= cap` comparison false) and silently defeat the cap,
  * the budget's safety valve. Reads never mutate. See plans/daily-cost-budget.md. */
 export function dailyCost(

@@ -12,13 +12,14 @@ import { finiteNumber } from "../files/json-object.js";
  * fold() is the once-per-run choke point: every pi run of a tick — main attempt, transient
  * retry, conflict resolution, landing runs via foldLandingUsage — lands here exactly once, so
  * adding a usage field to PiRunResult touches this single place. */
-/** One persisted lifetime counter, healed to a finite non-negative number before it is read
- * and rewritten. LoopState is restored by loadLoopState's unchecked cast (`{ ...fresh,
- * ...readJsonFile }`), so a hand-edited or torn `generatedTokens`/`peakContextTokens`/
- * `totalCostUsd` can be a string, NaN, ±Infinity, or negative despite the interface: a string
- * would make `+=` concatenate, NaN would propagate through Math.max and every display that
- * renders the figure, and a negative would run a lifetime total backwards. Unusable reads as
- * 0, the same policy budget.ts's daily window applies to its stored spend. */
+/** One persisted counter, healed to a finite non-negative number before it is read and
+ * rewritten: `generatedTokens`/`peakContextTokens` are per-tick windows and `totalCostUsd` a
+ * lifetime total. `loadLoopState` already heals every top-level numeric state field on read,
+ * but fold keeps its own invariant at this write choke point so a hand-edited or torn field (a
+ * string that would make `+=` concatenate, NaN/±Infinity that would propagate through Math.max
+ * and every display of the figure, or a negative that would run a total backwards) can never
+ * re-enter the state through a save. Unusable reads as 0, the same policy budget.ts's daily
+ * window applies to its stored spend. */
 function counter(value: unknown): number {
   const n = finiteNumber(value, 0);
   return n >= 0 ? n : 0;
