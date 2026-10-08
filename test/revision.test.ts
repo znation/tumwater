@@ -129,6 +129,35 @@ test("applyWithConflicts on a non-conflict failure resets to main and reports no
   assert.equal(await isDirty(root), false, "clean main after a failed apply");
 });
 
+test("applyRevision resets to clean main when the rejected commit no longer exists", async () => {
+  const root = makeRepo();
+  const before = sh(root, "git", "rev-parse", "HEAD").trim();
+  // A missing object makes `git merge-base main <sha>` fail, the first failure mode the
+  // function names: the worktree must be left at clean main, not part-way into a pick.
+  assert.equal(await applyRevision(root, "main", "0".repeat(40)), false);
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), before);
+  assert.equal(await isDirty(root), false, "clean main after a missing object");
+});
+
+test("applyWithConflicts resets to main when the cherry-pick fails without conflicts", async () => {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(root, "landed.ts"), "export const landed = true;\n");
+  commitIn(root, "work main already has");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  // main fast-forwards onto the same commit, so merge-base is the commit itself and the
+  // `base..sha` range is empty: cherry-pick fails with no unmerged paths. Unlike the
+  // bogus-sha case above (which fails at merge-base), this reaches the picked===null arm.
+  sh(root, "git", "merge", "--ff-only", sha);
+  const before = sh(root, "git", "rev-parse", "HEAD").trim();
+
+  const result = await applyWithConflicts(root, "main", sha);
+  assert.deepEqual(result, { applied: false, conflicted: [] });
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), before);
+  assert.equal(await isDirty(root), false, "clean main after a failed apply");
+});
+
 test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
   const restore = fakePi(reviewerPi("VERDICT: reject\n1. breaks the rules"));
   try {
