@@ -1,7 +1,8 @@
-/** The bundled project templates for `tumwater init --template` (docs/feature-project-templates.md).
- * Static string data, no file reads and no runtime dependencies: a template is a brief preamble
- * (the operator's own words stay appended after it) plus a seeded PLANS.md backlog and a starter
- * directory layout — never code scaffolds, since the fleet's own first ticks write any code.
+/** The bundled project templates for `tumwater init --template`
+ * (docs/feature-project-templates.md). Static string data, no file reads and no runtime
+ * dependencies: a template is a brief preamble (the operator's own words stay appended after
+ * it) plus a seeded PLANS.md backlog and a starter directory layout — never code scaffolds,
+ * since the fleet's own first ticks write any code.
  * `blank` is the default and reproduces today's init output byte-identically. */
 
 import { typoSuffix } from "../text/suggest.js";
@@ -11,7 +12,8 @@ interface InitTemplate {
   /** One-line description, shown by `--list-templates`. */
   description: string;
   /** Prepend to the operator's brief (empty for blank) — framing only: entry point, tests, docs
-   * expectations. The operator's words remain the tail, so "latest instruction wins" reads naturally. */
+   * expectations. The operator's words remain the tail, so "latest instruction wins" reads
+   * naturally. */
   briefPreamble: string;
   /** First plans rendered under the seeded PLANS.md's `## Planned` (empty for blank), following
    * the existing `## Planned` before `## Done` convention so the seeded file never trips the
