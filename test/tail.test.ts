@@ -7,6 +7,21 @@ import { tmpdir } from "./repo-fixtures.js";
 import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
 import { sleep, waitFor } from "./wait.js";
 
+/** Follow `file` and collect each delivered complete line into `seen`, dropping the empty
+ * strings a split on a trailing newline can yield. `fromEnd` starts the follow past the file's
+ * current content (the CLI's own seeding) and `pollMs` turns the poll interval down for the
+ * rotation tests. Returns followFile's stop function, so a failing assertion's `finally` still
+ * stops the poll timer. */
+function followInto(
+  file: string,
+  seen: string[],
+  opts: { fromEnd?: boolean; pollMs?: number } = {},
+): () => void {
+  return followFile(file, opts.fromEnd ? fs.statSync(file).size : 0, (lines) => {
+    for (const line of lines.filter(Boolean)) seen.push(line);
+  }, opts.pollMs);
+}
+
 test("followFile delivers each complete line once, holds torn tails, resets on shrink", async () => {
   const file = path.join(tmpdir(), "live.jsonl");
   fs.writeFileSync(file, "a\n");
@@ -40,9 +55,7 @@ test("followFile delivers appended lines once, in order, and holds a torn tail u
   const file = path.join(tmpdir(), "follow.jsonl");
   fs.writeFileSync(file, "");
   const seen: string[] = [];
-  const stop = followFile(file, 0, (lines) => {
-    for (const line of lines.filter(Boolean)) seen.push(line);
-  });
+  const stop = followInto(file, seen);
   try {
     fs.appendFileSync(file, "line one\n");
     await waitFor(() => seen.length === 1, `the tail to deliver line one (got ${JSON.stringify(seen)})`);
@@ -65,9 +78,7 @@ test("followFile survives rotation: lines appended after a rename+rewrite are no
   const file = path.join(tmpdir(), "rotate.jsonl");
   fs.writeFileSync(file, "old line\n"); // follow starts past the existing content (like the CLI does)
   const seen: string[] = [];
-  const stop = followFile(file, fs.statSync(file).size, (lines) => {
-    for (const line of lines.filter(Boolean)) seen.push(line);
-  });
+  const stop = followInto(file, seen, { fromEnd: true });
   try {
     await sleep(700); // let polls run while nothing changes
     assert.deepEqual(seen, [], "pre-existing content is not re-delivered");
@@ -88,9 +99,7 @@ test("followFile drains the lines the rotation moved into <file>.1: nothing appe
   const file = path.join(tmpdir(), "rotate-drain.jsonl");
   fs.writeFileSync(file, "old line\n");
   const seen: string[] = [];
-  const stop = followFile(file, fs.statSync(file).size, (lines) => {
-    for (const line of lines.filter(Boolean)) seen.push(line);
-  }, 25);
+  const stop = followInto(file, seen, { fromEnd: true, pollMs: 25 });
   try {
     await sleep(100); // a poll consumes the pre-existing content
     assert.equal(seen.length, 0);
@@ -119,9 +128,7 @@ test("followFile survives a rotation whose replacement outgrows the old offset w
   const file = path.join(tmpdir(), "rotate-grow.jsonl");
   fs.writeFileSync(file, "old line\n");
   const seen: string[] = [];
-  const stop = followFile(file, fs.statSync(file).size, (lines) => {
-    for (const line of lines.filter(Boolean)) seen.push(line);
-  }, 25);
+  const stop = followInto(file, seen, { fromEnd: true, pollMs: 25 });
   try {
     await sleep(100); // let polls run while nothing changes
 
@@ -143,9 +150,7 @@ test("followFile survives a rotation whose replacement outgrows the old offset w
 test("followFile waits for a missing file to appear", async () => {
   const file = path.join(tmpdir(), "late.jsonl"); // does not exist yet
   const seen: string[] = [];
-  const stop = followFile(file, 0, (lines) => {
-    for (const line of lines.filter(Boolean)) seen.push(line);
-  });
+  const stop = followInto(file, seen);
   try {
     await sleep(700);
     assert.deepEqual(seen, [], "a missing file is skipped without failing");
