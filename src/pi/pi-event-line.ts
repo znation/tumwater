@@ -37,10 +37,10 @@ export function piEventType(line: string): string | null {
  * piEventType fast path) all yield null. A line whose prefix does not match pi's compact shape
  * still gets a full parse — the pre-filter can only ever skip lines whose type is verifiably
  * uninteresting, never lose output. Shared by every observer that folds raw pi log lines into
- * per-type state (src/ui/progress-data.ts's live tail, transcript.ts's renderer), so the trim → pre-filter →
- * parse preamble and its skip-without-failing policy live in one place instead of drifting
- * between consumers of the identical log — worth it because pi logs are ~97% streaming delta
- * lines (message_update) that every consumer discards after parsing them. */
+ * per-type state (src/ui/progress-data.ts's live tail, transcript.ts's renderer), so the
+ * trim → pre-filter → parse preamble and its skip-without-failing policy live in one place
+ * instead of drifting between consumers of the identical log — worth it because pi logs are ~97%
+ * streaming delta lines (message_update) that every consumer discards without parsing them. */
 export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
