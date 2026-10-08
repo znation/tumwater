@@ -45,11 +45,15 @@ export interface PiRunOptions {
   config: ResolvedModelConfig;
   sessionDir: string;
   sessionName: string;
-  /** Resume the most recent session in sessionDir instead of starting fresh. Two users, both
-   * within-tick: the transient retry (so the retry keeps the first attempt's partial progress)
-   * and the review gate's verdict-recovery follow-up, which continues the just-finished
-   * review's session to ask for a missing VERDICT line (src/review/review.ts, BUGS.md 2026-09-29).
-   * Every tick otherwise starts a fresh session, so context never accumulates across ticks. */
+  /** Resume the most recent session in sessionDir instead of starting fresh — set by the runs
+   * that continue an open session rather than open a fresh one: the transient retry (so the
+   * retry keeps the first attempt's partial progress), the review gate's verdict-recovery
+   * follow-up (the just-finished review's session, to ask for a missing VERDICT line —
+   * src/review/review-followup.ts, BUGS.md 2026-09-29), the two author-side follow-up turns
+   * requestSummary and requestStageFix (both via the shared requestFollowUp, to ask for a
+   * missing SUMMARY or to fix the pre-queue self-check's findings), and the authoring resume
+   * of a tick a harness interruption cut short (src/tick/tick-resume.ts's `resuming`).
+   * Every other run starts a fresh session, so context never accumulates across ticks. */
   continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;
