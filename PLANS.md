@@ -6,84 +6,141 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Worktree pool, part 2/5: landing vets lease pooled slot worktrees; merges use one `_merge` checkout (planned 2026-10-06 by operator; requires Disk floor 2/4 and Worktree pool 1/5 landed)
+### Worktree pool, part 2a/5: the slot pool and its `worktreeSlots` config (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires Disk floor 2/4 and Worktree pool 1/5 landed)
 
-**Needs review 2026-10-07 by feature: too large for one run** — the landing rewiring touches ~10
-source files plus ~15 test files whose fake-pi shims match on the `_land-<role>` cwd, so no single
-run can land it reviewably; split it into smaller landing-side steps.
+Design: plans/worktree-pool.md ("Layout", "Config", "Leases").
 
-Design: plans/worktree-pool.md ("Rejected", "Layout", "Config", "Leases", "Vets and merges").
-
-Context: every landing role keeps its own `_land-<role>` checkout with its own build outputs,
-about one per role. Vets are concurrent up to `max(1, maxConcurrent - 1)`
-(src/landing/landing-vetting.ts). A vet already passes its result on through refs and
-`VettedLanding`, never through the worktree. Every merge-side step already re-ensures its
-worktree at a commit. So vets can share a small pool of checkouts, and merges, which the drain
-runs one at a time, need only one. It works for any language, because a slot keeps a fixed
-path and switches commits in place. Build outputs never move between paths; the design doc
-records why moving them is unsafe.
+**Goal.** Add the pool machinery every later landing step leases from, changing no landing
+behavior yet. Part 3/5 already landed `slots-state.ts` and the `slotWorktreePath` /
+`slotsStatePath` / `slotsLockPath` helpers, so this step adds only the lease surface and its
+config.
 
 **Approach.**
-1. **Config.** Add `worktreeSlots`, an integer ≥ 1. When absent it defaults to
-   `maxConcurrent + 1`, computed by a `slotCount(config)` helper. It touches the schema,
-   default, validation and docs, like `maxConcurrentChecks`.
-2. **Paths** in src/paths.ts:
-   - `slotWorktreePath(root, n)` → `_slot-<n>`;
-   - `mergeWorktreePath(root)` → `_merge`;
-   - `slotsStatePath(root)` → `.tumwater/state/slots.json`, with `slotsLockPath(root)` beside
-     it.
-3. **Pool.** New file src/git/worktree-pool.ts. `leaseSlot(root, { role, purpose, ref,
-   signal })` returns `{ dir, release() }`.
-   - **Choice order:**
-     1. a slot pinned for the role. Pins are unused until part 4/5;
-     2. the free slot this role released most recently;
-     3. the free slot released most recently by anyone;
-     4. a new `_slot-<n>`, while fewer than `slotCount` unpinned slots exist;
-     5. otherwise wait first-in first-out, aborting on `signal`.
-   - **Use.** The lease holds `useWorktree` (Disk floor 2/4) for its duration, and prepares the
-     slot with `ensureDetachedWorktree(root, dir, ref)`.
-   - **State.** Every change is persisted to slots.json under `withSyncLock`
-     (src/concurrency/lock.ts). Each slot records `{ dir, lease: { role, purpose, since, pid }
-     | null, pinnedFor, lastRole, lastReleasedAt }`.
-   - **Startup.** The pool clears leases whose `pid` is not this process.
-4. **Vets.** In `vetRequest` (src/landing/landing-batch.ts), replace
-   `ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha)` with a
-   lease: purpose `vet`, role `req.role`, ref `req.sha`. Release it in a `finally`.
-5. **Merges** use `mergeWorktreePath(root)`. That covers `landApprovedChange`
-   (src/landing/landing-core.ts), the stack's `wtPath` (landing-batch.ts) and
-   `attributeRedCheck`.
-6. **Removals.**
-   - Delete every `removeLandWorktree` call: in landing-core.ts, landing-check-failures.ts,
-     landing-pipeline.ts and landing-batch.ts. Then delete the helper (src/git/git.ts) and
-     `landWorktreePath`.
-   - progress-data.ts's cwd fallback from part 1/5 keeps the legacy `_land-<role>` path as a
-     local expression, for old logs.
-7. **Startup cleanup.** When the orchestrator starts, it removes legacy `_land-*` worktrees
-   with a force `worktree remove` followed by a prune. They hold no state, and queued landings
-   re-vet from their pinned refs.
-8. **Fixtures.** Update the tests that hard-code `_land-<role>`: test/status-fixtures.ts,
-   test/progress.test.ts, test/landing-pipeline.test.ts, test/orchestrator-3.e2e.test.ts and
-   test/doctor-orphans.test.ts.
+1. **Config.** Add `worktreeSlots?: number` to `TumwaterConfig` (src/config/config-schema.ts,
+   beside `maxConcurrentChecks`, including its hand-maintained key list). Leave it unset in the
+   default config and resolve it through a new `slotCount(config)` helper that returns
+   `config.worktreeSlots ?? config.maxConcurrent + 1`, so the default tracks `maxConcurrent`.
+   Validate it as `POSITIVE_INTEGER` in src/config/config-validation.ts.
+2. **Path.** Add `mergeWorktreePath(root)` → `_merge` in src/paths.ts, beside the slot helpers.
+3. **Pool.** New file `worktree-pool.ts` under src/git/:
+   - `leaseSlot(root, { role, purpose, ref, signal })` returns `{ dir, release() }`.
+   - **Choice order:** (1) a slot pinned for the role (pins are unused until part 4/5);
+     (2) the free slot this role released most recently; (3) the free slot released most
+     recently by anyone; (4) a new `_slot-<n>` while fewer than `slotCount` unpinned slots
+     exist; (5) otherwise wait first-in first-out, aborting on `signal`.
+   - **Use.** The lease holds `useWorktree` (src/git/worktree-use.ts) for its duration and
+     prepares the slot with `ensureDetachedWorktree(root, dir, ref)` (src/git/worktree.ts).
+   - **State.** Persist every change through `updateSlotsState` (src/git/slots-state.ts),
+     reusing its `SlotRecord`/`SlotLease` shape. Clear leases whose `pid` is not the running
+     process on first use.
+   - **Release.** Record `lastRole`/`lastReleasedAt`, and remove idle unpinned slots left over
+     when `worktreeSlots` shrank.
 
-**Files touched.** src/git/worktree-pool.ts (new), src/paths.ts, src/config/config-schema.ts,
-src/config/config.ts, src/config/config-validation.ts, src/landing/landing-batch.ts,
-src/landing/landing-core.ts, src/landing/landing-check-failures.ts,
-src/landing/landing-pipeline.ts, src/git/git.ts, src/ui/progress-data.ts,
-src/orchestrator/orchestrator.ts, docs/how-it-works.md. Tests: test/worktree-pool.test.ts
-(new), plus the fixtures above.
+**Files touched.** `worktree-pool.ts` under src/git/ (new), src/paths.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts. Tests:
+`worktree-pool.test.ts` under test/ (new), test/paths.test.ts, test/config-validation.test.ts.
 
 **Acceptance criteria.**
-- **Concurrency.** Two concurrent vets lease two different slots. A third vet, with
-  `worktreeSlots: 2`, waits and proceeds when one is released. A waiting lease honors abort.
-- **Affinity.** A vet prefers the free slot its role used last.
-- **No `_land-*` directories** exist after startup or after any landing outcome.
-- **Merges.** Single merges, stacks and bisects run in `_merge`, and the existing orchestrator
-  e2e landing tests pass unchanged in outcome.
-- **State file.** slots.json shows the lease during a vet and none after it. A lease left by a
-  dead pid is cleared at startup.
+- **Config.** An omitted `worktreeSlots` resolves through `slotCount` to `maxConcurrent + 1`; a
+  value below 1 is rejected.
+- **Concurrency.** With `worktreeSlots: 2`, two concurrent leases hold two different `_slot-*`
+  dirs; a third waits and proceeds when one is released; a waiting lease honors `signal` abort.
+- **Affinity.** A role's lease prefers the free slot it released most recently.
+- **State.** slots.json shows the lease while held and none after release; a lease whose `pid`
+  is another process is cleared.
 - `npm run test` green.
 
-### Worktree pool, part 4/5: role ticks lease pooled slot worktrees (planned 2026-10-06 by operator; requires parts 1/5–3/5 landed)
+### Worktree pool, part 2b/5: vets lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed)
+
+Design: plans/worktree-pool.md ("Vets and merges").
+
+**Context.** A vet passes its result on through the landing ref and `VettedLanding`, never
+through the worktree, and every merge-side step re-ensures at a commit, so the vet's checkout
+is free to be a pooled slot.
+
+**Approach.**
+1. In `vetRequest` (src/landing/landing-batch.ts), acquire
+   `leaseSlot(ctx.root, { role: req.role, purpose: "vet", ref: req.sha, signal: ctx.signal() })`,
+   and have `vetRequestIn` use the leased `dir` instead of `useWorktree` on
+   `landWorktreePath(...)` plus `ensureDetachedWorktree(...)`. Release it in a `finally`,
+   whatever the outcome (approved, rejected or error).
+2. Update the vet-side tests whose fake-pi shims and session `cwd` match `_land-<role>`:
+   test/landing-drain-vetting.test.ts, test/landing-fixtures.ts and any loop test asserting the
+   vet cwd.
+
+**Files touched.** src/landing/landing-batch.ts. Tests: test/landing-drain-vetting.test.ts,
+test/landing-fixtures.ts and the loop tests asserting the vet cwd.
+
+**Acceptance criteria.**
+- A vet runs in a `_slot-<n>` directory; no `_land-<role>` is created for it.
+- slots.json shows purpose `vet` during the run and no lease after it, for every outcome.
+- A vet prefers the slot its role released most recently.
+- Vet outcomes and the drain's write-back are unchanged.
+- `npm run test` green.
+
+### Worktree pool, part 2c/5: merge-side landing work uses one `_merge` checkout (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed)
+
+Design: plans/worktree-pool.md ("Vets and merges").
+
+**Context.** Merge-side steps already re-ensure their worktree at a commit, so the move is a
+path change. The drain is serial, so one dedicated checkout is enough, and holding a pool slot
+there could deadlock against permit holders waiting for a slot.
+
+**Approach.**
+1. `landApprovedChange`/`landApprovedChangeIn` (src/landing/landing-core.ts), `landStack` /
+   `landStackIn` (src/landing/landing-stack.ts) and `attributeRedCheck`
+   (src/landing/landing-batch.ts, and the stack's `wtPath`) use
+   `mergeWorktreePath(ctx.root)` instead of `landWorktreePath(ctx.root, role)`.
+2. Drop the `removeLandWorktree` calls on those merge paths: a terminal merge in
+   landing-core.ts and landing-batch.ts, the rejection/strike discard in landing-core.ts, and
+   the red check in landing-check-failures.ts. `_merge` persists across merges, like
+   `_gate-main`.
+3. Update the merge/review fixtures and e2e shims that match `_land-<role>` cwd:
+   test/landing-merge.test.ts, test/lander.test.ts, test/landing-pipeline.test.ts,
+   test/landing-fixtures.ts, test/orchestrator-3.e2e.test.ts and
+   test/loop-leftover-recovery.test.ts.
+
+**Files touched.** src/landing/landing-core.ts, src/landing/landing-stack.ts,
+src/landing/landing-batch.ts, src/landing/landing-check-failures.ts. Tests: the fixtures above.
+
+**Acceptance criteria.**
+- A single merge, a stack with its bisect, and red attribution all run in `_merge`; no
+  `_land-<role>` is created for a merge.
+- `_merge` survives a merge (it is not removed) and is reused by the next one.
+- Existing landing outcomes (changed, red, merge_blocked, conflict, rejected) are unchanged.
+- `npm run test` green.
+
+### Worktree pool, part 2d/5: remove the `_land-*` machinery and legacy checkouts (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2b/5 and 2c/5 landed)
+
+Design: plans/worktree-pool.md ("Vets and merges").
+
+**Context.** Once vets (2b/5) and merges (2c/5) no longer touch `_land-<role>`, the path
+helper, the removal helper and the startup leftovers can go. This is the dependent cleanup
+step: it lands only once those behavior changes are the running build.
+
+**Approach.**
+1. At orchestrator startup (src/orchestrator/orchestrator.ts) remove any legacy `_land-*`
+   worktree with a force `worktree remove` followed by a prune. They hold no state, and queued
+   landings re-vet from their pinned refs.
+2. Delete `landWorktreePath` (src/paths.ts) and `removeLandWorktree` (src/git/git.ts); update
+   their remaining importers.
+3. progress-data.ts's cwd fallback from part 1/5 builds the legacy `_land-<role>` path as a
+   local expression, so old logs still demultiplex.
+4. Update the remaining tests that import `landWorktreePath` or hard-code `_land-<role>`:
+   test/status-fixtures.ts, test/progress.test.ts, test/paths.test.ts and
+   test/doctor-orphans.test.ts.
+
+**Files touched.** src/orchestrator/orchestrator.ts, src/paths.ts, src/git/git.ts,
+src/ui/progress-data.ts. Tests: test/status-fixtures.ts, test/progress.test.ts,
+test/paths.test.ts, test/doctor-orphans.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn "landWorktreePath\|removeLandWorktree" src` returns nothing.
+- Startup removes a pre-existing `_land-feature` directory.
+- The old-log progress demux still classifies a session whose cwd is `_land-<role>`.
+- `npm run test` green.
+
+### Worktree pool, part 4/5: role ticks lease pooled slot worktrees (planned 2026-10-06 by operator; requires parts 1/5, 2a/5, 2b/5 and 3/5 landed)
 
 **Needs review 2026-10-07 by feature: too large for one run** — its prerequisites are not on
 main: the pool module with its `leaseSlot` API and the `worktreeSlots` config are part 2/5's
