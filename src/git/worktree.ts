@@ -127,7 +127,8 @@ function isUsableWorktreeSyncPath(dir: string): boolean {
 
 /** Ensure a detached worktree at `dir` checked out at `ref` (a branch name or sha), creating or
  * repairing it like ensureWorktree does for role worktrees, then hard-reset and cleaned so it
- * holds exactly `ref`'s tree. Used by redeploy.ts as the pristine copy of main it verifies and
+ * holds exactly `ref`'s tree. A stale index.lock left by a killed git is cleared first, or the
+ * checkout/reset below would fail on it forever. Used by redeploy.ts as the pristine copy of main it verifies and
  * compiles — the primary checkout may be dirty or on another branch, a role worktree is never
  * pristine while its loop works. */
 export async function ensureDetachedWorktree(root: string, dir: string, ref: string): Promise<string> {
@@ -140,6 +141,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
     });
     if (created) return dir;
   }
+  clearStaleIndexLock(dir);
   await abortSync(dir);
   await git(dir, "checkout", "--detach", ref);
   await git(dir, "reset", "--hard", ref);

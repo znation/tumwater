@@ -37,6 +37,21 @@ test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing 
   assert.equal(fs.readFileSync(path.join(dir, "seed.txt"), "utf8"), "moved\n");
 });
 
+test("ensureDetachedWorktree clears a stale index.lock left by a killed git", async () => {
+  const repo = makeRepo();
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const dir = mirrorWorktreePath(repo);
+  await ensureDetachedWorktree(repo, dir, head);
+  const lock = path.join(resolveGitDir(dir)!, "index.lock");
+  fs.writeFileSync(lock, "");
+  const agedSec = (Date.now() - 20 * 60 * 1000) / 1000; // older than the git-timeout bound
+  fs.utimesSync(lock, agedSec, agedSec);
+
+  await ensureDetachedWorktree(repo, dir, head);
+  assert.equal(fs.existsSync(lock), false, "the stale lock is gone");
+  assert.equal(sh(dir, "git", "rev-parse", "HEAD"), head, "the re-point completed");
+});
+
 test("ensureWorktree creates a persistent branch and reuses it", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "clean", "main");
