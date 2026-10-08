@@ -6,6 +6,70 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Organize the test suite's support modules into `test/fakes/`, `test/fixtures/`, and `test/helpers/` (planned 2026-10-07 by organize)
+
+**Goal.** Give `test/` the same kind-directory layout `src/` already has: move the 30 flat
+non-test support modules out of the `test/` root into `test/fakes/` and `test/fixtures/` (both
+already exist) and a new `test/helpers/`, leaving the runner infrastructure and every
+`*.test.ts` at the root.
+
+**Context / cost today.** `test/` holds 344 files — 309 `*.test.ts` plus 33 flat non-test
+`.ts` modules — and 30 of those support modules sit flat beside the tests. A reader (human or
+agent) listing `test/` cannot tell a helper from a test without reading each name. The suite's
+own convention is already kind-directories: `test/fakes/` is documented as "the shared test-fake
+catalog" (its modules' docs cite "test/fakes/, PLANS.md 2026-10-04") and `test/fixtures/` exists
+for fixture assets — yet `fake-pi.ts`, `fake-commands.ts`, `fake-res.ts`, and all 14
+`*-fixtures.ts` live outside them. This is the last flat pile in the repo: `src/` was organized
+into domain directories (including organize commit a2719e20, moving the remaining
+domain-owned root modules into their directories), while `test/` never was. It is the same
+treatment applied to the test tree, not a new direction.
+
+**Target structure (designed up front).**
+- `test/` root keeps runner infrastructure only: `test-runner.ts`, `test-durations-reporter.ts`
+  (loaded by `node --test` as a reporter through a path relative to the runner,
+  test/test-runner.ts:405), and `coverage-table.ts` (the runner's coverage-table merger).
+  Every `*.test.ts` stays flat at the root — no test file moves, so filter names do not change.
+- `test/fakes/` (existing) gains `fake-pi.ts`, `fake-commands.ts`, `fake-res.ts`, joining
+  `log.ts`, `process.ts`, `time.ts`, `transient.ts`.
+- `test/fixtures/` (existing; currently holds only the `script-shim/` asset) gains all 14
+  `*-fixtures.ts` (`config-`, `doctor-`, `gate-`, `gui-`, `lander-`, `landing-`, `log-`,
+  `loop-`, `models-`, `orchestrator-`, `redeploy-`, `repo-`, `status-`, `tui-`) plus
+  `pi-events.ts` (fake pi JSONL line builders) and `victim-fixture.ts`.
+- `test/helpers/` (new) gains `backdate.ts`, `cli-harness.ts`, `exit-capture.ts`,
+  `exit-with-owner.ts`, `fs-faults.ts`, `json-read.ts`, `oracles.ts`, `pi-run-harness.ts`,
+  `sleep-clock.ts`, `wait.ts`, `gui-client-scope.ts`.
+
+**Why the runner tolerates subdirectories.** `selectTestFiles` (test/test-runner.ts) does
+`fs.readdirSync(distDir)` — non-recursive — and keeps only `*.test.js`, so support modules
+compiled to `dist/test/<dir>/` are ignored and the selected set is exactly the same flat
+`*.test.ts` files as today.
+
+**Files touched / the traps to get right.** The 30 modules above; every test file importing
+them (≈750 relative specifiers rewrite from `./x.js` to `./<dir>/x.js`); and the moved modules'
+own relative imports and `import.meta.url` constants, which are depth-sensitive:
+- The moved `fake-commands.ts`: `SCRIPT_SHIM` becomes `../../../test/fixtures/script-shim`
+  (BUGS.md 2026-09-30 pinned this constant; a wrong depth silently disables every fake command).
+  `test/fake-commands.test.ts`'s relocated-tree refusal copies the compiled module two levels
+  deep (`dist/test`) and must simulate three levels instead.
+- The moved `cli-harness.ts`: `CLI` becomes `../../src/cli.js`.
+- The moved `victim-fixture.ts`: `OWNER_PRELOAD` continues to name its sibling
+  `./exit-with-owner.js`, which moves to the same directory.
+- `test/fake-pi.test.ts` and `test/build-check-process.test.ts` embed `./fake-pi.js` /
+  `./exit-with-owner.js` in generated paths and must point at the new directories.
+- Doc/comment references to moved paths: `DEVELOPMENT.md` ("Install a fake command with
+  `writeScript` (test/fake-commands.ts)"), `BUGS.md`, `PLANS.md`, `docs/`, and `src/` comments
+  (e.g. `src/collections.ts` on the durations reporter).
+
+**Acceptance criteria.**
+- All 30 support modules live under `test/fakes/`, `test/fixtures/`, or `test/helpers/`; the
+  `test/` root holds only `*.test.ts` and the three runner-infrastructure modules.
+- A grep over `src/`, `test/`, `scripts/`, `docs/`, `DEVELOPMENT.md`, `PLANS.md`, and `BUGS.md`
+  for each moved basename at its old flat path (`test/fake-pi.ts`, `test/cli-harness.ts`, …)
+  finds no stale reference.
+- `npm run test` (eslint + tsc + the suite) is green and runs the same set of `*.test.ts`
+  files; `test/fake-commands.test.ts`'s relocated-tree import still fails loudly when
+  `SCRIPT_SHIM` is absent.
+
 ### Worktree pool, part 2d/5: remove the `_land-*` machinery and legacy checkouts (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2b/5 and 2c/5 landed)
 
 Design: plans/worktree-pool.md ("Vets and merges").
