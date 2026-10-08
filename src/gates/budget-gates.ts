@@ -2,8 +2,8 @@
  * fallback config view it derives, as the orchestrator polls it each cycle. Extracted from
  * orchestrator.ts's poll loop: the spend check, the fallback breaker's re-key, the
  * edge-triggered budget_* events, and the fallback view derivation are one concern beside the
- * other fleet gates (src/gates/pause-gates.ts, src/fleet/fleet-hold.ts's fleet hold) — the orchestrator
- * owns only the wiring (the demotion publish and the per-runner config assignment). */
+ * other fleet gates (src/gates/pause-gates.ts, src/fleet/fleet-hold.ts's fleet hold) — the
+ * orchestrator owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import { MODEL_TIERS, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
 import {
@@ -135,8 +135,8 @@ export function tickOnPair(
  * config — an explicit human prompt outranks the autonomous-spend cap — and every other role
  * takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
  * rule, so the scheduler's per-poll assignment (src/gates/gate-polls.ts) and a throwaway landing
- * author's construction (src/landing/landing-vetting.ts's resolveAuthor) cannot drift apart — say, an
- * exemption granted to one more role in one copy and not the other. */
+ * author's construction (src/landing/landing-vetting.ts's resolveAuthor) cannot drift apart —
+ * say, an exemption granted to one more role in one copy and not the other. */
 export function gateRoleConfig(
   role: string,
   liveConfig: TumwaterConfig,
