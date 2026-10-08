@@ -6,6 +6,322 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Work ratio, part 1/4: code-maintenance landings are budgeted against work landings (planned 2026-10-08 by operator)
+
+Design: plans/work-ratio.md ("Maintenance follows work").
+
+Context. On 10-07 the fleet landed 335 commits for 22 plans and 28 bugs. 271 of those commits
+came from the code-maintenance roles; clean alone landed 118, averaging 8 lines each.
+
+`deferTickReason` (src/scheduling/scheduling.ts) only holds a maintenance role after a
+`no_change` tick, so a role that always finds something never yields. Tier ordering decides who
+goes first, not how much maintenance runs. This entry caps maintenance volume relative to work
+that actually landed.
+
+**Approach.**
+1. **Roles.** Add `QUOTA_ROLES` in src/roles/roles.ts: `CODE_MAINTENANCE_ROLES` plus `readme`.
+   - steward, the observers (qa, telemetry), plan, director and custom roles are never held.
+   - Match on `baseRoleOf`, so future instances count against their role.
+2. **Allowance.**
+   - Over the rolling 24 h ending now, count `merged` events from the event log.
+     - `work` = merged events whose loop's base role is feature, bugfix or director.
+     - `maint` = merged events whose loop's base role is in `QUOTA_ROLES`.
+   - `allowance = maintenancePerWorkLanding × work + MAINTENANCE_DAILY_FLOOR`, where the floor
+     is the constant 12.
+   - Treat in-flight maintenance as used: running quota-role ticks plus their queued landings.
+     This keeps six concurrent permits from overshooting the allowance.
+   - Read the events through the existing windowed reader (src/events/event-window.ts) with an
+     incremental cache. Do not re-parse the whole log on every poll.
+3. **Gate.**
+   - Add a new src/gates/maintenance-quota-gates.ts, modeled on src/gates/role-cap-gates.ts:
+     - a pure verdict function;
+     - a `newMaintenanceQuotaGateState()`;
+     - a `pollMaintenanceQuotaGate(...)` that returns the set of held loop ids.
+   - Register it in `FleetGateStates` / `pollFleetGates` (src/gates/gate-polls.ts).
+   - Check it in `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) right after
+     `capPaused`.
+   - A fresh operator wake (`wokenAt` newer than the last tick end) or a queued prompt for that
+     loop admits one tick anyway. This is the same demand override the deferral honors.
+4. **Events.**
+   - Log `maintenance_quota_hold` {maint, work, allowance} when the gate goes from open to held.
+   - Log `maintenance_quota_resumed` when it re-opens. These are fleet-level events, emitted
+     once per transition, not per loop.
+   - Add both to src/events/events.ts and src/events/event-format.ts.
+5. **Config.**
+   - Add top-level `maintenancePerWorkLanding`: a number ≥ 0, default 2.
+   - Wire it through src/config/config-schema.ts, config.ts, config-field-checks.ts and
+     config-editable-keys.ts, so it is live-editable with `tumwater config set`.
+   - There is no switch to turn the gate off. A large value effectively disables it, per
+     PRINCIPLES.md's "opinionated defaults".
+6. **Status.**
+   - Held loops show `held: maintenance quota <maint>/<allowance>` wherever `capPaused` is shown
+     today: src/status/status-data.ts and its TUI/GUI renderers.
+   - Add a `maintenanceQuota` field to the status payload, the same shape as `capPaused`.
+
+**Files touched.**
+- src/roles/roles.ts
+- src/gates/maintenance-quota-gates.ts (new)
+- src/gates/gate-polls.ts
+- src/orchestrator/orchestrator-scheduling.ts
+- src/orchestrator/orchestrator.ts
+- src/config/config-schema.ts, config.ts, config-field-checks.ts, config-editable-keys.ts
+- src/events/events.ts, event-format.ts
+- src/status/status-data.ts and its renderers
+- README.md, the config reference
+
+Tests:
+- test/maintenance-quota-gates.test.ts (new)
+- cases in test/orchestrator-scheduling.test.ts
+
+**Acceptance criteria.**
+- **Held.** With 10 work merges and 32 maintenance merges in the last 24 h, the default
+  allowance is 2 × 10 + 12 = 32. clean, dry and readme are held; feature, bugfix, plan,
+  steward, qa and telemetry tick normally.
+- **Window.** A maintenance merge older than 24 h stops counting, and the gate re-opens with a
+  `maintenance_quota_resumed` event.
+- **In-flight.** With an allowance of 1 more than `maint`, two due maintenance loops start at
+  most one tick between them.
+- **Override.** A `tumwater wake clean` while held runs one clean tick.
+- **Floor.** With zero work merges, maintenance still lands up to 12 commits per 24 h.
+- **Config.** `tumwater config set maintenancePerWorkLanding 0` takes effect live, and a
+  negative or non-number value is rejected.
+- `npm run test` green.
+
+### Work ratio, part 2/4: a clean tick sweeps one kind of drift across the tree instead of one site (planned 2026-10-08 by operator)
+
+Design: plans/work-ratio.md ("Batch hygiene").
+
+Context. On 10-07 clean's 118 commits averaged 1.1 files and about 15 changed lines. Five
+separate ticks fixed the same stale `_land-<role>` comments left by Worktree pool 2d/5
+(814074e2, 808f4b85, 888f9d73, 5913a6a1, 6ce40875). Each one cost a tick, a review, a build
+check and a landing.
+
+dry's charter already updates every call site of one repetition. clean's says "find ONE piece
+… clean that one thing", so this entry changes clean.
+
+**Approach.**
+1. **Charter.**
+   - Rewrite clean's `find` text in src/roles/role-catalog.ts (the "Otherwise, find ONE piece of
+     unclean code" paragraph). The new rule: pick ONE *kind* of uncleanliness, grep for every
+     instance of it across the source, tests and markdown, and fix them all in this tick.
+   - Examples of a kind:
+     - comments that still name a removed mechanism;
+     - over-100-column doc lines in one directory;
+     - doc comments citing a renamed helper.
+   - Keep the diff under about 300 changed lines. When a kind has more instances than that,
+     clean one directory or subsystem completely and say in the WHY what remains.
+   - Keep the `<backlog-structure>` repair paragraph as is.
+2. **Principle.**
+   - Amend PRINCIPLES.md's "one focused change per tick" bullet, and its mirror in
+     src/init/init-templates.ts: a focused change is one theme, applied everywhere it holds, not
+     one site.
+   - Keep the two texts identical. If a test pins that they match, update it.
+3. **Review.**
+   - The review prompt must not reject a clean sweep for touching many files, as long as every
+     hunk is the same kind of fix.
+   - Check src/review's prompt text for a size or scope objection that would fire, and adjust
+     it only if one exists.
+
+**Files touched.**
+- src/roles/role-catalog.ts
+- PRINCIPLES.md
+- src/init/init-templates.ts
+- review prompt text, only if needed
+- tests that pin charter or principle text (test/init-templates.test.ts, role-catalog tests)
+
+**Acceptance criteria.**
+- clean's charter names a kind-wide sweep with the ~300-line ceiling. The phrase "clean that
+  one thing" is gone.
+- PRINCIPLES.md and the init template carry the same amended bullet.
+- `npm run test` green.
+- Follow-up check, a day after landing: clean's average changed lines per commit rises and its
+  commits per day fall (`git log --author-date-order --grep '^tumwater(clean)' --shortstat`).
+  Record the numbers in plans/work-ratio.md.
+
+### Work ratio, part 3/4: the plan loop's "enough waiting" target counts only entries feature could take now (planned 2026-10-08 by operator)
+
+Design: plans/work-ratio.md ("Keep feature fed").
+
+Context. The plan charter (src/roles/role-catalog.ts, plan step 1) ends with nothing-to-do when
+`## Planned` "holds two or more plans without a Needs-review or Needs-replan note". Entries
+tagged `[blocked: requires …]` in the `<backlog-index>`, and Refused entries, count toward
+that.
+
+On 10-07, 9 entries were planned and 3 were eligible. plan returned `no_change` on 19 of 21
+ticks. A long sequential series therefore leaves feature with only its current part while plan
+idles.
+
+**Approach.**
+1. **Charter.**
+   - Reword the sentence to count only entries the backlog index shows with no hold mark: not
+     `[blocked: …]`, not Refused, and no Needs-review or Needs-replan note.
+   - Example: "when two or more `## Planned` entries are takeable now (no hold mark in the
+     backlog index and no Needs-review/Needs-replan note), end with NOTHING_TO_DO".
+   - When fewer are takeable, plan ONE new feature that does not depend on any planned entry, so
+     feature can run it alongside the blocked series.
+   - Parallel work instances 5c/7 later scales "two" with `feature.instances`. Whichever lands
+     second rebases onto the other's wording; the two do not conflict in intent.
+2. **Index.** `holdMark` (src/backlog/backlog-structure.ts) already tags every hold the
+   charter names (`[refused]`, `[needs review]`, `[needs replan]`, `[blocked: requires …]`), so
+   the charter can say "no bracketed hold mark" without restating each hold.
+
+**Files touched.**
+- src/roles/role-catalog.ts
+- tests pinning the plan charter and `renderBacklogIndexBlock`
+
+**Acceptance criteria.**
+- The plan charter's target counts only unheld entries, and says a new plan should be
+  independent of the blocked series.
+- With one eligible entry and four `[blocked: …]` entries, the rendered plan prompt contains the
+  new rule, and the backlog index marks all four as blocked (a test over the rendered blocks).
+- `npm run test` green.
+
+### Work ratio, part 4/4: report commits by role and show work vs maintenance commits on the "Landed today" tile and `tumwater report` (planned 2026-10-08 by operator)
+
+Design: plans/work-ratio.md ("Make the ratio visible").
+
+Context. `foldUsageEvent` (src/report/report-data.ts) counts every `merged` event into
+`commits` with no role. The tile (src/ui/gui/gui-client-fleet.ts, the "Landed today" card) shows
+"64 commits" over "4 features done · 2 bugs fixed", and the operator cannot see which loops made
+the 64. Parts 1/4–3/4 are judged by this split.
+
+**Approach.**
+1. **Fold.**
+   - Count `merged` events into `commitsByRole` (via `eventRole`, keyed by base role) beside
+     `ticksByRole`, in `UsageFold`, `DayFold` and the fold cache.
+   - Also count tier totals `workCommits` and `maintenanceCommits`:
+     - work = feature, bugfix, director;
+     - maintenance = Work ratio 1/4's `QUOTA_ROLES`, or `CODE_MAINTENANCE_ROLES` plus readme
+       until 1/4 lands;
+     - everything else counts toward `commits` only.
+2. **Tile.** The sub-line becomes "4 features done · 2 bugs fixed · 12 work / 52 maintenance".
+   The headline stays "64 commits".
+3. **Report.**
+   - `tumwater report` (src/report/report-render.ts) prints a "commits by role" line, sorted
+     descending, and the work/maintenance split.
+   - Add "commits per backlog item" (commits ÷ (featuresDone + bugsFixed), one decimal) to the
+     day report. Omit it when the denominator is 0.
+   - Add the same split to the GUI report view's tiles (src/ui/gui/gui-client-report.ts).
+
+**Files touched.**
+- src/report/report-data.ts, report-render.ts
+- src/ui/gui/gui-client-fleet.ts, gui-client-report.ts
+- the GUI report endpoint payload, if typed separately
+
+Tests:
+- test/report-data.test.ts
+- test/report-fold-cache.test.ts
+- test/gui-client-report.test.ts
+- the fleet tile's test
+
+**Acceptance criteria.**
+- **Fold.** Five `merged` events (2 feature, 3 clean) fold to `commitsByRole {feature: 2,
+  clean: 3}`, `workCommits 2`, `maintenanceCommits 3`, `commits 5`.
+- **Cache.** A cached day re-folded after an appended merge counts it once.
+- **Tile.** The tile sub-line shows the split, and the day report prints commits per item.
+- `npm run test` green.
+
+### New-project bootstrap, part 1/2: `tumwater init` recognizes an empty project and opts it into bootstrap (planned 2026-10-08 by operator)
+
+Design: plans/work-ratio.md ("New-project bootstrap").
+
+Context. `initProject` (src/init/init.ts) seeds tumwater.json from `seedConfig` with every role
+enabled. A project created from nothing therefore starts clean, dry, coverage and the rest
+tidying code that does not exist yet, alongside the first feature. The user wants such a project
+to run plan and feature first, until it is established.
+
+**Approach.**
+1. **Detect.**
+   - In `initProject`, before writing anything, decide `fresh`. The project is fresh when either
+     holds:
+     - there is no git repo, or `hasCommits` is false;
+     - `git ls-files` plus untracked, non-ignored files lists nothing outside the paths init
+       itself owns or that carry no code: README.md, TUMWATER.md, PLANS.md, BUGS.md,
+       QUESTIONS.md, PRINCIPLES.md, LICENSE*, .gitignore, tumwater.json.
+   - Detection is language-agnostic: it only asks "is there anything here besides scaffolding".
+2. **Config.**
+   - When fresh, the seeded config gets `"bootstrap": {"untilPlansDone": 5}`.
+   - Add the field to src/config/config-schema.ts and config-field-checks.ts:
+     `untilPlansDone` must be an integer ≥ 1.
+   - Absent means no bootstrap. Existing configs are unaffected.
+3. **Output.** init prints one line saying maintenance loops wait until 5 plans are done, and
+   that removing `bootstrap` from tumwater.json ends it early.
+
+**Files touched.**
+- src/init/init.ts
+- src/config/config-schema.ts, config-field-checks.ts
+- README.md (init section)
+- test/init.test.ts
+
+**Acceptance criteria.**
+- **Empty dir.** `tumwater init` in an empty directory writes `bootstrap.untilPlansDone: 5`.
+- **No commits.** The same holds in a repo with no commits.
+- **Existing code.** In a repo with a tracked `src/main.rs` (or any non-scaffolding file), init
+  writes no `bootstrap`.
+- **Validation.** `bootstrap: {"untilPlansDone": 0}` fails config validation with a field
+  error.
+- `npm run test` green.
+
+### New-project bootstrap, part 2/2: while bootstrapping, only plan, feature, director and bugfix-with-open-bugs tick (planned 2026-10-08 by operator; requires part 1/2 landed)
+
+Design: plans/work-ratio.md ("New-project bootstrap").
+
+**Approach.**
+1. **Gate.**
+   - Add a new src/gates/bootstrap-gates.ts, polled from `pollFleetGates` like the role-cap gate.
+   - Bootstrap is active while `config.bootstrap` is set and the latch file
+     `.tumwater/bootstrap-complete.json` is absent. Put the path helper in src/paths.ts.
+   - While active, every loop is held with reason `bootstrap`, except:
+     - plan, feature and director;
+     - bugfix, only while BUGS.md `## Open` is non-empty (`openBugs`). Its latent-bug search is
+       maintenance.
+   - Check the gate in `pollRunnerReasons` next to `capPaused`. A fresh operator wake or a
+     queued prompt still admits a held loop's tick.
+2. **Progress and latch.**
+   - Each poll, count the `### ` headings under PLANS.md `## Done` using src/backlog/backlog-md.ts
+     helpers. Do not re-read the file when its mtime is unchanged.
+   - When the count reaches `untilPlansDone`:
+     - write the latch with {plansDone, ts};
+     - log `bootstrap_complete` once;
+     - lift the hold.
+   - The latch makes the end permanent. A later steward compression of `## Done` must not
+     re-enter bootstrap.
+   - Removing `bootstrap` from config (live reload) also ends it, without writing a latch.
+3. **Plan cadence.** While bootstrap is active, plan's min tick gap is the global
+   `minTickIntervalSeconds` instead of its per-role default (3600 s), so a fresh project gets a
+   steady stream of plans for feature. Resolve this in src/config/config-views.ts or in
+   `isEligible`, whichever owns the gap.
+4. **Status.**
+   - status, TUI and GUI show "bootstrap: 2/5 plans done".
+   - Held loops show `held: bootstrap`.
+   - doctor reports an active bootstrap as info, not a warning.
+   - Add `bootstrap_complete` to events.ts and event-format.ts.
+
+**Files touched.**
+- src/gates/bootstrap-gates.ts (new)
+- src/gates/gate-polls.ts
+- src/orchestrator/orchestrator-scheduling.ts
+- src/scheduling/scheduling.ts or src/config/config-views.ts
+- src/paths.ts
+- src/status/status-data.ts and its renderers
+- src/events/events.ts, event-format.ts
+- src/doctor/doctor-checks.ts
+
+Tests:
+- test/bootstrap-gates.test.ts (new)
+- an orchestrator scheduling case
+
+**Acceptance criteria.**
+- **Held set.** With `bootstrap.untilPlansDone: 2` and an empty `## Done`, clean, dry, coverage,
+  qa and steward are held; plan and feature tick. bugfix ticks only after a bug is filed under
+  `## Open`.
+- **Completion.** Moving a second plan to `## Done` logs `bootstrap_complete`, writes the latch,
+  and the next poll admits clean.
+- **Latch.** Deleting both Done entries afterwards does not re-hold anything.
+- **Plan gap.** During bootstrap, plan's gap is the global 20 s rather than 3600 s.
+- **Unset.** Removing `bootstrap` from tumwater.json lifts every hold on the next poll.
+- `npm run test` green.
+
 ### Organize the test suite, part 5/6: log, loop, orchestrator and status fixtures plus `pi-events` and `victim-fixture` move to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–4/6 landed)
 
 **Goal.** Move `test/log-fixtures.ts`, `test/loop-fixtures.ts`, `test/orchestrator-fixtures.ts`,
