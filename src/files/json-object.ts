@@ -34,10 +34,11 @@ export function stringList(value: unknown): string[] {
  * home of the "the field is the number or it is nothing" read. The exact call sites:
  * event-read.ts's eventUsage (tokens, costUsd → 0), phrases.ts's budgetPhrase (spentUsd,
  * capUsd → 0), redeploy.ts's autoRestartRecord (lastAt → null), build/build-info.ts's
- * readBuildInfo (builtAt → 0), and test/test-runner.ts's orderByDuration cost (→ Infinity,
- * the "no recorded duration" marker). Fields that carry
- * an extra constraint beyond finiteness keep their own check beside the call (pi/pi-stream.ts's
- * usageNumber and failure/time-spend.ts's tickDurationMs additionally require >= 0). */
+ * readBuildInfo (builtAt → 0), budget/budget.ts's spendNumber (dayCostUsd/usd → 0), and
+ * test/test-runner.ts's orderByDuration cost (→ Infinity, the "no recorded duration" marker).
+ * Fields that carry an extra constraint beyond finiteness keep their own check beside the
+ * call (pi/pi-stream.ts's usageNumber, failure/time-spend.ts's tickDurationMs and
+ * budget/budget.ts's spendNumber additionally require >= 0). */
 export function finiteNumber<T>(value: unknown, fallback: T): number | T {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }

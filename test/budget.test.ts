@@ -70,6 +70,35 @@ test("dailyCost reads $0 for a stale or missing stamp and the window's value whe
   assert.equal(s.dayCostUsd, 2.5);
 });
 
+test("dailyCost reads $0 for a corrupt dayCostUsd instead of poisoning the cap", () => {
+  const { dayA } = midnightPair();
+  // A hand-edited or torn state file can hold a non-number where LoopState declares a
+  // number: readJsonFile casts without validating. The budget is a safety valve, so a
+  // foreign value must read as no spend, not concatenate into the fleet sum ("0abc")
+  // or make every `>= cap` comparison false forever.
+  const corrupt = freshLoopState("feature");
+  corrupt.dayStamp = todayStamp(dayA);
+  corrupt.dayCostUsd = "5" as unknown as number;
+  assert.equal(dailyCost(corrupt, dayA), 0);
+  assert.equal(dailyCost({ ...corrupt, dayCostUsd: Number.NaN }, dayA), 0);
+  assert.equal(fleetDailyCost([corrupt], dayA), 0);
+  // A negative is as poisonous as NaN: it makes every `>= cap` comparison false.
+  assert.equal(dailyCost({ ...corrupt, dayCostUsd: -5 }, dayA), 0);
+  assert.equal(fleetDailyCost([{ ...corrupt, dayCostUsd: -5 }], dayA), 0);
+
+  // Recording spend over a corrupt window heals it into a finite, non-negative number.
+  const s = freshLoopState("feature");
+  s.dayStamp = todayStamp(dayA);
+  s.dayCostUsd = Number.NaN;
+  recordDailyCost(s, 1.25, dayA);
+  assert.equal(s.dayCostUsd, 1.25);
+  s.dayCostUsd = -3;
+  recordDailyCost(s, 1.25, dayA);
+  assert.equal(s.dayCostUsd, 1.25); // a negative stored window floors to $0
+  recordDailyCost(s, -1, dayA); // a negative run cost contributes nothing
+  assert.equal(s.dayCostUsd, 1.25);
+});
+
 test("fleetDailyCost sums every loop's daily window with stale ones reading $0", () => {
   const { dayA, dayB } = midnightPair();
   const a = freshLoopState("feature");

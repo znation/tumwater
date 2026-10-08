@@ -9,6 +9,7 @@
  * loop-state.ts. */
 
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
+import { finiteNumber } from "../files/json-object.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { dayAt, dayKey } from "../text/datetime.js";
 
@@ -18,15 +19,27 @@ export function todayStamp(now = Date.now()): string {
   return dayKey(now);
 }
 
+/** A spend figure is finite and non-negative; a string, NaN, ±Infinity, or a negative
+ * hand-edited value reads as $0. Negative spend is as poisonous to the cap as NaN: it makes
+ * every `>= cap` comparison false — and drags the fleet sum down — silently defeating the
+ * budget's safety valve. */
+function spendNumber(value: unknown): number {
+  const n = finiteNumber(value, 0);
+  return n >= 0 ? n : 0;
+}
+
 /** This loop's spend for the local day (the daily cost budget window): $0 when its stamp is
  * stale or missing — a loop that hasn't ticked since yesterday reads as $0 today with no save
- * required, and spend recorded before this field existed is unknown. Reads never mutate.
- * See plans/daily-cost-budget.md. */
+ * required, and spend recorded before this field existed is unknown. A non-number,
+ * non-finite, or negative value reads as $0 too: the state file is read through an unchecked
+ * cast, and a hand-edited or torn `dayCostUsd` would otherwise concatenate into
+ * fleetDailyCost's sum (or make every `>= cap` comparison false) and silently defeat the cap,
+ * the budget's safety valve. Reads never mutate. See plans/daily-cost-budget.md. */
 export function dailyCost(
   s: Pick<LoopState, "dayStamp" | "dayCostUsd">,
   now = Date.now(),
 ): number {
-  return s.dayStamp === todayStamp(now) ? (s.dayCostUsd ?? 0) : 0;
+  return s.dayStamp === todayStamp(now) ? spendNumber(s.dayCostUsd) : 0;
 }
 
 /** Record a pi run's cost into the loop's daily window, rolling over at local midnight:
@@ -34,14 +47,15 @@ export function dailyCost(
  * that crosses midnight attributes its spend to the correct day. Mutates `s` in place — like
  * applyTickOutcome and foldUsage's other counter updates, the caller's state object is
  * authoritative across an in-flight tick; the value persists at tick end with the rest of the
- * state. */
+ * state. Both operands are guarded through spendNumber so a corrupt stored value or a
+ * non-finite/negative run cost cannot poison the window with a string/NaN/negative sum. */
 export function recordDailyCost(s: LoopState, usd: number, now = Date.now()): void {
   const stamp = todayStamp(now);
   if (s.dayStamp !== stamp) {
     s.dayStamp = stamp;
     s.dayCostUsd = 0;
   }
-  s.dayCostUsd = (s.dayCostUsd ?? 0) + usd;
+  s.dayCostUsd = spendNumber(s.dayCostUsd) + spendNumber(usd);
 }
 
 /** The fleet's spend for the local day: every loop's daily window summed. */
