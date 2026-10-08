@@ -33,7 +33,8 @@ import type { PriorReview } from "./landing-queue.js";
  * reviewer and landing-merge.ts's conflict resolver. */
 
 /** One landing request: a pinned commit plus everything its gate and events need. `role` names
- * the owning loop (events, session naming, lander worktree) — the lander itself is not a role. */
+ * the owning loop (events, session naming, the vet's pooled slot) — the lander itself is not a
+ * role. */
 export interface LandRequest {
   role: string;
   /** The pinned commit to land — checked out detached in the shared `_merge` checkout. */
@@ -97,7 +98,7 @@ type GateOutcome =
  * object. */
 interface ReviewGateContext extends GateRunsPi, LandingScopeContext {}
 
-/** Rebase a pinned change's lander worktree `wt` (checked out detached at `req.sha`) onto
+/** Rebase a pinned change in its leased pool slot `wt` (checked out detached at `req.sha`) onto
  * main's CURRENT head before its review gate, and return the request that gate must judge.
  * The gate must review main's current tree, not the main the author started from: when main
  * moved after the pin (the common queued-landing case), a pre-check against the stale tree
@@ -110,7 +111,7 @@ interface ReviewGateContext extends GateRunsPi, LandingScopeContext {}
  * detached pin — the gate reviews the pinned tree and mergeToMain's resolver lands it. Every
  * vet runs it before its gate (landing-batch.ts's vetRequest), so a gate never judges a stale
  * pin; each call rebases only its own worktree, onto main itself — never onto another queued
- * change — so concurrent vets in distinct lander worktrees cannot interfere. */
+ * change — so concurrent vets in distinct pool slots cannot interfere. */
 export async function syncPinToMain(
   ctx: Pick<ReviewGateContext, "root" | "mainBranch">,
   wt: string,
@@ -148,7 +149,7 @@ function reviewContextFor(
   };
 }
 
-/** Run one pinned change through the review gate in its lander worktree `wt` and handle the
+/** Run one pinned change through the review gate in its leased pool slot `wt` and handle the
  * immediate bookkeeping — the heart of every vet (landing-batch.ts's vetRequest). Persists the
  * verdict at once, folds the reviewer's usage, and routes
  * the three terminal outcomes: aborted (ref kept — fail closed, the next tick re-lands it),
@@ -346,7 +347,7 @@ async function recordRejectedChange(
  * propagate like any other failure. */
 export async function landApprovedChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
   if (ctx.signal().aborted) return "aborted";
-  // Hold the lander worktree from before ensureDetachedWorktree (its reset is part of the
+  // Hold the merge worktree from before ensureDetachedWorktree (its reset is part of the
   // use) through the merge (plans/disk-floor.md, part 2/4).
   return useWorktree(ctx.root, mergeWorktreePath(ctx.root), () => landApprovedChangeIn(ctx, req));
 }
