@@ -33,14 +33,21 @@ export interface AbortableLanding {
  * applying the same one to extra roles is safe). */
 function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunner[] | null {
   if (!fs.existsSync(markerFile)) return null;
-  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
-  const requested =
-    marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
-      ? (marker.roles as string[])
-      : null;
+  const requested = requestedRoles(markerFile);
   return requested
     ? runners.filter((r) => requested.includes(r.role) || requested.includes(r.baseRole))
     : [...runners];
+}
+
+/** The optional `roles` list of a request marker, as the CLI wrote it: the listed roles when
+ * the marker is a well-formed string array, and null when the marker is missing, torn, or its
+ * list malformed. The reset-counters and wake consumers share this shape check, so they cannot
+ * disagree on what a corrupt marker means for the roles it names. */
+function requestedRoles(markerFile: string): string[] | null {
+  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
+  return marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
+    ? (marker.roles as string[])
+    : null;
 }
 
 /** The requested roles that hold NO live runner and already have a persisted state file. A
@@ -51,11 +58,7 @@ function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunn
  * corrupt marker (no role list) yields none: the runner superset must not conjure new files
  * for roles the marker never named. */
 function runnerlessTargets(root: string, markerFile: string, runners: LoopRunner[]): string[] {
-  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
-  const requested =
-    marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
-      ? (marker.roles as string[])
-      : null;
+  const requested = requestedRoles(markerFile);
   if (!requested) return [];
   return requested.filter(
     (role) =>
