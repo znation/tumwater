@@ -12,7 +12,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { gitOnlyBinDir, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { pathReplace } from "./fakes/fake-commands.js";
+import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
 
@@ -54,6 +54,41 @@ test("--status names the missing gh instead of dying when origin answers but gh 
     const r = status(root);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /CI: `gh` is not on PATH/);
+  } finally {
+    restore();
+  }
+});
+
+test("--status reports the latest CI run from gh's JSON, not the array's last row", () => {
+  const [root] = repoPushedToBareOrigin();
+  const bin = tmpdir("release-gh-");
+  // The newer run sits first: a report trusting the array order would call run 7 the latest.
+  writeScript(
+    path.join(bin, "gh"),
+    `printf '%s' '[{"databaseId":42,"status":"completed","conclusion":"success"},{"databaseId":7,"status":"completed","conclusion":"failure"}]'`,
+  );
+
+  const restore = pathPrepend(bin);
+  try {
+    const r = status(root);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /CI: run 42: completed success/);
+  } finally {
+    restore();
+  }
+});
+
+test("--status names gh's non-JSON output instead of dying on the parse", () => {
+  const [root] = repoPushedToBareOrigin();
+  const bin = tmpdir("release-gh-bad-");
+  writeScript(path.join(bin, "gh"), `printf '%s' 'not json'`);
+
+  const restore = pathPrepend(bin);
+  try {
+    const r = status(root);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /CI: gh returned non-JSON output/);
+    assert.doesNotMatch(r.stderr, /SyntaxError/, "the parse error never reaches the operator raw");
   } finally {
     restore();
   }
