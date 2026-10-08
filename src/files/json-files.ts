@@ -31,8 +31,8 @@ export function readJsonFile<T extends object>(file: string): T | null {
 
 /** Write `value` to `file` as pretty-printed (2-space) JSON, creating the parent directory
  * first — the plain-overwrite writer used by the orchestrator info file, the gate's info
- * file, the build stamp, the auto-restart record, and each queued-landing file, so their
- * format cannot drift per writer. Callers that need a concurrent reader to never see a torn
+ * file, the auto-restart record, and each queued-landing file, so their format cannot drift
+ * per writer. Callers that need a concurrent reader to never see a torn
  * file write through writeJsonAtomic below instead (the reset-counters, wake, and abort
  * markers in operator/operator-intent.ts); the event log appends + rotates (events.ts). */
 export function writeJsonFile(file: string, value: unknown): void {

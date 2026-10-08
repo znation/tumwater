@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitTry } from "../git/git-run.js";
-import { readJsonFile, writeJsonFile } from "../files/json-files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { refSha } from "../git/git.js";
 
@@ -62,7 +62,11 @@ export async function stampBuild(root: string, dist: string, sha?: string): Prom
   const head = sha ?? (await refSha(root, "HEAD"));
   if (!head) return null;
   const info: BuildInfo = { sha: head, builtAt: Date.now(), root: path.resolve(root) };
-  writeJsonFile(buildInfoPath(dist), info);
+  // Atomic: a process killed mid-write (a redeploy swap, a timeout-killed `npm test`) would
+  // otherwise leave a torn stamp, and readBuildInfo reads that as no provenance at all —
+  // createRedeployer then returns null and the fleet never self-redeploys onto newer main,
+  // the exact blind spot the stamp exists to close.
+  writeJsonAtomic(buildInfoPath(dist), info);
   return info;
 }
 
