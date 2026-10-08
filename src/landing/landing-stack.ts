@@ -24,16 +24,7 @@ import type { BuildCheck } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
-import type { TumwaterConfig } from "../config/config-schema.js";
-
-/** What landStack needs from its caller (landing-batch.ts's BatchContext): the repo, main,
- * the live config, and the task's abort signal — deliberately thinner than BatchContext. */
-interface StackContext {
-  root: string;
-  mainBranch: string;
-  config: TumwaterConfig;
-  signal(): AbortSignal;
-}
+import type { LandingScopeContext } from "./landing-core.js";
 
 /** How many times a batch whose fast-forward lost the race to a moved main re-stacks onto the
  * new tip and goes round again before handing every change to leftover recovery as
@@ -139,13 +130,13 @@ export type StackOutcome =
  * On `landed` every entry's ref is deleted and the red-main baseline is seeded with the tip
  * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyLanding's
  * exempt arm. The check's events log under the first entry's role. */
-export async function landStack(ctx: StackContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
+export async function landStack(ctx: LandingScopeContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
   // Hold the lander worktree from before assembleStack (its reset is part of the use) through
   // the ff (plans/disk-floor.md, part 2/4).
   return useWorktree(ctx.root, wtPath, () => landStackIn(ctx, wtPath, entries));
 }
 
-async function landStackIn(ctx: StackContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
+async function landStackIn(ctx: LandingScopeContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
   // The last stacked tip a build check actually ran on: a re-stack whose tree differs from it
   // only in doc-only paths lands on that run's verdict instead of paying another.
   let checkedTip: string | null = null;

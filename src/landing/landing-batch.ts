@@ -16,12 +16,12 @@ import {
   syncPinToMain,
   type LandRequest,
   type LanderContext,
+  type LandingScopeContext,
 } from "./landing-core.js";
 import { attributeRedCheck } from "./landing-check-failures.js";
 import { errorMessage } from "../text/text.js";
 import type { LandingChangeStatus } from "./landing-slot.js";
 import { landStack, type StackEntry, type StackOutcome } from "./landing-stack.js";
-import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -30,13 +30,7 @@ import type { LoopState } from "../loop/loop-state.js";
  * the task's abort signal. Deliberately thinner than LanderContext — no single `state` and no
  * `runPi`, because a merge spans N ROLES (invariant 3 caps a role at one in-flight change, so
  * a stack is N changes from N distinct roles) and each one carries its own wiring. */
-export interface BatchContext extends GateRunsPi {
-  root: string;
-  mainBranch: string;
-  config: TumwaterConfig;
-  /** The task's abort signal (harness shutdown or a deliberate `abort --role` for any of its
-   * roles), fresh per call. */
-  signal(): AbortSignal;
+export interface BatchContext extends GateRunsPi, LandingScopeContext {
   /** Called as the merge reaches each change (by role — one change per role in a merge): it
    * starts working on it (`landing` — the stack, or the change's own one-at-a-time landing),
    * hands it back to wait its turn in an abandoned stack's fallback (`vetted`), or is finished

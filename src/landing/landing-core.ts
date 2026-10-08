@@ -59,19 +59,27 @@ export interface LandRequest {
   verifiedHead?: string;
 }
 
-/** What a landing needs from its owning loop: identity, config, the live state object (the
- * gate updates it in place exactly as when it ran inside runTick), the loop's shared pi wiring
- * for landing-merge.ts's conflict resolver — which folds usage internally — an explicit foldUsage for
- * the reviewer run's FINAL result (runGatePi folds a retried first attempt at retry time and
- * leaves the final run to this fold — folding it in both places would count the reviewer twice),
- * and the landing's abort signal, captured per call. */
-export interface LanderContext extends PiRunWiring {
+/** The repo scope every landing step reads from its caller: the worktree root, the branch
+ * landings fast-forward, the live config, and the task's abort signal (harness shutdown or a
+ * deliberate `abort --role` for any of the task's roles), fresh per call. LanderContext,
+ * ReviewGateContext, and landing-batch.ts's BatchContext extend it, and landing-stack.ts's
+ * landStack accepts it directly, so the scope's shape has one home. */
+export interface LandingScopeContext {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
-  state: LoopState;
-  /** The landing's abort signal (harness shutdown or user abort), fresh per call. */
+  /** The task's abort signal, fresh per call. */
   signal(): AbortSignal;
+}
+
+/** What a landing needs from its owning loop: the repo scope (LandingScopeContext), the live
+ * state object (the gate updates it in place exactly as when it ran inside runTick), the loop's
+ * shared pi wiring for landing-merge.ts's conflict resolver — which folds usage internally —
+ * and an explicit foldUsage for the reviewer run's FINAL result (runGatePi folds a retried
+ * first attempt at retry time and leaves the final run to this fold — folding it in both
+ * places would count the reviewer twice). */
+export interface LanderContext extends PiRunWiring, LandingScopeContext {
+  state: LoopState;
 }
 
 /** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed
@@ -86,12 +94,7 @@ type GateOutcome =
 /** The identity every gate invocation needs from its caller — landing-batch.ts's BatchContext
  * (and LanderContext) satisfies it, so the gate never hand-assembles a nine-field argument
  * object. */
-interface ReviewGateContext extends GateRunsPi {
-  root: string;
-  mainBranch: string;
-  config: TumwaterConfig;
-  signal(): AbortSignal;
-}
+interface ReviewGateContext extends GateRunsPi, LandingScopeContext {}
 
 /** Rebase a pinned change's lander worktree `wt` (checked out detached at `req.sha`) onto
  * main's CURRENT head before its review gate, and return the request that gate must judge.
