@@ -12,7 +12,7 @@ import { seedCounters } from "./loop-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
-import { exitWithOwnerEnv } from "./victim-fixture.js";
+import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 
 // The fleet-facing operator-command CLI tests (reset-counters, wake, stop, config), split
 // from cli-operators.test.ts so node --test runs them in parallel processes — each test
@@ -239,12 +239,12 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   // assertion that left it alive kept this file's process up forever (its event loop held by
   // the child), hanging the whole suite until the runner's ceiling (2026-10-01, a feature
   // tick's broken dist failed `stop` here and wedged `npm run test` for 15 min).
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore", env: exitWithOwnerEnv() });
+  const live = spawnLiveChild();
   try {
-    writeOrchestratorMarker(repo, [], { pid: child.pid });
+    writeOrchestratorMarker(repo, [], { pid: live.child.pid });
 
     const exited = new Promise<{ signal: NodeJS.Signals | null }>((resolve) => {
-      child.once("exit", (_code, signal) => resolve({ signal }));
+      live.child.once("exit", (_code, signal) => resolve({ signal }));
     });
     const r = await cli(repo, "stop");
     assert.equal(r.code, 0);
@@ -259,7 +259,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
     ]);
     assert.equal(signal, "SIGTERM");
   } finally {
-    child.kill("SIGKILL"); // A no-op once `stop` has killed it.
+    await stopChild(live); // A no-op kill once `stop` has already killed it.
     fs.rmSync(orchestratorStatePath(repo), { force: true });
   }
 });
@@ -274,13 +274,13 @@ test("signalOrchestrator reports ESRCH as gone and EPERM as an actionable error"
 
   // The delivered case: a live child takes the SIGTERM and dies from it — reaped in the
   // finally like the stop test's stand-in above, so a failure cannot hang the file.
-  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore", env: exitWithOwnerEnv() });
+  const live = spawnLiveChild();
   try {
-    const exited = new Promise((resolve) => live.once("exit", (_c, signal) => resolve(signal)));
-    assert.equal(signalOrchestrator(live.pid as number), "signalled");
+    const exited = new Promise((resolve) => live.child.once("exit", (_c, signal) => resolve(signal)));
+    assert.equal(signalOrchestrator(live.child.pid as number), "signalled");
     assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5_000))]), "SIGTERM");
   } finally {
-    live.kill("SIGKILL");
+    await stopChild(live);
   }
 });
 

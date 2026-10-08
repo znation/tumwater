@@ -2,7 +2,6 @@ import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -40,7 +39,7 @@ import { errnoError } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
-import { exitWithOwnerEnv } from "./victim-fixture.js";
+import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator/operator-intent.ts, with the
  * CLI command layer in src/operator/operator-commands.ts). Its
@@ -475,26 +474,22 @@ test("cmdStop fails closed with no info file, and with a torn one naming a dead 
 test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", async () => {
   const root = tmpdir();
   // A real sleeper plays the orchestrator: alive for the liveness check, gone after the stop.
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: exitWithOwnerEnv() });
+  const live = spawnLiveChild();
   const deadline = Date.now() + 5_000;
-  while (child.pid === undefined || !pidAlive(child.pid)) {
+  while (live.child.pid === undefined || !pidAlive(live.child.pid)) {
     if (Date.now() > deadline) throw new Error("the stand-in orchestrator never became visible");
     await sleep(10);
   }
-  writeOrchestratorMarker(root, [], { pid: child.pid });
+  writeOrchestratorMarker(root, [], { pid: live.child.pid });
   try {
     const { stdout } = await expectOk(() => cmdStop(root));
     assert.match(stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
     const exit = await new Promise<{ code: number | null; signal: string | null }>((resolve) =>
-      child.once("exit", (code, signal) => resolve({ code, signal })),
+      live.child.once("exit", (code, signal) => resolve({ code, signal })),
     );
     assert.equal(exit.signal, "SIGTERM", "the recorded pid received SIGTERM, the same path as Ctrl+C");
   } finally {
-    try {
-      child.kill("SIGKILL");
-    } catch {
-      // Already exited.
-    }
+    await stopChild(live);
   }
 });
 
