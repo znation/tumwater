@@ -34,9 +34,9 @@ export interface PriorReview {
  * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
  */
 export interface LandingEntry {
-  /** The owning loop — events, session naming, and the lander worktree all key off it. */
+  /** The owning loop — events, session naming, and the vet's leased slot all key off it. */
   role: string;
-  /** The pinned commit to land — checked out detached in this role's lander worktree. */
+  /** The pinned commit to land — checked out detached in the vet's leased pool slot. */
   sha: string;
   /** The authoring tick number, for the unique per-run session names (review + conflict
    * resolution). */
