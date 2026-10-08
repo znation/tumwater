@@ -254,6 +254,21 @@ test("tumwater help retire shows the command's usage stanza", () => {
   assert.match(topic ?? "", /--force/);
 });
 
+test("retire refuses when tumwater.json cannot be read, even with --force", async () => {
+  const { root } = await initializedWorktree();
+  // An unreadable config means retire cannot resolve baseBranch (what "unlanded" counts
+  // against) or which roles are enabled, so it must surface the error instead of acting on
+  // unknown state — and no safety rail, not even --force, may bypass that.
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json\n");
+
+  await assert.rejects(() => collectRetire(root, "improve"), /cannot read tumwater\.json/);
+  await assert.rejects(
+    () => retireRole(root, "improve", { force: true }),
+    /cannot read tumwater\.json/,
+  );
+  assert.ok(fs.existsSync(worktreePath(root, "improve")), "nothing removed when config is unreadable");
+});
+
 /** Disable one role in the repo's tumwater.json in place. */
 function disableRole(root: string, role: string): void {
   const file = path.join(root, "tumwater.json");
