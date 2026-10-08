@@ -19,6 +19,17 @@ import type { CheckOutcome } from "./doctor-checks.js";
  * not touch the environment checks. The shared report contract (CheckOutcome) is type-imported
  * from doctor-checks.ts, exactly as doctor-orphans.ts and doctor-backlog.ts do. */
 
+/** The config a readiness check reads, or the warn outcome a broken tumwater.json earns:
+ * checkInit already fails on a broken config, so a model check only reports that it could not
+ * run. One home for the guard and its wording, shared by checkFallbackModel and
+ * checkTierModels (the same shape doctor-backlog.ts's readDocChecked uses for unreadable
+ * files). */
+function loadConfigForCheck(root: string): { config: TumwaterConfig } | { outcome: CheckOutcome } {
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) return { outcome: { level: "warn", detail: `cannot check — ${error}` } };
+  return { config };
+}
+
 /** Fallback model readiness — the daily-cost budget's third state (plans/fallback-model.md):
  * with `fallbackModel` set, pi's definitions must price that pair at zero or the gate refuses
  * it and role loops pause at the cap exactly as if no fallback existed. That refusal is the
@@ -37,9 +48,9 @@ export function checkFallbackModel(
   modelsPath: string = piModelsPath(),
   demoted: FallbackDemotion | null = null,
 ): CheckOutcome {
-  // checkInit already fails on a broken tumwater.json; this check only says it could not run.
-  const { config, error } = loadConfigSafe(root);
-  if (config === undefined) return { level: "warn", detail: `cannot check — ${error}` };
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
   const pair = fallbackPair(config);
   if (!pair) return { level: "ok", detail: "none configured — role loops pause at the cap" };
   // A pair missing either half would fall through to pi's own (unverified) default, so it can
@@ -143,9 +154,9 @@ export async function checkTierModels(
     piProviderAuth(loadConfigSafe(root).config ?? defaultConfig(), provider),
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<CheckOutcome> {
-  // checkInit already fails on a broken tumwater.json; this check only says it could not run.
-  const { config, error } = loadConfigSafe(root);
-  if (config === undefined) return { level: "warn", detail: `cannot check — ${error}` };
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
   const pairs = new Map<string, { provider?: string; model?: string }>();
   const add = (provider: string | undefined, model: string | undefined) => {
     if (model !== undefined) pairs.set(`${provider ?? ""}/${model}`, { provider, model });
