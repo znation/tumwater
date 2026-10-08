@@ -227,9 +227,9 @@ export function checkWaitStage(root: string, roles: readonly string[]): PermitWa
 
 /** The marker's per-change records, whichever shape it has: `changes` as written, or — for a
  * marker an older generation wrote with one top-level change — that change, `landing` since the
- * marker's start at the marker's stage. The one reader of both shapes, so the snapshot's
- * cross-check, the drain's stale-record dedupe, and the rows cannot disagree about which changes
- * a marker names. */
+ * marker's start at the marker's stage. Reads both shapes into records, so addLandingChange's
+ * stale-record filtering and status-model's per-role cell cannot disagree about which changes a
+ * marker names. */
 export function landingChanges(marker: LandingInFlight): LandingChange[] {
   return (
     marker.changes ?? [
