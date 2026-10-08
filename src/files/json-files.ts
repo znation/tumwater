@@ -30,11 +30,12 @@ export function readJsonFile<T extends object>(file: string): T | null {
 }
 
 /** Write `value` to `file` as pretty-printed (2-space) JSON, creating the parent directory
- * first — the plain-overwrite writer kept for the auto-restart record. Callers that need a
- * concurrent reader to never see a torn file write through writeJsonAtomic below instead
- * (the orchestrator info file via writeOrchestratorInfo, the config write-back, the
- * reset-counters, wake, and abort markers in operator/operator-intent.ts); the event log
- * appends + rotates (events.ts). */
+ * first — a plain synchronous overwrite. Production state writers use writeJsonAtomic below,
+ * whose tmp+rename keeps a concurrent reader from ever seeing a torn file (the auto-restart
+ * record, the orchestrator info file via writeOrchestratorInfo, the config write-back, the
+ * reset-counters, wake, and abort markers in operator/operator-intent.ts); this plain writer
+ * remains as the fixture seed for tests, which write a known file once and read it back. The
+ * event log appends + rotates (events.ts). */
 export function writeJsonFile(file: string, value: unknown): void {
   ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify(value, null, 2));

@@ -544,6 +544,37 @@ test("the completion timestamp survives process restart via its state file", asy
   assert.equal(stored.at, secondSwap, "the file holds the LATEST completion for the next process");
 });
 
+test("a completion write killed mid-flight leaves the previous timestamp intact", (t) => {
+  const root = tmpdir("auto-restart-atomic-");
+  const first = 1_000_000;
+  autoRestartRecord(root).record(first);
+  assert.equal((readJson(autoRestartStampPath(root)) as { at: number }).at, first, "the seed is on disk");
+
+  // Model a process killed between write and close (SIGKILL, ENOSPC, EIO) at the swap, right
+  // before the restart exit: the writer leaves a partial prefix, then throws. The atomic write
+  // must surface that failure without replacing the good file, or the respawned fleet boots
+  // with lastAt null and skips the 12 h cooldown entirely — restarting again on the next stale
+  // head instead of holding to the rate limit.
+  const realWriteFileSync = fs.writeFileSync;
+  t.mock.method(fs, "writeFileSync", ((file: fs.PathOrFileDescriptor, data: string | Uint8Array) => {
+    realWriteFileSync(file, typeof data === "string" ? data.slice(0, 10) : data.subarray(0, 10));
+    throw new Error("simulated mid-write failure");
+  }) as typeof fs.writeFileSync);
+  try {
+    assert.throws(
+      () => autoRestartRecord(root).record(2_000_000),
+      /simulated mid-write failure/,
+    );
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(
+    (readJson(autoRestartStampPath(root)) as { at: number }).at,
+    first,
+    "the torn write never replaced the good timestamp",
+  );
+});
+
 test("an unpersistable completion timestamp degrades to no cooldown rather than failing the restart", async () => {
   // record() runs inside poll immediately before it returns "restart": by then the swap has
   // already succeeded and the process exits right after. If persisting threw (disk full,

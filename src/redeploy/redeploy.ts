@@ -3,7 +3,7 @@ import { baselineCheckEventLogger } from "../build/build-check-events.js";
 import { liveConfig } from "../config/config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../baseline/main-baseline.js";
 import { compileStaged, swapDist } from "../build/build-stage.js";
-import { readJsonFile, writeJsonFile } from "../files/json-files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../paths.js";
@@ -23,7 +23,7 @@ export function autoRestartRecord(root: string): AutoRestartRecord {
   const stored = readJsonFile<{ at?: unknown }>(file)?.at;
   return {
     lastAt: finiteNumber(stored, null),
-    record: (at) => writeJsonFile(file, { at }),
+    record: (at) => writeJsonAtomic(file, { at }),
   };
 }
 
