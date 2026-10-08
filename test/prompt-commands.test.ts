@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { cmdPrompt } from "../src/prompt/prompt-commands.js";
+import { cmdPrompt } from "../src/inbox/prompt-commands.js";
 import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { notBeforeMs } from "../src/prompt/prompt-not-before.js";
+import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
@@ -13,7 +13,7 @@ import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { expectFailAsync, expectOkAsync as expectOk } from "./exit-capture.js";
 
-/** src/prompt/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process
+/** src/inbox/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process
  * coverage (only the store behind it, inbox.ts, was pinned directly), so its list render,
  * per-loop position numbering, cancel resolution, and enqueue confirmations are exercised
  * here against real queue files in a temp project root. cmdPrompt spawns no child process —

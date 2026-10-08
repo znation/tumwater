@@ -3,7 +3,7 @@ import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
-import { stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
+import { stripNotBeforeMarker } from "../inbox/prompt-not-before.js";
 import { readBrief } from "../brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
@@ -72,7 +72,7 @@ export function assembleTickPrompt(
   let userPrompt: string | null = null;
   if (role === DIRECTOR_ROLE) {
     // A deferred director prompt's `tumwater:not-before` marker line is plumbing
-    // (src/prompt/prompt-not-before.ts),
+    // (src/inbox/prompt-not-before.ts),
     // not content — stripped here exactly like the per-role path below, so the director's tick
     // prompt and the runner's re-queue both see the operator's text alone.
     const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
@@ -101,7 +101,7 @@ export function assembleTickPrompt(
     // in the tick's prompt; loop.ts's runner records it as pending and re-queues it on every
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
     // A deferred prompt's `tumwater:not-before` marker line is plumbing
-    // (src/prompt/prompt-not-before.ts), not
+    // (src/inbox/prompt-not-before.ts), not
     // content: it is stripped at delivery, so the loop sees the operator's text alone and the
     // runner's re-queue writes clean text.
     const dequeued = preview ? peekRolePrompt(root, role) : dequeueRolePrompt(root, role);

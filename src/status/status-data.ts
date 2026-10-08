@@ -18,7 +18,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
-import { deliverableAt } from "../prompt/prompt-not-before.js";
+import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { pausedRoles, standingFleetPause } from "../fleet/fleet-state.js";

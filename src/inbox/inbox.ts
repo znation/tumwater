@@ -24,7 +24,7 @@ import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
  * prompt-not-before.ts (compose, parse, strip, and the deliverableNow predicate this module
  * filters on). */
 
-import { deliverableAt, deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
+import { deliverableAt, deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "./prompt-not-before.js";
 
 /** Cap on a queued prompt's one-line preview, so an over-long prompt cannot bloat an event
  * log line, the dashboard payload, or the CLI output. */

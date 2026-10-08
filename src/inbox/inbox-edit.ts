@@ -3,7 +3,7 @@ import { logEvent } from "../events/events.js";
 import { promptPreview, queuedFileAtPosition, readQueueText } from "./inbox.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
-import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
+import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
 
 /** The edit half of the prompt queues: rewriting one queued prompt's text in place
  * (`tumwater prompt --edit`), by per-loop position or by list-wide position numbering.

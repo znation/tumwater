@@ -15,14 +15,14 @@ import {
   type ListedCancelOutcome,
   cancelListedPrompt,
   cancelRolePrompt,
-} from "../inbox/inbox-cancel.js";
+} from "./inbox-cancel.js";
 import {
   type EditOutcome,
   type ListedEditOutcome,
   editListedPrompt,
   editRolePrompt,
-} from "../inbox/inbox-edit.js";
-import { promptPreview, queuedRolePromptRecords } from "../inbox/inbox.js";
+} from "./inbox-edit.js";
+import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
@@ -34,7 +34,7 @@ import {
   promptImagesCountProblem,
   promptImagesProblem,
   type PromptImageInput,
-} from "../inbox/inbox-attachments.js";
+} from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 
