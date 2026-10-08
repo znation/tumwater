@@ -26,11 +26,8 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
-  agentBinSourceLabel,
-  findAgentBinary,
-  piMissingMessage,
-  resolveAgentBin,
 } from "../gates/readiness.js";
+import { agentBinSourceLabel, findAgentBinary, piMissingMessage, resolveAgentBin } from "../pi/pi-bin.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
@@ -97,7 +94,7 @@ export function checkNodeVersion(
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
  * same fix for a machine without git installed. Takes an explicit PATH so tests can exercise
  * the missing branch by passing "" (no PATH mutation, no spawning). The agent-binary check's
- * rule is richer (bare name vs path-shaped) and lives in readiness.ts's findAgentBinary. */
+ * rule is richer (bare name vs path-shaped) and lives in pi/pi-bin.ts's findAgentBinary. */
 export function checkGitBinary(pathEnv: string = process.env.PATH ?? ""): CheckOutcome {
   const found = findOnPath("git", pathEnv);
   if (!found) return { level: "fail", detail: GIT_MISSING_MESSAGE };
@@ -199,7 +196,7 @@ export function checkBrief(root: string): CheckOutcome {
 /** Agent binary (plans/portability.md §5/7) — resolves TUMWATER_PI_BIN → agentBin → "pi"
  * through the same resolveAgentBin the spawn uses, so doctor and the harness can never
  * disagree about which pi runs (a malformed tumwater.json resolves to defaults; checkInit
- * reports the config problem separately). Executability is readiness.ts's shared
+ * reports the config problem separately). Executability is pi/pi-bin.ts's shared
  * findAgentBinary — the same bare-name PATH lookup, path-shaped accessSync(X_OK) rule, and
  * null-on-unusable verdict the startup gate asks — so doctor cannot pass a binary the gate
  * would reject. resolveAgentBin normalizes path-shaped values against the process cwd at

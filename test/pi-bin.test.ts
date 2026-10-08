@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { agentBinSourceLabel, piMissingMessage, resolveAgentBin } from "../src/gates/readiness.js";
+import { agentBinSourceLabel, piMissingMessage, resolveAgentBin } from "../src/pi/pi-bin.js";
 
-// Unit coverage for src/gates/readiness.ts's agent-binary resolution messages. The module exists so
+// Unit coverage for src/pi/pi-bin.ts's agent-binary resolution messages. The module exists so
 // that cli.ts's fail-fast, doctor.ts's report, and pi.ts's spawn errors describe the same
 // missing-binary problem with the same words — its contract is that the wording cannot drift
 // between the surfaces that quote it. cli.test.ts and doctor.test.ts pin the wording

@@ -4,7 +4,7 @@ import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/
 import { cacheReadUnpriced, fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
-import { resolveAgentBin } from "../gates/readiness.js";
+import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
 import { formatTime } from "../text/datetime.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";

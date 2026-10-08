@@ -10,10 +10,8 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
-  findAgentBinary,
-  piMissingMessage,
-  resolveAgentBin,
 } from "./readiness.js";
+import { findAgentBinary, piMissingMessage, resolveAgentBin } from "../pi/pi-bin.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
@@ -72,7 +70,7 @@ export async function runStartupCheck(
   // config; resolveAgentBin normalizes path-shaped values against THIS process's cwd, which
   // every generation inherits, so what is checked here is exactly what the ticks spawn.
   const resolved = resolveAgentBin(config);
-  // The shared executability rule (readiness.ts's findAgentBinary — the same one doctor's
+  // The shared executability rule (pi/pi-bin.ts's findAgentBinary — the same one doctor's
   // checkAgentBinary asks), so the gate can never boot a fleet whose doctor report disagrees.
   if (!findAgentBinary(resolved)) return { problem: piMissingMessage(resolved) };
   const branch = await resolveMainBranch(root, config, branchArg);

@@ -180,7 +180,7 @@ export interface TumwaterConfig {
   /** The agent binary to spawn (plans/portability.md §5/7): TUMWATER_PI_BIN overrides it
    * for one invocation, "pi" is the default. A value containing a path separator is
    * normalized to an absolute path against the harness process's cwd at resolution time
-   * (src/pi/pi.ts resolveAgentBin), so a relative path names the same file to the run
+   * (src/pi/pi-bin.ts resolveAgentBin), so a relative path names the same file to the run
    * preflight, doctor, and the spawn itself — which runs with each tick's worktree as
    * cwd; a bare name is left to PATH resolution exactly as before. */
   agentBin?: string;

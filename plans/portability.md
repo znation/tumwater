@@ -911,7 +911,7 @@ side are all impossible.
   spawn-error message names the resolved binary), test/cli.test.ts (preflight failure text),
   test/doctor.test.ts (all three sources).
 
-**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/gates/readiness.ts, src/cli.ts,
+**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts, src/pi/pi.ts, src/pi/pi-bin.ts, src/cli.ts,
 src/doctor/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and
 `tumwater.example.json` only when 4a/7 has already created it (see correction 6 below).
 
@@ -941,11 +941,11 @@ returns exactly the two named gates — src/cli.ts:122 in `cmdRun` and src/docto
 Corrections:
 
 1. **The missing-binary message is one shared constant, not a per-caller string.**
-   `PI_MISSING_MESSAGE` lives in `src/gates/readiness.ts:11` and both `src/cli.ts:24` and
-   `src/doctor/doctor.ts:14` import it; readiness.ts's own doc comment promises the two surfaces "cannot
+   `PI_MISSING_MESSAGE` lives in `src/pi/pi-bin.ts` and both `src/cli.ts:24` and
+   `src/doctor/doctor.ts:14` import it; pi-bin.ts's own doc comment promises the two surfaces "cannot
    drift". Naming the resolved binary + source therefore cannot be done at the two call sites:
-   add a builder (`piMissingMessage(resolved)`) beside `PI_MISSING_MESSAGE` in readiness.ts and
-   add **src/gates/readiness.ts** to Files touched. Keep the default-source text byte-identical to
+   add a builder (`piMissingMessage(resolved)`) beside `PI_MISSING_MESSAGE` in pi-bin.ts and
+   add **src/pi/pi-bin.ts** to Files touched. Keep the default-source text byte-identical to
    today's — `test/cli.test.ts:388` and `:1121` match `/pi not found on PATH/` and
    `test/doctor.test.ts:78` pins the install hint — so only a non-default source gains the
    "resolved `<bin>` from `TUMWATER_PI_BIN`/`agentBin`" clause.
@@ -982,7 +982,7 @@ Corrections:
    criterion. Top-level key validation is pinned in **test/config.test.ts:383** (there is no
    `test/config-validation.test.ts`), so `agentBin`'s validation test joins that file.
 
-Sizing unchanged: src/pi.ts ~20 lines, src/gates/readiness.ts ~8, src/cli.ts ~5, src/doctor/doctor.ts ~8,
+Sizing unchanged: src/pi/pi.ts ~20 lines, src/pi/pi-bin.ts ~8, src/cli.ts ~5, src/doctor/doctor.ts ~8,
 src/types.ts + src/config-validation.ts ~4, tests ~40. No design question remains open; landable
 after 2/7.
 
