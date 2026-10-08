@@ -127,6 +127,19 @@ export function loopbackHostAllowed(hostHeader: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
+/** Record a post-listen dashboard server error without letting the recording itself take the
+ * dashboard down. warnEvent appends to the event log, which can fail (ENOSPC, EACCES under
+ * disk pressure); a throw out of a Node 'error' listener is an uncaught exception that kills
+ * the process, turning a recoverable socket error into a dead dashboard — the opposite of this
+ * handler's purpose. The warning is best-effort, the same policy the cleanup warn sites apply. */
+function recordServerError(root: string, err: unknown): void {
+  try {
+    warnEvent(root, "harness", `dashboard server error: ${errorMessage(err)}`);
+  } catch {
+    // The log is another process's to fix; the dashboard stays up either way.
+  }
+}
+
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the fleet —
@@ -274,7 +287,7 @@ export function startGui(
       // that records the failure, so a post-listen socket error (EMFILE on accept, …) is
       // visible in the event feed instead of silently leaving a dead dashboard.
       server.removeListener("error", onListenError);
-      server.on("error", (err) => warnEvent(root, "harness", `dashboard server error: ${errorMessage(err)}`));
+      server.on("error", (err) => recordServerError(root, err));
       resolve(server);
     };
     const host = guiBindHost(allInterfaces);

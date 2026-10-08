@@ -817,3 +817,23 @@ test("a post-listen server error is recorded, not swallowed by the listen-time r
     server.close();
   }
 });
+
+test("a post-listen server error cannot crash the dashboard when the event log is unwritable", async (t) => {
+  const repo = makeRepo();
+  await initProject(repo, "gui post-listen error unwritable log test");
+  const { server } = await startLocalGui(repo);
+  try {
+    // The post-listen handler records the failure through warnEvent, whose append can itself
+    // fail (ENOSPC, EACCES on the log under disk pressure). A throw out of a Node 'error'
+    // listener is an uncaught exception that kills the process, so the recording must be
+    // best-effort: a problem writing the event log must not turn a recoverable socket error
+    // into a dead dashboard.
+    t.mock.method(fs, "appendFileSync", () => {
+      throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    });
+    assert.doesNotThrow(() => server.emit("error", new Error("EMFILE: accept failed")));
+  } finally {
+    t.mock.restoreAll();
+    server.close();
+  }
+});
