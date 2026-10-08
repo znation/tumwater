@@ -63,19 +63,34 @@ function parseHunks(lines: string[]): ConflictHunk[] | null {
     const ours: string[] = [];
     const base: string[] = [];
     const theirs: string[] = [];
-    i++;
-    while (i < lines.length && !lines[i]!.startsWith("|||||||")) ours.push(lines[i++]!);
-    if (i >= lines.length) return null; // no base marker
-    i++;
-    while (i < lines.length && !lines[i]!.startsWith("=======")) base.push(lines[i++]!);
-    if (i >= lines.length) return null; // no separator
-    i++;
-    while (i < lines.length && !lines[i]!.startsWith(">>>>>>>")) theirs.push(lines[i++]!);
-    if (i >= lines.length) return null; // no end marker
-    hunks.push({ start, end: i, ours, base, theirs });
-    i++;
+    // Consume each side up to its marker (the `<<<<<<<` line itself is skipped by starting
+    // at i + 1); a missing marker means the diff3 hunk is malformed and the parse aborts.
+    const afterOurs = collectUntilMarker(lines, i + 1, "|||||||", ours);
+    if (afterOurs === null) return null; // no base marker
+    const afterBase = collectUntilMarker(lines, afterOurs, "=======", base);
+    if (afterBase === null) return null; // no separator
+    const afterTheirs = collectUntilMarker(lines, afterBase, ">>>>>>>", theirs);
+    if (afterTheirs === null) return null; // no end marker
+    hunks.push({ start, end: afterTheirs - 1, ours, base, theirs });
+    i = afterTheirs;
   }
   return hunks;
+}
+
+/** Append lines from `start` into `into` until one starts with `marker` (the marker itself is
+ * consumed, not kept), and return the index just past it. Returns null when no line from
+ * `start` on carries the marker — the malformed-hunk signal parseHunks turns into a bail-out.
+ * The one home of the drain-until-marker step shared by parseHunks's three sides, so the
+ * marker-consumption rule cannot drift between `|||||||`, `=======`, and `>>>>>>>`. */
+function collectUntilMarker(
+  lines: string[],
+  start: number,
+  marker: string,
+  into: string[],
+): number | null {
+  let i = start;
+  while (i < lines.length && !lines[i]!.startsWith(marker)) into.push(lines[i++]!);
+  return i >= lines.length ? null : i + 1;
 }
 
 /** Settle the insert-only conflicts among `files` in `wt` (plans/parallel-work-instances.md,
