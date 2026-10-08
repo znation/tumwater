@@ -56,16 +56,21 @@ merge step lands them, so other loops keep ticking while a change is under revie
   author's next tick. An approval is keyed by the
   diff's patch-id, so an approved change re-landed after a clean rebase is not reviewed again;
   its build check still runs.
-- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear.
+- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. The
+  merge-side steps (a stack and its bisect, the conflict resolver, the post-resolve re-review)
+  run in one dedicated `_merge` checkout, reserved outside the pool so a vet waiting for a slot
+  can never deadlock behind the merge lock.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
   `landBatchMax` (default 3) land together under one check. A red batch lands its longest
   passing prefix and checks the rest again. A change that is red on its own is rejected, unless
   main is red too, in which case its pin is kept for later.
-- **Parallel vetting.** Each queued change is rebased, checked and reviewed in its own lander
-  worktree, several at once. A vet counts as active work: it holds one of the `maxConcurrent`
-  slots role ticks use, ahead of any waiting tick, so landings never add streams to the
-  provider beyond `maxConcurrent` plus the director. Vets take at most `maxConcurrent` − 1 of
-  those slots (at least one), so a deep queue always leaves one for authoring. A change that
+- **Parallel vetting.** Each queued change is rebased, checked and reviewed in a slot leased
+  from the shared worktree pool (`.tumwater/worktrees/_slot-<n>`; the pool holds `worktreeSlots`
+  checkouts, default `maxConcurrent` + 1), several at once. A vet counts as active work: it
+  holds one of the `maxConcurrent` permits role ticks use, ahead of any waiting tick, so
+  landings never add streams to the provider beyond `maxConcurrent` plus the director. Vets take
+  at most `maxConcurrent` − 1 of those permits (at least one), so a deep queue always leaves one
+  for authoring. A change that
   fails vetting frees its author at once, and the merge step lands vetted changes in queue
   order, up to `landBatchMax` per stack, without waiting on a slower review ahead of them. A
   vetted change whose base moved is checked again before it lands; a change whose landing check
