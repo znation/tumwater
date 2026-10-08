@@ -52,9 +52,9 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
  * fleet's deterministic verification are priced in the feed. The one logger for every baseline
- * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's
- * tip check (which review.ts's gate and landing-check-failures.ts's attributeRedCheck reach through it) —
- * so the event's shape cannot drift between them. */
+ * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's tip
+ * check (which review.ts's gate and landing-check-failures.ts's attributeRedCheck reach
+ * through it) — so the event's shape cannot drift between them. */
 function baselineCheckLogger(
   root: string,
   role: string,
@@ -95,9 +95,9 @@ export async function mainRedGate(
 ): Promise<TickOutcome | null> {
   // User-defined loops are blocked alongside the built-in code roles (plans/user-defined-loops.md):
   // an unknown charter may produce code, and on red main such diffs are rejected deterministically
-  // at the gate's pre-check — an authoring run would be pure waste. Customs come from tumwater.json,
-  // not the catalog, so read the live config (stat-cached; a broken file degrades to defaults,
-  // which know no customs).
+  // at the gate's pre-check — an authoring run would be pure waste. Customs come from
+  // tumwater.json, not the catalog, so read the live config (stat-cached; a broken file
+  // degrades to defaults, which know no customs).
   const cfg = liveConfig(root);
   if (!baselineBlocked(role) && !isCustomRole(cfg, role)) return null;
   const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, false, sampleSleep);
@@ -159,10 +159,10 @@ type MainTipVerdict =
 let gateMainQueue: Promise<unknown> = Promise.resolve();
 
 /** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
- * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked through
- * checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every landing
- * seeds green for the SHA it moved main to, so the common case is a cache hit. A miss (or a
- * provisional red from another worktree) runs the declared check once here, bounded by its
+ * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked
+ * through checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every
+ * landing seeds green for the SHA it moved main to, so the common case is a cache hit. A miss
+ * (or a provisional red from another worktree) runs the declared check once here, bounded by its
  * timeout. A red is warned fleet-wide once per SHA, exactly as mainRedGate warns it. Never
  * throws: an unreadable main, a checkout that fails, no declared check on main, or a skipped
  * run all read as `unavailable`.
