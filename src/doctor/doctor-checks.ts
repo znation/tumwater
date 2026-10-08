@@ -36,15 +36,15 @@ import { shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
 
 /** The doctor report contract and the environment/repo pre-flight checks, split out of
- * doctor.ts. The sibling check modules (doctor-orphans.ts, doctor-backlog.ts, and
- * doctor-launch-services.ts) depend on the shared CheckOutcome shape directly instead of type-importing
- * it from the aggregator that runs them, and the checks themselves live here so doctor.ts stays
- * the composition layer only: runDoctor calls each check in fixed order and folds the results
- * into a DoctorReport. The model-readiness checks (the cap fallback, the agent binary's
- * credential probe, the declared tiers) live in doctor-model-checks.ts; the backlog-document
- * checks (BUGS.md / PLANS.md readers) live in doctor-backlog.ts; the report's terminal
- * rendering lives beside the CLI's other Markdown/terminal renderers (doctor-render.ts), and
- * doctor.ts stays the composition layer only. */
+ * doctor.ts. CheckOutcome is the shared report contract: every sibling check module
+ * (doctor-orphans.ts, doctor-model-checks.ts, doctor-backlog.ts, and doctor-launch-services.ts)
+ * type-imports it from here rather than from doctor.ts, the aggregator that runs them, and the
+ * environment and repo checks live here alongside it. The model-readiness checks (the cap
+ * fallback, the agent binary's credential probe, the declared tiers) live in
+ * doctor-model-checks.ts; the backlog-document checks (BUGS.md / PLANS.md readers) live in
+ * doctor-backlog.ts; the report's terminal rendering lives beside the CLI's other
+ * Markdown/terminal renderers (doctor-render.ts). doctor.ts stays the composition layer only:
+ * runDoctor calls each check in fixed order and folds the results into a DoctorReport. */
 
 /** One line of the doctor report: a check's verdict plus what it found. "ok" and "warn" never
  * affect the exit code; only "fail" does (the CLI sets process.exitCode = 1 on any fail). The
