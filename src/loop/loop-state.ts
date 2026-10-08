@@ -137,8 +137,10 @@ export interface LoopState {
   unreviewFailures?: number;
   /** Consecutive landings of the SAME pinned sha that ended `merge_conflict` — each one a failed
    * conflict-resolution run. Keyed by sha: a pin that rebased cleanly onto a moved main is a new
-   * attempt and starts fresh. At MERGE_CONFLICT_LIMIT leftover recovery discards the pin instead
-   * of re-queuing it, so an unmergeable change cannot hold its role off authoring forever. */
+   * attempt and starts fresh. At MERGE_CONFLICT_LIMIT leftover recovery stops re-queuing: it
+   * hands the pin back to its author to resolve (PLANS.md "Robust conflict landing, part 2/2"),
+   * or discards it when that lineage was already handed back — either way an unmergeable change
+   * cannot hold its role off authoring forever. */
   mergeConflicts?: { sha: string; count: number };
   /** The change leftover recovery discarded at MERGE_CONFLICT_LIMIT, named in the role's
    * prompts until its next change is queued — the author's only memory that the work is gone

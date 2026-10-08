@@ -18,8 +18,9 @@ export type TickResult =
   | "refused"
   /** pi decided there was nothing to do. */
   | "no_change"
-  /** Change was made but could not be merged; the pin is re-queued next tick, and discarded
-   * after MERGE_CONFLICT_LIMIT in a row. */
+  /** Change was made but could not be merged; the pin is re-queued next tick. At
+   * MERGE_CONFLICT_LIMIT in a row it is handed back to its author to resolve, or discarded
+   * when that lineage was already handed back. */
   | "merge_conflict"
   /** Fast-forward into main failed (e.g. dirty primary checkout). */
   | "merge_blocked"
