@@ -130,12 +130,11 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
   return fold;
 }
 
-/** Fold one appended log line into a cache entry: only in-window events (a non-null day on
- * or after fromKey) count, matching readWindowEvents's event list; the first such event
- * seen takes firstEventTs, mirroring raw.events[0] since appends are chronological. */
-function foldLineInto(entry: ReportFoldEntry, line: string): void {
-  const ev = parseEventLine(line);
-  if (!ev) return;
+/** Fold one already-parsed event into a cache entry: only in-window events (a non-null day
+ * on or after fromKey) count, matching readWindowEvents's event list; the first such event
+ * seen takes firstEventTs. The one home of the fold body, shared by the incremental append
+ * path (foldLineInto) and the full re-read path, so the two can never drift. */
+function foldEventInto(entry: ReportFoldEntry, ev: HarnessEvent): void {
   const dayKey = eventDayKey(ev);
   if (dayKey === null || dayKey < entry.fromKey) return;
   if (!entry.hadEvents) {
@@ -143,6 +142,12 @@ function foldLineInto(entry: ReportFoldEntry, line: string): void {
     entry.firstEventTs = typeof ev.ts === "number" ? ev.ts : undefined;
   }
   foldUsageEvent(dayFoldFor(entry, dayKey), ev);
+}
+
+/** Parse one appended log line and fold it; a torn or non-event line folds nothing. */
+function foldLineInto(entry: ReportFoldEntry, line: string): void {
+  const ev = parseEventLine(line);
+  if (ev) foldEventInto(entry, ev);
 }
 
 /** The event-log half of collectReport, memoized: a dashboard re-fetching /api/report every
@@ -190,15 +195,10 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
     dev,
     ino,
     fileCovers: raw.coversFullWindow,
-    hadEvents: raw.events.length > 0,
-    firstEventTs: typeof raw.events[0]?.ts === "number" ? raw.events[0].ts : undefined,
+    hadEvents: false,
     days: new Map(),
   };
-  for (const ev of raw.events) {
-    const dayKey = eventDayKey(ev);
-    if (dayKey === null) continue; // Mirrors the fold loop's null-day guard.
-    foldUsageEvent(dayFoldFor(entry, dayKey), ev);
-  }
+  for (const ev of raw.events) foldEventInto(entry, ev);
   if (reportFoldCache.size >= REPORT_FOLD_CACHE_MAX) {
     const oldest = reportFoldCache.keys().next().value;
     if (oldest !== undefined) reportFoldCache.delete(oldest);
