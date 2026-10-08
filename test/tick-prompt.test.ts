@@ -567,6 +567,24 @@ test("preview mode assembles the queued prompt without consuming it", () => {
   assert.equal(inboxSize(dir, "coverage"), 0);
 });
 
+test("an instance loop id runs its base role's charter and instructions", () => {
+  const dir = root();
+  const config = defaultConfig();
+  config.roles.feature = {
+    ...(config.roles.feature ?? { enabled: true }),
+    instructions: "Prefer the smallest diff.",
+  };
+  const result = assembleTickPrompt({
+    root: dir,
+    config,
+    role: "feature-2",
+    state: state({ role: "feature-2" }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /You are the "feature" loop/);
+  assert.match(result.prompt, /Prefer the smallest diff\./);
+});
+
 test("a director preview peeks its inbox and an empty inbox still assembles to null", () => {
   const dir = root();
   enqueuePrompt(dir, "add a changelog");

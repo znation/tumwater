@@ -1,4 +1,4 @@
-import { BASELINE_BLOCKED_ROLES } from "../roles/roles.js";
+import { baselineBlocked } from "../roles/roles.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { failureHeadline } from "../build/build-check-report.js";
@@ -99,7 +99,7 @@ export async function mainRedGate(
   // not the catalog, so read the live config (stat-cached; a broken file degrades to defaults,
   // which know no customs).
   const cfg = liveConfig(root);
-  if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
+  if (!baselineBlocked(role) && !isCustomRole(cfg, role)) return null;
   const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, false, sampleSleep);
   if (baseline.unverified) {
     // The baseline run spanned a host sleep: no verdict about main, nothing cached (BUGS.md

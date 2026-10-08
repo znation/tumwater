@@ -6,6 +6,7 @@
  * lookup helpers the CLI, GUI, and tick prompt share. */
 
 import { ROLES, type Role } from "./role-catalog.js";
+import { baseRoleOf } from "./loop-ids.js";
 import { typoSuffix } from "../text/suggest.js";
 
 export { ROLES };
@@ -72,14 +73,15 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
  * multiplier is computed from counted results only (backoff.ts), so feature's errors
  * and quiet kills never stretch anything. */
 export function yieldScaledRole(role: string): boolean {
-  return DEFERRABLE_ROLES.has(role) || OBSERVER_ROLES.has(role) || role === BUGFIX_ROLE;
+  const base = baseRoleOf(role);
+  return DEFERRABLE_ROLES.has(base) || OBSERVER_ROLES.has(base) || base === BUGFIX_ROLE;
 }
 
 /** Scheduling tier for fairOrder's slot allocation (need-based prioritization): 0 for work
  * roles, 1 for everything else. The director is excluded by callers — it leads unconditionally,
  * ahead of both tiers. */
 export function roleTier(role: string): number {
-  return WORK_ROLES.has(role) ? 0 : 1;
+  return WORK_ROLES.has(baseRoleOf(role)) ? 0 : 1;
 }
 
 /** The roles blocked from starting an authoring run while main's own build/test suite is known
@@ -96,6 +98,12 @@ export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
   ...CODE_MAINTENANCE_ROLES,
 ]);
 
+/** Is this loop id blocked from authoring on a red main? True when its base role is in
+ * BASELINE_BLOCKED_ROLES, so `feature-2` is blocked exactly as `feature` is. */
+export function baselineBlocked(role: string): boolean {
+  return BASELINE_BLOCKED_ROLES.has(baseRoleOf(role));
+}
+
 /** Every role id, including the director (which is driven by user prompts, not a find prompt). */
 export function allRoleIds(): string[] {
   return [...ROLES.map((r) => r.id), DIRECTOR_ROLE];
@@ -104,7 +112,8 @@ export function allRoleIds(): string[] {
 /** Look up a catalog role by id. Searches only the catalog, so unknown ids — and the
  * director (which has no find prompt and is not in ROLES) — yield undefined. */
 export function roleById(id: string): Role | undefined {
-  return ROLES.find((r) => r.id === id);
+  const base = baseRoleOf(id);
+  return ROLES.find((r) => r.id === base);
 }
 
 /** The harness's one unknown-role error text: `unknown role: <id> (valid ids: <ids>)`, with

@@ -25,6 +25,21 @@ test("a fresh loop is eligible at startup", () => {
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, true);
 });
 
+test("eligibility follows the base role, and an extra instance stays off until part 5/7", () => {
+  assert.equal(
+    isEligible(runner("feature-2"), Date.now(), "abc", 0).run,
+    false,
+    "no configured instances means feature-2 is not admitted",
+  );
+  const disabled = defaultConfig();
+  disabled.roles.feature = { ...(disabled.roles.feature ?? { enabled: true }), enabled: false };
+  assert.equal(
+    isEligible(makeLoopRunner(makeRepo(), "feature", disabled), Date.now(), "abc", 0).run,
+    false,
+    "a disabled base role disables its bare id",
+  );
+});
+
 test("a running or recently-finished loop is not eligible", () => {
   const r = runner("clean");
   r.state.running = true;

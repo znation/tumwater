@@ -35,6 +35,7 @@ import { ERROR_STORM_QUIET, type ErrorStorm } from "../failure/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../files/json-files.js";
 import type { OrchestratorInfo } from "../fleet/fleet-state.js";
@@ -289,7 +290,8 @@ export function pollFleetGates(
   const roleQuietHeld = new Set<string>();
   for (const r of runners) {
     if (r.role === DIRECTOR_ROLE) continue;
-    if (roleQuietHold(liveConfig.quietHoursPerRole, r.role, new Date(now))) roleQuietHeld.add(r.role);
+    if (roleQuietHold(liveConfig.quietHoursPerRole, baseRoleOf(r.role), new Date(now)))
+      roleQuietHeld.add(r.role);
   }
 
   // Quiet hours (src/scheduling/quiet-hours.ts): the config-driven daily local-time window during

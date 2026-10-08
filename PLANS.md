@@ -288,77 +288,6 @@ pool, event-format, status and doctor tests.
 
 ---
 
-### Parallel work instances, part 1/7: one role, several loop ids — normalize every catalog-role lookup through `baseRoleOf` (planned 2026-10-07 by operator)
-
-Design: plans/parallel-work-instances.md ("Identity: loop id vs. base role").
-
-Context: a role's runner id keys its state, branch, refs, sessions, inbox, land-queue entry and
-events, so a second instance only needs a distinct id such as `feature-2`. But a handful of
-sites look the id up in the catalog or the config, or compare it to `"bugfix"`. With
-`feature-2` those sites would silently pick defaults: no catalog entry, no model override, tier
-1, and a `tumwater(feature-2):` subject that `workLanded` does not count. This part makes every
-such site take the base role. With no instances configured it changes nothing.
-
-**Approach.**
-1. **Module.** New src/roles/loop-ids.ts:
-   - `INSTANCE_ROLES = new Set(["feature", "bugfix"])`.
-   - `baseRoleOf(id)`: `^(feature|bugfix)-([2-9]|[1-9][0-9]+)$` → its role; any other id →
-     itself.
-   - `instanceIndex(id)`: 1 for the bare id, N for `-N`.
-   - `loopEnabled(config, id)`: true when `config.roles[baseRoleOf(id)]?.enabled` and
-     `instanceIndex(id)` is at most that role's instance count, which is 1 until part 5/7.
-2. **Runner.** `LoopRunner` (src/loop/loop.ts) gains `readonly baseRole = baseRoleOf(role)`.
-   - `runTick`'s `this.role === "bugfix"` and the qa `extractFlow` check use `baseRole`.
-   - The doc comment says `role` is the loop id.
-3. **Role helpers.** In src/roles/roles.ts, `roleById`, `roleTier` and `yieldScaledRole`
-   normalize their argument. Export `baselineBlocked(role)` and use it in place of
-   `BASELINE_BLOCKED_ROLES.has` in src/baseline/main-red.ts.
-4. **Config views.** In src/config/config-views.ts, `configForRole`, `roleSeamTier` and
-   `fallbackRoleConfig` read `config.roles[baseRoleOf(role)]`.
-5. **Scheduling.**
-   - `isEligible` (src/scheduling/scheduling.ts) uses `loopEnabled`.
-   - `deferTick` tests `DEFERRABLE_ROLES` and `BUGFIX_ROLE` on `baseRoleOf(role)`, as does
-     orchestrator-scheduling.ts's `searchBugfix`.
-   - The paused-roles check skips a runner when either its id or its base role is paused.
-6. **Prompt.** `assembleTickPrompt` (src/tick/tick-prompt.ts) resolves the catalog role, the
-   custom loop, the `qa`/`telemetry`/`clean` blocks and `config.roles[…].instructions` by base
-   role. It keeps the loop id for the inbox and the notebook.
-7. **Commit subject.** `stampedSubject(baseRoleOf(ctx.role), …)` in src/tick/tick-stage.ts and
-   src/verdict/refusal.ts. The trailer keeps the loop id (`Tick: feature-2 #N`).
-8. **Gates.**
-   - `pollRoleCapGate` (src/gates/role-cap-gates.ts) groups runners by base role, sums their
-     `dailyCost` against `maxDailyCostUsdPerRole[base]`, and pauses every runner in the group.
-   - gate-polls.ts's quiet-hours and budget-tier lookups use the base role.
-   - In src/tick/tick-apply.ts, `OBSERVER_ROLES.has` takes the base role.
-9. **Operator fan-out.** `roleRequestTargets` (src/operator/operator-requests.ts) matches a
-   requested id against both `r.role` and `r.baseRole`.
-10. **Validation.** A `customLoops[].name` matching the instance pattern is a validation error
-    (src/config/config-validation.ts).
-
-**Files touched.** src/roles/loop-ids.ts (new), src/roles/roles.ts, src/loop/loop.ts,
-src/config/config-views.ts, src/config/config-validation.ts, src/scheduling/scheduling.ts,
-src/orchestrator/orchestrator-scheduling.ts, src/tick/tick-prompt.ts, src/tick/tick-stage.ts,
-src/tick/tick-apply.ts, src/verdict/refusal.ts, src/baseline/main-red.ts,
-src/gates/role-cap-gates.ts, src/gates/gate-polls.ts, src/operator/operator-requests.ts.
-Tests: test/loop-ids.test.ts (new), plus cases in the scheduling, tick-prompt, tick-stage,
-role-cap-gate and config-validation tests.
-
-**Acceptance criteria.**
-- **Ids.** `baseRoleOf("feature-2")` is `feature`, `baseRoleOf("bugfix-10")` is `bugfix`, and
-  `baseRoleOf("feature-1")`, `baseRoleOf("clean-2")` and `baseRoleOf("my-loop")` are unchanged.
-- **Runner.** A `LoopRunner` built directly as `feature-2`:
-  - gets the feature charter and `roles.feature.instructions` in its prompt;
-  - resolves `roles.feature.model`;
-  - sorts in tier 0;
-  - stamps `tumwater(feature):` with trailer `Tick: feature-2 #1`;
-  - writes `.tumwater/state/feature-2.json`.
-- **bugfix-2** gets the red-main handoff note, not the block.
-- **Caps.** `maxDailyCostUsdPerRole.feature: 1` with instances `feature` and `feature-2` at
-  $0.60 each pauses both.
-- **Validation.** A custom loop named `feature-2` fails validation.
-- **No regression.** With no instances configured, every existing test passes unchanged.
-- `npm run test` green.
-
 ### Parallel work instances, part 4/7: the harness assigns each multi-instance loop one backlog entry and holds the claim through landing (planned 2026-10-07 by operator; requires parts 1/7 and 2/7 landed)
 
 Design: plans/parallel-work-instances.md ("Claims").
@@ -557,6 +486,77 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 1/7: one role, several loop ids — normalize every catalog-role lookup through `baseRoleOf` (planned 2026-10-07 by operator; done 2026-10-07 by feature)
+
+Design: plans/parallel-work-instances.md ("Identity: loop id vs. base role").
+
+Context: a role's runner id keys its state, branch, refs, sessions, inbox, land-queue entry and
+events, so a second instance only needs a distinct id such as `feature-2`. But a handful of
+sites look the id up in the catalog or the config, or compare it to `"bugfix"`. With
+`feature-2` those sites would silently pick defaults: no catalog entry, no model override, tier
+1, and a `tumwater(feature-2):` subject that `workLanded` does not count. This part makes every
+such site take the base role. With no instances configured it changes nothing.
+
+**Approach.**
+1. **Module.** New src/roles/loop-ids.ts:
+   - `INSTANCE_ROLES = new Set(["feature", "bugfix"])`.
+   - `baseRoleOf(id)`: `^(feature|bugfix)-([2-9]|[1-9][0-9]+)$` → its role; any other id →
+     itself.
+   - `instanceIndex(id)`: 1 for the bare id, N for `-N`.
+   - `loopEnabled(config, id)`: true when `config.roles[baseRoleOf(id)]?.enabled` and
+     `instanceIndex(id)` is at most that role's instance count, which is 1 until part 5/7.
+2. **Runner.** `LoopRunner` (src/loop/loop.ts) gains `readonly baseRole = baseRoleOf(role)`.
+   - `runTick`'s `this.role === "bugfix"` and the qa `extractFlow` check use `baseRole`.
+   - The doc comment says `role` is the loop id.
+3. **Role helpers.** In src/roles/roles.ts, `roleById`, `roleTier` and `yieldScaledRole`
+   normalize their argument. Export `baselineBlocked(role)` and use it in place of
+   `BASELINE_BLOCKED_ROLES.has` in src/baseline/main-red.ts.
+4. **Config views.** In src/config/config-views.ts, `configForRole`, `roleSeamTier` and
+   `fallbackRoleConfig` read `config.roles[baseRoleOf(role)]`.
+5. **Scheduling.**
+   - `isEligible` (src/scheduling/scheduling.ts) uses `loopEnabled`.
+   - `deferTick` tests `DEFERRABLE_ROLES` and `BUGFIX_ROLE` on `baseRoleOf(role)`, as does
+     orchestrator-scheduling.ts's `searchBugfix`.
+   - The paused-roles check skips a runner when either its id or its base role is paused.
+6. **Prompt.** `assembleTickPrompt` (src/tick/tick-prompt.ts) resolves the catalog role, the
+   custom loop, the `qa`/`telemetry`/`clean` blocks and `config.roles[…].instructions` by base
+   role. It keeps the loop id for the inbox and the notebook.
+7. **Commit subject.** `stampedSubject(baseRoleOf(ctx.role), …)` in src/tick/tick-stage.ts and
+   src/verdict/refusal.ts. The trailer keeps the loop id (`Tick: feature-2 #N`).
+8. **Gates.**
+   - `pollRoleCapGate` (src/gates/role-cap-gates.ts) groups runners by base role, sums their
+     `dailyCost` against `maxDailyCostUsdPerRole[base]`, and pauses every runner in the group.
+   - gate-polls.ts's quiet-hours and budget-tier lookups use the base role.
+   - In src/tick/tick-apply.ts, `OBSERVER_ROLES.has` takes the base role.
+9. **Operator fan-out.** `roleRequestTargets` (src/operator/operator-requests.ts) matches a
+   requested id against both `r.role` and `r.baseRole`.
+10. **Validation.** A `customLoops[].name` matching the instance pattern is a validation error
+    (src/config/config-validation.ts).
+
+**Files touched.** src/roles/loop-ids.ts (new), src/roles/roles.ts, src/loop/loop.ts,
+src/config/config-views.ts, src/config/config-validation.ts, src/scheduling/scheduling.ts,
+src/orchestrator/orchestrator-scheduling.ts, src/tick/tick-prompt.ts, src/tick/tick-stage.ts,
+src/tick/tick-apply.ts, src/verdict/refusal.ts, src/baseline/main-red.ts,
+src/gates/role-cap-gates.ts, src/gates/gate-polls.ts, src/operator/operator-requests.ts.
+Tests: test/loop-ids.test.ts (new; covers the cap grouping, validation and stamp), plus a case
+in the scheduling and tick-prompt tests.
+
+**Acceptance criteria.**
+- **Ids.** `baseRoleOf("feature-2")` is `feature`, `baseRoleOf("bugfix-10")` is `bugfix`, and
+  `baseRoleOf("feature-1")`, `baseRoleOf("clean-2")` and `baseRoleOf("my-loop")` are unchanged.
+- **Runner.** A `LoopRunner` built directly as `feature-2`:
+  - gets the feature charter and `roles.feature.instructions` in its prompt;
+  - resolves `roles.feature.model`;
+  - sorts in tier 0;
+  - stamps `tumwater(feature):` with trailer `Tick: feature-2 #1`;
+  - writes `.tumwater/state/feature-2.json`.
+- **bugfix-2** gets the red-main handoff note, not the block.
+- **Caps.** `maxDailyCostUsdPerRole.feature: 1` with instances `feature` and `feature-2` at
+  $0.60 each pauses both.
+- **Validation.** A custom loop named `feature-2` fails validation.
+- **No regression.** With no instances configured, every existing test passes unchanged.
+- `npm run test` green.
 
 ### Parallel work instances, part 2/7: mark backlog entries blocked by an unlanded prerequisite, refused, or needing review (planned 2026-10-07 by operator; done 2026-10-07 by feature)
 

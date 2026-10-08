@@ -4,6 +4,7 @@ import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { setRef, deleteRef } from "../git/git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
@@ -107,6 +108,10 @@ export class LoopRunner {
    * retry policy, and the SUMMARY follow-up. Host accessors are read live at every call, so
    * the orchestrator's config live-reload and the tick lifecycle need no notification path. */
   private readonly pi: LoopPi;
+  /** This loop's base role: `feature-2` → `feature`. Every identity lookup that is ABOUT the
+   * role (its catalog charter, model, tier, red-main class) reads this, while state, branch,
+   * refs, inbox and notebook key the loop id. Equal to `role` until instances exist. */
+  readonly baseRole: string;
 
   constructor(
     readonly root: string,
@@ -118,6 +123,7 @@ export class LoopRunner {
     readonly sleep?: (ms: number) => Promise<void>,
   ) {
     this.config = config;
+    this.baseRole = baseRoleOf(role);
     this.pending = new PendingPrompt(root, role);
     this.state = loadLoopState(root, role);
     this.pi = new LoopPi({
@@ -644,7 +650,7 @@ export class LoopRunner {
       // fleet's only way back to green, so instead of blocking it we hand it the failure (PLANS.md
       // "Red-main handoff"): the same check runs, but a red main appends a <main-red> note to
       // this tick's prompt so it reproduces and fixes that failure rather than hunting blind.
-      if (this.role === "bugfix") {
+      if (this.baseRole === "bugfix") {
         const note = await bugfixMainRedNote(this.root, this.role, wt);
         if (note) prompt += `\n\n${note}`;
       } else {
@@ -696,7 +702,7 @@ export class LoopRunner {
     // The `qa` observer's reply ends with a result-carrying `FLOW:` line (plans/observer-roles.md
     // 2/2). Extracted once here, recorded only at the success returns below — an interrupted or
     // failed tick must not advance the rotation. The harness records it, never pi.
-    const flow = this.role === "qa" ? extractFlow(pi.finalText) : null;
+    const flow = this.baseRole === "qa" ? extractFlow(pi.finalText) : null;
 
     return this.handlePiResult(pi, userPrompt, revisionRound, wt, flow, piStartedAt, cfg);
   }

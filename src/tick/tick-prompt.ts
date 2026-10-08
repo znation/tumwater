@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 import { readBrief } from "../brief.js";
@@ -78,6 +79,11 @@ export function assembleTickPrompt(
     userPrompt = stripNotBeforeMarker(dequeued);
     prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex);
   } else {
+    // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
+    // instructions, the qa/telemetry/clean blocks — resolves through the base role, so
+    // `feature-2` runs the feature charter and `roles.feature.instructions` while keeping its
+    // own queue and notes (plans/parallel-work-instances.md).
+    const base = baseRoleOf(role);
     // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
     // is its entire find-something-to-do text and the title identifies it in the prompt.
     const custom = config.customLoops.find((c) => c.name === role);
@@ -101,12 +107,12 @@ export function assembleTickPrompt(
     const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
     // The telemetry role's evidence is the harness's own event log, one level outside this
     // worktree, so its evidence module renders it (telemetryDigest) and the tick injects it.
-    const digest = role === "telemetry" ? telemetryDigest(root) : undefined;
+    const digest = base === "telemetry" ? telemetryDigest(root) : undefined;
     // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
     // runtime state, and a missing or unreadable one degrades to no block (plans/observer-roles.md 2/2).
     let coverage: string | undefined;
-    if (role === "qa") {
+    if (base === "qa") {
       try {
         coverage = renderCoverageBlock(readQaCoverage(root));
       } catch {
@@ -116,7 +122,7 @@ export function assembleTickPrompt(
     // The clean role's deterministic backlog repair: stranded plan headings in the primary
     // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
     // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
-    const backlogStructure = role === "clean" ? renderBacklogStructureBlock(root) : undefined;
+    const backlogStructure = base === "clean" ? renderBacklogStructureBlock(root) : undefined;
     // The role's notebook (PLANS.md "Role notebook"): its own earlier ticks' note. A missing,
     // empty, or unreadable file yields undefined, so the block is omitted; the write
     // instruction in buildTickPrompt is present either way. The director branch above never
@@ -131,7 +137,7 @@ export function assembleTickPrompt(
       backlogStructure,
       backlogIndex,
       notes,
-      extraInstructions: config.roles[role]?.instructions,
+      extraInstructions: config.roles[base]?.instructions,
       check,
       briefFile: brief,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user

@@ -1,4 +1,5 @@
 import { commitPathsAndDiscardRest } from "../git/git.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
@@ -65,7 +66,7 @@ export async function handleRefusal(
     // Subject + trailer only — a refusal carries no WHY/RISK/VERIFIED body; the reason is
     // the subject, and the trailer's turn count is the same field the friction flag reads.
     const message = buildCommitMessage(
-      stampedSubject(ctx.role, `refuse — ${reason}`),
+      stampedSubject(baseRoleOf(ctx.role), `refuse — ${reason}`),
       null,
       commitTrailer(ctx.role, state.ticks, ctx.turns, state.peakContextTokens),
     );

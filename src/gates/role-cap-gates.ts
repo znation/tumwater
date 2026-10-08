@@ -26,9 +26,10 @@
  * streak-gate doc accepts). */
 
 import type { LoopState } from "../loop/loop-state.js";
-import { dailyCost } from "../budget/budget.js";
+import { dailyCost, todayStamp } from "../budget/budget.js";
 import { logEvent } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 
 /** A runner as the gate reads it — the role and the loop state whose daily window is judged. */
 type CapObservation = {
@@ -75,25 +76,37 @@ export function pollRoleCapGate(
   caps: Record<string, number> | undefined,
   now: number,
 ): ReadonlySet<string> {
-  const paused = new Set<string>();
+  // Instance loop ids share their base role's cap and its summed spend: `feature` and
+  // `feature-2` at $0.60 each cross a `maxDailyCostUsdPerRole.feature` cap of $1 together.
+  // Grouping is keyed by base role; the returned set holds the paused loop ids so the
+  // scheduler can keep checking `capPaused.has(runner.role)` unchanged.
+  const groups = new Map<string, CapObservation[]>();
   for (const r of runners) {
-    if (r.role === DIRECTOR_ROLE) continue;
-    const cap = caps?.[r.role];
-    const over = roleCapPaused(r.state, cap, now);
-    const was = state.prev.has(r.role);
-    if (over && !was) {
-      logEvent(root, {
-        loop: "harness",
-        type: "role_cap_paused",
-        role: r.role,
-        spentUsd: dailyCost(r.state, now),
-        capUsd: cap,
-      });
-    } else if (!over && was) {
-      logEvent(root, { loop: "harness", type: "role_cap_resumed", role: r.role });
-    }
-    if (over) paused.add(r.role);
+    const base = baseRoleOf(r.role);
+    if (base === DIRECTOR_ROLE) continue;
+    const members = groups.get(base);
+    if (members) members.push(r);
+    else groups.set(base, [r]);
   }
-  state.prev = paused;
+  const paused = new Set<string>();
+  const overBases = new Set<string>();
+  for (const [base, members] of groups) {
+    const cap = caps?.[base];
+    const spent = members.reduce((sum, m) => sum + dailyCost(m.state, now), 0);
+    // Stamp the summed figure as today so roleCapPaused applies its own cap comparison
+    // unchanged — spent already counts only the members' current-day windows.
+    const over = roleCapPaused({ dayCostUsd: spent, dayStamp: todayStamp(now) }, cap, now);
+    const was = state.prev.has(base);
+    if (over && !was) {
+      logEvent(root, { loop: "harness", type: "role_cap_paused", role: base, spentUsd: spent, capUsd: cap });
+    } else if (!over && was) {
+      logEvent(root, { loop: "harness", type: "role_cap_resumed", role: base });
+    }
+    if (over) {
+      overBases.add(base);
+      for (const m of members) paused.add(m.role);
+    }
+  }
+  state.prev = overBases;
   return paused;
 }

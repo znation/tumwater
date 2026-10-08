@@ -13,6 +13,7 @@ import {
   TIER_MAP_KEYS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
@@ -361,6 +362,10 @@ function checkSelectorHalves(
           );
         } else if (allRoleIds().includes(name)) {
           problems.push(`${where}.name "${name}" collides with a built-in role id — pick another name`);
+        } else if (baseRoleOf(name) !== name) {
+          problems.push(
+            `${where}.name "${name}" would shadow the ${baseRoleOf(name)} loop's instance ids — pick another name`,
+          );
         } else if (customNames.has(name)) {
           problems.push(`${where}.name "${name}" is duplicated in customLoops — names must be unique`);
         } else {

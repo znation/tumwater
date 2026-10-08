@@ -10,6 +10,7 @@ import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { logEvent } from "../events/events.js";
@@ -132,7 +133,10 @@ export async function pollRunnerReasons(
       once.active &&
       !once.isSettled(runner) &&
       !runner.state.running &&
-      (pausedRolesSet.has(runner.role) || capPaused.has(runner.role) || operatorPauseBlocks(runner.role))
+      (pausedRolesSet.has(runner.role) ||
+        pausedRolesSet.has(baseRoleOf(runner.role)) ||
+        capPaused.has(runner.role) ||
+        operatorPauseBlocks(runner.role))
     ) {
       once.settle(runner.role, "paused");
     }
@@ -147,7 +151,7 @@ export async function pollRunnerReasons(
       continue; // a restart or a low disk is pending: nothing new starts, on any loop
     // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
     // included (the operator named that one loop deliberately).
-    if (pausedRolesSet.has(runner.role)) continue;
+    if (pausedRolesSet.has(runner.role) || pausedRolesSet.has(baseRoleOf(runner.role))) continue;
     // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
     // parked waiter finishes (in-flight ticks finish, NEW ticks are gated at scheduling,
     // exactly like every per-role pause), and there is no fallback-probe exception: the
@@ -202,7 +206,7 @@ export async function pollRunnerReasons(
       // open backlog defers regardless of what landed. bugfix in search mode is the
       // exception: its deferral keys on the work-landed verdict alone, so the backlog-open
       // shortcut must not stand in for the query.
-      const searchBugfix = runner.role === BUGFIX_ROLE && !openBugsNow;
+      const searchBugfix = baseRoleOf(runner.role) === BUGFIX_ROLE && !openBugsNow;
       const landed =
         (!workBacklogOpen || searchBugfix) && s.lastMainHead !== ""
           ? await workLandedSince.since(s.lastMainHead, mainHead)

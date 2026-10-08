@@ -35,7 +35,9 @@ function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunn
     marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
       ? (marker.roles as string[])
       : null;
-  return requested ? runners.filter((r) => requested.includes(r.role)) : [...runners];
+  return requested
+    ? runners.filter((r) => requested.includes(r.role) || requested.includes(r.baseRole))
+    : [...runners];
 }
 
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI already

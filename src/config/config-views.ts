@@ -8,6 +8,7 @@ import { formatModelSelector, parseModelSelector, type ModelSelector } from "./m
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
 import { roleById } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fallback.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
@@ -80,7 +81,7 @@ function withModelOverrides(
  * (src/status/status-data.ts), which must resolve the SAME tier the seams resolve — the hold an
  * operator sees is the hold the scheduler enforces. */
 export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
-  const m = config.roles[role]?.model;
+  const m = config.roles[baseRoleOf(role)]?.model;
   if (isTierName(m)) return m;
   return roleById(role)?.tier ?? "default";
 }
@@ -91,7 +92,7 @@ export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
  * model resolves at its effective tier (roleSeamTier): a `model` map serves the tier the
  * catalog assigns (or `roles.<id>.model` names), a string form is the default tier. */
 export function configForRole(config: TumwaterConfig, role: string): ResolvedModelConfig {
-  const rc = config.roles[role];
+  const rc = config.roles[baseRoleOf(role)];
   const resolved = withModelOverrides(
     config,
     roleSeamTier(config, role),
@@ -351,7 +352,7 @@ export function fallbackRoleConfig(config: TumwaterConfig, role: string): Resolv
   const tier = roleSeamTier(config, role);
   const pair = resolveTierFallbacks(config, () => true)[tier].pair;
   if (pair === null) return null;
-  const rc = config.roles[role];
+  const rc = config.roles[baseRoleOf(role)];
   return {
     ...withModelOverrides(config, tier, {
       provider: pair.provider,

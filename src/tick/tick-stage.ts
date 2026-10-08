@@ -18,6 +18,7 @@ import { logEvent } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the tick staging needs no export from it). */
@@ -173,7 +174,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // runs only (conflict-resolution and review runs fold after the commit). A high-friction
   // tick appends its Friction line here — both values are already computed above.
   const message = buildCommitMessage(
-    stampedSubject(ctx.role, summary),
+    stampedSubject(baseRoleOf(ctx.role), summary),
     body,
     commitTrailer(
       ctx.role,

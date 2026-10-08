@@ -17,6 +17,7 @@ import {
   DIRECTOR_ROLE,
   roleTier,
 } from "../roles/roles.js";
+import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { yieldMultiplierFor } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
@@ -46,7 +47,7 @@ export function isEligible(
   const s = runner.state;
   // A role disabled in tumwater.json stops ticking immediately (live-reload); re-enabling
   // resumes within one poll cycle because the runner and its persisted state survive.
-  if (!runner.config.roles[runner.role]?.enabled) return { run: false };
+  if (!loopEnabled(runner.config, runner.role)) return { run: false };
   if (s.running) return { run: false };
 
   // The director carries the user's own requests: no min-gap, no backoff — a queued
@@ -210,10 +211,11 @@ export function deferTickReason(
   openBugsNow: boolean,
   now: number,
 ): DeferReason | null {
-  const searchBugfix = role === BUGFIX_ROLE && !openBugsNow;
+  const base = baseRoleOf(role);
+  const searchBugfix = base === BUGFIX_ROLE && !openBugsNow;
   const due =
     !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&
-    (DEFERRABLE_ROLES.has(role) || searchBugfix) &&
+    (DEFERRABLE_ROLES.has(base) || searchBugfix) &&
     s.lastResult === "no_change" &&
     s.lastMainHead !== "" &&
     !deferralExpired(s, now);

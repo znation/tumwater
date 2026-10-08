@@ -2,6 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LandingEntry } from "../landing/landing-queue.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import {
   ERROR_BACKOFF,
   pushYieldOutcome,
@@ -218,7 +219,7 @@ export function applyTickOutcome(
     // and falls back to a fresh tick with normal backoff (its prompt carrying the streak).
     s.resumePending = true;
     scheduleAtMinInterval(s, cfg);
-  } else if (OBSERVER_ROLES.has(role)) {
+  } else if (OBSERVER_ROLES.has(baseRoleOf(role))) {
     // An observer's no_change is a success ("checked, all well"), not an idle verdict: it must
     // not climb the idle ladder, which would punish the role monotonically for the product
     // being healthy. With no ladder, minTickIntervalSeconds is the sole, honest cadence
