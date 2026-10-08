@@ -9,7 +9,7 @@ import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { errorMessage } from "../src/text/text.js";
 
 // Tests for src/events/notify.ts — the operator notify hook: the `notify` shell command the

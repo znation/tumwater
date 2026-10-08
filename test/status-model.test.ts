@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { backdate } from "./backdate.js";
+import { backdate } from "./helpers/backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
 import { isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";

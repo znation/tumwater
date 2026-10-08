@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -17,7 +17,7 @@ import {
   sweepRunMarker,
 } from "../src/process/run-marker.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { errnoError } from "./fs-faults.js";
+import { errnoError } from "./helpers/fs-faults.js";
 
 // The TUMWATER_RUN markers runPi stamps on its process tree (src/process/run-marker.ts): the
 // parsers over environment-entry lists and ps -E output, and the sweep that reaps this

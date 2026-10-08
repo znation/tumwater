@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import path from "node:path";
 
 /** Deterministic per-file coverage of dist/src, computed from the raw V8 coverage dumps a

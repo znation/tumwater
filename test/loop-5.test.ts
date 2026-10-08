@@ -21,7 +21,7 @@ import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { waitForFile } from "./wait.js";
+import { waitForFile } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
 
 // The pin write can fail too: a stale lock file (a crash between lock and rename) blocks

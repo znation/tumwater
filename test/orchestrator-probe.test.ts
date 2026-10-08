@@ -36,7 +36,7 @@ import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakeClock } from "./fakes/time.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 
 /** Drop a wake request marker: the next poll consumes it and clears both roles' backoff, so
  * each becomes due at once — the demand lever an operator's `tumwater wake` pulls. */

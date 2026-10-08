@@ -10,7 +10,7 @@ import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, fakeNpm, runsOf } from "./loop-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
-import { scriptedSampler, woke } from "./sleep-clock.js";
+import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // Unit coverage for the red-main baseline gate (src/baseline/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,

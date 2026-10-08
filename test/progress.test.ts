@@ -13,7 +13,7 @@ import { piLogPath, worktreePath, worktreesDir } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { assistantLine, kindMarker } from "./pi-events.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 
 function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });

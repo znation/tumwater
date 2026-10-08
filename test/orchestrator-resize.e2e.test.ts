@@ -14,7 +14,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
 
 /** A fake pi that records how many runs were in flight when it started (one sample line per

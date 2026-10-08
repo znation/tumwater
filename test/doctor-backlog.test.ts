@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "../src/doctor/doctor-backlog.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { vanishOnReadFile } from "./fs-faults.js";
+import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
 // Unit coverage for the doctor's backlog-document checks (src/doctor/doctor-backlog.ts): the three
 // checks that read the tracked Markdown backlog rather than the environment. The environment

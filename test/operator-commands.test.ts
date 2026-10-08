@@ -1,6 +1,6 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import test from "node:test";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -36,7 +36,7 @@ import {
   worktreeUsePath,
 } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt, writeMalformedJson } from "./repo-fixtures.js";
-import { errnoError } from "./fs-faults.js";
+import { errnoError } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { expectFailAsync, expectOkAsync as expectOk } from "./exit-capture.js";

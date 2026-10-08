@@ -42,7 +42,7 @@ import {
 import { fakePi, fakePiIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 

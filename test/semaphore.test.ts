@@ -1,4 +1,4 @@
-import { flushImmediate, sleep } from "./wait.js";
+import { flushImmediate, sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Semaphore } from "../src/concurrency/semaphore.js";

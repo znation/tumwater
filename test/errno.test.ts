@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import { errCode } from "../src/errno.js";
-import { errnoError } from "./fs-faults.js";
+import { errnoError } from "./helpers/fs-faults.js";
 import { tmpdir as makeTmpdir } from "./repo-fixtures.js";
 
 // Unit seam for errno.ts — the one place the unsafe errno cast lives. Every catch site in the

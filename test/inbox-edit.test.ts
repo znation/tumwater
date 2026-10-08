@@ -10,7 +10,7 @@ import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { errnoError } from "./fs-faults.js";
+import { errnoError } from "./helpers/fs-faults.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 
 /** src/inbox/inbox-edit.ts's own tests: the edit half of the prompt queues — rewriting one queued

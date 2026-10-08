@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events/events.js";
 import type { BuildStaleness } from "../src/build/build-info.js";

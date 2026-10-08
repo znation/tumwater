@@ -44,7 +44,7 @@ import { branchName } from "../src/paths.js";
 import { pidAlive } from "../src/process/process.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();

@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { spawnCli } from "./cli-harness.js";
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 
 // The spawn helper's readiness wait is the seam every live-CLI test leans on, so its deadline
-// lives here rather than being re-derived per test. test/wait.ts's waitFor reads its deadline
+// lives here rather than being re-derived per test. test/helpers/wait.ts's waitFor reads its deadline
 // off performance.now() (monotonic); spawnCli.waitFor must do the same: a deadline read off
 // Date.now() is spent by any wall-clock jump — a host sleep mid-tick is the one the gate sees —
 // and a cold-start wait with budget left then times out against a child that printed nothing.

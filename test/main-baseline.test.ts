@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -12,7 +12,7 @@ import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { pathReplace, projManifest } from "./fakes/fake-commands.js";
-import { scriptedSampler, woke } from "./sleep-clock.js";
+import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/baseline/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental

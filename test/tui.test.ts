@@ -12,7 +12,7 @@ import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { CLI, cli } from "./cli-harness.js";
-import { flushImmediate, waitFor } from "./wait.js";
+import { flushImmediate, waitFor } from "./helpers/wait.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { makeTuiRepo, startTui, withTui } from "./tui-fixtures.js";

@@ -27,7 +27,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
 test("a stale self-hosted build drains the fleet, swaps, and returns restart", async () => {
   const repo = await makeFastRepo("self-redeploy test", ["clean"]);

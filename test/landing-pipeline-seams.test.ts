@@ -1,4 +1,4 @@
-import { sleep, within } from "./wait.js";
+import { sleep, within } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 

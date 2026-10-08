@@ -19,7 +19,7 @@ import type { Redeployer } from "../src/redeploy/redeployer.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator, withHangGuard } from "./orchestrator-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 
 /** The build identity every fake publishes; the sha is what the startup event logs. */
 const BUILD_SHA = "build-sha";

@@ -5,7 +5,7 @@ import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { parseTestCounts } from "../src/build/build-check-counts.js";
-import { scriptedSampler, woke } from "./sleep-clock.js";
+import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { checkFailureReasons } from "../src/build/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build/build-check-events.js";
 import { detectBuildCheck } from "../src/build/build-check-detect.js";
@@ -14,7 +14,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 
 // Unit coverage for the deterministic build pre-check (src/build/build-check.ts): execution and
 // outcome classification, plus the configured-check.command detection boundary. The walk-up

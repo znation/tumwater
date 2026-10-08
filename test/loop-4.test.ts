@@ -18,7 +18,7 @@ import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
-import { waitForLogLines, watchdogClock } from "./wait.js";
+import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./pi-events.js";
 
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {

@@ -18,7 +18,7 @@ import { loopbackHostAllowed, startGui } from "../src/gui/gui-server.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
 // raw-socket framing edge cases, and dropped clients. Each test pins a survivability

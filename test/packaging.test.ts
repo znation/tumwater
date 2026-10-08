@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 
 /** Pin the packaging metadata that makes the npm package publishable and the two workflow
  * triggers, so the landing gate's `npm test` sees a broken allowlist or a missing `prepack`

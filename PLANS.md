@@ -6,30 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Organize the test suite, part 2/6: utility modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires part 1/6 landed)
-
-**Goal.** Create `test/helpers/` and move `test/wait.ts`, `test/sleep-clock.ts`,
-`test/backdate.ts`, `test/json-read.ts`, `test/fs-faults.ts` into it.
-
-**Approach.**
-- `git mv` the five modules into the new `test/helpers/`.
-- Rewrite every importer's `./<name>.js` specifier to `./helpers/<name>.js`. This includes the
-  runner-infrastructure module `test/coverage-table.ts` (which stays at the root) importing
-  `./json-read.js` → `./helpers/json-read.js`.
-- Re-base the moved modules' `../src/` imports for one more level: `sleep-clock.ts`'s
-  `../src/build/host-sleep.js` and `json-read.ts`'s `../src/text/text.js` become `../../src/...`.
-  `wait.ts`, `backdate.ts`, and `fs-faults.ts` have no relative imports.
-- Update comment/doc references to the old flat paths in the same landing (e.g. `src/errno.ts`
-  cites `test/fs-faults.ts`; BUGS.md cites `test/wait.ts`).
-
-**Files touched.** The five modules; every `test/*.ts` importing them (≈115 specifiers);
-`test/coverage-table.ts`; the doc/comment references.
-
-**Acceptance criteria.**
-- The five modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
-- `test/coverage-table.ts` still resolves `readJson` from its new location.
-- `npm run test` green and selects the same `*.test.ts` files.
-
 ### Organize the test suite, part 3/6: harness and oracle modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6 and 2/6 landed)
 
 **Goal.** Move `test/oracles.ts`, `test/cli-harness.ts`, `test/exit-capture.ts`,
@@ -385,6 +361,30 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Organize the test suite, part 2/6: utility modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires part 1/6 landed; done 2026-10-08 by feature)
+
+**Goal.** Create `test/helpers/` and move `wait.ts`, `sleep-clock.ts`, `backdate.ts`,
+`json-read.ts`, `fs-faults.ts` from the `test/` root into it.
+
+**Approach.**
+- `git mv` the five modules into the new `test/helpers/`.
+- Rewrite every importer's `./<name>.js` specifier to `./helpers/<name>.js`. This includes the
+  runner-infrastructure module `test/coverage-table.ts` (which stays at the root) importing
+  `./json-read.js` → `./helpers/json-read.js`.
+- Re-base the moved modules' `../src/` imports for one more level: `sleep-clock.ts`'s
+  `../src/build/host-sleep.js` and `json-read.ts`'s `../src/text/text.js` become `../../src/...`.
+  `wait.ts`, `backdate.ts`, and `fs-faults.ts` have no relative imports.
+- Update comment/doc references to the old flat paths in the same landing (e.g. `src/errno.ts`
+  cites `fs-faults.ts`; BUGS.md cites `wait.ts`).
+
+**Files touched.** The five modules; every `test/*.ts` importing them (≈115 specifiers);
+`test/coverage-table.ts`; the doc/comment references.
+
+**Acceptance criteria.**
+- The five modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
+- `test/coverage-table.ts` still resolves `readJson` from its new location.
+- `npm run test` green and selects the same `*.test.ts` files.
 
 ### Organize the test suite, part 1/6: support fakes move to `test/fakes/` (planned 2026-10-07 by plan; split from the 2026-10-07 "Organize the test suite's support modules" entry; parts 1–6 land in order; done 2026-10-08 by feature)
 

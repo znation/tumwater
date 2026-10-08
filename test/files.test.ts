@@ -12,8 +12,8 @@ import {
   writeTextAtomic,
 } from "../src/files/files.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
-import { backdate } from "./backdate.js";
-import { failRenameSyncOn } from "./fs-faults.js";
+import { backdate } from "./helpers/backdate.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
   const dir = tmpdir();

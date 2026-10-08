@@ -1,5 +1,5 @@
 import test from "node:test";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
@@ -17,7 +17,7 @@ import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { fastConfig } from "./orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
-import { sleep, waitForFile } from "./wait.js";
+import { sleep, waitForFile } from "./helpers/wait.js";
 
 // `tumwater run` through the real CLI entry point: startup guards, the banner, and the
 // supervisor's shutdown semantics. These are the long-running commands, spawned with a live

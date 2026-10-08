@@ -25,7 +25,7 @@ import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
-import { scriptedSampler, woke } from "./sleep-clock.js";
+import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // The gate's integration with the deterministic build pre-check (src/build/build-check.ts): a
 // healthy build must reach the model reviewer. The check's own unit tests live in

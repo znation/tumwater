@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/files/tail.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
-import { sleep, waitFor } from "./wait.js";
+import { vanishOnOpen, vanishOnReadFile } from "./helpers/fs-faults.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 
 /** Follow `file` and collect each delivered complete line into `seen`, dropping the empty
  * strings a split on a trailing newline can yield. `fromEnd` starts the follow past the file's

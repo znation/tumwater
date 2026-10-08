@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { wakeRequestPath } from "../src/paths.js";

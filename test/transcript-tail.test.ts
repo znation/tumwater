@@ -10,7 +10,7 @@ import { expectedTimestamp } from "./oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
+import { recreateSmallerOnOpen, vanishOnOpen } from "./helpers/fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, kindMarker, runMarker, userLine } from "./pi-events.js";
 
 /** The oracle a tail read must match: the whole log read from a fresh stat and rendered exactly

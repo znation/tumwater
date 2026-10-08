@@ -21,7 +21,7 @@ import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
-import { backdate } from "./backdate.js";
+import { backdate } from "./helpers/backdate.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";
 
 // Unit coverage for the pre-flight environment and repo checks

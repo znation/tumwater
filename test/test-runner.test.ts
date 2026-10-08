@@ -7,7 +7,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
   buildNodeTestArgs,

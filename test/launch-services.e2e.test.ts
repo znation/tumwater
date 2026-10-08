@@ -10,7 +10,7 @@ import { systemProcessProbe, type ProcessProbe } from "../src/process/process-ta
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fakes/fake-pi.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 
 /** A probe reporting `ports` for launchservicesd, counting how often it is asked. */
 function countingProbe(ports: number): ProcessProbe & { reads: number } {

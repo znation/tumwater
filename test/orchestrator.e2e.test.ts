@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { backdate } from "./backdate.js";
+import { backdate } from "./helpers/backdate.js";
 import { runTimedRoleTick, sleepInterruptible } from "../src/tick/tick-timing.js";
 import { DEFER_MAX_MS } from "../src/scheduling/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
@@ -41,7 +41,7 @@ import {
 } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {

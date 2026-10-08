@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui/gui-client-composer.js";

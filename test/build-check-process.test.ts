@@ -8,7 +8,7 @@ import { pidAlive } from "../src/process/process.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 
 // The build check's process-tree teardown hygiene, split out of build-check.test.ts beside its

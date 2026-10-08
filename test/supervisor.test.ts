@@ -1,6 +1,6 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import { spawn } from "node:child_process";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

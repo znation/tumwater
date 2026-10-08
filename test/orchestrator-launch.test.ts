@@ -27,7 +27,7 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 
 /** A stand-in runner: only what launchDueTicks reads. `config` is what runConfig returns —
  * the tick's pair comes from the runner's own config view (part 5c/8), or from its active

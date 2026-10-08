@@ -19,7 +19,7 @@ import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
-import { waitForFile } from "./wait.js";
+import { waitForFile } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
 
 // Thrash flag (plans/refusal-and-thrash.md item b): a changed tick whose authoring run burned

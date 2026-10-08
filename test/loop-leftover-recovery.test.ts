@@ -48,7 +48,7 @@ async function pinLeftover(
   return sha;
 }
 import { conflictingMainEdit, fakePi, firstRunThenIdle, seedBranchEdit } from "./fakes/fake-pi.js";
-import { waitForFile } from "./wait.js";
+import { waitForFile } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
 // and its landing leaves the pin on disk (the branch is already reset to main). The next tick

@@ -17,7 +17,7 @@ import type { RedeployDeps } from "../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { fakePiIdle } from "./fakes/fake-pi.js";
-import { waitFor } from "./wait.js";
+import { waitFor } from "./helpers/wait.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 

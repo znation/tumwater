@@ -1,6 +1,6 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import test from "node:test";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,7 +18,7 @@ import {
   resumeFleet,
 } from "../src/fleet/fleet-state.js";
 import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
-import { backdate } from "./backdate.js";
+import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 

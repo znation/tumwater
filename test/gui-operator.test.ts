@@ -1,5 +1,5 @@
 import test from "node:test";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

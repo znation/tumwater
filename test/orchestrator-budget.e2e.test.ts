@@ -22,7 +22,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { awaitSettledTick, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;

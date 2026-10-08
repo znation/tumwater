@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
 import { sessionsRootDir, toolOutputDir } from "../src/paths.js";
-import { backdate } from "./backdate.js";
+import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 

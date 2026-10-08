@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import fs from "node:fs";
 import path from "node:path";
 import { runPi, type PiRunOptions} from "../src/pi/pi.js";

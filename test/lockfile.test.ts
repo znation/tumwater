@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 
 // tumwater is a public package: every dependency in package-lock.json must resolve from the
 // public npm registry. A contributor's ~/.npmrc pointing at a private mirror would otherwise

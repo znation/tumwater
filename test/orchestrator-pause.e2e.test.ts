@@ -19,7 +19,7 @@ import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { sh } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;

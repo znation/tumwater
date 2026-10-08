@@ -14,7 +14,7 @@ import { setConfigKey } from "../src/config/config-write.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
-import { sleep, waitFor } from "./wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 
 /** A window that always contains the current local wall clock: [now-30min, now+30min]. Near
  * midnight it wraps (start > end), which exercises the wrapping membership on real time. */

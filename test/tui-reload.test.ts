@@ -1,4 +1,4 @@
-import { flushImmediate, sleep, waitFor } from "./wait.js";
+import { flushImmediate, sleep, waitFor } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";

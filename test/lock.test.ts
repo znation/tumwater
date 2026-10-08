@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -7,8 +7,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concurrency/lock.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
-import { errnoError } from "./fs-faults.js";
-import { backdate } from "./backdate.js";
+import { errnoError } from "./helpers/fs-faults.js";
+import { backdate } from "./helpers/backdate.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");

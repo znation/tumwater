@@ -5,8 +5,8 @@
 // contract's in status-payload.test.ts, and the `status` CLI's in cli.test.ts.
 
 import { spawnSync } from "node:child_process";
-import { readJson } from "./json-read.js";
-import { backdate } from "./backdate.js";
+import { readJson } from "./helpers/json-read.js";
+import { backdate } from "./helpers/backdate.js";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -23,7 +23,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON } from "./models-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { withCountedReads } from "./fs-faults.js";
+import { withCountedReads } from "./helpers/fs-faults.js";
 import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
 import { projectCapHit, recordDailyCost } from "../src/budget/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";

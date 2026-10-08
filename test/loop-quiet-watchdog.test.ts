@@ -16,13 +16,13 @@ import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
+import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 
 // Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
 // boundary events — streaming deltas never count), not merely when it stops running fast.
-// These tests run it on logical time (watchdogClock, test/wait.ts): each waits for the fake
+// These tests run it on logical time (watchdogClock, test/helpers/wait.ts): each waits for the fake
 // pi's output to reach the raw log, then advances the watchdog's clock past the window it
 // pins — exact where real-time windows were widened after every loaded-machine flake
 // (BUGS.md 2026-09-18, 2026-09-21), and free where they cost seconds.

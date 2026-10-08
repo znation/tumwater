@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep } from "./helpers/wait.js";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,7 +22,7 @@ import { makeRunMarker, runMarkerEnv } from "../src/process/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
 import { pathReplace } from "./fakes/fake-commands.js";
-import { errnoError } from "./fs-faults.js";
+import { errnoError } from "./helpers/fs-faults.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
 // holder's merge lock must be breakable) and fleet/orchestrator-info.ts's orchestrator-alive status. Its

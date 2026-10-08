@@ -17,9 +17,9 @@ import {
 import {
   parseEntryDetails,
 } from "../src/backlog/backlog-md.js";
-import { backdate } from "./backdate.js";
+import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { withCountedReads } from "./fs-faults.js";
+import { withCountedReads } from "./helpers/fs-faults.js";
 
 const PLANS_MD = `# Plans
 

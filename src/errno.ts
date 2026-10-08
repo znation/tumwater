@@ -3,7 +3,7 @@
  * one place instead of being repeated per catch site: consumers ask `errCode(err)` instead of
  * casting the unknown throw themselves. The fabricate half — building a synthetic errno throw
  * to stub a call with — is test-suite-only and lives with the other fault-injection helpers
- * (test/fs-faults.ts). Depends on nothing. */
+ * (test/helpers/fs-faults.ts). Depends on nothing. */
 
 /** The errno `code` of a thrown unknown value, when it carries one as a string (the shape of
  * Node's fs and process errors). Plain Errors, non-Error throws, and non-string codes yield

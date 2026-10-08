@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { readJson } from "./json-read.js";
+import { readJson } from "./helpers/json-read.js";
 
 // From dist/test/ this is dist/src/cli.js — the compiled file package.json's bin names.
 const bin = fileURLToPath(new URL("../src/cli.js", import.meta.url));

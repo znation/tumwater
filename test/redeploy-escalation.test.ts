@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { HEAD_B, IDLE, fakeDeps, harness, settle } from "./redeploy-fixtures.js";
-import { flushImmediate } from "./wait.js";
+import { flushImmediate } from "./helpers/wait.js";
 
 // --- The sustained-pin escalation (BUGS.md 2026-09-29) -------------------------------------
 // The 2026-09-28/29 incident: build 66afeacd stayed 362 commits behind a churning main for

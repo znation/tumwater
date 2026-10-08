@@ -38,7 +38,7 @@ import {
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { sleep, waitFor, waitForFile, within } from "./wait.js";
+import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";
 
 /** Second slice of the landing-drain suite (landing-drain.test.ts carries the first) — split so
