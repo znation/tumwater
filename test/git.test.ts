@@ -491,6 +491,46 @@ test("runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it"
   }
 });
 
+test("runGit SIGKILLs a git that floods stdout past the buffer cap and reports the overflow", async () => {
+  const dir = tmpdir("flood-git-");
+  // A fake git writing well past EXEC_MAX_BUFFER (32 MiB) to stdout: execGitBounded must kill
+  // the whole group and fail with the named overflow instead of accumulating an unbounded diff.
+  writeScript(path.join(dir, "git"), "yes A | head -c 40000000");
+  const restorePath = pathPrepend(dir);
+  try {
+    await assert.rejects(
+      runGit(dir, ["status"]),
+      (err: unknown) =>
+        err instanceof Error &&
+        (err as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" &&
+        err.message ===
+          "git status failed (ERR_CHILD_PROCESS_STDIO_MAXBUFFER): stdout maxBuffer length exceeded",
+    );
+  } finally {
+    restorePath();
+  }
+});
+
+test("runGit SIGKILLs a git that floods stderr past the buffer cap and reports the overflow", async () => {
+  const dir = tmpdir("flood-stderr-git-");
+  // The stderr handler has its own cap: the accumulated stderr rides along as the GitError's
+  // detail (it is not empty, so runGit keeps it rather than the fallback message), but the
+  // code and the prefixed message still name the overflow.
+  writeScript(path.join(dir, "git"), "yes A | head -c 40000000 1>&2");
+  const restorePath = pathPrepend(dir);
+  try {
+    await assert.rejects(runGit(dir, ["status"]), (err: unknown) => {
+      return (
+        err instanceof Error &&
+        (err as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" &&
+        err.message.startsWith("git status failed (ERR_CHILD_PROCESS_STDIO_MAXBUFFER): ")
+      );
+    });
+  } finally {
+    restorePath();
+  }
+});
+
 test("subjectsBetween lists main's subjects since a head, newest first; null for an unknown base", async () => {
   const repo = makeRepo(); // one seed commit on main
   const base = await headOf(repo, "main");
