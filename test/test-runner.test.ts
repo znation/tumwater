@@ -14,6 +14,7 @@ import {
   nodeSupportsTestCoverageExclude,
   noNameMatchReason,
   orderByDuration,
+  probeRealGit,
   parseFilter,
   selectTestFiles,
   splitCoverageArgv,
@@ -276,6 +277,38 @@ test("suiteEnv drops every variable the harness resolves, so a fleet-started sui
   assert.equal(base.TUMWATER_RUN, "4242-abcdef");
   assert.equal(base[DASHBOARD_CHILD_ENV], "4242");
 });
+
+/** suiteEnv's macOS xcrun probe runs through a synchronous spawnSync, so a wedged xcrun would
+ * block the whole test run with no watchdog able to fire. This pins the bound: a fake xcrun
+ * that never answers is abandoned at `timeoutMs` and the probe reports no real binary, leaving
+ * PATH alone. Before the fix the call waited the fake out, so the elapsed-time assertion
+ * failed. */
+test(
+  "a wedged xcrun cannot freeze the suite environment probe: the probe is bounded",
+  { skip: process.platform !== "darwin" || !fs.existsSync("/usr/bin/git") },
+  () => {
+    const scratch = tmpdir("suite-xcrun-");
+    const oldPath = process.env.PATH;
+    try {
+      const bin = path.join(scratch, "bin");
+      fs.mkdirSync(bin);
+      const fake = path.join(bin, "xcrun");
+      // `exec` makes the sleeping process the child spawnSync's timeout kills, with no
+      // grandchild left holding the capture pipe open past the kill.
+      fs.writeFileSync(fake, "#!/bin/sh\nexec sleep 3\n");
+      fs.chmodSync(fake, 0o755);
+      process.env.PATH = `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+      const started = Date.now();
+      const real = probeRealGit(300);
+      const elapsed = Date.now() - started;
+      assert.equal(real, null, "an unanswered probe leaves PATH alone");
+      assert.ok(elapsed < 1_500, `probe took ${elapsed}ms; it was not bounded`);
+    } finally {
+      process.env.PATH = oldPath;
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  },
+);
 
 /** The compiled entry point, as a developer's `npm test <filter>` spawns it. */
 const runnerPath = fileURLToPath(new URL("./test-runner.js", import.meta.url));

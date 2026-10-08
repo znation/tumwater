@@ -234,6 +234,28 @@ function whichOnPath(name: string, pathVar: string): string | undefined {
   return undefined;
 }
 
+/** Wall-clock bound on the suite's own macOS `xcrun --find git` probe. Like the harness's
+ * git-run probe (src/git/git-run.ts) it is a synchronous spawnSync, so a wedged xcrun (an
+ * Xcode license prompt, a corrupt developer directory) blocks the whole event loop until it
+ * returns — here it would freeze the entire test run, with no watchdog able to fire. A short
+ * bound treats the unanswered case as "no real binary" and leaves PATH alone. */
+const SUITE_XCRUN_TIMEOUT_MS = 10_000;
+
+/** The absolute git an `xcrun --find git` probe names, or null when the probe does not answer
+ * or names something other than a different, existing binary. `timeoutMs` bounds the probe —
+ * it is a parameter so the suite can drive it down against a fake wedged xcrun, and production
+ * callers keep the default. */
+export function probeRealGit(timeoutMs: number = SUITE_XCRUN_TIMEOUT_MS): string | null {
+  const found = spawnSync("xcrun", ["--find", "git"], {
+    encoding: "utf8",
+    timeout: timeoutMs,
+    // SIGKILL: the bound must hold even for a probe that traps SIGTERM.
+    killSignal: "SIGKILL",
+  });
+  const real = found.status === 0 ? (found.stdout ?? "").trim() : "";
+  return real && path.isAbsolute(real) && real !== "/usr/bin/git" && fs.existsSync(real) ? real : null;
+}
+
 /** Build the suite's environment from `base` in `scratch` (a directory the caller removes after
  * the run): `base` without the harness's own variables (below), suiteGitEnv's config, an empty
  * GIT_TEMPLATE_DIR (every `git init` otherwise copies the sample hooks), and on macOS a way
@@ -275,9 +297,8 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   fs.mkdirSync(templates);
   env.GIT_TEMPLATE_DIR = templates;
   if (process.platform === "darwin" && whichOnPath("git", env.PATH ?? "") === "/usr/bin/git") {
-    const found = spawnSync("xcrun", ["--find", "git"], { encoding: "utf8" });
-    const real = found.status === 0 ? found.stdout.trim() : "";
-    if (real && path.isAbsolute(real) && real !== "/usr/bin/git" && fs.existsSync(real)) {
+    const real = probeRealGit();
+    if (real) {
       const bin = path.join(scratch, "bin");
       fs.mkdirSync(bin);
       fs.symlinkSync(real, path.join(bin, "git"));
