@@ -52,6 +52,14 @@ export const GIT_MISSING_MESSAGE =
 
 let resolvedGit: string | null | undefined;
 
+/** Wall-clock bound on the one-time macOS `xcrun --find git` probe. Unlike a git command, the
+ * probe is a synchronous spawnSync, so a wedged xcrun (an Xcode license prompt, a corrupt
+ * developer directory) blocks the whole event loop — no timer or watchdog can run until it
+ * returns. A short bound keeps that from freezing the fleet: on timeout the probe reads as
+ * "no answer" and the harness spawns `git` by name, exactly as a machine without the stub
+ * does. */
+const GIT_RESOLVE_TIMEOUT_MS = 10_000;
+
 /** The git binary the harness spawns, resolved once per process. On macOS the first git on
  * PATH is routinely /usr/bin/git — the xcode-select stub, which re-resolves the developer
  * directory on every exec before running the real binary (the same cost
@@ -63,12 +71,19 @@ let resolvedGit: string | null | undefined;
  * Resolution caches the found absolute path (null = spawn by name); it never re-walks. The
  * deliberate exception is build/build-check.ts's toolchain probe, which must keep spawning PATH's
  * stub — its "broken" verdict exists to catch exactly the stub's exit-69-on-invalid-license
- * failure, which the real binary would never surface. */
-function resolvedGitBin(): string {
+ * failure, which the real binary would never surface. `timeoutMs` bounds the xcrun probe (see
+ * GIT_RESOLVE_TIMEOUT_MS); it is a parameter so the suite can drive it down against a fake
+ * wedged xcrun, and production callers keep the default. */
+export function resolvedGitBin(timeoutMs: number = GIT_RESOLVE_TIMEOUT_MS): string {
   if (resolvedGit !== undefined) return resolvedGit ?? "git";
   let bin: string | null = null;
   if (process.platform === "darwin" && findOnPath("git") === "/usr/bin/git") {
-    const found = spawnSync("xcrun", ["--find", "git"], { encoding: "utf8" });
+    const found = spawnSync("xcrun", ["--find", "git"], {
+      encoding: "utf8",
+      timeout: timeoutMs,
+      // SIGKILL: the bound must hold even for a probe that traps SIGTERM.
+      killSignal: "SIGKILL",
+    });
     const real = found.status === 0 ? found.stdout.trim() : "";
     if (real && path.isAbsolute(real) && real !== "/usr/bin/git" && fs.existsSync(real)) bin = real;
   }
