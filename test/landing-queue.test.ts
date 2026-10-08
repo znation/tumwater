@@ -174,3 +174,32 @@ test("queuedLandingFiles pairs each entry with its file in queue order — the b
   assert.equal(after.length, 1);
   assert.equal(after[0]!.entry.role, "organize", "a drop on the paired file advances the slice");
 });
+
+test("a failed enqueue write never leaves a torn queue entry behind", (t) => {
+  const repo = makeRepo();
+  // Seed one healthy entry so a torn write of the NEXT entry sorts LAST in the queue — the
+  // position the drain's head-only repair (staleHeadFile) never reaches, where it would
+  // persist in the queue dir forever.
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  // Model a process killed mid-write: the writer lands a partial prefix of the JSON, then
+  // throws — the shape a SIGKILL between write and close leaves, and the one ENOSPC/EIO
+  // leaves. The enqueue must surface the failure and leave no file at the entry's path.
+  const realWriteFileSync = fs.writeFileSync;
+  t.mock.method(fs, "writeFileSync", ((file: fs.PathOrFileDescriptor, data: string | Uint8Array) => {
+    realWriteFileSync(file, typeof data === "string" ? data.slice(0, 10) : data.subarray(0, 10));
+    throw new Error("simulated mid-write failure");
+  }) as typeof fs.writeFileSync);
+  try {
+    assert.throws(
+      () => enqueueLanding(repo, entry("organize", "b".repeat(40))),
+      /simulated mid-write failure/,
+    );
+  } finally {
+    t.mock.restoreAll();
+  }
+  // The seed is untouched and the partial never became a queue file. A non-head torn entry
+  // would be skipped by the content readers (queuedLandings) while the drain's head-only
+  // repair never removed it.
+  assert.deepEqual(queuedLandings(repo).map((e) => e.role), ["improve"]);
+  assert.equal(queueDepth(repo), 1, "the failed enqueue left no file behind");
+});

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
 import { isJsonObject } from "../files/json-object.js";
-import { readJsonFile, writeJsonFile } from "../files/json-files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { landQueueDir } from "../paths.js";
 
@@ -63,11 +63,15 @@ let seq = 0;
 
 /** Append one landing to the queue as a single timestamped file (creating the queue dir if
  * needed). The filename orders entries across processes by wall-clock time; the per-process
- * counter and pid break ties within one process. */
+ * counter and pid break ties within one process. Written atomically (tmp + rename): the
+ * enqueue runs while the process can be hard-killed mid-write (the tick deadline's
+ * process-group kill, a shutdown), and a torn entry the crash left behind is not always
+ * recoverable — the drain repairs only an unreadable HEAD (staleHeadFile), so a torn file
+ * that sorts after a healthy entry would sit in the queue dir unread forever. */
 export function enqueueLanding(root: string, entry: LandingEntry): void {
   const dir = landQueueDir(root);
   const name = queueFileName(entry.enqueuedAt, seq++, ".json");
-  writeJsonFile(path.join(dir, name), entry);
+  writeJsonAtomic(path.join(dir, name), entry);
 }
 
 /** Every queue file in execution order (oldest first) — the same filename sort queuedLandings,
@@ -162,8 +166,8 @@ export function headLanding(root: string): { entry: LandingEntry; file: string }
   return entry ? { entry, file } : null;
 }
 
-/** The oldest queue file when the queue is non-empty but its head is unreadable — torn (a
- * hard crash mid enqueueLanding write) or foreign — i.e. when headLanding reads null while
+/** The oldest queue file when the queue is non-empty but its head is unreadable — torn or
+ * foreign (a partial write an older build left, a hand-placed file) — i.e. when headLanding reads null while
  * the queue holds files; null when the queue is empty or its head is healthy. The drain
  * drops this file with a warning so the queue can drain: headLanding reads null for it
  * forever and nothing else will remove it, stranding every live entry behind it (each
