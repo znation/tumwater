@@ -745,6 +745,18 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
       `GUI: ${label}`,
     );
   }
+  // A torn loop object — a payload missing `phase` — must not throw and blank the whole loops
+  // table (loopCells runs fmtNextRun for every row). phaseInfo and loopRank already coerce a bad
+  // phase with `String(x || "")`; the untyped browser copy here does too, so the field reads as
+  // the empty (inactive) phase instead of `undefined.startsWith` throwing.
+  assert.equal(
+    fmtNextRun(
+      { phase: undefined as unknown as string, nextRunAt: now + 180_000, backoffSeconds: 0 },
+      true,
+    ),
+    "3m",
+    "GUI: a missing phase reads as text, not a throw",
+  );
 });
 
 test("the dashboard page is one self-contained document: sidebar, views, composer, drawer, one poll", async () => {

@@ -162,7 +162,11 @@ const FORMAT_JS = String.raw`  // format:start
   // when due; otherwise the remaining time, prefixed "backoff " while backing off. A yield-scaled
   // clock rides as a " ×N" suffix: a quiet role's effective gap is longer than the countdown.
   const fmtNextRun = (l, fleetRunning) => {
-    const active = isActivePhase(l.phase) || l.phase.startsWith("awaiting slot") || l.phase.startsWith("director working");
+    // A torn loop object — a payload missing its phase field — reads as the empty (inactive)
+    // phase rather than throwing: the browser copy is untyped, and its sibling phaseInfo/
+    // loopRank already coerce the same way, so one bad row must not blank the whole table.
+    const phase = String(l.phase || "");
+    const active = isActivePhase(phase) || phase.startsWith("awaiting slot") || phase.startsWith("director working");
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     const suffix = l.yieldMultiplier > 1 ? " ×" + l.yieldMultiplier : "";
