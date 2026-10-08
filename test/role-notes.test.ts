@@ -65,6 +65,22 @@ test("writeRoleNote writes the text and empty text clears the file", () => {
   assert.equal(fs.readFileSync(notes, "utf8"), "");
 });
 
+test("writeRoleNote removes its temp file when the write cannot complete", () => {
+  // A failed write must not litter the notes directory: the temp is written beside the target,
+  // and the rename fails when the target path is occupied by a directory (ENOTDIR/EISDIR).
+  // Nothing prunes .tumwater/state/notes/, so a leaked temp would survive every tick.
+  const dir = tmpdir();
+  const notesDir = path.join(dir, "notes");
+  const notes = path.join(notesDir, "feature.md");
+  fs.mkdirSync(notes, { recursive: true }); // the target path is a directory, so the rename fails
+  assert.throws(() => writeRoleNote(notes, "cannot land"), "the failure is rethrown, not swallowed");
+  assert.deepEqual(
+    fs.readdirSync(notesDir).filter((f) => f.endsWith(".tmp")),
+    [],
+    "a failed write leaves no .tmp remnant behind",
+  );
+});
+
 test("the extension registers no tool when TUMWATER_NOTES_PATH is unset", () => {
   const registered: RegisteredTool[] = [];
   const api = { registerTool: (tool: RegisteredTool) => registered.push(tool) };

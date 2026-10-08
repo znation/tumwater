@@ -51,12 +51,25 @@ export function validateRoleNote(text: string): string | null {
 
 /** Replace the note file at `notesPath` with `text`, writing to a temp file in the same
  * directory and renaming it over the target so a reader never sees a half-written note.
- * Creates the directory if needed. Callers validate first; this does not. */
+ * Creates the directory if needed. Callers validate first; this does not. A failed write or
+ * rename (ENOSPC under disk pressure, a torn filesystem) removes the temp before rethrowing,
+ * so a role's notebook cannot litter `.tumwater/state/notes/` with `<note>.<pid>.tmp` files
+ * that nothing prunes — the same no-remnant contract as src/files/files.ts's writeAtomic. */
 export function writeRoleNote(notesPath: string, text: string): void {
   fs.mkdirSync(path.dirname(notesPath), { recursive: true });
   const tmp = `${notesPath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, text, "utf8");
-  fs.renameSync(tmp, notesPath);
+  try {
+    fs.writeFileSync(tmp, text, "utf8");
+    fs.renameSync(tmp, notesPath);
+  } catch (err) {
+    // Best-effort: a vanished or unremovable tmp must not mask the write failure itself.
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Ignore — the original error is what the caller needs.
+    }
+    throw err;
+  }
 }
 
 /** Minimal structural types for pi's extension API — pi itself loads this file, so the real
