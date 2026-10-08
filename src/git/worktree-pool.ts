@@ -10,15 +10,12 @@
  * distinct free slots and a call with none free registers an in-process waiter. A release wakes
  * the waiters, which re-decide; `signal` aborts a waiter. */
 
-import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
-import { removeTree } from "../files/files.js";
 import { slotWorktreePath } from "../paths.js";
-import { gitTry } from "./git-run.js";
 import { updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
-import { ensureDetachedWorktree } from "./worktree.js";
+import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 
 /** A live lease as callers see it: the slot directory and the one-shot release. */
 export interface SlotLeaseHandle {
@@ -247,16 +244,6 @@ function releaseSlot(root: string, dir: string, role: string, count: number): st
   return toRemove;
 }
 
-/** Remove a shrunk-away slot's checkout. Best-effort: a slot whose directory is already gone is
- * unregistered by the prune, and a failure here leaves only recoverable scratch behind. */
-async function removeSlotDir(root: string, dir: string): Promise<void> {
-  const removed = (await gitTry(root, "worktree", "remove", "--force", dir)) !== null;
-  if (!removed) {
-    if (fs.existsSync(dir)) removeTree(dir);
-    await gitTry(root, "worktree", "prune");
-  }
-}
-
 /** Lease a pooled slot for `role`, prepared at `ref`. Resolves once a slot is held and reset to
  * `ref`; rejects on a `signal` abort while waiting. The returned `release` is idempotent. */
 export async function leaseSlot(
@@ -284,7 +271,8 @@ export async function leaseSlot(
       useRelease();
       const toRemove = releaseSlot(root, dir, role, liveCount(root));
       wakeWaiters(root);
-      for (const stale of toRemove) void removeSlotDir(root, stale);
+      // Best-effort: a slot whose directory is already gone is unregistered by the prune.
+      for (const stale of toRemove) void removeWorktreeDir(root, stale);
     },
   };
 }

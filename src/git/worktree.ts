@@ -90,14 +90,16 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   });
 }
 
-/** Remove a role's persistent worktree and its git registration. The registration's `locked`
- * file (ensureWorktree's setup race) shields a worktree from prune, so it is cleared before
- * `git worktree remove --force`; a dead registration (directory gone, or the admin dir pruned
- * by outside maintenance — the same states isUsableWorktree classifies) falls back to
- * `worktree prune`, removing any leftover directory so `worktree add` can rebuild later. */
-export async function removeWorktree(root: string, role: string): Promise<void> {
-  const wt = worktreePath(root, role);
-  const gitdir = isUsableWorktreeSyncPath(wt) ? resolveGitDir(wt) : undefined;
+/** Remove the worktree checkout at `dir` and its git registration, self-healing every dead-
+ * registration shape: the registration's `locked` file (ensureWorktree's setup race) shields
+ * it from prune, so it is cleared before `git worktree remove --force`; a remove that fails or
+ * leaves a leftover directory (directory gone, or the admin dir pruned by outside maintenance —
+ * the same states isUsableWorktree classifies) falls back to `worktree prune` and a directory
+ * removal, pruned once more so a registration pointing at the now-missing directory unregisters.
+ * Shared by removeWorktree (role checkouts) and worktree-pool.ts's shrunken-slot cleanup, so
+ * both classes of checkout heal identically. */
+export async function removeWorktreeDir(root: string, dir: string): Promise<void> {
+  const gitdir = isUsableWorktreeSyncPath(dir) ? resolveGitDir(dir) : undefined;
   if (gitdir !== undefined) {
     try {
       fs.rmSync(path.join(gitdir, "locked"), { force: true });
@@ -105,11 +107,11 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
       // An unreadable registration dir: remove --force or the prune below still runs.
     }
   }
-  const removed = (await gitTry(root, "worktree", "remove", "--force", wt)) !== null;
-  if (!removed || fs.existsSync(wt)) {
+  const removed = (await gitTry(root, "worktree", "remove", "--force", dir)) !== null;
+  if (!removed || fs.existsSync(dir)) {
     await gitTry(root, "worktree", "prune");
-    if (fs.existsSync(wt)) {
-      removeTree(wt);
+    if (fs.existsSync(dir)) {
+      removeTree(dir);
       // Prune once more: the registration may have survived the first prune (its directory was
       // still present, e.g. a corrupt .git pointer) and only a missing directory unregisters it.
       await gitTry(root, "worktree", "prune");
@@ -117,7 +119,13 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
   }
 }
 
-/** Cheap file-existence shape probe for removeWorktree: resolveGitDir needs the `.git` pointer,
+/** Remove a role's persistent worktree and its git registration, through the shared checkout
+ * remover (removeWorktreeDir). */
+export async function removeWorktree(root: string, role: string): Promise<void> {
+  await removeWorktreeDir(root, worktreePath(root, role));
+}
+
+/** Cheap file-existence shape probe for removeWorktreeDir: resolveGitDir needs the `.git` pointer,
  * and probing it for a directory that does not exist would only produce a caught throw — the
  * existence check keeps the common absent case allocation-free. Not a usability check; that
  * is isUsableWorktree's spawn-backed probe. */
