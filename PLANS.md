@@ -182,62 +182,129 @@ pool, event-format, status and doctor tests.
 
 ---
 
-### Parallel work instances, part 5/7: `roles.<id>.instances` runs several feature or bugfix loops, each active only while unclaimed work exists; the plan target scales (planned 2026-10-07 by operator; requires parts 3/7 and 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed)
-**Needs review 2026-10-08 by feature: too large for one run**
-
+### Parallel work instances, part 5a/7: the validated `roles.<id>.instances` config field and `loopIds` enumeration (planned 2026-10-08 by plan; split from part 5/7; requires part 4/7 landed)
 
 Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
 ahead").
 
-Context: once Worktree pool 4b/5 makes role ticks lease `_slot-<n>` checkouts, an extra loop
-adds no checkout. Its tick and vet use the same slots, so a project with a large `target/`
-pays nothing extra on disk. Before the pool, each instance would carry its own role and lander
-worktree; hence the prerequisite. The plan charter currently stops at two waiting plans
-(src/roles/role-catalog.ts, plan step 1), which cannot keep several feature instances busy.
+Context: part 4/7's claim machinery already assigns one entry per runner in a multi-runner
+group and skips an idle extra instance, but a second runner cannot exist: `configuredInstances`
+(src/roles/loop-ids.ts) reads `roles.<base>.instances` through an unchecked cast and no
+config field carries it. This part makes the field real and stays behavior-neutral — it changes
+no runner construction, so the fleet runs exactly as today until 5b/7.
 
 **Approach.**
-1. **Config.** `RoleConfig.instances?: number` (src/config/config-schema.ts): an integer from
-   1 to 8, valid only under `roles.feature` and `roles.bugfix`, defaulting to 1. It touches
-   validation, src/config/config-editable-keys.ts (so `config set roles.feature.instances 3`
-   works), tumwater.example.json, src/config/config-example.ts and the docs config table.
-2. **Ids.** `loopIdsFor` and `loopIds(config)` in src/roles/loop-ids.ts expand enabled roles by
-   instances. `loopEnabled` already reads the configured count through a cast (landed with
-   part 4/7); this part replaces the cast with the schema field and its defaults. `knownRoleIds`
-   (src/config/config.ts) includes the ids, so the CLI and GUI accept `--role feature-2`.
-3. **Runners.**
-   - `runOrchestrator` (src/orchestrator/orchestrator.ts) builds runners from `loopIds`.
-   - `newLiveConfigReload` (src/config/config-live.ts) adds runners for new ids and logs one
-     warning per instance started or stopped. Surplus runners stay in place and are skipped
-     by `loopEnabled`.
-   - `snapshot` (src/status/status-data.ts) lists loop ids.
-4. **Plan target.** In the plan charter, "two or more plans" becomes `{{planTarget}}
-   eligible plans`. `assembleTickPrompt` substitutes `planBacklogTarget(config) =
-   instances(feature) + 1` and counts eligibility per part 2/7. With instances > 1 the charter
-   asks the plan loop to prefer a plan independent of the waiting series.
-5. **Docs.** plans/merge-queue.md invariant 3 becomes "one in-flight landing per loop".
+1. **Schema.** `RoleConfig.instances?: number` in src/config/config-schema.ts, documented as an
+   integer 1–8, valid only under `roles.feature` and `roles.bugfix`, default 1. Add
+   `"instances"` to `ROLE_ENTRY_KEYS` in the same file, which is what makes `config set
+   roles.feature.instances 3`, `config get` and the unknown-field suffix in
+   src/config/config-write.ts resolve it (`config-editable-keys.ts` is the GUI Settings
+   allowlist and is not the place for this — correcting the oversized entry's earlier anchor).
+2. **Validation.** In src/config/config-validation.ts, beside the per-role `enabled` /
+   `minTickIntervalSeconds` checks, reject a non-integer, `< 1` or `> 8` (a new `NumberRule`
+   like `POSITIVE_INTEGER`) and reject any `instances` under a role outside `INSTANCE_ROLES`
+   (src/roles/loop-ids.ts) — a custom loop's or `roles.plan.instances` fails with a message
+   naming the two allowed roles.
+3. **loop-ids.** `configuredInstances` drops the cast and reads the field; add
+   `loopIds(config): string[]` returning, for every enabled role in `config.roles` order, its
+   bare id then `<id>-2`…`<id>-N` for `INSTANCE_ROLES` (other roles and custom loops stay
+   bare). This is the one answer to "which runners should exist", so 5b/7's orchestrator and
+   live reload reuse it.
+4. **Docs.** No separate config-reference doc exists for per-role keys; the README Settings
+   paragraph is it and the readme loop keeps it current — no docs edit is required here.
 
 **Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
-src/config/config-editable-keys.ts, src/config/config-example.ts, src/config/config.ts,
-src/config/config-live.ts, src/roles/loop-ids.ts, src/orchestrator/orchestrator.ts,
-src/status/status-data.ts, src/roles/role-catalog.ts, src/tick/tick-prompt.ts,
-tumwater.example.json, plans/merge-queue.md, docs (config reference). Tests: cases in the
-config-validation, config-live, orchestrator e2e and tick-prompt tests.
+src/roles/loop-ids.ts. Tests: cases in the config-validation and loop-ids tests.
 
 **Acceptance criteria.**
-- **Startup.** With `roles.feature.instances: 3` and two eligible plans, an e2e run starts
-  `feature` and `feature-2` on different plans, never starts `feature-3`, and leases slots only
-  (no `.tumwater/worktrees/feature-2`).
-- **Live edit.** Raising `instances` from 1 to 2 starts `feature-2` within one poll. Lowering
-  it back stops new ticks and leaves an in-flight landing to finish.
-- **Landing.** Both instances' landings land with no resolver run (part 3/7). Each instance's
-  next tick is blocked only by its own landing.
-- **Bugfix.** `roles.bugfix.instances: 2` with an empty `## Open` runs only `bugfix`, in
-  search mode.
-- **Validation.** `roles.plan.instances: 2` fails, and so does `instances: 0`.
-- **Plan prompt.** It names the target 4 when `feature.instances` is 3.
+- `validateConfig` accepts `roles.feature.instances: 3` and `roles.bugfix.instances: 2`;
+  rejects `instances: 0`, `instances: 9`, `instances: 1.5`, and `roles.plan.instances`.
+- `config set roles.feature.instances 3` writes the field and `config get` reads it back;
+  a typo'd `roles.feature.colour` still errors.
+- `loopIds` on `feature.instances: 3` returns `feature, feature-2, feature-3` with the other
+  enabled roles in `config.roles` order; at the default it returns exactly the bare ids
+  `enabledRoleIds` returns today.
+- `loopEnabled(config, "feature-3")` is true at instances 3 and false at 2.
 - `npm run test` green.
 
-### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; requires part 5/7 landed)
+### Parallel work instances, part 5b/7: instance runners spawn at startup and on live reload, gated by claims (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7, 3/7, 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed)
+
+Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
+ahead").
+
+Context: the poll already assigns each runner in a `baseRoleOf` group a distinct claim and
+skips an idle extra instance when nothing is free (src/orchestrator/orchestrator-scheduling.ts),
+and `loopEnabled` (src/scheduling/scheduling.ts) already skips a runner whose configured count
+no longer covers it. The missing piece is the runners: `runOrchestrator` builds
+`enabled.map(...)` from `enabledRoleIds` (src/orchestrator/orchestrator.ts) and
+`newLiveConfigReload` diffs base-role ids (src/config/config-live.ts), so `instances` never
+creates a second loop.
+
+**Approach.**
+1. **Startup.** `runOrchestrator` builds its runner list from `loopIds(config)` (part 5a/7)
+   instead of `enabledRoleIds`; a `--once --role feature-2` filter therefore targets exactly
+   that loop id. Keep the empty-list refusal as-is.
+2. **Live reload.** `newLiveConfigReload` diffs `loopIds(live)` between polls: create a
+   `LoopRunner` for each newly present id (subject to the existing `roleFilter` guard), and
+   keep a lowered id's runner in the list — `loopEnabled` skips it, exactly as a disabled role
+   already is. Log one `warnEvent` per id enabled/disabled (the wording may keep naming the
+   role).
+3. **Known ids and snapshot.** `knownRoleIds` (src/config/config.ts) includes `loopIds(config)`
+   so the CLI and the GUI (which resolve through `knownRoleIdsCached`) accept `--role
+   feature-2`; `snapshot` (src/status/status-data.ts) lists loop ids so the dashboard has a row
+   per instance.
+4. **Landing invariant.** plans/merge-queue.md invariant 3 reads "one in-flight landing per
+   loop" — a `feature-2` may land while `feature` is landing; the poll already enforces it per
+   runner.
+
+**Files touched.** src/orchestrator/orchestrator.ts, src/config/config-live.ts,
+src/config/config.ts, src/status/status-data.ts, plans/merge-queue.md. Tests: orchestrator e2e
+and config-live cases.
+
+**Acceptance criteria.**
+- With `roles.feature.instances: 3` and two eligible plans, an orchestrator e2e run starts
+  `feature` and `feature-2` (each holding its own claim from part 4/7), never starts
+  `feature-3`, and creates no `feature-2` role worktree (ticks lease pooled slots).
+- Raising `instances` 1→2 mid-run adds a `feature-2` runner within one poll; lowering 2→1
+  stops `feature-2`'s future ticks and lets its in-flight landing finish.
+- `knownRoleIds` contains `feature-2` at instances 2 and not at 1; `tumwater status` shows one
+  row per loop id.
+- plans/merge-queue.md invariant 3 names loops, not roles.
+- `npm run test` green.
+
+### Parallel work instances, part 5c/7: the plan charter's target scales with `feature.instances` (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7 and 2/7 landed)
+
+Design: plans/parallel-work-instances.md ("…keeping the plan loop ahead").
+
+Context: the plan loop's charter (the `plan` role's `find` string in src/roles/role-catalog.ts,
+step 1) stops it once PLANS.md holds "two or more plans without a Needs-review or Needs-replan
+note", so one feature runner can drain the queue. With `feature.instances: N` the fleet can
+work N plans at once, so the queue must hold N+1 eligible ones before the plan loop stops.
+
+**Approach.**
+1. **Target function.** Add `planBacklogTarget(config) = configuredInstances(config,
+   "feature") + 1` beside the claim helpers (src/scheduling/claims.ts already imports from
+   loop-ids and is a natural home, or a small sibling module).
+2. **Charter placeholder.** In the `plan` role's `find` text (src/roles/role-catalog.ts),
+   "two or more plans" becomes `{{planTarget}} or more eligible plans`, with a clause that only
+   entries which are neither blocked, refused nor needs-review count (the eligibility
+   definition part 2/7 established in src/backlog/backlog-eligibility.ts), and that when
+   `instances > 1` the planner prefers a plan independent of the waiting series.
+3. **Substitution.** `assembleTickPrompt` (src/tick/tick-prompt.ts) replaces `{{planTarget}}`
+   with `planBacklogTarget(config)` when it builds the plan role's prompt, following the
+   existing placeholder style in that file.
+
+**Files touched.** src/roles/role-catalog.ts, src/tick/tick-prompt.ts, the helper (src/scheduling/claims.ts
+or a small sibling). Tests: a tick-prompt case.
+
+**Acceptance criteria.**
+- The assembled plan-role prompt from `feature.instances: 3` contains "4 or more eligible
+  plans" and no literal `{{planTarget}}`; at the default it contains "2 or more".
+- The prompt text says to count only eligible entries (no blocked/refused/needs-review) and to
+  prefer an independent series when instances > 1.
+- `npm run test` green.
+
+### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; split 2026-10-08 by plan; requires part 5b/7 landed)
 
 Design: plans/parallel-work-instances.md ("Observability").
 
@@ -273,7 +340,7 @@ status, status-render, event-format and doctor tests.
 - **Doctor.** It warns on a 25 h-old claim and on a claim whose entry is gone.
 - `npm run test` green.
 
-### Parallel work instances, part 7/7: keep permit headroom for work loops that have work to take (planned 2026-10-07 by operator; requires part 5/7 landed)
+### Parallel work instances, part 7/7: keep permit headroom for work loops that have work to take (planned 2026-10-07 by operator; requires part 5b/7 landed)
 
 Design: plans/parallel-work-instances.md ("Priority headroom").
 

@@ -229,7 +229,7 @@ markdown.
 
 Instances may work on overlapping files. The merge path has to absorb that, rather than
 assignment avoiding it. Two independent PLANS.md series make the merge path robust enough, and
-part 5/7 requires them:
+part 5b/7 requires them:
 - **Robust conflict landing 1/2.** The strong-tier resolver sees both sides' intent: the change's
   commit message, and main's commits that touched the conflicted files.
 - **Robust conflict landing 2/2.** A conflict the resolver cannot settle, or a revision that no
@@ -240,7 +240,7 @@ part 5/7 requires them:
 Together with part 3/7's deterministic backlog-insert merge, no approved change is thrown away
 because another instance landed first.
 
-### Spawning instances and keeping the plan loop ahead (part 5/7)
+### Spawning instances and keeping the plan loop ahead (parts 5a/7–5c/7)
 
 - **Config.** `roles.<id>.instances` is an integer from 1 to 8, only for `feature` and
   `bugfix`, and defaults to 1. It touches the schema, validation, editable keys, the example
@@ -309,10 +309,16 @@ because another instance landed first.
 4. **4/7: claims: the harness assigns each multi-instance loop one entry and holds it through
    landing.** Requires 1/7 and 2/7.
 5. **5/7: `roles.<id>.instances` spawns instances that run only while unclaimed work exists,
-   and the plan target scales.** Requires 3/7, 4/7, Robust conflict landing 2/2 and Worktree
-   pool 4/5.
-6. **6/7: claims and instances on status, TUI, GUI, doctor and docs.** Requires 5/7.
-7. **7/7: the work tier keeps permit headroom while it has work to take.** Requires 5/7.
+   and the plan target scales.** Split by PLAN_SIZING (2026-10-08) into three independently
+   landable parts, each a PLANS.md entry:
+   - **5a/7: the validated `roles.<id>.instances` field and `loopIds` enumeration**
+     (behavior-neutral).
+   - **5b/7: instance runners spawn at startup and on live reload, gated by claims.** Requires
+     5a/7, 3/7, 4/7, Robust conflict landing 2/2 and Worktree pool 4/5.
+   - **5c/7: the plan charter's target scales with `feature.instances`.** Requires 5a/7 and
+     2/7.
+6. **6/7: claims and instances on status, TUI, GUI, doctor and docs.** Requires 5b/7.
+7. **7/7: the work tier keeps permit headroom while it has work to take.** Requires 5b/7.
 
 Parts 1/7–4/7 can land before the pool. They are inert or useful on their own: 2/7 stops the
 single feature loop reading blocked entries, and 3/7 removes today's resolver runs between
