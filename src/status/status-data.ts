@@ -222,9 +222,10 @@ export interface StatusSnapshot {
    * exists, a queue entry with its sha still exists (entries are dropped only AFTER an
    * outcome — 3/5 — so in-flight always implies depth ≥ 1), and the orchestrator is alive.
    * The cross-check makes every crash ordering self-healing: a stale marker without a
-   * matching entry never displays. The marker is checked per change (liveLandingMarker):
-   * only its records whose entry is still queued are kept, and it displays while one of them
-   * is not yet `done`. */
+   * matching entry never displays. The check is liveLandingMarker's: an older-generation
+   * single-change marker displays only while its sha is queued; one with per-change records
+   * keeps just the records whose entry is still queued and displays while one is not yet
+   * `done`. */
   landQueue: {
     depth: number;
     /** Each queued change in execution order (oldest first) for `status --json` readers —
