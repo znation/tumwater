@@ -1,6 +1,6 @@
 /** The cluster-key rules shared by everything that groups failure messages into causes: the
- * failure digest's collection (failure-data.ts) and the error-storm reducer (error-storm.ts)
- * both count by these keys, so the normalization, the two tick-timeout shapes and their
+ * failure digest's collection (failure-data.ts) and the error-storm reducer
+ * (src/fleet/error-storm.ts) both count by these keys, so the normalization, the two tick-timeout shapes and their
  * pooling, and the grouping engine live here rather than inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
 import { rankByCount } from "../collections.js";
@@ -51,7 +51,7 @@ export function truncateExample(message: string, max: number = EXAMPLE_MAX): str
  * array in ascending localeCompare order, so equal inputs always render identically no matter
  * the Set's insertion order. One home for the rule the failure digest's clusters
  * (clusterMessages) and loss causes (failure-data.ts) and the error-storm warning
- * (error-storm.ts) all share — an inline `.sort()` without the comparator would silently pick
+ * (src/fleet/error-storm.ts) all share — an inline `.sort()` without the comparator would silently pick
  * code-unit order instead and let the two rules drift. */
 export function sortedRoles(roles: Iterable<string>): string[] {
   return [...roles].sort((a, b) => a.localeCompare(b));
@@ -106,7 +106,7 @@ const TICK_TIMEOUT_PROGRESSING_REVIEW_KEY =
 /** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
  * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
  * one knob, not two half-size rows the top-N cut can drop — the same pooling the error-storm
- * reducer applies, src/failure/error-storm.ts), and every other cause stands as normalizeClusterKey
+ * reducer applies, src/fleet/error-storm.ts), and every other cause stands as normalizeClusterKey
  * rendered it. */
 export function poolTimeoutKey(key: string): string {
   return key === TICK_TIMEOUT_PROGRESSING_KEY || key === TICK_TIMEOUT_PROGRESSING_REVIEW_KEY

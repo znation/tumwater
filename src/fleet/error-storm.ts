@@ -10,7 +10,7 @@
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
 import { getOrCreate, rankByCount } from "../collections.js";
-import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "./failure-cluster.js";
+import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "../failure/failure-cluster.js";
 import { ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the

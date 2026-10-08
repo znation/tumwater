@@ -1,14 +1,14 @@
-import { errorStorm, errorStormKnob, type ErrorStorm } from "../failure/error-storm.js";
+import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEvent } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
-import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "../failure/failure-spread.js";
+import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 
 /** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
- * alarms (src/fleet/fleet-hold.ts, src/failure/error-storm.ts, src/failure/failure-spread.ts): each poll gathers
+ * alarms (src/fleet/fleet-hold.ts, src/fleet/error-storm.ts, src/fleet/failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
  * per episode crossing, so the alarm modules stay unit-testable without a fleet and these
  * own the only event emission. Split out of tick-timing.ts — which had grown from the
@@ -98,7 +98,7 @@ export function pollFleetHold(
   return next;
 }
 
-/** One poll of the fleet-wide error-storm warning (src/failure/error-storm.ts): gather each runner's
+/** One poll of the fleet-wide error-storm warning (src/fleet/error-storm.ts): gather each runner's
  * current error streak (LoopState.consecutiveErrors/lastError — the same fields the per-role
  * "consecutive tick failures" warning reads, the director's included, since its failures are
  * the fleet's evidence too), step the pure reducer, and log exactly one warning per episode,
@@ -136,7 +136,7 @@ export function pollErrorStorm(
   return next;
 }
 
-/** One poll of the fleet-wide wide-shallow storm alarm (src/failure/failure-spread.ts): gather each
+/** One poll of the fleet-wide wide-shallow storm alarm (src/fleet/failure-spread.ts): gather each
  * runner's latest provider-failure observations — the same two the fleet hold reads, the
  * director's included, since its failures are the fleet's evidence too — step the pure
  * reducer, and log exactly one warning per episode: on the quiet→active crossing (and again

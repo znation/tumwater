@@ -22,7 +22,7 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
  * shared by the failure digest's per-role stats, outcome, and prompt-token accumulators
  * (failure-data.ts), its time-and-spend per-role row (time-spend.ts), the fleet hold's
  * provider+kind grouping (fleet-hold.ts), the error-storm reducer's roles-by-key set
- * (error-storm.ts), and `groupBy` above, so those sites cannot drift on how a missing key is
+ * (src/fleet/error-storm.ts), and `groupBy` above, so those sites cannot drift on how a missing key is
  * seeded. `make` runs only when the key is absent. A stored value of `undefined` reads as
  * absent, matching the `??` idiom this replaces; the callers above never store one. */
 export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
@@ -35,7 +35,7 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
 
 /** Increment a Map counter, seeding a missing key at 1 — the single home of the
  * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
- * (failure-spread.ts), the diff multiset's line tally (landing/landing-diff.ts), the
+ * (src/fleet/failure-spread.ts), the diff multiset's line tally (landing/landing-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), and the once-summary outcome tally
  * (cli/cli-run.ts), so those sites cannot drift on how a missing key is seeded. */
 export function increment<K>(map: Map<K, number>, key: K): void {
@@ -62,9 +62,9 @@ export function addTo<K extends string>(
  * order the same way. These two helpers are the single home of that rule; every surface that
  * ranks counters calls one of them rather than re-implementing the comparator —
  * `rankCountEntries` serves the `[key, count]` entry shape (src/report/report-render.ts's
- * rankedRoleMap, src/failure/failure-spread.ts's strongest-kind pick) and `rankByCount` serves
+ * rankedRoleMap, src/fleet/failure-spread.ts's strongest-kind pick) and `rankByCount` serves
  * callers whose counts are fields or computations on other shapes
- * (src/failure/failure-cluster.ts's clusters, failure/error-storm.ts's strongest-cause pick,
+ * (src/failure/failure-cluster.ts's clusters, src/fleet/error-storm.ts's strongest-cause pick,
  * failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). The one deliberate
  * exception is ui/gui/gui-client-report.ts's reportRoleOrder, which keeps its own copy by design:
  * it runs in the browser, where harness modules cannot be imported. Both helpers return a fresh
@@ -78,7 +78,7 @@ export function rankByCount<T>(
 }
 
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
- * rankedRoleMap and src/failure/failure-spread.ts's strongest-kind pick. */
+ * rankedRoleMap and src/fleet/failure-spread.ts's strongest-kind pick. */
 export function rankCountEntries<K extends string>(
   entries: Iterable<[K, number]>,
 ): [K, number][] {

@@ -31,8 +31,8 @@ import {
 import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
 import type { ReclaimController } from "../fleet/reclaim.js";
 import type { FleetHold } from "../fleet/fleet-hold.js";
-import { ERROR_STORM_QUIET, type ErrorStorm } from "../failure/error-storm.js";
-import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
+import { ERROR_STORM_QUIET, type ErrorStorm } from "../fleet/error-storm.js";
+import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../fleet/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -370,7 +370,7 @@ export function pollFleetGates(
   // permit after a later poll sees that poll's world.
   states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(runners), now);
 
-  // Fleet-wide error-storm warning (src/failure/error-storm.ts): when several roles' tick streaks
+  // Fleet-wide error-storm warning (src/fleet/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"
   // warning still fires alone — this adds the one fleet-level warning that names the
   // cause (and the config knob, when the cause has one) instead of leaving the operator
@@ -378,7 +378,7 @@ export function pollFleetGates(
   // hold above there is no re-open event — the members' own recoveries tell that story.
   states.errorStorm = pollErrorStorm(root, states.errorStorm, runners);
 
-  // Fleet-wide wide-shallow storm alarm (src/failure/failure-spread.ts): when many roles each
+  // Fleet-wide wide-shallow storm alarm (src/fleet/failure-spread.ts): when many roles each
   // fail a few times on one provider failure kind, the streak bar needs one role deep,
   // the error storm needs several roles deep, and the hold needs the failures close
   // together — this counts raw failures of one kind across roles in a rolling window,
