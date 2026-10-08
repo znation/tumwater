@@ -130,6 +130,30 @@ export function duplicateHeadings(md: string): string[] {
   return [...sectionTitleCounts(md)].filter(([, n]) => n > 1).map(([title]) => title);
 }
 
+/** The `## Fixed` entry headings whose body holds more than one `**Symptom:**` or
+ * `**Fix:**` block — the shape a record with no `### ` heading leaves when parseEntryDetails
+ * absorbs it into the entry above (an entry opens only at a `### ` line, so the headingless
+ * record becomes body text). A legitimate Fixed body holds exactly one Symptom/Fix pair; a
+ * second block is a record merged in from a lost heading, where no section reader lists it and
+ * the false-fix guard's symbol check reads it as part of its neighbour. Fenced lines are
+ * quoted content, never blocks, through backlog-md.ts's shared fenceTracker (an entry may
+ * quote a template carrying both markers). */
+export function doubleBlockFixedEntries(md: string): string[] {
+  const found: string[] = [];
+  for (const entry of parseEntryDetails(md, "Fixed")) {
+    const fenced = fenceTracker();
+    let symptom = 0;
+    let fix = 0;
+    for (const line of entry.body.split("\n")) {
+      if (fenced.inside(line)) continue;
+      if (line.startsWith("**Symptom:**")) symptom++;
+      else if (line.startsWith("**Fix:**")) fix++;
+    }
+    if (symptom > 1 || fix > 1) found.push(entry.title);
+  }
+  return found;
+}
+
 /** The first structural fault a diff landing on `mainBranch` leaves in a backlog file, or
  * undefined when none: for each touched backlog file it compares the `## ` heading set of the
  * tree being landed (`wt`) against the diff's merge-base — the same base falseFixReason
@@ -148,7 +172,10 @@ export function duplicateHeadings(md: string): string[] {
  * the heading rules use), so a Planned → Done move of an entry the base already had passes, a
  * stacked batch is measured change by change, and a pre-existing stranded entry (whose key the
  * base has) never blocks unrelated landings — the clean loop's repair (part 3/4) owns those.
- * Detection is deterministic markdown reading —
+ * BUGS.md has one more: a head `## Fixed` entry that holds more than one `**Symptom:**` or
+ * `**Fix:**` block (doubleBlockFixedEntries) absorbed a headingless record into its body; a
+ * base body that already had the shape is never re-flagged, so only a newly merged record is
+ * rejected (BUGS.md 2026-10-08). Detection is deterministic markdown reading —
  * no pi — so both the review gate (exempt and code diffs alike) and the in-lock landing
  * re-check can afford it on every landing (plans: "Backlog structure check", part 2/4). */
 export async function backlogStructureReason(
@@ -191,6 +218,21 @@ export async function backlogStructureReason(
           `PLANS.md files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
           `written into the done section is invisible to every Planned reader; file it under ` +
           `"## Planned" instead`
+        );
+    }
+    // A new headingless record cannot hide in a Fixed entry's body: reject a head whose
+    // multi-block entries the base did not carry (an existing one never blocks unrelated
+    // edits, matching the heading-set rules above). The Fix paragraph is the guard's unit, so
+    // a merged second block would otherwise sit inside the neighbour it was symbol-checked
+    // against.
+    if (file === "BUGS.md") {
+      const baseTitles = new Set(doubleBlockFixedEntries(base));
+      const newcomer = doubleBlockFixedEntries(head).find((title) => !baseTitles.has(title));
+      if (newcomer)
+        return (
+          `BUGS.md's Fixed entry "${newcomer}" holds more than one **Symptom:**/**Fix:** block — ` +
+          `a record with no "### " heading has merged into it, so the hidden record is invisible ` +
+          `to every section reader; give it its own "### " heading`
         );
     }
   }

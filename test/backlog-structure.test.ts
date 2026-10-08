@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   backlogStructureReason,
+  doubleBlockFixedEntries,
   duplicateHeadings,
   strandedPlanEntries,
   renderBacklogStructureBlock,
@@ -230,6 +231,47 @@ test("backlogStructureReason passes a change that removes a duplicate", async ()
 test("backlogStructureReason passes an unchanged BUGS.md with sections this repo's template lacks", async () => {
   const bugs = "## Open\n\n_Nothing yet._\n\n## Fixed\n\n_Nothing yet._\n\n## Verified\n\n_Nothing yet._\n";
   const wt = await structureFixture("BUGS.md", bugs, bugs);
+  assert.equal(await backlogStructureReason(wt, "main", ["BUGS.md"]), undefined);
+});
+
+// ── doubleBlockFixedEntries — a headingless Fixed record cannot hide in its neighbour ─────
+// (BUGS.md 2026-10-08) parseEntryDetails opens an entry only at a `### ` line, so a record
+// that lost its heading is absorbed into the entry above it; the false-fix guard then reads
+// the merged body as one record and no section reader lists the hidden one.
+
+test("doubleBlockFixedEntries names a Fixed body that absorbed a headingless record", () => {
+  const md =
+    "## Fixed\n\n### A (fixed 2026-10-01)\n\n" +
+    "**Symptom:** x.\n\n**Fix:** `a` does it.\n\n" +
+    "**Symptom:** hidden record.\n\n**Fix:** `b` does it.\n";
+  assert.deepEqual(doubleBlockFixedEntries(md), ["A (fixed 2026-10-01)"]);
+  // A quoted `**Symptom:**`/`**Fix:**` inside a fenced block is body content, never a block.
+  const fenced =
+    "## Fixed\n\n### B (fixed 2026-10-01)\n\n" +
+    "**Symptom:** x.\n\n**Fix:** `a` does it.\n\n" +
+    "```md\n**Symptom:** quoted\n\n**Fix:** `b` does it.\n```\n";
+  assert.deepEqual(doubleBlockFixedEntries(fenced), []);
+});
+
+test("backlogStructureReason rejects a head Fixed body that absorbed a headingless record", async () => {
+  const base =
+    "## Open\n\n_None._\n\n## Fixed\n\n### A (fixed 2026-10-01)\n\n" +
+    "**Symptom:** x.\n\n**Fix:** `a` does it.\n";
+  const head =
+    base + "\n**Symptom:** hidden record.\n\n**Fix:** `b` does it.\n";
+  const wt = await structureFixture("BUGS.md", base, head);
+  const reason = await backlogStructureReason(wt, "main", ["BUGS.md"]);
+  assert.match(reason!, /^BUGS\.md's Fixed entry/);
+  assert.match(reason!, /more than one/);
+});
+
+test("backlogStructureReason passes when the multi-block Fixed body was already in the base", async () => {
+  const shared =
+    "## Open\n\n_None._\n\n## Fixed\n\n### A (fixed 2026-10-01)\n\n" +
+    "**Symptom:** x.\n\n**Fix:** `a` does it.\n\n" +
+    "**Symptom:** an already-merged record.\n\n**Fix:** `b` does it.\n";
+  // A code-only edit elsewhere in BUGS.md; the pre-existing absorbed record stays put.
+  const wt = await structureFixture("BUGS.md", shared, shared + "\n- an unrelated tail line\n");
   assert.equal(await backlogStructureReason(wt, "main", ["BUGS.md"]), undefined);
 });
 

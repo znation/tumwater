@@ -75,20 +75,36 @@ export function bugEntryBody(doc: string, heading: string): string {
   return fixedEntries(doc).find((entry) => entry.title === heading)?.body ?? "";
 }
 
-/** The backticked, whitespace-free spans of one entry's `**Fix:**` paragraph (the whole body
- * when the entry carries no explicit Fix line), each with a trailing `()` stripped so a call
- * mention matches the identifier it names. Spans with whitespace inside — `npm test`,
- * `--days N`, `Ctrl+B` — are not symbols and never counted. */
+/** The backticked, whitespace-free spans of EVERY `**Fix:**` paragraph in an entry's body
+ * (the whole body when the entry carries no explicit Fix line), each with a trailing `()`
+ * stripped so a call mention matches the identifier it names. Every claim must be read, not
+ * just the first: a body can hold a second `**Fix:**` paragraph — a headingless record
+ * absorbed into it (BUGS.md 2026-10-08), or a narrative describing two fixes — and picking
+ * the first match with `Array.find` let a later paragraph name symbols that exist nowhere on
+ * the tree while `falseFixReason` passed on the first. Spans with whitespace inside —
+ * `npm test`, `--days N`, `Ctrl+B` — are not symbols and never counted. */
 export function fixSymbols(body: string): string[] {
-  const fix = /(^|\n)[^\n]*\*\*Fix:\*\*/.test(body)
-    ? body.split(/\n\s*\n/).find((p) => p.includes("**Fix:**")) ?? body
-    : body;
+  const fixes = body.split(/\n\s*\n/).filter((p) => p.includes("**Fix:**"));
+  const fix = fixes.length > 0 ? fixes.join("\n") : body;
   const symbols: string[] = [];
   for (const span of fix.matchAll(/`([^`\n]+)`/g)) {
-    const symbol = (span[1] ?? "").trim().replace(/\(\)$/, "");
+    const symbol = unwrapSymbol((span[1] ?? "").trim()).replace(/\(\)$/, "");
     if (symbol && !/\s/.test(symbol)) symbols.push(symbol);
   }
   return symbols;
+}
+
+/** A backticked span with a surrounding array/quote wrapper stripped: a Fix paragraph may
+ * quote a name in the notation it was returned in — `["falseFixReason"]` — and checking the
+ * raw span would report the brackets as missing when the name itself is on the tree. `[]`
+ * unwraps to nothing and is dropped by fixSymbols' emptiness guard. */
+function unwrapSymbol(span: string): string {
+  let out = span;
+  if (out.startsWith("[") && out.endsWith("]")) out = out.slice(1, -1);
+  const quote = out[0];
+  if (out.length >= 2 && (quote === '"' || quote === "'") && out.endsWith(quote))
+    out = out.slice(1, -1);
+  return out;
 }
 
 /** The tree's code text: every tracked-source-shaped file under src/, test/, and scripts/,

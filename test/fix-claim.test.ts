@@ -156,6 +156,27 @@ test("fixSymbols keeps whitespace-free backticked spans, drops prose and call pa
   ]);
 });
 
+// Regression coverage for the 2026-10-08 false-fix-guard record (BUGS.md): a Fixed body can
+// hold more than one `**Fix:**` paragraph — a headingless record absorbed into the entry above
+// it, or a narrative describing two changes. Reading only the first paragraph (Array.find) let
+// a later one name symbols that exist nowhere on the tree while the guard passed on the first.
+
+test("fixSymbols reads every Fix paragraph in a body, not only the first", () => {
+  const body =
+    "**Symptom:** the first thing broke.\n\n" +
+    "**Fix:** `realFix` does the first thing.\n\n" +
+    "**Validation gap:** none.\n\n" +
+    "**Symptom:** an absorbed headingless record.\n\n" +
+    "**Fix:** `phantomFix` does the second thing too.\n";
+  assert.deepEqual(fixSymbols(body), ["realFix", "phantomFix"]);
+});
+
+test("fixSymbols unwraps a name quoted in JSON or array notation", () => {
+  assert.deepEqual(fixSymbols('**Fix:** it returns `["falseFixReason"]`.'), ["falseFixReason"]);
+  assert.deepEqual(fixSymbols("**Fix:** it returns `[]` for none."), []);
+  assert.deepEqual(fixSymbols("**Fix:** it returns `'quotedName'`."), ["quotedName"]);
+});
+
 test("unbackedSymbols keeps only names absent from both the code haystack and the tree", () => {
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
@@ -246,6 +267,28 @@ test("falseFixReason flags a new Fixed entry whose Fix names nothing on the tree
   const reason = await falseFixReason(root, "main", ["BUGS.md"]);
   assert.match(reason!, /runScriptGroup/);
   assert.match(reason!, /A bug/);
+});
+
+test("falseFixReason flags a later Fix paragraph in a Fixed body, not only the first", async () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export const realFix = 1;\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### A bug (found 2026-10-08)\n\n**Symptom:** x.\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A bug (found 2026-10-08, fixed 2026-10-08)\n\n" +
+      "**Fix:** `realFix` does it.\n\n" +
+      "**Validation gap:** none.\n\n" +
+      "**Symptom:** an absorbed headingless record.\n\n" +
+      "**Fix:** `phantomRecordSymbol` does it too.\n",
+  );
+  const reason = await falseFixReason(root, "main", ["BUGS.md"]);
+  assert.match(reason!, /phantomRecordSymbol/);
 });
 
 test("falseFixReason passes an md-only edit with no Fixed transition or a backed one", async () => {
