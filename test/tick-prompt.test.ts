@@ -35,15 +35,28 @@ function state(overrides: Partial<LoopState> = {}): LoopState {
   return { ...freshLoopState("coverage"), ...overrides };
 }
 
+/** assembleTickPrompt with the suite's standing inputs — defaultConfig() and a fresh loop
+ * state carrying the same role — so a call site cannot pass a role that disagrees with its
+ * state's. `overrides` carries the few custom configs and pinned state fields; the
+ * preview-seam tests below keep calling assembleTickPrompt directly, since they share one
+ * input object between peek and dequeue. */
+function promptFor(
+  root: string,
+  role: string,
+  overrides: { config?: ReturnType<typeof defaultConfig>; state?: Partial<LoopState> } = {},
+): ReturnType<typeof assembleTickPrompt> {
+  return assembleTickPrompt({
+    root,
+    config: overrides.config ?? defaultConfig(),
+    role,
+    state: state({ role, ...overrides.state }),
+  });
+}
+
 test("a role tick prompt embeds the brief, principles, and the role's task — with no user prompt", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "Small beats big.\n");
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.equal(result.userPrompt, null);
   assert.match(result.prompt, /You are the "coverage" loop/);
@@ -59,12 +72,7 @@ test("a repo whose brief markers are gone still assembles a prompt naming README
   // degrades to an empty brief and the fallback names the compatibility path, not a dead end.
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), "# My project\n\nNo markers here.\n");
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.doesNotMatch(result.prompt, /<project-prompt>/, "no brief content to embed");
   assert.match(result.prompt, /read the project brief \(README\.md\) in full/);
@@ -73,12 +81,7 @@ test("a repo whose brief markers are gone still assembles a prompt naming README
 test("the brief resolves to TUMWATER.md when it owns the sections, and the prompt says so", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "TUMWATER.md"), briefTemplate("proj", "Build a tiny thing.\n"));
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state(),
-  });
+  const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.match(result.prompt, /read the project brief \(TUMWATER\.md\) in full/);
 });
@@ -86,12 +89,7 @@ test("the brief resolves to TUMWATER.md when it owns the sections, and the promp
 test("the configured check's command is named as the verify step", () => {
   const config = defaultConfig();
   config.check = { command: "make check" };
-  const result = assembleTickPrompt({
-    root: root(),
-    config,
-    role: "coverage",
-    state: state(),
-  });
+  const result = promptFor(root(), "coverage", { config });
   assert.ok(result);
   assert.match(result.prompt, /verify with `make check` \(the project's declared check\)/);
 });
@@ -99,12 +97,7 @@ test("the configured check's command is named as the verify step", () => {
 test("a director with an empty inbox has nothing to run", () => {
   const dir = root();
   assert.equal(
-    assembleTickPrompt({
-      root: dir,
-      config: defaultConfig(),
-      role: DIRECTOR_ROLE,
-      state: state({ role: DIRECTOR_ROLE }),
-    }),
+    promptFor(dir, DIRECTOR_ROLE),
     null,
   );
 });
@@ -112,12 +105,7 @@ test("a director with an empty inbox has nothing to run", () => {
 test("a director's prompt is built from the dequeued request, returned as userPrompt", () => {
   const dir = root();
   enqueuePrompt(dir, "prefer no third-party deps");
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: DIRECTOR_ROLE,
-    state: state({ role: DIRECTOR_ROLE }),
-  });
+  const result = promptFor(dir, DIRECTOR_ROLE);
   assert.ok(result);
   assert.equal(result.userPrompt, "prefer no third-party deps");
   assert.match(result.prompt, /You are the "director" loop/);
@@ -130,12 +118,7 @@ test("a role tick prompt injects the rendered <backlog-index> block from the pri
     path.join(dir, "BUGS.md"),
     "# Bugs\n## Open\n### Real bug (reported 2026-10-06)\nRepro.\n## Fixed\n_None._\n",
   );
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "bugfix",
-    state: state({ role: "bugfix" }),
-  });
+  const result = promptFor(dir, "bugfix");
   assert.ok(result);
   assert.match(result.prompt, /<backlog-index>/);
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
@@ -149,23 +132,13 @@ test("a role tick prompt reads the note from roleNotesPath, and omits the block 
   const notes = roleNotesPath(dir, "coverage");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
   fs.writeFileSync(notes, "coverage runs through the oracle helpers\n");
-  const withNote = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const withNote = promptFor(dir, "coverage");
   assert.ok(withNote);
   assert.match(withNote.prompt, /<role-notes>\ncoverage runs through the oracle helpers\n<\/role-notes>/);
   assert.match(withNote.prompt, /call role_notes with/);
 
   fs.rmSync(notes);
-  const without = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const without = promptFor(dir, "coverage");
   assert.ok(without);
   assert.ok(!without.prompt.includes("<role-notes>"), "a missing note file means no block");
   assert.match(without.prompt, /call role_notes with/, "the write instruction is still present");
@@ -175,12 +148,7 @@ test("a director prompt carries the same <backlog-index> block", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
   enqueuePrompt(dir, "what should we build next");
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: DIRECTOR_ROLE,
-    state: state({ role: DIRECTOR_ROLE }),
-  });
+  const result = promptFor(dir, DIRECTOR_ROLE);
   assert.ok(result);
   assert.match(result.prompt, /<backlog-index>/);
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
@@ -194,14 +162,8 @@ test("a bugfix instance's claim names the bug's line range from BUGS.md", () => 
     path.join(dir, "BUGS.md"),
     "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n",
   );
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "bugfix-2",
-    state: state({
-      role: "bugfix-2",
-      claim: { file: "BUGS.md", key: "real bug", title: "Real bug", at: 1, source: "assigned" },
-    }),
+  const result = promptFor(dir, "bugfix-2", {
+    state: { claim: { file: "BUGS.md", key: "real bug", title: "Real bug", at: 1, source: "assigned" } },
   });
   assert.ok(result);
   assert.match(result.prompt, /<assigned-entry>/);
@@ -211,12 +173,7 @@ test("a bugfix instance's claim names the bug's line range from BUGS.md", () => 
 test("an unknown role throws — the fleet cannot run a prompt with no task", () => {
   assert.throws(
     () =>
-      assembleTickPrompt({
-        root: root(),
-        config: defaultConfig(),
-        role: "nonexistent",
-        state: state(),
-      }),
+      promptFor(root(), "nonexistent"),
     /unknown role: nonexistent \(valid ids: .+\)/,
   );
 });
@@ -224,12 +181,7 @@ test("an unknown role throws — the fleet cannot run a prompt with no task", ()
 test("a custom role's task is its find-something-to-do text, titled by its name", () => {
   const config = defaultConfig();
   config.customLoops = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
-  const result = assembleTickPrompt({
-    root: root(),
-    config,
-    role: "changelog",
-    state: state({ role: "changelog" }),
-  });
+  const result = promptFor(root(), "changelog", { config });
   assert.ok(result);
   assert.match(result.prompt, /You are the "changelog" loop/);
   assert.match(result.prompt, /Your task this run:\nKeep CHANGELOG\.md current\./);
@@ -245,7 +197,7 @@ test("a runner whose role answers to nothing throws the shared unknown-role mess
   const config = defaultConfig();
   config.customLoops = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
   assert.throws(
-    () => assembleTickPrompt({ root: root(), config, role: "ghost", state: state() }),
+    () => promptFor(root(), "ghost", { config }),
     (err: unknown) =>
       err instanceof Error &&
       err.message === `unknown role: ghost (valid ids: ${[...allRoleIds(), "changelog"].join(", ")})`,
@@ -259,12 +211,7 @@ test("the qa role's prompt carries the flow-coverage ledger rendered from disk",
     qaCoveragePath(dir),
     JSON.stringify({ flows: { status: { lastRunAt: 1_800_000_000_000, result: "passed" } } }),
   );
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "qa",
-    state: state({ role: "qa" }),
-  });
+  const result = promptFor(dir, "qa");
   assert.ok(result);
   assert.match(result.prompt, /Flow coverage \(from this fleet's own record; least recently exercised first\)/);
   assert.match(result.prompt, /status — .* ago, passed/);
@@ -276,12 +223,7 @@ test("the telemetry role's prompt carries the failure digest rendered from its e
   writeEvents(dir, [
     { ts: Date.now(), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
   ]);
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "telemetry",
-    state: state({ role: "telemetry" }),
-  });
+  const result = promptFor(dir, "telemetry");
   assert.ok(result);
   assert.match(result.prompt, /Runtime failure digest of this harness's own event log/);
   assert.match(result.prompt, /<failure-digest>\n[\s\S]*pi exited null[\s\S]*<\/failure-digest>/);
@@ -290,34 +232,23 @@ test("the telemetry role's prompt carries the failure digest rendered from its e
 });
 
 test("a role other than qa or telemetry gets neither evidence block", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "coverage",
-    state: state(),
-  });
+  const result = promptFor(root(), "coverage");
   assert.ok(result);
   assert.doesNotMatch(result.prompt, /Flow coverage/);
   assert.doesNotMatch(result.prompt, /<failure-digest>/);
 });
 
 test("a rejected review rides along on the next tick's prompt, reasons intact", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "feature",
-    state: state({ lastReview: { verdict: "reject", reasons: ["the test lies about coverage"], at: 1 } }),
+  const result = promptFor(root(), "feature", {
+    state: { lastReview: { verdict: "reject", reasons: ["the test lies about coverage"], at: 1 } },
   });
   assert.ok(result);
   assert.match(result.prompt, /the test lies about coverage/);
 });
 
 test("an exhausted feature rejection carries the replan instruction on the next tick", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "feature",
-    state: state({ lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true } }),
+  const result = promptFor(root(), "feature", {
+    state: { lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true } },
   });
   assert.ok(result);
   assert.match(result.prompt, /Needs replan/);
@@ -335,7 +266,7 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
     role: "feature",
     lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true },
   });
-  const before = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "feature", state: s });
+  const before = promptFor(dir, "feature", { state: s });
   assert.ok(before);
   // The feature charter itself names "Needs replan", so the note is recognized by its
   // exhausted-rejection sentence, not the bare phrase.
@@ -343,7 +274,7 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
   // The markdown-only replan note lands review-exempt: no model verdict is recorded, only the
   // landing fold fires.
   applyLandingOutcome(s, "changed", { sha: "a".repeat(40), summary: "marked plan X for replan" });
-  const after = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "feature", state: s });
+  const after = promptFor(dir, "feature", { state: s });
   assert.ok(after);
   assert.doesNotMatch(after.prompt, /do not re-author it/);
   assert.doesNotMatch(after.prompt, /rejected in review/);
@@ -353,31 +284,23 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
 // prompt as if fresh even after main satisfied the objection, because the paths that never
 // reach a model review leave lastReview standing (BUGS.md, undated rejection note).
 test("the rejected-review note on the next tick's prompt is dated and names the reviewed head", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "feature",
-    state: state({
+  const result = promptFor(root(), "feature", {
+    state: {
       lastReview: {
         verdict: "reject",
         reasons: ["md-only BUGS.md edit"],
         head: "8b58124aabcdef",
         at: new Date(2026, 8, 24, 1, 20, 32).getTime(),
       },
-    }),
+    },
   });
   assert.ok(result);
   assert.match(result.prompt, /rejected in review \(2026-09-24 01:20:32, head 8b58124a\):/);
 });
 
 test("a conflict discard note rides along, with its attempt count", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "feature",
-    state: state({
-      conflictDiscard: { sha: "abc123", summary: "reworked the merge module", attempts: 3, at: 1 },
-    }),
+  const result = promptFor(root(), "feature", {
+    state: { conflictDiscard: { sha: "abc123", summary: "reworked the merge module", attempts: 3, at: 1 } },
   });
   assert.ok(result);
   assert.match(result.prompt, /reworked the merge module/);
@@ -385,12 +308,7 @@ test("a conflict discard note rides along, with its attempt count", () => {
 });
 
 test("a cut-off streak appends the cut-off note naming the streak", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "feature",
-    state: state({ cutOffStreak: 2 }),
-  });
+  const result = promptFor(root(), "feature", { state: { cutOffStreak: 2 } });
   assert.ok(result);
   assert.match(result.prompt, /Your previous 2 runs as this loop ran out of context/);
 });
@@ -401,15 +319,12 @@ test("notes compose in order — review rejection, then discard, then cut-off �
     path.join(dir, "PRINCIPLES.md"),
     "Small beats big.\n",
   );
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "feature",
-    state: state({
+  const result = promptFor(dir, "feature", {
+    state: {
       lastReview: { verdict: "reject", reasons: ["reason A"], at: 1 },
       conflictDiscard: { sha: "abc", summary: "discarded work", attempts: 1, at: 2 },
       cutOffStreak: 2,
-    }),
+    },
   });
   assert.ok(result);
   const prompt = result.prompt;
@@ -421,12 +336,7 @@ test("notes compose in order — review rejection, then discard, then cut-off �
 });
 
 test("a clean state appends none of the cross-tick notes", () => {
-  const result = assembleTickPrompt({
-    root: root(),
-    config: defaultConfig(),
-    role: "feature",
-    state: state(),
-  });
+  const result = promptFor(root(), "feature");
   assert.ok(result);
   // The only place the note texts appear is the appended tail; a clean tick must carry none.
   const marker = result.prompt.lastIndexOf("</project-prompt>");
@@ -441,12 +351,7 @@ test("the brief's initial prompt survives an over-long hand edit via the truncat
     path.join(dir, "README.md"),
     `# proj\n\n${PROMPT_START}\n${long}\n${PROMPT_END}\n\n${STATUS_START}\n${STATUS_END}\n`,
   );
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state(),
-  });
+  const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.match(result.prompt, /\[initial prompt truncated at 4096 chars\]/);
 });
@@ -457,29 +362,19 @@ test("the brief's initial prompt survives an over-long hand edit via the truncat
 test("a queued per-role prompt is dequeued into that role's prompt only", () => {
   const dir = root();
   enqueueRolePrompt(dir, "coverage", "check the export flow");
-  const coverage = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const coverage = promptFor(dir, "coverage");
   assert.ok(coverage);
   assert.equal(coverage.userPrompt, "check the export flow");
   assert.match(coverage.prompt, /<user-request>\ncheck the export flow\n<\/user-request>/);
 
   // Another role's assembly dequeues nothing: no request block, no userPrompt.
-  const qa = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "qa", state: state({ role: "qa" }) });
+  const qa = promptFor(dir, "qa");
   assert.ok(qa);
   assert.equal(qa.userPrompt, null);
   assert.ok(!qa.prompt.includes("<user-request>"));
 
   // The dequeue drained the queue: the next assembly finds nothing queued.
-  const again = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const again = promptFor(dir, "coverage");
   assert.ok(again);
   assert.equal(again.userPrompt, null);
   assert.ok(!again.prompt.includes("<user-request>"));
@@ -491,12 +386,7 @@ test("a queued per-role prompt is dequeued into that role's prompt only", () => 
 test("a delivered deferred prompt rides without its not-before marker line", () => {
   const dir = root();
   enqueueRolePrompt(dir, "coverage", "check the export flow", Date.now() - 60_000);
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: "coverage",
-    state: state({ role: "coverage" }),
-  });
+  const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.equal(result.userPrompt, "check the export flow");
   assert.match(result.prompt, /<user-request>\ncheck the export flow\n<\/user-request>/);
@@ -508,12 +398,7 @@ test("a delivered deferred prompt rides without its not-before marker line", () 
 test("a delivered deferred director prompt rides without its not-before marker line", () => {
   const dir = root();
   enqueueRolePrompt(dir, DIRECTOR_ROLE, "re-check the release notes", Date.now() - 60_000);
-  const result = assembleTickPrompt({
-    root: dir,
-    config: defaultConfig(),
-    role: DIRECTOR_ROLE,
-    state: state({ role: DIRECTOR_ROLE }),
-  });
+  const result = promptFor(dir, DIRECTOR_ROLE);
   assert.ok(result);
   assert.equal(result.userPrompt, "re-check the release notes");
   assert.ok(!result.prompt.includes("tumwater:not-before"), "the marker is plumbing, not content");
@@ -538,7 +423,7 @@ _None yet._
 test("a clean tick's prompt carries the <backlog-structure> block for a stranded PLANS.md", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "PLANS.md"), STRANDED_PLANS);
-  const result = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "clean", state: state({ role: "clean" }) });
+  const result = promptFor(dir, "clean");
   assert.ok(result);
   assert.match(result.prompt, /<backlog-structure>\n-\s*\(now under ## Done\) Timed pause support \(planned 2026-09-25\)\n<\/backlog-structure>/);
 });
@@ -549,7 +434,7 @@ test("a clean tick on a clean PLANS.md has no <backlog-structure> block", () => 
     path.join(dir, "PLANS.md"),
     "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Landed (planned 2026-09-10, done 2026-09-11)\n",
   );
-  const result = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "clean", state: state({ role: "clean" }) });
+  const result = promptFor(dir, "clean");
   assert.ok(result);
   // The role's find text names the block, so assert on the rendered block's evidence lines.
   assert.ok(!result.prompt.includes("(now under ##"));
@@ -558,7 +443,7 @@ test("a clean tick on a clean PLANS.md has no <backlog-structure> block", () => 
 test("other roles never see the <backlog-structure> block, and the clean find text names it", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "PLANS.md"), STRANDED_PLANS);
-  const coverage = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "coverage", state: state({ role: "coverage" }) });
+  const coverage = promptFor(dir, "coverage");
   assert.ok(coverage);
   assert.ok(!coverage.prompt.includes("(now under ##"));
   const clean = roleById("clean");
@@ -596,12 +481,7 @@ test("an instance loop id runs its base role's charter and instructions", () => 
     ...(config.roles.feature ?? { enabled: true }),
     instructions: "Prefer the smallest diff.",
   };
-  const result = assembleTickPrompt({
-    root: dir,
-    config,
-    role: "feature-2",
-    state: state({ role: "feature-2" }),
-  });
+  const result = promptFor(dir, "feature-2", { config });
   assert.ok(result);
   assert.match(result.prompt, /You are the "feature" loop/);
   assert.match(result.prompt, /Prefer the smallest diff\./);
