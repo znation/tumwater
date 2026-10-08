@@ -24,8 +24,9 @@ import {
 } from "../git/worktree-use.js";
 
 /** Worktree basenames that pressure reclaim never touches: the self-hosting mirrors the
- * redeployer and review gate use (`_main`, `_build`). `_gate-main` and `_land-<role>` are
- * ordinary candidates — their wrapped runs mark them in use exactly like a role tick. */
+ * redeployer uses (`_main` for the green check and compile, `_build` for its running-build
+ * witness). `_gate-main` and the pooled `_slot-<n>` checkouts are ordinary candidates — their
+ * wrapped runs mark them in use exactly like a role tick. */
 const RESERVED_WORKTREES = new Set(["_main", "_build"]);
 
 const HOUR_MS = 60 * 60 * 1000;
