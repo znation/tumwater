@@ -82,6 +82,14 @@ export function worktreeUsePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "worktree-use.json");
 }
 
+/** The cross-process lock serializing read-modify-write updates of worktree-use.json: the
+ * orchestrator records a use release while a separate `tumwater reclaim` CLI process seeds or
+ * stamps the same registry, and an unguarded whole-file write would drop one side's change.
+ * Same mkdir-and-pid mutex as configLockPath. */
+export function worktreeUseLockPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "worktree-use.lock");
+}
+
 /** The orchestrator's own info file (its pid, for liveness checks — fleet/fleet-state.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");

@@ -11,7 +11,9 @@
 
 import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { worktreeUsePath } from "../paths.js";
+import { ensureParentDir } from "../files/files.js";
+import { withSyncLock } from "../concurrency/lock.js";
+import { worktreeUseLockPath, worktreeUsePath } from "../paths.js";
 
 /** One worktree's durable record, keyed by its directory basename inside `worktreesDir`. */
 interface WorktreeUseRecord {
@@ -55,6 +57,31 @@ function liveEntry(dir: string): LiveEntry {
 /** The durable registry, or an empty one when the file is missing or unreadable. */
 export function readWorktreeUse(root: string): WorktreeUseRegistry {
   return readJsonFile<WorktreeUseRegistry>(worktreeUsePath(root)) ?? {};
+}
+
+/** Run `fn` holding the cross-process worktree-use lock. The parent is created first: a CLI
+ * `tumwater reclaim` may write the registry before any state write has made
+ * `.tumwater/state/`, and withSyncLock's lock directory is not created recursively. */
+function withWorktreeUseLock<T>(root: string, fn: () => T): T {
+  const lock = worktreeUseLockPath(root);
+  ensureParentDir(lock);
+  return withSyncLock(lock, fn);
+}
+
+/** Read-modify-write the durable registry under the worktree-use lock: the one way a writer
+ * changes a field without racing another process's edit (the orchestrator records a use
+ * release while a CLI `tumwater reclaim` seeds or stamps a worktree). `change` returns whether
+ * it changed anything; the file is rewritten only then, atomically. Returns the registry as
+ * read under the lock. */
+export function updateWorktreeUse(
+  root: string,
+  change: (registry: WorktreeUseRegistry) => boolean,
+): WorktreeUseRegistry {
+  return withWorktreeUseLock(root, () => {
+    const registry = readWorktreeUse(root);
+    if (change(registry)) writeJsonAtomic(worktreeUsePath(root), registry);
+    return registry;
+  });
 }
 
 /** True while a `useWorktree` body holds this worktree. */
@@ -122,15 +149,17 @@ export function releaseReclaim(root: string, dir: string, at: number): void {
     e.settleReclaim = undefined;
     settle?.();
   }
-  const registry = readWorktreeUse(root);
   const name = path.basename(path.resolve(dir));
-  registry[name] = { lastUsedAt: registry[name]?.lastUsedAt ?? at, reclaimedAt: at };
-  writeJsonAtomic(worktreeUsePath(root), registry);
+  updateWorktreeUse(root, (registry) => {
+    registry[name] = { lastUsedAt: registry[name]?.lastUsedAt ?? at, reclaimedAt: at };
+    return true;
+  });
 }
 
 function recordUse(root: string, dir: string, at: number): void {
-  const registry = readWorktreeUse(root);
   const name = path.basename(path.resolve(dir));
-  registry[name] = { ...registry[name], lastUsedAt: at };
-  writeJsonAtomic(worktreeUsePath(root), registry);
+  updateWorktreeUse(root, (registry) => {
+    registry[name] = { ...registry[name], lastUsedAt: at };
+    return true;
+  });
 }

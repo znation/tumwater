@@ -10,9 +10,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { worktreesDir, worktreeUsePath } from "../paths.js";
+import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
-import { writeJsonAtomic } from "../files/json-files.js";
 import { logEvent } from "../events/events.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gate.js";
@@ -20,8 +19,8 @@ import {
   claimForReclaim,
   isReclaimInProgress,
   isWorktreeInUse,
-  readWorktreeUse,
   releaseReclaim,
+  updateWorktreeUse,
 } from "../git/worktree-use.js";
 
 /** Worktree basenames that pressure reclaim never touches: the self-hosting mirrors the
@@ -62,18 +61,30 @@ export function reclaimCandidates(root: string, now = Date.now()): ReclaimCandid
     return []; // no worktrees dir yet (a fleet that has not started)
   }
   const dir = worktreesDir(root);
-  const registry = readWorktreeUse(root);
+  // Seed never-seen worktrees as used-now under the cross-process lock, and remember which of
+  // this pass's names that covered so they stay out of it. A later pass (or a restart) then sees
+  // them; the lock keeps a concurrent orchestrator release from losing the seeding (or vice
+  // versa).
+  const seededNames = new Set<string>();
+  const registry = updateWorktreeUse(root, (reg) => {
+    let seeded = false;
+    for (const name of names) {
+      const record = reg[name];
+      if (record === undefined || typeof record.lastUsedAt !== "number") {
+        reg[name] = { ...record, lastUsedAt: now };
+        seeded = true;
+        seededNames.add(name);
+      }
+    }
+    return seeded;
+  });
   const candidates: ReclaimCandidate[] = [];
-  let seeded = false;
   for (const name of names) {
     const wt = path.join(dir, name);
     if (isWorktreeInUse(wt) || isReclaimInProgress(wt)) continue;
+    if (seededNames.has(name)) continue; // used at first sight
     const record = registry[name];
-    if (record === undefined || typeof record.lastUsedAt !== "number") {
-      registry[name] = { ...record, lastUsedAt: now };
-      seeded = true;
-      continue; // used at first sight
-    }
+    if (record === undefined || typeof record.lastUsedAt !== "number") continue;
     candidates.push({
       dir: wt,
       name,
@@ -81,11 +92,6 @@ export function reclaimCandidates(root: string, now = Date.now()): ReclaimCandid
       ...(typeof record.reclaimedAt === "number" ? { reclaimedAt: record.reclaimedAt } : {}),
       resumePending: loadLoopState(root, name).resumePending === true,
     });
-  }
-  if (seeded) {
-    // `readWorktreeUse` returned the parsed object; write the first-sight seedings back so a
-    // later pass (or a restart) sees them. Atomic, so a crash cannot tear the registry.
-    writeJsonAtomic(worktreeUsePath(root), registry);
   }
   candidates.sort((a, b) => {
     if (a.resumePending !== b.resumePending) return a.resumePending ? 1 : -1;

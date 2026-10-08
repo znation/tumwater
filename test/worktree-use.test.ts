@@ -7,6 +7,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import {
   beginWorktreeUse,
@@ -62,6 +64,55 @@ test("claimForReclaim refuses while in use and marks the worktree reclaiming", a
   assert.equal(isReclaimInProgress(dir), false);
   const registry = readWorktreeUse(root);
   assert.equal(registry["feature"]?.reclaimedAt, 1_700_000_000_000);
+});
+
+// The cross-process read-modify-write race: the orchestrator records a use release in-process
+// while `tumwater reclaim` runs as a separate CLI process that seeds the same worktree-use
+// registry. Without the lock, the later whole-file write drops the other's field. The child
+// holds the worktree-use lock, snapshots the registry, waits to see whether the parent's
+// release lands (an unlocked writer's does; a locked one's waits for the lock), then writes its
+// own stale snapshot. The fix serializes the parent's read→write, so both records survive.
+test("a concurrent worktree-use write cannot drop another process's update", async () => {
+  const root = tmpdir("wt-use-race-");
+  const dir = useDir("wt-use-race-wt-");
+  const stateDir = path.join(root, ".tumwater", "state");
+  const lock = path.join(stateDir, "worktree-use.lock");
+  const ready = path.join(root, "child-ready");
+  const registryFile = path.join(stateDir, "worktree-use.json");
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(registryFile, "{}");
+  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const child = spawn(process.execPath, [
+    "-e",
+    `const fs = require("node:fs");
+     import(${JSON.stringify(lockModule)}).then(({ withSyncLock }) => withSyncLock(${JSON.stringify(lock)}, () => {
+       const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8"));
+       fs.writeFileSync(${JSON.stringify(ready)}, "1");
+       const parentSet = () => { try { return JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8")).feature?.lastUsedAt !== undefined; } catch { return false; } };
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !parentSet()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       snapshot.other = { lastUsedAt: 1 };
+       fs.writeFileSync(${JSON.stringify(registryFile)}, JSON.stringify(snapshot));
+     }));`,
+  ]);
+  child.stderr?.resume();
+  const childExit = new Promise((resolve) => child.on("exit", resolve));
+  try {
+    for (let i = 0; !fs.existsSync(ready); i++) {
+      if (i > 500) throw new Error("the holder child never took the worktree-use lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    releaseReclaim(root, dir, 1_700_000_000_000);
+    await childExit;
+    const registry = readWorktreeUse(root);
+    assert.equal(typeof registry["feature"]?.lastUsedAt, "number", "the parent's release survives");
+    assert.equal(typeof registry["other"]?.lastUsedAt, "number", "the child's seeding survives");
+  } finally {
+    child.kill();
+    await childExit;
+  }
 });
 
 test("a use starting during a reclaim waits for the release before running", async () => {
