@@ -38,6 +38,14 @@ const MAX_MISSING_PATHS = 10;
 /** How many files one lost-final-newline finding names before it stops. */
 const MAX_NEWLINE_FILES = 10;
 
+/** The capped list a finding line appends: at most `max` entries joined by ", ", then
+ * `moreSuffix` for the rest. Shared by the missing-path and lost-final-newline findings so both
+ * cap and join identically. */
+function cappedList(items: readonly string[], max: number): string {
+  const shown = items.slice(0, max);
+  return `${shown.join(", ")}${moreSuffix(items.length - shown.length)}`;
+}
+
 /** The deterministic findings the landing gate would reject this uncommitted change for, or an
  * empty list when it is clean. Checks the worktree at `wt` against `mainBranch`'s merge-base;
  * `exemptPaths` are the config's review-exemption globs that scope the false-fix check.
@@ -216,9 +224,9 @@ async function missingPathFindings(
     }
   }
   if (missing.length === 0) return [];
-  const shown = missing.slice(0, MAX_MISSING_PATHS);
-  const more = moreSuffix(missing.length - shown.length);
-  return [`added lines name paths that do not exist in the tree: ${shown.join(", ")}${more}`];
+  return [
+    `added lines name paths that do not exist in the tree: ${cappedList(missing, MAX_MISSING_PATHS)}`,
+  ];
 }
 
 /** (c) Lost final newlines: a text file whose new diff side carries git's
@@ -256,7 +264,5 @@ function newlineFindings(diff: string): string[] {
   }
   flush();
   if (files.length === 0) return [];
-  const shown = files.slice(0, MAX_NEWLINE_FILES);
-  const more = moreSuffix(files.length - shown.length);
-  return [`the change removes the final newline from: ${shown.join(", ")}${more}`];
+  return [`the change removes the final newline from: ${cappedList(files, MAX_NEWLINE_FILES)}`];
 }
