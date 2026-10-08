@@ -229,6 +229,10 @@ test("elapsed labels bucket into hours once a tick passes an hour", () => {
   // and at exactly an hour the label switches to hours with zero minutes.
   assert.match(reviewing((3600 - 10) * 1000), /^reviewing 59m(49|50|51)s$/);
   assert.match(reviewing(3600 * 1000), /^reviewing 1h0m$/);
+
+  // The rounding carry at the top of the hour: 1h59m59s rounds to 60 minutes, which must
+  // roll into the next hour (2h0m) instead of rendering the impossible "1h60m".
+  assert.match(reviewing(7199 * 1000), /^reviewing 2h0m$/);
 });
 
 test("workingDetail's stall flag uses the hours bucket for long silences", () => {

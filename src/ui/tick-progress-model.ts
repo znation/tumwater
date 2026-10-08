@@ -12,12 +12,15 @@ import { compactTokens } from "../text/format.js";
  * precomputed) live log tail, while status-model.ts derives labels from the snapshot. */
 
 /** Seconds/minutes/hours elapsed formatting shared by the progress helpers and the phase
- * ladder's elapsed branches (loopPhase's landing and parked branches). */
+ * ladder's elapsed branches (loopPhase's landing and parked branches). The hours bucket
+ * rounds to whole minutes off the total, so a rounded-up 59m5Xs carries into the next hour
+ * ("2h0m"); rounding the remainder alone would print the impossible "1h60m". */
 export function duration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
-  return `${Math.floor(s / 3600)}h${Math.round((s % 3600) / 60)}m`;
+  const totalMinutes = Math.round(s / 60);
+  return `${Math.floor(totalMinutes / 60)}h${totalMinutes % 60}m`;
 }
 
 /** The label for a loop's in-flight tick: `<label>` plus how long it has been running
