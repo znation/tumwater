@@ -6,71 +6,197 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Organize the test suite's support modules into `test/fakes/`, `test/fixtures/`, and `test/helpers/` (planned 2026-10-07 by organize)
+### Organize the test suite, part 1/6: support fakes move to `test/fakes/` (planned 2026-10-07 by plan; split from the 2026-10-07 "Organize the test suite's support modules" entry; parts 1–6 land in order)
 
-**Needs review 2026-10-07 by feature: too large for one run**
+**Umbrella goal (parts 1–6).** Move the 30 flat non-test support modules out of the `test/` root
+into `test/fakes/`, `test/fixtures/`, and a new `test/helpers/`, leaving runner infrastructure
+(`test-runner.ts`, `test-durations-reporter.ts`, `coverage-table.ts`) and every `*.test.ts` at the
+root. `selectTestFiles` (test/test-runner.ts, `fs.readdirSync(distDir)` at the `dist/test` root)
+reads non-recursively and keeps only `*.test.js`, so support modules compiled into
+subdirectories are ignored and the selected test set is unchanged. Each part moves one group and
+updates **every** reference to the modules it moves: a root test file uses `./<dir>/<name>.js`, a
+module already in a subdirectory uses `../<dir>/<name>.js`, and each moved module's own relative
+imports and `import.meta.url` constants are re-based for its new depth. No `*.test.ts` file moves,
+so filter names do not change. Parts land in order 1→6, each green on its own.
 
-**Goal.** Give `test/` the same kind-directory layout `src/` already has: move the 30 flat
-non-test support modules out of the `test/` root into `test/fakes/` and `test/fixtures/` (both
-already exist) and a new `test/helpers/`, leaving the runner infrastructure and every
-`*.test.ts` at the root.
+**Goal.** Move `test/fake-pi.ts`, `test/fake-commands.ts`, `test/fake-res.ts` into the existing
+`test/fakes/` (joining `log.ts`, `process.ts`, `time.ts`, `transient.ts`).
 
-**Context / cost today.** `test/` holds 344 files — 309 `*.test.ts` plus 33 flat non-test
-`.ts` modules — and 30 of those support modules sit flat beside the tests. A reader (human or
-agent) listing `test/` cannot tell a helper from a test without reading each name. The suite's
-own convention is already kind-directories: `test/fakes/` is documented as "the shared test-fake
-catalog" (its modules' docs cite "test/fakes/, PLANS.md 2026-10-04") and `test/fixtures/` exists
-for fixture assets — yet `fake-pi.ts`, `fake-commands.ts`, `fake-res.ts`, and all 14
-`*-fixtures.ts` live outside them. This is the last flat pile in the repo: `src/` was organized
-into domain directories (including organize commit a2719e20, moving the remaining
-domain-owned root modules into their directories), while `test/` never was. It is the same
-treatment applied to the test tree, not a new direction.
-
-**Target structure (designed up front).**
-- `test/` root keeps runner infrastructure only: `test-runner.ts`, `test-durations-reporter.ts`
-  (loaded by `node --test` as a reporter through a path relative to the runner,
-  test/test-runner.ts:405), and `coverage-table.ts` (the runner's coverage-table merger).
-  Every `*.test.ts` stays flat at the root — no test file moves, so filter names do not change.
-- `test/fakes/` (existing) gains `fake-pi.ts`, `fake-commands.ts`, `fake-res.ts`, joining
-  `log.ts`, `process.ts`, `time.ts`, `transient.ts`.
-- `test/fixtures/` (existing; currently holds only the `script-shim/` asset) gains all 14
-  `*-fixtures.ts` (`config-`, `doctor-`, `gate-`, `gui-`, `lander-`, `landing-`, `log-`,
-  `loop-`, `models-`, `orchestrator-`, `redeploy-`, `repo-`, `status-`, `tui-`) plus
-  `pi-events.ts` (fake pi JSONL line builders) and `victim-fixture.ts`.
-- `test/helpers/` (new) gains `backdate.ts`, `cli-harness.ts`, `exit-capture.ts`,
-  `exit-with-owner.ts`, `fs-faults.ts`, `json-read.ts`, `oracles.ts`, `pi-run-harness.ts`,
-  `sleep-clock.ts`, `wait.ts`, `gui-client-scope.ts`.
-
-**Why the runner tolerates subdirectories.** `selectTestFiles` (test/test-runner.ts) does
-`fs.readdirSync(distDir)` — non-recursive — and keeps only `*.test.js`, so support modules
-compiled to `dist/test/<dir>/` are ignored and the selected set is exactly the same flat
-`*.test.ts` files as today.
-
-**Files touched / the traps to get right.** The 30 modules above; every test file importing
-them (≈750 relative specifiers rewrite from `./x.js` to `./<dir>/x.js`); and the moved modules'
-own relative imports and `import.meta.url` constants, which are depth-sensitive:
-- The moved `fake-commands.ts`: `SCRIPT_SHIM` becomes `../../../test/fixtures/script-shim`
+**Approach.**
+- `git mv` the three modules into `test/fakes/`.
+- Rewrite every importer's `./fake-pi.js`, `./fake-commands.js`, `./fake-res.js` specifier to
+  `./fakes/<name>.js` (≈86 specifiers across `test/`, including fixture modules that move later).
+- Re-base the moved modules' own imports for `test/fakes/`: `fake-pi.ts`'s `./pi-events.js` and
+  `./repo-fixtures.js` become `../pi-events.js` and `../repo-fixtures.js` (those move in parts 5
+  and 4); its `./fake-commands.js` stays a sibling; `fake-res.ts` has no relative imports.
+- `fake-commands.ts`'s `SCRIPT_SHIM` literal `../../test/fixtures/script-shim` becomes
+  `../../../test/fixtures/script-shim`, because compiled it now runs from `dist/test/fakes/`
   (BUGS.md 2026-09-30 pinned this constant; a wrong depth silently disables every fake command).
-  `test/fake-commands.test.ts`'s relocated-tree refusal copies the compiled module two levels
-  deep (`dist/test`) and must simulate three levels instead.
-- The moved `cli-harness.ts`: `CLI` becomes `../../src/cli.js`.
-- The moved `victim-fixture.ts`: `OWNER_PRELOAD` continues to name its sibling
-  `./exit-with-owner.js`, which moves to the same directory.
-- `test/fake-pi.test.ts` and `test/build-check-process.test.ts` embed `./fake-pi.js` /
-  `./exit-with-owner.js` in generated paths and must point at the new directories.
-- Doc/comment references to moved paths: `DEVELOPMENT.md` ("Install a fake command with
-  `writeScript` (test/fake-commands.ts)"), `BUGS.md`, `PLANS.md`, `docs/`, and `src/` comments
-  (e.g. `src/collections.ts` on the durations reporter).
+  `test/fake-commands.test.ts`'s relocated-tree refusal copies the compiled module two levels deep
+  (`dist/test`) and must copy three levels deep instead.
+- `test/fake-pi.test.ts`'s embedded generated path `./fake-pi.js` becomes `./fakes/fake-pi.js`.
+
+**Files touched.** The three modules; every `test/*.ts` importing them; the two test files with
+embedded paths.
+
+**Acceptance criteria.**
+- The three modules live in `test/fakes/`; no `test/*.ts` specifier names any of them at the root.
+- `test/fake-commands.ts` resolves `SCRIPT_SHIM` at the new depth and `test/fake-commands.test.ts`'s
+  relocated-tree case still fails loudly when the shim is absent.
+- `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
+
+### Organize the test suite, part 2/6: utility modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires part 1/6 landed)
+
+**Goal.** Create `test/helpers/` and move `test/wait.ts`, `test/sleep-clock.ts`,
+`test/backdate.ts`, `test/json-read.ts`, `test/fs-faults.ts` into it.
+
+**Approach.**
+- `git mv` the five modules into the new `test/helpers/`.
+- Rewrite every importer's `./<name>.js` specifier to `./helpers/<name>.js`. This includes the
+  runner-infrastructure module `test/coverage-table.ts` (which stays at the root) importing
+  `./json-read.js` → `./helpers/json-read.js`.
+- Re-base the moved modules' `../src/` imports for one more level: `sleep-clock.ts`'s
+  `../src/build/host-sleep.js` and `json-read.ts`'s `../src/text/text.js` become `../../src/...`.
+  `wait.ts`, `backdate.ts`, and `fs-faults.ts` have no relative imports.
+- Update comment/doc references to the old flat paths in the same landing (e.g. `src/errno.ts`
+  cites `test/fs-faults.ts`; BUGS.md cites `test/wait.ts`).
+
+**Files touched.** The five modules; every `test/*.ts` importing them (≈115 specifiers);
+`test/coverage-table.ts`; the doc/comment references.
+
+**Acceptance criteria.**
+- The five modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
+- `test/coverage-table.ts` still resolves `readJson` from its new location.
+- `npm run test` green and selects the same `*.test.ts` files.
+
+### Organize the test suite, part 3/6: harness and oracle modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6 and 2/6 landed)
+
+**Goal.** Move `test/oracles.ts`, `test/cli-harness.ts`, `test/exit-capture.ts`,
+`test/gui-client-scope.ts`, `test/pi-run-harness.ts`, `test/exit-with-owner.ts` into
+`test/helpers/`.
+
+**Approach.**
+- `git mv` the six modules into `test/helpers/`.
+- Rewrite every importer's `./<name>.js` specifier to `./helpers/<name>.js`.
+- Re-base the moved modules' own imports:
+  - `cli-harness.ts`: `../src/cli.js` → `../../src/cli.js`; its `./victim-fixture.js` import
+    becomes `../victim-fixture.js` (victim stays at the root until part 6).
+  - `gui-client-scope.ts`: `../src/ui/gui/gui-client.js` → `../../src/ui/gui/gui-client.js`.
+  - `pi-run-harness.ts`: `./wait.js` stays a sibling `./wait.js` (part 2); `./repo-fixtures.js`
+    becomes `../repo-fixtures.js` (moves in part 4); `./fake-pi.js` becomes `../fakes/fake-pi.js`
+    (part 1).
+  - `oracles.ts`, `exit-capture.ts`, and `exit-with-owner.ts` have no relative imports.
+- `test/victim-fixture.ts` (still at the root) imports `./exit-with-owner.js`; point it at
+  `./helpers/exit-with-owner.js` now. Its own `OWNER_PRELOAD` `new URL("./exit-with-owner.js", ...)`
+  stays sibling-relative until victim itself moves in part 6.
+- `test/build-check-process.test.ts` embeds `./exit-with-owner.js` in a generated path; point it at
+  `./helpers/exit-with-owner.js`. Update `test/victim-fixture.ts`'s comment paths and BUGS.md
+  references.
+
+**Files touched.** The six modules; every `test/*.ts` importing them (≈87 specifiers); plus
+`test/victim-fixture.ts` and `test/build-check-process.test.ts`.
+
+**Acceptance criteria.**
+- The six modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
+- `cli-harness.ts` resolves `CLI` at `../../src/cli.js` and its victim fixture at
+  `../victim-fixture.js`; `gui-client-scope.ts` resolves `gui-client.js` one level up.
+- `npm run test` green and selects the same `*.test.ts` files.
+
+### Organize the test suite, part 4/6: `repo-fixtures.ts` moves to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–3/6 landed)
+
+**Goal.** Move the highest-fanout support module, `test/repo-fixtures.ts`, into `test/fixtures/`.
+
+**Approach.**
+- `git mv` `test/repo-fixtures.ts` into `test/fixtures/`.
+- Rewrite every importer's `./repo-fixtures.js` specifier to `./fixtures/repo-fixtures.js`
+  (≈225 specifiers) — including modules already moved in parts 1–3, where it becomes
+  `../fixtures/repo-fixtures.js` (`fake-pi.ts`, `pi-run-harness.ts`) and root fixture modules.
+- Re-base `repo-fixtures.ts`'s own imports: its `./fake-commands.js` becomes
+  `../fakes/fake-commands.js`.
+
+**Files touched.** `test/repo-fixtures.ts`; every `test/*.ts` importing it.
+
+**Acceptance criteria.**
+- `repo-fixtures.ts` lives under `test/fixtures/`; no `test/*.ts` specifier names `./repo-fixtures.js`.
+- Its `writeScript`/`pathPrepend` imports resolve from `test/fakes/`.
+- `npm run test` green and selects the same `*.test.ts` files.
+
+### Organize the test suite, part 5/6: log, loop, orchestrator and status fixtures plus `pi-events` and `victim-fixture` move to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–4/6 landed)
+
+**Goal.** Move `test/log-fixtures.ts`, `test/loop-fixtures.ts`, `test/orchestrator-fixtures.ts`,
+`test/status-fixtures.ts`, `test/pi-events.ts`, and `test/victim-fixture.ts` into `test/fixtures/`.
+
+**Approach.**
+- `git mv` the six modules into `test/fixtures/`.
+- Rewrite every importer's `./<name>.js` specifier to `./fixtures/<name>.js` (≈223 specifiers).
+- Re-base the moved modules' own imports (its own directory is `test/fixtures/`, part 4's
+  `repo-fixtures.ts` is already a sibling):
+  - `log-fixtures.ts`: `./repo-fixtures.js` and `./pi-events.js` stay siblings.
+  - `loop-fixtures.ts`: `./repo-fixtures.js` stays a sibling; `./fake-commands.js` becomes
+    `../fakes/fake-commands.js`.
+  - `orchestrator-fixtures.ts`: `./repo-fixtures.js` stays a sibling; `./fake-pi.js` becomes
+    `../fakes/fake-pi.js`; `./wait.js` becomes `../helpers/wait.js`.
+  - `status-fixtures.ts`: `./log-fixtures.js` stays a sibling; `./oracles.js` becomes
+    `../helpers/oracles.js`.
+  - `victim-fixture.ts`: `./helpers/exit-with-owner.js` becomes `../helpers/exit-with-owner.js`,
+    and `OWNER_PRELOAD`'s `new URL("./exit-with-owner.js", import.meta.url)` becomes
+    `new URL("../helpers/exit-with-owner.js", import.meta.url)`.
+  - `pi-events.ts` has no relative imports.
+- `test/cli-harness.ts` (already in `test/helpers/`) imports `../victim-fixture.js` from part 3;
+  update it to `../fixtures/victim-fixture.js`.
+- Update BUGS.md references to `test/pi-events.ts`, `test/victim-fixture.ts`, and the moved
+  fixtures.
+
+**Files touched.** The six modules; every `test/*.ts` importing them; `test/cli-harness.ts`;
+BUGS.md references.
+
+**Acceptance criteria.**
+- The six modules live in `test/fixtures/`; no `test/*.ts` specifier names any at the root.
+- `victim-fixture.ts`'s `OWNER_PRELOAD` resolves `../helpers/exit-with-owner.js`; `cli-harness.ts`
+  resolves `../fixtures/victim-fixture.js`.
+- `npm run test` green and selects the same `*.test.ts` files.
+
+### Organize the test suite, part 6/6: remaining fixtures move to `test/fixtures/`, leaving the root clean (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–5/6 landed)
+
+**Goal.** Move the remaining fixture modules — `config-fixtures.ts`, `doctor-fixtures.ts`,
+`gate-fixtures.ts`, `gui-fixtures.ts`, `lander-fixtures.ts`, `landing-fixtures.ts`,
+`models-fixtures.ts`, `redeploy-fixtures.ts`, `tui-fixtures.ts` — into `test/fixtures/`, leaving
+`test/` root with only `*.test.ts` and the three runner-infrastructure modules.
+
+**Approach.**
+- `git mv` the nine modules into `test/fixtures/`.
+- Rewrite every importer's `./<name>.js` specifier to `./fixtures/<name>.js`.
+- Re-base the moved modules' own imports (targets already in subdirectories use
+  `../<dir>/<name>.js`):
+  - `doctor-fixtures.ts`: `./fake-commands.js` → `../fakes/fake-commands.js`; its existing
+    `./fakes/process.js` import is unchanged; `./repo-fixtures.js` stays a sibling.
+  - `lander-fixtures.ts`: `./fake-commands.js` and `./fake-pi.js` → `../fakes/...`;
+    `./pi-events.js` and `./repo-fixtures.js` stay siblings.
+  - `landing-fixtures.ts`: `./wait.js` → `../helpers/wait.js`; `./log-fixtures.js`,
+    `./loop-fixtures.js`, `./repo-fixtures.js`, and `./pi-events.js` stay siblings.
+  - `tui-fixtures.ts`: `./wait.js` → `../helpers/wait.js`; `./repo-fixtures.js` stays a sibling.
+  - `gate-fixtures.ts`: `./repo-fixtures.js` stays a sibling.
+  - `redeploy-fixtures.ts`: `./wait.js` → `../helpers/wait.js`.
+  - `gui-fixtures.ts`: `../src/gui/gui-server.js` → `../../src/gui/gui-server.js`.
+  - `config-fixtures.ts`: `../src/config/config-validation.js` and `../src/text/text.js` become
+    `../../src/...`.
+  - `models-fixtures.ts` has no relative imports.
+- Update the remaining doc/comment references to moved paths: `DEVELOPMENT.md`'s
+  `writeScript (test/fake-commands.ts)`, BUGS.md's `test/repo-fixtures.ts` /
+  `test/doctor-fixtures.ts` / `test/gui-fixtures.ts` citations,
+  `src/landing/landing-vetting.ts`'s `test/orchestrator-fixtures.ts` comment, and any `docs/` or
+  `src/` comment naming an old flat path.
+
+**Files touched.** The nine modules; every `test/*.ts` importing them; the doc/comment references.
 
 **Acceptance criteria.**
 - All 30 support modules live under `test/fakes/`, `test/fixtures/`, or `test/helpers/`; the
-  `test/` root holds only `*.test.ts` and the three runner-infrastructure modules.
+  `test/` root holds only `*.test.ts` plus `test-runner.ts`, `test-durations-reporter.ts`, and
+  `coverage-table.ts`.
 - A grep over `src/`, `test/`, `scripts/`, `docs/`, `DEVELOPMENT.md`, `PLANS.md`, and `BUGS.md`
-  for each moved basename at its old flat path (`test/fake-pi.ts`, `test/cli-harness.ts`, …)
-  finds no stale reference.
-- `npm run test` (eslint + tsc + the suite) is green and runs the same set of `*.test.ts`
-  files; `test/fake-commands.test.ts`'s relocated-tree import still fails loudly when
-  `SCRIPT_SHIM` is absent.
+  for each moved basename at its old flat path (`test/repo-fixtures.ts`, `test/lander-fixtures.ts`,
+  …) finds no stale reference.
+- `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
 
 ### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed)
 
