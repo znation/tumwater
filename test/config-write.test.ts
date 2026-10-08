@@ -521,5 +521,12 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
   assert.deepEqual(parseConfigKey("model.default"), { kind: "tier", map: "model", tier: "default" });
   const bad = parseConfigKey("model.turbo");
   assert.equal(bad.kind, "error");
-  if (bad.kind === "error") assert.match(bad.error, /unknown model tier "turbo"/);
+  if (bad.kind === "error") {
+    assert.match(bad.error, /unknown model tier "turbo"/);
+    assert.doesNotMatch(bad.error, /did you mean/); // no near miss in the tier list
+  }
+  // A near miss gets the shared did-you-mean hint every sibling unknown-X site appends.
+  const typo = parseConfigKey("model.stong");
+  assert.equal(typo.kind, "error");
+  if (typo.kind === "error") assert.match(typo.error, /did you mean `strong`/);
 });

@@ -142,7 +142,7 @@ export function parseConfigKey(key: string): ParsedConfigKey {
       return { kind: "tier", map: "model", tier: second as ModelTier };
     return {
       kind: "error",
-      error: `unknown model tier "${second ?? ""}" — a dotted \`model.<tier>\` names one of ${TIER_MAP_KEYS.join(", ")} (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`)`,
+      error: `unknown model tier "${second ?? ""}" — a dotted \`model.<tier>\` names one of ${TIER_MAP_KEYS.join(", ")} (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`)${typoSuffix(second ?? "", TIER_MAP_KEYS)}`,
     };
   }
   return {
