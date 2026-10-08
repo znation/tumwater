@@ -641,6 +641,49 @@ test("gate exempts a doc-only diff without running pi", async () => {
   });
 });
 
+test("gate rejects a change that still holds conflict markers, with no pi run", async () => {
+  // A change handed back to its author with the markers left in place (PLANS.md "Robust
+  // conflict landing, part 2/2") reaches the gate if the author's stage fix-up turn did not
+  // clear them. An md-only diff skips the reviewer by design, so only a deterministic check
+  // can stop raw `<<<<<<<` lines from landing on main.
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "notes.md"),
+    "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
+  );
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "doc change with markers left in");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+      const { result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.match(result.detail!, /conflict markers remain in: notes\.md/);
+      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  });
+});
+
+test("gate rejects conflict markers in a non-ASCII-named file (git C-quotes the diff path)", async () => {
+  // `git diff --name-only` C-quotes non-ASCII paths by default; if aheadOfMainFiles hands the
+  // gate that quoted text, hasConflictMarkers reads a path that does not exist and returns
+  // false, so a marker-bearing non-ASCII file slips through the same way a plain-named one did.
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "héllo.md"),
+    "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
+  );
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "non-ASCII doc change with markers left in");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+      const { result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.match(result.detail!, /conflict markers remain in: héllo\.md/);
+      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  });
+});
+
 test("gate rejects an md-only diff that files a new plan directly under ## Done, with no pi run", async () => {
   // The 2026-09-25 shape (PLANS.md 9eaae5ac, plans part 4/4): a plan written straight into
   // the done section. The heading-set check cannot see it — one ## Done, heading set unchanged

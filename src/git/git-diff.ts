@@ -111,7 +111,11 @@ export async function changedFiles(wt: string): Promise<string[]> {
  * merge-base, so commits main gained during the tick are not included). */
 export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
   const out = await gitTry(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
-  return gitLines(out);
+  // Decode git's C-quoted names (same convention as `git status --porcelain`): every caller
+  // uses these as real worktree paths or matches them against plain HEAD-provided names, and
+  // an undecoded `"h\303\251llo.md"` reads as a nonexistent file (hasConflictMarkers) and
+  // does not match a `*.md` exemption, whose regex is anchored at the closing quote.
+  return gitLines(out).map(unquotePorcelainPath);
 }
 
 /** Split a unified diff into one section per file, each starting at its own
