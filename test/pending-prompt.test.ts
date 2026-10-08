@@ -135,7 +135,7 @@ test("reclaimForResume reclaims nothing when the file was cancelled meanwhile", 
   const pending = new PendingPrompt(dir, "feature");
   pending.requeueForResume(s, "cancelled before the resume");
   const file = s.resumePromptFile!;
-  assert.notEqual(takeQueuedFile(file), null); // the user cancels it mid-flight
+  assert.notEqual(takeQueuedFile(dir, "feature", file), null); // the user cancels it mid-flight
 
   pending.reclaimForResume(s, true);
   assert.equal(pending.get(), null);

@@ -5,8 +5,9 @@ import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { truncate } from "../text/text.js";
+import { errorMessage, truncate } from "../text/text.js";
 import { errCode } from "../errno.js";
+import { warnEvent } from "../events/events.js";
 import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
@@ -243,11 +244,11 @@ export function queuedRolePromptCount(root: string, role: string): number {
  * (oldest-first pop), and loop.ts's resume reclaim — which calls this for one exact queue file
  * instead of popping oldest-first, so the prompt recorded at requeue time is the one reclaimed,
  * whatever else was enqueued or cancelled meanwhile — so the race policy lives once. */
-export function takeQueuedFile(file: string): string | null {
+export function takeQueuedFile(root: string, role: string, file: string): string | null {
   const text = readQueueText(file);
   if (text === null) return null; // Cancelled mid-listing.
   if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
-  removeSameStemSiblings(file);
+  removeSameStemSiblings(root, role, file);
   return text;
 }
 
@@ -260,8 +261,11 @@ export function takeQueuedFile(file: string): string | null {
  * this one — files like that are left alone. ENOENT-tolerant through removeQueueFile, and a
  * queue directory that is already gone leaves nothing to clean. Called by takeQueuedFile, so
  * both dequeue and cancel take the attachments with the prompt — an image never outlives the
- * prompt that referenced it. */
-function removeSameStemSiblings(file: string): void {
+ * prompt that referenced it. Best-effort: the prompt file is already off the queue by the time
+ * this runs, so a sibling that cannot be removed (EACCES, a directory standing where an image
+ * should be, EBUSY) must not throw — that would lose the dequeued text, with no queue entry
+ * left to retry it. Each failure is warned so the orphaned file stays visible. */
+function removeSameStemSiblings(root: string, role: string, file: string): void {
   const dir = path.dirname(file);
   const stem = path.basename(file, ".md");
   let entries: string[];
@@ -273,10 +277,20 @@ function removeSameStemSiblings(file: string): void {
   for (const entry of entries) {
     if (entry === path.basename(file) || !entry.startsWith(stem)) continue;
     const rest = entry.slice(stem.length);
-    if (rest.startsWith(".") && PROMPT_IMAGE_EXTENSIONS.includes(rest.toLowerCase())) {
+    const isImage =
+      (rest.startsWith(".") && PROMPT_IMAGE_EXTENSIONS.includes(rest.toLowerCase())) ||
+      (/^-\d+\./.test(rest) && PROMPT_IMAGE_EXTENSIONS.includes(rest.slice(rest.indexOf(".")).toLowerCase()));
+    if (!isImage) continue;
+    try {
       removeQueueFile(path.join(dir, entry));
-    } else if (/^-\d+\./.test(rest) && PROMPT_IMAGE_EXTENSIONS.includes(rest.slice(rest.indexOf(".")).toLowerCase())) {
-      removeQueueFile(path.join(dir, entry));
+    } catch (err) {
+      // Warn, but never let even the warning cost the caller the prompt: if the event log is
+      // unwritable too, the dequeued text is still the state that must survive.
+      try {
+        warnEvent(root, role, `could not remove a queued prompt's attachment ${entry}: ${errorMessage(err)}`);
+      } catch {
+        // Cleanup must not throw; the prompt is already taken.
+      }
     }
   }
 }
@@ -292,7 +306,7 @@ function removeSameStemSiblings(file: string): void {
 export function dequeueRolePrompt(root: string, role: string): string | null {
   const oldest = queuedFiles(root, role).find(deliverablePredicate(Date.now()));
   if (!oldest) return null;
-  return takeQueuedFile(oldest);
+  return takeQueuedFile(root, role, oldest);
 }
 
 /** Full text of the oldest prompt queued for one loop, read WITHOUT consuming it — the

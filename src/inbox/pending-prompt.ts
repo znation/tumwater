@@ -93,7 +93,7 @@ export class PendingPrompt {
     const reclaimFile = state.resumePromptFile;
     state.resumePromptFile = undefined;
     if (resuming && reclaimFile) {
-      const reclaimed = takeQueuedFile(reclaimFile);
+      const reclaimed = takeQueuedFile(this.root, this.role, reclaimFile);
       if (reclaimed !== null) this.value = reclaimed;
     }
   }

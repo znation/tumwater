@@ -25,7 +25,7 @@ export type CancelOutcome = { status: "cancelled"; text: string } | { status: "g
  * cancelQueuedFile (file-addressed), so the two cannot drift on the event, its preview
  * width, or what counts as gone. */
 function takeCancelledPrompt(root: string, role: string, file: string): CancelOutcome {
-  const text = takeQueuedFile(file);
+  const text = takeQueuedFile(root, role, file);
   if (text === null) return { status: "gone" };
   logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };

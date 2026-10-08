@@ -16,7 +16,7 @@ import { cancelPrompt, cancelRolePrompt } from "../src/inbox/inbox-cancel.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { errCode } from "../src/errno.js";
 import { errnoError } from "./fs-faults.js";
@@ -303,6 +303,33 @@ test("cancel survives the queue directory vanishing before the attachment cleanu
     t.mock.restoreAll();
   }
   assert.equal(eventsOfType(dir, "prompt_cancelled").length, 1, "the event still logged");
+});
+
+test("dequeue keeps the prompt when an attachment sibling cannot be removed", (t) => {
+  const dir = tmpdir();
+  const queueFile = enqueuePrompt(dir, "with an unremovable attachment");
+  const image = queueFile.replace(/\.md$/, ".png");
+  fs.writeFileSync(image, "not really an image");
+
+  // The sweep is best-effort ("an image never outlives the prompt"): a sibling the process
+  // cannot unlink (EACCES, EBUSY, a directory in its place) must not throw out of the dequeue
+  // after the queue file is already gone — that would lose the prompt text with no queue entry
+  // left to retry it. The failure is warned instead, so the orphaned image stays visible.
+  const original = fs.rmSync.bind(fs);
+  t.mock.method(fs, "rmSync", ((...args: unknown[]) => {
+    if (args[0] === image) throw errnoError("EACCES");
+    return (original as (...a: unknown[]) => unknown)(...args);
+  }) as typeof fs.rmSync);
+  try {
+    assert.equal(dequeuePrompt(dir), "with an unremovable attachment");
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.deepEqual(queuedPrompts(dir), [], "the prompt was still taken off the queue");
+  assert.ok(fs.existsSync(image), "the unremovable sibling is left in place");
+  assert.deepEqual(warningMessages(dir), [
+    `could not remove a queued prompt's attachment ${path.basename(image)}: EACCES`,
+  ]);
 });
 
 // --- Per-role queues (PLANS.md "Per-role prompts 1/2") ---
