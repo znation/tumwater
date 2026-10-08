@@ -178,6 +178,15 @@ test("percentOf falls back to tokens/contextWindow when pi gives no percent", ()
   assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: 0 }).edits.length, 0);
 });
 
+test("percentOf ignores a non-finite percent and uses the token ratio instead", () => {
+  // pi can report NaN or Infinity for a broken context reading; neither is a fill percentage
+  // the threshold logic can trust, so percentOf drops it and falls back to tokens/window.
+  const messages = [bash("a"), ...protectedFillers()];
+  assert.equal(shakePlan(messages, { percent: NaN, tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
+  assert.equal(shakePlan(messages, { percent: Infinity, tokens: 69_999, contextWindow: 100_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { percent: -Infinity, tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
+});
+
 test("shakePlan skips a bulky result with no session entry to edit", () => {
   const messages = [bash("a", 60_000, { entryId: undefined }), ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
@@ -284,6 +293,92 @@ test("shakeMessages tolerates a tool result with no tool call id", () => {
   assert.equal(messages[0]!.toolCallId, undefined);
   assert.equal(messages[0]!.readInput, undefined);
   assert.equal(messages[0]!.text, "body");
+});
+
+test("shakeMessages returns nothing for an event with no context", () => {
+  // A turn_end whose context pi dropped arrives with no `context` at all; the optional chain
+  // and `?? []` must yield an empty message list rather than throwing on `.contextEntries`.
+  assert.deepEqual(shakeMessages({}), []);
+});
+
+test("shakeMessages leaves toolName unset for a tool result pi did not label", () => {
+  // A toolResult can arrive without a toolName; only a labelled result is a shake candidate, so
+  // the message map must skip the toolName/readInput fields instead of asserting one is present.
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        { sourceEntry: { id: "r" }, messages: [{ role: "toolResult", content: [{ type: "text", text: "body" }] }] },
+      ],
+    },
+  });
+  assert.equal(messages[0]!.toolName, undefined);
+  assert.equal(messages[0]!.text, "body");
+});
+
+test("shakeMessages attaches readInput only to a read result, not a bash result", () => {
+  // The call lookup is keyed by toolCallId, so a bash result finds its own call; only a `read`
+  // call's arguments may become readInput. Without the name check a bash call's `arguments`
+  // (command, not a path) would leak in as a bogus file range on the pointer.
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        {
+          sourceEntry: { id: "b" },
+          messages: [
+            { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { path: "nope", offset: 3 } }] },
+            { role: "toolResult", toolName: "bash", toolCallId: "t1", content: [{ type: "text", text: "out" }] },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(messages[1]!.readInput, undefined);
+});
+
+test("shakeMessages records only the toolCall parts of an assistant message", () => {
+  // Assistant content commonly interleaves plain text with the call, and pi can project a
+  // message with no usable part at all; only a `toolCall` object carrying a string id becomes a
+  // recorded call, and a null part is skipped instead of throwing on `.type`.
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        {
+          sourceEntry: { id: "r" },
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                { type: "text", text: "let me read that" },
+                null,
+                { type: "toolCall", id: "t1", name: "read", arguments: { path: "src/text/text.ts", offset: 2 } },
+              ],
+            },
+            { role: "toolResult", toolName: "read", toolCallId: "t1", content: [{ type: "text", text: "body" }] },
+          ],
+        },
+      ],
+    },
+  });
+  assert.deepEqual(messages[1]!.readInput, { path: "src/text/text.ts", offset: 2, limit: undefined });
+});
+
+test("shakeMessages ignores a tool call whose id is not a string", () => {
+  // A malformed tool call carries an id the result's `toolCallId` can never match as a string;
+  // recording it under a non-string key would be dead state at best and a type lie at worst.
+  const messages = shakeMessages({
+    context: {
+      contextEntries: [
+        {
+          sourceEntry: { id: "r" },
+          messages: [
+            { role: "assistant", content: [{ type: "toolCall", id: 7, name: "read", arguments: { path: "p" } }] },
+            { role: "toolResult", toolName: "read", toolCallId: "7", content: [{ type: "text", text: "body" }] },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(messages[1]!.readInput, undefined);
 });
 
 test("shakeMessages tolerates entries without ids, missing messages, and non-array content", () => {
