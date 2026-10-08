@@ -81,6 +81,41 @@ test("writeRoleNote removes its temp file when the write cannot complete", () =>
   );
 });
 
+test("writeRoleNote rethrows the original failure when the temp cleanup itself fails", (t) => {
+  // The best-effort rmSync can itself fail (a vanished or unremovable temp). That must not mask
+  // the write/rename failure the caller needs, so the original error — with its errno code —
+  // propagates instead of the cleanup error.
+  const dir = tmpdir();
+  const notesDir = path.join(dir, "notes");
+  const notes = path.join(notesDir, "feature.md");
+  fs.mkdirSync(notes, { recursive: true }); // the target path is a directory, so the rename fails
+  let original: NodeJS.ErrnoException | undefined;
+  try {
+    writeRoleNote(notes, "cannot land");
+  } catch (err) {
+    original = err as NodeJS.ErrnoException;
+  }
+  assert.ok(original?.code, "precondition: the rename onto a directory fails with an errno code");
+
+  t.mock.method(fs, "rmSync", (() => {
+    throw new Error("cleanup unavailable");
+  }) as typeof fs.rmSync);
+  try {
+    assert.throws(
+      () => writeRoleNote(notes, "cannot land"),
+      (err: unknown) => {
+        const e = err as NodeJS.ErrnoException;
+        assert.equal(e.code, original!.code, "the original fs error propagates, not the cleanup one");
+        assert.notEqual(e.message, "cleanup unavailable");
+        return true;
+      },
+      "a failing temp cleanup must not mask the write failure",
+    );
+  } finally {
+    t.mock.restoreAll();
+  }
+});
+
 test("the extension registers no tool when TUMWATER_NOTES_PATH is unset", () => {
   const registered: RegisteredTool[] = [];
   const api = { registerTool: (tool: RegisteredTool) => registered.push(tool) };
