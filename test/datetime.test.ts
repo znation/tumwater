@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, pad2, reportWindow } from "../src/text/datetime.js";
+import { clockOf, dateOf } from "./oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-tick cell, daily-budget day stamps,
@@ -9,9 +10,9 @@ import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatT
 
 test("dayAt returns local midnight offset from the given instant, rolling month/year edges", () => {
   const now = new Date(2026, 2, 1, 14, 30, 5); // 2026-03-01 14:30 local
-  assert.equal(formatDateOf(dayAt(0, now)), "2026-03-01");
-  assert.equal(formatDateOf(dayAt(1, now)), "2026-02-28"); // crosses the month edge
-  assert.equal(formatDateOf(dayAt(3, now)), "2026-02-26");
+  assert.equal(dateOf(dayAt(0, now)), "2026-03-01");
+  assert.equal(dateOf(dayAt(1, now)), "2026-02-28"); // crosses the month edge
+  assert.equal(dateOf(dayAt(3, now)), "2026-02-26");
   // The time of day of `now` is discarded (midnight), so day-key arithmetic is stable.
   assert.equal(dayAt(0, now).getHours(), 0);
   assert.equal(dayAt(0, now).getMinutes(), 0);
@@ -63,13 +64,10 @@ test("pad2 zero-pads to two digits and leaves longer numbers alone", () => {
 test("formatTime renders the zero-padded local wall clock from date parts alone", () => {
   assert.equal(formatTime(new Date(2026, 2, 1, 14, 30, 5)), "14:30:05");
   assert.equal(formatTime(new Date(2026, 2, 1, 3, 7, 9)), "03:07:09", "single-digit parts pad");
-  // Direct pin against local date parts (never a UTC-derived readback) so a drift to UTC
-  // rendering fails here rather than matching the constructor's own timezone.
+  // Direct pin against the raw-local-parts clock oracle (never a UTC-derived readback) so a
+  // drift to UTC rendering fails here rather than matching the constructor's own timezone.
   const d = new Date(2026, 2, 1, 23, 59, 59);
-  assert.equal(
-    formatTime(d),
-    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`,
-  );
+  assert.equal(formatTime(d), clockOf(d));
 });
 
 test("dayKey is the LOCAL calendar day of the instant, never the UTC date", () => {
@@ -112,12 +110,6 @@ test("formatTimestamp renders a non-finite instant as the em dash, never NaN", (
     assert.equal(formatTimestamp(bad), "—");
   }
 });
-
-/** Local `YYYY-MM-DD` of a Date — test-local so the assertion is independent of datetime's
- * formatDate (which datetime.test.ts does not otherwise cover). */
-function formatDateOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 test("humanSeconds buckets sub-second-to-day spans compactly", () => {
   // Each value sits well inside its bucket so the rounding edge cannot flip it.

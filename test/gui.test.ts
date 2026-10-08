@@ -14,6 +14,7 @@ import { piLogPath } from "../src/paths.js";
 import { fetchLoopback, postJson, startLocalGui } from "./gui-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
+import { clockOf, dayKey } from "./oracles.js";
 
 // The dashboard tests read JSON responses the way gui-client's own getJson guard does; this
 // keeps each call site to one line instead of the double-await fetch idiom.
@@ -373,13 +374,10 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
 
   const now = Date.now();
-  const p2 = (n: number) => String(n).padStart(2, "0");
   // The absolute part derives from the fixed ts, so it is stable across the test's own clock
-  // drift; only the relative age reads Date.now() at call time.
-  const abs = (ts: number) => {
-    const d = new Date(ts);
-    return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
-  };
+  // drift; only the relative age reads Date.now() at call time. The raw-parts clock is
+  // oracles.ts's clockOf, the same builder the status fixtures' stampOf uses.
+  const abs = (ts: number) => clockOf(new Date(ts));
 
   // Never ticked.
   assert.equal(fmtLastTick(null), "-");
@@ -398,8 +396,8 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   assert.equal(fmtLastTick(t2h), `${abs(t2h)} · 2h ago`);
 
   const t3d = now - (3 * 86_400_000 + 7_200_000);
-  const d3 = new Date(t3d);
-  assert.equal(fmtLastTick(t3d), `${p2(d3.getMonth() + 1)}-${p2(d3.getDate())} ${abs(t3d)} · 3d ago`);
+  const day3 = dayKey(t3d).slice(5); // MM-DD, dropped from the raw-parts day key.
+  assert.equal(fmtLastTick(t3d), `${day3} ${abs(t3d)} · 3d ago`);
 
   // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
   // lastTickCell, so a drift in either surface fails here.

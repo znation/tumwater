@@ -7,6 +7,7 @@ import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { attempt } from "./exit-capture.js";
+import { dateOf } from "./oracles.js";
 
 /** src/cli/question-commands.ts's own tests: the `tumwater questions` CLI layer — list
  * numbering, the answer move (one block, verbatim, with the dated operator paragraph), the
@@ -101,7 +102,7 @@ test("answering question 1 moves only its block to ## Answered with the dated de
   // The moved block is verbatim, in ## Answered, followed by the dated operator paragraph.
   assert.ok(md.includes("## Answered\n\n### First: which renderer? (asked by director 2026-10-01)"));
   const today = new Date();
-  const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const stamp = dateOf(today);
   assert.ok(md.includes(`**Answered ${stamp} by operator:** use ink`));
   // The decision is the last content in the Answered section.
   assert.ok(md.trimEnd().endsWith(`**Answered ${stamp} by operator:** use ink`));

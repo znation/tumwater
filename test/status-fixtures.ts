@@ -9,6 +9,7 @@ import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { landWorktreePath, piLogPath } from "../src/paths.js";
 import { writeLogLines } from "./log-fixtures.js";
+import { clockOf } from "./oracles.js";
 
 export const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -123,10 +124,11 @@ export function tableCells(out: string): {
   return { lines, widths, cellAt, headers: widths.map((_, i) => cellAt(lines[2] ?? "", i)) };
 }
 
+/** Local wall clock `HH:MM:SS` of an epoch-ms instant — the stamp the per-cell suites compare
+ * lastTickCell's absolute half against. Built by oracles.ts's raw-parts clockOf, so it stays
+ * independent of datetime.ts's formatTime. */
 export function stampOf(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return clockOf(new Date(ts));
 }
 
 export function toolStart(toolName: string, args: unknown): string {

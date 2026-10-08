@@ -23,12 +23,28 @@ export function atLocalTs(daysAgo: number, hour = 12): number {
   return d.getTime();
 }
 
+/** Local calendar date `YYYY-MM-DD` from a Date's own local parts — the raw-parts date builder
+ * dayKey and expectedTimestamp are made of (never datetime.ts's formatDate — a test-local
+ * oracle, so a drift in the production formatter fails an assertion instead of matching its
+ * own output). Its other callers are datetime.test.ts's dayAt cases and question-commands.test's
+ * operator-answer stamp. */
+export function dateOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Local wall clock `HH:MM:SS` from a Date's own local parts — the raw-parts clock half of
+ * expectedTimestamp (never datetime.ts's formatTime). Its other users are datetime.test.ts's
+ * formatTime pin, the status fixtures' stampOf and gui.test.ts's fmtLastTick oracle, so those
+ * repeated HH:MM:SS stamps pad the same. */
+export function clockOf(d: Date): string {
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+
 /** The local-day key `YYYY-MM-DD` the report/digest collectors bucket by, built from raw
  * local date parts as a test-local oracle — never through datetime.ts's formatDate — so a drift
  * in the collector's day keying fails an assertion instead of matching its own format. */
 export function dayKey(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return dateOf(new Date(ms));
 }
 
 /** One hour in ms — the unit the --since window fixtures measure in (6h windows, hour-old
@@ -47,8 +63,7 @@ export function ago(ms: number): number {
  * pinned against an implementation-independent expectation. */
 export function expectedTimestamp(ts: number): string {
   const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${dateOf(d)} ${clockOf(d)}`;
 }
 
 /** True when `s` carries a lone UTF-16 surrogate unit: a high one not followed by a low, or a
