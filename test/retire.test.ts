@@ -163,6 +163,31 @@ test("retire a pinned slot clears the pin and resets it in place instead of remo
   assert.equal(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "", "the branch is deleted");
 });
 
+test("retire clears a pinned slot whose directory is already gone", async () => {
+  const root = await initializedRepo();
+  disableRole(root, "improve");
+  sh(root, "git", "branch", branchName("improve"), "main");
+  const slot = slotWorktreePath(root, 1);
+  // The pin survives while the pooled checkout is gone (a failed `worktree add`, a hand-deleted
+  // directory): the retire must still release the claim, or the dead dir resolves this role's
+  // checkout forever and the slot can never be reused.
+  writeSlotsState(root, {
+    slots: [
+      { dir: slot, lease: null, pinnedFor: "improve", lastRole: null, lastReleasedAt: null },
+    ],
+  });
+  assert.ok(!fs.existsSync(slot), "precondition: the slot directory is absent");
+
+  const r = await cli(root, "retire", "--role", "improve", "--force", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(
+    readSlotsState(root).slots.find((s) => s.dir === slot)?.pinnedFor,
+    null,
+    "the pin is cleared even though the slot directory is gone",
+  );
+  assert.equal(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "", "the branch is deleted");
+});
+
 test("retire drops a paused-state marker entry for the role", async () => {
   const { root } = await initializedWorktree();
   disableRole(root, "improve");

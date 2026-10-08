@@ -133,7 +133,12 @@ export async function retireRole(root: string, role: string, { force }: { force?
   // today; always prune first — even without a directory, a stale registration may still hold
   // the branch checked out, and removeWorktree's absent-dir path clears it before the branch
   // deletion below.
-  const wt = status.worktreePresent ? await roleWorktreeDir(root, status.role) : null;
+  // Resolve the role's checkout the same way collectRetire did — a leased or pinned slot first,
+  // else the legacy worktree — and not by gating on `worktreePresent`: a pinned slot whose
+  // directory is already gone has worktreePresent false, and the old gate left its pin behind,
+  // so the dead dir resolved this role's checkout forever and the slot could never be reused.
+  const legacy = worktreePath(root, status.role);
+  const wt = (await roleWorktreeDir(root, status.role)) ?? (fs.existsSync(legacy) ? legacy : null);
   const slot = wt !== null ? slotForDir(root, wt) : undefined;
   if (slot !== undefined) {
     updateSlotsState(root, (state) => {
