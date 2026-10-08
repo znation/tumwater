@@ -17,8 +17,9 @@ import { piLogPath } from "../paths.js";
 /** Read [offset, size) and split into complete lines. `end` is the offset just past the
  * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is
  * re-read next poll once its writer has written the newline instead of being parsed torn
- * or lost. Shared by every JSONL reader that consumes incrementally — src/ui/progress-data.ts's live
- * tail, followFile, and the transcript one-shot reads (transcript.ts, transcript-tail.ts). */
+ * or lost. The tail primitives here build on it (withTail, followFile); outside this
+ * module it is called directly by src/ui/progress-data.ts, src/ui/transcript-tail.ts, and
+ * the report fold in src/report/report-data.ts. */
 export function readCompleteLines(file: string, offset: number, size: number): { lines: string[]; end: number } {
   const len = size - offset;
   if (len <= 0) return { lines: [], end: offset };
@@ -202,9 +203,9 @@ export function withTail<T>(
 
 /** Stat a role's raw pi log for incremental consumption, dropping any stale TailState when
  * the file is missing or has vanished (null = "no data yet", so callers bail out before
- * seeding). Shared by src/ui/progress-data.ts and transcript.ts — both poll one role's log per second
- * through their own TailState map keyed by this exact path, so the missing-file bookkeeping
- * lives in one place instead of drifting between them. */
+ * seeding). Shared by src/ui/progress-data.ts and transcript.ts — both poll one role's log
+ * per second through their own TailState map keyed by this exact path, so the missing-file
+ * bookkeeping lives in one place instead of drifting between them. */
 export function statRoleLog<T>(
   tails: Map<string, T>,
   root: string,
