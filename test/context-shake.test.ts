@@ -45,10 +45,16 @@ function filler(tokens: number): ShakeMessage {
   return { role: "user", text: big(tokens * 4) };
 }
 
+/** Five equal fillers whose tokens sum to the protected newest-token slice. Put one after a
+ * result to push it outside `SHAKE_PROTECTED_TOKENS`, the newest prefix the planner keeps. */
+function protectedFillers(): ShakeMessage[] {
+  return Array.from({ length: 5 }, () => filler(SHAKE_PROTECTED_TOKENS / 5));
+}
+
 const atPercent = (percent: number): ShakeUsage => ({ tokens: percent * 1000, contextWindow: 100_000, percent });
 
 test("shakePlan stays empty below the first crossing", () => {
-  const messages = [bash("a"), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a"), ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(SHAKE_PERCENT - 1)).edits.length, 0);
   assert.equal(shakePlan(messages, { tokens: null, contextWindow: 0, percent: null }).edits.length, 0);
   assert.equal(shakePlan(messages, {}).edits.length, 0);
@@ -57,7 +63,7 @@ test("shakePlan stays empty below the first crossing", () => {
 test("shakePlan elides the old bulky result and leaves the newest slice alone", () => {
   // Five 4k-token fillers (the whole protected slice) sit between the two results, so only the
   // older one is outside the newest 20k tokens.
-  const messages = [bash("old"), ...Array.from({ length: 5 }, () => filler(SHAKE_PROTECTED_TOKENS / 5)), bash("new")];
+  const messages = [bash("old"), ...protectedFillers(), bash("new")];
   const plan: ShakePlan = shakePlan(messages, atPercent(70));
   assert.deepEqual(plan.edits.map((e) => e.targetId), ["old"]);
   assert.equal(plan.elidedCount, 1);
@@ -74,15 +80,15 @@ test("shakePlan never selects edit, write, error, user or assistant messages", (
     { role: "user", toolName: "bash" },
     { role: "assistant", toolName: "bash" },
   ] satisfies Array<Partial<ShakeMessage>>) {
-    const messages = [bash("skip", 60_000, over), ...Array.from({ length: 5 }, () => filler(4_000))];
+    const messages = [bash("skip", 60_000, over), ...protectedFillers()];
     assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0, JSON.stringify(over));
   }
 });
 
 test("shakePlan leaves short and already-elided results alone", () => {
-  const short = [bash("short", SHAKE_MIN_CHARS - 500), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const short = [bash("short", SHAKE_MIN_CHARS - 500), ...protectedFillers()];
   assert.equal(shakePlan(short, atPercent(70)).edits.length, 0);
-  const elided = [bash("again", 60_000, { text: `${ELIDED_PREFIX} 9 chars; full output in /tmp/x}` }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const elided = [bash("again", 60_000, { text: `${ELIDED_PREFIX} 9 chars; full output in /tmp/x}` }), ...protectedFillers()];
   assert.equal(shakePlan(elided, atPercent(70)).edits.length, 0);
 });
 
@@ -94,7 +100,7 @@ test("shakePlan leaves a long already-elided result alone instead of re-eliding 
   // the unguarded path would clear SHAKE_MIN_RECLAIM_TOKENS on its own, so the empty plan
   // below pins the guard rather than the recovery floor.
   const pointer = `${ELIDED_PREFIX} 60000 chars; full output in /tmp/old.log] ${big(60_000)}`;
-  const messages = [bash("again", 0, { text: pointer }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("again", 0, { text: pointer }), ...protectedFillers()];
   assert.ok(pointer.length > SHAKE_MIN_CHARS);
   assert.ok(estimateTokens(pointer) > 10_000);
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
@@ -102,12 +108,12 @@ test("shakePlan leaves a long already-elided result alone instead of re-eliding 
 
 test("shakePlan is empty when the whole pass would reclaim under the floor", () => {
   // ~5k tokens of result is below SHAKE_MIN_RECLAIM_TOKENS once the pointer is subtracted.
-  const messages = [bash("small", 20_000), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("small", 20_000), ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
 });
 
 test("a bash result without a pi full-output path gets one written", () => {
-  const messages = [bash("a", 60_000, { fullOutputPath: undefined, toolCallId: "t9" }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a", 60_000, { fullOutputPath: undefined, toolCallId: "t9" }), ...protectedFillers()];
   const calls: Array<[string, string | undefined]> = [];
   const writer: FullOutputWriter = (text, id) => {
     calls.push([text, id]);
@@ -120,14 +126,14 @@ test("a bash result without a pi full-output path gets one written", () => {
 });
 
 test("a bash result with no recoverable path is kept rather than lost", () => {
-  const messages = [bash("a", 60_000, { fullOutputPath: undefined }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a", 60_000, { fullOutputPath: undefined }), ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
   assert.equal(shakePlan(messages, atPercent(70), () => null).edits.length, 0);
 });
 
 test("a read pointer without a path or offset names the file from line 1", () => {
   const read: ShakeMessage = { entryId: "r", role: "toolResult", toolName: "read", text: big(60_000) };
-  const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [read, ...protectedFillers()];
   const plan = shakePlan(messages, atPercent(70));
   assert.equal(plan.edits.length, 1);
   assert.match(plan.edits[0]!.replacement, /60000 chars of the file:1-1; re-read the range/);
@@ -142,7 +148,7 @@ test("a read pointer counts the lines of a multi-line result", () => {
     text: `${big(30_000)}\n${big(30_000)}`,
     readInput: { path: "src/big.ts", offset: 10 },
   };
-  const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [read, ...protectedFillers()];
   const plan = shakePlan(messages, atPercent(70));
   assert.equal(plan.edits.length, 1);
   assert.match(plan.edits[0]!.replacement, /src\/big\.ts:10-11; re-read the range/);
@@ -156,7 +162,7 @@ test("a read pointer names the file and the range it elided", () => {
     text: big(60_000),
     readInput: { path: "src/big.ts", offset: 100, limit: 50 },
   };
-  const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [read, ...protectedFillers()];
   const plan = shakePlan(messages, atPercent(70));
   assert.equal(plan.edits.length, 1);
   // No newlines in the filler text: one line, so the range is the offset alone.
@@ -164,7 +170,7 @@ test("a read pointer names the file and the range it elided", () => {
 });
 
 test("percentOf falls back to tokens/contextWindow when pi gives no percent", () => {
-  const messages = [bash("a"), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a"), ...protectedFillers()];
   // 70k/100k is exactly the first crossing; just under it and an unknowable window both plan
   // nothing.
   assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
@@ -173,12 +179,12 @@ test("percentOf falls back to tokens/contextWindow when pi gives no percent", ()
 });
 
 test("shakePlan skips a bulky result with no session entry to edit", () => {
-  const messages = [bash("a", 60_000, { entryId: undefined }), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a", 60_000, { entryId: undefined }), ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
 });
 
 test("a fleet-sized context on the 1M primary plans nothing", () => {
-  const messages = [bash("a"), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a"), ...protectedFillers()];
   const plan = shakePlan(messages, { tokens: 140_000, contextWindow: 1_048_575, percent: (140_000 / 1_048_575) * 100 });
   assert.equal(plan.edits.length, 0);
 });
@@ -351,7 +357,7 @@ test("a read pointer clamps a non-positive or missing offset to line 1", () => {
       text: big(60_000),
       readInput,
     };
-    const messages = [read, ...Array.from({ length: 5 }, () => filler(4_000))];
+    const messages = [read, ...protectedFillers()];
     const plan = shakePlan(messages, atPercent(70));
     assert.equal(plan.edits.length, 1);
     assert.match(plan.edits[0]!.replacement, /src\/big\.ts:1-1; re-read the range/, JSON.stringify(readInput));
@@ -362,7 +368,7 @@ test("shakePlan tolerates a message with no text", () => {
   // `messages[i]?.text ?? ""` guards a projected context whose message flattened to no text
   // (an empty or unrecognized content shape): the token estimate must treat it as empty
   // rather than throwing on an undefined string.
-  const messages = [bash("a"), { role: "user" } as ShakeMessage, ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("a"), { role: "user" } as ShakeMessage, ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 1);
 });
 
@@ -375,7 +381,7 @@ test("a result exactly at the size floor is skipped while an over-floor companio
   // The 60k-char companion clears SHAKE_MIN_RECLAIM_TOKENS on its own, so the plan is not empty
   // for an unrelated reason and the boundary is observable: under an exclusive `<` the 2,000-char
   // result would join the edits, changing the target list below.
-  const messages = [bash("edge", SHAKE_MIN_CHARS), bash("big", 60_000), ...Array.from({ length: 5 }, () => filler(4_000))];
+  const messages = [bash("edge", SHAKE_MIN_CHARS), bash("big", 60_000), ...protectedFillers()];
   const plan = shakePlan(messages, atPercent(70));
   assert.deepEqual(plan.edits.map((e) => e.targetId), ["big"]);
 });
