@@ -8,14 +8,13 @@ import { formatTimestamp } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 
-/** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
- * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
- * every usage consumer shares), rendered through the shared token/money formats
- * (compactTokens, usd) in one place. Either
- * part is omitted when zero or absent, so skipped ticks and zero-usage landings render
- * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator
- * the budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase;
- * table-cell contexts (history's usage column) use the bare text. */
+/** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares (tick_end,
+ * landed): the usage numbers arrive via eventUsage (the loose-typing coercion every usage consumer
+ * shares), rendered through the shared token/money formats (compactTokens, usd) in one place.
+ * Either part is omitted when zero or absent, so skipped ticks and zero-usage landings render
+ * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator the
+ * budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase; table-cell
+ * contexts (history's usage column) use the bare text. */
 export function usageText(e: HarnessEvent): string {
   const { tokens, costUsd } = eventUsage(e);
   return (
