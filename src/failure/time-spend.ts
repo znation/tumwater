@@ -7,7 +7,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
-import { normalizeClusterKey, poolTimeoutKey, sortedRoles, NO_ERROR_TEXT, truncateExample } from "./failure-cluster.js";
+import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
 import { stringList } from "../files/json-object.js";
@@ -201,7 +201,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // carries one (planTickStart clears s.lastError, tick-finalize logs error: undefined),
       // and a malformed error tick can lose it too, so both take the same placeholder cause the
       // error-clusters section already itemizes rather than dropping the span itemized nowhere.
-      const text = typeof ev.error === "string" && ev.error !== "" ? ev.error : NO_ERROR_TEXT;
+      const text = errorTextOrPlaceholder(ev.error);
       key = poolTimeoutKey(normalizeClusterKey(text));
       example = truncateExample(text);
     } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
@@ -222,7 +222,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       const failed = (reviewFailedByLoop.get(role) ?? [])
         .filter((r) => String(r.head ?? "") === resolvedOutcome!.sha)
         .at(-1);
-      const text = typeof failed?.message === "string" && failed.message !== "" ? failed.message : NO_ERROR_TEXT;
+      const text = errorTextOrPlaceholder(failed?.message);
       key = poolTimeoutKey(normalizeClusterKey(text));
       example = truncateExample(text);
     }

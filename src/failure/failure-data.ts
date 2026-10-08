@@ -15,7 +15,7 @@ import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
-import { clusterMessages, NO_ERROR_TEXT, truncateExample, type Cluster } from "./failure-cluster.js";
+import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { addTo, getOrCreate } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
@@ -269,10 +269,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   const errors = section(
     clusterMessages(
       errorEvents.map((ev) => ({
-        message:
-          typeof ev.error === "string" && ev.error !== ""
-            ? ev.error
-            : NO_ERROR_TEXT,
+        message: errorTextOrPlaceholder(ev.error),
         role: eventRole(ev),
         ts: ev.ts,
       })),
