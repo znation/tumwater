@@ -11,8 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { worktreePath } from "../src/paths.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fake-pi.js";
@@ -41,7 +40,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
-    const wt = worktreePath(repo, "improve");
+    const wt = roleWt(repo, "improve");
     assertClean(wt, "a rejected tick leaves the role worktree clean at main");
     assert.ok(!landingRefExists(repo, "improve"), "a rejection is terminal: the pin was deleted with it");
     assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");

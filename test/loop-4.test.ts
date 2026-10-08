@@ -258,24 +258,24 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
   const restore = fakePi(
     [
       leasedRoleShell(),
-      // The review runs hold a pooled slot, so they come first, keyed on the leased role.
+      // Author runs and review runs now share pooled slots, so tell them apart by the review
+      // prompt's VERDICT and key both on the leased role.
+      `is_review=0; for a in "$@"; do case "$a" in *"VERDICT:"*) is_review=1;; esac; done`,
+      `case "$role:$is_review" in`,
       // A's landing's reviewer run (slot for improve): hold the lock while reviewing.
-      `case "$role" in`,
-      `improve)`,
+      `improve:1)`,
       `  touch '${marker}'; i=0; while [ ! -f '${bDone}' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
       // B's landing's reviewer run (slot for organize): plain approve.
-      `organize)`,
+      `organize:1)`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
-      `esac`,
-      // The role worktrees cover the authoring ticks.
-      `case "$PWD" in`,
-      `*improve)`,
+      // The leased slots cover the authoring ticks.
+      `improve:0)`,
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
       `  ;;`,
       // B's tick's author run: wait for A to be mid-landing, then work fast.
-      `*organize)`,
+      `organize:0)`,
       `  i=0; while [ ! -f "${marker}" ] && [ $i -lt 60 ]; do sleep 0.2; i=$((i+1)); done`,
       `  printf '%s\n' '${assistantLine("fast work\\nSUMMARY: fast change")}'`,
       `  echo b > b.txt`,

@@ -5,10 +5,12 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
-import { setRef, deleteRef, commitMessage, changeBaseRev } from "../git/git.js";
+import { branchExists, setRef, deleteRef, commitMessage, changeBaseRev } from "../git/git.js";
+import { git, gitTry } from "../git/git-run.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
+import { leaseSlot } from "../git/worktree-pool.js";
 import { useWorktree } from "../git/worktree-use.js";
-import { worktreePath } from "../paths.js";
+import { branchName, worktreePath } from "../paths.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import {
@@ -615,24 +617,88 @@ export class LoopRunner {
       tickPrompt: () => this.tickPrompt(),
     });
     if (plan === null) return { result: "skipped" };
-    // Hold the worktree from before ensureWorktree — creating or resetting it is part of the
-    // use — to the tick's end (plans/disk-floor.md, part 2/4), so a concurrent pressure
-    // reclaim never cleans a tree this tick is creating or working in.
-    return useWorktree(this.root, worktreePath(this.root, this.role), () =>
-      this.tickWithWorktree(plan, cfg, fallbackCtx),
-    );
+    if (this.role === DIRECTOR_ROLE) {
+      // The director keeps its dedicated worktree (it runs outside the permit, consumes its
+      // config-request file at that exact path, and never resumes). Hold it from before
+      // ensureWorktree — creating or resetting it is part of the use — to the tick's end
+      // (plans/disk-floor.md, part 2/4), so a concurrent pressure reclaim never cleans a tree
+      // this tick is creating or working in.
+      return useWorktree(this.root, worktreePath(this.root, this.role), () =>
+        this.tickWithWorktree(plan, cfg, fallbackCtx),
+      );
+    }
+    return this.runTickInLease(plan, cfg, fallbackCtx);
+  }
+
+  /** A non-director tick's whole life on a pooled slot (plans/worktree-pool.md, "Role ticks
+   * lease slots"): lease, author on the role's branch, release. The release pins the slot for
+   * a tick whose next run resumes (aborted, quiet-killed, cut off, or a failed dirty run),
+   * keeping the branch checked out and the uncommitted edits in the same cwd pi's `--continue`
+   * needs; every other release detaches first so the branch is free for whichever slot the role
+   * leases next. */
+  private async runTickInLease(
+    plan: TickStartPlan,
+    cfg: ResolvedModelConfig,
+    fallbackCtx: { fallback: ResolvedModelConfig | null; probe: boolean; primary: ResolvedModelConfig },
+  ): Promise<TickOutcome> {
+    const lease = await leaseSlot(this.root, {
+      role: this.role,
+      purpose: "tick",
+      ref: this.mainBranch,
+      keep: plan.resuming,
+      signal: this.runSignal(),
+    });
+    let outcome: TickOutcome | undefined;
+    try {
+      if (!lease.preserved) await this.checkoutRoleBranch(lease.dir);
+      outcome = await this.tickWithWorktree(plan, cfg, fallbackCtx, lease.dir);
+      return outcome;
+    } finally {
+      // The next tick resumes when this run aborted, was quiet-killed, or was cut off at the
+      // context ceiling — and `resumePending` covers the error-dirty arm, which sets it inside
+      // the tick (src/tick/tick-verdict.ts). `applyTickOutcome` sets `resumePending` for the
+      // others only after runTick returns, so the outcome only is visible here. A user abort
+      // discards its work and is never pinned.
+      const pin =
+        this.state.resumePending === true ||
+        outcome?.result === "aborted" ||
+        outcome?.result === "quiet_killed" ||
+        outcome?.cutOff === true;
+      // Detach is best-effort so it can never mask the tick's own outcome or error; the release
+      // still runs, and the next lease's checkout recovers an undetached branch either way.
+      if (!pin) await gitTry(lease.dir, "checkout", "--detach");
+      lease.release({ pin });
+    }
+  }
+
+  /** Put `tumwater/<role>` on the leased slot before authoring. An existing branch is checked
+   * out, never reset — `-B` would discard the unlanded commit it durably holds; an absent one
+   * is created from main. `--ignore-other-worktrees` lets the slot take the branch while a
+   * legacy `.tumwater/worktrees/<role>` still holds it (the ordering that lands this part
+   * before part 4c, which retires those directories); the stale checkout is never used again.
+   * Untracked files are cleaned so the checkout is pristine. */
+  private async checkoutRoleBranch(dir: string): Promise<void> {
+    const branch = branchName(this.role);
+    if (await branchExists(this.root, branch)) {
+      await git(dir, "checkout", "-f", "--ignore-other-worktrees", branch);
+    } else {
+      await git(dir, "checkout", "-f", "-b", branch, this.mainBranch);
+    }
+    await git(dir, "clean", "-fd");
   }
 
   private async tickWithWorktree(
     plan: TickStartPlan,
     cfg: ResolvedModelConfig,
     fallbackCtx: { fallback: ResolvedModelConfig | null; probe: boolean; primary: ResolvedModelConfig },
+    /** The leased slot the tick runs in; omitted by the director, which ensures its own. */
+    leasedDir?: string,
   ): Promise<TickOutcome> {
     const s = this.state;
     const { priorLandingFailure, resuming, resumeCause, userPrompt } = plan;
     let prompt = plan.prompt;
 
-    const wt = await ensureWorktree(this.root, this.role, this.mainBranch);
+    const wt = leasedDir ?? (await ensureWorktree(this.root, this.role, this.mainBranch));
     if (resuming) {
       // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state.
       await abortSync(wt);

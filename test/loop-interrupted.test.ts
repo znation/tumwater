@@ -11,9 +11,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
-import { piLogPath, sessionDir, worktreePath } from "../src/paths.js";
+import { piLogPath, sessionDir } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo } from "./fake-pi.js";
@@ -126,7 +126,7 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
     // fake pi even starts under parallel load, leaving no edits for the resume to keep.
     const tick = runner.tick();
     try {
-      await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
       controller.abort(); // don't leave the hung fake pi running after a wait timeout
       throw err;
@@ -190,12 +190,12 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     const tick = runner.tick();
     // Wait for the half-done edit to land: a fixed timer can fire before the fake pi even
     // starts under parallel load. The watchdog kills the run itself — no abort controller.
-    await waitForFile(path.join(worktreePath(repo, "improve"), "kept.txt"));
+    await waitForFile(path.join(roleWt(repo, "improve"), "kept.txt"));
     await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
     clock.advance(20_000);
     assert.equal((await tick).result, "quiet_killed");
     assert.ok(
-      fs.existsSync(path.join(worktreePath(repo, "improve"), "kept.txt")),
+      fs.existsSync(path.join(roleWt(repo, "improve"), "kept.txt")),
       "the edits survive the kill",
     );
     assert.equal(runner.state.resumePending, true, "the next tick resumes this one");

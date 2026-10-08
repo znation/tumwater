@@ -12,9 +12,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { landingRefName, worktreePath } from "../src/paths.js";
+import { landingRefName } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { conflictingMainEdit, fakePi, seedBranchEdit } from "./fake-pi.js";
@@ -90,11 +90,11 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
-    const wt = path.join(repo, ".tumwater/worktrees/improve");
+    const wt = roleWt(repo, "improve");
     assert.ok(!sh(wt, "git", "status", "--porcelain").includes("UU"));
-    // No rebase is left in progress: the branch ref is checked out again (mid-rebase HEAD
-    // would be detached).
-    assert.equal(sh(wt, "git", "symbolic-ref", "--short", "HEAD"), "tumwater/improve");
+    // No rebase is left in progress: the checkout is clean, not stopped mid-rebase with
+    // conflict markers. (After the pool the role's checkout is detached on release, so the
+    // old symbolic-ref assertion no longer applies.)
   } finally {
     restore();
   }
@@ -149,10 +149,8 @@ test("a stray pi commit makes rebase --continue stop a second time: aborted, mer
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
     assert.ok(pinned.length === 40, "the tick's commits are kept for recovery via the pin");
-    const wt = path.join(repo, ".tumwater/worktrees/improve");
-    // No rebase is left in progress: the branch ref is checked out again (mid-rebase HEAD
-    // would be detached), and no conflict markers survive.
-    assert.equal(sh(wt, "git", "symbolic-ref", "--short", "HEAD"), "tumwater/improve");
+    const wt = roleWt(repo, "improve");
+    // No rebase is left in progress: no conflict markers survive, and the checkout is clean.
     assert.ok(!sh(wt, "git", "status", "--porcelain").includes("UU"));
   } finally {
     restore();
@@ -186,7 +184,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
     assert.ok(pinned.length === 40, "the blocked commit is pinned for recovery");
-    assertClean(worktreePath(repo, "improve"), "role worktree clean at main");
+    assertClean(roleWt(repo, "improve"), "role worktree clean at main");
     assert.match(sh(repo, "git", "show", "main:seed.txt"), /^seed$/);
     // The failure is recorded on the state; the retry rides the next tick's leftover recovery
     // at the role's NORMAL cadence — the tick itself was productive (it committed), so no

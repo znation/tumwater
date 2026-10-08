@@ -22,6 +22,7 @@ import { loadLoopState } from "../src/loop/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { worktreePath } from "../src/paths.js";
 import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "./orchestrator-fixtures.js";
+import { roleWt } from "./loop-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
@@ -78,15 +79,15 @@ test("the orchestrator publishes the build's staleness in orchestrator.json whil
 test("a drain past its cap aborts the in-flight tick resumably and still restarts", async () => {
   const repo = await makeFastRepo("drain cap test", ["clean"]);
   // The tick never finishes on its own: only the drain cap (or a stop) can end it.
-  const partial = path.join(worktreePath(repo, "clean"), "partial.txt");
+  const partial = () => path.join(roleWt(repo, "clean"), "partial.txt");
   const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
   // Staleness is re-evaluated only when main moves (a per-head verdict), so: let the first tick
   // start against a fresh build, then move main — the recomputation finds the build stale with
   // that tick in flight, which is exactly the situation the drain cap exists for.
-  const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => fs.existsSync(partial) });
+  const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => fs.existsSync(partial()) });
   const { run, stop } = startRedeployRun(repo, redeployer, { timeoutMs: 15_000 });
   try {
-    await waitFor(() => fs.existsSync(partial), "the tick to start");
+    await waitFor(() => fs.existsSync(partial()), "the tick to start");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
@@ -113,7 +114,7 @@ async function parkedPairRepo(label: string) {
   cfg.maxConcurrent = 1;
   saveConfig(repo, cfg);
   const started = () =>
-    ["clean", "dry"].filter((r) => fs.existsSync(path.join(worktreePath(repo, r), "started.txt")));
+    ["clean", "dry"].filter((r) => fs.existsSync(path.join(roleWt(repo, r), "started.txt")));
   return { repo, started };
 }
 

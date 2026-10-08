@@ -11,9 +11,9 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
-import { piLogPath, worktreePath } from "../src/paths.js";
+import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
@@ -44,7 +44,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     const tick = runner.tick();
     // The kill must come only once the shim has spoken and reached `echo partial` — the
     // "partial edit survives" assertion below is about the kill, not about shell startup.
-    await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+    await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     await waitForLogLines(piLogPath(repo, "improve"), "starting work");
     clock.advance(15_000); // silence well past the 3 s window
     const outcome = await tick;
@@ -55,7 +55,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
     // worktree and the next tick resumes the session instead of resetting it away.
     assert.ok(
-      fs.existsSync(path.join(worktreePath(repo, "improve"), "partial.txt")),
+      fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
       "the partial edit survives the kill",
     );
     assert.equal(runner.state.resumePending, true, "the next tick resumes this one");

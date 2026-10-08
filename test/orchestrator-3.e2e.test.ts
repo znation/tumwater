@@ -20,7 +20,6 @@ import {
   landQueueDir,
   landingRefName,
   landingStatePath,
-  worktreePath,
 } from "../src/paths.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { setRef } from "../src/git/git.js";
@@ -34,7 +33,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -375,7 +374,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => fs.existsSync(path.join(worktreePath(repo, "clean"), "partial.txt")),
+      () => fs.existsSync(path.join(roleWt(repo, "clean"), "partial.txt")),
       "a tick to be in flight",
     );
 
@@ -398,7 +397,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     assert.equal(s.lastResult, "user_aborted");
     assert.ok(!s.resumePending, "a deliberate stop leaves nothing to resume");
     assert.ok(
-      !fs.existsSync(path.join(worktreePath(repo, "clean"), "partial.txt")),
+      !fs.existsSync(path.join(roleWt(repo, "clean"), "partial.txt")),
       "half-done work was discarded",
     );
     // Measured from the tick's own end stamp, not a clock read after waitFor noticed the end:

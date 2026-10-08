@@ -72,55 +72,6 @@ own relative imports and `import.meta.url` constants, which are depth-sensitive:
   files; `test/fake-commands.test.ts`'s relocated-tree import still fails loudly when
   `SCRIPT_SHIM` is absent.
 
-### Worktree pool, part 4b/5: role ticks lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5, 3/5 and part 4a/5 landed)
-
-Design: plans/worktree-pool.md ("Role ticks lease slots").
-
-**Context.** Each role keeps a persistent `.tumwater/worktrees/<role>` with its own build
-outputs, yet at most `maxConcurrent` role ticks run at once. Lease the pooled `_slot-<n>`
-checkouts instead; `leaseSlot` already holds `beginWorktreeUse` and prepares the slot at a ref.
-This part leans on 4a/5 for the keep/resume and pin-on-release API.
-
-**Approach.**
-1. In `LoopRunner.runTick` (src/loop/loop.ts), for every role except `DIRECTOR_ROLE`, replace the
-   `useWorktree(root, worktreePath(...), ...)` wrapper over `tickWithWorktree` with
-   `leaseSlot(this.root, { role: this.role, purpose: "tick", ref: this.mainBranch, keep: plan.resuming })`,
-   and pass the leased `dir` into `tickWithWorktree` as `wt` (which stops calling
-   `ensureWorktree`). `plan.resuming` is the tick's decision (src/tick/tick-resume.ts);
-   `state.resumePending` was already cleared when `planTickStart` consumed it, so it is not the
-   keep signal.
-2. When the lease is not `preserved`, check out the role branch before authoring:
-   `git checkout -f tumwater/<role>` then `git clean -fd`; when the branch is absent,
-   `git checkout -f -b tumwater/<role> <this.mainBranch>`. Never `-B` (it would reset an existing
-   branch and lose an unpinned commit).
-3. Everything after the checkout is unchanged: `recoverLeftover`, `resetWorktreeToMain`, the
-   red-main gate, `commitAll` and `stageTickLanding` act through HEAD.
-4. Release in `runTick`'s `finally`: when `this.state.resumePending` is true (set again by an
-   abort or a cut-off during this tick, src/tick/tick-apply.ts and src/loop/loop.ts's
-   `abortTick`), `release({ pin: true })` (branch checked out and edits kept, so `--continue`
-   finds the same cwd); otherwise run `git checkout --detach` first, then `release()`, freeing
-   the branch for the role's next slot.
-5. `DIRECTOR_ROLE` keeps `ensureWorktree(root, DIRECTOR_ROLE, mainBranch)`; note in
-   `ensureWorktree`'s doc (src/git/worktree.ts) that it now serves the director only.
-6. Update the fixtures and cases that reach a non-director role worktree by path —
-   test/loop-fixtures.ts, test/loop-2.test.ts, test/loop-merge-conflicts.test.ts and any other
-   loop test naming `.tumwater/worktrees/<role>` — to resolve the slot through `roleWorktreeDir`
-   or `slotForDir` instead.
-
-**Files touched.** src/loop/loop.ts, src/git/worktree.ts (doc). Tests: test/loop-fixtures.ts and
-the loop tests naming a non-director role worktree path.
-
-**Acceptance criteria.**
-- With `maxConcurrent: 2` and `worktreeSlots: 2`, three roles tick over time using at most two
-  `_slot-*` directories; no `.tumwater/worktrees/<role>` is newly created for a non-director
-  role.
-- A commit left on `tumwater/<role>` with no pin (the crash window) is recovered by the role's
-  next tick in whichever slot it leases.
-- An aborted tick pins its slot; the role's next tick leases that same directory and runs in the
-  preserved cwd (the fake pi sees it), then unpins on release.
-- The director still ticks in `.tumwater/worktrees/director`.
-- `npm run test` green.
-
 ### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed)
 
 Design: plans/worktree-pool.md ("Role ticks lease slots", "Legacy role worktrees").
@@ -319,6 +270,73 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 4b/5: role ticks lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5, 3/5 and part 4a/5 landed; done 2026-10-07 by feature)
+
+Design: plans/worktree-pool.md ("Role ticks lease slots").
+
+**Context.** Each role keeps a persistent `.tumwater/worktrees/<role>` with its own build
+outputs, yet at most `maxConcurrent` role ticks run at once. Lease the pooled `_slot-<n>`
+checkouts instead; `leaseSlot` already holds `beginWorktreeUse` and prepares the slot at a ref.
+This part leans on 4a/5 for the keep/resume and pin-on-release API.
+
+**Approach.**
+1. In `LoopRunner.runTick` (src/loop/loop.ts), for every role except `DIRECTOR_ROLE`, replace the
+   `useWorktree(root, worktreePath(...), ...)` wrapper over `tickWithWorktree` with
+   `leaseSlot(this.root, { role: this.role, purpose: "tick", ref: this.mainBranch, keep: plan.resuming })`,
+   and pass the leased `dir` into `tickWithWorktree` as `wt` (which stops calling
+   `ensureWorktree`). `plan.resuming` is the tick's decision (src/tick/tick-resume.ts);
+   `state.resumePending` was already cleared when `planTickStart` consumed it, so it is not the
+   keep signal.
+2. When the lease is not `preserved`, check out the role branch before authoring:
+   `git checkout -f tumwater/<role>` then `git clean -fd`; when the branch is absent,
+   `git checkout -f -b tumwater/<role> <this.mainBranch>`. Never `-B` (it would reset an existing
+   branch and lose an unpinned commit).
+3. Everything after the checkout is unchanged: `recoverLeftover`, `resetWorktreeToMain`, the
+   red-main gate, `commitAll` and `stageTickLanding` act through HEAD.
+4. Release in `runTick`'s `finally`: when `this.state.resumePending` is true (set again by an
+   abort or a cut-off during this tick, src/tick/tick-apply.ts and src/loop/loop.ts's
+   `abortTick`), `release({ pin: true })` (branch checked out and edits kept, so `--continue`
+   finds the same cwd); otherwise run `git checkout --detach` first, then `release()`, freeing
+   the branch for the role's next slot.
+5. `DIRECTOR_ROLE` keeps `ensureWorktree(root, DIRECTOR_ROLE, mainBranch)`; note in
+   `ensureWorktree`'s doc (src/git/worktree.ts) that it now serves the director only.
+6. Update the fixtures and cases that reach a non-director role worktree by path —
+   test/loop-fixtures.ts, test/loop-2.test.ts, test/loop-merge-conflicts.test.ts and any other
+   loop test naming `.tumwater/worktrees/<role>` — to resolve the slot through `roleWorktreeDir`
+   or `slotForDir` instead.
+
+**Files touched.** src/loop/loop.ts, src/git/worktree.ts (doc). Tests: test/loop-fixtures.ts and
+the loop tests naming a non-director role worktree path.
+
+**Acceptance criteria.**
+- With `maxConcurrent: 2` and `worktreeSlots: 2`, three roles tick over time using at most two
+  `_slot-*` directories; no `.tumwater/worktrees/<role>` is newly created for a non-director
+  role.
+- A commit left on `tumwater/<role>` with no pin (the crash window) is recovered by the role's
+  next tick in whichever slot it leases.
+- An aborted tick pins its slot; the role's next tick leases that same directory and runs in the
+  preserved cwd (the fake pi sees it), then unpins on release.
+- The director still ticks in `.tumwater/worktrees/director`.
+- `npm run test` green.
+
+**Implementation note (2026-10-07 by feature).** Two details diverged from the approach above so
+the code matches the world:
+- `checkoutRoleBranch` adds `--ignore-other-worktrees` to `git checkout -f`. Part 4c, which
+  retires the legacy role worktrees, lands after this part; while a legacy
+  `.tumwater/worktrees/<role>` still holds `tumwater/<role>`, plain `checkout -f` refuses with
+  “already used by worktree”. The stale checkout is never used again and 4c removes it.
+- The release pin reads the tick's outcome (`aborted`, `quiet_killed`, `cutOff`) plus
+  `state.resumePending` for the error-dirty arm, not `state.resumePending` alone:
+  `applyTickOutcome` sets `resumePending` for abort/quiet-kill/cut-off only after `runTick`
+  returns, so it is still false in `runTick`'s `finally`. `runTickInLease` captures the outcome
+  and pins on those results (a later tick clears the pin on release).
+
+Tests also gained `roleWt` and `pinWorktreeAsSlot` in test/loop-fixtures.ts, and a loop-5 test
+covering the slot budget, the absence of legacy role worktrees, and the director's dedicated
+checkout. Non-director role worktree paths in the orchestrator e2e tier — orchestrator-2,
+orchestrator-3 and orchestrator-redeploy — resolve through `roleWt` too; the director's stay
+`worktreePath`.
 
 ### Worktree pool, part 4a/5: a leased slot can be kept for its role's resume and pinned on release (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5 and 3/5 landed; done 2026-10-07 by feature)
 

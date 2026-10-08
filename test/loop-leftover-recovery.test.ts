@@ -18,12 +18,12 @@ import { readEvents } from "../src/events/event-read.js";
 import { setRef } from "../src/git/git.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
-import { landingRefName, worktreePath } from "../src/paths.js";
+import { landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 
@@ -350,7 +350,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
       "recovery is recorded as a merge of the leftover work, naming its subject",
     );
     // The role worktree is clean at main whatever recovery did.
-    assertClean(wt);
+    assertClean(roleWt(repo, "improve"));
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
   } finally {
     restore();
@@ -437,7 +437,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     // clean at main whatever recovery does, and the reviewer's stray file in the pooled slot
     // is cleaned by the next landing's lease (the slot's ensureDetachedWorktree reset).
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
-    const wt = worktreePath(repo, "improve");
+    const wt = roleWt(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");
     assertClean(wt, "no uncommitted edits remain");
     const landWt = path.join(repo, ".tumwater/worktrees/_slot-1");

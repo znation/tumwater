@@ -17,10 +17,10 @@ import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { clearBackoff } from "../src/scheduling/backoff.js";
-import { branchName, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
+import { branchName, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { seedCounters } from "./loop-fixtures.js";
+import { roleWt, seedCounters } from "./loop-fixtures.js";
 import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, readRunLines, recordingFakePi } from "./fake-pi.js";
@@ -456,7 +456,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
       "ticks under its own name",
     );
     // Owns its persistent worktree and branch like a built-in.
-    assert.ok(fs.existsSync(worktreePath(repo, "docs-auditor")), "its worktree");
+    assert.ok(fs.existsSync(roleWt(repo, "docs-auditor")), "its worktree");
     const branches = sh(repo, "git", "branch", "--list").split("\n");
     assert.ok(branches.some((b) => b.includes(branchName("docs-auditor"))), "its branch");
 

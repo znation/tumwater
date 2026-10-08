@@ -17,9 +17,9 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -138,7 +138,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     // Abort only once the half-done edit has landed: a fixed timer can fire before the
     // fake pi even starts under parallel load.
     try {
-      await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
       runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
       throw err;
@@ -151,7 +151,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     // the worktree (reset --hard + clean -fd), so the next tick's leftover recovery finds
     // nothing to salvage.
     assert.equal(mainSha(repo), before, "nothing lands on main");
-    const wt = worktreePath(repo, "improve");
+    const wt = roleWt(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "partial.txt")), "the half-done edit is discarded");
     assertClean(wt, "no uncommitted edits remain");
 
@@ -350,7 +350,7 @@ test("a tick timeout that fires on a run still making progress is resumed like a
     assert.equal(runner.state.resumePending, true, "the slow run's session is resumed, not discarded");
     assert.equal(runner.state.resumeCause, "timeout");
     assert.ok(
-      fs.existsSync(path.join(worktreePath(repo, "improve"), "partial.txt")),
+      fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
       "the slow run's half-done edit survives for its resume",
     );
   } finally {
@@ -399,7 +399,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     const runner = makeLoopRunner(repo, "improve", fallback);
     const tick = runner.tick();
     try {
-      await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
       runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
       throw err;
@@ -418,7 +418,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     assert.ok(s.resumePending, "the interrupted session is kept for a resume");
     assert.equal(s.resumeCause, "budget-resumed");
     assert.ok(
-      fs.existsSync(path.join(worktreePath(repo, "improve"), "partial.txt")),
+      fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
       "the half-done edit is kept",
     );
     assert.ok((s.nextRunAt ?? 0) <= Date.now() + 50, "resumes promptly, no backoff");
@@ -455,6 +455,40 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
       assert.match(run, /--provider\s+paid\s+--model\s+big-paid/, "the resume runs on the primary");
       assert.doesNotMatch(run, /local-free/, "the fallback pair is gone from the resume");
     }
+  } finally {
+    restore();
+  }
+});
+
+// plans/worktree-pool.md part 4b: a non-director tick leases a pooled `_slot-<n>` instead of
+// creating its own `.tumwater/worktrees/<role>`, and the slot budget is `worktreeSlots`. The
+// director keeps the dedicated checkout it reads its config-request file from.
+test("role ticks lease pooled slots; no legacy role worktree is created", async () => {
+  const repo = await initializedRepo();
+  writeConfig(repo, { maxConcurrent: 2, worktreeSlots: 2 });
+  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
+  try {
+    const roles = ["improve", "clean", "perf"];
+    for (const role of roles) {
+      const runner = makeLoopRunner(repo, role);
+      const outcome = await runner.tick();
+      assert.equal(outcome.result, "no_change", `${role}: ${runner.state.lastError ?? ""}`);
+    }
+    const wtDir = path.join(repo, ".tumwater", "worktrees");
+    const slots = fs.readdirSync(wtDir).filter((name) => name.startsWith("_slot-"));
+    assert.ok(slots.length <= 2, `at most two slots for worktreeSlots 2, got ${slots.join(", ")}`);
+    for (const role of roles) {
+      assert.ok(!fs.existsSync(path.join(wtDir, role)), `no legacy worktree for ${role}`);
+      assert.equal(
+        sh(repo, "git", "rev-parse", "--verify", `tumwater/${role}`).trim().length,
+        40,
+        `the ${role} branch holds its work`,
+      );
+    }
+    // The director still ticks in its dedicated checkout.
+    enqueuePrompt(repo, "say hello");
+    assert.equal((await makeLoopRunner(repo, "director").tick()).result, "no_change");
+    assert.ok(fs.existsSync(path.join(wtDir, "director")), "the director keeps its dedicated worktree");
   } finally {
     restore();
   }

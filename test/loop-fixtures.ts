@@ -12,6 +12,8 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
 import { ensureParentDir } from "../src/files/files.js";
+import { readSlotsState, updateSlotsState } from "../src/git/slots-state.js";
+import { worktreePath } from "../src/paths.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a
@@ -26,6 +28,32 @@ export function makeLoopRunner(
   sleep?: (ms: number) => Promise<void>,
 ): LoopRunner {
   return new LoopRunner(repo, role, config, mainBranch, signal, sleep);
+}
+
+/** The directory a role's tick runs (or ran) in, resolving the pooled layout: the slot leased
+ * for the role, else the slot pinned for it, else the free slot it released most recently,
+ * else the legacy `.tumwater/worktrees/<role>` path. Non-director ticks lease a slot since
+ * plans/worktree-pool.md part 4b, so a test that reads a role's checkout resolves it here
+ * instead of assuming the legacy path. */
+export function roleWt(root: string, role: string): string {
+  const slots = readSlotsState(root).slots;
+  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "tick");
+  if (leased !== undefined) return leased.dir;
+  const pinned = slots.find((slot) => slot.pinnedFor === role);
+  if (pinned !== undefined) return pinned.dir;
+  const released = slots.find((slot) => slot.lease === null && slot.lastRole === role);
+  if (released !== undefined) return released.dir;
+  return worktreePath(root, role);
+}
+
+/** Register an existing checkout as a slot pinned for `role`: the shape an interrupted tick
+ * leaves behind (its slot pinned with the branch checked out and its edits uncommitted), so a
+ * test can seed that state without depending on the legacy path. The lease with
+ * `{ keep: true }` then chooses it and preserves it. */
+export function pinWorktreeAsSlot(root: string, role: string, dir: string): void {
+  updateSlotsState(root, (state) => {
+    state.slots.push({ dir, lease: null, pinnedFor: role, lastRole: null, lastReleasedAt: null });
+  });
 }
 
 /** Scratch project for the build-check tests (build-check.test.ts and review.test.ts's gate

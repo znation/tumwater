@@ -73,7 +73,9 @@ async function serializeSetup<T>(root: string, setup: () => Promise<T>): Promise
 
 /** Ensure a persistent worktree + branch exists for a role. Returns the worktree path.
  * Self-heals when the directory exists but is no longer a usable worktree: it removes and
- * re-adds the directory instead of failing every tick (see clearStaleWorktree). */
+ * re-adds the directory instead of failing every tick (see clearStaleWorktree). Since the
+ * worktree pool landed (plans/worktree-pool.md, "Role ticks lease slots"), this serves the
+ * director only; every other role leases a pooled `_slot-<n>` via leaseSlot instead. */
 export async function ensureWorktree(root: string, role: string, mainBranch: string): Promise<string> {
   const wt = worktreePath(root, role);
   const branch = branchName(role);

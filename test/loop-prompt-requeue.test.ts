@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, pinWorktreeAsSlot } from "./loop-fixtures.js";
 import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
@@ -130,6 +130,9 @@ test("a resume that fails on the provider's error turn keeps the edits and reque
   // The interrupted tick's leftovers: a half-done edit, its session, and the per-role prompt it
   // had re-queued for the resume (recorded in resumePromptFile, as requeueForResume leaves it).
   fs.writeFileSync(path.join(wt, "partial.txt"), "partial\n");
+  // The interrupted tick's slot was pinned for the role: register this checkout as that slot
+  // so the resume leases the same directory and keeps the edits.
+  pinWorktreeAsSlot(root, "perf", wt);
   fs.mkdirSync(sessionDir(root, "perf"), { recursive: true });
   fs.writeFileSync(path.join(sessionDir(root, "perf"), "interrupted.jsonl"), "{}\n");
   const queuedFile = enqueueRolePrompt(root, "perf", "fix the flubbernator");

@@ -15,7 +15,7 @@ import { refSha } from "../src/git/git.js";
 import { queueDepth } from "../src/landing/landing-queue.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fake-pi.js";
@@ -284,7 +284,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
   try {
     const runner = makeLoopRunner(repo, "clean", defaultConfig(), "main", controller.signal);
     const first = runner.tick();
-    await waitForFile(path.join(repo, ".tumwater/worktrees/clean/partial.txt"));
+    await waitForFile(path.join(roleWt(repo, "clean"), "partial.txt"));
     controller.abort();
     assert.equal((await first).result, "aborted");
     restore();
