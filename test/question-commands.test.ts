@@ -2,9 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/cli/question-commands.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
+import { primaryWorktreeLockPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { attempt } from "./exit-capture.js";
 import { dateOf } from "./oracles.js";
@@ -349,6 +352,50 @@ test("answering still works when a fence inside ## Open is closed before the sec
   assert.equal(title, "Question A");
   const md = read(path.join(root, "QUESTIONS.md"));
   assert.ok(md.includes("## Open\n\n_None yet._"), md);
+});
+
+// The same primary-worktree race as `tumwater bug`'s (test/backlog-write.test.ts), for the
+// QUESTIONS.md writer: `tumwater questions answer` rewrites the file while a landing
+// fast-forwards it in the primary checkout. The child holds the shared lock, snapshots the
+// pre-answer file, and writes the stale snapshot back once it has seen the answer (an unlocked
+// writer's lands immediately; a locked one waits). The fix makes both live in the file.
+test("an answered question cannot be clobbered by a landing that fast-forwards the same file", async () => {
+  const root = tmpdir();
+  const file = seed(root, '# Questions\n\n## Open\n\n### Question A\n\nbody\n\n## Answered\n\n_None yet._\n');
+  const lock = primaryWorktreeLockPath(root);
+  const ready = path.join(root, "child-ready");
+  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const child = spawn(process.execPath, [
+    "-e",
+    `const fs = require("node:fs");
+     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
+       const snapshot = fs.readFileSync(${JSON.stringify(file)}, "utf8");
+       fs.writeFileSync(${JSON.stringify(ready)}, "1");
+       const answered = () => { try { return fs.readFileSync(${JSON.stringify(file)}, "utf8").includes("**Answered"); } catch { return false; } };
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !answered()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       fs.writeFileSync(${JSON.stringify(file)}, snapshot);
+     }));`,
+  ]);
+  child.stderr?.resume();
+  const childExit = new Promise((resolve) => child.on("exit", resolve));
+  try {
+    for (let i = 0; !fs.existsSync(ready); i++) {
+      if (i > 500) throw new Error("the holder child never took the primary-worktree lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    answerQuestion(root, 1, "yes");
+    await childExit;
+    assert.ok(
+      read(file).includes("**Answered"),
+      "the answered question survives the lander's stale write-back",
+    );
+  } finally {
+    child.kill();
+    await childExit;
+  }
 });
 
 function read(file: string): string {

@@ -2,11 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { initProject } from "../src/init/init.js";
 import { fileBug, filePlan } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
+import { primaryWorktreeLockPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
@@ -223,6 +226,52 @@ test("empty or missing arguments fail with the usage line and write nothing", as
   assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
   assert.equal(queuedRolePrompts(repo, "bugfix").length, 0);
   assert.equal(queuedRolePrompts(repo, "feature").length, 0);
+});
+
+// The cross-process primary-worktree race: `tumwater bug` rewrites BUGS.md while the lander
+// fast-forwards the same working tree in the primary checkout. Without a shared lock the later
+// whole-file write drops the other's change. The child holds the primary-worktree lock,
+// snapshots BUGS.md, and writes that stale snapshot back once it has seen the parent's write (an
+// unlocked parent's lands immediately; a locked one waits for the lock). The fix serializes the
+// parent's read→write, so the filed entry survives the child's write-back.
+test("a filed bug cannot be clobbered by a landing that fast-forwards the same file", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "backlog write race");
+  const bugsFile = path.join(repo, "BUGS.md");
+  const lock = primaryWorktreeLockPath(repo);
+  const ready = path.join(repo, "child-ready");
+  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const child = spawn(process.execPath, [
+    "-e",
+    `const fs = require("node:fs");
+     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
+       const snapshot = fs.readFileSync(${JSON.stringify(bugsFile)}, "utf8");
+       fs.writeFileSync(${JSON.stringify(ready)}, "1");
+       const parentFiled = () => { try { return fs.readFileSync(${JSON.stringify(bugsFile)}, "utf8").includes("operator symptom"); } catch { return false; } };
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !parentFiled()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       fs.writeFileSync(${JSON.stringify(bugsFile)}, snapshot);
+     }));`,
+  ]);
+  child.stderr?.resume();
+  const childExit = new Promise((resolve) => child.on("exit", resolve));
+  try {
+    for (let i = 0; !fs.existsSync(ready); i++) {
+      if (i > 500) throw new Error("the holder child never took the primary-worktree lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    fileBug(repo, "operator symptom", 'tumwater bug "<symptom>"');
+    await childExit;
+    assert.ok(
+      fs.readFileSync(bugsFile, "utf8").includes("operator symptom"),
+      "the filed entry survives the lander's stale write-back",
+    );
+  } finally {
+    child.kill();
+    await childExit;
+  }
 });
 
 test("help topics resolve for bug and plan", async () => {

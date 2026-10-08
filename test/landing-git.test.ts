@@ -2,14 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   conflictedFiles,
   continueRebase,
+  ffMainTo,
   hasConflictMarkers,
   mainCommitsTouching,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing/landing-git.js";
+import { primaryWorktreeLockPath } from "../src/paths.js";
 import { assertWorktreeSettled, commitIn, initializedWorktree, sh } from "./repo-fixtures.js";
 
 // Behavioral coverage for the landing flow's git plumbing (landing-git.ts). The export pin in
@@ -150,6 +154,55 @@ test("mainCommitsTouching caps the list and the body, reporting what it dropped"
 test("mainCommitsTouching returns nothing for an empty file list", async () => {
   const { wt } = await initializedWorktree();
   assert.deepEqual(await mainCommitsTouching(wt, "HEAD", "main", []), { commits: [], omitted: 0 });
+});
+
+// The lander's half of the primary-worktree race: `tumwater bug` holds the shared lock while it
+// reads and rewrites a backlog file, so the working-tree fast-forward must wait for that lock
+// rather than merging under it. The child holds the lock and watches for the merge's landed.txt
+// (an unlocked ff writes it immediately; a locked one waits for release), then records what it
+// saw. The ref-push arm is not exercised here: it touches no working tree and takes no lock.
+test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog writer holds", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "landed.txt"), "landed\n");
+  commitIn(wt, "landing candidate");
+  const ref = sh(wt, "git", "rev-parse", "HEAD");
+  const lock = primaryWorktreeLockPath(root);
+  const landed = path.join(root, "landed.txt");
+  const ready = path.join(root, "child-ready");
+  const marker = path.join(root, "child-marker");
+  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const child = spawn(process.execPath, [
+    "-e",
+    `const fs = require("node:fs");
+     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
+       fs.writeFileSync(${JSON.stringify(ready)}, "1");
+       const merged = () => fs.existsSync(${JSON.stringify(landed)});
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !merged()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       fs.writeFileSync(${JSON.stringify(marker)}, merged() ? "seen" : "not-seen");
+     }));`,
+  ]);
+  child.stderr?.resume();
+  const childExit = new Promise((resolve) => child.on("exit", resolve));
+  try {
+    for (let i = 0; !fs.existsSync(ready); i++) {
+      if (i > 500) throw new Error("the holder child never took the primary-worktree lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.equal(await ffMainTo(root, ref, "main"), true);
+    await childExit;
+    assert.equal(
+      fs.readFileSync(marker, "utf8"),
+      "not-seen",
+      "the merge did not land while a backlog writer held the primary-worktree lock",
+    );
+    assert.equal(fs.readFileSync(landed, "utf8"), "landed\n", "the merge landed after the lock was released");
+  } finally {
+    child.kill();
+    await childExit;
+  }
 });
 
 test("hasConflictMarkers sees start/end markers but not a bare ======= separator", async () => {

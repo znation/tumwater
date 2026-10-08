@@ -19,11 +19,31 @@ import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
+import { withStateLock } from "../concurrency/lock.js";
+import { primaryWorktreeLockPath } from "../paths.js";
 
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that
  * builds the heading. Computed once per call (not module load) so a long-lived process
  * stamps with the date it filed on. */
 const operatorStamp = () => `reported by the operator ${formatDate(new Date())}`;
+
+/** The section-append entry point: run the whole read-modify-write under the cross-process
+ * primary-worktree lock (paths.ts), which a landing's working-tree fast-forward (`ffMainTo`)
+ * takes too, so a filed entry and a landed change to the same backlog file cannot each clobber
+ * the other. The section is one read plus one atomic rename — short, never held across a build
+ * check — and withStateLock creates the state dir the lock lives under on first use. */
+function appendEntry(
+  root: string,
+  fileName: string,
+  template: string,
+  sectionTitle: string,
+  heading: string,
+  body: string,
+): void {
+  withStateLock(primaryWorktreeLockPath(root), () =>
+    appendEntryLocked(root, fileName, template, sectionTitle, heading, body),
+  );
+}
 
 /** Append one `### ` entry to `<root>/<fileName>`'s `## <sectionTitle>` section, fence-safe
  * and placeholder-aware. The single home of the write-side walk the two file commands share:
@@ -33,7 +53,7 @@ const operatorStamp = () => `reported by the operator ${formatDate(new Date())}`
  * section is empty), and append the entry before the next `## ` heading — a heading line
  * quoted inside a fenced block (entries quote markdown and shell traces) is body text,
  * never the boundary, per the shared fenceTracker. */
-function appendEntry(
+function appendEntryLocked(
   root: string,
   fileName: string,
   template: string,

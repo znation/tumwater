@@ -39,6 +39,18 @@ export function configLockPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "config.lock");
 }
 
+/** The cross-process lock serializing writes to the primary checkout's tracked backlog files:
+ * `tumwater bug`/`plan` (backlog-write.ts's appendEntry) and `tumwater questions answer`
+ * (question-commands.ts's answerQuestion) each read a whole backlog file and rewrite it, while a
+ * landing's working-tree fast-forward (landing-git.ts's ffMainTo) updates those same files in
+ * the same checkout by `git merge --ff-only`. Without a shared lock the CLI's stale read can
+ * overwrite the landed change, and vice versa. Same mkdir-and-pid mutex as configLockPath, under
+ * .tumwater/state so it never enters the tracked tree; its critical sections are one file read
+ * plus one atomic rename, short enough to exclude a merge without stalling the build re-check. */
+export function primaryWorktreeLockPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "primary-worktree.lock");
+}
+
 /** The repo's tracked settings template, beside the config it seeds (plans/portability.md
  * §4a/7): shipped by the project, read by init's seeding and doctor's drift check. */
 export function exampleConfigPath(root: string): string {

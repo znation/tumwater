@@ -4,7 +4,8 @@ import { COMMIT_IDENT, git, gitTry, runGit } from "../git/git-run.js";
 import { writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { unquotePorcelainPath } from "../git/git-diff.js";
-import { CONFIG_BASENAME, configPath } from "../paths.js";
+import { CONFIG_BASENAME, configPath, primaryWorktreeLockPath } from "../paths.js";
+import { withStateLockAsync } from "../concurrency/lock.js";
 
 /** Git plumbing for the landing flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no landing policy
@@ -201,10 +202,17 @@ export function restoreConfigBytes(root: string, saved: Buffer | null): void {
 export async function ffMainTo(root: string, ref: string, mainBranch: string): Promise<boolean> {
   const primaryBranch = await currentBranch(root);
   if (primaryBranch === mainBranch) {
-    const saved = await configBytesToPreserve(root, ref);
-    if ((await gitTry(root, "merge", "--ff-only", ref)) === null) return false;
-    restoreConfigBytes(root, saved);
-    return true;
+    // The working-tree arm rewrites the same tracked files the CLI backlog writers read and
+    // rewrite, so it shares their primary-worktree lock (paths.ts): without it a `tumwater bug`
+    // that read before this merge can rename its stale whole-file write over the landed change.
+    // The ref-push arm below touches no working tree and needs no lock; the save/merge/restore
+    // stays one short section, never held across a build re-check.
+    return withStateLockAsync(primaryWorktreeLockPath(root), async () => {
+      const saved = await configBytesToPreserve(root, ref);
+      if ((await gitTry(root, "merge", "--ff-only", ref)) === null) return false;
+      restoreConfigBytes(root, saved);
+      return true;
+    });
   }
   return (await gitTry(root, "push", ".", `${ref}:${mainBranch}`)) !== null;
 }

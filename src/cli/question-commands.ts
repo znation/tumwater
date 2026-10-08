@@ -13,6 +13,8 @@ import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, trun
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
+import { withStateLock } from "../concurrency/lock.js";
+import { primaryWorktreeLockPath } from "../paths.js";
 
 /** Cap on a question's one-line body preview, so one very long first line cannot dominate
  * the `questions` list. */
@@ -112,6 +114,14 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   return { openIdx, answeredIdx, openEnd, fenceOpen: fencedEntries.open(), blocks };
 }
 
+/** The `tumwater questions answer` entry point: run the whole read-modify-write under the
+ * cross-process primary-worktree lock (paths.ts), shared with `tumwater bug`/`plan` and a
+ * landing's working-tree fast-forward, so an answer and a landed change to QUESTIONS.md cannot
+ * each overwrite the other's whole-file write. */
+export function answerQuestion(root: string, n: number, rawDecision: string): { title: string; decision: string } {
+  return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision));
+}
+
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
  * heading plus body, verbatim — from `## Open` to the end of `## Answered`, followed by a
  * `**Answered <today> by operator:** <decision>` paragraph stamped with the local date — the
@@ -123,7 +133,7 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
  * `prompt --cancel` wording and exits 1. Returns the answered question's title for the
  * confirmation line, plus the collapsed decision that actually landed in the file so callers
  * report what was written rather than the caller's raw whitespace. */
-export function answerQuestion(root: string, n: number, rawDecision: string): { title: string; decision: string } {
+function answerQuestionLocked(root: string, n: number, rawDecision: string): { title: string; decision: string } {
   const decision = collapseWhitespace(rawDecision);
   const file = path.join(root, "QUESTIONS.md");
   const md = readTextOrNull(file);
