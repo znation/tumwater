@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { aheadOfMain, commitAll, currentBranch, headOf } from "../src/git/git.js";
+import { aheadOfMain, commitAll, currentBranch, headOf, resolveGitDir } from "../src/git/git.js";
 import {
   abortSync,
   ensureDetachedWorktree,
@@ -158,6 +158,40 @@ test("resetWorktreeToMain discards commits and untracked files", async () => {
   assert.equal(await aheadOfMain(wt, "main"), 0);
   assert.ok(!fs.existsSync(path.join(wt, "junk.txt")));
   assert.ok(!fs.existsSync(path.join(wt, "untracked.txt")));
+});
+
+// A git killed mid-write (the group deadline's SIGKILL, a crashed harness, an operator kill)
+// leaves index.lock behind; every later `git reset --hard` then fails "Unable to create
+// '…/index.lock': File exists" forever, wedging the loop. resetWorktreeToMain clears that
+// wreckage before it resets — but must leave a *fresh* lock alone, since it may belong to a git
+// still running.
+test("resetWorktreeToMain clears a stale index.lock left by a killed git", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  const gitdir = resolveGitDir(wt);
+  assert.ok(gitdir, "the worktree's gitdir resolves");
+  const lock = path.join(gitdir!, "index.lock");
+  fs.writeFileSync(lock, "");
+  const agedSec = (Date.now() - 20 * 60 * 1000) / 1000; // older than the git-timeout bound
+  fs.utimesSync(lock, agedSec, agedSec);
+
+  await resetWorktreeToMain(wt, "main");
+  assert.equal(fs.existsSync(lock), false, "the stale lock is gone");
+  assert.equal(await aheadOfMain(wt, "main"), 0, "the reset completed");
+});
+
+test("resetWorktreeToMain leaves a fresh index.lock alone and fails loudly", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  const lock = path.join(resolveGitDir(wt)!, "index.lock");
+  fs.writeFileSync(lock, ""); // a young lock may belong to a live git: never deleted
+
+  await assert.rejects(
+    () => resetWorktreeToMain(wt, "main"),
+    /index\.lock/,
+    "a live-looking lock still fails the reset rather than being silently removed",
+  );
+  assert.equal(fs.existsSync(lock), true, "the fresh lock survives");
 });
 
 test("resetWorktreeToMain clears an interrupted rebase", async () => {

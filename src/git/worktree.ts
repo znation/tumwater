@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { git, gitTry } from "./git-run.js";
+import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
 import { branchExists, resolveGitDir } from "./git.js";
 import { pruneOldDirectory, removeTree } from "../files/files.js";
+import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath } from "../paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
@@ -187,10 +188,35 @@ export async function abortSync(wt: string): Promise<void> {
   await gitTry(wt, "rebase", "--abort");
 }
 
+/** Age past which a git `index.lock` left in a worktree is treated as a dead git's wreckage
+ * rather than a live writer's claim. Every git the harness itself starts is bounded by
+ * GIT_TIMEOUT_MS plus the KILL_GRACE_MS escalation, after which the whole process group is
+ * confirmed dead — so an index.lock older than that cannot belong to a live git of ours. */
+const STALE_GIT_LOCK_MS = GIT_TIMEOUT_MS + KILL_GRACE_MS;
+
+/** Remove a stale `index.lock` from `wt`'s gitdir. A git killed mid-write — our own group
+ * deadline's SIGKILL after a SIGTERM it could not handle, a crashed harness, an operator kill —
+ * leaves index.lock behind, and every later `git reset --hard` then fails "Unable to create
+ * '…/index.lock': File exists" with no self-heal, wedging the loop on every tick. A *fresh*
+ * lock is left alone: it may belong to a git still running, so this clears wreckage, never a
+ * live writer. */
+function clearStaleIndexLock(wt: string): void {
+  const gitdir = resolveGitDir(wt);
+  if (gitdir === undefined) return;
+  const lock = path.join(gitdir, "index.lock");
+  try {
+    if (Date.now() - fs.statSync(lock).mtimeMs >= STALE_GIT_LOCK_MS) fs.rmSync(lock, { force: true });
+  } catch {
+    // No lock file (the common case), or an unreadable gitdir: nothing to clear.
+  }
+}
+
 /** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive; the stale `dist/` build dir is reaped by age).
  * An interrupted merge or rebase is aborted first — otherwise the next tick would wedge on
- * "you are already rebasing" / "merge in progress". */
+ * "you are already rebasing" / "merge in progress" — and a stale index.lock left by a killed
+ * git is cleared first, or the reset below would fail on it forever. */
 export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
+  clearStaleIndexLock(wt);
   await abortSync(wt);
   await git(wt, "reset", "--hard", mainBranch);
   await git(wt, "clean", "-fd");
