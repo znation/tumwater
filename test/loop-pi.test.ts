@@ -718,3 +718,49 @@ test("requestSummary returns the run even when it failed and still folds its usa
     restore();
   }
 });
+
+test("requestStageFix returns null when the role has no resumable session", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args);
+  try {
+    const { loopPi } = makeHost(root);
+    const result = await loopPi.requestStageFix(root, ["task id is missing"]);
+    assert.equal(result, null);
+    assert.ok(!fs.existsSync(args), "no pi run is spawned when there is no session to continue");
+  } finally {
+    restore();
+  }
+});
+
+test("requestStageFix resumes the tick's session with the findings and folds its usage", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${assistantLine("addressed both faults")}'`,
+  });
+  try {
+    fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
+    const { loopPi, usage } = makeHost(root);
+    const result = await loopPi.requestStageFix(root, [
+      "task id is missing",
+      "stray file in the diff",
+    ]);
+    assert.ok(result, "a resumable session produces a run");
+    assert.equal(result!.ok, true);
+    assert.match(result!.finalText, /addressed both faults/);
+    assert.equal(usage.length, 1, "one run, one foldUsage");
+    assert.equal(usage[0], result, "the foldUsage'd run IS the returned run");
+    // The stage-fix prompt is multi-line, so the argv log (one `$*` line per run, split at the
+    // prompt's newlines) cannot be read per line — assert over the whole recording instead.
+    const recorded = fs.readFileSync(args, "utf8");
+    assert.match(recorded, /--continue/, "the fix-up continues the authoring session");
+    assert.ok(!/-n /.test(recorded), "the fix-up never re-names the session");
+    assert.match(recorded, /task id is missing/, "the first finding is in the prompt");
+    assert.match(recorded, /stray file in the diff/, "the second finding is in the prompt");
+    assert.match(recorded, /closing block again/, "the run asks for the closing block again");
+  } finally {
+    restore();
+  }
+});
