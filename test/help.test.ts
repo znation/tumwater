@@ -17,12 +17,18 @@ const ALL_COMMANDS = [
   "tick",
   "diff",
   "backlog",
+  "bug",
+  "plan",
+  "questions",
+  "role",
   "prompt",
   "reset-counters",
   "wake",
   "abort",
   "pause",
   "resume",
+  "reclaim",
+  "retire",
   "stop",
   "help",
   "version",
@@ -34,6 +40,13 @@ test("every command listed in the full help resolves to a topic", () => {
     assert.ok(topic !== null, `no help topic for ${command}`);
     assert.match(topic, new RegExp(`^  tumwater ${command}`), `${command} topic starts at its usage line`);
   }
+});
+
+// The list above is the independent oracle; this keeps it in sync with HELP so a command added
+// to the usage block without a list entry fails here instead of silently going unguarded.
+test("ALL_COMMANDS names exactly the commands the full help lists", () => {
+  const listed = [...new Set(helpStanzas().map((s) => s.command))].sort();
+  assert.deepEqual([...ALL_COMMANDS].sort(), listed);
 });
 
 test("helpStanzas keeps each stanza's description continuations and nothing else", () => {
