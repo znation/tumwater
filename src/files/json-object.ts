@@ -17,7 +17,8 @@ export function isJsonObject(value: unknown): value is Record<string, unknown> {
  * when it is an array and [] otherwise — the one home of the "an event/record field is the
  * list or it is nothing" read every formatter applies (event-format.ts's review_rejected
  * reasons, dep_install packages, config_changed keys; src/failure/failure-state-change.ts's
- * config_changed keys; time-spend.ts's review-rejection reasons). A torn or hand-edited line
+ * config_changed keys; time-spend.ts's review-rejection reasons; fleet-state.ts's paused-roles
+ * list). A torn or hand-edited line
  * never throws and never renders a placeholder: the field reads as absent, and the caller's
  * empty-list branch fires. Foreign entries inside an array are dropped for the same reason —
  * letting them through made `join` render "[object Object]" and handed

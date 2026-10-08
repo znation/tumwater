@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { stringList } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { pidAlive } from "../process/process.js";
 import { withStateLock } from "../concurrency/lock.js";
@@ -154,9 +155,7 @@ export function resumeFleet(root: string): boolean {
 export function pausedRoles(root: string): string[] {
   const state = readJsonFile<{ roles: unknown; at: number; until?: number }>(pausedRolesPath(root));
   if (!state || (state.until !== undefined && state.until <= Date.now())) return [];
-  return Array.isArray(state.roles)
-    ? state.roles.filter((r): r is string => typeof r === "string")
-    : [];
+  return stringList(state.roles);
 }
 
 /** The paused-roles marker is structured state several processes rewrite read-modify-write
