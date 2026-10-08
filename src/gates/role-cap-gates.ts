@@ -7,16 +7,17 @@
  * and nothing can get stuck"): the verdict is recomputed from the loop state every poll, no
  * marker is written, and local midnight lifts it by itself.
  *
- * Deliberate differences from the streak gate's shape (src/gates/streak-gate.ts), stated in the plan
- * so no implementer re-litigates them:
+ * Deliberate differences from the streak gate's shape (src/gates/streak-gate.ts), stated in
+ * the plan so no implementer re-litigates them:
  * - This gate writes NOTHING to the shared per-role pause marker (src/fleet/fleet-state.ts's
  *   pauseRole). The marker is anonymous — after a restart across midnight the harness could
  *   not tell a cap pause from an operator's, and would either refuse to lift the operator's
  *   pause or orphan it. The scheduler blocks the role through the poll's separate `capPaused`
  *   set instead, and `resume --role` has no marker to touch (none is needed: the lift is a
  *   config edit or midnight).
- * - An unknown role id in the caps map is a config-validation error (src/config/config-validation.ts,
- *   the `roles.<id>` idiom): explicit misconfiguration never silently no-ops a cap.
+ * - An unknown role id in the caps map is a config-validation error
+ *   (src/config/config-validation.ts, the `roles.<id>` idiom): explicit misconfiguration
+ *   never silently no-ops a cap.
  *
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure verdict and the
  * edge-triggered bookkeeping live here so they are unit-testable without a fleet, and this
@@ -40,8 +41,8 @@ type CapObservation = {
 /** The stateless verdict: is this role over its own per-role cap as of `now`? True iff a cap
  * is configured, it is a finite number above zero (0 disables that role's cap, like the fleet
  * cap), and today's spend has reached it. The role→cap lookup stays with the caller
- * (`caps?.[role]`), so part 2/2's observers (src/status/status-data.ts) share this single definition
- * with the scheduler. */
+ * (`caps?.[role]`), so part 2/2's observers (src/status/status-data.ts) share this single
+ * definition with the scheduler. */
 export function roleCapPaused(
   state: Pick<LoopState, "dayStamp" | "dayCostUsd">,
   cap: number | undefined,
