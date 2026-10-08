@@ -60,6 +60,16 @@ function namedRole(root: string, args: string[]): string | null {
   }
 }
 
+/** The `--role <id>` value a marker command requires: namedRole's resolution plus the
+ * command-specific "requires --role" failure. abort and retire both need a target (unlike
+ * reset-counters/resume/wake, which default to every role), so the guard lives here once and
+ * names the calling command in the error. */
+function requiredNamedRole(root: string, args: string[], command: string): string {
+  const role = namedRole(root, args);
+  if (!role) fail(`${command} requires --role <id> (e.g. \`--role feature\`)`);
+  return role;
+}
+
 /** The role(s) a marker command targets: the `--role <id>` value when given, otherwise every
  * role in the config. reset-counters and wake share the same all-roles default, so it lives
  * here once instead of drifting between their bodies. */
@@ -143,8 +153,7 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
   // user-defined loops; a missing --role fails before it is ever needed.
-  const role = namedRole(root, args);
-  if (!role) fail("abort requires --role <id> (e.g. `--role feature`)");
+  const role = requiredNamedRole(root, args, "abort");
   const result = requestAbort(root, role);
   if (!result.ok) fail(result.error);
   say(result.message);
@@ -304,8 +313,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
   // As in cmdAbort: the config exists only to validate the id against built-ins plus
   // user-defined loops; a missing --role fails before it is ever needed.
-  const role = namedRole(root, args);
-  if (!role) fail("retire requires --role <id> (e.g. `--role feature`)");
+  const role = requiredNamedRole(root, args, "retire");
   const result = await retireRole(root, role, { force: args.includes("--force") });
   if (args.includes("--json")) {
     sayJson({ role, removed: result.removed, skipped: result.skipped });
