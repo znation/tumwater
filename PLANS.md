@@ -6,50 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Worktree pool, part 2a/5: the slot pool and its `worktreeSlots` config (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires Disk floor 2/4 and Worktree pool 1/5 landed)
-
-Design: plans/worktree-pool.md ("Layout", "Config", "Leases").
-
-**Goal.** Add the pool machinery every later landing step leases from, changing no landing
-behavior yet. Part 3/5 already landed `slots-state.ts` and the `slotWorktreePath` /
-`slotsStatePath` / `slotsLockPath` helpers, so this step adds only the lease surface and its
-config.
-
-**Approach.**
-1. **Config.** Add `worktreeSlots?: number` to `TumwaterConfig` (src/config/config-schema.ts,
-   beside `maxConcurrentChecks`, including its hand-maintained key list). Leave it unset in the
-   default config and resolve it through a new `slotCount(config)` helper that returns
-   `config.worktreeSlots ?? config.maxConcurrent + 1`, so the default tracks `maxConcurrent`.
-   Validate it as `POSITIVE_INTEGER` in src/config/config-validation.ts.
-2. **Path.** Add `mergeWorktreePath(root)` → `_merge` in src/paths.ts, beside the slot helpers.
-3. **Pool.** New file `worktree-pool.ts` under src/git/:
-   - `leaseSlot(root, { role, purpose, ref, signal })` returns `{ dir, release() }`.
-   - **Choice order:** (1) a slot pinned for the role (pins are unused until part 4/5);
-     (2) the free slot this role released most recently; (3) the free slot released most
-     recently by anyone; (4) a new `_slot-<n>` while fewer than `slotCount` unpinned slots
-     exist; (5) otherwise wait first-in first-out, aborting on `signal`.
-   - **Use.** The lease holds `useWorktree` (src/git/worktree-use.ts) for its duration and
-     prepares the slot with `ensureDetachedWorktree(root, dir, ref)` (src/git/worktree.ts).
-   - **State.** Persist every change through `updateSlotsState` (src/git/slots-state.ts),
-     reusing its `SlotRecord`/`SlotLease` shape. Clear leases whose `pid` is not the running
-     process on first use.
-   - **Release.** Record `lastRole`/`lastReleasedAt`, and remove idle unpinned slots left over
-     when `worktreeSlots` shrank.
-
-**Files touched.** `worktree-pool.ts` under src/git/ (new), src/paths.ts,
-src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts. Tests:
-`worktree-pool.test.ts` under test/ (new), test/paths.test.ts, test/config-validation.test.ts.
-
-**Acceptance criteria.**
-- **Config.** An omitted `worktreeSlots` resolves through `slotCount` to `maxConcurrent + 1`; a
-  value below 1 is rejected.
-- **Concurrency.** With `worktreeSlots: 2`, two concurrent leases hold two different `_slot-*`
-  dirs; a third waits and proceeds when one is released; a waiting lease honors `signal` abort.
-- **Affinity.** A role's lease prefers the free slot it released most recently.
-- **State.** slots.json shows the lease while held and none after release; a lease whose `pid`
-  is another process is cleared.
-- `npm run test` green.
-
 ### Worktree pool, part 2b/5: vets lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed)
 
 Design: plans/worktree-pool.md ("Vets and merges").
@@ -368,6 +324,64 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 2a/5: the slot pool and its `worktreeSlots` config (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires Disk floor 2/4 and Worktree pool 1/5 landed; done 2026-10-07 by feature)
+
+**What landed (2026-10-07).** New src/git/worktree-pool.ts exports `leaseSlot`, which claims a
+free slot in the design's order (a slot pinned for the role; the free slot the role released most
+recently; the free slot anyone released most recently; a new `_slot-<n>` while fewer than
+`slotCount` unpinned slots exist; else a first-in first-out in-process wait that honors an abort
+signal), holds it through `useWorktree` for the lease's length, and prepares it with
+`ensureDetachedWorktree`. `slots.json` records the lease while held and clears it on release,
+leases owned by another pid are cleared on each claim, and a release removes idle unpinned slots
+when `worktreeSlots` shrank. `slotCount` (src/config/config.ts) resolves an omitted `worktreeSlots`
+to `maxConcurrent + 1`; validation rejects a value below 1; `mergeWorktreePath` (src/paths.ts)
+adds the `_merge` checkout path. Tests: new test/worktree-pool.test.ts, plus assertions in
+test/paths.test.ts and test/config-validation.test.ts. Nothing leases a slot yet — part 4/5 wires
+the loops to it.
+
+Design: plans/worktree-pool.md ("Layout", "Config", "Leases").
+
+**Goal.** Add the pool machinery every later landing step leases from, changing no landing
+behavior yet. Part 3/5 already landed `slots-state.ts` and the `slotWorktreePath` /
+`slotsStatePath` / `slotsLockPath` helpers, so this step adds only the lease surface and its
+config.
+
+**Approach.**
+1. **Config.** Add `worktreeSlots?: number` to `TumwaterConfig` (src/config/config-schema.ts,
+   beside `maxConcurrentChecks`, including its hand-maintained key list). Leave it unset in the
+   default config and resolve it through a new `slotCount(config)` helper that returns
+   `config.worktreeSlots ?? config.maxConcurrent + 1`, so the default tracks `maxConcurrent`.
+   Validate it as `POSITIVE_INTEGER` in src/config/config-validation.ts.
+2. **Path.** Add `mergeWorktreePath(root)` → `_merge` in src/paths.ts, beside the slot helpers.
+3. **Pool.** New file `worktree-pool.ts` under src/git/:
+   - `leaseSlot(root, { role, purpose, ref, signal })` returns `{ dir, release() }`.
+   - **Choice order:** (1) a slot pinned for the role (pins are unused until part 4/5);
+     (2) the free slot this role released most recently; (3) the free slot released most
+     recently by anyone; (4) a new `_slot-<n>` while fewer than `slotCount` unpinned slots
+     exist; (5) otherwise wait first-in first-out, aborting on `signal`.
+   - **Use.** The lease holds `useWorktree` (src/git/worktree-use.ts) for its duration and
+     prepares the slot with `ensureDetachedWorktree(root, dir, ref)` (src/git/worktree.ts).
+   - **State.** Persist every change through `updateSlotsState` (src/git/slots-state.ts),
+     reusing its `SlotRecord`/`SlotLease` shape. Clear leases whose `pid` is not the running
+     process on first use.
+   - **Release.** Record `lastRole`/`lastReleasedAt`, and remove idle unpinned slots left over
+     when `worktreeSlots` shrank.
+
+**Files touched.** `worktree-pool.ts` under src/git/ (new), src/paths.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts. Tests:
+`worktree-pool.test.ts` under test/ (new), test/paths.test.ts, test/config-validation.test.ts.
+
+**Acceptance criteria.**
+- **Config.** An omitted `worktreeSlots` resolves through `slotCount` to `maxConcurrent + 1`; a
+  value below 1 is rejected.
+- **Concurrency.** With `worktreeSlots: 2`, two concurrent leases hold two different `_slot-*`
+  dirs; a third waits and proceeds when one is released; a waiting lease honors `signal` abort.
+- **Affinity.** A role's lease prefers the free slot it released most recently.
+- **State.** slots.json shows the lease while held and none after release; a lease whose `pid`
+  is another process is cleared.
+- `npm run test` green.
+
 
 ### Worktree pool, part 3/5: readers find a role's checkout through `roleWorktreeDir` (planned 2026-10-06 by operator; done 2026-10-07 by feature; landed before part 2/5, which is flagged too large — slots-state.ts owns the shared format)
 

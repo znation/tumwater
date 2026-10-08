@@ -308,6 +308,15 @@ export function slotWorktreePath(root: string, n: number): string {
   return path.join(worktreesDir(root), `_slot-${n}`);
 }
 
+/** The worktree pool's dedicated checkout for the landing drain's merge-side work
+ * (plans/worktree-pool.md, "Layout"): a single change, a stack and its bisect, the conflict
+ * resolver and the post-resolve re-review. Kept out of the pool so a permit-waiting lease can
+ * never deadlock behind the merge lock, and the leading underscore keeps it from colliding with
+ * a role worktree. */
+export function mergeWorktreePath(root: string): string {
+  return path.join(worktreesDir(root), "_merge");
+}
+
 /** The worktree pool's persisted layout (git/slots-state.ts): which slots exist, who leases each
  * one, and which role each is pinned for. Runtime state under .tumwater/state/, never committed —
  * the orchestrator, `tumwater diff`, `retire` and the dashboards all read it. */

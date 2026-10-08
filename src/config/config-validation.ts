@@ -167,6 +167,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
   checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);
   checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
+  checkNumber(r, "", "worktreeSlots", POSITIVE_INTEGER);
   checkNumber(r, "", "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
   checkNumber(r, "", "tickTimeoutSeconds", DURATION_POSITIVE);
   checkNumber(r, "", "quietTimeoutSeconds", DURATION_OR_DISABLED);

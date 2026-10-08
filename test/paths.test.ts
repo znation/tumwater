@@ -11,6 +11,7 @@ import {
   landingRefName,
   landWorktreePath,
   mergeLockDir,
+  mergeWorktreePath,
   orchestratorStatePath,
   pausedPath,
   piLogPath,
@@ -18,6 +19,7 @@ import {
   resetRequestPath,
   reviewSessionDir,
   sessionDir,
+  slotWorktreePath,
   sessionsRootDir,
   statePath,
   worktreePath,
@@ -70,6 +72,8 @@ test("pins the full runtime layout", () => {
   assert.equal(inboxDir(ROOT), path.join(S, "inbox"));
   assert.equal(mergeLockDir(ROOT), path.join(S, "merge.lock"));
   assert.equal(landWorktreePath(ROOT, "qa"), path.join(S, "worktrees", "_land-qa"));
+  assert.equal(mergeWorktreePath(ROOT), path.join(S, "worktrees", "_merge"));
+  assert.equal(slotWorktreePath(ROOT, 2), path.join(S, "worktrees", "_slot-2"));
 });
 
 test("branch names are tumwater/<role> for every role, director included", () => {

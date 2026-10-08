@@ -203,6 +203,11 @@ export interface TumwaterConfig {
    * (src/concurrency/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
    * on the host. Read at each check's start, so an edit applies live. */
   maxConcurrentChecks: number;
+  /** How many pooled worktree slots exist (plans/worktree-pool.md, "Config"): the fixed set of
+   * `.tumwater/worktrees/_slot-<n>` checkouts ticks and vets lease. Omitted, it resolves through
+   * slotCount (src/config/config.ts) to `maxConcurrent + 1`. Must be at least 1; a value below
+   * `maxConcurrent` is allowed — permit holders then wait for a slot to free. */
+  worktreeSlots?: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */
   minTickIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
@@ -328,6 +333,7 @@ export const TOP_LEVEL_KEYS = [
   "maxConcurrent",
   "landBatchMax",
   "maxConcurrentChecks",
+  "worktreeSlots",
   "minTickIntervalSeconds",
   "tickTimeoutSeconds",
   "quietTimeoutSeconds",

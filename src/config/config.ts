@@ -120,6 +120,15 @@ export function defaultConfig(): ResolvedModelConfig {
   };
 }
 
+/** The worktree pool's slot budget (plans/worktree-pool.md, "Config"): the explicit
+ * `worktreeSlots` when set, else `maxConcurrent + 1` so the default tracks the model cap.
+ * Read live at each lease in src/git/worktree-pool.ts; a value below `maxConcurrent` is allowed
+ * — permit holders simply wait for a slot to free, since the pool is the disk knob and
+ * `maxConcurrent` stays the model-concurrency knob. */
+export function slotCount(config: { maxConcurrent: number; worktreeSlots?: number }): number {
+  return config.worktreeSlots ?? config.maxConcurrent + 1;
+}
+
 /** Overlay a partial config's top-level keys over `base`, merging the sub-objects the way the
  * file loader always has: shared by loadConfig and init's seeding (plans/portability.md §4a/7)
  * so a seeded config behaves exactly like the equivalent hand-written one. Owns its result — a

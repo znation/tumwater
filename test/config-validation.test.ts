@@ -190,6 +190,18 @@ test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", 
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentChecks: 1 }));
 });
 
+test("worktreeSlots is validated like maxConcurrent: a positive integer", () => {
+  // 0 would leave the pool with no slots at all and every lease waiting forever, a negative
+  // or fractional cap means nothing, and a string is a typo — each fails naming the key.
+  for (const [bad, shown] of [[0, "0"], [-1, "-1"], [1.5, "1\\.5"], ["2", '"2"']] as const) {
+    assert.match(
+      validationError({ worktreeSlots: bad }),
+      new RegExp(`worktreeSlots must be an integer of at least 1 \\(got ${shown}\\)`),
+    );
+  }
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), worktreeSlots: 1 }));
+});
+
 test("validateConfig rejects a backoff max below the initial it would clamp away, naming both values", () => {
   // Both keys named by the caller.
   assert.match(
