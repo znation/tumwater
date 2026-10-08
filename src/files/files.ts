@@ -167,13 +167,25 @@ export function removeTree(dir: string): void {
  * Node >= 20 floor declared in package.json — parentPath landed only in v20.12, and on earlier
  * releases path.join(undefined, name) threw here, crashing the orchestrator's session cleanup.
  * Symlinks are skipped (lstat semantics: a symlink is neither file nor directory), matching the
- * old recursive-readdir behavior of not following them. */
+ * old recursive-readdir behavior of not following them.
+ *
+ * A subdirectory that cannot be listed — without read permission, or removed by a concurrent
+ * pass between the parent's readdir and this one — is skipped, the same vanish-tolerant policy
+ * the per-file stat/delete below applies. This cleanup runs inside the orchestrator's poll loop
+ * (RetentionPruner.poll), so a readdir throw escaping here would end the whole fleet; one
+ * unreadable session directory must cost at most its own contents' retention pass. */
 export function pruneOldFiles(dir: string, days: number): number {
   if (!fs.existsSync(dir)) return 0;
   const cutoff = Date.now() - days * 24 * 3600 * 1000;
   let pruned = 0;
   const walk = (d: string): void => {
-    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return; // Vanished (or unreadable) mid-scan; skip this directory.
+    }
+    for (const entry of entries) {
       const file = path.join(d, entry.name);
       if (entry.isDirectory()) {
         walk(file); // recurse; symlinks to dirs report isDirectory() false and are skipped

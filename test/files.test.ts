@@ -136,6 +136,41 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
   }
 });
 
+test("pruneOldFiles skips an unreadable subdirectory instead of crashing the session cleanup", () => {
+  // A subdirectory without read permission makes the walk's readdirSync throw EACCES while
+  // listing it. The retention pass runs inside the orchestrator's poll loop, so an escaping
+  // throw ends the whole fleet; the walk must skip the directory and still prune what it can.
+  // Under root the permission is bypassed — then the locked file IS pruned, which also
+  // satisfies "no crash".
+  const asRoot = runningAsRoot();
+  const dir = tmpdir();
+  const lockedDir = path.join(dir, "locked");
+  fs.mkdirSync(lockedDir);
+  const lockedOld = path.join(lockedDir, "old.jsonl");
+  fs.writeFileSync(lockedOld, "old");
+  backdate(lockedOld, 10 * 24 * 3600 * 1000);
+  const freeOld = path.join(dir, "free.jsonl");
+  fs.writeFileSync(freeOld, "old");
+  backdate(freeOld, 10 * 24 * 3600 * 1000);
+
+  try {
+    if (!asRoot) fs.chmodSync(lockedDir, 0o111); // execute only: listing it fails with EACCES
+    let pruned = -1;
+    assert.doesNotThrow(() => {
+      pruned = pruneOldFiles(dir, 7);
+    });
+    assert.ok(!fs.existsSync(freeOld), "the removable file is still pruned");
+    if (asRoot) {
+      assert.equal(pruned, 2);
+    } else {
+      assert.equal(pruned, 1, "only the removable file counts");
+      assert.ok(fs.existsSync(lockedOld), "the unreadable subdirectory is left for the next pass");
+    }
+  } finally {
+    fs.chmodSync(lockedDir, 0o755); // restore so temp-dir cleanup can remove it
+  }
+});
+
 test("pruneOldFiles skips symlinks: it neither deletes a linked file nor walks a linked directory", () => {
   // A symlink is neither file nor directory under lstat semantics (the readdir entry's
   // isFile/isDirectory are both false), so the walk must skip it on both counts. The stakes
