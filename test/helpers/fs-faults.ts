@@ -73,6 +73,28 @@ export function failRenameSyncOn(target: string, message: string): () => void {
   };
 }
 
+/** Simulate the process dying partway through a file write: the next fs.writeFileSync writes
+ * `partial` to whatever destination the writer chose — a plain writer's target, or a
+ * tmp+rename writer's tmp — and throws instead of completing, as if the process was killed
+ * after the bytes reached the file and before the call returned. A plain writer leaves the
+ * truncated file at its target; a tmp+rename writer leaves the target untouched and cleans up
+ * its tmp. Returns an undo function. */
+export function dieMidWrite(partial: string): () => void {
+  const orig = fs.writeFileSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).writeFileSync = (p: unknown, ...rest: unknown[]) => {
+    if (!hit) {
+      hit = true;
+      (orig as (x: unknown, ...r: unknown[]) => void)(p, partial);
+      throw new Error("killed mid-write");
+    }
+    return (orig as (x: unknown, ...r: unknown[]) => void)(p, ...rest);
+  };
+  return () => {
+    (fs as Record<string, unknown>).writeFileSync = orig;
+  };
+}
+
 /** The readFileSync twin of vanishOnOpen — for readers that stat and then read a small file
  * whole. Returns an undo function. */
 export function vanishOnReadFile(file: string): () => void {

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { findTumwaterRoot, writeFullOutput } from "../src/pi-extension/full-output.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { dieMidWrite } from "./helpers/fs-faults.js";
 
 test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId", () => {
   const dir = tmpdir("bound-");
@@ -19,6 +20,28 @@ test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId"
 test("writeFullOutput returns null when no ancestor has .tumwater/", () => {
   const dir = tmpdir("bound-none-");
   assert.equal(writeFullOutput("text", "call-1", dir), null);
+});
+
+test("writeFullOutput leaves no truncated log when the process dies mid-write", () => {
+  const dir = tmpdir("bound-kill-");
+  fs.mkdirSync(path.join(dir, ".tumwater"));
+  const nested = path.join(dir, "worktrees", "feature");
+  fs.mkdirSync(nested, { recursive: true });
+  const target = path.join(dir, ".tumwater", "log", "tool-output", "call-kill.log");
+  // The write reaches the disk partway and then the process is gone: a plain direct write
+  // would leave `ful` at the marker path, which the model would later read back as the whole
+  // output. The atomic tmp+rename must leave the target absent instead.
+  const restore = dieMidWrite("ful");
+  try {
+    assert.equal(writeFullOutput("full output text", "call-kill", nested), null);
+  } finally {
+    restore();
+  }
+  assert.equal(
+    fs.existsSync(target),
+    false,
+    "a mid-write death must not leave a truncated log at the marker path",
+  );
 });
 
 test("writeFullOutput returns null when the write fails instead of throwing", () => {

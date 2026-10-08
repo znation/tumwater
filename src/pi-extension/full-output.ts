@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { toolOutputDir } from "../paths.js";
+import { writeTextAtomic } from "../files/files.js";
 
 /** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
  * under it (`.tumwater/worktrees/<role>`, lander, gate alike) reach it three levels up
@@ -39,6 +40,10 @@ export function findTumwaterRoot(startDir: string = process.cwd()): string | nul
 /** Persist a full tool output under the harness's gitignored `.tumwater/` area and return
  * its path, or null when there is no harness root (or the write fails). Files are named
  * by `toolCallId` because parallel tool mode can interleave tool_result events. The
+ * write is atomic (files.ts's writeTextAtomic): pi can be killed mid-write (the quiet
+ * watchdog, an abort, the context ceiling), and a direct write would leave a truncated
+ * log at the path the marker hands the model — silently incomplete output read back as
+ * if it were whole. The tmp+rename leaves either nothing or the complete file. The
  * orchestrator's retention passes prune this directory with the fleet's
  * sessionRetentionDays window (paths.ts's toolOutputDir, the single home of this path that
  * this module shares instead of re-joining it), so a pointer to a full output stays readable
@@ -57,7 +62,7 @@ export function writeFullOutput(
       ? toolCallId.replace(/[^\w-]/g, "_")
       : `result-${Date.now()}`;
     const file = path.join(dir, `${id}.log`);
-    fs.writeFileSync(file, text, "utf-8");
+    writeTextAtomic(file, text);
     return file;
   } catch {
     return null;
