@@ -163,3 +163,35 @@ test("a cluster that outlived a config change labels itself with its newest mess
   assert.ok(loss, `the loss cause exists: ${JSON.stringify(data.lossCauses)}`);
   assert.match(loss?.example ?? "", /^timed out after 900s/, "the loss fold follows the same rule");
 });
+
+test("a review_error landing prices its authoring hours under the matching review_failed cause", () => {
+  // BUGS.md 2026-10-07: a queued tick whose landing ended `review_error` — the reviewer's own
+  // process failed (a timeout, a dead backend, no parseable verdict) and the pin was re-queued —
+  // was priced into the error-class cell but owned by no loss cause, because the rejected-only
+  // branch and CLUSTERED_RESULTS both missed it. The matching `review_failed` event carries the
+  // message the digest already clusters, so the authoring span now pools under that key.
+  const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
+  writeEvents(root, [
+    { ts: at(0, 9), loop: "bugfix", type: "land_queued", commit: head("d"), summary: "fix a thing" },
+    { ts: at(0, 10), loop: "bugfix", type: "tick_end", tick: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 },
+    { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("d"),
+      message: "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch" },
+    { ts: at(0, 12), loop: "bugfix", type: "land_failed", commit: head("d"), result: "review_error", durationMs: 60_000 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.deepEqual(
+    data.timeSpend.find((r) => r.role === "bugfix")?.classes.error,
+    { ticks: 1, ms: 3_600_000, costUsd: 0.5 },
+    "the authoring span prices as error-class, not the landing's own 60s",
+  );
+  const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
+  assert.ok(loss, `the review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(loss?.kind, "error-cluster");
+  assert.equal(loss?.ticks, 1);
+  assert.equal(loss?.ms, 3_600_000);
+  assert.equal(loss?.costUsd, 0.5);
+  assert.match(loss?.example ?? "", /^timed out after 900s/, "exemplified by the matching review_failed message");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /timed out after 900s .*\(bugfix\)/, `the loss row names the review failure: ${md}`);
+});

@@ -77,10 +77,12 @@ function sumMs(classes: TimeSpendRow["classes"]): number {
 /** The loss-cause cut, like ERROR_TOP above: the five most expensive causes by time. */
 const LOSS_TOP = 5;
 
-/** The results whose loss attributes to a cluster — exactly the results the plan names:
- * an error, an abort, or a quiet kill. Other error-class results (review_error,
- * merge_conflict, …) price into the table's error-class column but have no message the
- * clustering can own, so they stay out of the loss ranking rather than impersonating one. */
+/** The raw results whose loss attributes to a cluster — exactly the results the plan names:
+ * an error, an abort, or a quiet kill, each carrying its own message on the tick_end. Other
+ * error-class results (review_error, merge_conflict, …) price into the table's error-class
+ * column but carry no message here; the queued→review_error join below owns its span through
+ * the matching `review_failed` event's message, and the rest stay out of the loss ranking
+ * rather than impersonating a cause they cannot name. */
 const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed"]);
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
@@ -145,6 +147,13 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     allEvents.filter((e) => e.type === "review_rejected"),
     (e) => e.loop,
   );
+  // A review_error landing kept its pin but left no message on its own land_failed; the
+  // matching review_failed event for the same loop+sha carries it, so the span prices under
+  // the same cluster key the digest's review-failure section already counts.
+  const reviewFailedByLoop = groupBy(
+    allEvents.filter((e) => e.type === "review_failed"),
+    (e) => e.loop,
+  );
   // Queued tick_ends resolve newest-first so each claims the newest pin at or before its end
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
   // history rows. tickEvents is oldest-first, hence the backward walk.
@@ -203,6 +212,19 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
         .at(-1);
       const reasons = stringList(rej?.reasons);
       example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
+    } else if (ev.result === "queued" && resolvedOutcome?.result === "review_error") {
+      // The review process itself failed (a dead backend, a timeout, no parseable verdict):
+      // the pin was kept and re-queued, and the matching `review_failed` event carries the
+      // message the review-failure section already clusters. Price the authoring span under
+      // that cluster's key — a review timeout pools into the shared `timed out after <dur>`
+      // cause via poolTimeoutKey — and fall back to the shared placeholder when no event for
+      // this loop+sha is visible, so the span is itemized rather than hidden.
+      const failed = (reviewFailedByLoop.get(role) ?? [])
+        .filter((r) => String(r.head ?? "") === resolvedOutcome!.sha)
+        .at(-1);
+      const text = typeof failed?.message === "string" && failed.message !== "" ? failed.message : NO_ERROR_TEXT;
+      key = poolTimeoutKey(normalizeClusterKey(text));
+      example = truncateExample(text);
     }
     if (key === null) continue;
     let draft = losses.get(key);
