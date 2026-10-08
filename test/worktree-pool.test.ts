@@ -8,8 +8,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { leaseSlot, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
+import { leaseSlot, removeDroppedSlots, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
+import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
@@ -316,4 +317,23 @@ test("the shrink-away pass keeps a pinned slot and drops older idle unpinned one
     "the pinned slot was shrunk away",
   );
   assert.ok(!slots.some((slot) => slot.dir === b.dir), "the oldest idle unpinned slot survived");
+});
+
+test("a failing removal of a dropped slot is logged, not an unhandled rejection", async () => {
+  const root = makeRepo();
+  const attempted: string[] = [];
+  // The release callback is fire-and-forget, so a removal failure must be caught inside
+  // removeDroppedSlots: an escaping rejection would be unhandled and kill the orchestrator. The
+  // first removal fails; the second must still run and the call must resolve.
+  await removeDroppedSlots(root, ["/slots/a", "/slots/b"], async (_root, dir) => {
+    attempted.push(dir);
+    if (dir === "/slots/a") throw new Error("EBUSY: resource busy or locked");
+  });
+  assert.deepEqual(attempted, ["/slots/a", "/slots/b"]);
+  const warnings = readEvents(root).filter((e) => e.type === "warning" && e.loop === "harness");
+  assert.equal(warnings.length, 1);
+  assert.match(
+    String(warnings[0]?.message ?? ""),
+    /could not remove idle worktree slot \/slots\/a: EBUSY/,
+  );
 });

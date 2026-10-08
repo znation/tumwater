@@ -16,6 +16,8 @@ import { slotWorktreePath } from "../paths.js";
 import { slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
+import { warnEvent } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 
 /** A live lease as callers see it: the slot directory, the one-shot release, and whether the
  * slot's existing checkout was kept as-is. */
@@ -254,6 +256,28 @@ function releaseSlot(root: string, dir: string, role: string, count: number, pin
   return toRemove;
 }
 
+/** Remove the idle slot directories a shrunken budget dropped, one at a time. Called from a
+ * lease's synchronous `release` (the caller cannot await it), so a removal failure — a worktree
+ * a leaked process still holds (EBUSY), a path that survives removeTree's retries — must not
+ * escape as an unhandled rejection and kill the orchestrator: the slots are already
+ * unregistered from slots.json, so a directory left behind is only a leak the next prune
+ * collects. Each failure is logged so it stays visible, and the remaining removals still run.
+ * The remover is an injectable seam so tests can drive a failing removal without a real
+ * filesystem failure. */
+export async function removeDroppedSlots(
+  root: string,
+  dirs: readonly string[],
+  remove: (root: string, dir: string) => Promise<void> = removeWorktreeDir,
+): Promise<void> {
+  for (const dir of dirs) {
+    try {
+      await remove(root, dir);
+    } catch (err) {
+      warnEvent(root, "harness", `could not remove idle worktree slot ${dir}: ${errorMessage(err)}`);
+    }
+  }
+}
+
 /** Lease a pooled slot for `role`, prepared at `ref`. Resolves once a slot is held and reset to
  * `ref`; rejects on a `signal` abort while waiting. The returned `release` is idempotent. */
 export async function leaseSlot(
@@ -286,7 +310,7 @@ export async function leaseSlot(
       const toRemove = releaseSlot(root, dir, role, liveCount(root), options?.pin === true);
       wakeWaiters(root);
       // Best-effort: a slot whose directory is already gone is unregistered by the prune.
-      for (const stale of toRemove) void removeWorktreeDir(root, stale);
+      void removeDroppedSlots(root, toRemove);
     },
   };
 }
