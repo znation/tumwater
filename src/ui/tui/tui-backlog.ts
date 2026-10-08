@@ -15,7 +15,8 @@ import { clipToWidth } from "../../text/text-width.js";
 
 /** The project-status pane's flat entry list (plans, then bugs, then questions), each labeled
  * with its section, read fresh — the one definition shared by the keypress handlers and the
- * render (src/ui/tui/tui-keys.ts, src/ui/tui/tui.tsx), so stale-selection clamping cannot drift. */
+ * render (src/ui/tui/tui-keys.ts, src/ui/tui/tui-pane.ts), so stale-selection clamping cannot
+ * drift. */
 export function labeledBacklogEntries(root: string): Array<{ label: string } & BacklogEntry> {
   return [
     ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),
