@@ -31,9 +31,9 @@ import {
   timedPauseBits,
 } from "./operator-intent.js";
 
-/** The CLI layer of the operator commands that drive the fleet: the `reset-counters`,
- * `wake`, `abort`, `pause`, `resume`, and `stop` commands, split out of cli.ts so the
- * command bodies live beside their shared `--role` resolution. The marker-writing cores and
+/** The CLI layer of the operator commands: the `reset-counters`, `wake`, `reclaim`, `abort`,
+ * `pause`, `resume`, `stop`, and `retire` commands, split out of cli.ts so the command bodies
+ * live beside their shared `--role` resolution. The marker-writing cores and
  * shared confirmations they print live in src/operator/operator-intent.ts (shared with the dashboard
  * and TUI); the fleet-side consumer half is src/operator/operator-requests.ts; the `prompt` command,
  * which drives the durable per-loop queues rather than the marker protocol, lives beside
