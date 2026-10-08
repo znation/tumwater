@@ -1,7 +1,8 @@
 /** The cluster-key rules shared by everything that groups failure messages into causes: the
  * failure digest's collection (failure-data.ts) and the error-storm reducer
- * (src/fleet/error-storm.ts) both count by these keys, so the normalization, the two tick-timeout shapes and their
- * pooling, and the grouping engine live here rather than inside either consumer. Pure string
+ * (src/fleet/error-storm.ts) both count by these keys, so the normalization, the two
+ * tick-timeout shapes and their pooling, and the grouping engine live here rather than
+ * inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
 import { rankByCount } from "../collections.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
@@ -51,8 +52,8 @@ export function truncateExample(message: string, max: number = EXAMPLE_MAX): str
  * array in ascending localeCompare order, so equal inputs always render identically no matter
  * the Set's insertion order. One home for the rule the failure digest's clusters
  * (clusterMessages) and loss causes (failure-data.ts) and the error-storm warning
- * (src/fleet/error-storm.ts) all share — an inline `.sort()` without the comparator would silently pick
- * code-unit order instead and let the two rules drift. */
+ * (src/fleet/error-storm.ts) all share — an inline `.sort()` without the comparator would
+ * silently pick code-unit order instead and let the two rules drift. */
 export function sortedRoles(roles: Iterable<string>): string[] {
   return [...roles].sort((a, b) => a.localeCompare(b));
 }
