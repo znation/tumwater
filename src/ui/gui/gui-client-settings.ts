@@ -9,7 +9,8 @@
  * that concatenation. */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // The curated keys, in display order: [key, label]. Mirrors the server's
-  // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts); the round-trip test pins the two together.
+  // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts) by hand — the GET /api/config
+  // test pins the served key set to that constant, not to this list.
   const SETTINGS_KEYS = [
     ["provider", "Provider"],
     ["model", "Model"],
