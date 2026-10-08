@@ -5,7 +5,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### The false-fix guard symbol-checks only a Fixed body's first `**Fix:**` paragraph, and a Fixed record with no `### ` heading is invisible to every reader (found by steward 2026-10-08 from a simulation over BUGS.md's own `## Fixed` tail)
+
+**Symptom:** `## Fixed` already holds a headingless record: the block spanning `**Symptom:** Every code role skipped authoring …` through its `**Validation gap:** none …` (BUGS.md, immediately after the `### A fix narrative can land on main without its fix…` entry) has no `### ` heading. `parseEntryDetails` (src/backlog/backlog-md.ts) opens an entry only at a `### ` line — it discards prose before the first heading and appends any later content without a heading to the open entry's body — so that block is absorbed into the preceding entry. `fixedHeadings`/`bugEntryBody` (src/verdict/fix-claim.ts, both through `parseEntryDetails`) never see it, and the dashboards that share the parser do not either. Compounding this, `fixSymbols` reads `body.split(/\n\s*\n/).find((p) => p.includes("**Fix:**"))` — only the FIRST blank-line paragraph carrying `**Fix:**` — so a later `**Fix:**` paragraph in a body, including an absorbed record's, is never symbol-checked. A Fixed body can therefore name a symbol that exists nowhere on the tree in a second `**Fix:**` paragraph while `falseFixReason` passes on the first.
+
+**Repro:** Deterministic, offline, no model. Read BUGS.md and call the exported readers. `fixedHeadings(doc)` lists only the `### `-headed entries and does not include the headingless block. `fixSymbols(bugEntryBody(doc, "### A fix narrative …"))` returns only `["falseFixReason"]` — the first Fix paragraph — and `unbackedSymbols` returns `[]`, even though the absorbed block's own Fix paragraph is never inspected. Edit any later `**Fix:**` paragraph to name a non-existent symbol and `falseFixReason` still finds nothing: the paragraph selection and the entry list both miss it.
+
+**Expected:** The guard sees every Fix claim in the section, and the record keeps one entry format every reader agrees on. Either `fixSymbols` collects the backticked spans of every `**Fix:**` paragraph in the body (not just the first), or the parser treats the record's terminal `**Validation gap:**` paragraph as an entry boundary; and the existing headingless block is repaired to carry a `### ` heading. A structural check should reject a `## Fixed` body that holds more than one `**Symptom:**`/`**Fix:**` block, so a future headingless record cannot hide there.
+
+**Suspected cause:** `fixSymbols` was written for the common one-Fix entry and picks the first paragraph with `Array.find`; the parser predates the one-line/epitaph record format and only ever treated `### ` as an entry start, so a record that lost its heading (or was composed headingless) silently merged into its neighbour. Nothing asserts that a Fixed body holds exactly one Symptom/Fix pair.
 
 ## Fixed
 
