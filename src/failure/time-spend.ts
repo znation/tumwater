@@ -77,13 +77,14 @@ function sumMs(classes: TimeSpendRow["classes"]): number {
 /** The loss-cause cut, like ERROR_TOP above: the five most expensive causes by time. */
 const LOSS_TOP = 5;
 
-/** The raw results whose loss attributes to a cluster — exactly the results the plan names:
- * an error, an abort, or a quiet kill, each carrying its own message on the tick_end. Other
- * error-class results (review_error, merge_conflict, …) price into the table's error-class
- * column but carry no message here; the queued→review_error join below owns its span through
- * the matching `review_failed` event's message, and the rest stay out of the loss ranking
- * rather than impersonating a cause they cannot name. */
-const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed"]);
+/** The raw results whose loss attributes to a cluster — an error, an abort, a quiet kill, or
+ * a red-main skip, each carrying its own message on the tick_end (main_red's is the
+ * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). Other
+ * error-class results (merge_conflict, …) price into the table's error-class column but carry
+ * no message here; the queued→review_error join below owns its span through the matching
+ * `review_failed` event's message, and the rest stay out of the loss ranking rather than
+ * impersonating a cause they cannot name. */
+const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed", "main_red"]);
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {

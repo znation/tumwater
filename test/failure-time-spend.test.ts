@@ -195,3 +195,34 @@ test("a review_error landing prices its authoring hours under the matching revie
   const md = renderFailureMarkdown(data);
   assert.match(md, /timed out after 900s .*\(bugfix\)/, `the loss row names the review failure: ${md}`);
 });
+
+test("a main_red tick prices its red-main cause into the loss ranking, not only the error clusters", () => {
+  // BUGS.md 2026-10-07: a `main_red` tick is error-class, but the loss fold's CLUSTERED_RESULTS
+  // missed it, so its hours landed in the error-class cell and in the digest's error clusters
+  // while owned by no loss cause and not even counted by lossCausesHidden. Its tick_end carries
+  // the same verbatim redMainMessage the error-clusters section clusters, so it joins the fold.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "main_red",
+      error: "main abc1234 is red (test: boom) — authoring skipped until main is green",
+      durationMs: 3_600_000, costUsd: 0.05 },
+    // A cause-less main_red still owns its span under the shared placeholder rather than vanishing.
+    { ts: at(0), loop: "improve", type: "tick_end", result: "main_red" },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const red = data.lossCauses.find((c) => c.example.includes("is red"));
+  assert.ok(red, `the red-main cause is ranked, not dropped: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(red?.kind, "error-cluster");
+  assert.deepEqual(red?.roles, ["feature"]);
+  assert.equal(red?.ms, 3_600_000);
+  assert.ok(Math.abs((red?.costUsd ?? 0) - 0.05) < 1e-9, `the red-main spend is priced: ${red?.costUsd}`);
+  const blank = data.lossCauses.find((c) => c.example === "(no error text recorded)");
+  assert.ok(blank, `the cause-less main_red itemizes under the placeholder: ${JSON.stringify(data.lossCauses)}`);
+  assert.deepEqual(blank?.roles, ["improve"]);
+  assert.equal(
+    data.lossCauses.reduce((n, c) => n + c.ticks, 0),
+    2,
+    "both main_red spans are owned by a loss cause",
+  );
+  assert.equal(data.lossCausesHidden, 0, "neither cause is dropped by the top-N cut");
+});
