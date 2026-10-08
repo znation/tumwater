@@ -99,10 +99,17 @@ ${TEST_RUNNER_RULE}
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 
+interface PriorReviewPrompt {
+  round: number;
+  reasons: string[];
+  interdiff: string;
+}
+
 /** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
  * only the diff and project context — never the author's session — and replies with exactly
- * one VERDICT line plus numbered reasons (see parseVerdict in src/review/review-verdict.ts). `verifiedByHarness`
- * names the project's own check the gate's deterministic pre-check already ran green on this
+ * one VERDICT line plus numbered reasons (see parseVerdict in
+ * src/review/review-verdict.ts). `verifiedByHarness` names the project's own check the gate's
+ * deterministic pre-check already ran green on this
  * exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a green suite
  * cannot show instead of re-running it. The no-re-run instruction is its own line in the rules
  * list, not a clause in the context paragraph: stated there, reviewers read past it and re-ran
@@ -119,12 +126,6 @@ ${TEST_RUNNER_RULE}
  * previously rejected change (plans/revise-rejected.md part 2/2): it names the round and shows
  * the prior objections plus the interdiff so the re-review checks each one first. Omitted, the
  * prompt is unchanged from a fresh change's. */
-interface PriorReviewPrompt {
-  round: number;
-  reasons: string[];
-  interdiff: string;
-}
-
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
