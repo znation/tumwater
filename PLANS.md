@@ -364,8 +364,8 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 ### Organize the test suite, part 2/6: utility modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires part 1/6 landed; done 2026-10-08 by feature)
 
-**Goal.** Create `test/helpers/` and move `wait.ts`, `sleep-clock.ts`, `backdate.ts`,
-`json-read.ts`, `fs-faults.ts` from the `test/` root into it.
+**Goal.** Create `test/helpers/` and move the five utility modules (`wait`, `sleep-clock`,
+`backdate`, `json-read`, `fs-faults`) from the `test/` root into it.
 
 **Approach.**
 - `git mv` the five modules into the new `test/helpers/`.
@@ -375,8 +375,8 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 - Re-base the moved modules' `../src/` imports for one more level: `sleep-clock.ts`'s
   `../src/build/host-sleep.js` and `json-read.ts`'s `../src/text/text.js` become `../../src/...`.
   `wait.ts`, `backdate.ts`, and `fs-faults.ts` have no relative imports.
-- Update comment/doc references to the old flat paths in the same landing (e.g. `src/errno.ts`
-  cites `fs-faults.ts`; BUGS.md cites `wait.ts`).
+- Update the comment/doc references in the same landing (`src/errno.ts` cites
+  `test/helpers/fs-faults.ts`; BUGS.md cites `test/helpers/wait.ts`).
 
 **Files touched.** The five modules; every `test/*.ts` importing them (≈115 specifiers);
 `test/coverage-table.ts`; the doc/comment references.
