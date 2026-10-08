@@ -1,6 +1,6 @@
 import { parsePiEventLine } from "../pi/pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "../files/tail.js";
-import { collapseWhitespace, squash, truncate } from "../text/text.js";
+import { collapseWhitespace, squash, textOr, truncate } from "../text/text.js";
 import { describeToolCall } from "../text/phrases.js";
 import { formatTimestamp } from "../text/datetime.js";
 
@@ -170,7 +170,9 @@ export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}
         case "auto_retry_start": {
           const attempt = typeof event.attempt === "number" ? event.attempt : "?";
           const maxAttempts = typeof event.maxAttempts === "number" ? event.maxAttempts : "?";
-          const error = squash(String(event.errorMessage ?? "unknown error"), 120);
+          // A torn or hand-edited non-string errorMessage renders the shared corrupt-field
+          // placeholder (textOr), never String(object)'s literal "[object Object]".
+          const error = squash(textOr(event.errorMessage, "unknown error"), 120);
           return [...emitSeparator(), `⚠ retry ${attempt}/${maxAttempts}: ${error}`];
         }
         case "tumwater_run": {

@@ -246,6 +246,15 @@ test("formatTranscript falls back for auto_retry_start with missing or non-numer
   assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "⚠ retry ?/?: unknown error"]);
 });
 
+test("formatTranscript falls back for a non-string auto_retry_start errorMessage", () => {
+  const out = formatTranscript([
+    agentStart(),
+    userLine("p"),
+    JSON.stringify({ type: "auto_retry_start", attempt: 1, maxAttempts: 3, errorMessage: { code: 500 } }),
+  ]).flat();
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "⚠ retry 1/3: unknown error"]);
+});
+
 test("readTranscript returns the last N entries oldest-first and [] without a log", () => {
   const root = tmpdir();
   assert.deepEqual(readTranscript(root, "feature"), []);
