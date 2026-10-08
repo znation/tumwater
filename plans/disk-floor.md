@@ -170,7 +170,7 @@ poll. A clean that deletes 100k files can take a minute, which is the same reaso
   follows `budgetBadge`/`quietBadge` in src/ui/badges.ts plus a `fleet-alerts.ts` alert.
 - A held loop's phase reads "disk hold", like "budget paused" in src/ui/status-model.ts.
 - The orchestrator publishes `{ freeGB, held, lastReclaim }` in `OrchestratorInfo`
-  (src/fleet/fleet-state.ts), so the separate status, TUI and GUI processes read it without
+  (src/fleet/orchestrator-info.ts), so the separate status, TUI and GUI processes read it without
   calling statfs themselves.
 
 ## Phases

@@ -19,7 +19,7 @@ import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
-import { readOrchestratorInfo } from "../src/fleet/fleet-state.js";
+import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { worktreePath } from "../src/paths.js";
 import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "./orchestrator-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";

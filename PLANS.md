@@ -965,7 +965,7 @@ orchestrator publishes what it measured.
 
 **Approach.**
 1. **Publish.** Add `disk?: { freeGB, holdGB, reclaimGB, held, lastReclaim?: { at, mode,
-   freedGB } }` to `OrchestratorInfo` (src/fleet/fleet-state.ts); `ReclaimController`
+   freedGB } }` to `OrchestratorInfo` (src/fleet/orchestrator-info.ts); `ReclaimController`
    (src/fleet/reclaim.ts) records the most recent pass that cleaned anything. `pollFleetGates`
    (src/gates/gate-polls.ts) writes it only when it changes, like `budget`, rounding `freeGB`
    to one decimal.
@@ -982,7 +982,7 @@ orchestrator publishes what it measured.
    src/ui/status-render.ts), and the GUI sidebar renders that badge (src/ui/gui/gui-client-fleet.ts,
    src/ui/gui/gui-client-model.ts).
 
-**Files touched.** src/fleet/fleet-state.ts, src/fleet/reclaim.ts, src/gates/gate-polls.ts,
+**Files touched.** src/fleet/orchestrator-info.ts, src/fleet/reclaim.ts, src/gates/gate-polls.ts,
 src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/status-model.ts, src/status/status-data.ts,
 src/ui/status-render.ts, src/ui/status-payload.ts, src/ui/gui/gui-client-fleet.ts,
 src/ui/gui/gui-client-model.ts. Tests: cases in the existing badge, fleet-alert, status-model,

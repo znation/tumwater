@@ -21,13 +21,12 @@ import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../prompt/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { pausedRoles, standingFleetPause } from "../fleet/fleet-state.js";
 import {
   orchestratorAlive,
-  pausedRoles,
   readOrchestratorInfo,
-  standingFleetPause,
   type DiskStatus,
-} from "../fleet/fleet-state.js";
+} from "../fleet/orchestrator-info.js";
 import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
 import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapPaused } from "../gates/role-cap-gates.js";

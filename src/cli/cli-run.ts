@@ -17,12 +17,8 @@ import {
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
-import {
-  isFleetPaused,
-  orchestratorAlive,
-  pausedRoles,
-  readOrchestratorInfo,
-} from "../fleet/fleet-state.js";
+import { isFleetPaused, pausedRoles } from "../fleet/fleet-state.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";

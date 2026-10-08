@@ -24,7 +24,7 @@ import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fake-pi.js";
 import { MODELS_JSON } from "./models-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
-import type { OrchestratorInfo } from "../src/fleet/fleet-state.js";
+import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 
 test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");

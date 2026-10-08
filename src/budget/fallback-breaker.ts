@@ -178,7 +178,7 @@ export interface FallbackDemotion {
 }
 
 /** What orchestrator.json publishes while the breaker holds the fallback demoted
- * (fleet/fleet-state.ts's OrchestratorInfo.fallbackDemoted). Observers need it because the price
+ * (fleet/orchestrator-info.ts's OrchestratorInfo.fallbackDemoted). Observers need it because the price
  * check alone would advertise the demoted pair as a working fallback — status/status-data.ts nulls
  * the snapshot's `fallback` from it and `tumwater doctor` names it. Undefined while the fallback is
  * trusted or not engaged. */

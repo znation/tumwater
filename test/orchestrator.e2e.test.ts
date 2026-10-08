@@ -26,7 +26,7 @@ import {
   zeroCounters,
 } from "../src/loop/loop-state.js";
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
-import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/fleet-state.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { resetRequestPath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import {

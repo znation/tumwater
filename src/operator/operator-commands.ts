@@ -12,10 +12,10 @@ import {
   pauseFleet,
   pauseRole,
   pausedRoles,
-  readOrchestratorInfo,
   resumeFleet,
   resumeRole,
 } from "../fleet/fleet-state.js";
+import { readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { pidAlive } from "../process/process.js";
 import { inspectReclaimCandidates, reclaimPass } from "../fleet/reclaim.js";
 import {

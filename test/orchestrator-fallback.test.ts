@@ -21,7 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { loadLoopState } from "../src/loop/loop-state.js";
-import { readOrchestratorInfo } from "../src/fleet/fleet-state.js";
+import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
