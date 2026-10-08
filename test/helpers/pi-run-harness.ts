@@ -1,11 +1,11 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep } from "./wait.js";
 import fs from "node:fs";
 import path from "node:path";
-import { runPi, type PiRunOptions} from "../src/pi/pi.js";
-import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import { defaultConfig } from "../src/config/config.js";
-import { tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { runPi, type PiRunOptions} from "../../src/pi/pi.js";
+import type { PiRunResult } from "../../src/pi/pi-run-result.js";
+import { defaultConfig } from "../../src/config/config.js";
+import { tmpdir } from "../repo-fixtures.js";
+import { fakePi } from "../fakes/fake-pi.js";
 
 /** The standard runPi fixture: a run against `dir` with the minimal prompt, a fresh
  * defaultConfig(), and throwaway session/raw-log paths — the shape every test starts from,

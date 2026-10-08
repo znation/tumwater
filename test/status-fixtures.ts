@@ -10,7 +10,7 @@ import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { piLogPath, worktreesDir } from "../src/paths.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { clockOf } from "./oracles.js";
+import { clockOf } from "./helpers/oracles.js";
 
 export const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 

@@ -64,7 +64,7 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
       'import { spawn } from "node:child_process";',
       // npm starts the runner with the check's environment, not an owned one: it idles until
       // the check kills it, so it watches this process itself.
-      `import { exitWithOwner } from ${JSON.stringify(new URL("./exit-with-owner.js", import.meta.url).href)};`,
+      `import { exitWithOwner } from ${JSON.stringify(new URL("./helpers/exit-with-owner.js", import.meta.url).href)};`,
       `exitWithOwner(${process.pid});`,
       `const pidFile = ${JSON.stringify(pidFile)};`,
       `const script = "process.on('SIGTERM', () => {}); " +`,

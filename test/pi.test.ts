@@ -18,7 +18,7 @@ import { fakePi, logFlagsTo, readRunLines } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";
-import { runPiFixture, runFakePi, runPiVerified } from "./pi-run-harness.js";
+import { runPiFixture, runFakePi, runPiVerified } from "./helpers/pi-run-harness.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 
 // The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves

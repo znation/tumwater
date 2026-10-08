@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { expectedTimestamp } from "./oracles.js";
+import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";

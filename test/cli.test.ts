@@ -11,7 +11,7 @@ import { readInitialPrompt } from "../src/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 import { seedCounters } from "./loop-fixtures.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is

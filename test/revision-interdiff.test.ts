@@ -5,7 +5,7 @@ import path from "node:path";
 import { revisionInterdiff } from "../src/git/git-diff.js";
 import { headOf } from "../src/git/git.js";
 import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
-import { hasLoneSurrogate } from "./oracles.js";
+import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 /** Unit coverage for the revision interdiff (plans/revise-rejected.md part 2/2): the re-review
  * compares a rejected change with its revision over each version's own base..tip range, so

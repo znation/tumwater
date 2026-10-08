@@ -10,7 +10,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
-import { runPiFixture } from "./pi-run-harness.js";
+import { runPiFixture } from "./helpers/pi-run-harness.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 
 // The process-tree-hygiene regressions: a run — killed or exited normally — must take its

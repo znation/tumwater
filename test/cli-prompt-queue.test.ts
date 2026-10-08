@@ -9,7 +9,7 @@ import { queueFileStamp } from "../src/files/file-queue.js";
 import { truncate } from "../src/text/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
-import { cli, CLI } from "./cli-harness.js";
+import { cli, CLI } from "./helpers/cli-harness.js";
 import { spawnSync } from "node:child_process";
 
 // The prompt queue's child-process tests — enqueue/list/cancel basics first, then

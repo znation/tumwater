@@ -8,10 +8,10 @@ import { type ChildProcess, spawn } from "node:child_process";
 import type { TestContext } from "node:test";
 
 import { runMarkerEnv } from "../src/process/run-marker.js";
-import { OWNER_PID_ENV } from "./exit-with-owner.js";
+import { OWNER_PID_ENV } from "./helpers/exit-with-owner.js";
 
 /** The owner-watch preload (exit-with-owner.ts), as the NODE_OPTIONS flag that loads it. */
-const OWNER_PRELOAD = `--import=${new URL("./exit-with-owner.js", import.meta.url).href}`;
+const OWNER_PRELOAD = `--import=${new URL("./helpers/exit-with-owner.js", import.meta.url).href}`;
 
 /** `base` for a child that must not outlive `owner` (this test process unless given): every
  * node process started under it — the child and, since NODE_OPTIONS and the pid variable ride

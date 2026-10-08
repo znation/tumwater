@@ -6,7 +6,7 @@ import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 import { formatTranscript, type TranscriptEntry } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/files/tail.js";
-import { expectedTimestamp } from "./oracles.js";
+import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";

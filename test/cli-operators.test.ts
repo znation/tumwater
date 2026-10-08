@@ -14,7 +14,7 @@ import { initProject } from "../src/init/init.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---

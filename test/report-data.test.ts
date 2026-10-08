@@ -11,7 +11,7 @@ import { collectReport, collectReportSince } from "../src/report/report-data.js"
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { eventsLogPath } from "../src/paths.js";
-import { atLocalTs as at, dayKey, HOUR, ago } from "./oracles.js";
+import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 

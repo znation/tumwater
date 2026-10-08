@@ -6,39 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Organize the test suite, part 3/6: harness and oracle modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6 and 2/6 landed)
-
-**Goal.** Move `test/oracles.ts`, `test/cli-harness.ts`, `test/exit-capture.ts`,
-`test/gui-client-scope.ts`, `test/pi-run-harness.ts`, `test/exit-with-owner.ts` into
-`test/helpers/`.
-
-**Approach.**
-- `git mv` the six modules into `test/helpers/`.
-- Rewrite every importer's `./<name>.js` specifier to `./helpers/<name>.js`.
-- Re-base the moved modules' own imports:
-  - `cli-harness.ts`: `../src/cli.js` → `../../src/cli.js`; its `./victim-fixture.js` import
-    becomes `../victim-fixture.js` (victim stays at the root until part 6).
-  - `gui-client-scope.ts`: `../src/ui/gui/gui-client.js` → `../../src/ui/gui/gui-client.js`.
-  - `pi-run-harness.ts`: `./wait.js` stays a sibling `./wait.js` (part 2); `./repo-fixtures.js`
-    becomes `../repo-fixtures.js` (moves in part 4); `./fake-pi.js` becomes `../fakes/fake-pi.js`
-    (part 1).
-  - `oracles.ts`, `exit-capture.ts`, and `exit-with-owner.ts` have no relative imports.
-- `test/victim-fixture.ts` (still at the root) imports `./exit-with-owner.js`; point it at
-  `./helpers/exit-with-owner.js` now. Its own `OWNER_PRELOAD` `new URL("./exit-with-owner.js", ...)`
-  stays sibling-relative until victim itself moves in part 6.
-- `test/build-check-process.test.ts` embeds `./exit-with-owner.js` in a generated path; point it at
-  `./helpers/exit-with-owner.js`. Update `test/victim-fixture.ts`'s comment paths and BUGS.md
-  references.
-
-**Files touched.** The six modules; every `test/*.ts` importing them (≈87 specifiers); plus
-`test/victim-fixture.ts` and `test/build-check-process.test.ts`.
-
-**Acceptance criteria.**
-- The six modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
-- `cli-harness.ts` resolves `CLI` at `../../src/cli.js` and its victim fixture at
-  `../victim-fixture.js`; `gui-client-scope.ts` resolves `gui-client.js` one level up.
-- `npm run test` green and selects the same `*.test.ts` files.
-
 ### Organize the test suite, part 4/6: `repo-fixtures.ts` moves to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–3/6 landed)
 
 **Goal.** Move the highest-fanout support module, `test/repo-fixtures.ts`, into `test/fixtures/`.
@@ -76,15 +43,15 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `status-fixtures.ts`: `./log-fixtures.js` stays a sibling; `./oracles.js` becomes
     `../helpers/oracles.js`.
   - `victim-fixture.ts`: `./helpers/exit-with-owner.js` becomes `../helpers/exit-with-owner.js`,
-    and `OWNER_PRELOAD`'s `new URL("./exit-with-owner.js", import.meta.url)` becomes
+    and `OWNER_PRELOAD`'s `new URL("./helpers/exit-with-owner.js", import.meta.url)` becomes
     `new URL("../helpers/exit-with-owner.js", import.meta.url)`.
   - `pi-events.ts` has no relative imports.
-- `test/cli-harness.ts` (already in `test/helpers/`) imports `../victim-fixture.js` from part 3;
+- `test/helpers/cli-harness.ts` (already moved there) imports `../victim-fixture.js` from part 3;
   update it to `../fixtures/victim-fixture.js`.
 - Update BUGS.md references to `test/pi-events.ts`, `test/victim-fixture.ts`, and the moved
   fixtures.
 
-**Files touched.** The six modules; every `test/*.ts` importing them; `test/cli-harness.ts`;
+**Files touched.** The six modules; every `test/*.ts` importing them; `test/helpers/cli-harness.ts`;
 BUGS.md references.
 
 **Acceptance criteria.**
@@ -361,6 +328,41 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Organize the test suite, part 3/6: harness and oracle modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6 and 2/6 landed; done 2026-10-08 by feature)
+
+**Goal.** Move `oracles.ts`, `cli-harness.ts`, `exit-capture.ts`, `gui-client-scope.ts`,
+`pi-run-harness.ts`, and `exit-with-owner.ts` from the `test/` root into `test/helpers/`.
+
+**Approach.**
+- `git mv` the six modules into `test/helpers/`.
+- Rewrite every importer's `./<name>.js` specifier to `./helpers/<name>.js`.
+- Re-base the moved modules' own imports:
+  - `cli-harness.ts`: `../src/cli.js` and `../src/process/supervisor.js` gain a level
+    (`../../src/...`); its `./victim-fixture.js` import becomes `../victim-fixture.js`
+    (victim stays at the root until part 6).
+  - `gui-client-scope.ts`: `../src/ui/gui/gui-client.js` → `../../src/ui/gui/gui-client.js`.
+  - `pi-run-harness.ts`: part 2 had already moved `wait.ts`, so its `./helpers/wait.js` import
+    becomes the sibling `./wait.js`; `./repo-fixtures.js` becomes `../repo-fixtures.js`
+    (moves in part 4); `./fakes/fake-pi.js` becomes `../fakes/fake-pi.js` (part 1); its three
+    `../src/...` imports gain a level.
+  - `oracles.ts`, `exit-capture.ts`, and `exit-with-owner.ts` have no relative imports.
+- `test/victim-fixture.ts` (still at the root) points both its `./exit-with-owner.js` import and
+  its `OWNER_PRELOAD` `new URL(...)` at `./helpers/exit-with-owner.js` now — the file is no
+  longer a sibling. (Part 5 re-bases both to `../helpers/exit-with-owner.js` when victim itself
+  moves.)
+- `test/build-check-process.test.ts` embeds `./exit-with-owner.js` in a generated path; point it at
+  `./helpers/exit-with-owner.js`. Update comment/doc references to the moved files: BUGS.md's
+  citations and the `test/<name>.ts` mentions in test bodies.
+
+**Files touched.** The six modules; every `test/*.ts` importing them (≈87 specifiers); plus
+`test/victim-fixture.ts` and `test/build-check-process.test.ts`.
+
+**Acceptance criteria.**
+- The six modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
+- `cli-harness.ts` resolves `CLI` at `../../src/cli.js` and its victim fixture at
+  `../victim-fixture.js`; `gui-client-scope.ts` resolves `gui-client.js` one level up.
+- `npm run test` green and selects the same `*.test.ts` files.
 
 ### Organize the test suite, part 2/6: utility modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires part 1/6 landed; done 2026-10-08 by feature)
 

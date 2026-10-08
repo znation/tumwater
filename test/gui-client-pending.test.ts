@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_PENDING_JS } from "../src/ui/gui/gui-client-pending.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
-import { clientScope } from "./gui-client-scope.js";
+import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Pending view (src/ui/gui/gui-client-pending.ts): the roster it paints from
 // /api/diff's fleet document — each role's branch, state, commits ahead with their subjects,

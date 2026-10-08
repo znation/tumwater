@@ -7,14 +7,14 @@ import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { expectFailAsync, expectOkAsync } from "./exit-capture.js";
+import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 
 // The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked
 // timers). These tests cover the one-shot views the follow tests never reach: the -n dump,
 // the --grep filter and its no-match note, the --since window and its rotation caveat, the
 // --role transcript without -f, and every mutually-exclusive-flag failure that guards the
 // rival shapes. All failures are caught in-process with a process.exit stub (the shared
-// stub in test/exit-capture.ts), so no spawned child is needed.
+// stub in test/helpers/exit-capture.ts), so no spawned child is needed.
 
 /** A repo with three distinct tick events logged, in order. */
 function repoWithEvents(): string {

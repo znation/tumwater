@@ -11,7 +11,7 @@ import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 
 // The operator-authored backlog writes (`tumwater bug` / `tumwater plan`): the appendEntry
 // semantics (placement before the next `## ` heading, placeholder removal, missing-file

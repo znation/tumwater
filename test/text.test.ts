@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate } from "../src/text/text.js";
-import { hasLoneSurrogate } from "./oracles.js";
+import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)

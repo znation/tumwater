@@ -13,7 +13,7 @@ import {
 } from "../src/redeploy/self-reload.js";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
-import { ExitError } from "./exit-capture.js";
+import { ExitError } from "./helpers/exit-capture.js";
 import fs from "node:fs";
 import path from "node:path";
 import { commitIn, mainSha, makeRepo } from "./repo-fixtures.js";
@@ -65,7 +65,7 @@ function fakeSpawn(): {
 }
 
 /** Run fn with process.exit intercepted (the shared ExitError sentinel from
- * test/exit-capture.ts); returns the code it was called with. */
+ * test/helpers/exit-capture.ts); returns the code it was called with. */
 function captureExit(fn: () => void): number {
   const realExit = process.exit;
   let code = -1;

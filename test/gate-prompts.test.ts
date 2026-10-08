@@ -17,7 +17,7 @@ import { parseVerdict } from "../src/review/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { TEST_RUNNER_RULE } from "../src/prompt/prompt.js";
 import { NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
-import { oneLine } from "./oracles.js";
+import { oneLine } from "./helpers/oracles.js";
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
 // load-bearing in ways the loop-level fake-pi tests cannot see (the fake ignores prompt

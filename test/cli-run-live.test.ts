@@ -16,7 +16,7 @@ import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixture
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { fastConfig } from "./orchestrator-fixtures.js";
-import { cli, exitCode, spawnCli } from "./cli-harness.js";
+import { cli, exitCode, spawnCli } from "./helpers/cli-harness.js";
 import { sleep, waitForFile } from "./helpers/wait.js";
 
 // `tumwater run` through the real CLI entry point: startup guards, the banner, and the

@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
-import { clientScope, iconStub } from "./gui-client-scope.js";
+import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
 // /api/history's rows, its tick drill-down (the per-row details toggle and the card /api/tick

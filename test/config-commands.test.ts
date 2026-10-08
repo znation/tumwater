@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdConfig, CONFIG_USAGE } from "../src/cli/config-commands.js";
-import { attemptAsync } from "./exit-capture.js";
+import { attemptAsync } from "./helpers/exit-capture.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
 
 // cmdConfig is the `tumwater config` command's CLI shell around loadConfigSafe and

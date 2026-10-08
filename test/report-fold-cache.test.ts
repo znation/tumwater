@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectReport } from "../src/report/report-data.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { atLocalTs as at, dayKey } from "./oracles.js";
+import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 
 /** Warm a root's memo (one seeding call, one cache-hit call) and return the cache-hit
  * result — the value a poll actually gets. */

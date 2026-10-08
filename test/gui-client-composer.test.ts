@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui/gui-client-composer.js";
 import { promptImageExtensionProblem, promptImageSizeProblem, PROMPT_IMAGE_MAX_BYTES } from "../src/inbox/inbox-attachments.js";
-import { clientRegion, ESC_LINE } from "./gui-client-scope.js";
+import { clientRegion, ESC_LINE } from "./helpers/gui-client-scope.js";
 
 // The dashboard's composer, browser-side (src/ui/gui/gui-client-composer.ts): the target selector
 // with its per-target unsent drafts, the hint and character counter, the image attachments

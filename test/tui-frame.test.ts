@@ -20,7 +20,7 @@ import {
 } from "../src/ui/tui/tui-frame.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { clientScope } from "./gui-client-scope.js";
+import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The TUI frame's pure pieces (src/ui/tui/tui-frame.ts) and the toned status spans they paint
 // (status-render.ts): the frame builders must never move a column or a cut.

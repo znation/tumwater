@@ -8,7 +8,7 @@ import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 
 // Argument-strictness child-process tests: every command must reject unknown arguments and
 // keep the flag/positional boundary exact. The per-command validation lives in each command's

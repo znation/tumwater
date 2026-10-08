@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { expectFail, expectOk } from "./exit-capture.js";
+import { expectFail, expectOk } from "./helpers/exit-capture.js";
 
 // --- parseInitArgs ---
 

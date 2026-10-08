@@ -6,8 +6,8 @@ import { cmdTick, renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
-import { expectFailAsync, expectOkAsync } from "./exit-capture.js";
+import { cli } from "./helpers/cli-harness.js";
+import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 
 // The `tick <role> <n>` command: the readTickDetail collector's window bracketing and
 // unpaired/in-flight behavior as unit cases, the renderer's summary header, and the CLI

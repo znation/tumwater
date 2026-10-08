@@ -10,7 +10,7 @@ import {
 } from "../src/ui/tui/tui-input.js";
 import { cutSplitsSurrogatePair } from "../src/text/text.js";
 import { displayWidth } from "../src/text/text-width.js";
-import { hasLoneSurrogate } from "./oracles.js";
+import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 

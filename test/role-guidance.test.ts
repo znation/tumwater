@@ -14,7 +14,7 @@ import {
   VALIDATION_GAP_TAGS,
   VALIDATION_GAP_TALLY,
 } from "../src/roles/role-guidance.js";
-import { oneLine } from "./oracles.js";
+import { oneLine } from "./helpers/oracles.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 
 // Contract for src/roles/role-guidance.ts's shared prompt constants (plans/repair-traces.md and

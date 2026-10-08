@@ -9,15 +9,15 @@ import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { attempt } from "./exit-capture.js";
-import { dateOf } from "./oracles.js";
+import { attempt } from "./helpers/exit-capture.js";
+import { dateOf } from "./helpers/oracles.js";
 
 /** src/cli/question-commands.ts's own tests: the `tumwater questions` CLI layer — list
  * numbering, the answer move (one block, verbatim, with the dated operator paragraph), the
  * out-of-range error wording, the --json payloads, and the missing-file degradation —
  * exercised in-process against a seeded QUESTIONS.md in a temp project root. cmdQuestion's
  * paths only read or write QUESTIONS.md, so attempt's in-process exit capture is safe for them
- * (see test/exit-capture.ts's scope limit). */
+ * (see test/helpers/exit-capture.ts's scope limit). */
 
 const SKELETON = `# Questions
 

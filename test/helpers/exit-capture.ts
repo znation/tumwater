@@ -15,7 +15,7 @@
  * harness's build gate trusts. A finally-guarded restore does not help: the loss happens
  * mid-window, not at teardown. Verified safe: pure in-process awaits (the log-view commands,
  * which only read files). Verified broken: cmdInit (spawns git). Test the spawning commands
- * through the CLI child process instead — runCli/spawnCli from test/cli-harness.ts, as
+ * through the CLI child process instead — runCli/spawnCli from test/helpers/cli-harness.ts, as
  * test/cli.test.ts does — where capture is the child's own pipe and costs nothing. */
 import assert from "node:assert/strict";
 

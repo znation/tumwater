@@ -11,7 +11,7 @@ import { signalOrchestrator } from "../src/operator/operator-commands.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 // The fleet-facing operator-command CLI tests (reset-counters, wake, stop, config), split

@@ -15,7 +15,7 @@ import { landingRefExists } from "./orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 import { setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";

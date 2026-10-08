@@ -9,11 +9,11 @@ import { eventsLogPath } from "../src/paths.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
-import { atLocalTs as atNoon, dayKey } from "./oracles.js";
+import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
 import { withGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { clientScope, ESC_LINE, iconStub } from "./gui-client-scope.js";
+import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData

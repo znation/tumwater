@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { GUI_CLIENT_BOOT_JS } from "../src/ui/gui/gui-client-boot.js";
-import { clientScope, clientRegion, ESC_LINE } from "./gui-client-scope.js";
+import { clientScope, clientRegion, ESC_LINE } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Settings panel, browser-side (src/ui/gui/gui-client-settings.ts): the curated
 // keys rendered as one row per key with the current value in an inline field, and the Save

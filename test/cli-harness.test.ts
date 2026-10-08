@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
-import { spawnCli } from "./cli-harness.js";
+import { spawnCli } from "./helpers/cli-harness.js";
 import { sleep } from "./helpers/wait.js";
 
 // The spawn helper's readiness wait is the seam every live-CLI test leans on, so its deadline

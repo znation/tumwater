@@ -2,7 +2,7 @@ import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui/gui-client-drawer.js";
-import { clientRegion, ESC_LINE, iconStub } from "./gui-client-scope.js";
+import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui/gui-client-drawer.ts): the open/close
 // state machine over loops and backlog entries with its #loop/<role> hash

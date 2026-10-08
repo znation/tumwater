@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clientScope } from "./gui-client-scope.js";
+import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The dashboard's view routing (src/ui/gui/gui-client-boot.ts's view-routing region): the
 // #fragment-driven switchView/route pair the page's tabs, Back/Forward buttons, and

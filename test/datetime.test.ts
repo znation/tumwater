@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, pad2, reportWindow } from "../src/text/datetime.js";
-import { clockOf, dateOf } from "./oracles.js";
+import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-tick cell, daily-budget day stamps,

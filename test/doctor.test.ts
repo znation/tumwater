@@ -9,7 +9,7 @@ import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
-import { cli, cliWithEnv } from "./cli-harness.js";
+import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
 
 // Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order, header,

@@ -4,7 +4,7 @@ import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../src/roles/role-guidance.js";
-import { oneLine } from "./oracles.js";
+import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
 // telemetry, readme, clean, coverage, feature, bugfix, plan, steward) and the director's

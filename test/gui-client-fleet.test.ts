@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clientScope, iconStub } from "./gui-client-scope.js";
+import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's fleet-view backlog panel (src/ui/gui/gui-client-fleet.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies

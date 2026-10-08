@@ -10,7 +10,7 @@ import fs from "node:fs";
 import { renderStatus, renderStatusSpans } from "../src/ui/status-render.js";
 import { say } from "../src/cli/cli-output.js";
 import { sanitizeFrameLines } from "../src/ui/tui/tui-frame.js";
-import { attempt } from "./exit-capture.js";
+import { attempt } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";

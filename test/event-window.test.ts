@@ -6,7 +6,7 @@ import { readEventsSince, readWindowEvents } from "../src/events/event-window.js
 import { eventsLogPath } from "../src/paths.js";
 import { collectReport } from "../src/report/report-data.js";
 import { renderReportMarkdown } from "../src/report/report-render.js";
-import { atLocalTs as tsDaysAgo, dayKey } from "./oracles.js";
+import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 

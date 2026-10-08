@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fail, say, sayJson, sayJsonLine, sayJsonOrRender } from "../src/cli/cli-output.js";
 import { loadConfigSafe } from "../src/config/config.js";
-import { attempt } from "./exit-capture.js";
+import { attempt } from "./helpers/exit-capture.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 
 // cli/cli-output.ts's --json/human-text convention, driven in-process like

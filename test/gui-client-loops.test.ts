@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clientScope, iconStub } from "./gui-client-scope.js";
+import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's loops table, row by row (src/ui/gui/gui-client-loops.ts's loops-table region):
 // the status pill's second line (what the phase carried, when an idle loop wakes, the

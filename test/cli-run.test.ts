@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { armDeadlineTimer, guiChildPlan, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
-import { expectFail, expectOk } from "./exit-capture.js";
+import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
 import type { LoopState } from "../src/loop/loop-state.js";

@@ -7,10 +7,10 @@ import { tickEnd as endEvent, tickStart as startEvent } from "./fakes/log.js";
 import { initProject } from "../src/init/init.js";
 import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history/history-data.js";
 import { displayWidth } from "../src/text/text-width.js";
-import { expectedTimestamp } from "./oracles.js";
+import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 
 // The `history` command: the tickRows collector's pairing/filtering/bounding as unit cases,
 // plus CLI smoke runs over a seeded event log — the pattern test/cli-logs.test.ts uses.

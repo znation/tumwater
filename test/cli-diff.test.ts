@@ -6,7 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { commitIn, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli } from "./helpers/cli-harness.js";
 import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
 import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { allRoleIds } from "../src/roles/roles.js";

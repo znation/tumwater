@@ -7,7 +7,7 @@ import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { captureStdout } from "./exit-capture.js";
+import { captureStdout } from "./helpers/exit-capture.js";
 
 // The follow half of `tumwater logs` (`-f`) never returns — it polls until Ctrl+C — so the
 // end-to-end tests run it in a spawned child. That leaves the in-process coverage of both

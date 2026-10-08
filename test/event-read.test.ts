@@ -8,7 +8,7 @@ import {
   tickStartMap,
 } from "../src/events/event-read.js";
 import type { HarnessEvent } from "../src/events/events.js";
-import { dayKey as dayKeyOracle } from "./oracles.js";
+import { dayKey as dayKeyOracle } from "./helpers/oracles.js";
 
 // The read side's per-event query conventions — eventRole, eventUsage, eventDayKey, and the
 // tick_start↔tick_end pairing (tickStartMap/tickSpanMs) — are the rules the history rows, the

@@ -39,7 +39,7 @@ import { makeRepo, sh, tmpdir, worktreeAt, writeMalformedJson } from "./repo-fix
 import { errnoError } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { expectFailAsync, expectOkAsync as expectOk } from "./exit-capture.js";
+import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator/operator-intent.ts, with the

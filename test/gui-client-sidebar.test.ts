@@ -5,7 +5,7 @@
  * drifting from the header badge the same payload already carries. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clientScope, iconStub } from "./gui-client-scope.js";
+import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 
 function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<string, string> } {
   const panels: Record<string, string> = {};

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { buildTickPrompt } from "../src/prompt/prompt.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { oneLine } from "./oracles.js";
+import { oneLine } from "./helpers/oracles.js";
 
 // Prompt contract for the steward role (plans/steward-role.md): a markdown-only curation
 // role on a slow clock. Every tick is a fresh session with no memory of earlier curation

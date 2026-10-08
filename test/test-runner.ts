@@ -275,7 +275,7 @@ export function probeRealGit(timeoutMs: number = SUITE_XCRUN_TIMEOUT_MS): string
  *   the fake-pi tests ran the agent it named (BUGS.md 2026-09-28). Tests of the variable set it
  *   themselves; test/fakes/fake-pi.ts drops it too, for a file run directly with `node --test`.
  * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
- *   supervisor half. test/cli-harness.ts also drops it from every CLI child it starts.
+ *   supervisor half. test/helpers/cli-harness.ts also drops it from every CLI child it starts.
  * - TUMWATER_NOTES_PATH makes the bundled role-notes extension register the `role_notes` tool,
  *   so a non-authoring run that inherited a tick's notebook path would carry a tool the run's
  *   own contract says it must not have (test/loop-pi.test.ts pins the empty env line).

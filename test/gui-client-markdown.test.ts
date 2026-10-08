@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_MARKDOWN_JS } from "../src/ui/gui/gui-client-markdown.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
-import { clientScope } from "./gui-client-scope.js";
+import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Markdown renderer (src/ui/gui/gui-client-markdown.ts): it renders the loops'
 // Markdown (backlog bodies, the failure digest) browser-side, and everything it renders came

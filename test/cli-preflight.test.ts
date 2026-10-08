@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig } from "../src/config/config.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
-import { cliWithEnv } from "./cli-harness.js";
+import { cliWithEnv } from "./helpers/cli-harness.js";
 
 // run/status/init's startup-preflight child-process tests: each fails fast with a clear
 // message when a required binary (pi, git) is missing or unusable. Spawned via the CLI so

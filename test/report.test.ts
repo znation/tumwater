@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { collectReport, collectReportSince, type ReportData } from "../src/report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
-import { atLocalTs as at, dayKey, HOUR, ago } from "./oracles.js";
+import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
-import { cli, runCli } from "./cli-harness.js";
+import { cli, runCli } from "./helpers/cli-harness.js";
 
 // The usage collectors' unit tests (collectReport, collectReportSince) live in
 // test/report-data.test.ts; this file pins the Markdown renders and the `tumwater report`

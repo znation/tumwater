@@ -9,7 +9,7 @@ import {
   sortedRoles,
   truncateExample,
 } from "../src/failure/failure-cluster.js";
-import { hasLoneSurrogate } from "./oracles.js";
+import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // src/failure/failure-cluster.ts is the shared grouping engine behind the failure digest and the
 // error-storm reducer; both count by its normalized keys, so a wrong rule here silently

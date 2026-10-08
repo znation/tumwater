@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clipToWidth, displayWidth, padToWidth } from "../src/text/text-width.js";
-import { hasLoneSurrogate } from "./oracles.js";
+import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text-width.ts is the single home of terminal-column geometry — the wcwidth table and the
 // displayWidth/padToWidth/clipToWidth clippers every aligned table and TUI line relies on.

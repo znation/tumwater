@@ -11,14 +11,14 @@ import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { expectFailAsync, expectOkAsync as expectOk } from "./exit-capture.js";
+import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
 
 /** src/inbox/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process
  * coverage (only the store behind it, inbox.ts, was pinned directly), so its list render,
  * per-loop position numbering, cancel resolution, and enqueue confirmations are exercised
  * here against real queue files in a temp project root. cmdPrompt spawns no child process —
  * every branch reads or writes queue/marker files — so the exit-capture helpers' in-process
- * capture is safe for it (see test/exit-capture.ts's scope limit). */
+ * capture is safe for it (see test/helpers/exit-capture.ts's scope limit). */
 
 function makeRoot(): string {
   const root = tmpdir();
