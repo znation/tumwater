@@ -127,8 +127,21 @@ const FORMAT_JS = String.raw`  // format:start
     (Array.isArray(commits) ? commits : []).map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
   // human-seconds-fmt:start
   // Whole-second s/m/h/d label: <60 → Ns, <3600 → rounded Nm, <86400 → rounded Nh, else
-  // rounded Nd — badges.ts's humanSeconds, shared by every relative time on the page.
-  const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : sec < 86400 ? Math.round(sec / 3600) + "h" : Math.round(sec / 86400) + "d");
+  // rounded Nd — datetime.ts's humanSeconds, shared by every relative time on the page. A
+  // minute count that rounds to 60 rolls into the hour bucket and an hour count that rounds
+  // to 24 into the day bucket, so the label stays in the documented s/m/h/d set.
+  const humanSeconds = (sec) => {
+    if (sec < 60) return sec + "s";
+    if (sec < 3600) {
+      const minutes = Math.round(sec / 60);
+      if (minutes < 60) return minutes + "m";
+    }
+    if (sec < 86400) {
+      const hours = Math.round(sec / 3600);
+      if (hours < 24) return hours + "h";
+    }
+    return Math.round(sec / 86400) + "d";
+  };
   // human-seconds-fmt:end
   // active-phase-fmt:start
   // A PERMIT-HOLDING loop in flight — status-model.ts's isActivePhase: its phase starts with

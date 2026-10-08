@@ -116,8 +116,16 @@ export function dayWindow(days: number, now: Date): { from: string; to: string }
  * modules (which may not import src/ui) share the same bucketing too. */
 export function humanSeconds(s: number): string {
   if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  if (s < 3600) {
+    // A minute count that rounds up to 60 belongs to the hour bucket below, not a "60m" label.
+    const minutes = Math.round(s / 60);
+    if (minutes < 60) return `${minutes}m`;
+  }
+  if (s < 86400) {
+    // Likewise an hour count that rounds up to 24 belongs to the day bucket below.
+    const hours = Math.round(s / 3600);
+    if (hours < 24) return `${hours}h`;
+  }
   return `${Math.round(s / 86400)}d`;
 }
 

@@ -119,6 +119,9 @@ test("humanSeconds buckets sub-second-to-day spans compactly", () => {
   assert.equal(humanSeconds(90 * 86400), "90d", "days read days, not an hour count");
   // A day-plus-a-few-hours span rounds to whole days.
   assert.equal(humanSeconds(3 * 86400 + 2 * 3600), "3d");
+  // A rounding carry rolls into the next bucket instead of printing "60m" or "24h".
+  assert.equal(humanSeconds(3599), "1h", "59m59s rounds up into the hour bucket");
+  assert.equal(humanSeconds(86399), "1d", "23h59m59s rounds up into the day bucket");
 });
 
 test("elapsedSeconds ages an instant in clamped whole seconds", () => {
