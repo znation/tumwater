@@ -190,8 +190,8 @@ export interface TumwaterConfig {
    * override the harness; validateConfig rejects the collision. */
   piArgs: string[];
   /** Max pi runs in flight at once across all loops, landings included: every landing vet
-   * (rebased onto main, gate-checked, reviewed in its own `_land-<role>` worktree) holds one of
-   * these permits for its length, and a merge's conflict resolver one for its run, ahead of any
+   * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
+   * permits for its length, and a merge's conflict resolver one for its run, ahead of any
    * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
   maxConcurrent: number;
   /** Max vetted changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
