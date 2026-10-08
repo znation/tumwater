@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isJsonObject } from "../src/files/json-object.js";
+import { isJsonObject, stringList } from "../src/files/json-object.js";
 
 // src/files/json-object.ts is the one definition of "a JSON object at this position" for every consumer
 // that parses untrusted JSON — the state/marker/info files, the harness event log, pi's stdout
@@ -50,6 +50,22 @@ test("a nested empty object is still a JSON object", () => {
   // expected to hold fields but may be `{}`), so emptiness must not change the verdict.
   assert.equal(isJsonObject({}), true);
   assert.equal(isJsonObject(JSON.parse("{}")), true);
+});
+
+// stringList is the one home of the "an event/record field is the list or it is nothing" read.
+// Its job is to make the formatters safe: every returned element must be a string, so a
+// corrupt array-shaped field can never reach a `.join()` as "[object Object]" or a
+// truncateExample(...).trim() as an object.
+test("stringList keeps only the string entries of a mixed array", () => {
+  assert.deepEqual(stringList(["pi", { a: 1 }, "ink", 3, null, ["x"]]), ["pi", "ink"]);
+  assert.deepEqual(stringList([]), []);
+  assert.deepEqual(stringList(["b", "a", "b"]), ["b", "a", "b"], "order and duplicates are kept");
+});
+
+test("stringList reads a non-array field as the empty list", () => {
+  for (const value of [{ a: 1 }, null, undefined, "ink", 3, true]) {
+    assert.deepEqual(stringList(value), [], `${JSON.stringify(value)} is not a string list`);
+  }
 });
 
 test("non-plain host objects behave as the typeof check reads them", () => {

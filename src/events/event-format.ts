@@ -284,8 +284,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "disk_reclaim": {
       // Routine maintenance, no warning prefix: the pass freed space so the hold need not
       // engage. Naming the mode, the worktrees, and the delta tells the operator what and why.
-      const names = Array.isArray(e.worktrees) ? e.worktrees.join(", ") : "?";
-      return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} GB from ${names}; ${gigabytes(e.freeGB)} GB free now`;
+      const names = stringList(e.worktrees);
+      const from = names.length > 0 ? names.join(", ") : "?";
+      return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} GB from ${from}; ${gigabytes(e.freeGB)} GB free now`;
     }
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness

@@ -675,6 +675,18 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
     { ts: 0, loop: "harness", type: "budget_paused", fallbackDemoted: "free/model", failures: { a: 1 } } as never,
     { ts: 0, loop: "harness", type: "role_streak_paused", role: { a: 1 }, streak: { a: 1 } } as never,
     { ts: 0, loop: "harness", type: "model_fallback_started", provider: { a: 1 }, model: { a: 1 }, reason: { a: 1 } } as never,
+    // Array-valued fields can be corrupt too: stringList drops foreign entries, so a
+    // hand-edited packages/keys/reasons array never joins to "[object Object]".
+    { ts: 0, loop: "harness", type: "dep_install", packages: ["pi", { a: 1 }] } as never,
+    { ts: 0, loop: "harness", type: "config_changed", keys: ["maxConcurrent", { a: 1 }] } as never,
+    { ts: 0, loop: "feature", type: "review_rejected", head: "abcdef12", reasons: [{ a: 1 }, "bad"] } as never,
+    { ts: 0, loop: "harness", type: "disk_reclaim", worktrees: [{ a: 1 }, "wt-1"] } as never,
+    // rolesPhrase is the one reader behind three event-feed lines; a foreign entry is dropped
+    // there too, so none of them renders "[object Object]".
+    { ts: 0, loop: "harness", type: "counters_reset", roles: [{ a: 1 }, "feature"] } as never,
+    { ts: 0, loop: "harness", type: "budget_handback", roles: [{ a: 1 }, "feature"] } as never,
+    { ts: 0, loop: "harness", type: "rate_limit_hold", roles: [{ a: 1 }, "feature"] } as never,
+    { ts: 0, loop: "harness", type: "counters_reset", roles: [{ a: 1 }] } as never,
   ];
   for (const e of foreign) {
     const line = formatEvent(e);

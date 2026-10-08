@@ -1,5 +1,5 @@
 import path from "node:path";
-import { finiteNumber, isJsonObject } from "../files/json-object.js";
+import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { squash } from "./text.js";
 import { shortSha, usd } from "./format.js";
 
@@ -150,16 +150,17 @@ export const ORCHESTRATOR_STOPPED = "orchestrator stopped";
  * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-
  * change lines (src/failure/failure-state-change.ts, whose hold lines cap the list and slice each
  * role), so the two surfaces cannot disagree on how an absent or malformed roles field renders. A
- * non-array falls back to `fallback`; with `max`, extra roles are dropped from the tail; with
- * `format`, each role is rendered through it (the digest passes its byte-slicing field()). */
+ * non-array falls back to `fallback`, and a foreign entry inside the array is dropped the same way
+ * stringList drops one, so a hand-edited field never joins to "[object Object]"; with `max`, extra
+ * roles are dropped from the tail; with `format`, each role is rendered through it (the digest
+ * passes its byte-slicing field()). */
 export function rolesPhrase(
   roles: unknown,
   fallback: string,
   max?: number,
   format: (role: unknown) => string = String,
 ): string {
-  if (!Array.isArray(roles)) return fallback;
-  const list = roles.map(format);
+  const list = stringList(roles).map(format);
   if (max !== undefined) list.length = Math.min(list.length, max);
   return list.length > 0 ? list.join(", ") : fallback;
 }
