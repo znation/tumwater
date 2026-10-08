@@ -5,7 +5,7 @@ import path from "node:path";
 import { drainLandings } from "../src/landing/landing-drain.js";
 import { abortableLandings, landingTasks } from "../src/landing/landing-pipeline.js";
 import { queuedLandingFiles } from "../src/landing/landing-queue.js";
-import { landingRefName, landWorktreePath, slotsStatePath } from "../src/paths.js";
+import { landingRefName, slotsStatePath } from "../src/paths.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -262,7 +262,7 @@ test("a vet runs in a pooled slot (purpose vet while it works, no lease after) a
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to land");
     const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
     assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
-    assert.equal(fs.existsSync(landWorktreePath(root, role)), false, "no _land-<role> was created for the vet");
+    assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the vet");
     const during = JSON.parse(fs.readFileSync(path.join(flags, "during.json"), "utf8")) as {
       slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
     };

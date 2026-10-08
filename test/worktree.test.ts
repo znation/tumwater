@@ -7,6 +7,7 @@ import {
   abortSync,
   ensureDetachedWorktree,
   ensureWorktree,
+  removeLegacyLandWorktrees,
   resetWorktreeToMain,
 } from "../src/git/worktree.js";
 import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing/landing-git.js";
@@ -50,6 +51,28 @@ test("ensureDetachedWorktree clears a stale index.lock left by a killed git", as
   await ensureDetachedWorktree(repo, dir, head);
   assert.equal(fs.existsSync(lock), false, "the stale lock is gone");
   assert.equal(sh(dir, "git", "rev-parse", "HEAD"), head, "the re-point completed");
+});
+
+test("removeLegacyLandWorktrees removes _land-<role> checkouts and leaves the pool and roles alone", async () => {
+  const repo = makeRepo();
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const wt = (name: string) => path.join(repo, ".tumwater", "worktrees", name);
+  await ensureDetachedWorktree(repo, wt("_land-feature"), head);
+  await ensureDetachedWorktree(repo, wt("_land-qa"), head);
+  await ensureDetachedWorktree(repo, wt("_slot-1"), head);
+  const roleWt = await ensureWorktree(repo, "clean", "main");
+
+  await removeLegacyLandWorktrees(repo);
+
+  assert.equal(fs.existsSync(wt("_land-feature")), false, "the legacy lander checkout is gone");
+  assert.equal(fs.existsSync(wt("_land-qa")), false, "every legacy lander checkout is gone");
+  assert.ok(fs.existsSync(wt("_slot-1")), "the pool slot survives");
+  assert.ok(fs.existsSync(roleWt), "the role worktree survives");
+  assert.ok(!sh(repo, "git", "worktree", "list").includes("_land-"), "no legacy checkout remains registered");
+});
+
+test("removeLegacyLandWorktrees is a no-op when there is no worktrees dir yet", async () => {
+  await removeLegacyLandWorktrees(tmpdir()); // never throws on a fleet that has not started
 });
 
 test("ensureWorktree creates a persistent branch and reuses it", async () => {

@@ -2,9 +2,9 @@ import type { LoopRunner } from "../loop/loop.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { deleteRef, removeLandWorktree } from "../git/git.js";
+import { deleteRef } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome, type LandingUsage } from "./landing-slot.js";
-import { landingRefName, landWorktreePath, rejectedRefName } from "../paths.js";
+import { landingRefName, rejectedRefName } from "../paths.js";
 import type { AbortableLanding } from "../operator/operator-requests.js";
 import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
@@ -82,8 +82,8 @@ export interface LandingPipelineContext {
 }
 
 /** The scheduler's landing state across polls (land-queue speed 2c), in three parts:
- * - `vetting`: one task per queued change, in queue order, each in its own `_land-<role>`
- *   worktree — checkout, rebase onto main, gate check and review (vetRequest) — on a shared
+ * - `vetting`: one task per queued change, in queue order, each in a leased pooled slot —
+ *   checkout, rebase onto main, gate check and review (vetRequest) — on a shared
  *   permit (a vet still waiting for its permit is `parked`). Any verdict but an approval writes
  *   its outcome at once and frees its author.
  * - `vetted`: the approved changes waiting to merge, still queued.
@@ -157,8 +157,6 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
     } catch {
       /* already gone */
     }
-    // Terminal outcome: the pinned ref is gone and its disposable worktree may go too.
-    await removeLandWorktree(root, landWorktreePath(root, role));
   }
 }
 

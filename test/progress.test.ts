@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import {
   findSeedOffset,
   parseProgress,
@@ -8,7 +9,7 @@ import {
   stalledToolLabel,
   toolCallStallMs,
 } from "../src/ui/progress-data.js";
-import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
+import { piLogPath, worktreePath, worktreesDir } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { assistantLine, kindMarker } from "./pi-events.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -172,8 +173,9 @@ test("readLiveProgress accumulates appended lines across polls", () => {
 });
 
 // A role's log carries several pi run kinds — the authoring tick's run and the review gate's
-// runs (reviewer, conflict resolver) in the role's `_land-<role>` worktree — each with its
-// own `session` event (cwd names the worktree). A gate session must reset only the gate's
+// runs (reviewer, conflict resolver) in the role's pooled slot (legacy logs: its `_land-<role>`
+// lander worktree) — each with its own `session` event (cwd names the worktree). A gate session
+// must reset only the gate's
 // counts, never the working tick's (BUGS.md 2026-09-22: a landing's reviewer run reset the
 // author's cell to turn 1 mid-tick and its turns/ctx/tool described the wrong run).
 
@@ -184,7 +186,7 @@ test("a lander (gate) session mid-log does not reset the author run's counts", (
     type: "session",
     version: 3,
     id: "g",
-    cwd: landWorktreePath(root, "clean"),
+    cwd: path.join(worktreesDir(root), "_land-clean"),
   });
   writeLogLines(file, [
       SESSION,
@@ -209,7 +211,7 @@ test("the next author session resets only the author accumulator, and gate lines
     type: "session",
     version: 3,
     id: "g",
-    cwd: landWorktreePath(root, "clean"),
+    cwd: path.join(worktreesDir(root), "_land-clean"),
   });
   const authorSession = JSON.stringify({
     type: "session",
@@ -277,7 +279,7 @@ test("a kind-bearing marker demuxes by kind when author and gate runs share one 
 test("a review label line starts the gate accumulator fresh — the previous gate run's counts cannot bleed into the next review", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  const gateSession = JSON.stringify({ type: "session", version: 3, id: "g", cwd: landWorktreePath(root, "clean") });
+  const gateSession = JSON.stringify({ type: "session", version: 3, id: "g", cwd: path.join(worktreesDir(root), "_land-clean") });
   writeLogLines(file, [
       SESSION,
       assistantLine("author", { tokens: 100 }),

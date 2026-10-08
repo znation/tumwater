@@ -70,36 +70,6 @@ own relative imports and `import.meta.url` constants, which are depth-sensitive:
   files; `test/fake-commands.test.ts`'s relocated-tree import still fails loudly when
   `SCRIPT_SHIM` is absent.
 
-### Worktree pool, part 2d/5: remove the `_land-*` machinery and legacy checkouts (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2b/5 and 2c/5 landed)
-
-Design: plans/worktree-pool.md ("Vets and merges").
-
-**Context.** Once vets (2b/5) and merges (2c/5) no longer touch `_land-<role>`, the path
-helper, the removal helper and the startup leftovers can go. This is the dependent cleanup
-step: it lands only once those behavior changes are the running build.
-
-**Approach.**
-1. At orchestrator startup (src/orchestrator/orchestrator.ts) remove any legacy `_land-*`
-   worktree with a force `worktree remove` followed by a prune. They hold no state, and queued
-   landings re-vet from their pinned refs.
-2. Delete `landWorktreePath` (src/paths.ts) and `removeLandWorktree` (src/git/git.ts); update
-   their remaining importers.
-3. progress-data.ts's cwd fallback from part 1/5 builds the legacy `_land-<role>` path as a
-   local expression, so old logs still demultiplex.
-4. Update the remaining tests that import `landWorktreePath` or hard-code `_land-<role>`:
-   test/status-fixtures.ts, test/progress.test.ts, test/paths.test.ts and
-   test/doctor-orphans.test.ts.
-
-**Files touched.** src/orchestrator/orchestrator.ts, src/paths.ts, src/git/git.ts,
-src/ui/progress-data.ts. Tests: test/status-fixtures.ts, test/progress.test.ts,
-test/paths.test.ts, test/doctor-orphans.test.ts.
-
-**Acceptance criteria.**
-- `grep -rn "landWorktreePath\|removeLandWorktree" src` returns nothing.
-- Startup removes a pre-existing `_land-feature` directory.
-- The old-log progress demux still classifies a session whose cwd is `_land-<role>`.
-- `npm run test` green.
-
 ### Worktree pool, part 4a/5: a leased slot can be kept for its role's resume and pinned on release (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5 and 3/5 landed)
 
 Design: plans/worktree-pool.md ("Leases", "Role ticks lease slots").
@@ -389,6 +359,38 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 2d/5: remove the `_land-*` machinery and legacy checkouts (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2b/5 and 2c/5 landed; done 2026-10-07 by feature)
+
+Design: plans/worktree-pool.md ("Vets and merges").
+
+**What landed (2026-10-07).** `removeLegacyLandWorktrees` (src/git/worktree.ts) scans
+`.tumwater/worktrees` for `_land-*` directories, removes each through `removeWorktreeDir`
+(force `worktree remove`, with the shared dead-registration fallback), then prunes, and
+tolerates a missing worktrees dir; `runOrchestrator` (src/orchestrator/orchestrator.ts) calls it
+once at startup, after writing the info file and the start event, and before any tick. `landWorktreePath`
+(src/paths.ts) and `removeLandWorktree` (src/git/git.ts) are deleted. `discardPinnedRefs`
+(src/landing/landing-pipeline.ts) now only deletes the pinned ref — its `_land-<role>` worktree
+removal was stale, and a pooled slot's lease owns that release. `readLiveProgress`
+(src/ui/progress-data.ts) builds the legacy `_land-<role>` gate cwd locally from
+`worktreesDir(root)` + `node:path`, so old logs still demultiplex by cwd. Anchors the entry
+missed: it named src/landing/landing-pipeline.ts's stale reference only indirectly (2c/5 left
+it for this part), so that file is touched too, and the doctor-orphans fixture's arbitrary
+`_land-dry` path is renamed `_slot-1`. New coverage: test/worktree.test.ts for the helper
+(removes only `_land-*`, keeps a `_slot-<n>` and a role worktree; no-op with no worktrees dir)
+and test/orchestrator-once.test.ts for the startup call site.
+
+**Files touched.** src/orchestrator/orchestrator.ts, src/paths.ts, src/git/git.ts,
+src/git/worktree.ts, src/ui/progress-data.ts, src/landing/landing-pipeline.ts. Tests:
+test/status-fixtures.ts, test/progress.test.ts, test/paths.test.ts,
+test/doctor-orphans.test.ts, test/landing-drain-vetting.test.ts, test/worktree.test.ts,
+test/orchestrator-once.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn "landWorktreePath\|removeLandWorktree" src` returns nothing.
+- Startup removes a pre-existing `_land-feature` directory.
+- The old-log progress demux still classifies a session whose cwd is `_land-<role>`.
+- `npm run test` green.
 
 ### Worktree pool, part 2c/5: merge-side landing work uses one `_merge` checkout (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires part 2a/5 landed; done 2026-10-07 by feature)
 

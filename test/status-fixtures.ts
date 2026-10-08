@@ -3,21 +3,22 @@
  * their StatusSnapshots and logs from, plus the header-line extractor the badge suites read. Split out of status-render.test.ts when the status-model
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
+import path from "node:path";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
-import { landWorktreePath, piLogPath } from "../src/paths.js";
+import { piLogPath, worktreesDir } from "../src/paths.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { clockOf } from "./oracles.js";
 
 export const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
 /** A session event for a review-gate run: pi stamps the worktree it started in, and the
- * gate's runs start in the role's `_land-<role>` lander worktree — the discriminator the
- * live-progress reader keys on (BUGS.md 2026-09-22). */
+ * gate's legacy runs start in the role's `_land-<role>` lander worktree — the discriminator
+ * the live-progress reader keys a session with no kind marker on (BUGS.md 2026-09-22). */
 export const GATE_SESSION = (root: string, role: string) =>
-  JSON.stringify({ type: "session", version: 3, id: "x", cwd: landWorktreePath(root, role) });
+  JSON.stringify({ type: "session", version: 3, id: "x", cwd: path.join(worktreesDir(root), `_land-${role}`) });
 
 /** A rendered status table's header line (its first line) — what the badge suites assert
  * against, since every badge rides that line. renderStatus always emits the header, so the

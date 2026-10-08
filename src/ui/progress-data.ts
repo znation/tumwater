@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   applyToolExecutionEvent,
   parsePiEventLine,
@@ -9,13 +10,14 @@ import { bufferedCommandStallMs, commandBuffersOutput } from "../pi/command-shap
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
-import { landWorktreePath } from "../paths.js";
+import { worktreesDir } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../files/tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
  * the one `piLogPath` file — the authoring tick's run in its own worktree, and the review
- * gate's runs (reviewer, conflict resolver) in its `_land-<role>` lander worktree. Every run
+ * gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
+ * `_land-<role>` lander worktree). Every run
  * starts with the harness's `tumwater_run` marker (src/pi/pi.ts), written before pi spawns so
  * it precedes pi's first `session` event; a kind-bearing marker names the run's kind, and a
  * session no kind-bearing marker preceded falls back to the legacy `cwd` test (the worktree
@@ -351,7 +353,7 @@ export function readLiveProgress(root: string, role: string, kind: ProgressRunKi
     log.file,
     log.st,
     (size) => ({ fromOffset: findSeedOffset(log.file, size), value: freshRoleTail(quietMs) }),
-    (t, line) => feedDemuxed(t, line, landWorktreePath(root, role)),
+    (t, line) => feedDemuxed(t, line, path.join(worktreesDir(root), `_land-${role}`)),
   );
   const progress = tail[kind];
   progress.quietMs = quietMs;

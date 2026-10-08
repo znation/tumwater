@@ -293,14 +293,6 @@ export function witnessWorktreePath(root: string): string {
   return path.join(worktreesDir(root), "_build");
 }
 
-/** A role's lander worktree (src/landing/landing-core.ts): the detached checkout where its pinned
- * commit is reviewed and rebased onto main, outside the role's own worktree. One per role so two
- * roles' landings never wait on each other; the leading underscore follows the _main convention
- * above, so it can never collide with a role worktree (plans/merge-queue.md). */
-export function landWorktreePath(root: string, role: string): string {
-  return path.join(worktreesDir(root), `_land-${role}`);
-}
-
 /** One slot of the worktree pool (plans/worktree-pool.md): a fixed `.tumwater/worktrees/_slot-<n>`
  * checkout that ticks and vets lease and switch commits in place, instead of one `_land-<role>`
  * per role. The leading underscore keeps it from colliding with a role worktree. */

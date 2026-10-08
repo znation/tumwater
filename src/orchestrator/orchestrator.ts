@@ -15,6 +15,7 @@ import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs, plannedPlans } from "../backlog/backlog.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, currentBranch } from "../git/git.js";
+import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
@@ -170,6 +171,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     roles: enabled,
     ...(redeploy ? { build: redeploy.build.sha } : {}),
   });
+
+  // Legacy lander checkouts (`_land-<role>`) from a pre-pool build hold nothing now that vets
+  // and merges lease pooled slots: remove them once, before any tick, so the retired layout
+  // never lingers on disk. (After the info write and start event above, so startup's published
+  // state is on disk synchronously for an in-process test or a second `tumwater run` probe.)
+  await removeLegacyLandWorktrees(root);
 
   // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
   // startup prune, seeding the once-per-day gate so an unchanged fleet prunes at most once

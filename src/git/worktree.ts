@@ -4,7 +4,7 @@ import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
 import { branchExists, resolveGitDir } from "./git.js";
 import { pruneOldDirectory, removeTree } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
-import { branchName, worktreePath } from "../paths.js";
+import { branchName, worktreePath, worktreesDir } from "../paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
  * on every fresh tick) and the detached mirror worktree redeploy.ts verifies and compiles.
@@ -123,6 +123,26 @@ export async function removeWorktreeDir(root: string, dir: string): Promise<void
  * remover (removeWorktreeDir). */
 export async function removeWorktree(root: string, role: string): Promise<void> {
   await removeWorktreeDir(root, worktreePath(root, role));
+}
+
+/** Remove lander checkouts left by a pre-pool build (`_land-<role>`): the pool's ticks keep
+ * their commit on the role branch and a queued landing re-vets from its pinned ref, so the
+ * checkout holds nothing to keep. Called once at orchestrator startup, before any tick; each
+ * removal goes through removeWorktreeDir (force `worktree remove`, with the shared
+ * dead-registration fallback), then one prune registers the vanished checkouts. */
+export async function removeLegacyLandWorktrees(root: string): Promise<void> {
+  const dir = worktreesDir(root);
+  let names: string[];
+  try {
+    names = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith("_land-"))
+      .map((entry) => entry.name);
+  } catch {
+    return; // no worktrees dir yet (a fleet that has not started)
+  }
+  for (const name of names) await removeWorktreeDir(root, path.join(dir, name));
+  if (names.length > 0) await gitTry(root, "worktree", "prune");
 }
 
 /** Cheap file-existence shape probe for removeWorktreeDir: resolveGitDir needs the `.git` pointer,

@@ -9,7 +9,6 @@ import {
   eventsLogPath,
   inboxDir,
   landingRefName,
-  landWorktreePath,
   mergeLockDir,
   mergeWorktreePath,
   orchestratorStatePath,
@@ -71,7 +70,6 @@ test("pins the full runtime layout", () => {
   assert.equal(reviewSessionDir(ROOT, "qa"), path.join(S, "sessions", "_review", "qa"));
   assert.equal(inboxDir(ROOT), path.join(S, "inbox"));
   assert.equal(mergeLockDir(ROOT), path.join(S, "merge.lock"));
-  assert.equal(landWorktreePath(ROOT, "qa"), path.join(S, "worktrees", "_land-qa"));
   assert.equal(mergeWorktreePath(ROOT), path.join(S, "worktrees", "_merge"));
   assert.equal(slotWorktreePath(ROOT, 2), path.join(S, "worktrees", "_slot-2"));
 });
@@ -98,18 +96,16 @@ test("review sessions live outside the role's own session dir but inside the pru
   }
 });
 
-// The lander worktree's leading underscore (plans/merge-queue.md): it must never collide with
-// a role worktree — a role literally named "_land-x" is impossible today, but the convention is
-// what keeps the two namespaces apart if roles ever gain prefixes.
-test("a lander worktree and landing ref are unique per role and never collide with role paths", () => {
+// The landing ref's namespace (plans/merge-queue.md): one ref per role, and never equal to a
+// role's worktree path.
+test("a landing ref is unique per role and never collides with a role worktree path", () => {
   const ids = allRoleIds();
   const seen = new Map<string, string>();
   for (const id of ids) {
-    assert.notEqual(landWorktreePath(ROOT, id), worktreePath(ROOT, id), `role ${id} shares its lander worktree`);
-    for (const p of [landWorktreePath(ROOT, id), landingRefName(id)]) {
-      assert.ok(!seen.has(p), `role ${id} shares ${p} with role ${seen.get(p)}`);
-      seen.set(p, id);
-    }
+    const ref = landingRefName(id);
+    assert.notEqual(ref, worktreePath(ROOT, id), `role ${id} shares its landing ref with its worktree path`);
+    assert.ok(!seen.has(ref), `role ${id} shares ${ref} with role ${seen.get(ref)}`);
+    seen.set(ref, id);
   }
 });
 

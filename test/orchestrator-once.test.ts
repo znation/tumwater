@@ -12,7 +12,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { pauseRole } from "../src/fleet/fleet-state.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -32,6 +35,20 @@ test("once: an idle fleet exits on its own, ticks each role exactly once, and re
     assert.equal(exit.ticksRun?.get("dry"), 1, "dry ticked once in the round");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "clean's persisted state agrees with the round's count");
     assert.equal(loadLoopState(repo, "dry").ticks, 1, "dry's persisted state agrees with the round's count");
+  } finally {
+    restore();
+  }
+});
+
+test("once: startup removes a legacy _land-<role> checkout left by a pre-pool build", async () => {
+  const repo = await makeFastRepo("once legacy lander cleanup", ["clean"]);
+  const legacy = path.join(repo, ".tumwater", "worktrees", "_land-feature");
+  await ensureDetachedWorktree(repo, legacy, "main");
+  assert.ok(fs.existsSync(legacy), "the legacy checkout is seeded");
+  const restore = fakePiIdle();
+  try {
+    await onceRound(repo);
+    assert.equal(fs.existsSync(legacy), false, "startup removed the legacy lander checkout");
   } finally {
     restore();
   }

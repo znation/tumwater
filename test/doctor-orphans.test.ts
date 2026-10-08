@@ -212,8 +212,8 @@ test("checkOrphans degrades instead of crashing doctor: no table warns, unreadab
 
 test("checkOrphans itemizes at most eight orphans and trims each command, keeping the full count", async () => {
   const root = readyRepo();
-  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "_land-dry");
-  const long = `node ${root}/.tumwater/worktrees/_land-dry/dist/src/cli.js run --note ${"a".repeat(100)}`;
+  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "_slot-1");
+  const long = `node ${root}/.tumwater/worktrees/_slot-1/dist/src/cli.js run --note ${"a".repeat(100)}`;
   const rows = Array.from({ length: 10 }, (_, i) => ({ pid: 45355 + i, command: i === 0 ? long : "perl -e while(1){}" }));
   const { probe } = fakeProbe(rows, Object.fromEntries(rows.map((r) => [r.pid, wt])));
   const r = await checkOrphans(root, probe);
@@ -222,7 +222,7 @@ test("checkOrphans itemizes at most eight orphans and trims each command, keepin
   assert.equal(r.detail.match(/pid \d+ \(age/g)?.length, 8);
   assert.match(r.detail, /; and 2 more — nothing reaps these/);
   // The root is cut first, then the command is trimmed to 80 characters with an ellipsis.
-  const shown = `node .tumwater/worktrees/_land-dry/dist/src/cli.js run --note ${"a".repeat(100)}`.slice(0, 79);
+  const shown = `node .tumwater/worktrees/_slot-1/dist/src/cli.js run --note ${"a".repeat(100)}`.slice(0, 79);
   assert.ok(r.detail.includes(`) ${shown}…; pid 45356 `), r.detail);
 });
 
