@@ -27,12 +27,12 @@ export function validRoleIds(root: string): string[] {
 
 /** Validate one request's loop-targeting role against validRoleIds, sending the shared 400 on
  * a miss and reporting whether the request should stop: an absent id reads "role required
- * (valid ids: …)" — unless `allowMissing`, the wake endpoint's `{}` → all-roles default, which
- * only a truly absent `undefined` may ride; an explicit null is always rejected — and a
+ * (valid ids: …)" — unless `allowMissing`, the wake endpoint's `{}` → all-roles default,
+ * which only a truly absent `undefined` may ride; an explicit null is always rejected — and a
  * present-but-unknown one reads "unknown role X (valid ids: …)", with a "did you mean"
- * hint when the id is a string and a near miss of a valid one (text/suggest.ts's suggestClosest — the same
- * hint unknownRoleMessage arms the CLI's unknown-role errors with, so both surfaces
- * correct the same typos). /api/transcript and the
+ * hint when the id is a string and a near miss of a valid one (text/suggest.ts's typoSuffix
+ * — the same hint unknownRoleMessage arms the CLI's unknown-role errors with, so both
+ * surfaces correct the same typos). /api/transcript and the
  * wake/abort operator endpoints share it so their validation and 400 wording cannot drift. */
 export function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, allowMissing = false): boolean {
   // The all-roles default rides only a truly absent id — check it first, so the wake path
