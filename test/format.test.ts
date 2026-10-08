@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactTokens, shortSha, usd, usdCap } from "../src/text/format.js";
+import { compactTokens, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
 
 // format.ts is the single home of the number, money, and hash formats every display surface
 // (status table, event feed, usage report, commit trailers) renders through. These tests pin
@@ -42,6 +42,12 @@ test("shortSha abbreviates a hash to its first 8 characters", () => {
   for (const sha of [undefined, null, {}, NaN, Number.POSITIVE_INFINITY] as const) {
     assert.equal(shortSha(sha), "?", `corrupt sha ${String(sha)} must read ?`);
   }
+});
+
+test("formatGB renders one decimal and the unit", () => {
+  assert.equal(formatGB(8.2), "8.2 GB");
+  assert.equal(formatGB(30), "30.0 GB"); // whole values keep the decimal
+  assert.equal(formatGB(3.24), "3.2 GB"); // rounds to one decimal
 });
 
 test("usd always keeps two decimals; usdCap drops a whole-dollar .00", () => {

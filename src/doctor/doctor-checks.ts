@@ -32,7 +32,7 @@ import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage } from "../text/text.js";
-import { shortSha } from "../text/format.js";
+import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
 
 /** The doctor report contract and the environment/repo pre-flight checks, split out of
@@ -254,7 +254,7 @@ export function checkDiskSpace(
       detail: `cannot measure free space at ${where} (statfs failed) — the disk hold is off for this process`,
     };
   const freeGB = free / BYTES_PER_GB;
-  const freeText = `${freeGB.toFixed(1)} GB free at ${where}`;
+  const freeText = `${formatGB(freeGB)} free at ${where}`;
   if (holdGB > 0 && freeGB < holdGB)
     return {
       level: "fail",

@@ -2,6 +2,7 @@ import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
+import { formatGB } from "../text/format.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "./retire.js";
 import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
@@ -141,7 +142,7 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
     say("nothing to reclaim");
     return;
   }
-  say(`reclaimed ${result.worktrees.join(", ")} — freed ${result.freedGB.toFixed(1)} GB`);
+  say(`reclaimed ${result.worktrees.join(", ")} — freed ${formatGB(result.freedGB)}`);
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot

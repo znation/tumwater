@@ -50,3 +50,14 @@ export function usd(n: number): string {
 export function usdCap(n: number): string {
   return `$${n.toFixed(2).replace(/\.00$/, "")}`;
 }
+
+/** A disk size in GB for display: one decimal and the unit (`12.3 GB`) — the single home of
+ * the disk-size format shared by the event feed's disk lines (event-format.ts), the status
+ * header's disk badge (badges.ts's `diskBadge`), the fleet's low-disk alert (fleet-alerts.ts),
+ * the doctor's disk check detail (doctor-checks.ts), and `tumwater reclaim`'s freed-size line
+ * (operator-commands.ts), so the decimal width and unit cannot drift per consumer. A caller
+ * reading the value from an untrusted event field applies event-format.ts's `gigabytes`
+ * wrapper (finiteNumber's corrupt-field rule) over this. */
+export function formatGB(n: number): string {
+  return `${n.toFixed(1)} GB`;
+}

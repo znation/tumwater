@@ -4,7 +4,7 @@ import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from 
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { humanSeconds, pad2, secondsSince, secondsUntil } from "../text/datetime.js";
 import { pauseReasonSuffix } from "../text/phrases.js";
-import { shortSha, usd, usdCap } from "../text/format.js";
+import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
  * table (status-render.ts's renderStatus header) and the JSON/GUI payload
@@ -217,14 +217,14 @@ export function quietBadge(quietHours: string | undefined, inQuietHours: boolean
  * age (the same elapsed-seconds rule status-render.ts's own `ago` uses). */
 export function diskBadge(disk: StatusSnapshot["disk"], now = Date.now()): string {
   if (!disk) return "";
-  const free = `${disk.freeGB.toFixed(1)} GB free`;
+  const free = `${formatGB(disk.freeGB)} free`;
   const reading = disk.held
     ? ` · disk ${free} — holding new work`
     : disk.reclaimGB > 0 && disk.freeGB < disk.reclaimGB
       ? ` · disk ${free}`
       : "";
   const reclaim = disk.lastReclaim
-    ? ` · last reclaim freed ${disk.lastReclaim.freedGB.toFixed(1)} GB ${humanSeconds(secondsSince(disk.lastReclaim.at, now))} ago`
+    ? ` · last reclaim freed ${formatGB(disk.lastReclaim.freedGB)} ${humanSeconds(secondsSince(disk.lastReclaim.at, now))} ago`
     : "";
   return reading + reclaim;
 }

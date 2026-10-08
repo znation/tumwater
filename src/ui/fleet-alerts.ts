@@ -14,7 +14,7 @@ import { pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE } from "./tick-progress-model.js";
-import { usd, usdCap } from "../text/format.js";
+import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp } from "../text/datetime.js";
 
 /** Something that needs the operator — or that they should know — about the fleet as a whole,
@@ -98,7 +98,7 @@ export function fleetAlerts(
     out.push({
       key: "disk",
       tone: "amber",
-      title: `Disk space is low — the fleet is holding new work at ${snap.disk.freeGB.toFixed(1)} GB free`,
+      title: `Disk space is low — the fleet is holding new work at ${formatGB(snap.disk.freeGB)} free`,
       detail: `Free space is below the ${snap.disk.holdGB} GB floor. Build outputs are reclaimed first; new work starts again once space recovers.`,
       actions: [],
     });

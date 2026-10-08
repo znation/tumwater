@@ -1,7 +1,7 @@
 import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
-import { compactTokens, shortSha, usd } from "../text/format.js";
+import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { textOr } from "../text/text.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -41,12 +41,12 @@ function elapsed(ms: unknown): string {
   return ` (in ${shortSpanPhrase(n)})`;
 }
 
-/** A disk event's GB field as "12.3"-style text. A torn or hand-edited event whose value is
- * missing or non-numeric reads as "0.0", never "NaN" — the same corrupt-field rule budgetPhrase
- * applies to spentUsd/capUsd, since HarnessEvent's index signature hands every field over
- * unvalidated. */
+/** A disk event's GB field as "12.3 GB" text. A torn or hand-edited event whose value is
+ * missing or non-numeric reads as "0.0 GB", never "NaN" — the same corrupt-field rule
+ * budgetPhrase applies to spentUsd/capUsd, since HarnessEvent's index signature hands every
+ * field over unvalidated. The rounding and unit are text/format.ts's formatGB. */
 function gigabytes(v: unknown): string {
-  return finiteNumber(v, 0).toFixed(1);
+  return formatGB(finiteNumber(v, 0));
 }
 
 /** A duration in whole minutes. A torn or hand-edited value that is missing or non-numeric
@@ -286,15 +286,15 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the low disk, and naming the free space and the floor tells the operator
       // whether to clear space or lower diskHoldGB in tumwater.json.
-      return `disk low — ${gigabytes(e.freeGB)} GB free on the worktrees volume (floor ${gigabytes(e.holdGB)} GB); new work is held until space recovers`;
+      return `disk low — ${gigabytes(e.freeGB)} free on the worktrees volume (floor ${gigabytes(e.holdGB)}); new work is held until space recovers`;
     case "disk_ok":
-      return `disk recovered — ${gigabytes(e.freeGB)} GB free on the worktrees volume; new work starts again`;
+      return `disk recovered — ${gigabytes(e.freeGB)} free on the worktrees volume; new work starts again`;
     case "disk_reclaim": {
       // Routine maintenance, no warning prefix: the pass freed space so the hold need not
       // engage. Naming the mode, the worktrees, and the delta tells the operator what and why.
       const names = stringList(e.worktrees);
       const from = names.length > 0 ? names.join(", ") : "?";
-      return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} GB from ${from}; ${gigabytes(e.freeGB)} GB free now`;
+      return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} from ${from}; ${gigabytes(e.freeGB)} free now`;
     }
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
