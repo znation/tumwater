@@ -18,8 +18,7 @@ import { errorMessage } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
-import { ensureParentDir } from "../files/files.js";
-import { withSyncLock } from "../concurrency/lock.js";
+import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
@@ -67,9 +66,8 @@ const PER_KEY_VALIDATORS: Record<string, (value: unknown) => string | null> = {
  * is worse than a write that reports an error. */
 const CONFIG_LOCK_TIMEOUT_MS = 10_000;
 function withConfigLock<T>(root: string, fn: () => T): T {
-  const lock = configLockPath(root);
-  ensureParentDir(lock); // The state dir may not exist yet (a CLI write before any state file).
-  return withSyncLock(lock, fn, CONFIG_LOCK_TIMEOUT_MS);
+  // withStateLock creates the state dir the lock sits in (a CLI write may run before any state file).
+  return withStateLock(configLockPath(root), fn, CONFIG_LOCK_TIMEOUT_MS);
 }
 
 /** The one load → mutate → validate → atomic-write idiom every top-level config writer

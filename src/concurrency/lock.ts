@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pidAlive } from "../process/process.js";
 import { errorMessage, parsePositiveInt } from "../text/text.js";
-import { removeTree } from "../files/files.js";
+import { ensureParentDir, removeTree } from "../files/files.js";
 import { errCode } from "../errno.js";
 
 /** How old a lock dir must be before it is stale on age alone — regardless of whether its
@@ -225,4 +225,15 @@ export function withSyncLock<T>(dir: string, fn: () => T, timeoutMs = 10_000): T
   } finally {
     releaseOwnedLock(dir);
   }
+}
+
+/** The one way a state-file read-modify-write takes its cross-process lock: create the lock's
+ * parent directory first, then run `fn` under withSyncLock. The parent must exist because these
+ * locks sit under `.tumwater/state/`, which a first writer (a CLI command, a standalone
+ * dashboard) may reach before any state file has created it, and withSyncLock does not create
+ * its lock directory recursively. Single-homing the pair keeps the parent-dir requirement from
+ * being forgotten when a new state file adds a lock. */
+export function withStateLock<T>(lock: string, fn: () => T, timeoutMs = 10_000): T {
+  ensureParentDir(lock);
+  return withSyncLock(lock, fn, timeoutMs);
 }

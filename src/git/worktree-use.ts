@@ -11,8 +11,7 @@
 
 import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { ensureParentDir } from "../files/files.js";
-import { withSyncLock } from "../concurrency/lock.js";
+import { withStateLock } from "../concurrency/lock.js";
 import { worktreeUseLockPath, worktreeUsePath } from "../paths.js";
 
 /** One worktree's durable record, keyed by its directory basename inside `worktreesDir`. */
@@ -59,13 +58,11 @@ export function readWorktreeUse(root: string): WorktreeUseRegistry {
   return readJsonFile<WorktreeUseRegistry>(worktreeUsePath(root)) ?? {};
 }
 
-/** Run `fn` holding the cross-process worktree-use lock. The parent is created first: a CLI
- * `tumwater reclaim` may write the registry before any state write has made
- * `.tumwater/state/`, and withSyncLock's lock directory is not created recursively. */
+/** Run `fn` holding the cross-process worktree-use lock. withStateLock creates the
+ * `.tumwater/state/` parent first, since a CLI `tumwater reclaim` may write the registry
+ * before any state write has made it. */
 function withWorktreeUseLock<T>(root: string, fn: () => T): T {
-  const lock = worktreeUseLockPath(root);
-  ensureParentDir(lock);
-  return withSyncLock(lock, fn);
+  return withStateLock(worktreeUseLockPath(root), fn);
 }
 
 /** Read-modify-write the durable registry under the worktree-use lock: the one way a writer

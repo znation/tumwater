@@ -4,13 +4,12 @@
  * run in OTHER processes — `tumwater diff` (and the GUI's `/api/diff`) and `retire` — can resolve
  * a role's checkout from slots.json without importing the orchestrator's pool.
  *
- * Every read-modify-write goes through withSyncLock on the lock beside the file, because `retire`
+ * Every read-modify-write goes through withStateLock on the lock beside the file, because `retire`
  * writes it from the CLI process while the orchestrator may be leasing from its own. */
 
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
-import { ensureParentDir } from "../files/files.js";
-import { withSyncLock } from "../concurrency/lock.js";
+import { withStateLock } from "../concurrency/lock.js";
 import { slotsLockPath, slotsStatePath, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "./worktree.js";
 
@@ -38,13 +37,10 @@ interface SlotsState {
   slots: SlotRecord[];
 }
 
-/** Run `fn` holding the cross-process slots lock. The parent is created first: a reader or
- * `retire` may run before any state write has made `.tumwater/state/`, and withSyncLock's
- * lock directory is not created recursively. */
+/** Run `fn` holding the cross-process slots lock. withStateLock creates the `.tumwater/state/`
+ * parent first, since a reader or `retire` may run before any state write has made it. */
 function withSlotsLock<T>(root: string, fn: () => T): T {
-  const lock = slotsLockPath(root);
-  ensureParentDir(lock);
-  return withSyncLock(lock, fn);
+  return withStateLock(slotsLockPath(root), fn);
 }
 
 /** The pool layout, or an empty one when the file is missing or unreadable. Each entry must

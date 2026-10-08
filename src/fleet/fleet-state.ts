@@ -2,9 +2,9 @@ import fs from "node:fs";
 import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { ensureParentDir, removeQuiet } from "../files/files.js";
+import { removeQuiet } from "../files/files.js";
 import { pidAlive } from "../process/process.js";
-import { withSyncLock } from "../concurrency/lock.js";
+import { withStateLock } from "../concurrency/lock.js";
 import { truncate } from "../text/text.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
 
@@ -163,7 +163,7 @@ export function pausedRoles(root: string): string[] {
  * (the CLI's pause/resume --role and the dashboard's per-row toggle are separate processes),
  * and writeJsonAtomic's last-writer-wins policy — correct for overwrite-style state — silently
  * drops one caller's pause when two whole-set writes race. These writers therefore serialize
- * through withSyncLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge path uses,
+ * through withStateLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge path uses,
  * so the crash-recovery rules (dead pid, no-pid grace, age) and the ownership-checked release are
  * the tested ones rather than a second hand-rolled lockfile protocol. A lock that cannot be
  * acquired within PAUSED_ROLES_LOCK_TIMEOUT_MS throws rather than writing unlocked — a pause
@@ -174,9 +174,8 @@ const PAUSED_ROLES_LOCK_TIMEOUT_MS = 10_000;
 
 /** Run `fn` while holding the exclusive cross-process lock on the paused-roles marker. */
 function withPausedRolesLock<T>(root: string, fn: () => T): T {
-  const lock = pausedRolesLockPath(root);
-  ensureParentDir(lock); // pause/resume may run before any marker write has made the state dir.
-  return withSyncLock(lock, fn, PAUSED_ROLES_LOCK_TIMEOUT_MS);
+  // withStateLock creates the state dir the lock sits in (pause/resume may run before any marker write).
+  return withStateLock(pausedRolesLockPath(root), fn, PAUSED_ROLES_LOCK_TIMEOUT_MS);
 }
 
 /** The paused-roles marker's standing shared deadline, read raw so the rewrite paths can carry
