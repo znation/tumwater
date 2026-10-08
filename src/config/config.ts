@@ -12,8 +12,9 @@ import { validateConfig } from "./config-validation.js";
 /** Read and parse one of the config JSON files, phrasing a parse failure as
  * `<basename> is not valid JSON: <reason>` — the one wording every consumer of these files
  * surfaces (loadConfig throws it, config-example.ts's exampleConfigProblem returns it,
- * seedConfig/exampleDrift fall back on it). `problem` is set exactly when parsing failed; `raw` is the parsed value
- * otherwise (never null on failure paths, so callers need no separate existence check). */
+ * seedConfig/exampleDrift fall back on it). `problem` is set exactly when parsing failed;
+ * `raw` is the parsed value otherwise (never null on failure paths, so callers need no
+ * separate existence check). */
 export function parseJsonConfig(
   file: string,
   basename: string,
