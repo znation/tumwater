@@ -51,6 +51,14 @@ export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: s
  * (BUGS.md: a landing build check that times out must not merge unverified). */
 export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
 
+/** Format a millisecond measurement as seconds to one decimal place (`712.4`), the
+ * granularity the timeout/sleep wording needs to name a wall-clock time without dragging in
+ * sub-second noise. The one home of that format in this module: timedOutPhrase uses it for
+ * both the elapsed time and the lateness it names, and sleptPhrase for the measured sleep. */
+function oneDecimalSeconds(ms: number): number {
+  return Math.round(ms / 100) / 10;
+}
+
 /** How a timed-out check is described: "timed out after <bound>s" when the deadline fired on
  * time, and otherwise the wall-clock time it actually fired at, with the configured bound and
  * the lateness beside it — so no warning or reject reason claims a bound the run did not keep
@@ -62,9 +70,9 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
   const bound = run?.timeoutMs ?? timeoutMs;
   const late = run?.deadlineLateMs ?? 0;
   if (late <= DEADLINE_LATE_TOLERANCE_MS) return `timed out after ${bound / 1000}s`;
-  const secs = (ms: number) => Math.round(ms / 100) / 10;
   return (
-    `timed out after ${secs(bound + late)}s (its ${bound / 1000}s deadline fired ${secs(late)}s ` +
+    `timed out after ${oneDecimalSeconds(bound + late)}s (its ${bound / 1000}s deadline fired ` +
+    `${oneDecimalSeconds(late)}s ` +
     "late: the host was asleep or the harness stalled)"
   );
 }
@@ -90,8 +98,7 @@ export function killedPhrase(
  * same sleep identically. The measured amount is the run's own sleptMs (host-sleep.ts); it is
  * what makes this a statement about the host rather than a guess at one. */
 export function sleptPhrase(label: string, sleptMs: number, proceeding: string): string {
-  const secs = Math.round(sleptMs / 100) / 10;
-  return `${label} ran while the host slept ${secs}s mid-run; ${proceeding}`;
+  return `${label} ran while the host slept ${oneDecimalSeconds(sleptMs)}s mid-run; ${proceeding}`;
 }
 
 /** The `the dependency install (<pkgs>) failed[: <detail>]; skipping <label>; <proceeding>`
