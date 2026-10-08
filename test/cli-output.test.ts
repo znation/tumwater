@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { say, sayJson, sayJsonLine, sayJsonOrRender } from "../src/cli/cli-output.js";
+import { fail, say, sayJson, sayJsonLine, sayJsonOrRender } from "../src/cli/cli-output.js";
+import { loadConfigSafe } from "../src/config/config.js";
 import { attempt } from "./exit-capture.js";
+import { tmpdir, writeConfig } from "./repo-fixtures.js";
 
 // cli/cli-output.ts's --json/human-text convention, driven in-process like
 // test/cli-args.test.ts drives the parsers, so both output branches and the
@@ -31,6 +33,28 @@ test("sayJson and sayJsonLine write raw JSON, bypassing say's sanitization", () 
   assert.ok(pretty.stdout.includes("\u0085"));
   const line = attempt(() => sayJsonLine("a\u007fb"));
   assert.equal(line.stdout, '"a\u007fb"\n');
+});
+
+test("fail strips terminal control characters from the CLI's error line", () => {
+  // fail() is say()'s stderr twin: a bad config value reaches it through validateConfig's
+  // message, so the same terminal boundary must strip controls here too.
+  const out = attempt(() => fail("boom \u009b2J\u007f end"));
+  assert.equal(out.exited, true);
+  assert.equal(out.code, 1);
+  assert.equal(out.stderr, "tumwater: boom 2J end\n");
+});
+
+test("a C1 control in tumwater.json reaches fail() as a validation message and is stripped", () => {
+  const dir = tmpdir();
+  writeConfig(dir, { notify: { embedded: "\u009b2J" } });
+  const { error } = loadConfigSafe(dir);
+  assert.ok(error, "a non-string notify is rejected");
+  // JSON.stringify escapes C0 but not DEL/C1, so the raw byte survives into the message —
+  // exactly the shape fail() must not write unsanitized to the operator's terminal.
+  assert.ok(error.includes("\u009b"), "the raw C1 survives into the validation message");
+  const out = attempt(() => fail(error));
+  assert.equal(out.exited, true);
+  assert.ok(!out.stderr.includes("\u009b"), "fail stripped the C1 before writing stderr");
 });
 
 test("sayJsonOrRender runs a payload thunk exactly once, inside the branch that consumes it", () => {

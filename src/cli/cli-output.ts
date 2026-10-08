@@ -56,8 +56,12 @@ export function sayJsonOrRender<T>(args: string[], payload: T | (() => T), rende
 
 /** The single uniform failure exit for CLI flag/argument validation and command preflight:
  * write a `tumwater: <message>` line to stderr and exit 1. Declared `never` because every
- * caller relies on it stopping execution — code after a fail() call is unreachable. */
+ * caller relies on it stopping execution — code after a fail() call is unreachable. Like
+ * say(), this is a terminal boundary: the message is stripped of terminal control characters,
+ * because a validation error echoes values from tumwater.json (validateConfig through
+ * loadConfigSafe), and JSON.stringify escapes C0 but not DEL/C1 — a config value carrying a
+ * raw C1 sequence would otherwise reach the operator's terminal as-is. */
 export function fail(message: string): never {
-  process.stderr.write(`tumwater: ${message}\n`);
+  process.stderr.write(`tumwater: ${stripTerminalControls(message)}\n`);
   process.exit(1);
 }
