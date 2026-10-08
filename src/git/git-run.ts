@@ -7,7 +7,7 @@ import { spawn, spawnSync, type PromiseWithChild } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { findOnPath } from "../files/files.js";
-import { EXEC_MAX_BUFFER, signalTree } from "../process/process.js";
+import { EXEC_MAX_BUFFER, releaseChildHandles, signalTree } from "../process/process.js";
 import { KILL_GRACE_MS, armGroupDeadline } from "../process/process-group.js";
 import { errorMessage } from "../text/text.js";
 
@@ -163,12 +163,9 @@ export function execGitBounded(
       settled = true;
       deadline.dispose();
       if (err) {
-        // The child is being killed or could not start; the output handles must not keep the
-        // harness's handles, or a descendant that escaped the group, alive once the caller has
-        // its answer.
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        child.unref();
+        // The child is being killed or could not start; release its handles so a descendant
+        // that escaped the group cannot keep the harness alive once the caller has its answer.
+        releaseChildHandles(child);
         reject(err);
       } else {
         resolve({ stdout, stderr });

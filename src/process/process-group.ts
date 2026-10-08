@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 // result carries the caller's run record (BuildCheckRun), and no runtime cycle is created —
 // build/build-check.ts imports this module's runtime values, this file imports only the type.
 import type { BuildCheckRun } from "../build/build-check.js";
-import { signalTree, withoutLaunchServicesCheckIn } from "./process.js";
+import { releaseChildHandles, signalTree, withoutLaunchServicesCheckIn } from "./process.js";
 import { errCode } from "../errno.js";
 
 /** The detached process-group runner: runScriptGroup starts a command in its own process
@@ -193,12 +193,9 @@ export function runScriptGroup(
       deadline.dispose();
       const timedOut = deadline.fired();
       if (timedOut) {
-        // Nothing more is read once the deadline has fired: a pipe holder that escaped the
-        // group (a setsid'd daemon) must not keep the harness's handles, or the harness
-        // itself, alive.
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        child.unref();
+        // Nothing more is read once the deadline has fired: release the handles so a pipe
+        // holder that escaped the group (a setsid'd daemon) cannot keep the harness alive.
+        releaseChildHandles(child);
       }
       const run: BuildCheckRun = { spawnedAt, settledAt: Date.now(), timeoutMs: opts.timeoutMs };
       if (timedOut) run.deadlineLateMs = deadline.lateMs();

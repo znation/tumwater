@@ -104,6 +104,19 @@ export function signalTree(child: ChildProcess, signal: NodeJS.Signals): boolean
   }
 }
 
+/** Release the harness's handles on a child whose pipes will never be read again: destroy the
+ * captured stdout/stderr streams and unref the process handle. A descendant that escaped the
+ * child's process group and inherited the pipe's write end keeps the stream — and through it
+ * the harness's event loop — alive even though the caller already has its answer, the normal
+ * case once a child fails to spawn or is killed at its deadline while a setsid'd grandchild
+ * lives on. Shared by runGit's failure finisher (git/git-run.ts) and runScriptGroup's timeout
+ * finisher (process-group.ts). */
+export function releaseChildHandles(child: ChildProcess): void {
+  child.stdout?.destroy();
+  child.stderr?.destroy();
+  child.unref();
+}
+
 // ── LaunchServices check-ins (macOS) ──────────────────────────────────────────────────────
 
 /** The NODE_OPTIONS entry that keeps a Node process from checking in with LaunchServices. On
