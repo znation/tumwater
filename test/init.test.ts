@@ -37,6 +37,37 @@ test("initProject works on a repo with no commits", async () => {
   assert.equal(sh(dir, "git", "log", "--oneline").split("\n").length, 1);
 });
 
+test("initProject leaves no half-written file when a seeded write dies mid-way", async () => {
+  const repo = makeRepo();
+  const readme = path.join(repo, "README.md");
+  const tmp = `${readme}.tmp-${process.pid}`;
+  const real = fs.writeFileSync.bind(fs);
+  let injected = false;
+  // Inject the fault at the file-write boundary: a process killed after a partial write. The
+  // old direct writeFileSync tore README.md itself; the atomic writer means the only torn file
+  // is the temp one, which the failure path removes and a re-run never mistakes for complete.
+  (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = ((
+    file: fs.PathOrFileDescriptor,
+    data: string | NodeJS.ArrayBufferView,
+    ...rest: unknown[]
+  ) => {
+    if (!injected && typeof data === "string" && data.includes(PROMPT_START)) {
+      injected = true;
+      real(file as never, data.slice(0, 40) as never, ...(rest as []));
+      throw new Error("killed mid-write");
+    }
+    return real(file as never, data as never, ...(rest as []));
+  }) as typeof fs.writeFileSync;
+  try {
+    await assert.rejects(initProject(repo, "Build a todo CLI."), /killed mid-write/);
+  } finally {
+    (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = real as typeof fs.writeFileSync;
+  }
+  assert.equal(injected, true);
+  assert.equal(fs.existsSync(readme), false);
+  assert.equal(fs.existsSync(tmp), false);
+});
+
 test("initProject seeds PRINCIPLES.md with positive starter principles", async () => {
   const repo = makeRepo();
   await initProject(repo, "prompt");

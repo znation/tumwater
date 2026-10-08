@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../config/config.js";
 import { seedConfig } from "../config/config-example.js";
-import { findOnPath } from "../files/files.js";
+import { findOnPath, writeTextAtomic } from "../files/files.js";
 import { COMMIT_IDENT, GIT_MISSING_MESSAGE, git, gitTry } from "../git/git-run.js";
 import { hasCommits, isGitRepo } from "../git/git.js";
 import {
@@ -41,7 +41,7 @@ function ensureGitignore(root: string, dryRun = false): boolean {
   const missing = wanted.filter((e) => !lines.some((l) => l === e || l === e.replace(/\/$/, "")));
   if (missing.length === 0) return false;
   if (dryRun) return true;
-  fs.writeFileSync(
+  writeTextAtomic(
     file,
     existing + (existing && !existing.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n",
   );
@@ -214,8 +214,12 @@ export async function initProject(
     if (!dryRun) make();
     created.push(name);
   };
+  // Atomic (writeTextAtomic's tmp + rename), like every other writer of a tracked file: a
+  // process killed mid-write must leave no partial README/PLANS/BUGS/QUESTIONS/PRINCIPLES,
+  // because claim's existsSync would then treat the torn file as complete on a re-run and
+  // never repair it.
   const write = (name: string, content: string) =>
-    claim(name, path.join(root, name), () => fs.writeFileSync(path.join(root, name), content));
+    claim(name, path.join(root, name), () => writeTextAtomic(path.join(root, name), content));
 
   // README.md is the brief only when none exists yet and there is no README to adopt (a fresh
   // repo): with TUMWATER.md owning the managed sections, a created README.md would carry a
