@@ -68,8 +68,8 @@ export function clipBuildTail(output: string): string[] {
  * to print. Only framing is skipped — an assertion diff,
  * a compiler error and a bare "1) test name" all read as the headline they are. Lives beside
  * clipBuildTail, whose output it interprets, so every consumer of a check's tail — the red-main
- * gate (main-red.ts) and the review gate (review.ts) — shares one "which line is the
- * headline" answer. node:test's spec reporter ends a failing run with its summary block
+ * gate (main-red.ts) and the review gate's pre-check (review-precheck.ts) — shares one "which
+ * line is the headline" answer. node:test's spec reporter ends a failing run with its summary block
  * (`ℹ pass 0`, `ℹ todo 0`, `ℹ duration_ms …`) followed by the `✖ failing tests:` detail
  * (a bare `test at <file>:<line>` marker, then the failure's own message); when both fit in
  * the ten-line window the first non-frame line was a summary counter, and the headline named
