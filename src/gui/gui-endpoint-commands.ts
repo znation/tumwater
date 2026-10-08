@@ -3,9 +3,9 @@
  * prompt-role, prompt-cancel, budget, config-set, pause, wake, restart, abort, pause-role —
  * everything that writes state or queues work — plus the shared request-body helpers
  * (readPostBody, readRoleBody, checkedPromptImages, checkedPromptFields) each mutating handler
- * guards its inputs with. The GET data endpoints (transcript, backlog, report, failures, history, tick, config)
- * stay in gui/gui-endpoints.ts; each handler answers its request and touches no socket beyond its
- * own `res`,
+ * guards its inputs with. The GET data endpoints (transcript, backlog, report, failures, history,
+ * tick, diff, config) stay in gui/gui-endpoints.ts; each handler answers its request and touches
+ * no socket beyond its own `res`,
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
