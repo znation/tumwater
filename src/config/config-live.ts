@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, enabledRoleIds, loadConfigCached } from "./config.js";
 import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEvent, type HarnessEventInput } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
@@ -57,6 +57,22 @@ export function newLiveConfigReload(deps: {
   // exactly one event per distinct value — not once per poll.
   let lastMaxConcurrent = Math.max(1, deps.config.maxConcurrent);
 
+  // Best-effort event logging: poll() runs inside the orchestrator's poll loop
+  // (src/orchestrator/orchestrator.ts), which has no catch, so an unwritable feed (ENOSPC,
+  // EACCES, the path replaced by a directory) would otherwise end the fleet — and, worse, skip
+  // the config application that follows the emission. The feed is the failure; the reload still
+  // happens, the same "logging must not throw" policy the abort-request consumer
+  // (operator-requests.ts's warnFailure) and the dashboard server (gui-server.ts's
+  // recordServerError) apply.
+  const emit = (event: HarnessEventInput): void => {
+    try {
+      logEvent(deps.root, event);
+    } catch {
+      // The event feed is the failure; the reload below must still run.
+    }
+  };
+  const warn = (message: string): void => emit({ loop: "harness", type: "warning", message });
+
   return {
     poll() {
       const reloaded = loadConfigCached(deps.root);
@@ -68,12 +84,12 @@ export function newLiveConfigReload(deps: {
       // retained config — so config_changed names only what the returned file really changed.
       if (reloaded.missing) {
         if (!configMissing) {
-          warnEvent(deps.root, "harness", `tumwater.json missing — keeping current config until it returns (${configPath(deps.root)})`);
+          warn(`tumwater.json missing — keeping current config until it returns (${configPath(deps.root)})`);
           configMissing = true;
           lastConfigError = null; // Whatever state it returns in is stated afresh.
         }
       } else if (configMissing) {
-        warnEvent(deps.root, "harness", "tumwater.json reappeared — reloading it");
+        warn("tumwater.json reappeared — reloading it");
         configMissing = false;
       }
       if (reloaded.config) {
@@ -83,7 +99,7 @@ export function newLiveConfigReload(deps: {
         // changed (maxConcurrent and sessionRetentionDays have their own events elsewhere).
         const changedKeys = changedConfigKeys(prevLive, reloaded.config);
         if (changedKeys.length > 0) {
-          logEvent(deps.root, { loop: "harness", type: "config_changed", keys: changedKeys });
+          emit({ loop: "harness", type: "config_changed", keys: changedKeys });
           // A real model-wiring change gets its own event naming the new selector(s), which the
           // key list cannot show; a non-model edit (instructions, an interval) emits nothing.
           const fromModel = fleetModelLabel(prevLive);
@@ -98,7 +114,7 @@ export function newLiveConfigReload(deps: {
             })
             .filter((d) => d.from !== d.to);
           if (fromModel !== toModel || roleDiffs.length > 0)
-            logEvent(deps.root, {
+            emit({
               loop: "harness",
               type: "model_changed",
               from: fromModel,
@@ -114,7 +130,7 @@ export function newLiveConfigReload(deps: {
         const newMaxConcurrent = Math.max(1, reloaded.config.maxConcurrent);
         if (newMaxConcurrent !== lastMaxConcurrent) {
           deps.semaphore.setCapacity(newMaxConcurrent);
-          logEvent(deps.root, { loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
+          emit({ loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
           lastMaxConcurrent = newMaxConcurrent;
         }
         const nowEnabled = enabledRoleIds(reloaded.config);
@@ -128,14 +144,14 @@ export function newLiveConfigReload(deps: {
         }
         for (const role of prevEnabled)
           if (!nowEnabled.includes(role))
-            warnEvent(deps.root, "harness", `role ${role} disabled — stopping ticks`);
+            warn(`role ${role} disabled — stopping ticks`);
         for (const role of nowEnabled)
           if (!prevEnabled.has(role))
-            warnEvent(deps.root, "harness", `role ${role} enabled — starting ticks`);
+            warn(`role ${role} enabled — starting ticks`);
         prevEnabled = new Set(nowEnabled);
         lastConfigError = null;
       } else if (reloaded.error && reloaded.error !== lastConfigError) {
-        warnEvent(deps.root, "harness", `tumwater.json invalid — keeping current config: ${reloaded.error}`);
+        warn(`tumwater.json invalid — keeping current config: ${reloaded.error}`);
         lastConfigError = reloaded.error;
       }
       return live;

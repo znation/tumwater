@@ -6,6 +6,7 @@ import { newLiveConfigReload } from "../src/config/config-live.js";
 import { readEvents } from "../src/events/event-read.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
+import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -209,6 +210,19 @@ test("a broken tumwater.json keeps the last-known-good config and warns once per
   fs.writeFileSync(`${root}/tumwater.json`, JSON.stringify({ model: 42 }));
   assert.deepEqual(live.poll(), config);
   assert.equal(invalid().length, 2);
+});
+
+test("a broken tumwater.json still reloads when the event log is unwritable", () => {
+  const config = defaultConfig();
+  const { root, live } = liveReload(config);
+  live.poll();
+  // events.jsonl as a directory makes every logEvent/warnEvent append throw (EISDIR). The
+  // invalid-config warning must not take the fleet down with it: poll() is called from the
+  // orchestrator's poll loop, which has no catch.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  fs.writeFileSync(`${root}/tumwater.json`, "{not json");
+  assert.doesNotThrow(() => live.poll());
+  assert.deepEqual(live.poll(), config);
 });
 
 test("enabling a role mid-run appends a runner; disabling one warns that its ticks stop", () => {
