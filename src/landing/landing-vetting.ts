@@ -49,10 +49,11 @@ function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
 }
 
 /** Drop a torn queue head. A torn head (torn or foreign — a partial write an older build left,
- * a hand-placed file) makes headLanding read null forever — nothing else drops it, stranding every live entry
- * behind it and pinning their authors' ticks via the interlock. Drop it with one warning; the
- * healthy entries behind it are vetted in the same poll. The crashed entry's commit, if any,
- * still rides its landing ref into next-tick leftover recovery (BUGS.md 2026-09-17). */
+ * a hand-placed file) makes headLanding read null forever — nothing else drops it, stranding
+ * every live entry behind it and pinning their authors' ticks via the interlock. Drop it with
+ * one warning; the healthy entries behind it are vetted in the same poll. The crashed
+ * entry's commit, if any, still rides its landing ref into next-tick leftover recovery
+ * (BUGS.md 2026-09-17). */
 function dropTornHead(root: string): void {
   const stale = staleHeadFile(root);
   if (!stale) return;

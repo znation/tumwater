@@ -167,10 +167,10 @@ export function headLanding(root: string): { entry: LandingEntry; file: string }
 }
 
 /** The oldest queue file when the queue is non-empty but its head is unreadable — torn or
- * foreign (a partial write an older build left, a hand-placed file) — i.e. when headLanding reads null while
- * the queue holds files; null when the queue is empty or its head is healthy. The drain
- * drops this file with a warning so the queue can drain: headLanding reads null for it
- * forever and nothing else will remove it, stranding every live entry behind it (each
+ * foreign (a partial write an older build left, a hand-placed file) — i.e. when headLanding
+ * reads null while the queue holds files; null when the queue is empty or its head is healthy.
+ * The drain drops this file with a warning so the queue can drain: headLanding reads null for
+ * it forever and nothing else will remove it, stranding every live entry behind it (each
  * author's interlock, the per-poll queued-roles set, pins its ticks along with them). The
  * crashed entry's commit, if any, still lives in its landing ref — next-tick leftover recovery
  * re-lands it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
