@@ -175,6 +175,15 @@ test("run's flag vocabulary accepts --branch, --once, --role, and --gui and reje
   assert.match(valued.stderr, /unknown argument: yes/);
 });
 
+test("rejectUnknownArgs adds a did-you-mean hint for a near-miss flag", () => {
+  const r = expectFail(() => rejectUnknownArgs("gui", ["--portt"], GUI_SPECS));
+  assert.match(r.stderr, /unknown argument: --portt/);
+  assert.match(r.stderr, /did you mean `--port`\?/);
+  // A token far from every accepted flag gets only the valid-flags list, no hint.
+  const stray = expectFail(() => rejectUnknownArgs("logs", ["extra"], LOGS_SPECS));
+  assert.ok(!/did you mean/.test(stray.stderr), "no hint for a token unlike every flag");
+});
+
 test("rejectUnknownArgs rejects unknown tokens with the command's valid flags listed", () => {
   // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
   // the one named. Now it fails and names what was accepted.

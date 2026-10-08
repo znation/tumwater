@@ -11,6 +11,7 @@
 import { fail } from "./cli-output.js";
 import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
+import { typoSuffix } from "../text/suggest.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
@@ -65,9 +66,15 @@ export function rejectUnknownDoubleDash(
 
 /** The one refusal for a token naming no known flag: the generic wording both the spec-parsed
  * gate (rejectUnknownArgs) and the free-form parsers' double-dash gate
- * (rejectUnknownDoubleDash) print, so the message cannot drift between the two gates. */
+ * (rejectUnknownDoubleDash) print, so the message cannot drift between the two gates. The
+ * valid-flags list is followed by text/suggest.ts's did-you-mean hint when the token is a near
+ * miss of an accepted spelling (`--rol` → `--role`), the same annotation every other unknown-X
+ * error carries; a token far from every flag gets only the list. */
 function failUnknownArgument(command: string, arg: string, specs: readonly FlagSpec[]): never {
-  fail(`unknown argument: ${arg} (valid flags for tumwater ${command}: ${validFlagsList(specs)})`);
+  const spellings = specs.flatMap((s) => s.names);
+  fail(
+    `unknown argument: ${arg} (valid flags for tumwater ${command}: ${validFlagsList(specs)})${typoSuffix(arg, spellings)}`,
+  );
 }
 
 /** A `--flag=value` token's flag name ("--role" from "--role=feature"), or null when the
