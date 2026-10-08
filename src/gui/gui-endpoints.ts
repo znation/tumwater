@@ -23,6 +23,7 @@ import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
+import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
@@ -48,7 +49,8 @@ const BACKLOG_FILE_READERS = new Map<string, (root: string) => BacklogEntry[]>([
   ["bugs", openBugEntries],
   ["questions", openQuestionEntries],
 ]);
-const BACKLOG_FILE_VALUES = [...BACKLOG_FILE_READERS.keys()].join(", ");
+const BACKLOG_FILE_NAMES = [...BACKLOG_FILE_READERS.keys()];
+const BACKLOG_FILE_VALUES = BACKLOG_FILE_NAMES.join(", ");
 
 /** Handle GET /api/backlog?file=<plans|bugs|questions>&index=N: one backlog entry's full
  * text ({title, body}), fetched on demand so multi-KB bodies (long repros, whole plans) never
@@ -65,7 +67,9 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
   }
   const reader = BACKLOG_FILE_READERS.get(file);
   if (!reader) {
-    sendJson(res, 400, { error: `unknown file ${JSON.stringify(file)} (valid values: ${BACKLOG_FILE_VALUES})` });
+    sendJson(res, 400, {
+      error: `unknown file ${JSON.stringify(file)} (valid values: ${BACKLOG_FILE_VALUES})${typoSuffix(file, BACKLOG_FILE_NAMES)}`,
+    });
     return;
   }
   const entries = reader(root);

@@ -479,6 +479,11 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     // a missing file from an unknown one and see which index was out of range.
     const unknownFile = await getJson<{ error: string }>(base, "/api/backlog?file=notes&index=0");
     assert.match(unknownFile.error, /unknown file "notes"/);
+    // A near-miss file spelling carries the shared did-you-mean hint, like every other
+    // unknown-X error; a value that is no candidate's near-miss (notes) carries none.
+    const typoFile = await getJson<{ error: string }>(base, "/api/backlog?file=plnas&index=0");
+    assert.match(typoFile.error, /did you mean `plans`/);
+    assert.doesNotMatch(unknownFile.error, /did you mean/);
     const missingFile = await getJson<{ error: string }>(base, "/api/backlog?index=0");
     assert.match(missingFile.error, /file required/);
     const outOfRange = await getJson<{ error: string }>(base, "/api/backlog?file=plans&index=2");
