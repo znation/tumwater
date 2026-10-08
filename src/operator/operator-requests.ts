@@ -123,16 +123,23 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   removeQuiet(markerFile);
 }
 
+/** Consume one marker-file request whose marker's presence IS the request: when the marker
+ * exists, hand control to `act`, then remove it (a missing marker is a no-op). Shared by the
+ * simple restart and reclaim consumers below, so the existence gate and the acknowledge-by-
+ * removal cannot drift apart between them. */
+function consumeMarkerRequest(markerFile: string, act: () => void): void {
+  if (!fs.existsSync(markerFile)) return;
+  act();
+  removeQuiet(markerFile);
+}
+
 /** Consume a pending restart request from the dashboard's build-stale alert (POST /api/restart),
  * if any: tell the redeployer to force its next poll past the restart cooldown, then remove the
  * marker. The redeployer logs the `restart_forced` event itself; with no redeployer (a
  * non-self-hosting fleet never has a stale build, so nothing could have written the marker) it
  * is still cleaned up. */
 export function consumeRestartRequest(root: string, redeployer: { forceRestart(): void } | null | undefined): void {
-  const markerFile = restartRequestPath(root);
-  if (!fs.existsSync(markerFile)) return;
-  redeployer?.forceRestart();
-  removeQuiet(markerFile);
+  consumeMarkerRequest(restartRequestPath(root), () => redeployer?.forceRestart());
 }
 
 /** Consume a pending manual reclaim request from `tumwater reclaim` (plans/disk-floor.md, part
@@ -140,10 +147,7 @@ export function consumeRestartRequest(root: string, redeployer: { forceRestart()
  * single-flight runner as pressure and idle reclaim — then remove the marker. With no
  * controller (a fleet that predates the feature) the marker is still cleaned up. */
 export function consumeReclaimRequest(root: string, reclaim: { requestManual(): void } | null | undefined): void {
-  const markerFile = reclaimRequestPath(root);
-  if (!fs.existsSync(markerFile)) return;
-  reclaim?.requestManual();
-  removeQuiet(markerFile);
+  consumeMarkerRequest(reclaimRequestPath(root), () => reclaim?.requestManual());
 }
 
 /** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per
