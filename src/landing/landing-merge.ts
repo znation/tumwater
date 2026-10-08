@@ -295,6 +295,20 @@ async function verifyLanding(
   return true;
 }
 
+/** Continue a stopped rebase, aborting it when it stops again on a second conflict, and
+ * report whether the branch now sits cleanly on top of main. resolveConflict reaches this
+ * from two points — the deterministic insert-only pass and the pi resolver — and both owe
+ * the same abort-on-failure discipline, so it lives here once. */
+async function continueOrAbortRebase(wt: string): Promise<boolean> {
+  try {
+    await continueRebase(wt);
+    return true;
+  } catch {
+    await abortSync(wt);
+    return false;
+  }
+}
+
 /** Re-run the conflicting rebase leaving markers in place, settle insert-only backlog
  * conflicts deterministically, hand the rest to pi, and continue the rebase. Returns true
  * when the branch now sits cleanly on top of main. */
@@ -309,15 +323,9 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   // files it could not resolve (code, or a same-entry edit) reach the resolver below.
   const remaining = await resolveBacklogInsertConflicts(wt, files);
   if (remaining.length === 0) {
-    try {
-      await continueRebase(wt);
-    } catch {
-      // The rebase stopped again — a second conflict, only possible when the branch holds more
-      // than the one insert-only commit. One attempt per tick.
-      await abortSync(wt);
-      return false;
-    }
-    return true;
+    // A second stop is only possible when the branch holds more than the one insert-only
+    // commit. One attempt per tick.
+    return continueOrAbortRebase(wt);
   }
   // The prompt names the project's own check, detected the way the in-lock re-check detects it,
   // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
@@ -341,13 +349,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
     await abortSync(wt);
     return false;
   }
-  try {
-    await continueRebase(wt);
-  } catch {
-    // The rebase stopped again — a second conflict, only possible when pi itself authored extra
-    // commits during the tick. One resolution attempt per tick.
-    await abortSync(wt);
-    return false;
-  }
-  return true;
+  // A second stop is only possible when pi itself authored extra commits during the tick.
+  // One resolution attempt per tick.
+  return continueOrAbortRebase(wt);
 }
