@@ -314,40 +314,62 @@ export class LoopPi {
    * are short replies to a session that already holds the work. */
   private static readonly STAGE_FIX_TIMEOUT_S = 600;
 
-  /** Ask the tick's own pi session (--continue) for the missing SUMMARY block: one tightly
-   * bounded turn, folded into the tick's usage like every other run. Null when there is no
-   * session to continue (pi never wrote one) — the caller then derives a subject itself. The
-   * run is returned even when it failed so the caller can honor a shutdown abort. */
-  async requestSummary(wt: string, config?: ResolvedModelConfig): Promise<PiRunResult | null> {
+  /** The shared body of the two `--continue` follow-up turns (requestSummary and
+   * requestStageFix): guard on a resumable session, resolve the tick's effective config, and
+   * run one capped turn on the loop's shared transient-retry wiring. Both follow-ups must keep
+   * the same session guard and capped-config discipline, so the two read one assembly here;
+   * `suffix` names the turn in its session name and `timeoutS` is its hard cap, while both
+   * share the quiet watchdog value (SUMMARY_REQUEST_QUIET_S). Null when there is no session to
+   * continue; the run is returned even when it failed so the caller can honor a shutdown abort.
+   *
+   * The follow-up continues this tick's own session, so it must run on the same pair that
+   * session ran on: the caller passes the tick's effective config (the fallback pair while a
+   * model-fallback episode is active). A caller without one rides the role's own config. The
+   * shared per-loop wiring (loopPiOpts) takes the follow-up's hard caps overriding the
+   * authoring run's budget: one short reply on a warm session. The run takes the loop's SHARED
+   * transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits its
+   * Retry-After hint out and retries once on the same session, exactly like the authoring run,
+   * the landing slot's run, and the gate's reviewer runs it mirrors. The caps bound BOTH
+   * attempts (the retry inherits this capped config), so a flaky provider cannot stretch the
+   * follow-up past its budget by more than one capped turn. The wiring folds every attempt
+   * (the failed 429 before the wait), and the returned final run is folded here by the wiring
+   * itself — no second fold at the call site. */
+  private async requestFollowUp(
+    wt: string,
+    prompt: string,
+    suffix: string,
+    timeoutS: number,
+    config?: ResolvedModelConfig,
+  ): Promise<PiRunResult | null> {
     if (!hasResumableSession(sessionDir(this.host.root, this.host.role))) return null;
-    // The follow-up continues this tick's own session, so it must run on the same pair that
-    // session ran on: the caller passes the tick's effective config (the fallback pair while a
-    // model-fallback episode is active). A caller without one rides the role's own config.
     const cfg = config ?? configForRole(this.host.config(), this.host.role);
-    // The shared per-loop wiring (loopPiOpts) with the follow-up's hard caps overriding the
-    // authoring run's budget: one short reply on a warm session. The run takes the loop's
-    // SHARED transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits
-    // its Retry-After hint out and retries once on the same session, exactly like the
-    // authoring run, the landing slot's run, and the gate's reviewer runs it mirrors —
-    // before this it called bare runPi, so a rate-limited follow-up failed the tick's
-    // SUMMARY on first contact with no warning and no fleet-wide rate-limit hold stamp.
-    // The caps bound BOTH attempts (the retry inherits this capped config), so a flaky
-    // provider cannot stretch the follow-up past its budget by more than one capped turn.
-    // The wiring folds every attempt (the failed 429 before the wait), and the returned
-    // final run is folded here by the wiring itself — no second fold at the call site.
     return this.runWithTransientRetry({
       ...this.loopPiOpts(
         wt,
-        buildSummaryRequestPrompt(),
-        `tumwater-${this.host.role}-${this.host.tickNumber()}-summary`,
+        prompt,
+        `tumwater-${this.host.role}-${this.host.tickNumber()}-${suffix}`,
         "author",
         true,
       ),
       config: {
         ...cfg,
-        ...cappedRequestTimeouts(cfg, LoopPi.SUMMARY_REQUEST_TIMEOUT_S, LoopPi.SUMMARY_REQUEST_QUIET_S),
+        ...cappedRequestTimeouts(cfg, timeoutS, LoopPi.SUMMARY_REQUEST_QUIET_S),
       },
     });
+  }
+
+  /** Ask the tick's own pi session (--continue) for the missing SUMMARY block: one tightly
+   * bounded turn, folded into the tick's usage like every other run. Null when there is no
+   * session to continue (pi never wrote one) — the caller then derives a subject itself. The
+   * run is returned even when it failed so the caller can honor a shutdown abort. */
+  async requestSummary(wt: string, config?: ResolvedModelConfig): Promise<PiRunResult | null> {
+    return this.requestFollowUp(
+      wt,
+      buildSummaryRequestPrompt(),
+      "summary",
+      LoopPi.SUMMARY_REQUEST_TIMEOUT_S,
+      config,
+    );
   }
 
   /** Ask the tick's own pi session (--continue) to fix the pre-queue self-check's findings:
@@ -359,21 +381,13 @@ export class LoopPi {
     findings: string[],
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult | null> {
-    if (!hasResumableSession(sessionDir(this.host.root, this.host.role))) return null;
-    const cfg = config ?? configForRole(this.host.config(), this.host.role);
-    return this.runWithTransientRetry({
-      ...this.loopPiOpts(
-        wt,
-        buildStageFixPrompt(findings),
-        `tumwater-${this.host.role}-${this.host.tickNumber()}-stagefix`,
-        "author",
-        true,
-      ),
-      config: {
-        ...cfg,
-        ...cappedRequestTimeouts(cfg, LoopPi.STAGE_FIX_TIMEOUT_S, LoopPi.SUMMARY_REQUEST_QUIET_S),
-      },
-    });
+    return this.requestFollowUp(
+      wt,
+      buildStageFixPrompt(findings),
+      "stagefix",
+      LoopPi.STAGE_FIX_TIMEOUT_S,
+      config,
+    );
   }
 }
 
