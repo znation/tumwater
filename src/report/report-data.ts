@@ -190,7 +190,10 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
   const entry: ReportFoldEntry = {
     root,
     fromKey,
-    offset: size,
+    // The scan's own end, not the outer `size`: an event appended between that stat and the
+    // read is already folded, and seeding the offset from the stale size would fold it again
+    // on the next append (readTailTextWithEnd's coveredEnd is exactly where the scan stopped).
+    offset: raw.liveEnd,
     mtimeMs,
     dev,
     ino,

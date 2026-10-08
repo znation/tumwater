@@ -6,9 +6,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { collectReport, collectReportSince } from "../src/report/report-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
+import { eventsLogPath } from "../src/paths.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
@@ -152,6 +154,36 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
   assert.equal(data.totals.commits, 1);
   const today = data.series[data.series.length - 1];
   assert.deepEqual(today?.ticksByRole, { feature: 1 });
+});
+
+test("collectReport does not double-count an event appended between the cache's stat and its read", () => {
+  const root = tmpdir();
+  const first = JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100 });
+  writeEvents(root, [first]);
+  const second = JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 50 });
+  const log = eventsLogPath(root);
+  // Reproduce the full-re-read race: the fold records the outer stat's size as the offset it
+  // will append from, then the event lands, then readWindowEvents scans the grown file and
+  // folds the new event. The offset must come from the scan itself, or the next report reads
+  // from the stale offset and folds the appended event a second time.
+  const realStatSync = fs.statSync;
+  let appended = false;
+  fs.statSync = ((p: fs.PathLike, ...args: unknown[]) => {
+    const st = (realStatSync as (...a: unknown[]) => fs.Stats)(p, ...args);
+    if (!appended && String(p) === log) {
+      appended = true;
+      fs.appendFileSync(log, second + "\n");
+    }
+    return st;
+  }) as typeof fs.statSync;
+  try {
+    const raced = collectReport(root, 7);
+    assert.equal(raced.totals.tokensOut, 150, "the racing read folds both events once");
+    const after = collectReport(root, 7);
+    assert.equal(after.totals.tokensOut, 150, "a repeat report must not fold the appended event again");
+  } finally {
+    fs.statSync = realStatSync;
+  }
 });
 
 test("collectReport counts features done and bugs fixed from backlog history", () => {

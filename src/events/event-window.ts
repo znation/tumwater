@@ -2,7 +2,7 @@ import { dayKey } from "../text/datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
-import { readTailText } from "../files/tail.js";
+import { readTailTextWithEnd } from "../files/tail.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days, `tumwater report --failures --days`, and /api/report?days=N): 14-day default, at most
@@ -49,6 +49,19 @@ interface EventWindow {
    * property of the read's coverage, not a whole-log survey: the scan never reads past the
    * first line older than `fromKey`. */
   coversFullWindow: boolean;
+  /** The live log's byte offset through the scan's last complete line — where an incremental
+   * append read must resume. This is the scan's own end, not a caller's earlier stat: an event
+   * appended between the stat and the read is already folded, and recording the stale size
+   * would fold it again on the next append. */
+  liveEnd: number;
+}
+
+/** One file's scanned window plus the byte offset the scan covered through (its own end, backed
+ * up to the last complete line). */
+interface ScannedFile {
+  events: HarnessEvent[];
+  coversFullWindow: boolean;
+  end: number;
 }
 
 /** The oldest COMPLETE line in a backwards chunk buffer, or null when none is complete yet.
@@ -101,9 +114,9 @@ export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
  * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
  * fleet was idle": both leave the oldest returned event later than the window start, but only
  * the former means data was lost. */
-function scanEventsFile(file: string, fromKey: string): EventWindow {
+function scanEventsFile(file: string, fromKey: string): ScannedFile {
   let coversFullWindow = false;
-  const text = readTailText(file, (_chunk, parts) => {
+  const { text, coveredEnd } = readTailTextWithEnd(file, (_chunk, parts) => {
     // The oldest chunk's leading line may be torn by the chunk boundary, so oldestCompleteLine
     // always drops it; at the file start that merely forgoes an early stop on the final chunk,
     // and the scan ends with the file anyway.
@@ -137,7 +150,7 @@ function scanEventsFile(file: string, fromKey: string): EventWindow {
     const day = ev ? eventDayKey(ev) : null;
     coversFullWindow = day !== null && day < fromKey;
   }
-  return { events, coversFullWindow };
+  return { events, coversFullWindow, end: coveredEnd };
 }
 
 /** Events whose local day is on or after `fromKey`, read from the live log and — when the live
@@ -153,11 +166,12 @@ function scanEventsFile(file: string, fromKey: string): EventWindow {
  * behavior is unchanged. */
 export function readWindowEvents(root: string, fromKey: string): EventWindow {
   const live = scanEventsFile(eventsLogPath(root), fromKey);
-  if (live.coversFullWindow) return live;
+  if (live.coversFullWindow) return { events: live.events, coversFullWindow: true, liveEnd: live.end };
   const archive = scanEventsFile(eventsArchivePath(root), fromKey);
   return {
     events: [...archive.events, ...live.events],
     coversFullWindow: archive.coversFullWindow || live.coversFullWindow,
+    liveEnd: live.end,
   };
 }
 

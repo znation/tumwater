@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { readEventsSince, readWindowEvents } from "../src/events/event-window.js";
+import { eventsLogPath } from "../src/paths.js";
 import { collectReport } from "../src/report/report-data.js";
 import { renderReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./oracles.js";
@@ -28,11 +30,22 @@ function writeArchive(root: string, lines: string[]): void {
   writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), lines);
 }
 
+/** The live log's covered end for these newline-terminated fixture logs — the byte size the
+ * scan read through, which `readWindowEvents` reports as `liveEnd` (0 for a missing log). */
+function liveEndOf(root: string): number {
+  try {
+    return fs.statSync(eventsLogPath(root)).size;
+  } catch {
+    return 0;
+  }
+}
+
 test("a missing or empty log reads as an empty window that does not cover", () => {
   const missing = tmpdir();
   assert.deepEqual(readWindowEvents(missing, dayKey(tsDaysAgo(0))), {
     events: [],
     coversFullWindow: false,
+    liveEnd: 0,
   });
 
   const empty = tmpdir();
@@ -40,6 +53,7 @@ test("a missing or empty log reads as an empty window that does not cover", () =
   assert.deepEqual(readWindowEvents(empty, dayKey(tsDaysAgo(0))), {
     events: [],
     coversFullWindow: false,
+    liveEnd: liveEndOf(empty),
   });
 });
 
@@ -71,6 +85,7 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
   assert.deepEqual(readWindowEvents(within, dayKey(tsDaysAgo(5))), {
     events: [{ ts: recent, loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
+    liveEnd: liveEndOf(within),
   });
 
   const before = tmpdir();
@@ -223,6 +238,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
       { ts: tsDaysAgo(1, 13), loop: "feature", type: "tick_end", tick: 2 },
     ],
     coversFullWindow: false,
+    liveEnd: liveEndOf(missingArchive),
   });
 
   const emptyArchive = tmpdir();
@@ -231,6 +247,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
   assert.deepEqual(readWindowEvents(emptyArchive, dayKey(tsDaysAgo(1))), {
     events: [{ ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
+    liveEnd: liveEndOf(emptyArchive),
   });
 });
 
