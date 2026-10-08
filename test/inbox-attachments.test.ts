@@ -80,6 +80,31 @@ test("savePromptImages removes its partial writes when a later image's write fai
   assert.ok(!fs.existsSync(path.join(dir, `${stem}.png`)), "the already-written first image is removed again");
 });
 
+test("savePromptImages removes the image whose own write throws after a partial write", () => {
+  const root = tmpdir();
+  const queueFile = enqueueRolePrompt(root, "qa", "look");
+  const dir = roleInboxDir(root, "qa");
+  const stem = path.basename(queueFile, ".md");
+  const target = path.join(dir, `${stem}.png`);
+  const original = fs.writeFileSync;
+  // The failing image is the one whose write never returns, so it is not yet in the written
+  // list: leave a truncated file behind (as ENOSPC does) and throw. The pre-fix catch cleans
+  // only earlier writes, so this partial file would survive in the inbox dir forever.
+  (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = ((file, data, ...rest) => {
+    if (String(file) === target) {
+      original(target, PNG.subarray(0, 4));
+      throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
+    }
+    return original(file, data, ...rest);
+  }) as typeof fs.writeFileSync;
+  try {
+    assert.throws(() => savePromptImages(root, "qa", queueFile, [png()]), /ENOSPC/);
+  } finally {
+    fs.writeFileSync = original;
+  }
+  assert.ok(!fs.existsSync(target), "the half-written image is removed again");
+});
+
 test("savePromptImages keeps the validated extension when the client name's safe characters all strip away", () => {
   // `截图.png` validates (raw extname .png) but its basename sanitizes to ".png", whose
   // extname is "" — the saved file once landed extension-less, which pi's read tool cannot

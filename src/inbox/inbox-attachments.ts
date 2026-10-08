@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { unlinkAllMissingTolerant } from "../files/files.js";
+import { removeQuiet, unlinkAllMissingTolerant } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { roleInboxDir } from "../paths.js";
 import { isNonBlankString } from "../text/text.js";
@@ -115,6 +115,10 @@ export function savePromptImages(
   const stem = path.basename(queueFile).replace(/\.md$/, "");
   const taken = new Set<string>();
   const paths: string[] = [];
+  // The image whose write is in flight: it only joins `paths` once its write returns, so a
+  // write that throws after creating the file (ENOSPC, EIO) would otherwise be the one
+  // partial file the catch below cannot see.
+  let inFlight: string | null = null;
   try {
     for (const image of images) {
       const ext = path.extname(image.name).toLowerCase();
@@ -122,14 +126,19 @@ export function savePromptImages(
       for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
       taken.add(name);
       const file = path.join(dir, name);
+      inFlight = file;
       fs.writeFileSync(file, Buffer.from(image.dataBase64, "base64"));
+      inFlight = null;
       paths.push(path.resolve(file));
     }
   } catch (err) {
     // A write that failed after earlier images were written (EISDIR on an occupied target,
     // ENOSPC, …) must not strand those earlier images in the inbox dir: nothing here is
     // ever referenced by a queue file yet, so an unwound partial save removes its own
-    // writes and leaves the directory exactly as it found it.
+    // writes and leaves the directory exactly as it found it. removeQuiet best-effort also
+    // takes the in-flight target a failed write left part-written, without masking `err`
+    // (and without touching a pre-existing directory the write could not overwrite).
+    if (inFlight !== null) removeQuiet(inFlight);
     unlinkAllMissingTolerant(paths);
     throw err;
   }
