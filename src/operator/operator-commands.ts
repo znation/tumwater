@@ -34,14 +34,14 @@ import {
 
 /** The CLI layer of the operator commands: the `reset-counters`, `wake`, `reclaim`, `abort`,
  * `pause`, `resume`, `stop`, and `retire` commands, split out of cli.ts so the command bodies
- * live beside their shared `--role` resolution. The marker-writing cores and
- * shared confirmations they print live in src/operator/operator-intent.ts (shared with the dashboard
- * and TUI); the fleet-side consumer half is src/operator/operator-requests.ts; the `prompt` command,
- * which drives the durable per-loop queues rather than the marker protocol, lives beside
- * them in src/inbox/prompt-commands.ts, and the `config` command, which reads and writes
- * tumwater.json directly rather than touching fleet state, in src/cli/config-commands.ts. Every
- * command here is deliberately usable without a live harness except `abort` and `stop`,
- * which have nothing to reach when no fleet is up. */
+ * live beside their shared `--role` resolution. The marker-writing cores and shared
+ * confirmations they print live in src/operator/operator-intent.ts (shared with the
+ * dashboard and TUI); the fleet-side consumer half is src/operator/operator-requests.ts;
+ * the `prompt` command, which drives the durable per-loop queues rather than the marker
+ * protocol, lives beside them in src/inbox/prompt-commands.ts, and the `config` command,
+ * which reads and writes tumwater.json directly rather than touching fleet state, in
+ * src/cli/config-commands.ts. Every command here is deliberately usable without a live
+ * harness except `abort` and `stop`, which have nothing to reach when no fleet is up. */
 
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
  * built-in catalog role: the fleet itself tolerates a broken config (the live reload keeps
@@ -160,10 +160,11 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
   say(result.message);
 }
 
-/** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from starting new ticks —
- * in-flight ones finish, every other role (the director included) keeps running; without one,
- * stop every role loop from starting NEW ticks while in-flight ones finish and the director
- * keeps running (its prompts outrank operator gates, like under the budget cap). The markers
+/** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from
+ * starting new ticks — in-flight ones finish, every other role (the director included)
+ * keeps running; without one, stop every role loop from starting NEW ticks while in-flight
+ * ones finish and the director keeps running (its prompts outrank operator gates, like
+ * under the budget cap). The markers
  * are persistent state, not one-shot requests: presence means paused until `resume` removes
  * it — so pausing before startup starts an already-paused fleet. Unlike abort, no live
  * harness is required; when none runs, say where the pause takes effect instead of failing.
@@ -172,8 +173,8 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // `--for <duration>` (the timed pause): the ms-epoch deadline pauseFleet/pauseRole write
   // into the marker and every consumer honors — the command's own gate (runMarkerCommand's
   // rejectUnknownArgs) has already restricted the flag to this command and validated its
-  // value — shape and the 90-day cap both, via durationFlagSpec("pause --for")'s validate — so its value is
-  // re-parsed here, beside the writers it feeds.
+  // value — shape and the 90-day cap both, via durationFlagSpec("pause --for")'s validate —
+  // so its value is re-parsed here, beside the writers it feeds.
   const forRaw = flagValue(args, "--for");
   const forMs = forRaw !== null ? parseDurationFlag("pause --for", forRaw) : undefined;
   // `--reason <text>` (the operator pause's why): the gate in cli.ts has already restricted
@@ -290,8 +291,8 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
     say(roleResumeMessage(root, role, resumeRole(root, role)));
     return;
   }
-  // resumeFleet (src/fleet/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
-  // return means there was no marker to lift.
+  // resumeFleet (src/fleet/fleet-state.ts) is the single remover, shared with the GUI toggle;
+  // a false return means there was no marker to lift.
   if (!resumeFleet(root)) {
     say("not paused");
     return;
@@ -309,8 +310,8 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
 
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
  * branch, landing ref, and paused-state marker. The collection, safety rails, and removal live
- * in src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip lines
- * that make a second run idempotent, or the `--json` payload. */
+ * in src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip
+ * lines that make a second run idempotent, or the `--json` payload. */
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
   // As in cmdAbort: the config exists only to validate the id against built-ins plus
   // user-defined loops; a missing --role fails before it is ever needed.
