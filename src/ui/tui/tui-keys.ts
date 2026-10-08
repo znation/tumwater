@@ -68,6 +68,9 @@ interface TuiKeysState {
   flash: string | null;
 }
 
+/** The keypress handler's contract as createTuiKeys returns it: the dispatch the caller feeds
+ * (handleKey), the per-frame setters it syncs through (syncSnapshot, setLineBudgets), and the
+ * state it composes the frame from (state). */
 export interface TuiKeys {
   /** The full keypress dispatch — ink's `useInput` (through the tui-keymap.ts adapter)
    * calls into this with the same (str, key) shape the readline "keypress" event delivered. */
