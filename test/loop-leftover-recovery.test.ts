@@ -113,16 +113,23 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
 
 // A pin whose every landing ended in a conflict the resolver could not settle used to re-queue
 // forever once recovery stopped landing in-tick (3c): the role never authored again. At
-// MERGE_CONFLICT_LIMIT recovery drops the pin and the tick authors on fresh main, told why.
-test("a pin at the merge-conflict cap is discarded and the tick authors, told what was dropped", async () => {
+// MERGE_CONFLICT_LIMIT recovery hands the pin back to its author: the diff is re-applied over
+// current main with the markers in place, and the author resolves them in the same tick
+// (PLANS.md "Robust conflict landing, part 2/2").
+test("a pin at the merge-conflict cap is handed back and the tick resolves it in place", async () => {
   const repo = await initializedRepo();
-  const sha = await pinLeftover(repo, "stuck.txt", "unmergeable work\n", "work main outgrew");
+  // The pin edits seed.txt; main then moves the same line, so re-applying the pin conflicts.
+  const sha = await pinLeftover(repo, "seed.txt", "branch version\n", "work main outgrew");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
+  sh(repo, "git", "commit", "-am", "main moved the same line");
 
   const prompts = path.join(tmpdir(), "prompts.log");
   const restore = fakePi(
     [
       `printf '%s\n' "$@" >> "${prompts}"`,
-      `printf '%s\n' '${assistantLine("ok\nSUMMARY: fresh work")}'`,
+      // Resolve the markers the hand-back left, then finish normally.
+      `echo resolved > seed.txt`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: resolved the hand-back")}'`,
       `echo new > new.txt`,
     ].join("\n"),
   );
@@ -131,17 +138,25 @@ test("a pin at the merge-conflict cap is discarded and the tick authors, told wh
     runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
     const outcome = await runner.tick();
 
-    assert.equal(outcome.result, "queued", "the tick authored and queued its own change");
+    assert.equal(outcome.result, "queued", "the tick authored and queued the resolved change");
     assert.notEqual(outcome.commit, sha);
     assert.equal(outcome.recoveredLeftover, undefined, "not a recovery tick");
     const prompt = fs.readFileSync(prompts, "utf8");
-    assert.match(prompt, /Your previous change \("work main outgrew"\) was discarded without landing/);
-    assert.match(prompt, new RegExp(`conflicted with main ${MERGE_CONFLICT_LIMIT} times`));
+    assert.match(prompt, /conflict-handback/);
+    assert.match(prompt, /Conflicted files:\n- seed\.txt/);
+    assert.match(prompt, /main moved the same line/, "the prompt shows what main changed");
+    assert.doesNotMatch(prompt, /was discarded without landing/);
+    assert.equal(runner.state.conflictHandback?.reason, "landing");
+    assert.equal(runner.state.conflictHandback?.applied, true, "the hand-back was applied this tick");
+    assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the hand-back");
     const queued = eventsOfType(repo, "land_queued").map((e) => e.commit);
-    assert.deepEqual(queued, [outcome.commit], "only the fresh change was queued, never the discarded pin");
+    assert.deepEqual(queued, [outcome.commit], "the resolved change was queued");
     assert.equal(headLanding(repo)?.entry.sha, outcome.commit);
-    assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the pin");
-    assert.equal(runner.state.conflictDiscard, undefined, "the note was delivered with the queued change");
+    assert.deepEqual(
+      eventsOfType(repo, "conflict_handback").map((e) => e.action),
+      ["queued", "applied"],
+      "the hand-back is logged queued then applied",
+    );
   } finally {
     restore();
   }

@@ -144,6 +144,25 @@ export interface LoopState {
    * prompts until its next change is queued — the author's only memory that the work is gone
    * and must be redone against current main if it is still wanted. */
   conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
+  /** A change handed back to its author when its landings kept ending in unresolved merge
+   * conflicts with main, or its revision re-apply conflicted (PLANS.md "Robust conflict
+   * landing, part 2/2"): its sha, when, why, the revision round when the hand-back is a
+   * revision, and whether the re-apply onto current main has happened yet. The author's next
+   * non-resume tick re-applies the sha with conflict markers left as ordinary uncommitted
+   * edits, appends the hand-back note, and deletes the landing ref. The record then lives
+   * exactly as long as the resolved change: while it is queued or pinned for its landing, a
+   * conflict at the cap discards it rather than handing it back a second time. It is cleared
+   * when that change lands or is rejected (tick-apply.ts), and when a tick neither commits the
+   * marker edits nor leaves a session to resume them (no_change, a deliberate user_aborted, or
+   * an error/quiet-kill with no resume), nor while a rejected change's revision still owes
+   * them. Absent for a loop with no hand-back, so older state files read unchanged. */
+  conflictHandback?: {
+    sha: string;
+    at: number;
+    reason: "landing" | "revision";
+    round?: number;
+    applied: boolean;
+  };
   /** This role's active model-fallback episode (src/loop/model-fallback.ts): set once
    * consecutive provider-class failures on the primary trip it, cleared by a probe tick on
    * the primary that answers without a provider failure. Absent means the role runs its

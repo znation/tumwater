@@ -5,13 +5,18 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
-import { setRef, deleteRef } from "../git/git.js";
+import { setRef, deleteRef, commitMessage, changeBaseRev } from "../git/git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { worktreePath } from "../paths.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { buildConflictDiscardNote, buildRevisionNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
+import {
+  buildConflictDiscardNote,
+  buildConflictHandbackNote,
+  buildRevisionNote,
+  buildRejectedReviewNote,
+} from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole, fallbackRoleConfig, modelSelectorField, reviewRunConfig, type ResolvedModelConfig } from "../config/config-views.js";
@@ -30,7 +35,8 @@ import { clearBackoff } from "../scheduling/backoff.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
-import { applyRevision, REVISION_LIMIT } from "./revision.js";
+import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "./revision.js";
+import { mainCommitsTouching } from "../landing/landing-git.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { mergeToMain } from "../landing/landing-merge.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
@@ -38,6 +44,22 @@ import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
 import { landingRefName, rejectedRefName } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
+
+/** The intent the author needs to resolve a handed-back change: the change's own commit message
+ * and the main commits that touched its conflicted files since its merge-base. Mirrors what
+ * resolveConflict gathers for the landing resolver (src/landing/landing-merge.ts) and feeds the
+ * same prompt block through buildConflictHandbackNote. */
+async function handbackIntent(
+  wt: string,
+  mainBranch: string,
+  sha: string,
+  conflicted: string[],
+): Promise<{ change: string; main: Awaited<ReturnType<typeof mainCommitsTouching>>["commits"]; mainOmitted?: number }> {
+  const change = (await commitMessage(wt, sha)) ?? "";
+  const since = await changeBaseRev(wt, mainBranch, sha);
+  const { commits, omitted } = await mainCommitsTouching(wt, since, mainBranch, conflicted);
+  return { change, main: commits, ...(omitted > 0 ? { mainOmitted: omitted } : {}) };
+}
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
@@ -332,7 +354,7 @@ export class LoopRunner {
    * not be pinned stays on the branch and the tick fails like a fresh tick's failed pin. Every
    * arm is `recoveredLeftover`: no model ran, so the tick is no evidence about the backend. */
   private async finishRecoveryTick(
-    recovered: Exclude<LeftoverRecovery, { kind: "discarded" }>,
+    recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
     wt: string,
     priorLandingFailure: string | undefined,
@@ -633,12 +655,26 @@ export class LoopRunner {
         tick: s.ticks,
         wt,
         mergeConflicts: s.mergeConflicts,
+        conflictHandback: s.conflictHandback,
         landingReviewError: s.landingReviewError,
       });
-      if (recovered?.kind === "discarded") {
+      if (recovered?.kind === "handback") {
+        // The pin hit the conflict cap and its lineage has not been handed back yet: keep the
+        // pin, record the hand-back, and fall through to author the resolution on current main.
+        // The apply happens below, beside the revision branch.
+        s.mergeConflicts = undefined;
+        s.conflictHandback = {
+          sha: recovered.sha,
+          at: Date.now(),
+          reason: "landing",
+          applied: false,
+        };
+        logEvent(this.root, { loop: this.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "landing" });
+      } else if (recovered?.kind === "discarded") {
         // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
         // tick authors on a fresh main like any other — told what was dropped and why.
         s.mergeConflicts = undefined;
+        s.conflictHandback = undefined;
         s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
         prompt += `\n\n${buildConflictDiscardNote(recovered.summary, recovered.attempts)}`;
       } else if (recovered) return this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
@@ -667,6 +703,42 @@ export class LoopRunner {
       }
     }
 
+    // A change handed back after its landings kept conflicting — or a persisted hand-back the
+    // author's tick has not applied yet — is re-applied over current main with the conflict
+    // markers left as ordinary uncommitted edits so this tick resolves them (PLANS.md "Robust
+    // conflict landing, part 2/2"). The landing ref is deleted once the diff is in the worktree.
+    // Runs before the revision branch, which applies a revision hand-back itself.
+    if (
+      s.conflictHandback &&
+      !s.conflictHandback.applied &&
+      this.role !== DIRECTOR_ROLE &&
+      userPrompt === null &&
+      !resuming
+    ) {
+      const hb = s.conflictHandback;
+      const applied = await applyWithConflicts(wt, this.mainBranch, hb.sha);
+      if (applied.applied) {
+        s.conflictHandback = { ...hb, applied: true };
+        await deleteRef(this.root, landingRefName(this.role));
+        logEvent(this.root, {
+          loop: this.role,
+          type: "conflict_handback",
+          action: "applied",
+          sha: hb.sha,
+          reason: hb.reason,
+          conflicted: applied.conflicted,
+        });
+        const intent = await handbackIntent(wt, this.mainBranch, hb.sha, applied.conflicted);
+        prompt += `\n\n${buildConflictHandbackNote(hb.reason, applied.conflicted, intent)}`;
+      } else {
+        // The object is gone or the apply failed for a non-conflict reason: drop the hand-back
+        // so the author starts fresh rather than retrying it every tick.
+        s.conflictHandback = undefined;
+        await deleteRef(this.root, landingRefName(this.role));
+        logEvent(this.root, { loop: this.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
+      }
+    }
+
     const piStartedAt = Date.now();
     // A rejected change owes a revision (plans/revise-rejected.md): re-apply its diff to current
     // main as uncommitted edits so this tick revises it instead of authoring from scratch, and
@@ -688,11 +760,38 @@ export class LoopRunner {
         logEvent(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
         prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
       } else {
-        s.revision = undefined;
-        await deleteRef(this.root, rejectedRefName(this.role));
-        logEvent(this.root, { loop: this.role, type: "revision", action: "conflict", round, sha });
-        prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] }, this.role)}`;
-        prompt += `\n\nThe rejected diff no longer applies to current main.`;
+        // The clean re-apply conflicted: re-apply with the markers left in place so the author
+        // resolves them rather than losing the revision (PLANS.md "Robust conflict landing, part
+        // 2/2"). Only a non-conflict failure falls back to the plain rejection note.
+        const withConflicts = await applyWithConflicts(wt, this.mainBranch, sha);
+        if (withConflicts.applied) {
+          revisionRound = round;
+          s.conflictHandback = {
+            sha,
+            at: Date.now(),
+            reason: "revision",
+            round,
+            applied: true,
+          };
+          logEvent(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
+          logEvent(this.root, {
+            loop: this.role,
+            type: "conflict_handback",
+            action: "applied",
+            sha,
+            reason: "revision",
+            conflicted: withConflicts.conflicted,
+          });
+          prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
+          const intent = await handbackIntent(wt, this.mainBranch, sha, withConflicts.conflicted);
+          prompt += `\n\n${buildConflictHandbackNote("revision", withConflicts.conflicted, intent)}`;
+        } else {
+          s.revision = undefined;
+          await deleteRef(this.root, rejectedRefName(this.role));
+          logEvent(this.root, { loop: this.role, type: "revision", action: "conflict", round, sha });
+          prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] }, this.role)}`;
+          prompt += `\n\nThe rejected diff no longer applies to current main.`;
+        }
       }
     }
     const pi = await this.pi.runAuthoringPi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming, cfg);

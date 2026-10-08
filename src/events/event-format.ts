@@ -201,6 +201,14 @@ export function eventMessage(e: HarnessEvent): string {
       // A rejected change's revision round (plans/revise-rejected.md): applied onto current main,
       // conflicted with it, dropped by its author, or exhausted its rounds.
       return `revision ${textOr(e.round)} ${textOr(e.action)} ${shortSha(e.sha)}`;
+    case "conflict_handback": {
+      // A change whose landings kept conflicting was handed back to its author with the markers
+      // in place (PLANS.md "Robust conflict landing, part 2/2"): queued, applied, or failed.
+      const files = stringList(e.conflicted);
+      const where = files.length > 0 ? `: ${files.join(", ")}` : "";
+      const why = e.reason === "revision" ? " (revision)" : "";
+      return `conflict hand-back ${textOr(e.action)} ${shortSha(e.sha)}${why}${where}`;
+    }
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
       // review gate, the red-main baseline check of main itself, or the merge lock's

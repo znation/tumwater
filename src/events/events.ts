@@ -53,6 +53,7 @@ export interface HarnessEvent {
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"
     | "revision" // a rejected change's revision round: action applied|conflict|dropped|exhausted, with round and sha (plans/revise-rejected.md)
+    | "conflict_handback" // a change whose landings kept conflicting was handed back to its author with the markers in place (PLANS.md "Robust conflict landing, part 2/2"); action queued|applied, with sha, reason landing|revision, and the conflicted paths on a successful re-apply
     | "build_check" // the project's declared check ran: scope gate|baseline|landing|batch (landing is the merge lock's post-rebase re-check; batch is the batch lander's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired, and sleptMs when the host slept mid-run (build/build-check-events.ts buildCheckRunFields); installed/installMs (plus installError) when the check first installed the tree's drifted lockfile (build/dep-install.ts)
     | "dep_install" // the root checkout's install was re-synced after a landing moved main's lockfile (build/dep-install.ts syncRootInstall): packages (the drifted direct dependencies), status passed|failed, durationMs, error on a failure
     | "budget_warning" // fleet daily spend crossed 80% of maxDailyCostUsd; the gate is still open

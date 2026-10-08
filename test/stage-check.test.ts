@@ -144,6 +144,19 @@ test("a clean change yields no findings", async () => {
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT), []);
 });
 
+test("a changed file still holding a conflict marker yields the conflict finding", async () => {
+  const { wt } = await repoWith({ "a.txt": "base\n" });
+  fs.writeFileSync(
+    path.join(wt, "a.txt"),
+    "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
+  );
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT);
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /conflict markers remain in: a\.txt/);
+});
+
 test("a git failure yields no findings instead of throwing", async () => {
   assert.deepEqual(await stageCheckFindings(tmpdir("stage-check-norepo-"), "main", EXEMPT), []);
 });

@@ -358,6 +358,43 @@ test("a rejection past the warn bar backs the re-author off on the error ladder"
   assert.deepEqual(rungs, [0, 0, 30, 60, 120, 240, 480, 600, 600, 600]);
 });
 
+// A hand-back record must live exactly as long as the resolution it encodes: a landing
+// hand-back tick that ends without committing its edits (no_change, user_aborted, a spent
+// quiet-kill resume) abandons them, and a stale record would make a later change's cap
+// conflict be discarded as "already handed back" instead of handed back (PLANS.md
+// "Robust conflict landing, part 2/2", review objection). It survives a queued resolution, a
+// pending revision, and a resumable session.
+test("a hand-back record is cleared when the tick abandons its edits", () => {
+  const cfg = testConfig();
+  const hb = { sha: PINNED, at: 1, reason: "landing" as const, applied: true };
+
+  const abandoned = freshLoopState("feature");
+  abandoned.conflictHandback = { ...hb };
+  applyTickOutcome(abandoned, cfg, "feature", { result: "no_change" });
+  assert.equal(abandoned.conflictHandback, undefined, "no_change abandons the marker edits");
+
+  const aborted = freshLoopState("feature");
+  aborted.conflictHandback = { ...hb };
+  applyTickOutcome(aborted, cfg, "feature", { result: "user_aborted" });
+  assert.equal(aborted.conflictHandback, undefined, "a deliberate abort abandons them too");
+
+  const queued = freshLoopState("feature");
+  queued.conflictHandback = { ...hb };
+  applyTickOutcome(queued, cfg, "feature", { result: "queued", commit: PINNED });
+  assert.notEqual(queued.conflictHandback, undefined, "a queued resolution keeps the bound");
+
+  const resumed = freshLoopState("feature");
+  resumed.conflictHandback = { ...hb };
+  applyTickOutcome(resumed, cfg, "feature", { result: "aborted" });
+  assert.notEqual(resumed.conflictHandback, undefined, "a resumable session still holds the edits");
+
+  const revision = freshLoopState("feature");
+  revision.conflictHandback = { ...hb };
+  revision.revision = { sha: PINNED, round: 1, at: 2 };
+  applyTickOutcome(revision, cfg, "feature", { result: "no_change" });
+  assert.notEqual(revision.conflictHandback, undefined, "an owed revision still needs it");
+});
+
 // A pin that keeps failing to merge used to re-queue forever (land-queue speed 3c made recovery
 // re-queue instead of the next authored commit dropping it): the streak leftover recovery caps
 // counts consecutive merge_conflict landings of ONE sha.

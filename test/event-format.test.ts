@@ -652,6 +652,7 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
     { ts: 0, loop: "feature", type: "review_start" } as never,
     { ts: 0, loop: "feature", type: "review_failed" } as never,
     { ts: 0, loop: "feature", type: "revision" } as never,
+    { ts: 0, loop: "feature", type: "conflict_handback" } as never,
     { ts: 0, loop: "harness", type: "build_check" } as never,
     { ts: 0, loop: "harness", type: "max_concurrent_changed" } as never,
     { ts: 0, loop: "harness", type: "retention_changed" } as never,

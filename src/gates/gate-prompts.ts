@@ -386,6 +386,40 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
   );
 }
 
+/** The note appended to a role's tick prompt when a change was handed back to it with the
+ * conflict markers left in place (PLANS.md "Robust conflict landing, part 2/2"): the landing
+ * resolver could not settle it, so the author — who knows what the change was for — resolves it
+ * over current main. `reason` says whether it was an approved change whose landing kept
+ * conflicting or a rejected change whose revision re-apply conflicted. The note names the
+ * conflicted files and shows the same "What main changed in these files" intent block part 1/2
+ * gives the resolver, so the author sees what main did without re-deriving it. A pure function
+ * so its shape is pinned in tests. */
+export function buildConflictHandbackNote(
+  reason: "landing" | "revision",
+  conflicted: string[],
+  intent: {
+    change: string;
+    main: Array<{ sha: string; subject: string; body: string }>;
+    mainOmitted?: number;
+  },
+): string {
+  const why =
+    reason === "landing"
+      ? "Your previously approved change could not be landed: conflict resolution could not reconcile it with main"
+      : "Your rejected change was being revised, but its diff no longer applies cleanly to main";
+  const files = conflicted.length > 0 ? conflicted.map((f) => `- ${f}`).join("\n") : "- (none recorded)";
+  return `<conflict-handback>
+${why}. Main moved under it, and the change is now in your worktree as uncommitted edits with the
+conflict markers left in place.
+Resolve every marker (<<<<<<<, =======, >>>>>>>) by combining the intent of BOTH sides, keeping
+main's deliberate removals, then re-run the project's declared check.
+Conflicted files:
+${files}
+
+${conflictIntentBlocks(intent)}
+</conflict-handback>`;
+}
+
 /** The note injected into the `bugfix` healer's prompt when main's own suite is red (PLANS.md
  * "Red-main handoff"): the gate's warning event is harness-level and no role prompt reads it, so
  * the one role allowed to author on a red main is told what failed and that fixing it is this

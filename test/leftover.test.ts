@@ -75,7 +75,7 @@ test("a pinned commit not in main is put on the land queue, not landed", async (
   assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-tick merge");
 });
 
-test("a pin whose landings hit the merge-conflict cap is discarded, not re-queued", async () => {
+test("a pin whose landings hit the merge-conflict cap is handed back, not re-queued", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
 
@@ -90,7 +90,24 @@ test("a pin whose landings hit the merge-conflict cap is discarded, not re-queue
   assert.equal((await recoverLeftover(other))?.kind, "enqueued");
   fs.rmSync(landQueueDir(root), { recursive: true, force: true });
 
+  // At the cap with no prior hand-back: the pin stays and the author gets it back to resolve.
   const atCap = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT } };
+  const recovered = await recoverLeftover(atCap);
+
+  assert.deepEqual(recovered, { kind: "handback", sha, summary: "stranded work", attempts: MERGE_CONFLICT_LIMIT });
+  assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin stays for the author's re-apply");
+  assert.deepEqual(queuedLandings(root), [], "nothing is queued");
+});
+
+test("a pin at the cap whose lineage was already handed back is discarded, naming the hand-back", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+
+  const atCap = {
+    ...makeCtx(root, wt),
+    mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT },
+    conflictHandback: { sha, at: Date.now(), reason: "landing" as const, applied: true },
+  };
   const recovered = await recoverLeftover(atCap);
 
   assert.deepEqual(recovered, { kind: "discarded", sha, summary: "stranded work", attempts: MERGE_CONFLICT_LIMIT });
@@ -98,9 +115,12 @@ test("a pin whose landings hit the merge-conflict cap is discarded, not re-queue
   assert.deepEqual(queuedLandings(root), [], "nothing is queued");
   const warned = warningMessages(root);
   assert.ok(
-    warned.some((m) => m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} landings`)),
+    warned.some((m) =>
+      m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} landings`),
+    ),
     "the discard is warned, naming the sha",
   );
+  assert.ok(warned.some((m) => m.includes("even after a hand-back")), "the warning names the hand-back");
 });
 
 test("a role whose landing is already queued is not enqueued twice", async () => {
@@ -271,17 +291,16 @@ test("a pinned commit with no readable subject is queued under the bare provenan
   assert.equal(entry?.highFriction, undefined, "no flag without a message");
 });
 
-test("a discarded commit with no readable subject falls back to the bare sha label", async () => {
+test("a handed-back commit with no readable subject falls back to the bare sha label", async () => {
   const { root, sha } = await pinnedEmptyMessageFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
 
   const atCap = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT } };
   assert.deepEqual(await recoverLeftover(atCap), {
-    kind: "discarded",
+    kind: "handback",
     sha,
     summary: `leftover ${shortSha(sha)}`,
     attempts: MERGE_CONFLICT_LIMIT,
   });
-  assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin is deleted");
-  assert.deepEqual(queuedLandings(root), [], "nothing is queued");
+  assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin stays for the author's re-apply");
 });

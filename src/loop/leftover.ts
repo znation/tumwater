@@ -20,12 +20,13 @@ import type { LoopState } from "./loop-state.js";
  * surface; the only things it borrows from the loop are identity, the tick number, and the
  * worktree (for the no-pin fallback). */
 
-/** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery
- * discards the pin instead of re-queuing it (LoopState.mergeConflicts). Each attempt costs a
- * conflict-resolution run, and a role holding a pin never authors: without a cap an
- * unmergeable change would re-queue forever, burning one resolution run per drain. The same
- * three strikes as the review gate's REVIEW_FAILURE_LIMIT. */
-export const MERGE_CONFLICT_LIMIT = 3;
+/** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery stops
+ * re-queuing it (LoopState.mergeConflicts). Each attempt costs a conflict-resolution run, and
+ * a role holding a pin never authors: without a cap an unmergeable change would re-queue
+ * forever, burning one resolution run per drain. At the cap the pin is handed back to its
+ * author with the markers in place rather than discarded (PLANS.md "Robust conflict landing,
+ * part 2/2"); a lineage already handed back once is discarded instead. */
+export const MERGE_CONFLICT_LIMIT = 2;
 
 /** What recoverLeftover needs from its owning loop: identity, the current tick number, and the
  * role's worktree (needed only for the no-pin ahead-of-main fallback). */
@@ -39,8 +40,11 @@ export interface LeftoverContext {
   /** The role's worktree — read for the no-pin fallback only. */
   wt: string;
   /** The role's conflict streak (LoopState.mergeConflicts): a pin at MERGE_CONFLICT_LIMIT is
-   * discarded instead of re-queued. */
+   * handed back to its author (or discarded, when a hand-back already happened). */
   mergeConflicts?: LoopState["mergeConflicts"];
+  /** The role's outstanding hand-back (LoopState.conflictHandback): when one exists, a pin at
+   * the cap means this lineage already used its one hand-back, so it is discarded. */
+  conflictHandback?: LoopState["conflictHandback"];
   /** The role's permanent-reviewer-config hold (LoopState.landingReviewError): while it names
    * this pin's sha, recovery returns `held` instead of re-queueing, so a 4xx config error is
    * not retried at suite speed (BUGS.md 2026-10-06). */
@@ -59,6 +63,10 @@ export interface LeftoverContext {
  * - `discarded`: the pin's last MERGE_CONFLICT_LIMIT landings all ended in a conflict the
  *   resolver could not settle — the ref is deleted with a warning and nothing is queued, so the
  *   tick goes on to author on a fresh main and the prompt says what was dropped;
+ * - `handback`: the pin's last MERGE_CONFLICT_LIMIT landings all ended in a conflict and its
+ *   lineage has not been handed back yet — the ref stays, and the tick re-applies the diff over
+ *   current main with the markers in place so the author resolves them; the tick logs a
+ *   `conflict_handback` `queued` event;
  * - `held`: a landing failed on a permanent reviewer configuration error and the model config
  *   is unchanged — the pin stays, nothing is queued, and the tick ends on the error ladder
  *   instead of re-paying a gate check at suite speed (BUGS.md 2026-10-06). */
@@ -67,6 +75,7 @@ export type LeftoverRecovery =
   | { kind: "already_queued"; entry: LandingEntry }
   | { kind: "unpinned"; sha: string }
   | { kind: "held"; sha: string; message: string }
+  | { kind: "handback"; sha: string; summary: string; attempts: number }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
 /** Queue a commit a previous tick left unlanded. Entry condition: the landing ref exists and
@@ -119,16 +128,23 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   if (held && held.sha === sha) return { kind: "held", sha, message: held.message };
   const attempts = ctx.mergeConflicts?.sha === sha ? ctx.mergeConflicts.count : 0;
   if (attempts >= MERGE_CONFLICT_LIMIT) {
-    // Main has moved too far under this change for the resolver to reconcile it, and every
-    // re-land would pay another resolution run for the same outcome. Drop the pin (the warning
-    // names its sha) and let the author start over.
-    await deleteRef(ctx.root, ref);
-    warnEvent(
-      ctx.root,
-      ctx.role,
-      `discarding leftover ${shortSha(sha)} after ${attempts} landings ended in unresolved merge conflicts with main`,
-    );
-    return { kind: "discarded", sha, summary: meta.subject ?? `leftover ${shortSha(sha)}`, attempts };
+    const summary = meta.subject ?? `leftover ${shortSha(sha)}`;
+    if (ctx.conflictHandback) {
+      // This lineage already used its one hand-back and still conflicts at the cap: drop the
+      // pin (the warning names its sha and both attempts) and let the author start over.
+      await deleteRef(ctx.root, ref);
+      warnEvent(
+        ctx.root,
+        ctx.role,
+        `discarding leftover ${shortSha(sha)} after ${attempts} landings ended in unresolved merge conflicts with main, even after a hand-back`,
+      );
+      return { kind: "discarded", sha, summary, attempts };
+    }
+    // Main has moved too far under this change for the resolver to reconcile it: keep the pin
+    // and hand it back to its author, who re-applies it over current main with the markers in
+    // place and resolves them. The loop's next step logs the conflict_handback event and sets
+    // LoopState.conflictHandback (the pin survives until that re-apply).
+    return { kind: "handback", sha, summary, attempts };
   }
   const entry: LandingEntry = {
     role: ctx.role,

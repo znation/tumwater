@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildConflictHandbackNote,
   buildConflictPrompt,
   buildMainRedNote,
   buildRejectedReviewNote,
@@ -23,6 +24,26 @@ import { oneLine } from "./oracles.js";
 // content): pi must know exactly which files hold markers, what "ours"/"theirs" mean, and —
 // critically — that it may not touch git state itself, or its own commit/rebase would collide
 // with the harness's continueRebase.
+
+test("buildConflictHandbackNote names the files, the reason and what main changed", () => {
+  const note = buildConflictHandbackNote("landing", ["notes.md"], {
+    change: "tumwater(improve): do the thing\n\nWHY: because",
+    main: [{ sha: "abc1234", subject: "main rewrote a.ts", body: "the reason" }],
+  });
+  assert.match(note, /<conflict-handback>/);
+  assert.match(note, /could not be landed/);
+  assert.match(note, /- notes\.md/);
+  assert.match(note, /What main changed in these files/);
+  assert.match(note, /abc1234 main rewrote a\.ts/);
+  assert.match(note, /Resolve every marker/);
+});
+
+test("buildConflictHandbackNote says a revision, not a landing, and tolerates no intent", () => {
+  const note = buildConflictHandbackNote("revision", [], { change: "", main: [] });
+  assert.match(note, /rejected change was being revised/);
+  assert.match(note, /- \(none recorded\)/);
+  assert.match(note, /\(no commit message recorded\)/);
+});
 
 test("buildConflictPrompt names the role and lists every conflicted file", () => {
   const p = buildConflictPrompt("bugfix", ["src/git.ts", "docs/notes.md"]);

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { applyRevision, REVISION_LIMIT } from "../src/loop/revision.js";
+import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "../src/loop/revision.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
 import { vetRequest, type BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
@@ -24,6 +24,9 @@ import { eventsOfType } from "./log-fixtures.js";
 import { fakePi, piRunResult } from "./fake-pi.js";
 import { commitIn, initializedWorktree, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./lander-fixtures.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
+import { initializedRepo } from "./repo-fixtures.js";
+import { assistantLine } from "./pi-events.js";
 
 /** Unit coverage for the revise-rejected feature (plans/revise-rejected.md part 1/2): the
  * rejected commit is kept alive under its own ref, re-applied to current main as uncommitted
@@ -60,6 +63,70 @@ test("applyRevision on a conflict resets to clean main and returns false", async
   assert.equal(await applyRevision(root, "main", sha), false);
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "main version\n");
   assert.equal(await isDirty(root), false, "the worktree is clean main after a conflict");
+});
+
+test("applyWithConflicts applies a clean diff as uncommitted edits with no conflicted paths", async () => {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(root, "feature.ts"), "export const feature = true;\n");
+  commitIn(root, "the handed-back work");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  fs.writeFileSync(path.join(root, "other.ts"), "export const other = true;\n");
+  commitIn(root, "move main");
+
+  const result = await applyWithConflicts(root, "main", sha);
+  assert.deepEqual(result, { applied: true, conflicted: [] });
+  assert.equal(fs.readFileSync(path.join(root, "feature.ts"), "utf8"), "export const feature = true;\n");
+  assert.equal(await isDirty(root), true, "the diff is uncommitted");
+});
+
+test("applyWithConflicts leaves the conflict markers as ordinary uncommitted edits", async () => {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(root, "seed.txt"), "theirs\n");
+  commitIn(root, "the handed-back work");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  fs.writeFileSync(path.join(root, "seed.txt"), "main version\n");
+  commitIn(root, "main moved the same line");
+
+  const result = await applyWithConflicts(root, "main", sha);
+  assert.deepEqual(result, { applied: true, conflicted: ["seed.txt"] });
+  const text = fs.readFileSync(path.join(root, "seed.txt"), "utf8");
+  assert.match(text, /<<<<<<</);
+  assert.match(text, />>>>>>>/);
+  assert.equal(await isDirty(root), true, "the marker-bearing file is an ordinary edit");
+  // The index is back at HEAD with no unmerged entries, so the tick can commit normally.
+  assert.equal(sh(root, "git", "diff", "--name-only", "--diff-filter=U").trim(), "");
+});
+
+test("applyWithConflicts decodes the C-quoted name of a non-ASCII conflicted file", async () => {
+  // core.quotePath is on by default: a raw `diff --diff-filter=U` renders the conflicted
+  // name as `"h\303\251llo.md"`, which does not exist on disk. Undecoded, the hand-back
+  // prompt listed a bogus path and its "what main changed" block found nothing; the fix is
+  // the same conflictedFiles decode landing-git.ts uses (review objection).
+  const root = makeRepo();
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(root, "héllo.md"), "theirs\n");
+  commitIn(root, "the handed-back work");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  fs.writeFileSync(path.join(root, "héllo.md"), "main version\n");
+  commitIn(root, "main moved the same line");
+
+  const result = await applyWithConflicts(root, "main", sha);
+  assert.deepEqual(result, { applied: true, conflicted: ["héllo.md"] });
+  assert.match(fs.readFileSync(path.join(root, "héllo.md"), "utf8"), /<<<<<<</);
+});
+
+test("applyWithConflicts on a non-conflict failure resets to main and reports not applied", async () => {
+  const root = makeRepo();
+  const before = sh(root, "git", "rev-parse", "HEAD").trim();
+  const result = await applyWithConflicts(root, "main", "0".repeat(40));
+  assert.deepEqual(result, { applied: false, conflicted: [] });
+  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), before);
+  assert.equal(await isDirty(root), false, "clean main after a failed apply");
 });
 
 test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
@@ -365,6 +432,51 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
   // A recovery landing carries no prior review: the re-review sees it like a fresh change
   // (plans/revise-rejected.md part 2/2).
   assert.equal(recovered?.kind === "enqueued" ? recovered.entry.priorReview : undefined, undefined);
+});
+
+test("a revision whose re-apply conflicts reaches the author with markers, not a plain rejection", async () => {
+  const repo = await initializedRepo();
+  // A rejected change edits seed.txt; main then moves the same line, so the clean re-apply
+  // conflicts and the fallback must leave the markers for the author.
+  sh(repo, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "rejected version\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "the rejected work");
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "checkout", "main");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
+  sh(repo, "git", "commit", "-am", "main moved the same line");
+  await setRef(repo, rejectedRefName("improve"), sha);
+
+  const prompts = path.join(tmpdir(), "revision-prompts.log");
+  const restore = fakePi(
+    [
+      `printf '%s\n' "$@" >> "${prompts}"`,
+      `echo resolved > seed.txt`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: revised with markers resolved")}'`,
+      `echo new > new.txt`,
+    ].join("\n"),
+  );
+  try {
+    const runner = makeLoopRunner(repo, "improve");
+    runner.state.revision = { sha, round: 1, at: Date.now() };
+    runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
+    const outcome = await runner.tick();
+
+    assert.equal(outcome.result, "queued");
+    const prompt = fs.readFileSync(prompts, "utf8");
+    assert.match(prompt, /revision 1 of 2/);
+    assert.match(prompt, /conflict-handback/);
+    assert.match(prompt, /Conflicted files:\n- seed\.txt/);
+    assert.doesNotMatch(prompt, /The rejected diff no longer applies to current main/);
+    assert.equal(runner.state.revision, undefined, "the revision is consumed by staging");
+    assert.equal(runner.state.conflictHandback?.reason, "revision");
+    assert.equal(runner.state.conflictHandback?.applied, true);
+    assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "it still rides as revision round 1");
+    assert.deepEqual(eventsOfType(repo, "conflict_handback").map((e) => e.reason), ["revision"]);
+  } finally {
+    restore();
+  }
 });
 
 test("a landed revision deletes the rejected ref", async () => {

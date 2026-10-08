@@ -230,6 +230,22 @@ export function applyTickOutcome(
   } else {
     scheduleBackoff(s, cfg.idleBackoff);
   }
+  // A hand-back's marker-bearing edits ARE the resolution its author owes, so the record lives
+  // only while that resolution is still in play: a `queued` tick committed it, a pending
+  // `revision` still owes it, and a resumable session still holds the edits. Every other
+  // outcome abandons them (the next fresh tick resets the worktree to main), so the hand-back
+  // is spent: clear the record, or it would make a later change's cap conflict discard the
+  // pin instead of handing it back (PLANS.md "Robust conflict landing, part 2/2"). `changed`
+  // clears too — the resolved change landed in-tick, so its life is over. This runs after the
+  // resume branches above have set `resumePending`.
+  if (
+    s.conflictHandback &&
+    outcome.result !== "queued" &&
+    s.revision === undefined &&
+    s.resumePending !== true
+  ) {
+    s.conflictHandback = undefined;
+  }
 }
 
 /** Record a completed LANDING on the authoring loop's state (plans/merge-queue.md 3/5):
@@ -312,5 +328,9 @@ export function applyLandingOutcome(
   if (result === "changed" || result === "rejected") s.landingCheckFailures = undefined;
   // A permanent-reviewer-config hold ends with its pin's life: landed, or rejected away.
   if (result === "changed" || result === "rejected") s.landingReviewError = undefined;
+  // A hand-back ends with its change's life too: once the resolved change lands or is rejected,
+  // a later change gets its own one-hand-back budget (PLANS.md "Robust conflict landing, part
+  // 2/2"). A merge_conflict keeps it, so the resolved change's own cap discard fires.
+  if (result === "changed" || result === "rejected") s.conflictHandback = undefined;
   if (result !== "aborted") s.phase = undefined;
 }
