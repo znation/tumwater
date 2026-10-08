@@ -6,8 +6,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { leaseSlot, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
-import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
+import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { slotCount } from "../src/config/config.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
@@ -198,4 +200,120 @@ test("a waiting lease with a signal acquires when a slot frees, then ignores a l
   controller.abort();
   assert.match(lease.dir, /_slot-\d+$/);
   lease.release();
+});
+
+test("keep preserves a slot pinned for the role; a plain lease resets it", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const first = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  writeFileSync(join(first.dir, "resume.txt"), "kept");
+  first.release({ pin: true });
+  assert.equal(slotForDir(root, first.dir)?.pinnedFor, "feature");
+
+  const resumed = await leaseSlot(root, {
+    role: "feature",
+    purpose: "tick",
+    ref: "main",
+    keep: true,
+  });
+  assert.equal(resumed.dir, first.dir, "the kept lease did not reuse the pinned slot");
+  assert.equal(resumed.preserved, true);
+  assert.equal(readFileSync(join(resumed.dir, "resume.txt"), "utf8"), "kept");
+  resumed.release();
+  assert.equal(slotForDir(root, first.dir)?.pinnedFor, null, "release cleared the pin");
+
+  const plain = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  assert.equal(plain.preserved, false);
+  assert.equal(existsSync(join(plain.dir, "resume.txt")), false, "a plain lease resets the slot");
+  plain.release();
+});
+
+test("keep on an unpinned slot still resets and reports not preserved", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const first = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  writeFileSync(join(first.dir, "resume.txt"), "dropped");
+  first.release();
+
+  const kept = await leaseSlot(root, {
+    role: "feature",
+    purpose: "tick",
+    ref: "main",
+    keep: true,
+  });
+  assert.equal(kept.preserved, false);
+  assert.equal(existsSync(join(kept.dir, "resume.txt")), false);
+  kept.release();
+});
+
+test("a lease for the pinned role takes the pinned slot over a free unpinned one", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 3 });
+  writeSlotsState(root, {
+    slots: [
+      {
+        dir: slotWorktreePath(root, 1),
+        lease: null,
+        pinnedFor: "feature",
+        lastRole: null,
+        lastReleasedAt: 100,
+      },
+      {
+        dir: slotWorktreePath(root, 2),
+        lease: null,
+        pinnedFor: null,
+        lastRole: "bugfix",
+        lastReleasedAt: 200,
+      },
+    ],
+  });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main", keep: true });
+  assert.equal(lease.dir, slotWorktreePath(root, 1));
+  assert.equal(lease.preserved, true);
+  lease.release();
+});
+
+test("a slot pinned for one role is never leased by another", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 3 });
+  const pinnedDir = slotWorktreePath(root, 1);
+  writeSlotsState(root, {
+    slots: [
+      { dir: pinnedDir, lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: 1 },
+    ],
+  });
+  const lease = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  assert.notEqual(lease.dir, pinnedDir, "another role leased a pinned slot");
+  lease.release();
+  assert.equal(slotForDir(root, pinnedDir)?.pinnedFor, "feature");
+});
+
+test("a pinned slot does not count toward the slot budget", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const a = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  a.release({ pin: true });
+  const b = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  assert.notEqual(b.dir, a.dir, "the pinned slot consumed the only budgeted slot");
+  assert.match(b.dir, /_slot-\d+$/);
+  b.release();
+});
+
+test("the shrink-away pass keeps a pinned slot and drops older idle unpinned ones", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 3 });
+  const a = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const b = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  const c = await leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" });
+  a.release({ pin: true });
+
+  writeConfig(root, { worktreeSlots: 1 });
+  b.release();
+  c.release();
+  const slots = readSlotsState(root).slots;
+  assert.ok(
+    slots.some((slot) => slot.dir === a.dir && slot.pinnedFor === "feature"),
+    "the pinned slot was shrunk away",
+  );
+  assert.ok(!slots.some((slot) => slot.dir === b.dir), "the oldest idle unpinned slot survived");
 });

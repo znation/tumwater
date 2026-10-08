@@ -13,14 +13,19 @@
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
 import { slotWorktreePath } from "../paths.js";
-import { updateSlotsState } from "./slots-state.js";
+import { slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 
-/** A live lease as callers see it: the slot directory and the one-shot release. */
+/** A live lease as callers see it: the slot directory, the one-shot release, and whether the
+ * slot's existing checkout was kept as-is. */
 export interface SlotLeaseHandle {
   dir: string;
-  release: () => void;
+  /** Idempotent. Only the first call's options apply; `pin` keeps the slot pinned for the role. */
+  release: (options?: { pin?: boolean }) => void;
+  /** True when the slot was already pinned for the role and its checkout was left untouched;
+   * false when the lease reset the slot to `ref`. */
+  preserved: boolean;
 }
 
 interface LeaseSlotOptions {
@@ -31,6 +36,9 @@ interface LeaseSlotOptions {
   ref: string;
   /** Aborts a lease that is still waiting for a free slot. */
   signal?: AbortSignal;
+  /** Keep the existing checkout when the chosen slot is pinned for `role` instead of resetting
+   * it to `ref` (a resume must run in the same cwd its session last used). */
+  keep?: boolean;
 }
 
 /** The parts of a slot record this module reads and writes — structurally slots-state.ts's
@@ -222,8 +230,9 @@ function liveCount(root: string): number {
 }
 
 /** Free `dir` in slots.json, record `lastRole`/`lastReleasedAt`, and return the idle unpinned
- * slot dirs to remove because the live slot budget shrank below them (oldest-released first). */
-function releaseSlot(root: string, dir: string, role: string, count: number): string[] {
+ * slot dirs to remove because the live slot budget shrank below them (oldest-released first).
+ * `pin` keeps the slot pinned for `role`; otherwise a pin this role held is cleared. */
+function releaseSlot(root: string, dir: string, role: string, count: number, pin: boolean): string[] {
   const toRemove: string[] = [];
   updateSlotsState(root, (state) => {
     const slot = state.slots.find((s) => s.dir === dir);
@@ -231,6 +240,7 @@ function releaseSlot(root: string, dir: string, role: string, count: number): st
       slot.lease = null;
       slot.lastRole = role;
       slot.lastReleasedAt = Date.now();
+      slot.pinnedFor = pin ? role : slot.pinnedFor === role ? null : slot.pinnedFor;
     }
     for (;;) {
       const idle = state.slots.filter((s) => s.lease === null && s.pinnedFor === null);
@@ -250,26 +260,30 @@ export async function leaseSlot(
   root: string,
   options: LeaseSlotOptions,
 ): Promise<SlotLeaseHandle> {
-  const { role, purpose, ref, signal } = options;
+  const { role, purpose, ref, signal, keep } = options;
   const dir = await acquire(root, role, purpose, signal);
+  const preserved = keep === true && slotForDir(root, dir)?.pinnedFor === role;
   const useRelease = await beginWorktreeUse(root, dir);
-  try {
-    await ensureDetachedWorktree(root, dir, ref);
-  } catch (err) {
-    useRelease();
-    // Free the claim without shrinking: the slot may be reused on the next lease.
-    releaseSlot(root, dir, role, Number.MAX_SAFE_INTEGER);
-    wakeWaiters(root);
-    throw err;
+  if (!preserved) {
+    try {
+      await ensureDetachedWorktree(root, dir, ref);
+    } catch (err) {
+      useRelease();
+      // Free the claim without shrinking: the slot may be reused on the next lease.
+      releaseSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false);
+      wakeWaiters(root);
+      throw err;
+    }
   }
   let released = false;
   return {
     dir,
-    release: () => {
+    preserved,
+    release: (options) => {
       if (released) return;
       released = true;
       useRelease();
-      const toRemove = releaseSlot(root, dir, role, liveCount(root));
+      const toRemove = releaseSlot(root, dir, role, liveCount(root), options?.pin === true);
       wakeWaiters(root);
       // Best-effort: a slot whose directory is already gone is unregistered by the prune.
       for (const stale of toRemove) void removeWorktreeDir(root, stale);

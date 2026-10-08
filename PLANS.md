@@ -8,6 +8,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Organize the test suite's support modules into `test/fakes/`, `test/fixtures/`, and `test/helpers/` (planned 2026-10-07 by organize)
 
+**Needs review 2026-10-07 by feature: too large for one run**
+
 **Goal.** Give `test/` the same kind-directory layout `src/` already has: move the 30 flat
 non-test support modules out of the `test/` root into `test/fakes/` and `test/fixtures/` (both
 already exist) and a new `test/helpers/`, leaving the runner infrastructure and every
@@ -69,48 +71,6 @@ own relative imports and `import.meta.url` constants, which are depth-sensitive:
 - `npm run test` (eslint + tsc + the suite) is green and runs the same set of `*.test.ts`
   files; `test/fake-commands.test.ts`'s relocated-tree import still fails loudly when
   `SCRIPT_SHIM` is absent.
-
-### Worktree pool, part 4a/5: a leased slot can be kept for its role's resume and pinned on release (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5 and 3/5 landed)
-
-Design: plans/worktree-pool.md ("Leases", "Role ticks lease slots").
-
-**Context.** The pool already understands pins: `chooseSlot` (src/git/worktree-pool.ts) prefers
-`pinnedFor === role`, excludes a slot pinned for another role, and counts only unpinned slots
-toward `slotCount`. But nothing ever sets `pinnedFor` except `retire` clearing it, because
-`leaseSlot`'s returned `release()` takes no options; and `leaseSlot` always hard-resets the
-chosen slot with `ensureDetachedWorktree`, which would wipe the uncommitted edits a resume must
-keep. Role ticks need both: skip the reset on a slot pinned for the resuming role, and pin a
-slot on release when the tick aborted with `resumePending` (pi `--continue` only matches a
-session whose cwd is exactly the current directory).
-
-**Approach.**
-1. `SlotLeaseHandle` becomes `{ dir, release(options?: { pin?: boolean }), preserved: boolean }`.
-2. Add a `leaseSlot` option `{ keep?: boolean }`. After `acquire` returns `dir`, read
-   `slotForDir(root, dir)?.pinnedFor`. When `keep === true` and that equals `role`, skip
-   `ensureDetachedWorktree` and return `preserved: true`; otherwise prepare at `ref` as today and
-   return `preserved: false`.
-3. Thread a `pin` argument into `releaseSlot(root, dir, role, count, pin)`: after clearing
-   `lease`, set `slot.pinnedFor = pin ? role : (slot.pinnedFor === role ? null : slot.pinnedFor)`.
-   A release with no options clears the releasing role's own pin (the design's "next release
-   clears the pin whether or not it resumed").
-4. Keep both existing invariants: `released` still guards a second call (only the first call's
-   options apply), and the shrink-away pass still removes only idle *unpinned* slots.
-5. Leave `chooseSlot` and `liveCount` untouched — they already treat pins correctly.
-
-**Files touched.** src/git/worktree-pool.ts. Tests: test/worktree-pool.test.ts.
-
-**Acceptance criteria.**
-- `leaseSlot(..., { keep: true })` on a slot pinned for the role returns `preserved: true` and
-  leaves an uncommitted file written into the slot intact; with `keep` absent, or on an
-  unpinned slot, it resets to `ref` and returns `preserved: false`.
-- Releasing with `{ pin: true }` records `pinnedFor = <role>` in slots.json; a later `leaseSlot`
-  for that role returns the same directory even while another free unpinned slot exists.
-- A slot pinned for role A is never leased by role B.
-- Releasing the pinned slot for its role without `{ pin: true }` clears `pinnedFor`.
-- With `worktreeSlots: 1`, a slot pinned for A does not count toward the budget: B's next lease
-  creates a second `_slot-<n>` instead of waiting.
-- The shrink-away pass does not remove a pinned slot.
-- `npm run test` green.
 
 ### Worktree pool, part 4b/5: role ticks lease a pooled slot (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5, 3/5 and part 4a/5 landed)
 
@@ -359,6 +319,48 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 4a/5: a leased slot can be kept for its role's resume and pinned on release (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 1/5, 2a/5 and 3/5 landed; done 2026-10-07 by feature)
+
+Design: plans/worktree-pool.md ("Leases", "Role ticks lease slots").
+
+**Context.** The pool already understands pins: `chooseSlot` (src/git/worktree-pool.ts) prefers
+`pinnedFor === role`, excludes a slot pinned for another role, and counts only unpinned slots
+toward `slotCount`. But nothing ever sets `pinnedFor` except `retire` clearing it, because
+`leaseSlot`'s returned `release()` takes no options; and `leaseSlot` always hard-resets the
+chosen slot with `ensureDetachedWorktree`, which would wipe the uncommitted edits a resume must
+keep. Role ticks need both: skip the reset on a slot pinned for the resuming role, and pin a
+slot on release when the tick aborted with `resumePending` (pi `--continue` only matches a
+session whose cwd is exactly the current directory).
+
+**Approach.**
+1. `SlotLeaseHandle` becomes `{ dir, release(options?: { pin?: boolean }), preserved: boolean }`.
+2. Add a `leaseSlot` option `{ keep?: boolean }`. After `acquire` returns `dir`, read
+   `slotForDir(root, dir)?.pinnedFor`. When `keep === true` and that equals `role`, skip
+   `ensureDetachedWorktree` and return `preserved: true`; otherwise prepare at `ref` as today and
+   return `preserved: false`.
+3. Thread a `pin` argument into `releaseSlot(root, dir, role, count, pin)`: after clearing
+   `lease`, set `slot.pinnedFor = pin ? role : (slot.pinnedFor === role ? null : slot.pinnedFor)`.
+   A release with no options clears the releasing role's own pin (the design's "next release
+   clears the pin whether or not it resumed").
+4. Keep both existing invariants: `released` still guards a second call (only the first call's
+   options apply), and the shrink-away pass still removes only idle *unpinned* slots.
+5. Leave `chooseSlot` and `liveCount` untouched — they already treat pins correctly.
+
+**Files touched.** src/git/worktree-pool.ts. Tests: test/worktree-pool.test.ts.
+
+**Acceptance criteria.**
+- `leaseSlot(..., { keep: true })` on a slot pinned for the role returns `preserved: true` and
+  leaves an uncommitted file written into the slot intact; with `keep` absent, or on an
+  unpinned slot, it resets to `ref` and returns `preserved: false`.
+- Releasing with `{ pin: true }` records `pinnedFor = <role>` in slots.json; a later `leaseSlot`
+  for that role returns the same directory even while another free unpinned slot exists.
+- A slot pinned for role A is never leased by role B.
+- Releasing the pinned slot for its role without `{ pin: true }` clears `pinnedFor`.
+- With `worktreeSlots: 1`, a slot pinned for A does not count toward the budget: B's next lease
+  creates a second `_slot-<n>` instead of waiting.
+- The shrink-away pass does not remove a pinned slot.
+- `npm run test` green.
 
 ### Worktree pool, part 2d/5: remove the `_land-*` machinery and legacy checkouts (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2b/5 and 2c/5 landed; done 2026-10-07 by feature)
 
