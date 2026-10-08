@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { releaseChildHandles, signalTree } from "../process/process.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { cacheReadUnpriced, fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
@@ -81,14 +82,31 @@ type ProviderAuth = "ready" | "not-ready" | "unknown";
  * pre-flight, not a place to wait out a hung backend. */
 const AUTH_CHECK_TIMEOUT_MS = 15_000;
 
+/** Cap on the probe's captured stdout. The auth reply is a tiny JSON object; a binary whose
+ * output is a runaway log (or a pipe held open with no EOF) must not grow `out` without bound.
+ * Sibling probes share EXEC_MAX_BUFFER, but 1 MiB is already orders of magnitude past any real
+ * reply, so it is the tighter bound here. Over it the probe kills the child and reads as
+ * unknown. */
+const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
+
 /** The default credential probe: run the resolved agent binary's own auth check for one
  * provider and read `ready` out of its JSON. The binary resolves exactly as the spawn does
  * (resolveAgentBin — the same source a real tick would launch), so doctor tests the auth of
- * the pi it would actually run. Never throws; every failure mode lands on "unknown". */
+ * the pi it would actually run. Never throws; every failure mode lands on "unknown".
+ *
+ * The probe's wall-clock is enforced by the probe itself, not only by a signal: the child runs
+ * detached, and at `timeoutMs` (or when its output passes AUTH_CHECK_MAX_OUTPUT_BYTES) its
+ * whole process group is SIGKILLed AND the promise settles as "unknown" with the stdout pipe
+ * destroyed. Killing alone is not enough — `'close'` waits for the stdio pipes to close, so a
+ * child stuck in an uninterruptible sleep, or one that left a grandchild holding the pipes
+ * open, would otherwise leave the promise pending forever and hang `tumwater doctor` past its
+ * own deadline (the same trap git-run.ts's bounded spawn closes for git). `timeoutMs` is a
+ * test seam; production callers leave it unset. */
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,
   pathEnv: string = process.env.PATH ?? "",
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<ProviderAuth> {
   const resolved = resolveAgentBin(config);
   return new Promise((resolve) => {
@@ -96,7 +114,11 @@ export async function piProviderAuth(
     try {
       child = spawn(resolved.bin, ["auth", "check", "--provider", provider, "--json"], {
         cwd: process.cwd(),
-        stdio: ["ignore", "pipe", "pipe"],
+        // Detached so the deadline's signalTree reaches a grandchild too; stderr is ignored
+        // rather than piped, since nothing reads it and a full stderr pipe would block the
+        // child until the deadline.
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
         env: { ...process.env, PATH: pathEnv },
       });
     } catch {
@@ -104,26 +126,41 @@ export async function piProviderAuth(
       return;
     }
     let out = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-    }, AUTH_CHECK_TIMEOUT_MS);
+    let bytes = 0;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (auth: ProviderAuth): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      // Destroy the captured stdout and unref the process handle (releaseChildHandles): a
+      // grandchild that escaped the group and holds the pipe's write end would otherwise keep
+      // the harness's event loop alive though the probe already has its answer.
+      releaseChildHandles(child);
+      resolve(auth);
+    };
+    // Deadline or runaway output: kill the whole group, tear down the handles, and settle —
+    // do not wait for a `'close'` the group may never deliver.
+    const abort = (): void => {
+      signalTree(child, "SIGKILL");
+      settle("unknown");
+    };
+    timer = setTimeout(abort, timeoutMs);
     child.stdout?.on("data", (chunk: Buffer) => {
       out += chunk.toString("utf8");
+      bytes += chunk.length;
+      if (bytes > AUTH_CHECK_MAX_OUTPUT_BYTES) abort();
     });
-    child.on("error", () => {
-      clearTimeout(timer);
-      resolve("unknown");
-    });
+    child.on("error", () => settle("unknown"));
     child.on("close", (code) => {
-      clearTimeout(timer);
       try {
         const doc: unknown = JSON.parse(out);
         const ready = isJsonObject(doc) && doc.ready;
-        if (code === 0 && ready === true) resolve("ready");
-        else if (code === 0 && ready === false) resolve("not-ready");
-        else resolve("unknown");
+        if (code === 0 && ready === true) settle("ready");
+        else if (code === 0 && ready === false) settle("not-ready");
+        else settle("unknown");
       } catch {
-        resolve("unknown");
+        settle("unknown");
       }
     });
   });

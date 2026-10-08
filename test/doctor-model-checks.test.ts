@@ -273,3 +273,26 @@ test("piProviderAuth reads ready out of the agent binary's auth check and never 
   // A binary that does not exist is unknown, not a thrown error.
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", tmpdir("doctor-empty-bins-")), "unknown");
 });
+
+// A probe whose child never delivers `'close'`, or floods its pipe, must settle at its own
+// bound: `'close'` waits for the stdio pipes, so a grandchild holding them open would otherwise
+// leave the promise pending past the deadline and hang doctor. The injected timeout keeps a
+// regression failing in seconds instead of the production 15 s.
+test("piProviderAuth settles at its deadline and caps runaway output", { timeout: 5000 }, async () => {
+  const binDir = tmpdir("doctor-auth-bins-");
+  // The probe runs with PATH set to binDir alone, so the body must hold stdout with shell
+  // builtins only: the sunk subshell stays alive after the direct child exits, keeping the
+  // pipe open so no `'close'` ever arrives. The deadline must settle the probe and reap the
+  // group.
+  writeScript(path.join(binDir, "pi"), "( while :; do :; done ) &");
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir, 200), "unknown");
+
+  // Runaway output: once past the cap the probe stops capturing, kills the child, and reads
+  // as unknown rather than growing the buffer for the whole deadline. Settling well before the
+  // 4 s deadline is the red-proof for the cap: without the cap branch the same assertion would
+  // still read "unknown" but only after the deadline, and this timing would fail.
+  writeScript(path.join(binDir, "pi"), "while true; do echo '{\"ready\":true}'; done");
+  const startedAt = Date.now();
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir, 4000), "unknown");
+  assert.ok(Date.now() - startedAt < 3000, "runaway output settles at the output cap, not the deadline");
+});
