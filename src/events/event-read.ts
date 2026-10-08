@@ -86,7 +86,7 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
  * the `${loop}#${tick}` lookup and the clamp to non-negative, in one place beside the map
  * they index, so the key format and the span rule are spelled once. null when the start is
  * missing (rotation cut it); callers decide what an unpaired end costs — the failure digest
- * prices it as 0, history renders it as "—". */
+ * prices it as 0, history renders it as "—", tick detail omits the duration. */
 export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
   const startTs = starts.get(`${ev.loop}#${ev.tick}`);
   return startTs === undefined ? null : Math.max(0, ev.ts - startTs);
