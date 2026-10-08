@@ -207,6 +207,40 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
   }
 });
 
+// A persisted hand-back whose diff cannot be re-applied at all — the object is gone, or the apply
+// fails for a reason other than a conflict — is dropped rather than retried every tick: the
+// landing ref goes with it, the failure is logged, and the author starts fresh on current main.
+test("a hand-back whose diff no longer applies is dropped and the author starts fresh", async () => {
+  const repo = await initializedRepo();
+  const missing = "0".repeat(40);
+  const prompts = path.join(tmpdir(), "handback-failed-prompts.log");
+  const restore = fakePi(
+    [
+      `printf '%s\n' "$@" >> "${prompts}"`,
+      `echo fresh > fresh.txt`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: started fresh")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = makeLoopRunner(repo, "improve");
+    runner.state.conflictHandback = { sha: missing, at: Date.now(), reason: "landing", applied: false };
+    const outcome = await runner.tick();
+
+    assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
+    const prompt = fs.readFileSync(prompts, "utf8");
+    assert.doesNotMatch(prompt, /conflict-handback/, "the author is not asked to resolve a diff that is gone");
+    assert.equal(runner.state.conflictHandback, undefined, "the unappliable hand-back is dropped");
+    assert.deepEqual(
+      eventsOfType(repo, "conflict_handback").map((e) => [e.action, e.sha]),
+      [["failed", missing]],
+      "the failure is logged with the hand-back's sha",
+    );
+    assert.equal(headLanding(repo)?.entry.sha, outcome.commit, "only the fresh change is queued");
+  } finally {
+    restore();
+  }
+});
+
 // BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its body),
 // so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are already stamped
 // into the pinned commit's message; recovery must read them back and present them to the same

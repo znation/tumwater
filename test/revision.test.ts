@@ -508,6 +508,44 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
   }
 });
 
+// The other side of the conflict fallback: when the rejected diff cannot be re-applied at all
+// (its object is gone), the markers fallback fails too, so the tick drops the revision and the
+// ref and tells the author the plain rejection stands — it must not leave a stale revision
+// queued to be retried every tick.
+test("a revision whose diff no longer applies falls back to the plain rejection", async () => {
+  const repo = await initializedRepo();
+  const rejected = sh(repo, "git", "rev-parse", "HEAD").trim();
+  await setRef(repo, rejectedRefName("improve"), rejected);
+
+  const prompts = path.join(tmpdir(), "revision-gone-prompts.log");
+  const restore = fakePi(
+    [
+      `printf '%s\n' "$@" >> "${prompts}"`,
+      `echo fresh > fresh.txt`,
+      `printf '%s\n' '${assistantLine("ok\nSUMMARY: redid the change")}'`,
+    ].join("\n"),
+  );
+  try {
+    const runner = makeLoopRunner(repo, "improve");
+    runner.state.revision = { sha: "0".repeat(40), round: 1, at: Date.now() };
+    runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
+    const outcome = await runner.tick();
+
+    assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
+    const prompt = fs.readFileSync(prompts, "utf8");
+    assert.match(prompt, /The rejected diff no longer applies to current main/);
+    assert.doesNotMatch(prompt, /conflict-handback/);
+    assert.equal(runner.state.revision, undefined, "the unappliable revision is dropped");
+    assert.ok(
+      eventsOfType(repo, "revision").some((e) => e.action === "conflict"),
+      "the failed re-apply is logged as a revision conflict",
+    );
+    assert.equal(await refSha(repo, rejectedRefName("improve")), null, "the rejected ref is gone");
+  } finally {
+    restore();
+  }
+});
+
 test("a landed revision deletes the rejected ref", async () => {
   const root = makeRepo();
   const role = "improve";
