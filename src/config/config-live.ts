@@ -7,12 +7,12 @@ import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all loops,
- * polled once per poll (src/orchestrator/orchestrator.ts). A broken file keeps the last-known-good config and
- * warns once per distinct error text; an unchanged file is served from a stat-keyed cache (one
- * stat per poll, no read). Owns all the edge-triggered bookkeeping so each crossing logs exactly
- * one event instead of once per poll: missing/reappeared, config_changed's changed keys, live
- * role enable/disable (creating a runner for each newly enabled role), and the semaphore's
- * live-resized concurrency cap. */
+ * polled once per scheduler cycle (src/orchestrator/orchestrator.ts). A broken file keeps the
+ * last-known-good config and warns once per distinct error text; an unchanged file is served
+ * from a stat-keyed cache (one stat per poll, no read). Owns all the edge-triggered bookkeeping
+ * so each crossing logs exactly one event instead of once per poll: missing/reappeared,
+ * config_changed's changed keys, live role enable/disable (creating a runner for each newly
+ * enabled role), and the semaphore's live-resized concurrency cap. */
 interface LiveConfigReload {
   /** Poll the config file once, applying any reload and its side effects; returns the live
    * config — the last successful reload's (last-known-good while the file is broken or missing). */
