@@ -415,7 +415,7 @@ test("shakeMessages joins only the text parts of a mixed content array", () => {
 });
 
 test("the adapter writes a bash result's full output and points the edit at it", () => {
-  // The adapter wires the real bounded-output writer into shakePlan. A bash result pi has not
+  // The adapter wires the real full-output writer into shakePlan. A bash result pi has not
   // persisted yet must be written under the harness root and the pointer must name that path;
   // a temp `.tumwater/` fixture keeps the write off the repository's own state directory.
   const dir = tmpdir();

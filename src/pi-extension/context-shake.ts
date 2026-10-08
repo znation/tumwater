@@ -15,13 +15,13 @@
  *
  * The selection logic is a pure, exported function (`shakePlan`) so every rule is unit-testable
  * offline without pi; the default export is the thin adapter that maps pi's `turn_end` context
- * entries onto it, resolves a bash result's full-output path with bounded-output's
+ * entries onto it, resolves a bash result's full-output path with full-output's
  * `writeFullOutput`, and appends the one-line summary note to the next `tool_result` (as
  * context-budget does with its threshold notes).
  */
 
 import { compactTokens } from "../text/format.js";
-import { writeFullOutput } from "./bounded-output.js";
+import { writeFullOutput } from "./full-output.js";
 import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
 

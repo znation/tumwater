@@ -75,7 +75,7 @@ fresh mtimes, so the tool rebuilds exactly what changed.
   - `ROOT_FROM_WORKTREE` (src/prompt/prompt.ts);
   - `detectBuildCheck`'s walk-up (src/build/build-check-detect.ts);
   - dep-install;
-  - the pi extension's `.tumwater` lookup (src/pi-extension/bounded-output.ts).
+  - the pi extension's `.tumwater` lookup (src/pi-extension/full-output.ts).
 - Four checkouts stay dedicated and are not pooled:
   - **`director`.** It runs outside the permit alongside the role ticks, consumes the
     config-request file at its worktree root, and never resumes.
