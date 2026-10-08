@@ -389,7 +389,7 @@ test("setConfigKey merges one dotted map entry, preserving the other roles' entr
   const before = fs.readFileSync(file, "utf8");
   let r = setConfigKey(dir, "maxDailyCostUsdPerRole.feature", "1.5");
   assert.ok(r.ok && r.value === 1.5 && r.oldValue === undefined, JSON.stringify(r));
-  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  const raw = readJson(file) as Record<string, unknown>;
   assert.deepEqual(raw.maxDailyCostUsdPerRole, { qa: 2, feature: 1.5 }, "merge, not replace");
   assert.ok(before.includes('"qa": 2') && fs.readFileSync(file, "utf8").includes('"qa": 2'), "qa's entry survives verbatim");
 
@@ -401,7 +401,7 @@ test("setConfigKey merges one dotted map entry, preserving the other roles' entr
   r = setConfigKey(dir, "quietHoursPerRole.clean", "01:00-06:00");
   assert.ok(r.ok && r.value === "01:00-06:00");
   assert.deepEqual(
-    (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>).quietHoursPerRole,
+    (readJson(file) as Record<string, unknown>).quietHoursPerRole,
     { qa: "23:00-07:00", clean: "01:00-06:00" },
   );
   const untouched = fs.readFileSync(file, "utf8");
@@ -428,7 +428,7 @@ test("setConfigKey merges one roles.<id>.<field> entry; bad fields and role ids 
   // The field write merges: the entry's other fields survive.
   let r = setConfigKey(dir, "roles.qa.model", "m-new");
   assert.ok(r.ok && r.value === "m-new" && r.oldValue === "m-qa", JSON.stringify(r));
-  const roles = (JSON.parse(fs.readFileSync(file, "utf8")) as { roles: Record<string, Record<string, unknown>> }).roles;
+  const roles = (readJson(file) as { roles: Record<string, Record<string, unknown>> }).roles;
   assert.equal(roles.qa!.model, "m-new");
   assert.equal(roles.qa!.instructions, "test things", "the entry's other fields preserved");
 

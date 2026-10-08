@@ -17,6 +17,7 @@ import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 // A tree's install kept in step with its lockfile (src/build/dep-install.ts, BUGS.md 2026-10-01): a
 // worktree has no node_modules of its own, so a change that adds a dependency failed its gate
@@ -47,8 +48,8 @@ function fakeInstaller(mode: "install" | "noop" | "fail" = "install"): InstallRu
     calls.push(dir);
     if (mode === "fail") return { ok: false, detail: "npm install exited 1: ENOTFOUND registry.npmjs.org" };
     if (mode === "install") {
-      const lock = JSON.parse(fs.readFileSync(path.join(dir, "package-lock.json"), "utf8"));
-      for (const [key, entry] of Object.entries(lock.packages as Record<string, { version?: string }>))
+      const lock = readJson<{ packages: Record<string, { version?: string }> }>(path.join(dir, "package-lock.json"));
+      for (const [key, entry] of Object.entries(lock.packages))
         if (key.startsWith("node_modules/") && entry.version) installPkg(dir, key.slice(13), entry.version);
     }
     return { ok: true };

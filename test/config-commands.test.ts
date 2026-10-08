@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { cmdConfig, CONFIG_USAGE } from "../src/cli/config-commands.js";
 import { attemptAsync } from "./helpers/exit-capture.js";
+import { readJson } from "./helpers/json-read.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 
 // cmdConfig is the `tumwater config` command's CLI shell around loadConfigSafe and
@@ -74,9 +75,7 @@ test("set writes one top-level key and confirms with the parsed value", async ()
   const out = await attemptAsync(() => cmdConfig(root, ["set", "model", "gpt-5"]));
   assert.ok(!out.exited);
   assert.equal(out.stdout, 'set model to "gpt-5"\n', "the confirmation names key and new value");
-  const onDisk = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as {
-    model?: string;
-  };
+  const onDisk = readJson(path.join(root, "tumwater.json")) as { model?: string };
   assert.equal(onDisk.model, "gpt-5", "the write reached tumwater.json");
 });
 
@@ -193,12 +192,11 @@ test("get rejects a dotted key outside the supported shapes", async () => {
 test("set of a dotted map key merges without touching the other roles' entries", async () => {
   const root = makeRepo();
   writeConfig(root, { maxDailyCostUsdPerRole: { qa: 2 } });
-  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
-  assert.ok((JSON.parse(before) as { maxDailyCostUsdPerRole?: Record<string, number> }).maxDailyCostUsdPerRole?.qa === 2, "fixture holds qa's entry");
+  assert.ok((readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsdPerRole?: Record<string, number> }).maxDailyCostUsdPerRole?.qa === 2, "fixture holds qa's entry");
   const out = await attemptAsync(() => cmdConfig(root, ["set", "maxDailyCostUsdPerRole.feature", "1.5"]));
   assert.ok(!out.exited);
   assert.equal(out.stdout, "set maxDailyCostUsdPerRole.feature to 1.5\n", "the confirmation names the dotted key");
-  const raw = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  const raw = readJson(path.join(root, "tumwater.json")) as Record<string, unknown>;
   assert.deepEqual(raw.maxDailyCostUsdPerRole, { qa: 2, feature: 1.5 }, "merge, not replace");
 });
 
@@ -207,9 +205,7 @@ test("set of a dotted role field merges the entry; a bad field fails naming the 
   writeConfig(root, { roles: { qa: { model: "m-qa", instructions: "test things" } } });
   const out = await attemptAsync(() => cmdConfig(root, ["set", "roles.qa.model", "m-new"]));
   assert.ok(!out.exited);
-  const raw = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as {
-    roles: Record<string, Record<string, unknown>>;
-  };
+  const raw = readJson(path.join(root, "tumwater.json")) as { roles: Record<string, Record<string, unknown>> };
   assert.equal(raw.roles.qa!.model, "m-new");
   assert.equal(raw.roles.qa!.instructions, "test things", "the entry's other fields preserved");
 

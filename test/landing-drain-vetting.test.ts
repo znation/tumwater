@@ -30,6 +30,7 @@ import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { leasedRoleShell } from "./pi-events.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
+import { readJson } from "./helpers/json-read.js";
 
 /** Second slice of the landing-drain suite — the vet-permit and merge-slot tests beside
  * landing-drain.test.ts (which carries the dedupe tests, including the one ~10.5s stress
@@ -263,7 +264,7 @@ test("a vet runs in a pooled slot (purpose vet while it works, no lease after) a
     const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
     assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
     assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the vet");
-    const during = JSON.parse(fs.readFileSync(path.join(flags, "during.json"), "utf8")) as {
+    const during = readJson(path.join(flags, "during.json")) as {
       slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
     };
     const leased = during.slots.find((s) => fs.realpathSync(s.dir) === fs.realpathSync(cwd));

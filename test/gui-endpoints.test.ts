@@ -22,6 +22,7 @@ import { collectFleetChanges, collectRoleChange } from "../src/change/change-dat
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
+import { readJson } from "./helpers/json-read.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -314,7 +315,7 @@ test("handleConfigSet round-trips: set, then GET shows the new value and the fil
   const after = await serveConfig(root);
   assert.equal((after.data as Record<string, unknown>).maxDailyCostUsd, 30);
   // The file on disk is what the running fleet polls — the write went through setConfigKey.
-  const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal(onDisk.maxDailyCostUsd, 30);
 });
 
@@ -349,7 +350,7 @@ test("handleConfigSet refuses a bad value through setConfigKey's validator, nami
   assert.equal(bad.captured.status, 400);
   assert.match((bad.data as { error: string }).error, /quietHours/);
   // A failed edit leaves the file untouched.
-  const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal(onDisk.quietHours, "23:00-07:00");
   assert.equal(onDisk.model, undefined);
 });

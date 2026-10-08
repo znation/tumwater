@@ -20,6 +20,7 @@ import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { MODELS_JSON } from "./models-fixtures.js";
@@ -431,7 +432,7 @@ test("pollFleetGates publishes the measured disk state for observers", () => {
     sampleFree: () => 9 * BYTES_PER_GB,
   };
   const states = newFleetGateStates(config);
-  const readDisk = () => JSON.parse(fs.readFileSync(orchestratorStatePath(root), "utf8")).disk;
+  const readDisk = () => readJson<{ disk: unknown }>(orchestratorStatePath(root)).disk;
   pollFleetGates(states, ctx);
   assert.deepEqual(readDisk(), { freeGB: 9, holdGB: 10, reclaimGB: 40, held: true });
   pollFleetGates(states, { ...ctx, sampleFree: () => 100 * BYTES_PER_GB });

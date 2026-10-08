@@ -22,6 +22,7 @@ import { writeJsonAtomic } from "../src/files/json-files.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 /** Give a linked worktree a tracked modified file, an untracked file, an ignored `build/`
  * dir, an ignored `.log`, and a nested repository — the shape part 2/4's acceptance criterion
@@ -91,10 +92,7 @@ test("reclaimCandidates seeds unknown worktrees as used and excludes them from t
   worktreeAt(root, "feature");
   worktreeAt(root, "bugfix");
   assert.deepEqual(reclaimCandidates(root).map((c) => c.name), []);
-  const registry = JSON.parse(fs.readFileSync(worktreeUsePath(root), "utf8")) as Record<
-    string,
-    { lastUsedAt: number }
-  >;
+  const registry = readJson(worktreeUsePath(root)) as Record<string, { lastUsedAt: number }>;
   assert.equal(typeof registry["feature"]?.lastUsedAt, "number");
   assert.equal(typeof registry["bugfix"]?.lastUsedAt, "number");
   // Now that they are seen, the next pass may reclaim them.

@@ -16,6 +16,7 @@ import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/re
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./helpers/cli-harness.js";
+import { readJson } from "./helpers/json-read.js";
 import { setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
@@ -195,7 +196,7 @@ test("retire drops a paused-state marker entry for the role", async () => {
 
   const result: RetireResult = await retireRole(root, "improve", { force: false });
   assert.ok(result.removed.includes("pausedMarker"));
-  const remaining = JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as { roles: string[] };
+  const remaining = readJson(pausedRolesPath(root)) as { roles: string[] };
   assert.deepEqual(remaining.roles, ["clean"]);
 });
 
@@ -272,7 +273,7 @@ test("retire refuses when tumwater.json cannot be read, even with --force", asyn
 /** Disable one role in the repo's tumwater.json in place. */
 function disableRole(root: string, role: string): void {
   const file = path.join(root, "tumwater.json");
-  const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as { roles: Record<string, { enabled?: boolean }> };
+  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean }> };
   cfg.roles ??= {};
   cfg.roles[role] = { ...cfg.roles[role], enabled: false };
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");

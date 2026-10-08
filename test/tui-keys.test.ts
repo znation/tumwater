@@ -14,6 +14,7 @@ import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -48,14 +49,14 @@ test("budget mode opens pre-filled, saves the cap on Enter, and Esc cancels unch
   assert.equal(keys.state().input, "50");
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().budgetMode, false, "a saved cap leaves edit mode");
-  const cfg = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"));
+  const cfg = readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsd: number };
   assert.equal(cfg.maxDailyCostUsd, 50);
 
   // Esc cancels: the pre-filled value never reaches config.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   keys.handleKey(undefined, { name: "escape" });
   assert.equal(keys.state().budgetMode, false);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")).maxDailyCostUsd, 50);
+  assert.equal((readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsd: number }).maxDailyCostUsd, 50);
 
   // An invalid value flashes and STAYS in edit mode.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
