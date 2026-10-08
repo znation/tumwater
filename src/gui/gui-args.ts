@@ -3,7 +3,8 @@
  * GET handlers and gui/gui-endpoint-commands.ts's POST handlers call them): loop-targeting role
  * validation, integer query parsing, the report
  * endpoints' days window, and the body-field checks the paired operator endpoints
- * (prompt/prompt-role, pause/pause-role) must answer with identical 400 wording. Pure
+ * (/api/prompt and /api/prompt-role, /api/pause and /api/pause-role) must answer with
+ * identical 400 wording. Pure
  * HTTP-argument adaptation — each helper either returns the parsed value or sends the 400
  * itself and returns null/false, so a handler is one guard line per argument.
  */
