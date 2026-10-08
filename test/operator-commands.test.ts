@@ -588,3 +588,41 @@ test("cmdReclaim with a live fleet drops the reclaim marker instead of cleaning"
   assert.equal(fs.existsSync(reclaimRequestPath(root)), true);
   assert.equal(fs.existsSync(path.join(wt, "build")), true, "the running fleet does the cleaning");
 });
+
+test("cmdReclaim on a repo with no worktrees reports nothing to reclaim in both modes", async () => {
+  // No .tumwater/worktrees dir at all: reclaimCandidates answers [] before it can seed or
+  // inspect anything. The dry run has its own empty-list arm, distinct from the manual pass's
+  // null result.
+  const root = makeRepo();
+  const dry = await expectOk(() => cmdReclaim(root, ["--dry-run"]));
+  assert.match(dry.stdout, /nothing to reclaim — no reclaimable worktrees/);
+  const manual = await expectOk(() => cmdReclaim(root, []));
+  assert.equal(manual.stdout.trim(), "nothing to reclaim");
+});
+
+test("cmdReclaim --dry-run reports plural paths, pending resumes and fresh worktrees", async () => {
+  const root = makeRepo();
+  const pending = worktreeAt(root, "feature");
+  const fresh = worktreeAt(root, "clean");
+  for (const wt of [pending, fresh]) {
+    fs.writeFileSync(path.join(wt, ".gitignore"), "build/\ndist/\n");
+    sh(wt, "git", "add", "-A");
+    sh(wt, "git", "commit", "-m", "ignore build output");
+    for (const dir of ["build", "dist"]) {
+      fs.mkdirSync(path.join(wt, dir));
+      fs.writeFileSync(path.join(wt, dir, "out.bin"), "artifact\n");
+    }
+  }
+  // feature has a pending resume (so no idle pass may clean it) and was last used long ago;
+  // clean was used just now, so it is not idle-expired either.
+  saveLoopState(root, { ...freshLoopState("feature"), resumePending: true });
+  writeJsonAtomic(worktreeUsePath(root), {
+    feature: { lastUsedAt: 1 },
+    clean: { lastUsedAt: Date.now() },
+  });
+  const { stdout } = await expectOk(() => cmdReclaim(root, ["--dry-run"]));
+  assert.match(stdout, /feature: idle [\d.]+h, 2 ignored paths, resume pending, not idle-reclaimable/);
+  assert.match(stdout, /clean: idle 0\.0h, 2 ignored paths, not idle-reclaimable/);
+  assert.equal(fs.existsSync(path.join(pending, "build")), true, "dry run deletes nothing");
+  assert.equal(fs.existsSync(path.join(fresh, "build")), true, "dry run deletes nothing");
+});
