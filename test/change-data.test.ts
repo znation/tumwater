@@ -6,7 +6,7 @@ import { collectFleetChanges, collectRoleChange } from "../src/change/change-dat
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
-import { slotWorktreePath } from "../src/paths.js";
+import { slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 
@@ -106,6 +106,24 @@ test("a slot leased for a role's tick serves its change to the diff reader", asy
     ["feature work"],
     "the slot's ahead-of-main commit is read",
   );
+});
+
+test("a malformed slots.json degrades to no pooled slot instead of crashing the reader", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "change-data malformed slots");
+  const legacy = await ensureWorktree(repo, "feature", "main");
+  // A stray null in the persisted pool (a hand edit, an older writer): every reader of
+  // slots.json — `tumwater diff`, the dashboard, retire — must degrade, not throw.
+  fs.mkdirSync(path.dirname(slotsStatePath(repo)), { recursive: true });
+  fs.writeFileSync(slotsStatePath(repo), JSON.stringify({ slots: [null] }));
+  const view = await collectRoleChange(repo, "feature");
+  assert.equal(view.state, "ready", "the legacy worktree still answers");
+  assert.equal(view.ahead, 0);
+  // The fleet-wide reader (the dashboard's /api/diff) survives the same file.
+  const fleet = await collectFleetChanges(repo);
+  assert.ok(fleet.roles.some((r) => r.role === "feature"));
+  // The raw legacy path still resolves past the corrupt pool.
+  assert.ok(fs.existsSync(legacy));
 });
 
 test("the fleet view keeps the counts and drops the patch fields", async () => {

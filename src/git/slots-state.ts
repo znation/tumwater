@@ -8,6 +8,7 @@
  * writes it from the CLI process while the orchestrator may be leasing from its own. */
 
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { ensureParentDir } from "../files/files.js";
 import { withSyncLock } from "../concurrency/lock.js";
 import { slotsLockPath, slotsStatePath, worktreePath } from "../paths.js";
@@ -46,11 +47,25 @@ function withSlotsLock<T>(root: string, fn: () => T): T {
   return withSyncLock(lock, fn);
 }
 
-/** The pool layout, or an empty one when the file is missing or unreadable. */
+/** The pool layout, or an empty one when the file is missing or unreadable. Each entry must
+ * be a plain object naming a `dir` string: a stray `null`/scalar, or an object without a
+ * readable `dir`, cannot name a slot, and roleWorktreeDir/slotForDir read every entry's
+ * fields directly — one malformed element once threw `Cannot read properties of null`
+ * straight into `tumwater diff` and the dashboard's /api/diff. Dropping only the unreadable
+ * entries follows readJsonFile's no-data policy for the file as a whole: the good slots stay,
+ * the reader and the operator view degrade instead of crashing. Object entries with a `dir`
+ * are kept verbatim, so an update's read-modify-write still round-trips fields it does not
+ * know. */
 export function readSlotsState(root: string): SlotsState {
   const state = readJsonFile<SlotsState>(slotsStatePath(root));
   if (state === null || !Array.isArray(state.slots)) return { slots: [] };
-  return { slots: state.slots };
+  return { slots: state.slots.filter(isSlotRecord) };
+}
+
+/** True when a persisted entry is a plain object naming a `dir` string — the minimum a slot
+ * record must carry to be read by roleWorktreeDir, slotForDir, or retire. */
+function isSlotRecord(slot: unknown): slot is SlotRecord {
+  return isJsonObject(slot) && typeof slot.dir === "string";
 }
 
 function writeSlotsStateUnlocked(root: string, state: SlotsState): void {
