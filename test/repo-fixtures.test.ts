@@ -41,12 +41,18 @@ test("a test process that used tmpdir() leaves no temp dir behind at exit", () =
 });
 
 test("every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()", () => {
-  const testDir = path.dirname(fileURLToPath(import.meta.url));
+  // The suite runs compiled from dist/test, so the source test files sit two levels up; run from
+  // test/ itself they sit beside this module. Scanning dist/test for .test.ts found none, which
+  // made the guard vacuous.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const testDir = fs.existsSync(path.join(here, "repo-fixtures.ts")) ? here : path.resolve(here, "..", "..", "test");
+  // Built by joining so this guard's own source does not contain the pattern it forbids.
+  const needle = ["mkdtempSync(path.join(", "os.tmpdir()"].join("");
   const offenders: string[] = [];
   for (const name of fs.readdirSync(testDir)) {
     if (!name.endsWith(".test.ts")) continue;
     const text = fs.readFileSync(path.join(testDir, name), "utf8");
-    if (text.includes("mkdtempSync(path.join(os.tmpdir()")) offenders.push(name);
+    if (text.includes(needle)) offenders.push(name);
   }
   assert.deepEqual(offenders, [],
     `temp dirs created outside the per-run root leak into the system temp dir; use tmpdir() from repo-fixtures.ts in: ${offenders.join(", ")}`);

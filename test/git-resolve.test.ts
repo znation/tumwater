@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { resolvedGitBin } from "../src/git/git-run.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** The one-time macOS `xcrun --find git` probe runs through a synchronous spawnSync, so a
  * wedged xcrun blocks the whole event loop — no timer or watchdog can run. This pins the
@@ -14,7 +14,7 @@ test(
   "a wedged xcrun cannot freeze git resolution: the probe is bounded and git falls back to its PATH name",
   { skip: process.platform !== "darwin" || !fs.existsSync("/usr/bin/git") },
   () => {
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tw-xcrun-"));
+    const scratch = tmpdir("tw-xcrun-");
     const oldPath = process.env.PATH;
     try {
       const bin = path.join(scratch, "bin");
