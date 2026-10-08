@@ -114,8 +114,12 @@ interface FiledEntry {
  * wrong text. bugTitleOf(positionals) is exactly fileBug's symptom when the CLI case passes
  * positionals.join(" ") as its raw text; planTitleOf(positionals) is exactly filePlan's
  * title when it passes positionals[0]. */
-export const bugTitleOf = (positionals: string[]): string => collapseWhitespace(positionals.join(" "));
-export const planTitleOf = (positionals: string[]): string => collapseWhitespace(positionals[0] ?? "");
+export function bugTitleOf(positionals: string[]): string {
+  return collapseWhitespace(positionals.join(" "));
+}
+export function planTitleOf(positionals: string[]): string {
+  return collapseWhitespace(positionals[0] ?? "");
+}
 
 /** The shared shell of the `bug` and `plan` CLI cases — the one home of the five-step
  * sequence both commands run in cli.ts: peel the free-form positionals (the questions
