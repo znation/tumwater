@@ -24,16 +24,30 @@ function fullRead(
   return { entries: formatTranscript(readCompleteLines(file, 0, size).lines, opts), size };
 }
 
+/** The full-re-read oracle the cases below share: at each `limit`, the tail read returns
+ * exactly the last `limit` entries of `full` (fullRead's whole-log render). `opts.includePrompts`
+ * mirrors the read's own option; `opts.size` (fullRead's stat) additionally pins each window's end
+ * offset to the full read's last complete newline. */
+function assertTailMatchesFullRead(
+  file: string,
+  limits: readonly number[],
+  full: TranscriptEntry[],
+  opts: { includePrompts?: boolean; size?: number } = {},
+): void {
+  for (const limit of limits) {
+    const tail = readTranscriptTail(file, limit, { includePrompts: opts.includePrompts });
+    assert.deepEqual(tail?.entries, full.slice(-limit), `limit ${limit}`);
+    if (opts.size !== undefined) {
+      assert.equal(tail?.end, readCompleteLines(file, 0, opts.size).end, `limit ${limit} end offset`);
+    }
+  }
+}
+
 test("readTranscriptTail matches a full re-read on a small log", () => {
   const { file } = writeTurnLog(3);
 
   const { entries: full, size } = fullRead(file);
-  for (const limit of [1, 2, 50]) {
-    const tail = readTranscriptTail(file, limit);
-    assert.ok(tail);
-    assert.deepEqual(tail.entries, full.slice(-limit));
-    assert.equal(tail.end, readCompleteLines(file, 0, size).end);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full, { size });
 });
 
 test("readTranscriptTail honors limit=0: slice(-0) must not widen the window", () => {
@@ -62,13 +76,7 @@ test("readTranscriptTail matches a full re-read with prompts included, newest en
   );
 
   const { entries: full } = fullRead(file, { includePrompts: true });
-  for (const limit of [1, 2, 3, 50]) {
-    assert.deepEqual(
-      readTranscriptTail(file, limit, { includePrompts: true })?.entries,
-      full.slice(-limit),
-      `limit ${limit}`,
-    );
-  }
+  assertTailMatchesFullRead(file, [1, 2, 3, 50], full, { includePrompts: true });
   const newest = readTranscriptTail(file, 1, { includePrompts: true });
   assert.deepEqual(newest?.entries[0], [
     `── run @ ${expectedTimestamp(FIXED_TS + 7 * 60_000)} ──`,
@@ -146,9 +154,7 @@ test("readTranscriptTail re-reads fully when contentless turns undercount candid
   writeLogLines(file, lines);
 
   const { entries: full } = fullRead(file);
-  for (const limit of [1, 2, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit));
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full);
 });
 
 test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
@@ -179,12 +185,7 @@ test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
 
   const { entries: full, size } = fullRead(file);
   assert.equal(full.length, 3, "sanity: three rendered runs");
-  for (const limit of [1, 2, 50]) {
-    const tail = readTranscriptTail(file, limit);
-    assert.ok(tail, `limit ${limit}`);
-    assert.deepEqual(tail.entries, full.slice(-limit), `limit ${limit} entries`);
-    assert.equal(tail.end, readCompleteLines(file, 0, size).end, `limit ${limit} end offset`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full, { size });
 });
 
 test("readTranscriptTail handles torn tails and newline-less files", () => {
@@ -294,9 +295,7 @@ test("readTranscriptTail includes a marker line when it labels the boundary run"
   const { file } = writeTurnLog(5, { reviewMarkerAt: () => true });
 
   const { entries: full } = fullRead(file);
-  for (const limit of [1, 2, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full);
   const tail = readTranscriptTail(file, 1);
   assert.ok(tail);
   assert.equal(
@@ -312,9 +311,7 @@ test("readTranscriptTail matches a full re-read with interleaved labels at every
   const { file } = writeTurnLog(40, { reviewMarkerAt: (i) => i % 2 === 0 });
 
   const { entries: full } = fullRead(file);
-  for (const limit of [1, 2, 3, 7, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 3, 7, 50], full);
 });
 
 test("readTranscriptTail matches a full re-read with a stale marker, mislabel included", () => {
@@ -328,9 +325,7 @@ test("readTranscriptTail matches a full re-read with a stale marker, mislabel in
     full.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 3 * 60_000)} ──`),
     "sanity: the stale marker mislabels run 3 in a full re-read",
   );
-  for (const limit of [1, 2, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full);
 });
 
 test("readTranscriptTail excludes a labeled run older than the window boundary", () => {
@@ -339,9 +334,7 @@ test("readTranscriptTail excludes a labeled run older than the window boundary",
   const { file } = writeTurnLog(6, { reviewMarkerAt: (i) => i === 1 });
 
   const { entries: full } = fullRead(file);
-  for (const limit of [1, 2, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full);
   const one = readTranscriptTail(file, 1);
   assert.ok(one);
   assert.ok(!one.entries.flat().some((l) => l.includes("review")), "the older labeled run contributes nothing");
@@ -371,9 +364,7 @@ test("readTranscriptTail stops at the arming agent_start when EOF precedes any m
   const { entries: full, size } = fullRead(file);
   // Limits that arm (≤ the run's own candidate count), limits that don't (≥ total entries), and
   // the whole-file window — the oracle must hold across all of them.
-  for (const limit of [1, 2, 5, 8, 13, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 5, 8, 13, 50], full);
   const tail = readTranscriptTail(file, 5);
   assert.ok(tail);
   assert.equal(tail.end, size); // just past the last complete newline — a followFile start point
@@ -413,9 +404,7 @@ test("readTranscriptTail skips kind-only markers to the label a full re-read app
     full.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 2 * 60_000)} ──`),
     "sanity: the stale label applies to run 2 in a full re-read",
   );
-  for (const limit of [1, 2, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 50], full);
 });
 
 test("readTranscriptTail matches a full re-read when every run carries a kind-only marker", () => {
@@ -432,7 +421,5 @@ test("readTranscriptTail matches a full re-read when every run carries a kind-on
   writeLogLines(file, lines);
 
   const { entries: full } = fullRead(file);
-  for (const limit of [1, 2, 3, 7, 50]) {
-    assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
-  }
+  assertTailMatchesFullRead(file, [1, 2, 3, 7, 50], full);
 });
