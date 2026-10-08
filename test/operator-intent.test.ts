@@ -182,6 +182,46 @@ test("requestWake with a zero delay behaves immediately", () => {
   assert.equal(m?.notBeforeMs, undefined, "the immediate marker keeps the bare { at, roles } shape");
 });
 
+test("requestResetCounters leaves a live fleet's state file to the orchestrator (no racing rewrite)", () => {
+  const root = liveRoot();
+  saveLoopState(root, {
+    ...loadLoopState(root, "fix"),
+    role: "fix",
+    ticks: 7,
+    commits: 3,
+    nextRunAt: 555,
+    lastMainHead: "abc",
+  });
+  const stateFile = path.join(root, STATE_DIR, "state", "fix.json");
+  const before = fs.readFileSync(stateFile, "utf8");
+  const msg = requestResetCounters(root, ["fix"]);
+  // A live fleet's orchestrator is the state file's single writer: consumeResetRequest zeroes
+  // the runner in memory and it saves. A direct CLI rewrite here is a second writer racing
+  // those saves with a snapshot it may have moved past — the lost update this pins away.
+  assert.equal(fs.readFileSync(stateFile, "utf8"), before, "the CLI must not rewrite a live role's state");
+  assert.equal(stateOf(root, "fix").ticks, 7, "the counter is left for the orchestrator to zero");
+  assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "reset-counters.json"))?.roles, ["fix"]);
+  assert.match(msg, /a running fleet picks this up/);
+});
+
+test("requestWake leaves a live fleet's state file to the orchestrator (no racing rewrite)", () => {
+  const root = liveRoot();
+  saveLoopState(root, {
+    ...loadLoopState(root, "fix"),
+    role: "fix",
+    backoffSeconds: 300,
+    nextRunAt: Date.now() + 300_000,
+    lastMainHead: "abc",
+  });
+  const stateFile = path.join(root, STATE_DIR, "state", "fix.json");
+  const before = fs.readFileSync(stateFile, "utf8");
+  const msg = requestWake(root, ["fix"]);
+  assert.equal(fs.readFileSync(stateFile, "utf8"), before, "the CLI must not rewrite a live role's state");
+  assert.equal(stateOf(root, "fix").backoffSeconds, 300, "the schedule is left for the orchestrator to clear");
+  assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);
+  assert.match(msg, /a running fleet applies it/);
+});
+
 test("submitRolePromptAndWake queues the prompt and wakes only that role", () => {
   const root = deadRoot();
   const msg = submitRolePromptAndWake(root, "fix", "  add a test  ");

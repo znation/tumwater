@@ -47,13 +47,21 @@ function applyClause(live: boolean, when: string, verb: string): string {
     : "takes effect on the next `tumwater run` (no harness is running)";
 }
 
-/** The marker-writing core of `reset-counters`: zero each target's state file directly (works
- * while the harness is not running) and drop the fleet marker a running fleet consumes within
- * one poll cycle. Returns the confirmation the CLI prints verbatim. Unlike the wake/abort
- * request* cores the GUI's POST endpoints share, no dashboard route exposes reset-counters,
- * so only the CLI consumes this core. */
+/** The marker-writing core of `reset-counters`: zero each target's state file directly when no
+ * fleet is running, and drop the fleet marker a running fleet consumes within one poll cycle.
+ * Returns the confirmation the CLI prints verbatim. Unlike the wake/abort request* cores the
+ * GUI's POST endpoints share, no dashboard route exposes reset-counters, so only the CLI
+ * consumes this core. */
 export function requestResetCounters(root: string, roles: string[]): string {
-  for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
+  // A live fleet's orchestrator is the state files' single writer: consumeResetRequest zeroes
+  // the affected runners' in-memory copies and the runners save them, and writes the file for a
+  // requested role that has no runner (a disabled role). Rewriting the files here too would be
+  // a second writer racing those whole-file saves — an overwrite from a snapshot the
+  // orchestrator has since moved past (a just-ended tick's result, a claim, a schedule), which
+  // the lost update discards. So with a live fleet only the marker is written; with none there
+  // is no concurrent writer and the direct write is what carries the reset to the next run.
+  const { live, when } = markerApplyNote(root);
+  if (!live) for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
   // Atomic: a concurrent poll reading the marker mid-write would see a torn file, which
   // readJsonFile folds to null — the corrupt-marker superset that wakes/resets EVERY runner.
   // For a scheduled wake (`--in`) that superset drops notBeforeMs, firing the wake hours early.
@@ -61,7 +69,6 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // Only a live fleet consumes the marker; without one the state files are already zeroed and
   // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
-  const { live, when } = markerApplyNote(root);
   return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
 }
 
@@ -82,7 +89,14 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   // Deferred only for a genuinely positive delay: zero or less reads as immediate, so the
   // immediate and scheduled paths share one consumer contract.
   const deferred = inMs !== undefined && inMs > 0;
-  if (!deferred)
+  // Same single-writer rule as requestResetCounters: with a live fleet consumeWakeRequest
+  // clears the affected runners' in-memory schedules and the runners save them, and writes the
+  // file for a requested role that has no runner (a disabled role), so a direct state rewrite
+  // here would race those whole-file saves and lose one side's update. Without a fleet there is
+  // no concurrent writer, and the file write is what carries the wake to the next run. A
+  // scheduled wake already skips the direct write — see the docstring.
+  const { live, when } = markerApplyNote(root);
+  if (!deferred && !live)
     for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
   // Atomic — see requestResetCounters: a torn wake marker reads as corrupt and wakes every
   // runner immediately, dropping a scheduled wake's notBeforeMs on the floor.
@@ -92,7 +106,6 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   );
   // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
   // marker, so say so instead of promising a poll that will not happen.
-  const { live, when } = markerApplyNote(root);
   if (deferred)
     return (
       `wake scheduled for ${roles.join(", ")} — wakes in ${durationLabel(inMs)} — ` +

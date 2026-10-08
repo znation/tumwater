@@ -4,11 +4,14 @@ import type { LoopRunner } from "../loop/loop.js";
 import { logEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
+import { clearBackoff } from "../scheduling/backoff.js";
 import {
   abortRequestPath,
   reclaimRequestPath,
   resetRequestPath,
   restartRequestPath,
+  statePath,
   wakeRequestPath,
   STATE_DIR,
 } from "../paths.js";
@@ -40,33 +43,56 @@ function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunn
     : [...runners];
 }
 
-/** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI already
- * zeroed the state files; this also zeroes the affected runners' in-memory copies (which then
- * re-save), or their next tick's save would resurrect the pre-reset values. */
+/** The requested roles that hold NO live runner and already have a persisted state file. A
+ * runner carries the operation to the role's in-memory copy and saves it; a role without one
+ * (disabled in tumwater.json, or outside a scoped round) is reached only through its state
+ * file, and while a fleet is live this process is that file's single writer — the CLI wrote
+ * only the marker. A role with no state file has no counters or schedule to change, and a
+ * corrupt marker (no role list) yields none: the runner superset must not conjure new files
+ * for roles the marker never named. */
+function runnerlessTargets(root: string, markerFile: string, runners: LoopRunner[]): string[] {
+  const marker = readJsonFile<{ roles?: unknown }>(markerFile);
+  const requested =
+    marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
+      ? (marker.roles as string[])
+      : null;
+  if (!requested) return [];
+  return requested.filter(
+    (role) =>
+      !runners.some((r) => r.role === role || r.baseRole === role) &&
+      fs.existsSync(statePath(root, role)),
+  );
+}
+
+/** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI zeroed the
+ * state files only when no fleet was running; this zeroes the affected runners' in-memory
+ * copies (which then re-save), or their next tick's save would resurrect the pre-reset values,
+ * and writes the zeroed state file directly for requested roles with no runner, which the CLI
+ * left to its marker. */
 export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = resetRequestPath(root);
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
   for (const r of affected) r.resetCounters();
-  if (affected.length > 0) {
-    const [only] = affected;
+  const runnerless = runnerlessTargets(root, markerFile, runners);
+  for (const role of runnerless) saveLoopState(root, zeroCounters(loadLoopState(root, role)));
+  const applied = [...affected.map((r) => r.role), ...runnerless];
+  if (applied.length > 0) {
+    const [only] = applied;
     // One role → filed under that loop; several → one harness-level event listing them.
-    if (affected.length === 1 && only) logEvent(root, { loop: only.role, type: "counters_reset" });
-    else
-      logEvent(root, {
-        loop: "harness",
-        type: "counters_reset",
-        roles: affected.map((r) => r.role),
-      });
+    if (applied.length === 1 && only) logEvent(root, { loop: only, type: "counters_reset" });
+    else logEvent(root, { loop: "harness", type: "counters_reset", roles: applied });
   }
   removeQuiet(markerFile);
 }
 
 /** Consume a pending wake request from `tumwater wake [--role <id>] [--in <duration>]`, if
- * any. Immediate wakes find the state files already cleared by the CLI; this also clears the
- * affected runners' in-memory schedules (backoffSeconds, nextRunAt), or their next save would
- * resurrect the pre-wake sleep window and the loops would keep sleeping until the original
- * backoff expired. A scheduled wake (`--in`) carries a `notBeforeMs`: before the deadline the
+ * any. Immediate wakes find the state files already cleared by the CLI when no fleet was
+ * running; this clears the affected runners' in-memory schedules (backoffSeconds, nextRunAt),
+ * or their next save would resurrect the pre-wake sleep window and the loops would keep
+ * sleeping until the original backoff expired, and writes the cleared schedule directly for
+ * requested roles with no runner, which the CLI left to its marker. A scheduled wake
+ * (`--in`) carries a `notBeforeMs`: before the deadline the
  * marker is left in place (a later poll retries it — the wake lands within one poll cycle
  * after the deadline, the same delivery granularity prompt --at's consumer gives), and the
  * deadline-crossing poll's `wake()` call is what applies the state change, since the submit
@@ -89,6 +115,10 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   for (const r of affected) {
     r.wake();
     logEvent(root, { loop: r.role, type: "wake", reason: "operator" });
+  }
+  for (const role of runnerlessTargets(root, markerFile, runners)) {
+    saveLoopState(root, clearBackoff(loadLoopState(root, role), Date.now()));
+    logEvent(root, { loop: role, type: "wake", reason: "operator" });
   }
   removeQuiet(markerFile);
 }
