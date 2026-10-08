@@ -112,7 +112,7 @@ export function roleById(id: string): Role | undefined {
  * the same treatment unknownConfigKeyError gives config keys, so a mistyped `--role feautre`
  * names its fix instead of only the valid list. parseRoleFlag, the operator commands, and
  * tick-prompt's defensive runner path share it so the wording cannot drift between the CLI,
- * the CLI, the GUI, and a tick's internal error. The hint is text/suggest.ts's typoSuffix —
+ * the GUI, and a tick's internal error. The hint is text/suggest.ts's typoSuffix —
  * suggestClosest plus didYouMean composed once, the pairing every other unknown-X error
  * renders through. */
 export function unknownRoleMessage(role: string, validIds: readonly string[]): string {
