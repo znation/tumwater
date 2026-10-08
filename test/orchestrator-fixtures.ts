@@ -134,6 +134,17 @@ export function startLiveOrchestrator(
   };
 }
 
+/** Race `promise` against a 30s unref'd timeout that rejects with `message` — a hang becomes a
+ * test failure instead of a stalled suite. The one home of the guard `onceRound` and the
+ * redeploy tests each spelled out inline. */
+export function withHangGuard<T>(promise: Promise<T>, message: string): Promise<T> {
+  const timeout = new Promise<never>((_, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), 30_000);
+    t.unref();
+  });
+  return Promise.race([promise, timeout]);
+}
+
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
  * does not exit on its own — a once round that hangs is the bug `--once` exists to avoid, so
  * the race against a 30s unref'd timeout turns a hang into a test failure. `roleFilter`
@@ -149,11 +160,7 @@ export function onceRound(
     once: true,
     roleFilter,
   });
-  const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error("once round did not exit on its own")), 30_000);
-    t.unref();
-  });
-  return Promise.race([done, timeout]);
+  return withHangGuard(done, "once round did not exit on its own");
 }
 
 /** The idle-pi orchestrator prelude the e2e tests shared as a copy-pasted pair: install the

@@ -16,7 +16,7 @@ import { readOrchestratorInfo } from "../src/fleet/fleet-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import type { BuildStatus } from "../src/build/build-info.js";
 import type { Redeployer } from "../src/redeploy/redeployer.js";
-import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator, withHangGuard } from "./orchestrator-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
@@ -126,12 +126,8 @@ test("a restart verdict ends the run with restart: true, before any tick starts"
   });
   // A restart verdict must end the run on its own; if the exit path breaks, the race turns
   // the hang into a failure instead of a stalled suite.
-  const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error("restart verdict did not end the run")), 30_000);
-    t.unref();
-  });
   try {
-    const exit = await Promise.race([done, timeout]);
+    const exit = await withHangGuard(done, "restart verdict did not end the run");
     assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "the first poll's verdict leaves no tick started");
   } finally {
@@ -198,11 +194,7 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
     // A restart verdict must end the run on its own; if the abort path breaks, the race turns
     // the hang into a failure instead of a stalled suite. Armed only now, so a slow startup
     // tick cannot spend the restart's budget.
-    const timeout = new Promise<never>((_, reject) => {
-      const t = setTimeout(() => reject(new Error("restart verdict did not end the run")), 30_000);
-      t.unref();
-    });
-    const exit = await Promise.race([done, timeout]);
+    const exit = await withHangGuard(done, "restart verdict did not end the run");
     assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
     assert.equal(
       fs.readFileSync(runLog, "utf8").includes("finished"),
