@@ -1,11 +1,12 @@
 /** Collection half of `tumwater history`: read the event log and distill the last N completed
  * ticks into TickRow — one row per tick, newest first, with the paired duration and the raw
  * usage numbers. The Markdown/table rendering of this data lives in history.ts, a pure
- * function of it; the split mirrors the usage report's (src/report/report-data.ts / src/report/report-render.ts) and
- * keeps "what happened" (tick pairing, role filtering, scan windows) apart from "how it
- * prints" (column widths, terminal display padding), which change for different reasons —
- * and keeps core data collection out of the presentation layer, so a core consumer (as the
- * GUI's /api/history already is) never forces a core→ui import. */
+ * function of it; the split mirrors the usage report's (src/report/report-data.ts /
+ * src/report/report-render.ts) and keeps "what happened" (tick pairing, role filtering,
+ * scan windows) apart from "how it prints" (column widths, terminal display padding),
+ * which change for different reasons — and keeps core data collection out of the
+ * presentation layer, so a core consumer (as the GUI's /api/history already is) never
+ * forces a core→ui import. */
 import { eventRole, eventTick, eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
@@ -64,8 +65,9 @@ interface TickRowJoin {
  * nor cost, matching the payload's omit-when-zero convention. `ts` is the raw tick_end instant
  * (epoch ms) the rendered `time` string is derived from, and `tokens`/`costUsd` the raw usage
  * numbers `usage` folds into one string (0 when the event carries none — eventUsage's
- * loose-typing coercion, shared with the event feed's fragment): the three fields `tumwater history --json` and the GUI's
- * /api/history serve so a script gets the numbers, not the table's rendering of them. */
+ * loose-typing coercion, shared with the event feed's fragment): the three fields
+ * `tumwater history --json` and the GUI's /api/history serve so a script gets the
+ * numbers, not the table's rendering of them. */
 export interface TickRow {
   ts: number;
   time: string;

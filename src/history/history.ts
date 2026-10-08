@@ -9,7 +9,8 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
  * every datum rides the `tick_end` events src/loop/loop.ts already writes, so this is a rendering
  * of the existing record, not a new one. The rows themselves are collected by history-data.ts
- * (beside src/report/report-data.ts and src/failure/failure-data.ts); this module renders them and drives the CLI. */
+ * (beside src/report/report-data.ts and src/failure/failure-data.ts); this module renders them
+ * and drives the CLI. */
 
 /** The row's five unpadded cell strings — one shape shared by cellsOf and widthsOf, so a column
  * added for the cells cannot be left off the widths. */
