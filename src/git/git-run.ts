@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { findOnPath } from "../files/files.js";
 import { EXEC_MAX_BUFFER, signalTree } from "../process/process.js";
-import { GROUP_POLL_MS, KILL_GRACE_MS, groupAlive } from "../process/process-group.js";
+import { KILL_GRACE_MS, armGroupDeadline } from "../process/process-group.js";
 import { errorMessage } from "../text/text.js";
 
 /** The wall-clock bound on one git subprocess. Generous enough for a large rebase or diff on
@@ -151,18 +151,17 @@ export function execGitBounded(
   let stderr = "";
   const promise = new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     let settled = false;
-    let timedOut = false;
-    let deadlineTimer: NodeJS.Timeout | undefined;
-    let killTimer: NodeJS.Timeout | undefined;
-    let groupPoll: NodeJS.Timeout | undefined;
     let stdoutSize = 0;
     let stderrSize = 0;
+    const deadline = armGroupDeadline(child, {
+      timeoutMs,
+      killGraceMs,
+      onTimedOut: () => finish(new GitTimeoutError(timeoutMs)),
+    });
     const finish = (err?: Error) => {
       if (settled) return;
       settled = true;
-      clearTimeout(deadlineTimer);
-      clearTimeout(killTimer);
-      clearInterval(groupPoll);
+      deadline.dispose();
       if (err) {
         // The child is being killed or could not start; the output handles must not keep the
         // harness's handles, or a descendant that escaped the group, alive once the caller has
@@ -200,35 +199,19 @@ export function execGitBounded(
       if (stderrSize > EXEC_MAX_BUFFER) onOverflow("stderr");
       else stderr += chunk;
     });
-    deadlineTimer = setTimeout(() => {
-      timedOut = true;
-      signalTree(child, "SIGTERM");
-      // The SIGTERM took the whole tree down: settle as soon as the group is gone instead of
-      // waiting out the grace.
-      groupPoll = setInterval(() => {
-        if (!groupAlive(child.pid)) finish(new GitTimeoutError(timeoutMs));
-      }, GROUP_POLL_MS);
-      killTimer = setTimeout(() => {
-        signalTree(child, "SIGKILL");
-        finish(new GitTimeoutError(timeoutMs));
-      }, killGraceMs);
-    }, timeoutMs);
     child.on("error", (err: NodeJS.ErrnoException) => {
       // Before the deadline this is the spawn failing (git missing from PATH); after it, it can
       // only be a teardown signal that could not be delivered — the run is a timeout either
       // way, settled by the group probe or the grace timer.
-      if (!timedOut) finish(err);
+      if (!deadline.fired()) finish(err);
     });
     child.on("close", (code) => {
-      if (timedOut) {
-        // Something in the group may outlive the leader (a SIGTERM-trapping grandchild):
-        // settle only once the whole group is gone, or the grace's SIGKILL does.
-        if (!groupAlive(child.pid)) finish(new GitTimeoutError(timeoutMs));
-      } else if (code === 0) {
-        finish();
-      } else {
-        finish(new GitExecError(stderr, code ?? undefined));
-      }
+      // Before the deadline the exit code classifies the run. After it, a SIGTERM-trapping
+      // grandchild may outlive the leader: settle only once the whole group is gone, or the
+      // grace's SIGKILL does.
+      if (deadline.fired()) deadline.settleIfGone();
+      else if (code === 0) finish();
+      else finish(new GitExecError(stderr, code ?? undefined));
     });
   });
   return Object.assign(promise, { child }) as PromiseWithChild<{ stdout: string; stderr: string }>;
