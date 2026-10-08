@@ -19,8 +19,8 @@ import { configForRole } from "../src/config/config-views.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
-import { errorMessage } from "../src/text/text.js";
 import { backdate } from "./backdate.js";
+import { validationError } from "./config-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 
@@ -240,15 +240,6 @@ test("saveConfig round-trips", () => {
 
 // config-views.ts's derived views (configForRole, reviewConfig, reviewRunConfig,
 // fallbackPair, applyFallbackModel) have their own topic file: test/config-views.test.ts.
-
-function validationError(raw: unknown): string {
-  try {
-    validateConfig(raw);
-  } catch (err) {
-    return errorMessage(err);
-  }
-  throw new Error("validateConfig did not throw");
-}
 
 // --- loadConfigCached: the stat-keyed cache behind every poll's config reload ---
 

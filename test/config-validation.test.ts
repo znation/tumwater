@@ -6,22 +6,13 @@ import { defaultConfig, loadConfig, loadConfigSafe, saveConfig } from "../src/co
 import { show } from "../src/config/config-field-checks.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
-import { errorMessage } from "../src/text/text.js";
+import { validationError } from "./config-fixtures.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 
 // Tests for src/config/config-validation.ts — validateConfig — plus the load and save paths that
 // enforce it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's
 // refuse-to-persist). The rest of src/config/config.ts's surface (defaults, per-role views, the read
 // cache, customLoops, the example template) stays in test/config.test.ts.
-
-function validationError(raw: unknown): string {
-  try {
-    validateConfig(raw);
-  } catch (err) {
-    return errorMessage(err);
-  }
-  throw new Error("validateConfig did not throw");
-}
 
 test("show renders the offending value honestly and compactly", () => {
   // Regression: JSON.stringify(Infinity) is "null", so a huge numeric literal — which
