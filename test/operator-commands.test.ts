@@ -35,7 +35,7 @@ import {
   wakeRequestPath,
   worktreeUsePath,
 } from "../src/paths.js";
-import { makeRepo, sh, tmpdir, worktreeAt, writeMalformedJson } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir, worktreeAt, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { errnoError } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";

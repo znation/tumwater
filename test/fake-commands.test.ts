@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("a compiled fake-commands copied outside the checkout refuses to import instead of leaving every fake a dangling symlink", () => {
   // BUGS.md 2026-09-30: SCRIPT_SHIM resolves relative to the compiled file

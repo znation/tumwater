@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import {
   ELIDED_PREFIX,
   SHAKE_MAX_PERCENT,

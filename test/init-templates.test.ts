@@ -8,7 +8,7 @@ import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds, unknownTempl
 import { parseEntryDetails } from "../src/backlog/backlog-md.js";
 import { parseInitArgs } from "../src/cli/cli-command-args.js";
 import { INITIAL_PROMPT_MAX_CHARS, readInitialPrompt } from "../src/brief.js";
-import { makeRepo, tmpdir, assertClean, sh } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, assertClean, sh } from "./fixtures/repo-fixtures.js";
 import { attempt, expectFail } from "./helpers/exit-capture.js";
 
 test("the template catalog has exactly four ids; blank is inert, the rest are complete seeds", () => {

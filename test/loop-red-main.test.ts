@@ -14,7 +14,7 @@ import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./repo-fixtures.js";
+import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logPromptsTo } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 

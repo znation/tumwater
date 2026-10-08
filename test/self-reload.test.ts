@@ -16,7 +16,7 @@ import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import { ExitError } from "./helpers/exit-capture.js";
 import fs from "node:fs";
 import path from "node:path";
-import { commitIn, mainSha, makeRepo } from "./repo-fixtures.js";
+import { commitIn, mainSha, makeRepo } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
 // The dashboards' auto-reload (src/redeploy/self-reload.ts): decide staleness from the process's own

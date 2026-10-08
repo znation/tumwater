@@ -10,7 +10,7 @@ import { orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src
 import { signalOrchestrator } from "../src/operator/operator-commands.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { makeRepo, writeConfig } from "./repo-fixtures.js";
+import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 

@@ -5,7 +5,7 @@ import path from "node:path";
 import { stageTickLanding } from "../src/tick/tick-stage.js";
 import { stageCheckFindings } from "../src/tick/stage-check.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
-import { commitIn, initializedRepo, initializedWorktree, sh } from "./repo-fixtures.js";
+import { commitIn, initializedRepo, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";

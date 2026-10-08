@@ -6,25 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Organize the test suite, part 4/6: `repo-fixtures.ts` moves to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–3/6 landed)
-
-**Goal.** Move the highest-fanout support module, `test/repo-fixtures.ts`, into `test/fixtures/`.
-
-**Approach.**
-- `git mv` `test/repo-fixtures.ts` into `test/fixtures/`.
-- Rewrite every importer's `./repo-fixtures.js` specifier to `./fixtures/repo-fixtures.js`
-  (≈225 specifiers) — including modules already moved in parts 1–3, where it becomes
-  `../fixtures/repo-fixtures.js` (`fake-pi.ts`, `pi-run-harness.ts`) and root fixture modules.
-- Re-base `repo-fixtures.ts`'s own imports: its `./fake-commands.js` becomes
-  `../fakes/fake-commands.js`.
-
-**Files touched.** `test/repo-fixtures.ts`; every `test/*.ts` importing it.
-
-**Acceptance criteria.**
-- `repo-fixtures.ts` lives under `test/fixtures/`; no `test/*.ts` specifier names `./repo-fixtures.js`.
-- Its `writeScript`/`pathPrepend` imports resolve from `test/fakes/`.
-- `npm run test` green and selects the same `*.test.ts` files.
-
 ### Organize the test suite, part 5/6: log, loop, orchestrator and status fixtures plus `pi-events` and `victim-fixture` move to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–4/6 landed)
 
 **Goal.** Move `test/log-fixtures.ts`, `test/loop-fixtures.ts`, `test/orchestrator-fixtures.ts`,
@@ -86,8 +67,8 @@ BUGS.md references.
     `../../src/...`.
   - `models-fixtures.ts` has no relative imports.
 - Update the remaining doc/comment references to moved paths: `DEVELOPMENT.md`'s
-  `writeScript (test/fakes/fake-commands.ts)`, BUGS.md's `test/repo-fixtures.ts` /
-  `test/doctor-fixtures.ts` / `test/gui-fixtures.ts` citations,
+  `writeScript (test/fakes/fake-commands.ts)`, BUGS.md's `test/doctor-fixtures.ts` /
+  `test/gui-fixtures.ts` citations,
   `src/landing/landing-vetting.ts`'s `test/orchestrator-fixtures.ts` comment, and any `docs/` or
   `src/` comment naming an old flat path.
 
@@ -98,7 +79,7 @@ BUGS.md references.
   `test/` root holds only `*.test.ts` plus `test-runner.ts`, `test-durations-reporter.ts`, and
   `coverage-table.ts`.
 - A grep over `src/`, `test/`, `scripts/`, `docs/`, `DEVELOPMENT.md`, `PLANS.md`, and `BUGS.md`
-  for each moved basename at its old flat path (`test/repo-fixtures.ts`, `test/lander-fixtures.ts`,
+  for each moved basename at its old flat path (`test/lander-fixtures.ts`,
   …) finds no stale reference.
 - `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
 
@@ -328,6 +309,33 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Organize the test suite, part 4/6: `repo-fixtures.ts` moves to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–3/6 landed; done 2026-10-08 by feature)
+
+**Goal.** Move the highest-fanout support module, the `test/` root's `repo-fixtures.ts`, into
+`test/fixtures/`.
+
+**Approach.**
+- `git mv` the root `repo-fixtures.ts` into `test/fixtures/`.
+- Rewrite every importer's `./repo-fixtures.js` specifier to `./fixtures/repo-fixtures.js`
+  (all 226 importers) — a module already moved in parts 1–3 and thus in a subdirectory
+  becomes `../fixtures/repo-fixtures.js` (`fake-pi.ts`, `pi-run-harness.ts`), which the same
+  substring sed handled alongside the root spellings.
+- Re-base `repo-fixtures.ts`'s own imports: its `./fakes/fake-commands.js` becomes
+  `../fakes/fake-commands.js`, and its three `../src/...` imports gain a level (`../../src/...`).
+- `test/repo-fixtures.test.ts` (still at the root) follows: its import becomes
+  `./fixtures/repo-fixtures.js`, its child-process `fixturesPath` gains the `fixtures/` segment,
+  and its source-dir marker becomes `repo-fixtures.test.ts` rather than the moved module.
+- Update comment/doc references to the old flat path: the `doctor-checks`/
+  `doctor-model-checks` test comments and BUGS.md's two citations.
+
+**Files touched.** the root `repo-fixtures.ts`; every `test/*.ts` importing it;
+`test/repo-fixtures.test.ts`; BUGS.md references.
+
+**Acceptance criteria.**
+- `repo-fixtures.ts` lives under `test/fixtures/`; no `test/*.ts` specifier names `./repo-fixtures.js`.
+- Its `writeScript`/`pathPrepend` imports resolve from `test/fakes/`.
+- `npm run test` green and selects the same `*.test.ts` files.
 
 ### Organize the test suite, part 3/6: harness and oracle modules move to `test/helpers/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6 and 2/6 landed; done 2026-10-08 by feature)
 

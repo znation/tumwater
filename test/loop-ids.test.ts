@@ -21,7 +21,7 @@ import { dailyCost, recordDailyCost } from "../src/budget/budget.js";
 import { newRoleCapGateState, pollRoleCapGate } from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { commitTrailer, stampedSubject } from "../src/git/commit-message.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
   assert.ok(INSTANCE_ROLES.has("feature") && INSTANCE_ROLES.has("bugfix"));

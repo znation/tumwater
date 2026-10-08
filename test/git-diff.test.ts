@@ -10,7 +10,7 @@ import path from "node:path";
 import { aheadOfMainDiff, aheadOfMainFiles, changedFiles, unquotePorcelainPath } from "../src/git/git-diff.js";
 import { commitAll } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { loggingGit, makeRepo, seedCommit, sh, tmpdir } from "./repo-fixtures.js";
+import { loggingGit, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("changedFiles is empty on a clean worktree", async () => {
   const repo = makeRepo();

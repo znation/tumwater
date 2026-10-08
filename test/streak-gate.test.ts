@@ -16,7 +16,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/fleet/fleet-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 function runner(role: string, consecutiveErrors: number, lastError?: string) {
   return { role, state: { consecutiveErrors, lastError } };

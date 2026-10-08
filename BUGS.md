@@ -766,14 +766,14 @@ Reproduce: `d=$(getconf DARWIN_USER_TEMP_DIR); ls -f "$d" | grep -c '^tui-keys-'
 Same for `review-followup-`.
 Cause: test/tui-keys.test.ts:19 (`makeRoot`) and test/review-followup.test.ts:46 (`makeCtx`)
 call `fs.mkdtempSync(path.join(os.tmpdir(), "<prefix>-"))` directly instead of
-test/repo-fixtures.ts's `tmpdir(prefix)`, which creates the dir under `testRunRoot()` so the
+test/fixtures/repo-fixtures.ts's `tmpdir(prefix)`, which creates the dir under `testRunRoot()` so the
 suite's per-run cleanup removes it. Neither file has a `t.after`/`after` that removes its roots.
 The same leak class made the suite time out on 2026-09-21: 1.68M `tumwater-test-*` dirs made
 `mkdtemp` about 9,000x slower (357 ms/call). At today's rate that takes months to reach, but it
 compounds and nothing reaps the dir. Older leaked prefixes from earlier fixes are still there:
 3,102 `tw-ver-*` (the last created 2026-10-04) and 586 `tw-eng-*`.
 Suggested fix: switch both helpers to `tmpdir("tui-keys-")` / `tmpdir("review-followup-")`
-from test/repo-fixtures.ts. Consider a guard so this cannot recur, such as a test that greps
+from test/fixtures/repo-fixtures.ts. Consider a guard so this cannot recur, such as a test that greps
 test/ for `mkdtempSync(path.join(os.tmpdir()` outside repo-fixtures.ts. One-time cleanup of the
 existing dirs is safe while no suite is running. ~~Suggested~~ Done: both helpers switched, plus the guard test `every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()` in test/repo-fixtures.test.ts.
 

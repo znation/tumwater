@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { cmdLogs } from "../src/cli/log-commands.js";
 import { logEvent } from "../src/events/events.js";
 import { piLogPath } from "../src/paths.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";

@@ -16,7 +16,7 @@ import { readQaCoverage, recordFlow } from "../src/tick/qa-coverage.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi, withIdlePi, logFlagsTo, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";

@@ -17,7 +17,7 @@ import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { tmpdir, makeRepo } from "./repo-fixtures.js";
+import { tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import {

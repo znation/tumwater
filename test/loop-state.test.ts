@@ -15,7 +15,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/orchestrat
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
-import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 

@@ -14,7 +14,7 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing/landing-git.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
-import { assertWorktreeSettled, commitIn, initializedWorktree, sh } from "./repo-fixtures.js";
+import { assertWorktreeSettled, commitIn, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
 
 // Behavioral coverage for the landing flow's git plumbing (landing-git.ts). The export pin in
 // landing-merge.test.ts only checks that these helpers exist; these tests drive real rebases,

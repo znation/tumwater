@@ -13,7 +13,7 @@ import {
 } from "../src/config/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
-import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Tests for src/config/config-write.ts — the harness-mediated write paths split out of src/config/config.ts
 // (the budget setter behind both dashboards, and the director's config request file). Tests for

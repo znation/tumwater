@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { failingThenIdle, transientErrorText, type TransientFailure } from "./fakes/transient.js";
 import { fakeClock, sleepRecorder } from "./fakes/time.js";
 import { reviewVerdict, buildCheck, tickEnd, tickStart, writeEventLog } from "./fakes/log.js";

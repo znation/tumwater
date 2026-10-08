@@ -34,7 +34,7 @@ import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 

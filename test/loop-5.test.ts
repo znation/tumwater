@@ -19,7 +19,7 @@ import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";

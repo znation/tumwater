@@ -11,7 +11,7 @@ import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
 import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
 import { withGui } from "./gui-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";

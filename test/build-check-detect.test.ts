@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import {

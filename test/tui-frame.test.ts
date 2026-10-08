@@ -18,7 +18,7 @@ import {
   toneLine,
   transcriptTone,
 } from "../src/ui/tui/tui-frame.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 

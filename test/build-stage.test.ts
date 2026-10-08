@@ -7,7 +7,7 @@ import { readBuildInfo } from "../src/build/build-info.js";
 import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { eventsLogPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects, exercised
 // against temp projects: swapDist's dist replacement and restore-on-failure invariants, and

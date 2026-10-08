@@ -4,7 +4,7 @@ import fs from "node:fs";
 
 import { errCode } from "../src/errno.js";
 import { errnoError } from "./helpers/fs-faults.js";
-import { tmpdir as makeTmpdir } from "./repo-fixtures.js";
+import { tmpdir as makeTmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit seam for errno.ts — the one place the unsafe errno cast lives. Every catch site in the
 // harness compares `errCode(err)` against a string code, so the function's undefined-yielding

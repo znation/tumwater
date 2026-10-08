@@ -20,7 +20,7 @@ import {
   useWorktree,
 } from "../src/git/worktree-use.js";
 import { worktreesDir } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A throwaway worktree-shaped directory, distinct per test so the process-global live map
  * never carries state across tests. */

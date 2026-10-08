@@ -4,11 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
+import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { strict as assert } from "node:assert";
 
 test("a test process that used tmpdir() leaves no temp dir behind at exit", () => {
-  const fixturesPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "repo-fixtures.js");
+  const fixturesPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "repo-fixtures.js");
   const script = `
     import fs from "node:fs";
     import path from "node:path";
@@ -45,7 +45,7 @@ test("every test file creates temp dirs through tmpdir(), never a raw mkdtempSyn
   // test/ itself they sit beside this module. Scanning dist/test for .test.ts found none, which
   // made the guard vacuous.
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const testDir = fs.existsSync(path.join(here, "repo-fixtures.ts")) ? here : path.resolve(here, "..", "..", "test");
+  const testDir = fs.existsSync(path.join(here, "repo-fixtures.test.ts")) ? here : path.resolve(here, "..", "..", "test");
   // Built by joining so this guard's own source does not contain the pattern it forbids.
   const needle = ["mkdtempSync(path.join(", "os.tmpdir()"].join("");
   const offenders: string[] = [];
@@ -55,7 +55,7 @@ test("every test file creates temp dirs through tmpdir(), never a raw mkdtempSyn
     if (text.includes(needle)) offenders.push(name);
   }
   assert.deepEqual(offenders, [],
-    `temp dirs created outside the per-run root leak into the system temp dir; use tmpdir() from repo-fixtures.ts in: ${offenders.join(", ")}`);
+    `temp dirs created outside the per-run root leak into the system temp dir; use tmpdir() from fixtures/repo-fixtures.ts in: ${offenders.join(", ")}`);
 });
 
 test("writeBacklogFile renders the canonical backlog skeleton per file", () => {

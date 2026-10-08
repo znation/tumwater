@@ -22,7 +22,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import { backdate } from "./helpers/backdate.js";
 import { validationError } from "./config-fixtures.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
-import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // The longest tick a hosted model legitimately took and still landed work (BUGS.md 2026-09-29:
 // telemetry at 185 minutes). A shipped default at or below it re-kills every such tick and

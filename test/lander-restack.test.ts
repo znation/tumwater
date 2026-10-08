@@ -7,7 +7,7 @@ import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { mainSha, sh } from "./repo-fixtures.js";
+import { mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
 import {

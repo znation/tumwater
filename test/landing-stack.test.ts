@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ffStackToMain } from "../src/landing/landing-stack.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 

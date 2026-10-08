@@ -14,7 +14,7 @@ import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readmeTemplate } from "../src/brief.js";
-import { writeConfig, tmpdir } from "./repo-fixtures.js";
+import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 

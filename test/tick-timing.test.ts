@@ -4,7 +4,7 @@ import { drainInFlightWork } from "../src/tick/tick-timing.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeLandingMarker, readLandingMarker } from "../src/landing/landing-slot.js";
 import type { InFlightLanding } from "../src/landing/landing-pipeline.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // drainInFlightWork is the shutdown drain's policy: on an operator stop it waits out the
 // reserved ticks and every landing task unboundedly (the harness signal already aborted the

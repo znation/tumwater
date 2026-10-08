@@ -9,7 +9,7 @@ import {
 } from "../src/failure/error-storm.js";
 import { pollErrorStorm } from "../src/fleet/fleet-polls.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The fleet-wide error-storm warning (src/failure/error-storm.ts; BUGS.md 2026-09-29 "A fleet-wide
 // timeout storm raises no alarm"): pure policy, so every clause — the role bar, the shared

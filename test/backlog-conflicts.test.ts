@@ -6,7 +6,7 @@ import {
   resolveBacklogInsertConflicts,
   resolveInsertOnlyText,
 } from "../src/landing/backlog-conflicts.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // Coverage for the deterministic insert-only backlog resolver (plans/parallel-work-instances.md,
 // part 3/7): two landings pasting different entries as the first under ## Done produce a diff3

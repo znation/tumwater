@@ -13,7 +13,7 @@ import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
-import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { runPi } from "../src/pi/pi.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";

@@ -25,7 +25,7 @@ import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { customRole, ROLES, roleById } from "../src/roles/roles.js";
 import { searchGuidance } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
   const role = roleById("coverage");

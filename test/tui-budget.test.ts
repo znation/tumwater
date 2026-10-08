@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readJson } from "./helpers/json-read.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { makeTuiRepo, withTui } from "./tui-fixtures.js";
 
 // Ctrl+B budget-edit mode on the prompt line (PLANS.md, editable daily cost budget): the

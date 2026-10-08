@@ -16,7 +16,7 @@ import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./pi-events.js";

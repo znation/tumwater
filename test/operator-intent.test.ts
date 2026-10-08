@@ -19,7 +19,7 @@ import { orchestratorStatePath, pausedPath, STATE_DIR, wakeRequestPath } from ".
 import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { writeMarker } from "./log-fixtures.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** src/operator/operator-intent.ts's own tests: the marker-writing cores are shared by the CLI, the
  * dashboard's POST routes, and the TUI, so their confirmations and on-disk effects are pinned

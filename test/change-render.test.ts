@@ -6,7 +6,7 @@ import { collectRoleChange } from "../src/change/change-data.js";
 import { renderRoleChange } from "../src/change/change-render.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
+import { commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // `collectRoleChange`/`renderRoleChange` behind `tumwater diff --role <id>`, called directly
 // (the cli-diff tests reach them through child-process CLI runs, whose coverage node --test

@@ -12,7 +12,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";

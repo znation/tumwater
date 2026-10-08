@@ -25,7 +25,7 @@ import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
-import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Simulate an interrupted tick's leftover — the crash state every test in this file starts
  * from: detach, commit work main does not contain, return to main, and pin the commit with the

@@ -13,7 +13,7 @@ import {
   roleCapPaused,
 } from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 

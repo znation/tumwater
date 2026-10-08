@@ -10,7 +10,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
 
 /** src/inbox/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process

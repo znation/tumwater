@@ -13,7 +13,7 @@ import {
   type PartRef,
 } from "../src/backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../src/backlog/backlog-md.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-eligibility.ts (plans, parallel-work-instances,
  * part 2/7): a plan heading's prerequisite clause and the note holds decide which entries a

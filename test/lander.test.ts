@@ -14,7 +14,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { assertClean, mainSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRanMarker, withApprovePi } from "./fakes/fake-pi.js";
 import {
   ROLE,

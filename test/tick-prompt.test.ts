@@ -11,7 +11,7 @@ import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { applyLandingOutcome } from "../src/tick/tick-apply.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the

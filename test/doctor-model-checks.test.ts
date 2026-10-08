@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkFallbackModel, checkTierModels, piProviderAuth } from "../src/doctor/doctor-model-checks.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { tmpdir, writeConfig } from "./repo-fixtures.js";
+import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 
@@ -13,7 +13,7 @@ import { writeScript } from "./fakes/fake-commands.js";
 // credential probe. Every branch is exercised with an injected `modelsPath`/`auth` stub, and
 // the probe with a fake pi on PATH — never a real model or network call. The environment and
 // repo checks' own coverage lives in test/doctor-checks.test.ts; the fixtures both files share
-// live in test/doctor-fixtures.ts and test/repo-fixtures.ts.
+// live in test/doctor-fixtures.ts and test/fixtures/repo-fixtures.ts.
 
 /** A models.json with one unpriced (free) model and one paid model, for the fallback check. */
 function writeModels(): string {

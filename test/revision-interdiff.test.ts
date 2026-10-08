@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { revisionInterdiff } from "../src/git/git-diff.js";
 import { headOf } from "../src/git/git.js";
-import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
+import { commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 /** Unit coverage for the revision interdiff (plans/revise-rejected.md part 2/2): the re-review

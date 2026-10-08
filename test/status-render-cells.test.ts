@@ -11,7 +11,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget/budget.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { dayKey } from "./helpers/oracles.js";
 import { assistantLine } from "./pi-events.js";
 import {

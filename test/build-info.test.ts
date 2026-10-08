@@ -10,7 +10,7 @@ import {
   readBuildInfo,
   stampBuild,
 } from "../src/build/build-info.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 // Build provenance (src/build/build-info.ts): the stamp `npm run build` writes into dist/, and the

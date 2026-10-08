@@ -22,7 +22,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { sh, tmpdir } from "./repo-fixtures.js";
+import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
 /** Shared fixtures for the landing-drain tests — landing-drain.test.ts and

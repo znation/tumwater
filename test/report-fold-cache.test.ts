@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { collectReport } from "../src/report/report-data.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 
 /** Warm a root's memo (one seeding call, one cache-hit call) and return the cache-hit

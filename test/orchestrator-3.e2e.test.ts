@@ -35,7 +35,7 @@ import {
 } from "./orchestrator-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, leasedRoleShell } from "./pi-events.js";

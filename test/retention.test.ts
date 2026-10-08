@@ -5,7 +5,7 @@ import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
 import { sessionsRootDir, toolOutputDir } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 
 /** Unit tests for src/orchestrator/retention.ts — the session-retention prune gate (moved here from

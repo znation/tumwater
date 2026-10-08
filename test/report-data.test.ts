@@ -13,7 +13,7 @@ import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { eventsLogPath } from "../src/paths.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
+import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way (dayKey).

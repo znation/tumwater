@@ -16,7 +16,7 @@ import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { tmpdir, commitIn, makeRepo, writeBacklogFile } from "./repo-fixtures.js";
+import { tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { initProject } from "../src/init/init.js";

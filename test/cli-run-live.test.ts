@@ -12,7 +12,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
-import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { fastConfig } from "./orchestrator-fixtures.js";

@@ -13,7 +13,7 @@ import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { gitOnlyBinDir, makeRepo, tmpdir } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, readRunLines } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";

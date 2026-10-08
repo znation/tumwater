@@ -5,7 +5,7 @@ import { EVENTS_MAX_BYTES, eventsRotationLabel, logEvent, subscribeEvents } from
 import { parseEventLine, readEvents, readEventsTailWithEnd } from "../src/events/event-read.js";
 import { followFile } from "../src/files/tail.js";
 import { eventsLogPath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("eventsRotationLabel derives the report header's rotation phrase from EVENTS_MAX_BYTES", () => {
   // Pinned to the literal, not recomputed from the constant: a recomputation would pass even

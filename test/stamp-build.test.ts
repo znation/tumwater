@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // From dist/test/ this is the checkout's scripts/stamp-build.mjs.
 const script = fileURLToPath(new URL("../../scripts/stamp-build.mjs", import.meta.url));

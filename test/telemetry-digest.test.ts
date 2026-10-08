@@ -5,7 +5,7 @@ import path from "node:path";
 import { TELEMETRY_DIGEST_DAYS, telemetryDigest } from "../src/tick/telemetry-digest.js";
 import { atLocalTs as at } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings), matching the reader and collectReport (dayKey).

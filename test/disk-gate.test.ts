@@ -20,7 +20,7 @@ import {
 } from "../src/gates/disk-gate.js";
 import { worktreesDir } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 function typesAt(root: string): string[] {
   return readEvents(root, 100).map((e) => e.type);

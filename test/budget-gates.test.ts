@@ -8,7 +8,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { MODELS_JSON, PAID_ONLY_JSON } from "./models-fixtures.js";
 
 function writeModels(dir: string, content: string): string {

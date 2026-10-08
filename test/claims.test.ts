@@ -17,7 +17,7 @@ import {
 } from "../src/scheduling/claims.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { buildAssignmentNote } from "../src/gates/gate-prompts.js";
-import { makeRepo, commitIn } from "./repo-fixtures.js";
+import { makeRepo, commitIn } from "./fixtures/repo-fixtures.js";
 
 const PLANNED = [
   "# Plans",

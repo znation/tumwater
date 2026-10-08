@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { stageCheckFindings } from "../src/tick/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/tick/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
 // the landing gate's deterministic backlog checks run before a changed tick commits, so the

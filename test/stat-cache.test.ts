@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "../src/files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../src/files/stat-cache.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("cachedByStat drops a stale entry when the file vanishes and reloads fresh content", () => {
   const dir = tmpdir();

@@ -7,7 +7,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { assertClean, initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
+import { assertClean, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A refused pi run result; tests override only what they exercise. */

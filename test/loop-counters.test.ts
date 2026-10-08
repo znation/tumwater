@@ -12,7 +12,7 @@ import { LoopRunner } from "../src/loop/loop.js";
 import { initProject } from "../src/init/init.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 async function runnerInRepo(role = "clean"): Promise<LoopRunner> {
   const repo = makeRepo();

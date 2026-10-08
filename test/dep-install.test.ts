@@ -16,7 +16,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // A tree's install kept in step with its lockfile (src/build/dep-install.ts, BUGS.md 2026-10-01): a
 // worktree has no node_modules of its own, so a change that adds a dependency failed its gate

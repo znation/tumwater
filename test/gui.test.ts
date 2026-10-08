@@ -13,7 +13,7 @@ import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
 import { fetchLoopback, postJson, startLocalGui } from "./gui-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
+import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { clockOf, dayKey } from "./helpers/oracles.js";
 
 // The dashboard tests read JSON responses the way gui-client's own getJson guard does; this

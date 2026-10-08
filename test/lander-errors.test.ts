@@ -13,7 +13,7 @@ import path from "node:path";
 import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
-import { mainSha } from "./repo-fixtures.js";
+import { mainSha } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";
 import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./lander-fixtures.js";
 

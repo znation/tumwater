@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { dequeuePrompt, inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The submission pipeline (src/inbox/inbox-submit.ts): the shared length cap and the submit
 // wrappers the TUI, GUI, and CLI go through. The queue store's mechanics are pinned in

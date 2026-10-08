@@ -12,7 +12,7 @@ import {
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
-import { gitInit, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 

@@ -12,7 +12,7 @@ import {
 import { checkLaunchServicesPorts } from "../src/doctor/doctor-launch-services.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { eventsLogPath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { harnessWarnings } from "./log-fixtures.js";
 
 // launchservicesd's Mach-port check (src/doctor/doctor-launch-services.ts) and running-fleet warning

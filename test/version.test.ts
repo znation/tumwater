@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { belowNodeFloor, nodeFloorProblem, PACKAGE_JSON, packageEnginesNode, packageVersion } from "../src/version.js";
-import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // The harness's own version (src/version.ts): `tumwater version` reads package.json beside
 // the compiled CLI. The happy path is pinned against the real file so the URL arithmetic

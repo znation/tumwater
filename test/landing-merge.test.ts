@@ -16,7 +16,7 @@ import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { advanceMain } from "./lander-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
-import { assertWorktreeSettled, commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { assertWorktreeSettled, commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */

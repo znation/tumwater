@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concurrency/lock.js";
-import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError } from "./helpers/fs-faults.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";

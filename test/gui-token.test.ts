@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { initProject } from "../src/init/init.js";
 import { inboxSize } from "../src/inbox/inbox.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // The dashboard's --token gate, split out of gui.test.ts's server grab-bag: the open-by-default
 // behavior, the 401 JSON every gated route answers with, the credential's accepted spellings,

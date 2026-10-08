@@ -10,7 +10,7 @@ import {
   boundText,
   default as boundedOutput,
 } from "../src/pi-extension/bounded-output.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const cps = (text: string): number => Array.from(text).length;
 const MARKER_RE = /\.\.\.(\d+) chars/;

@@ -10,7 +10,7 @@ import path from "node:path";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeLoopRunner, pinWorktreeAsSlot } from "./loop-fixtures.js";
 import { sessionDir } from "../src/paths.js";
-import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 

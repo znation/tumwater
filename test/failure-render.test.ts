@@ -4,7 +4,7 @@ import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts

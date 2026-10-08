@@ -14,7 +14,7 @@ import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
 import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
-import { makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";

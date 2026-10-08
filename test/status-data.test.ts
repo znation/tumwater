@@ -17,7 +17,7 @@ import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
 import { initProject } from "../src/init/init.js";
-import { mainSha, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { mainSha, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON } from "./models-fixtures.js";

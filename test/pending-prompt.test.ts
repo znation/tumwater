@@ -5,7 +5,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { enqueueRolePrompt, inboxSize, queuedRolePrompts, takeQueuedFile } from "../src/inbox/inbox.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // pending-prompt.ts holds the requeue policy for every tick outcome that leaves a user
 // request unfulfilled — the subtle fresh-vs-resume bookkeeping loop.ts rides on. These tests

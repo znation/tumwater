@@ -11,7 +11,7 @@ import {
   QUIET_KILL_RESUME_LIMIT,
 } from "../src/tick/tick-apply.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { initializedRepo } from "./repo-fixtures.js";
+import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 
 /** Run finalizeTick with the standard shape: an initialized repo, a fresh-ish loop state

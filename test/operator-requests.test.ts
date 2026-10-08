@@ -22,7 +22,7 @@ import type { LoopRunner } from "../src/loop/loop.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A recording stand-in for LoopRunner covering exactly the surface operator/operator-requests.ts
  * touches: role, in-memory running flag, and the three mutators it calls. */

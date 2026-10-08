@@ -19,7 +19,7 @@ import {
 import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {

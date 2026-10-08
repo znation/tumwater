@@ -26,7 +26,7 @@ import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./o
 import { fakePi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
 test("ticks on the engaged fallback feed the breaker: three dead-backend errors demote it", async () => {

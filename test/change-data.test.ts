@@ -8,7 +8,7 @@ import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
-import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
+import { commitIn, makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 
 // `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests reach
 // it through child-process CLI runs, whose coverage node --test never sees, and the collector

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/files/tail.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnOpen, vanishOnReadFile } from "./helpers/fs-faults.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 

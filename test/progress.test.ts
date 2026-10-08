@@ -10,7 +10,7 @@ import {
   toolCallStallMs,
 } from "../src/ui/progress-data.js";
 import { piLogPath, worktreePath, worktreesDir } from "../src/paths.js";
-import { tmpdir, writeConfig } from "./repo-fixtures.js";
+import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { assistantLine, kindMarker } from "./pi-events.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { sleep } from "./helpers/wait.js";

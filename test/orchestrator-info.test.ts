@@ -9,7 +9,7 @@ import {
   type OrchestratorInfo,
 } from "../src/fleet/orchestrator-info.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 /** The orchestrator info file's own tests (src/fleet/orchestrator-info.ts): the tolerant read,

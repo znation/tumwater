@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/scheduling/work-landed-cache.ts — the caching layer around scheduling.workLanded
 // that the orchestrator's need-based deferral consults. The caching rule (PLANS.md

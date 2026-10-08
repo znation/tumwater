@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { cmdHistory } from "../src/history/history.js";
 import { logEvent } from "../src/events/events.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
 

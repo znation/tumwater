@@ -16,7 +16,7 @@ import {
   runMarkersInPs,
   sweepRunMarker,
 } from "../src/process/run-marker.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError } from "./helpers/fs-faults.js";
 
 // The TUMWATER_RUN markers runPi stamps on its process tree (src/process/run-marker.ts): the

@@ -36,7 +36,7 @@ import {
   runnersFor,
 } from "./landing-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";

@@ -6,7 +6,7 @@ import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 
 test("formatTranscript renders a run separator and an assistant turn", () => {

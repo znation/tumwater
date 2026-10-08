@@ -6,7 +6,7 @@ import { writeScript } from "./fakes/fake-commands.js";
 // the fake itself lives with its siblings. That host-facing fixture was doctor-fixtures's only
 // process-table content — the doctor files never read the host's real state.
 export { noProcesses, fakeProbe } from "./fakes/process.js";
-import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 
 /** Fixtures shared by the doctor test files (doctor.test.ts, doctor-checks.test.ts,
  * doctor-orphans.test.ts): a

@@ -23,7 +23,7 @@ import {
   SUITE_TIMEOUT_MS,
   timedOutFailure,
 } from "./test-runner.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */

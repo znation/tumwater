@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // scripts/live-checkout-guard.mjs, the first step of `npm test` and `npm run test:e2e`: the
 // suite refuses to run in a checkout a live fleet runs from, because its first steps recompile

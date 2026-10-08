@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { bundledExtensionPaths, piArgs } from "../src/pi/pi-args.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The pi argv builder's tests, split out of pi.test.ts: how config (provider, model,
 // thinking, user piArgs, per-role overrides), the bundled bounded-output extension, and

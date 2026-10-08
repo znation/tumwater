@@ -9,7 +9,7 @@ import { readCompleteLines } from "../src/files/tail.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./helpers/fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, kindMarker, runMarker, userLine } from "./pi-events.js";
 

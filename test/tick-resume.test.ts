@@ -7,7 +7,7 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { sessionDir } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // tick-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
 // the interrupted session (and under which cause), what prompt it runs, and which side effects

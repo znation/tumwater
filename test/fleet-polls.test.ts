@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, type FleetHold } from "../src/fleet/fleet-hold.js";
 import { pollFleetHold, type HoldInputs } from "../src/fleet/fleet-polls.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The orchestrator's fleet-hold poll (src/fleet/fleet-polls.ts): the wiring half of the fleet-wide
 // backend-failure hold. Its pure policy is pinned in fleet-hold.test.ts; what is only pinned

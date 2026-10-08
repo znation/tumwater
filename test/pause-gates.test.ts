@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { newPauseGateState, pollPauseGates } from "../src/gates/pause-gates.js";
 import { pauseFleet, resumeFleet, pauseRole, resumeRole } from "../src/fleet/fleet-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 function types(root: string, ...names: string[]): string[] {
   return readEvents(root, 100)

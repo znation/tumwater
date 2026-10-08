@@ -4,7 +4,7 @@ import path from "node:path";
 import { runPi, type PiRunOptions} from "../../src/pi/pi.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { tmpdir } from "../repo-fixtures.js";
+import { tmpdir } from "../fixtures/repo-fixtures.js";
 import { fakePi } from "../fakes/fake-pi.js";
 
 /** The standard runPi fixture: a run against `dir` with the minimal prompt, a fresh

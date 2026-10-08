@@ -25,7 +25,7 @@ function stepHolds(
 }
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The orchestrator's exported unit-test seams (src/orchestrator/orchestrator.ts): the permit-holding
 // wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the

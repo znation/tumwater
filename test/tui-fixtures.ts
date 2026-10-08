@@ -9,7 +9,7 @@ import { EventEmitter } from "node:events";
 import { initProject } from "../src/init/init.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { runTui, type TuiStdin } from "../src/ui/tui/tui.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";
 
 /** One keypress's raw terminal bytes, encoded for ink's input parser: control letters

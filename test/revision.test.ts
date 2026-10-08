@@ -22,10 +22,10 @@ import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
-import { commitIn, initializedWorktree, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { commitIn, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./lander-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { initializedRepo } from "./repo-fixtures.js";
+import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Unit coverage for the revise-rejected feature (plans/revise-rejected.md part 1/2): the

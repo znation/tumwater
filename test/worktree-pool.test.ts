@@ -13,7 +13,7 @@ import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-st
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { slotWorktreePath } from "../src/paths.js";
-import { makeRepo, writeConfig } from "./repo-fixtures.js";
+import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

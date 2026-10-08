@@ -9,7 +9,7 @@ import {
 } from "../src/failure/failure-spread.js";
 import { pollFailureSpread, type HoldInputs } from "../src/fleet/fleet-polls.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The fleet-wide wide-shallow storm alarm (src/failure/failure-spread.ts; BUGS.md 2026-09-30, part
 // (2) of the 2026-09-29 connection-storm entry): pure policy, so every clause — the raw

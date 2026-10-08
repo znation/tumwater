@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // scripts/tumwater.mjs — the `npm run tumwater` dev entry point the package exposes beside the
 // installed bin. It resolves the compiled CLI beside its own directory, names the missing-build

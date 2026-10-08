@@ -8,7 +8,7 @@ import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { truncate } from "../src/text/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
-import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
+import { makeRepo, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { cli, CLI } from "./helpers/cli-harness.js";
 import { spawnSync } from "node:child_process";
 

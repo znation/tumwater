@@ -11,7 +11,7 @@ import {
   unlinkAllMissingTolerant,
   writeTextAtomic,
 } from "../src/files/files.js";
-import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { backdate } from "./helpers/backdate.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 

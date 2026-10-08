@@ -10,7 +10,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.js";
-import { mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./loop-fixtures.js";
 
 // Unit coverage for attributeRedCheck (src/landing/landing-check-failures.ts): the gate's final attribution

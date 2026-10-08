@@ -14,7 +14,7 @@ import { isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } fr
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./status-fixtures.js";
 

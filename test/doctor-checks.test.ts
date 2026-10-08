@@ -20,7 +20,7 @@ import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { backdate } from "./helpers/backdate.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";
 
@@ -31,7 +31,7 @@ import { fakeBins, readyRepo } from "./doctor-fixtures.js";
 // through main()) are pinned in test/doctor.test.ts; the model-readiness checks' own coverage
 // lives in test/doctor-model-checks.test.ts, the orphan check's in
 // test/doctor-orphans.test.ts, and the fixtures these files share live in
-// test/doctor-fixtures.ts and test/repo-fixtures.ts.
+// test/doctor-fixtures.ts and test/fixtures/repo-fixtures.ts.
 test("checkNodeVersion reports this runtime as ok and warns below the declared floor", () => {
   const current = checkNodeVersion();
   assert.equal(current.level, "ok");

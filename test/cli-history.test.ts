@@ -9,7 +9,7 @@ import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history/histor
 import { displayWidth } from "../src/text/text-width.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // The `history` command: the tickRows collector's pairing/filtering/bounding as unit cases,

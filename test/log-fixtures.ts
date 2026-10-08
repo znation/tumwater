@@ -8,7 +8,7 @@ import path from "node:path";
 import { readEvents } from "../src/events/event-read.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { orchestratorStatePath, piLogPath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, runMarker, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 

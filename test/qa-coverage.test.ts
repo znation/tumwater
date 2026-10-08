@@ -8,7 +8,7 @@ import {
   renderCoverageBlock,
 } from "../src/tick/qa-coverage.js";
 import { qaCoveragePath } from "../src/paths.js";
-import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/tick/qa-coverage.ts — the `qa` observer's flow-coverage ledger
  * (plans/observer-roles.md 2/2). Every tick is a fresh session and a passing cheap check

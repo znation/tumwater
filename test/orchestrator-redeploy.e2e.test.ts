@@ -25,7 +25,7 @@ import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "
 import { roleWt } from "./loop-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { ownerAliveSh } from "./victim-fixture.js";
-import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";

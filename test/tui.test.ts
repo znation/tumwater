@@ -10,7 +10,7 @@ import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { runTui } from "../src/ui/tui/tui.js";
 import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./helpers/oracles.js";
-import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { CLI, cli } from "./helpers/cli-harness.js";
 import { flushImmediate, waitFor } from "./helpers/wait.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";

@@ -43,7 +43,7 @@ import { fakePi, fakePiIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-p
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
-import { sh, tmpdir } from "./repo-fixtures.js";
+import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ownerAliveSh } from "./victim-fixture.js";
 
 /** The session name (pi's `-n` value) of a run block recorded by logPromptsTo: the line after

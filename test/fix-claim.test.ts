@@ -15,7 +15,7 @@ import {
 import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh } from "./fixtures/repo-fixtures.js";
 import { reviewGate, ROLE } from "./gate-fixtures.js";
 import { fakePi, piRanMarker } from "./fakes/fake-pi.js";
 

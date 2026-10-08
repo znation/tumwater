@@ -8,7 +8,7 @@ import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } fr
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { attempt } from "./helpers/exit-capture.js";
 import { dateOf } from "./helpers/oracles.js";
 

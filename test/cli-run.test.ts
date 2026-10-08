@@ -6,7 +6,7 @@ import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron
 // log keeps. The orchestrator-level behavior (which settle reason a real round hands back,

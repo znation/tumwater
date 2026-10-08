@@ -17,7 +17,7 @@ import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { loopbackHostAllowed, startGui } from "../src/gui/gui-server.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
-import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,

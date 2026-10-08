@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { listQueueFiles, queueFileStamp, queueFileName, removeQueueFile } from "../src/files/file-queue.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("listQueueFiles reads a missing directory as an empty queue", () => {
   const dir = path.join(tmpdir(), "does-not-exist");

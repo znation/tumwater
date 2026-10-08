@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
 import { renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
-import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 
 const PLANS_MD = `# Plans

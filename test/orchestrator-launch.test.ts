@@ -26,7 +26,7 @@ import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, t
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 
 /** A stand-in runner: only what launchDueTicks reads. `config` is what runConfig returns —

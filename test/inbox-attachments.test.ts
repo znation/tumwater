@@ -14,7 +14,7 @@ import { dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { roleInboxDir } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // A minimal PNG-shaped payload — the harness never opens the images, so only the bytes'
 // round-trip through base64 matters here.

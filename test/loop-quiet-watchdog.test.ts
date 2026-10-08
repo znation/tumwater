@@ -14,7 +14,7 @@ import { validateConfig } from "../src/config/config-validation.js";
 import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
-import { initializedRepo, mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./pi-events.js";

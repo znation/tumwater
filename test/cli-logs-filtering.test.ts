@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
 import { eventsLogPath } from "../src/paths.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
 import { writeLogLines } from "./log-fixtures.js";
 

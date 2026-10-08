@@ -13,7 +13,7 @@ import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");

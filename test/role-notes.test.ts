@@ -13,7 +13,7 @@ import {
   validateRoleNote,
   writeRoleNote,
 } from "../src/pi-extension/role-notes.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** The subset of pi's registered tool shape the tests drive. */
 interface RegisteredTool {

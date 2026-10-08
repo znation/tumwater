@@ -16,7 +16,7 @@ import { landingRefName } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { conflictingMainEdit, fakePi, seedBranchEdit } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 test("a rebase conflict is resolved by a second pi run and lands with linear history", async () => {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { findTumwaterRoot, writeFullOutput } from "../src/pi-extension/full-output.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
 
 test("writeFullOutput writes into .tumwater/log/tool-output named by toolCallId", () => {

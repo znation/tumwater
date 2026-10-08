@@ -21,7 +21,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { worktreeUsePath, worktreesDir } from "../src/paths.js";
-import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 
 /** Give a linked worktree a tracked modified file, an untracked file, an ignored `build/`
  * dir, an ignored `.log`, and a nested repository — the shape part 2/4's acceptance criterion

@@ -13,7 +13,7 @@ import {
   readmeTemplate,
   readInitialPrompt,
 } from "../src/brief.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 function writeReadme(root: string, text: string): void {
   fs.writeFileSync(path.join(root, "README.md"), text);

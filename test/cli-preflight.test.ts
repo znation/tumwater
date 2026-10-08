@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig } from "../src/config/config.js";
-import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { cliWithEnv } from "./helpers/cli-harness.js";
 
 // run/status/init's startup-preflight child-process tests: each fails fast with a clear

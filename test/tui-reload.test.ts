@@ -6,7 +6,7 @@ import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { initProject } from "../src/init/init.js";
 
 // The TUI's self-reload wiring (runTui's watch onTrigger: latch the request, wake the main

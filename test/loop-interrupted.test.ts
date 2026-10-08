@@ -15,7 +15,7 @@ import { piLogPath, sessionDir } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, mainSha, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";

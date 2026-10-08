@@ -4,7 +4,7 @@ import { collectReport, collectReportSince, type ReportData } from "../src/repor
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { cli, runCli } from "./helpers/cli-harness.js";
 
 // The usage collectors' unit tests (collectReport, collectReportSince) live in

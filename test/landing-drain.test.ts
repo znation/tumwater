@@ -6,7 +6,7 @@ import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./landing-fixtures.js";
-import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 /** First slice of the landing-drain suite (landing-pipeline.test.ts carries the rest, and
  * landing-drain-vetting.test.ts the vet-permit tests) — split so node --test runs the slices in

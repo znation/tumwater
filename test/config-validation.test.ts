@@ -7,7 +7,7 @@ import { show } from "../src/config/config-field-checks.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { validationError } from "./config-fixtures.js";
-import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // Tests for src/config/config-validation.ts — validateConfig — plus the load and save paths that
 // enforce it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's

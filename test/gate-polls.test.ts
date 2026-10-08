@@ -19,7 +19,7 @@ import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { MODELS_JSON } from "./models-fixtures.js";

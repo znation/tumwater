@@ -7,7 +7,7 @@ import { eventsLogPath } from "../src/paths.js";
 import { collectReport } from "../src/report/report-data.js";
 import { renderReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 
 // `readWindowEvents` scans the append-only event log BACKWARDS in 8 KB chunks and early-stops

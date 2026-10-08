@@ -13,7 +13,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
 import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
-import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 test("a rejected change is re-applied on the role's next tick and its reasons ride along", async () => {
