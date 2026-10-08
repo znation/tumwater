@@ -222,11 +222,11 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   const commit = await commitAll(ctx.wt, message);
 
   // Pin the commit by its landing ref BEFORE freeing the worktree (invariant 4), then hand it
-  // to the land queue: from here on the review gate and the rebase run in _land-<role>, never
-  // in this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick recovery —
-  // landing without a pin would lose the ref lifecycle this whole flow depends on. The
-  // reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff reaches
-  // main unreviewed.
+  // to the land queue: from here on the review gate and the rebase run in a vet's leased pool
+  // slot, never in this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick
+  // recovery — landing without a pin would lose the ref lifecycle this whole flow depends on.
+  // The reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff
+  // reaches main unreviewed.
   if (!(await ctx.pinAndReset(ctx.wt, commit))) {
     s.lastError = "failed to pin the landing ref; left for next-tick recovery";
     return { result: "error", summary: s.lastError };
