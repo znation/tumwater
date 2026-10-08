@@ -11,7 +11,7 @@ import { readTextOrNull } from "../files/files.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
-import { ENTRY_STAMP_META_RE, actionableEntryRanges } from "./backlog-structure.js";
+import { actionableEntryRanges, stripEntryStamp } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unlanded
@@ -64,17 +64,17 @@ function parseRef(chunk: string, ownSeries: string | null): PartRef[] {
 }
 
 /** The stable identity of an entry heading: its `(planned …)`/`(done …)` stamp suffix
- * removed through the shared ENTRY_STAMP_META_RE, whitespace collapsed, lowercased. Adding a
+ * removed through the shared stripEntryStamp, whitespace collapsed, lowercased. Adding a
  * done stamp or a Refused note therefore leaves the key unchanged. */
 export function entryKey(title: string): string {
-  return collapseWhitespace(title.replace(ENTRY_STAMP_META_RE, "")).toLowerCase();
+  return collapseWhitespace(stripEntryStamp(title)).toLowerCase();
 }
 
 /** An entry's own series and part from its heading, or null when the heading is not a
  * `<Series>, part i/n: …` title. The series is the text before `, part i/n:`. */
 export function seriesPart(title: string): PartRef | null {
   const m = /^(.+?),\s*part\s+([0-9]+[a-z]?)\/(\d+)\s*:/i.exec(
-    title.replace(ENTRY_STAMP_META_RE, ""),
+    stripEntryStamp(title),
   );
   if (m === null) return null;
   const series = m[1]!.trim();

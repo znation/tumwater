@@ -30,7 +30,7 @@ export interface StrandedPlanEntry {
 
 /** The stamp verbs a backlog heading's trailing `(planned 2026-09-29)`-style parenthetical
  * opens with — the same list the backlog writers stamp and the dashboards parse. One home
- * for the verb list: the TUI's fleet alerts strip the suffix (entryTitle) and the
+ * for the verb list: the TUI's fleet alerts strip the suffix (stripEntryStamp) and the
  * dashboard's browser view model splits it off as metadata (splitTitle), and a new stamp
  * verb must reach both renders.
  * Kept as pattern SOURCE rather than a RegExp so the browser twin (a String.raw template
@@ -38,8 +38,15 @@ export interface StrandedPlanEntry {
 export const ENTRY_STAMP_META_SOURCE = String.raw`\s*\(((?:planned|reported|found|refined|asked|posted|filed|opened|done)\b[^)]*)\)\s*$`;
 
 /** ENTRY_STAMP_META_SOURCE compiled: the one server-side home of the stamp-suffix match
- * (case-insensitive, note captured), used by ui/fleet-alerts.ts's entryTitle. */
-export const ENTRY_STAMP_META_RE = new RegExp(ENTRY_STAMP_META_SOURCE, "i");
+ * (case-insensitive, note captured), read through stripEntryStamp below. */
+const ENTRY_STAMP_META_RE = new RegExp(ENTRY_STAMP_META_SOURCE, "i");
+
+/** A heading or title with its trailing `(planned 2026-09-29)`-style stamp suffix removed,
+ * whitespace otherwise untouched — the shared span of this module's indexTitle, eligibility's
+ * entryKey and seriesPart, and the TUI fleet alerts, which all read a heading stamp-free. */
+export function stripEntryStamp(title: string): string {
+  return title.replace(ENTRY_STAMP_META_RE, "");
+}
 
 /** A heading's parenthetical dates: `(planned YYYY-MM-DD` opens a plan entry; `done
  * YYYY-MM-DD` records its completion. Matched against the JOINED heading metadata
@@ -263,11 +270,11 @@ export function actionableEntryRanges(md: string, sectionTitle: string): Actiona
 const INDEX_TITLE_MAX = 160;
 
 /** The index title for a `### ` heading: its stamp suffix (`(reported … 2026-…)`) removed via
- * the shared ENTRY_STAMP_META_RE and whitespace collapsed, then clipped to INDEX_TITLE_MAX
+ * the shared stripEntryStamp and whitespace collapsed, then clipped to INDEX_TITLE_MAX
  * through text.ts's truncate — the one ellipsis rule, so the cut cannot drift from the
  * other trimmed labels and never splits a surrogate pair. */
 function indexTitle(heading: string): string {
-  return truncate(collapseWhitespace(heading.replace(ENTRY_STAMP_META_RE, "")), INDEX_TITLE_MAX);
+  return truncate(collapseWhitespace(stripEntryStamp(heading)), INDEX_TITLE_MAX);
 }
 
 /** The index mark for an entry's eligibility hold (backlog-eligibility.ts's entryHold): empty

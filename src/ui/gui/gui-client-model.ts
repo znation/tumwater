@@ -144,8 +144,8 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   }
   // A backlog title's trailing "(planned 2026-09-29)"-style note, split off as metadata —
   // the pattern is backlog-structure.ts's ENTRY_STAMP_META_SOURCE (interpolated at module
-  // load, compiled once here), the same regex fleet-alerts.ts's entryTitle strips with, so
-  // a new stamp verb reaches both dashboards from one edit.
+  // load, compiled once here), the same regex fleet-alerts.ts strips through via
+  // stripEntryStamp, so a new stamp verb reaches both dashboards from one edit.
   const ENTRY_STAMP_RE = new RegExp(${JSON.stringify(ENTRY_STAMP_META_SOURCE)}, "i");
   function splitTitle(t) {
     const m = ENTRY_STAMP_RE.exec(String(t));

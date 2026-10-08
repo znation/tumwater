@@ -8,7 +8,7 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status/status-data.js";
-import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
+import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -42,12 +42,6 @@ export interface AlertLoop {
 function listRoles(loops: readonly AlertLoop[]): string {
   const names = loops.map((l) => l.role);
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
-}
-
-/** A backlog title without its trailing `(planned 2026-09-29)`-style note — the shared
- * stamp-metadata regex backlog-structure.ts homes for both dashboards. */
-function entryTitle(title: string): string {
-  return title.replace(ENTRY_STAMP_META_RE, "");
 }
 
 /** ISO instants in server text (a restart cooldown's deadline) in local time. */
@@ -169,7 +163,7 @@ export function fleetAlerts(
       key: "questions",
       tone: "indigo",
       title: `${plural(questions.length, "question needs", "questions need")} your answer`,
-      detail: `${entryTitle(questions[0]!)}${questions.length > 1 ? ` — and ${questions.length - 1} more` : ""}`,
+      detail: `${stripEntryStamp(questions[0]!)}${questions.length > 1 ? ` — and ${questions.length - 1} more` : ""}`,
       actions: [{ label: "Answer", act: "questions" }],
     });
   }
