@@ -1,13 +1,13 @@
 /**
  * The dashboard's GET data endpoint handlers (src/gui/gui-server.ts routes to them): transcript,
  * backlog, report, failures, history, tick, diff, config — the read-only surface. The POST
- * operator endpoints (prompt, prompt-cancel, budget, config-set, pause,
- * wake, restart, abort, pause-role) and their body-discipline helpers live in
- * gui/gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond its
- * own `res`; server lifecycle, routing, the static page, and the token gate stay in gui/gui-server.ts.
- * The domain work itself lives one layer down (transcript.ts, backlog.ts, report.ts,
- * src/failure/failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts) — this module only
- * adapts HTTP onto it.
+ * operator endpoints (prompt, prompt-role, prompt-cancel, budget, config-set, pause, wake,
+ * restart, abort, pause-role) and their body-discipline helpers live in
+ * gui/gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond
+ * its own `res`; server lifecycle, routing, the static page, and the token gate stay in
+ * gui/gui-server.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
+ * report-data.ts, src/failure/failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts)
+ * — this module only adapts HTTP onto it.
  */
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
@@ -30,8 +30,8 @@ import type http from "node:http";
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
- * once (gui/gui-server.ts's parseRequestTarget) and threads it down, so the parse idiom lives in one
- * place and cannot disagree with the routing or the token gate about what the URL said. */
+ * once (gui/gui-server.ts's parseRequestTarget) and threads it down, so the parse idiom lives
+ * in one place and cannot disagree with the routing or the token gate about what the URL said. */
 export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
