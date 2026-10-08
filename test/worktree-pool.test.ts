@@ -165,3 +165,37 @@ test("an invalid config still frees a held slot on release", async () => {
   lease.release();
   assert.equal(readSlotsState(root).slots[0]?.lease, null);
 });
+
+test("a lease whose worktree prepare fails frees the slot and can be retried", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  await assert.rejects(
+    leaseSlot(root, { role: "feature", purpose: "tick", ref: "refs/heads/no-such-ref" }),
+  );
+  const freed = readSlotsState(root).slots.find((slot) => slot.lease === null);
+  assert.ok(freed, "the failed lease left its slot claimed");
+  assert.equal(freed?.lastRole, "feature");
+
+  const lease = await leaseSlot(root, { role: "bugfix", purpose: "tick", ref: "main" });
+  assert.equal(lease.dir, freed?.dir, "the freed slot was not reused");
+  lease.release();
+});
+
+test("a waiting lease with a signal acquires when a slot frees, then ignores a late abort", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  const controller = new AbortController();
+  const pending = leaseSlot(root, {
+    role: "bugfix",
+    purpose: "tick",
+    ref: "main",
+    signal: controller.signal,
+  });
+  await sleep(20);
+  held.release();
+  const lease = await pending;
+  controller.abort();
+  assert.match(lease.dir, /_slot-\d+$/);
+  lease.release();
+});
