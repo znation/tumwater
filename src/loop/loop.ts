@@ -307,8 +307,8 @@ export class LoopRunner {
    * conflict-retry flow): delegates with this loop's identity, tick number, and shared pi wiring
    * so a conflict-resolution run folds into this tick's counters like any other pi run. Since
    * merge queue 2/5 only the refusal-note landing (src/verdict/refusal.ts) still uses it — reviewed
-   * changes land through the lander in _land-<role> instead; md-only notes are review-exempt by
-   * construction, so they keep this branch path (plans/merge-queue.md 2/5). */
+   * changes land through the landing pipeline's leased vet slot instead; md-only notes are
+   * review-exempt by construction, so they keep this branch path (plans/merge-queue.md 2/5). */
   private async merge(wt: string, summary: string): Promise<TickResult> {
     return mergeToMain(
       {
@@ -327,8 +327,8 @@ export class LoopRunner {
    * 4): the pin must exist BEFORE resetWorktreeToMain moves the branch, or the commit is
    * orphaned. Returns false when the pin write failed — the caller then leaves the commit on its
    * branch (no reset) and defers to next-tick recovery, which adopts it into the pin scheme.
-   * After a successful pin the review gate and the rebase run in _land-<role> — never in this
-   * worktree (merge queue 2/5). */
+   * After a successful pin the review gate and the rebase run in the vet's leased pool slot —
+   * never in this worktree (merge queue 2/5). */
   private async pinAndReset(wt: string, sha: string): Promise<boolean> {
     const pinned = await setRef(this.root, landingRefName(this.role), sha);
     if (!pinned) {
