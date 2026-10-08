@@ -60,20 +60,19 @@ let resolvedGit: string | null | undefined;
  * does. */
 const GIT_RESOLVE_TIMEOUT_MS = 10_000;
 
-/** The git binary the harness spawns, resolved once per process. On macOS the first git on
- * PATH is routinely /usr/bin/git — the xcode-select stub, which re-resolves the developer
- * directory on every exec before running the real binary (the same cost
- * test/test-runner.ts's suiteEnv already keeps out of the suite). Resolving the real binary once and spawning it
- * by absolute path cuts that per-spawn tax from every harness git call without changing what
- * any command does: the same binary ends up executing the same argv. Any other first git —
- * Linux, Homebrew — spawns by name exactly as before, and a machine with no git at all keeps
- * the "git" name so the spawn still fails ENOENT and GIT_MISSING_MESSAGE still applies.
- * Resolution caches the found absolute path (null = spawn by name); it never re-walks. The
- * deliberate exception is build/build-check.ts's toolchain probe, which must keep spawning PATH's
- * stub — its "broken" verdict exists to catch exactly the stub's exit-69-on-invalid-license
- * failure, which the real binary would never surface. `timeoutMs` bounds the xcrun probe (see
- * GIT_RESOLVE_TIMEOUT_MS); it is a parameter so the suite can drive it down against a fake
- * wedged xcrun, and production callers keep the default. */
+/** The git binary the harness spawns, resolved once per process. On macOS the first git on PATH is
+ * routinely /usr/bin/git — the xcode-select stub, which re-resolves the developer directory on
+ * every exec before running the real binary (the same cost test/test-runner.ts's suiteEnv already
+ * keeps out of the suite). Resolving the real binary once and spawning it by absolute path cuts
+ * that per-spawn tax from every harness git call without changing what any command does: the same
+ * binary ends up executing the same argv. Any other first git — Linux, Homebrew — spawns by name
+ * exactly as before, and a machine with no git at all keeps the "git" name so the spawn still fails
+ * ENOENT and GIT_MISSING_MESSAGE still applies. Resolution caches the found absolute path (null =
+ * spawn by name); it never re-walks. The deliberate exception is build/build-check.ts's toolchain
+ * probe, which must keep spawning PATH's stub — its "broken" verdict exists to catch exactly the
+ * stub's exit-69-on-invalid-license failure, which the real binary would never surface. `timeoutMs`
+ * bounds the xcrun probe (see GIT_RESOLVE_TIMEOUT_MS); it is a parameter so the suite can drive it
+ * down against a fake wedged xcrun, and production callers keep the default. */
 export function resolvedGitBin(timeoutMs: number = GIT_RESOLVE_TIMEOUT_MS): string {
   if (resolvedGit !== undefined) return resolvedGit ?? "git";
   let bin: string | null = null;
@@ -214,12 +213,12 @@ export function execGitBounded(
   return Object.assign(promise, { child }) as PromiseWithChild<{ stdout: string; stderr: string }>;
 }
 
-/** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue, which
- * the landing flow in landing-merge.ts needs so `rebase --continue` can never block on a commit-message
- * prompt; and the harness ident for rewritten committer identity). The subprocess is bounded
- * by GIT_TIMEOUT_MS plus the KILL_GRACE_MS escalation (an optional `timeoutMs`/`killGraceMs`
- * override both for tests), so a hung or signal-ignoring git fails loudly as a GitError
- * instead of stalling every awaited caller forever. */
+/** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue, which the
+ * landing flow in landing-merge.ts needs so `rebase --continue` can never block on a commit-message
+ * prompt; and the harness ident for rewritten committer identity). The subprocess is bounded by
+ * GIT_TIMEOUT_MS plus the KILL_GRACE_MS escalation (an optional `timeoutMs`/`killGraceMs` override
+ * both for tests), so a hung or signal-ignoring git fails loudly as a GitError instead of stalling
+ * every awaited caller forever. */
 export async function runGit(
   cwd: string,
   args: string[],

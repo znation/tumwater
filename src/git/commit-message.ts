@@ -35,8 +35,8 @@ export function fallbackSummary(files: string[], role: string, tick: number): st
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
 const COMMIT_BODY_FIELD_MAX = 200;
 
-/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
- * contract declared by reply-contract.ts. Each field is optional: a non-compliant reply still commits
+/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK contract
+ * declared by reply-contract.ts. Each field is optional: a non-compliant reply still commits
  * (subject + trailer). Module-private: every consumer — extractCommitBody, formatCommitBody,
  * buildCommitMessage — lives in this file, and tick-stage.ts works with the extracted values
  * structurally rather than naming the type. */
@@ -63,9 +63,9 @@ export function extractCommitBody(finalText: string): CommitBody | null {
 }
 
 /** Merge a follow-up reply's body over the tick's original body, field by field: a follow-up that
- * restates only some of WHY/RISK/VERIFIED overrides those fields and leaves the others intact.
- * A wholesale replacement would silently drop the fields a partial reply did not restate, losing
- * the authoring run's recorded reasoning; returns `base` unchanged when `update` carries no field. */
+ * restates only some of WHY/RISK/VERIFIED overrides those fields and leaves the others intact. A
+ * wholesale replacement would silently drop the fields a partial reply did not restate, losing the
+ * authoring run's recorded reasoning; returns `base` unchanged when `update` carries no field. */
 export function mergeCommitBody(base: CommitBody | null, update: CommitBody | null): CommitBody | null {
   if (!update) return base;
   const merged: CommitBody = {

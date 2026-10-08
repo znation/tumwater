@@ -34,7 +34,8 @@ interface LeaseSlotOptions {
   /** The loop the slot is held for; drives affinity and the persisted lease record. */
   role: string;
   purpose: "tick" | "vet";
-  /** The commit the slot is prepared at (a sha or branch name; ensureDetachedWorktree resets it). */
+  /** The commit the slot is prepared at (a sha or branch name; ensureDetachedWorktree
+   * resets it). */
   ref: string;
   /** Aborts a lease that is still waiting for a free slot. */
   signal?: AbortSignal;
