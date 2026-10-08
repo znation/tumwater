@@ -200,6 +200,10 @@ BUGS.md references.
 
 ### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed)
 
+**Needs replan 2026-10-08 by feature: rejected after 2 review rounds**
+1. `plans/worktree-pool.md` and `src/git/worktree-pool.ts:368-369` claim the migration "runs before any loop is constructed," but all `LoopRunner` instances are constructed at `orchestrator.ts:158` before `retireLegacyRoleWorktrees` runs at `orchestrator.ts:184`. Correct the rationale (the constructor…
+2. Consider scoping the migration's pin decision to `enabled` roles, or retiring pinned slots for roles that no longer run, so a removed/paused resumable role's legacy checkout cannot leak as a permanently pinned slot.
+
 Design: plans/worktree-pool.md ("Role ticks lease slots", "Legacy role worktrees").
 
 **Context.** Once role ticks lease slots (4b/5), the old `.tumwater/worktrees/<role>`
