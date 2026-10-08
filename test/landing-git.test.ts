@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import {
   conflictedFiles,
@@ -171,8 +171,7 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
   const ready = path.join(root, "child-ready");
   const marker = path.join(root, "child-marker");
   const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const child = spawn(process.execPath, [
-    "-e",
+  const holder = spawnReadyChild(
     `const fs = require("node:fs");
      import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
        fs.writeFileSync(${JSON.stringify(ready)}, "1");
@@ -183,16 +182,13 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
        }
        fs.writeFileSync(${JSON.stringify(marker)}, merged() ? "seen" : "not-seen");
      }));`,
-  ]);
-  child.stderr?.resume();
-  const childExit = new Promise((resolve) => child.on("exit", resolve));
+    () => fs.existsSync(ready),
+    "the holder child never took the primary-worktree lock",
+  );
   try {
-    for (let i = 0; !fs.existsSync(ready); i++) {
-      if (i > 500) throw new Error("the holder child never took the primary-worktree lock");
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    await holder.ready;
     assert.equal(await ffMainTo(root, ref, "main"), true);
-    await childExit;
+    await holder.exited;
     assert.equal(
       fs.readFileSync(marker, "utf8"),
       "not-seen",
@@ -200,8 +196,7 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
     );
     assert.equal(fs.readFileSync(landed, "utf8"), "landed\n", "the merge landed after the lock was released");
   } finally {
-    child.kill();
-    await childExit;
+    await stopChild(holder);
   }
 });
 

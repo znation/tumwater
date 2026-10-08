@@ -1,7 +1,7 @@
 import test from "node:test";
 import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -601,8 +601,7 @@ test("a concurrent config write cannot drop another process's update", async () 
   const ready = path.join(dir, "child-ready");
   const configFile = path.join(dir, "tumwater.json");
   const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const child = spawn(process.execPath, [
-    "-e",
+  const holder = spawnReadyChild(
     `const fs = require("node:fs");
      fs.mkdirSync(${JSON.stringify(stateDir)}, { recursive: true });
      import(${JSON.stringify(lockModule)}).then(({ withSyncLock }) => withSyncLock(${JSON.stringify(lock)}, () => {
@@ -616,22 +615,18 @@ test("a concurrent config write cannot drop another process's update", async () 
        snapshot.quietHours = "22:00-06:00";
        fs.writeFileSync(${JSON.stringify(configFile)}, JSON.stringify(snapshot, null, 2) + "\\n");
      }));`,
-  ]);
-  child.stderr?.resume();
-  const childExit = new Promise((resolve) => child.on("exit", resolve));
+    () => fs.existsSync(ready),
+    "the holder child never took the config lock",
+  );
   try {
-    for (let i = 0; !fs.existsSync(ready); i++) {
-      if (i > 500) throw new Error("the holder child never took the config lock");
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    await holder.ready;
     const result = setConfigKey(dir, "maxDailyCostUsd", "42");
     assert.ok(result.ok, result.ok ? "" : result.error);
-    await childExit;
+    await holder.exited;
     const cfg = readJson(configFile) as { maxDailyCostUsd?: number; quietHours?: string };
     assert.equal(cfg.maxDailyCostUsd, 42, "the parent's update survives");
     assert.equal(cfg.quietHours, "22:00-06:00", "the child's update survives");
   } finally {
-    child.kill();
-    await childExit;
+    await stopChild(holder);
   }
 });

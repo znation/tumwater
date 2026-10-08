@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/cli/question-commands.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
@@ -365,8 +365,7 @@ test("an answered question cannot be clobbered by a landing that fast-forwards t
   const lock = primaryWorktreeLockPath(root);
   const ready = path.join(root, "child-ready");
   const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const child = spawn(process.execPath, [
-    "-e",
+  const holder = spawnReadyChild(
     `const fs = require("node:fs");
      import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
        const snapshot = fs.readFileSync(${JSON.stringify(file)}, "utf8");
@@ -378,23 +377,19 @@ test("an answered question cannot be clobbered by a landing that fast-forwards t
        }
        fs.writeFileSync(${JSON.stringify(file)}, snapshot);
      }));`,
-  ]);
-  child.stderr?.resume();
-  const childExit = new Promise((resolve) => child.on("exit", resolve));
+    () => fs.existsSync(ready),
+    "the holder child never took the primary-worktree lock",
+  );
   try {
-    for (let i = 0; !fs.existsSync(ready); i++) {
-      if (i > 500) throw new Error("the holder child never took the primary-worktree lock");
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    await holder.ready;
     answerQuestion(root, 1, "yes");
-    await childExit;
+    await holder.exited;
     assert.ok(
       read(file).includes("**Answered"),
       "the answered question survives the lander's stale write-back",
     );
   } finally {
-    child.kill();
-    await childExit;
+    await stopChild(holder);
   }
 });
 

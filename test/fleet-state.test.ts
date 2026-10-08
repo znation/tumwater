@@ -1,4 +1,3 @@
-import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
@@ -19,6 +18,7 @@ import {
 } from "../src/fleet/fleet-state.js";
 import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
+import { spawnReadyChild } from "./helpers/child-process.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
@@ -184,29 +184,23 @@ test("a paused-roles lock held by another process is waited for, not stolen", as
   // A live holder via the real protocol (withSyncLock in the compiled build), releasing after
   // 300ms — well inside pauseRole's 10s wait bound.
   const module = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const holder = spawn(
-    process.execPath,
-    [
-      "-e",
-      `import(${JSON.stringify(module)}).then(({ withSyncLock }) => {
-        const fs = require("node:fs"), path = require("node:path");
-        fs.mkdirSync(path.dirname(${JSON.stringify(lock)}), { recursive: true });
-        return withSyncLock(${JSON.stringify(lock)}, () =>
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300));
-      });`,
-    ],
+  const holder = spawnReadyChild(
+    `import(${JSON.stringify(module)}).then(({ withSyncLock }) => {
+      const fs = require("node:fs"), path = require("node:path");
+      fs.mkdirSync(path.dirname(${JSON.stringify(lock)}), { recursive: true });
+      return withSyncLock(${JSON.stringify(lock)}, () =>
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300));
+    });`,
+    () => fs.existsSync(lock),
+    "the holder child never took the lock",
+    200,
   );
-  const holderExit = new Promise((resolve) => holder.on("exit", resolve));
-  holder.stderr?.resume();
   try {
-    for (let i = 0; !fs.existsSync(lock); i++) {
-      if (i > 200) throw new Error("the holder child never took the lock");
-      await sleep(10);
-    }
+    await holder.ready;
     assert.equal(pauseRole(root, "docs"), true, "the caller waits out the live holder and proceeds");
     assert.deepEqual(pausedRoles(root), ["docs"]);
   } finally {
-    await holderExit;
+    await holder.exited;
   }
   assert.equal(fs.existsSync(lock), false, "the lock is released after the section");
 });

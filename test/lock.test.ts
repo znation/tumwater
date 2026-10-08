@@ -9,6 +9,7 @@ import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concur
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "./helpers/fs-faults.js";
 import { backdate } from "./helpers/backdate.js";
+import { spawnReadyChild } from "./helpers/child-process.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");
@@ -418,28 +419,22 @@ test("withSyncLock excludes a second writer and releases on the way out", () => 
 test("withSyncLock waits out a live holder in another process and then proceeds", async () => {
   const lock = path.join(tmpdir(), "held.lock");
   const module = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const child = spawn(
-    process.execPath,
-    [
-      "-e",
-      `import(${JSON.stringify(module)}).then(({ withSyncLock }) =>
-        withSyncLock(${JSON.stringify(lock)}, () =>
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300)));`,
-    ],
+  const holder = spawnReadyChild(
+    `import(${JSON.stringify(module)}).then(({ withSyncLock }) =>
+      withSyncLock(${JSON.stringify(lock)}, () =>
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300)));`,
+    () => readLockPid(lock) !== null,
+    "the holder child never took the lock",
+    200,
   );
-  const childExit = new Promise((resolve) => child.on("exit", resolve));
-  child.stderr?.resume();
   try {
     // The child needs a moment to take the lock; once its pid file reads back, the parent
     // must wait out the remaining hold (300ms, far inside the 5s budget) rather than steal.
-    for (let i = 0; readLockPid(lock) === null; i++) {
-      if (i > 200) throw new Error("the holder child never took the lock");
-      await sleep(10);
-    }
-    assert.equal(readLockPid(lock), child.pid!, "the child process holds the lock");
+    await holder.ready;
+    assert.equal(readLockPid(lock), holder.child.pid!, "the child process holds the lock");
     assert.equal(withSyncLock(lock, () => "after", 5000), "after", "a live holder is waited for");
   } finally {
-    await childExit;
+    await holder.exited;
   }
 });
 

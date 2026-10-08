@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -82,8 +82,7 @@ test("a concurrent worktree-use write cannot drop another process's update", asy
   fs.mkdirSync(stateDir, { recursive: true });
   fs.writeFileSync(registryFile, "{}");
   const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
-  const child = spawn(process.execPath, [
-    "-e",
+  const holder = spawnReadyChild(
     `const fs = require("node:fs");
      import(${JSON.stringify(lockModule)}).then(({ withSyncLock }) => withSyncLock(${JSON.stringify(lock)}, () => {
        const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(registryFile)}, "utf8"));
@@ -96,22 +95,18 @@ test("a concurrent worktree-use write cannot drop another process's update", asy
        snapshot.other = { lastUsedAt: 1 };
        fs.writeFileSync(${JSON.stringify(registryFile)}, JSON.stringify(snapshot));
      }));`,
-  ]);
-  child.stderr?.resume();
-  const childExit = new Promise((resolve) => child.on("exit", resolve));
+    () => fs.existsSync(ready),
+    "the holder child never took the worktree-use lock",
+  );
   try {
-    for (let i = 0; !fs.existsSync(ready); i++) {
-      if (i > 500) throw new Error("the holder child never took the worktree-use lock");
-      await new Promise((r) => setTimeout(r, 10));
-    }
+    await holder.ready;
     releaseReclaim(root, dir, 1_700_000_000_000);
-    await childExit;
+    await holder.exited;
     const registry = readWorktreeUse(root);
     assert.equal(typeof registry["feature"]?.lastUsedAt, "number", "the parent's release survives");
     assert.equal(typeof registry["other"]?.lastUsedAt, "number", "the child's seeding survives");
   } finally {
-    child.kill();
-    await childExit;
+    await stopChild(holder);
   }
 });
 
