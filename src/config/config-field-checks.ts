@@ -6,6 +6,7 @@ import {
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../files/json-object.js";
+import { typoSuffix } from "../text/suggest.js";
 import { truncate, isNonBlankString } from "../text/text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error
@@ -41,7 +42,9 @@ export function typeName(v: unknown): string {
 }
 
 /** Collect the keys present in `obj` but not in `known` into problems, naming where they
- * were found and listing what is valid so one edit fixes them. */
+ * were found and listing what is valid so one edit fixes them, plus the shared did-you-mean
+ * annotation for a near miss (a `maxDailyCostUss` typo reads the same hint `tumwater config
+ * set` prints). */
 export function checkKnownKeys(
   obj: Record<string, unknown>,
   known: readonly string[],
@@ -50,7 +53,9 @@ export function checkKnownKeys(
 ): void {
   for (const key of Object.keys(obj)) {
     if (!known.includes(key))
-      problems.push(`unknown key "${key}" in ${where} (valid keys: ${known.join(", ")})`);
+      problems.push(
+        `unknown key "${key}" in ${where} (valid keys: ${known.join(", ")})${typoSuffix(key, known)}`,
+      );
   }
 }
 
@@ -128,8 +133,9 @@ export function checkKnownRoleId(
   problems: string[],
 ): boolean {
   if (allRoleIds().includes(id) || customNames.has(id)) return true;
+  const validIds = [...allRoleIds(), ...customNames];
   problems.push(
-    `${section}.${id} is not a known role (valid ids: ${[...allRoleIds(), ...customNames].join(", ")})`,
+    `${section}.${id} is not a known role (valid ids: ${validIds.join(", ")})${typoSuffix(id, validIds)}`,
   );
   return false;
 }

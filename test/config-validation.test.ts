@@ -394,20 +394,29 @@ test("validateConfig rejects unknown keys with the valid ones listed", () => {
   // A misspelled key would otherwise be silently ignored and the default used.
   const top = validationError({ tickTimeoutSecondss: 90 });
   assert.match(top, /unknown key "tickTimeoutSecondss" in tumwater\.json \(valid keys: .*tickTimeoutSeconds.*\)/);
+  // The near miss gets the shared did-you-mean, same as `tumwater config set`.
+  assert.match(top, /— did you mean `tickTimeoutSeconds`\?/);
 
   const backoff = validationError({ idleBackoff: { factorr: 2 } });
   assert.match(backoff, /unknown key "factorr" in idleBackoff \(valid keys: initialSeconds, factor, maxSeconds\)/);
+  assert.match(backoff, /— did you mean `factor`\?/);
 
   const roleEntry = validationError({ roles: { feature: { enabed: true } } });
   assert.match(
     roleEntry,
     /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking, minTickIntervalSeconds\)/,
   );
+  assert.match(roleEntry, /— did you mean `enabled`\?/);
+
+  // A key with no near miss stays a bare valid-keys list (no spurious suggestion).
+  const far = validationError({ completelyUnrelated: 1 });
+  assert.doesNotMatch(far, /did you mean/);
 });
 
 test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring loop)", () => {
   const msg = validationError({ roles: { featuer: { enabled: true } } });
   assert.match(msg, /roles\.featuer is not a known role \(valid ids: .*feature.*\)/);
+  assert.match(msg, /— did you mean `feature`\?/);
   // The valid-id list covers the whole catalog, including the director.
   for (const id of allRoleIds()) assert.ok(msg.includes(id), `error should list ${id}`);
 
