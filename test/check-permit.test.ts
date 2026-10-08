@@ -4,15 +4,11 @@ import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js"
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { readEvents } from "../src/events/event-read.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
-import { sleep } from "./wait.js";
+import { flushImmediate, sleep } from "./wait.js";
 
 // A held permit is module-global state, so every test must let its work finish (and any
 // rejected run hand its permit back) before the next one starts — a leaked permit would
 // park every later acquire in this file.
-
-// Flush microtasks so "has the caller queued yet" is deterministic rather than
-// timing-dependent (same pattern as test/semaphore.test.ts).
-const flush = () => new Promise<void>((r) => setImmediate(r));
 
 test("withCheckPermit bounds concurrency to the configured cap", async () => {
   const cfg = { maxConcurrentChecks: 2 };
@@ -41,9 +37,9 @@ test("withCheckPermit calls its wait hooks only when the permit is not free", as
   // A held permit: the second caller announces its wait, then the grant, then runs.
   let releaseFirst!: () => void;
   const first = withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => (releaseFirst = r)));
-  await flush();
+  await flushImmediate();
   const second = withCheckPermit(cfg, CHECK_TIER.other, async () => calls.push("ran"), hooks);
-  await flush();
+  await flushImmediate();
   assert.deepEqual(calls, ["waiting"], "parked behind the held permit");
   releaseFirst();
   await Promise.all([first, second]);
@@ -145,15 +141,15 @@ test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", asy
     await holderGate;
     granted.push("holder");
   });
-  await flush(); // holder now holds the only permit
+  await flushImmediate(); // holder now holds the only permit
   const other = withCheckPermit(cfg, CHECK_TIER.other, async () => {
     granted.push("other");
   });
-  await flush(); // other is parked in the queue first
+  await flushImmediate(); // other is parked in the queue first
   const merge = withCheckPermit(cfg, CHECK_TIER.merge, async () => {
     granted.push("merge");
   });
-  await flush(); // merge is parked behind it, at the better tier
+  await flushImmediate(); // merge is parked behind it, at the better tier
   releaseHolder(); // only now can the permit change hands — both waiters are queued
   await Promise.all([holder, other, merge]);
   assert.deepEqual(granted, ["holder", "merge", "other"]);
@@ -165,9 +161,6 @@ test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", asy
 // runScopedBuildCheck (the checks' real entry point) as well as withCheckPermit directly.
 
 const ROLE = "improve";
-
-/** Let every already-queued continuation run, so a permit that could be granted has been. */
-const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 test("at the default cap of 2, a third concurrent check starts only after one of the first two finishes", async () => {
   const { root, wt } = buildCheckFixture();
@@ -229,7 +222,7 @@ test("the check cap resizes from each caller's live config without preempting a 
   let releaseA!: () => void;
   const a = withCheckPermit(one, CHECK_TIER.other, () => new Promise<void>((resolve) => (releaseA = resolve)));
   const b = withCheckPermit(one, CHECK_TIER.other, async () => void started.push("b"));
-  await settle();
+  await flushImmediate();
   assert.equal(started.length, 0, "at a cap of 1, b waits behind the running a");
   // A live edit to 2 applies at the next acquire: the parked b is admitted beside a, then c.
   const c = withCheckPermit({ maxConcurrentChecks: 2 }, CHECK_TIER.other, async () => void started.push("c"));
@@ -237,7 +230,7 @@ test("the check cap resizes from each caller's live config without preempting a 
   assert.deepEqual(started, ["b", "c"]);
   // Shrinking back to 1 never preempts a: the next check waits until a finishes.
   const d = withCheckPermit(one, CHECK_TIER.other, async () => void started.push("d"));
-  await settle();
+  await flushImmediate();
   assert.deepEqual(started, ["b", "c"], "a shrink caps new grants while a still runs");
   releaseA();
   await Promise.all([a, d]);
@@ -253,7 +246,7 @@ test("a queued merge-scope check is granted the next permit ahead of queued gate
   const held = withCheckPermit(one, CHECK_TIER.other, () => new Promise<void>((resolve) => (release = resolve)));
   const gate = withCheckPermit(one, CHECK_TIER.other, async () => void order.push("gate"));
   const landing = withCheckPermit(one, CHECK_TIER.merge, async () => void order.push("landing"));
-  await settle();
+  await flushImmediate();
   release();
   await Promise.all([held, gate, landing]);
   assert.deepEqual(order, ["landing", "gate"]);

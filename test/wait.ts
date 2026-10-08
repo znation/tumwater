@@ -21,6 +21,14 @@ const realSetTimeout = globalThis.setTimeout;
  * import a test helper. */
 export const sleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
 
+/** Yield to the event loop once: setImmediate's callback runs after every microtask already
+ * queued, so continuations a promise chain scheduled — a woken semaphore waiter, an ink effect
+ * mounted or torn down at unmount — have run by the time this resolves. The suite's one home
+ * for the flush idiom: the semaphore, check-permit and redeploy-escalation tests await it after
+ * queueing work, and the TUI tests await it to let ink settle. Deliberately not this helper: test/pi.test.ts's
+ * setImmediate callbacks, which schedule work instead of awaiting a flush. */
+export const flushImmediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
  * slower reporting of a genuine hang. The default was 20s until 2026-09-18, when it became the

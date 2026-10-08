@@ -1,4 +1,4 @@
-import { sleep, waitFor } from "./wait.js";
+import { flushImmediate, sleep, waitFor } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
@@ -94,7 +94,7 @@ test("the TUI tears down its terminal and re-execs exactly once when a newer bui
     // must not re-exec twice.
     disk = { ...startup, sha: `${startup.sha}-newer` };
     await done;
-    await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
+    await flushImmediate(); // ink's raw-mode teardown is a microtask at unmount
     assert.deepEqual(term.rawModes, [true, false], "raw mode was restored before the re-exec");
     assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");
     disk = { ...startup, sha: "third-sha" };
@@ -123,7 +123,7 @@ test("Ctrl+D ends the TUI cleanly and never re-execs while the dist stamp is unc
   await sleep(60);
   term.keypress({ ctrl: true, name: "d" });
   await done;
-  await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
+  await flushImmediate(); // ink's raw-mode teardown is a microtask at unmount
   assert.equal(reexecs.n, 0, "a Ctrl+D teardown never re-execs");
   assert.deepEqual(term.rawModes, [true, false]);
   assert.equal(term.writes.at(-1), "\n");
@@ -155,7 +155,7 @@ test("a reloaded TUI whose reload supervisor dies hands the terminal back and en
     let ended = false;
     void done.then(() => (ended = true));
     await waitFor(() => ended, "the TUI to end once its supervisor is gone", 10_000);
-    await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
+    await flushImmediate(); // ink's raw-mode teardown is a microtask at unmount
     assert.deepEqual(term.rawModes, [true, false], "raw mode was restored");
     assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");
     assert.equal(reexecs.n, 0, "an orphaned child never re-execs");
@@ -198,7 +198,7 @@ test("a reload with no injected reexec seam falls back to reexecSelf", async () 
     });
     disk = { ...startup, sha: `${startup.sha}-newer` };
     await assert.rejects(done, ExitError, "the fallback re-exec is reached and exits");
-    await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
+    await flushImmediate(); // ink's raw-mode teardown is a microtask at unmount
     assert.equal(exitCode, RESTART_EXIT_CODE, "the fallback deferred to the supervisor instead of nesting");
     assert.deepEqual(term.rawModes, [true, false], "the terminal was restored before the fallback ran");
     assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");

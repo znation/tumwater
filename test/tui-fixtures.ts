@@ -10,6 +10,7 @@ import { initProject } from "../src/init/init.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { runTui, type TuiStdin } from "../src/ui/tui/tui.js";
 import { makeRepo } from "./repo-fixtures.js";
+import { flushImmediate } from "./wait.js";
 
 /** One keypress's raw terminal bytes, encoded for ink's input parser: control letters
  * arrive as their C0 code (\x14 = Ctrl+T), named keys as their escape sequences, and
@@ -143,7 +144,7 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
   async function quit(): Promise<void> {
     press(undefined, "d", { ctrl: true });
     await done;
-    await new Promise((r) => setImmediate(r));
+    await flushImmediate();
     cleanup();
   }
 
@@ -167,7 +168,7 @@ export async function withTui<R>(
   size?: { rows?: number; columns?: number },
 ): Promise<R> {
   const tui = startTui(repo, size);
-  await new Promise((r) => setImmediate(r));
+  await flushImmediate();
   try {
     return await body(tui);
   } finally {

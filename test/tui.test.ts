@@ -12,7 +12,7 @@ import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { CLI, cli } from "./cli-harness.js";
-import { waitFor } from "./wait.js";
+import { flushImmediate, waitFor } from "./wait.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { makeTuiRepo, startTui, withTui } from "./tui-fixtures.js";
@@ -585,7 +585,7 @@ test("runTui refuses to start without an interactive terminal", async () => {
 test("Ctrl+D exits cleanly: raw mode restored off, render timer cleared", async () => {
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
-  await new Promise((r) => setImmediate(r)); // ink's tree effects mount raw mode
+  await flushImmediate(); // ink's tree effects mount raw mode
   assert.equal(tui.rawModes.length, 1); // setRawMode(true) on entry, via ink's useInput
   await tui.quit();
   assert.deepEqual(tui.rawModes, [true, false]);

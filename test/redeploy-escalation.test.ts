@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { HEAD_B, IDLE, fakeDeps, harness, settle } from "./redeploy-fixtures.js";
+import { flushImmediate } from "./wait.js";
 
 // --- The sustained-pin escalation (BUGS.md 2026-09-29) -------------------------------------
 // The 2026-09-28/29 incident: build 66afeacd stayed 362 commits behind a churning main for
@@ -19,10 +20,6 @@ const HOUR = 60 * MINUTE;
 const escalations = (events: HarnessEventInput[]) =>
   events.filter((e) => e.type === "warning" && String(e.message ?? "").includes("stayed stale"));
 
-/** A fast settle for the long simulated-hours loops: one macrotask turn is enough for the
- * tracked green/compile promises (both resolve immediately in these fakes). */
-const tick = () => new Promise((r) => setImmediate(r));
-
 test("the incident shape — a failing compile verdict on every head while main churns every 5 minutes — escalates once at 6 h, then daily", async () => {
   // Every head's compile produces a real verdict: the build is bad. Main moves every 5 minutes,
   // so each head runs hold → compile → block and leaves its own per-head warning behind — the
@@ -37,7 +34,7 @@ test("the incident shape — a failing compile verdict on every head while main 
     t = i * MINUTE;
     const head = `churn${String(Math.floor(t / (5 * MINUTE))).padStart(4, "0")}`.padEnd(40, "0");
     await r.poll(head, IDLE, true, t);
-    await tick();
+    await flushImmediate();
   }
   const es = escalations(events);
   assert.equal(es.length, 2, `expected 2 escalations over 31 h, got ${es.length}`);
@@ -101,7 +98,7 @@ test("healthy churn — restarts landing inside the cooldown window — never es
     t = i * MINUTE;
     const head = `healthy${String(Math.floor(t / (5 * MINUTE))).padStart(4, "0")}`.padEnd(40, "0");
     await r.poll(head, IDLE, true, t);
-    await tick();
+    await flushImmediate();
   }
   assert.ok(events.filter((e) => e.type === "restart").length >= 2, "the churn landed restarts");
   assert.equal(escalations(events).length, 0, "cooldown deferrals and landings are not a pin");
@@ -114,7 +111,7 @@ test("a pin sustained purely at the boot gate escalates too — both gate asks s
   for (let i = 1; i <= 7 * 60; i++) {
     t = i * MINUTE;
     await r.poll(HEAD_B, IDLE, true, t);
-    await tick();
+    await flushImmediate();
   }
   assert.equal(events.filter((e) => e.type === "restart_refused").length, 1, "one refusal reason, warned once");
   const es = escalations(events);

@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { flushImmediate, sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Semaphore } from "../src/concurrency/semaphore.js";
@@ -20,10 +20,6 @@ test("semaphore bounds concurrency", async () => {
   assert.equal(running, 0);
 });
 
-// Flush microtasks (a woken waiter's .then runs before the next macrotask), so ordering
-// assertions below are deterministic rather than timing-dependent.
-const flush = () => new Promise<void>((r) => setImmediate(r));
-
 test("release wakes waiters in FIFO order", async () => {
   // The orchestrator relies on this: fairOrder queues eligible loops by priority, and the
   // semaphore's wake order is what actually hands out freed slots. LIFO (pop instead of
@@ -34,20 +30,20 @@ test("release wakes waiters in FIFO order", async () => {
   for (const name of ["a", "b", "c"]) {
     void sem.acquire(0).then(() => order.push(name));
   }
-  await flush(); // all three are now queued, in this order
+  await flushImmediate(); // all three are now queued, in this order
   assert.deepEqual(order, [], "nothing runs while the slot is held");
   assert.equal(sem.waiting, 3, "every queued acquirer is counted as waiting");
 
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(order, ["a"], "first release wakes the first waiter");
 
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(order, ["a", "b"]);
 
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(order, ["a", "b", "c"], "waiters run in queue order");
   assert.equal(sem.waiting, 0, "a woken waiter no longer counts as waiting");
 });
@@ -91,11 +87,11 @@ test("growing capacity wakes queued acquirers up to the new headroom, never beyo
       woken.push(i);
     });
   }
-  await flush(); // all four queued — no headroom at capacity 2
+  await flushImmediate(); // all four queued — no headroom at capacity 2
   assert.deepEqual(woken, [], "nothing proceeds while at capacity");
 
   sem.setCapacity(5); // new headroom is 3 → wakes exactly three of the four waiters
-  await flush();
+  await flushImmediate();
   assert.deepEqual(woken, [0, 1, 2], "one permit per woken waiter, bounded by the new headroom");
   assert.equal(holders, 5);
   assert.equal(peak, 5, "never more than capacity hold permits at once");
@@ -103,7 +99,7 @@ test("growing capacity wakes queued acquirers up to the new headroom, never beyo
   // The fourth waiter still queues; a release hands it the freed permit.
   holders -= 1;
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(woken, [0, 1, 2, 3], "the last waiter wakes on the next release");
 });
 
@@ -113,7 +109,7 @@ test("shrinking below current in-use admits no new work until releases drain und
   await sem.acquire(0); // holder B — at capacity, both in flight
   let lateArriverRan = false;
   void sem.acquire(0).then(() => (lateArriverRan = true)); // queues: no headroom
-  await flush();
+  await flushImmediate();
 
   sem.setCapacity(1); // shrink below the two in-flight holders
   assert.equal(lateArriverRan, false, "a pure shrink wakes nothing");
@@ -121,12 +117,12 @@ test("shrinking below current in-use admits no new work until releases drain und
   // First release brings in-use to 1 — still AT the cap, so no new grant yet. In-flight work
   // is never preempted; it simply drains.
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.equal(lateArriverRan, false, "no new acquire while in-use sits at the shrunken cap");
 
   // Second release brings in-use to 0 < 1: now the queued acquire may proceed.
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.equal(lateArriverRan, true, "a release that drains under the cap admits the waiter");
 });
 
@@ -136,14 +132,14 @@ test("release hands a permit straight to a queued waiter without double-granting
   let wokenCount = 0;
   void sem.acquire(0).then(() => (wokenCount += 1));
   void sem.acquire(0).then(() => (wokenCount += 1));
-  await flush();
+  await flushImmediate();
 
   sem.release(); // must wake exactly ONE waiter, not both
-  await flush();
+  await flushImmediate();
   assert.equal(wokenCount, 1, "one release wakes one waiter");
 
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.equal(wokenCount, 2, "the second release wakes the second waiter");
 });
 
@@ -159,13 +155,13 @@ test("repeated grow/shrink cycles leak no permits and starve no waiter", async (
     // Queue a waiter: no grant while at full capacity.
     let waiterRan = false;
     void sem.acquire(0).then(() => (waiterRan = true));
-    await flush();
+    await flushImmediate();
     assert.equal(waiterRan, false, `cycle ${cycle}: nothing proceeds at full capacity`);
 
     if (cap === 1) {
       // Grow: the queued waiter is admitted immediately.
       sem.setCapacity(2);
-      await flush();
+      await flushImmediate();
       assert.equal(waiterRan, true, "the grow wakes the queued waiter");
       for (let i = 0; i < 2; i++) sem.release(); // drain both holders
     } else {
@@ -173,11 +169,11 @@ test("repeated grow/shrink cycles leak no permits and starve no waiter", async (
       sem.setCapacity(1);
       for (let i = 0; i < cap - 1; i++) {
         sem.release();
-        await flush();
+        await flushImmediate();
         assert.equal(waiterRan, false, `cycle ${cycle}: still at/over the shrunken cap`);
       }
       sem.release(); // final release drains under the cap → admits the waiter
-      await flush();
+      await flushImmediate();
       assert.equal(waiterRan, true, "draining under the shrunken cap admits the waiter");
       sem.release(); // the waiter's own permit
     }
@@ -204,13 +200,13 @@ test("a lower-tier arrival jumps ahead of parked higher-tier waiters, FIFO withi
   const snap = () => [...order];
 
   void sem.acquire(1).then(() => order.push("maint-early")); // parked in an earlier poll
-  await flush();
+  await flushImmediate();
   void sem.acquire(0).then(() => order.push("work-late")); // work role becomes due later
-  await flush();
+  await flushImmediate();
   assert.deepEqual(snap(), [], "nothing runs while the slot is held");
 
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(
     snap(),
     ["work-late"],
@@ -220,13 +216,13 @@ test("a lower-tier arrival jumps ahead of parked higher-tier waiters, FIFO withi
   // The jumped-over maintenance waiter still gets its turn — and a same-tier arrival parks
   // BEHIND it (stable FIFO within a tier), not in front.
   void sem.acquire(1).then(() => order.push("maint-late"));
-  await flush();
+  await flushImmediate();
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(snap(), ["work-late", "maint-early"], "the jumped-over waiter runs next");
 
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(
     snap(),
     ["work-late", "maint-early", "maint-late"],
@@ -245,27 +241,27 @@ test("tier ordering never starves a higher tier: once no lower-tier waiter is pa
 
   void sem.acquire(1).then(() => order.push("maint-1"));
   void sem.acquire(1).then(() => order.push("maint-2"));
-  await flush();
+  await flushImmediate();
 
   // A tier-0 arrival jumps ahead of both parked maintenance waiters.
   const late = (async () => {
     await sem.acquire(0);
     order.push("work"); // holds the slot for the rest of this test
   })();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(snap(), [], "the tier-0 arrival is still parked while the holder keeps its slot");
 
   sem.release(); // hands the slot to the queue head: the tier-0 arrival
   await late;
-  await flush();
+  await flushImmediate();
   assert.deepEqual(snap(), ["work"], "tier 0 ran first, ahead of both maintenance waiters");
 
   // No lower-tier waiter is parked now: the maintenance waiters drain in FIFO order.
   sem.release(); // work's slot frees up
-  await flush();
+  await flushImmediate();
   assert.deepEqual(snap(), ["work", "maint-1"]);
   sem.release();
-  await flush();
+  await flushImmediate();
   assert.deepEqual(
     snap(),
     ["work", "maint-1", "maint-2"],
