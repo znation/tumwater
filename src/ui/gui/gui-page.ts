@@ -3,12 +3,12 @@
  * inlined. The shell is a sidebar beside a main column. The sidebar is the fleet's frame on
  * every view: which project this is and whether its fleet is up (build, main check), the
  * views — Fleet's carrying a badge while something needs a human — and the fleet-wide
- * controls: today's spend against the cap, and pause. The main column shows one view: Fleet
- * (alerts for whatever needs a human, the composer that steers the director or one loop,
- * today's progress, every loop grouped by what it is doing, the backlog, and the notable
- * activity), History, Usage, Failures, or Pending. A drawer opens
- * any loop's detail and live transcript, or any backlog entry in full. Kept apart from gui/gui-server.ts
- * so the server module stays about serving. */
+ * controls: today's spend against the cap, and pause. The main column shows one view at a
+ * time: Fleet (alerts for whatever needs a human, the composer that steers the director or
+ * one loop, today's progress, every loop grouped by what it is doing, the backlog, and the
+ * notable activity), History, Usage, Failures, Pending, or Settings. A drawer opens any
+ * loop's detail and live transcript, or any backlog entry in full. Kept apart from
+ * gui/gui-server.ts so the server module stays about serving. */
 import { GUI_CLIENT_JS } from "./gui-client.js";
 import { GUI_STYLES } from "./gui-styles.js";
 import { iconSvg, LOGO_SVG } from "./gui-icons.js";
