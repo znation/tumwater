@@ -273,8 +273,8 @@ export class PiStreamParser {
 
   /** `onToolCallStart` observes every tool call as it starts, with pi's tool name ("" when pi
    * omitted it) and raw args — a hook for a caller that audits what a run did (the review
-   * gate's suite-rerun tripwire, src/review/suite-rerun.ts) without the parser storing every call of
-   * every run. */
+   * gate's suite-rerun tripwire, src/review/suite-rerun.ts) without the parser storing every
+   * call of every run. */
   constructor(private readonly onToolCallStart?: (toolName: string, args: unknown) => void) {}
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -346,8 +346,8 @@ export class PiStreamParser {
     // Open-tool-call tracking for the stall warning: a call that sits open and silent is
     // surfaced by name while the quiet watchdog still counts down. The start/update/end state
     // machine lives in applyToolExecutionEvent, shared with the dashboards' live flag
-    // (src/ui/progress-data.ts); only the label is surface-specific — the warning names the command even
-    // when pi omits a toolName, where progress falls back to "tool".
+    // (src/ui/progress-data.ts); only the label is surface-specific — the warning names the
+    // command even when pi omits a toolName, where progress falls back to "tool".
     if (
       event.type === "tool_execution_start" ||
       event.type === "tool_execution_update" ||
