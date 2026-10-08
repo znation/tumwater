@@ -1,12 +1,12 @@
 import type { BuildStaleness } from "../build/build-info.js";
 import type { CompileResult } from "../build/build-stage.js";
 
-/** Self-redeploy for a self-hosting fleet (see build/build-info.ts for why): when main's build inputs
- * have moved past the running build, verify that main is green, compile it into a staging dir,
- * drain the fleet (no new ticks; in-flight ones finish or are aborted resumably after
+/** Self-redeploy for a self-hosting fleet (see build/build-info.ts for why): when main's build
+ * inputs have moved past the running build, verify that main is green, compile it into a staging
+ * dir, drain the fleet (no new ticks; in-flight ones finish or are aborted resumably after
  * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor
- * (src/process/supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every step is
- * non-blocking from the orchestrator's poll: the green check and the compile run in the
+ * (src/process/supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every
+ * step is non-blocking from the orchestrator's poll: the green check and the compile run in the
  * background and are consulted on later polls, so a slow `npm test` never stalls scheduling.
  * Completed restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11), so
  * sustained main churn cannot halt the fleet for a drain over and over.
@@ -43,10 +43,10 @@ export const RESTART_EXIT_CODE = 75;
  * Redeployer.drainSince. Director ticks are exempt: an in-flight human prompt extends the hold
  * without any cap (see poll).
  *
- * The live window tracks the fleet's real tick duration: the orchestrator passes the p75 of
- * recent completed work-bearing role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of this
- * constant once it has enough samples (BUGS.md 2026-09-18). The hand-set 30 minutes had not been
- * re-derived since an earlier backend; measured p50 was 46 min and p75 82 min, so the drain
+ * The live window tracks the fleet's real tick duration: the orchestrator passes the p75 of recent
+ * completed work-bearing role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of
+ * this constant once it has enough samples (BUGS.md 2026-09-18). The hand-set 30 minutes had not
+ * been re-derived since an earlier backend; measured p50 was 46 min and p75 82 min, so the drain
  * timed out on 60% of ticks — paying the full idle cost of waiting plus the interruption cost of
  * not waiting. */
 export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
