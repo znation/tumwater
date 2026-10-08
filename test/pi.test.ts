@@ -471,6 +471,76 @@ test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
   }
 });
 
+// The unbuffered sibling of the buffered-duration test above: a silent call the interval
+// first notices only after a minute is named in whole minutes. The threshold must exceed the
+// 30 s interval period, or an earlier check always warns in seconds first.
+
+test("an unbuffered call silent past a minute warns in whole minutes", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 700; // the deadline ends the run after the warning
+  config.quietTimeoutSeconds = 0; // the quiet kill must not win before the 2-minute warning
+  config.toolCallStallSeconds = 120; // the first check to see silence is at ~2 min, past 60 s
+  const warnings: string[] = [];
+  const clock = watchdogClock(t, { timeouts: true });
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(121_000); // past the 2-minute threshold, so the warning is a whole-minute one
+    assert.equal(warnings.length, 1, "the multi-minute silence is warned once");
+    assert.match(
+      warnings[0] ?? "",
+      /^tool call stalled: bash sleep 999 — no output for \d+m$/,
+      "past a minute the silence is named in whole minutes, not seconds",
+    );
+    clock.advance(600_000); // past the 700 s deadline: the tick timeout ends the run
+    const result = await run;
+    assert.equal(result.timedOut, true, "with the quiet watchdog disabled the deadline bounds the run");
+    assert.equal(result.quietKilled, false);
+    assert.equal(warnings.length, 1, "one warning per stalled call");
+  } finally {
+    restore();
+  }
+});
+
+// Both watchdog windows off is the one config that schedules no quiet interval at all: no
+// silence kill, no stall warning — the tick deadline is the only clock left.
+
+test("disabling both quiet and stall windows leaves only the tick deadline, with no warning", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 2;
+  config.quietTimeoutSeconds = 0;
+  config.toolCallStallSeconds = 0;
+  const warnings: string[] = [];
+  const clock = watchdogClock(t, { timeouts: true });
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(10_000); // well past both disabled windows
+    const result = await run;
+    assert.equal(result.timedOut, true, "the tick deadline owns the end of the run");
+    assert.equal(result.quietKilled, false, "no quiet interval runs to kill it");
+    assert.deepEqual(warnings, [], "no stall interval runs to warn");
+  } finally {
+    restore();
+  }
+});
+
 // The stall warning must not fire on a command whose stdout is piped or redirected — the
 // tick prompt prescribes exactly that shape for verification runs, so their silence is the
 // prescribed shape, not a hang (BUGS.md 2026-09-28). The classifier's own shape table lives
