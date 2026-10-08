@@ -8,7 +8,8 @@ import { readBrief } from "../brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
+import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
@@ -147,6 +148,16 @@ export function assembleTickPrompt(
       userRequest: request ?? undefined,
     });
     if (request) userPrompt = request;
+  }
+  // A work instance holding a claim is told which entry is its one task (plans/parallel-work-
+  // instances.md "Claims", part 4/7) — the harness picked it, so the charter's choosing step
+  // is replaced. A tick that dequeued a user request runs that request instead and keeps the
+  // claim for the next non-request tick. The range is looked up by key in the current checkout,
+  // so it survives a moved section boundary.
+  const claim = role === DIRECTOR_ROLE ? undefined : state.claim;
+  if (claim && userPrompt === null) {
+    const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
+    prompt += `\n\n${buildAssignmentNote(claim, range)}`;
   }
   // A change rejected in review is the only cross-tick memory of what was built and why it
   // failed — every tick starts a fresh session, so the full reasons ride along on the next

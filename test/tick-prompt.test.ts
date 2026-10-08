@@ -186,6 +186,28 @@ test("a director prompt carries the same <backlog-index> block", () => {
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
 });
 
+// A claim held by an instance id (`bugfix-2`) must resolve its line range through the base
+// role's backlog file (BUGS.md's Open), not fall back to PLANS.md and drop the range.
+test("a bugfix instance's claim names the bug's line range from BUGS.md", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n",
+  );
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "bugfix-2",
+    state: state({
+      role: "bugfix-2",
+      claim: { file: "BUGS.md", key: "real bug", title: "Real bug", at: 1, source: "assigned" },
+    }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /<assigned-entry>/);
+  assert.match(result.prompt, /BUGS\.md lines 3-4/);
+});
+
 test("an unknown role throws — the fleet cannot run a prompt with no task", () => {
   assert.throws(
     () =>

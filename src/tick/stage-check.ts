@@ -61,6 +61,19 @@ export async function stageCheckFindings(
   return findings;
 }
 
+/** The staging finding for a tick that holds a claim but moved a different backlog entry
+ * (plans/parallel-work-instances.md "Claims", part 4/7): the assigned entry is the instance's
+ * one task, so moving another is the same class of mistake `backlogStructureReason` catches
+ * and costs one fix-up turn before the change commits. undefined when nothing moved or the
+ * claimed entry itself moved — a landed entry is the expected way to release a claim. */
+export function assignedMovedFinding(
+  claimKey: string,
+  moved: readonly { key: string; title: string }[],
+): string | undefined {
+  if (moved.length === 0 || moved.some((m) => m.key === claimKey)) return undefined;
+  return `this tick is assigned one backlog entry but moved a different one: "${moved[0]!.title}"`;
+}
+
 /** One `git diff --name-status -M` entry: the status letter (`A`/`M`/`D`/`R`/`C`/`T`), the
  * destination (current) path, and — for a rename or copy — the origin path. */
 interface NameStatusEntry {

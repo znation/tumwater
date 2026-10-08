@@ -296,3 +296,28 @@ test("a cut-off outcome keeps resumePending's delay against a mid-tick wake", as
   // one interval from the compacted context, so nextRunAt stays an interval out.
   assert.ok(s.nextRunAt > Date.now());
 });
+
+test("a claim is released on a terminal result and kept while the change lands", async () => {
+  const root = await initializedRepo();
+  const claim = {
+    file: "PLANS.md" as const,
+    key: "plan a",
+    title: "Plan A",
+    at: Date.now(),
+    source: "assigned" as const,
+  };
+  // no_change: the tick produced nothing, so the instance drops the entry.
+  const s = freshLoopState("feature-2");
+  s.claim = { ...claim };
+  await run(root, "feature-2", s, { result: "no_change", summary: "nothing" });
+  assert.equal(s.claim, undefined);
+  const released = eventsOfType(root, "claim");
+  assert.equal(released.length, 1);
+  assert.equal(released[0]!.action, "released");
+
+  // queued: the change is in flight, so the claim is held for the landing.
+  const held = freshLoopState("feature-2");
+  held.claim = { ...claim };
+  await run(root, "feature-2", held, { result: "queued", summary: "did it" });
+  assert.equal(held.claim?.key, "plan a");
+});

@@ -18,7 +18,9 @@ import { logEvent } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
+import { stagedMovedEntries } from "../scheduling/claims.js";
+import { assignedMovedFinding } from "./stage-check.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the tick staging needs no export from it). */
@@ -47,6 +49,10 @@ interface TickStageContext {
    * this tick (or a resume carried its already-applied edits), never read from `state.revision`:
    * a per-role user-request tick leaves that field set by design. */
   revisionRound?: number;
+  /** The branch main's name, for the staged-moved-entry comparison's merge-base (part 4/7).
+   * Optional so callers that never staged a backlog move (and older tests) keep compiling;
+   * loop.ts always supplies it. */
+  mainBranch?: string;
   wt: string;
   /** The pi run's final reply text, the summary's source. */
   finalText: string;
@@ -123,7 +129,35 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // and a rejection that discards the work. One bounded follow-up turn on the author's own
   // session gets to fix them; the gate still has the final say, and the change commits and
   // queues either way.
+  // Claims made at staging (plans/parallel-work-instances.md "Claims", part 4/7): an
+  // unassigned tick of a MULTI-instance base whose diff moved a backlog entry out of its
+  // actionable section records the claim so a sibling is not assigned it while this change
+  // lands. A single-runner base has no sibling to hold the entry from, so it stages nothing
+  // and is unchanged by claims. An assigned tick that moved a DIFFERENT entry gets a finding,
+  // so the one fix-up turn can put it back. An unreadable file or git hiccup yields no move
+  // and no finding.
+  const moved =
+    ctx.mainBranch &&
+    INSTANCE_ROLES.has(baseRoleOf(ctx.role)) &&
+    configuredInstances(ctx.config, ctx.role) > 1
+      ? await stagedMovedEntries(ctx.wt, ctx.mainBranch, ctx.role).catch(() => [])
+      : [];
+  if (moved.length > 0 && s.claim === undefined) {
+    const first = moved[0]!;
+    s.claim = { file: first.file, key: first.key, title: first.title, at: Date.now(), source: "staged" };
+    logEvent(ctx.root, {
+      loop: ctx.role,
+      type: "claim",
+      action: "assigned",
+      key: first.key,
+      title: first.title,
+      source: "staged",
+    });
+  }
+  const assignedMoved = s.claim ? assignedMovedFinding(s.claim.key, moved) : undefined;
+
   const findings = await ctx.stageCheck(ctx.wt);
+  if (assignedMoved) findings.push(assignedMoved);
   if (findings.length > 0) {
     const before = findings.length;
     const fixUp = await ctx.requestStageFix(ctx.wt, findings);

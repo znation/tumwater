@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
@@ -111,6 +113,122 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   assert.equal(reasonsLifted.has(runners[1]!), true);
   assert.equal(reasonsLifted.has(runners[2]!), true);
   assert.equal(reasonsLifted.get(runners[0]!), "startup");
+});
+
+/** A config whose feature role runs two instances: loop-ids.ts reads the count through a cast
+ * until part 5/7 adds the schema field, so the test sets it the same way. */
+function twoFeatureInstances(): TumwaterConfig {
+  const config = defaultConfig();
+  (config.roles as Record<string, { enabled?: boolean; instances?: number }>).feature = {
+    enabled: true,
+    instances: 2,
+  };
+  return config;
+}
+
+const TWO_PLANS = [
+  "# Plans",
+  "",
+  "## Planned",
+  "",
+  "### Alpha (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "### Beta (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "## Done",
+  "",
+].join("\n");
+
+const ONE_BLOCKED_PLAN = [
+  "# Plans",
+  "",
+  "## Planned",
+  "",
+  "### Base, part 1/2: first (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "### Base, part 2/2: second (planned 2026-01-01 by operator; requires part 1/2 landed)",
+  "",
+  "Body.",
+  "",
+  "## Done",
+  "",
+].join("\n");
+
+test("two feature instances take distinct entry claims in one poll", async () => {
+  const root = tmpdir("tumwater-scheduling-claims-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(reasons.has(feature), true);
+  assert.equal(reasons.has(feature2), true);
+  assert.equal(feature.state.claim?.key, "alpha");
+  assert.equal(feature2.state.claim?.key, "beta");
+  assert.notEqual(feature.state.claim?.key, feature2.state.claim?.key);
+});
+
+test("an extra instance with no free entry is skipped and keeps its schedule", async () => {
+  const root = tmpdir("tumwater-scheduling-idle-extra-");
+  // One eligible plan and one blocked by the still-planned prerequisite: only the primary
+  // gets the base plan; the blocked entry is never assigned.
+  fs.writeFileSync(path.join(root, "PLANS.md"), ONE_BLOCKED_PLAN);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const before = { nextRunAt: feature2.state.nextRunAt, backoffSeconds: feature2.state.backoffSeconds };
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(reasons.has(feature), true);
+  assert.equal(feature.state.claim?.key.startsWith("base"), true, "the eligible entry is claimed");
+  assert.equal(reasons.has(feature2), false, "no free entry admits no extra instance");
+  assert.equal(feature2.state.nextRunAt, before.nextRunAt);
+  assert.equal(feature2.state.backoffSeconds, before.backoffSeconds);
+  assert.equal(feature2.state.claim, undefined);
+});
+
+test("a claimed entry that lands releases the claim on the next poll", async () => {
+  const root = tmpdir("tumwater-scheduling-release-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const first = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(first.has(feature), true);
+  // Alpha moves to Done: its key leaves the Planned section, so the claim is released.
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    TWO_PLANS.replace(/### Alpha[^\n]*\n\nBody\.\n\n/, "").replace(
+      "## Done",
+      "## Done\n\n### Alpha (planned 2026-01-01 by operator; done 2026-01-02 by feature)",
+    ),
+  );
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature.state.claim, undefined);
+});
+
+test("a single feature runner is not assigned a claim", async () => {
+  const root = tmpdir("tumwater-scheduling-single-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const feature = fakeRunner("feature", defaultConfig());
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature], new Map([["feature", undefined]])),
+  );
+  assert.equal(reasons.has(feature), true);
+  assert.equal(feature.state.claim, undefined);
 });
 
 test("the reviewer's provider being held blocks every role through scheduling, and only while it stands", async () => {

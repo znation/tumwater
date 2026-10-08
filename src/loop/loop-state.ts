@@ -176,6 +176,20 @@ export interface LoopState {
    * NOT zeroed by reset-counters: the budget is a safety valve, not an observation window. */
   dayCostUsd?: number;
   lastError?: string;
+  /** The backlog entry this instance is assigned to implement or fix (plans/parallel-work-
+   * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
+   * entryKey) that survives a done stamp or a Refused note, the verbatim heading at
+   * assignment, when it was assigned, and whether the harness assigned it (`assigned`) or an
+   * unassigned tick moved it at staging (`staged`). Persisted with the loop's state, so a
+   * crash, resume, revision or leftover recovery carries it with no extra store. Absent for a
+   * loop with no claim, so existing state files read unchanged. */
+  claim?: {
+    file: "PLANS.md" | "BUGS.md";
+    key: string;
+    title: string;
+    at: number;
+    source: "assigned" | "staged";
+  };
   /** The rejected change this loop owes a revision to (plans/revise-rejected.md): its head, how
    * many revision rounds have been attempted, and when the rejection was recorded. Set at a gate
    * rejection while the round is within REVISION_LIMIT; consumed when the revision stages, drops,

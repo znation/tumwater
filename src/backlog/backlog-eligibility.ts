@@ -10,6 +10,7 @@ import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import { trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
 import { actionableEntryRanges, stripEntryStamp } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
@@ -128,7 +129,9 @@ export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[])
  * its stamp-free key, verbatim title and 1-based line range. Reads the primary checkout through
  * the same stat-cached readers the index uses; a missing or unreadable file yields []. */
 export function eligibleEntries(root: string, role: string): EligibleEntry[] {
-  const bugfix = role === "bugfix";
+  // An instance id (`bugfix-2`) resolves through its base role, exactly as claims.ts's
+  // roleSection does, so a claim's line range is read from the right file.
+  const bugfix = baseRoleOf(role) === "bugfix";
   const file = bugfix ? "BUGS.md" : "PLANS.md";
   const section = bugfix ? "Open" : "Planned";
   const md = readTextOrNull(path.join(root, file));

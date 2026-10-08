@@ -4,7 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { stageTickLanding } from "../src/tick/tick-stage.js";
 import { stageCheckFindings } from "../src/tick/stage-check.js";
-import { initializedWorktree, sh } from "./repo-fixtures.js";
+import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
+import { commitIn, initializedRepo, initializedWorktree, sh } from "./repo-fixtures.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/tick/qa-coverage.js";
@@ -34,6 +36,9 @@ interface CtxOverrides {
   piStartedAt?: number;
   userPrompt?: string | null;
   revisionRound?: number;
+  mainBranch?: string;
+  /** The loop id the stage runs as; defaults to the improve role. */
+  role?: string;
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
   followUp?: PiRunResult | null;
@@ -93,12 +98,13 @@ function buildCtx(
 ) {
   return {
     root,
-    role: "improve",
+    role: over.role ?? "improve",
     state,
     config,
     tickTurns: over.tickTurns ?? 4,
     userPrompt: over.userPrompt ?? null,
     revisionRound: over.revisionRound,
+    mainBranch: over.mainBranch ?? "main",
     wt,
     finalText: over.finalText ?? "",
     piStartedAt: over.piStartedAt ?? Date.now(),
@@ -134,6 +140,124 @@ function buildCtx(
     },
   };
 }
+
+const STAGE_PLANS = [
+  "# Plans",
+  "",
+  "## Planned",
+  "",
+  "### Alpha (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "### Beta (planned 2026-01-01 by operator)",
+  "",
+  "Body.",
+  "",
+  "## Done",
+  "",
+].join("\n");
+
+test("an unassigned tick that moves a plan records a staged claim", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
+  commitIn(root, "plans");
+  const wt = await ensureWorktree(root, "improve", "main");
+  // The tick implements Alpha and moves it into Done, and leaves its code change too.
+  const moved = STAGE_PLANS.replace(/### Alpha[^\n]*\n\nBody\.\n\n/, "").replace(
+    "## Done",
+    "## Done\n\n### Alpha (planned 2026-01-01 by operator; done 2026-01-02 by improve)",
+  );
+  fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  const state = freshLoopState("feature-2");
+  const { ctx } = makeCtx(root, wt, state, {
+    role: "feature-2",
+    mainBranch: "main",
+    config: (c) => {
+      (c.roles as Record<string, { enabled?: boolean; instances?: number }>).feature = {
+        enabled: true,
+        instances: 2,
+      };
+    },
+    finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(state.claim?.source, "staged");
+  assert.equal(state.claim?.key, "alpha");
+  assert.equal(state.claim?.file, "PLANS.md");
+});
+
+// A single-runner base has no sibling to hold the entry from, so its unassigned tick stages
+// no claim — and the next tick's prompt is the same as before claims existed (part 4/7's
+// "Single runner: prompts and scheduling are unchanged").
+test("a bare feature tick that moves a plan stages no claim and leaves the next prompt unchanged", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
+  commitIn(root, "plans");
+  const wt = await ensureWorktree(root, "feature", "main");
+  const moved = STAGE_PLANS.replace(/### Alpha[^\n]*\n\nBody\.\n\n/, "").replace(
+    "## Done",
+    "## Done\n\n### Alpha (planned 2026-01-01 by operator; done 2026-01-02 by feature)",
+  );
+  fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  const state = freshLoopState("feature");
+  const { ctx } = makeCtx(root, wt, state, {
+    role: "feature",
+    mainBranch: "main",
+    finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(state.claim, undefined, "a single-runner base is never assigned a claim");
+  const next = assembleTickPrompt({ root, config: defaultConfig(), role: "feature", state });
+  assert.ok(next);
+  assert.doesNotMatch(next.prompt, /<assigned-entry>/, "the next prompt carries no assignment note");
+});
+
+test("an assigned tick that moves a different plan gets a stage-check finding", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
+  commitIn(root, "plans");
+  const wt = await ensureWorktree(root, "feature-2", "main");
+  // The tick was assigned Alpha but moved Beta out of Planned instead.
+  const moved = STAGE_PLANS.replace(/### Beta[^\n]*\n\nBody\.\n\n/, "").replace(
+    "## Done",
+    "## Done\n\n### Beta (planned 2026-01-01 by operator; done 2026-01-02 by feature-2)",
+  );
+  fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  const state = freshLoopState("feature-2");
+  state.claim = {
+    file: "PLANS.md",
+    key: "alpha",
+    title: "Alpha (planned 2026-01-01 by operator)",
+    at: Date.now(),
+    source: "assigned",
+  };
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    role: "feature-2",
+    mainBranch: "main",
+    config: (c) => {
+      (c.roles as Record<string, { enabled?: boolean; instances?: number }>).feature = {
+        enabled: true,
+        instances: 2,
+      };
+    },
+    finalText: "Done.\nSUMMARY: implement\nVERIFIED: npm test\n",
+  });
+
+  await stageTickLanding(ctx);
+
+  assert.equal(calls.stageFixRequests.length, 1, "the move costs one fix-up turn");
+  assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /moved a different one/);
+});
 
 test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () => {
   const { root, wt } = await setup();

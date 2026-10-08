@@ -31,10 +31,20 @@ export function instanceIndex(id: string): number {
   return m ? Number(m[2]) : 1;
 }
 
+/** The instance count configured for a loop id's base role (`roles.<base>.instances`, default
+ * 1). Read through a cast until part 5/7 adds the schema field and its validation: part 4/7's
+ * claim assignment needs an extra instance to be eligible in tests, while real configs cannot
+ * set the key yet, so the fleet is otherwise unchanged. A caller tells a multi-instance base
+ * (whose unassigned ticks stage claims for their siblings) from a single-runner one by this. */
+export function configuredInstances(config: TumwaterConfig, id: string): number {
+  const role = config.roles[baseRoleOf(id)] as { instances?: number } | undefined;
+  return role?.instances ?? 1;
+}
+
 /** Is this loop id enabled? True when its base role is enabled in config and the id's instance
- * index is within that role's configured instance count. The count is 1 until part 5/7 adds
- * `roles.<id>.instances`, so an extra instance id is disabled here — a bare role keeps exactly
- * the enabled-or-not verdict it had before. */
+ * index is within that role's configured instance count (`roles.<id>.instances`, default 1). */
 export function loopEnabled(config: TumwaterConfig, id: string): boolean {
-  return config.roles[baseRoleOf(id)]?.enabled === true && instanceIndex(id) <= 1;
+  const role = config.roles[baseRoleOf(id)] as { enabled?: boolean } | undefined;
+  if (role?.enabled !== true) return false;
+  return instanceIndex(id) <= configuredInstances(config, id);
 }

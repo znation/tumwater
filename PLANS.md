@@ -288,80 +288,6 @@ pool, event-format, status and doctor tests.
 
 ---
 
-### Parallel work instances, part 4/7: the harness assigns each multi-instance loop one backlog entry and holds the claim through landing (planned 2026-10-07 by operator; requires parts 1/7 and 2/7 landed)
-
-Design: plans/parallel-work-instances.md ("Claims").
-
-Context: if instances picked work themselves, those started in the same poll would read the
-same index and pick the same entry. `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts)
-is serial, so assigning there cannot race. Storing the claim in `LoopState` makes resumes,
-leftover recovery, revisions (plans/revise-rejected.md) and restarts carry it with no new store.
-This part only acts for a role with more than one runner, so tests build two runners directly,
-and the fleet is unchanged until part 5/7.
-
-**Approach.**
-1. **State.** `LoopState.claim?: { file: "PLANS.md" | "BUGS.md"; key; title; at; source:
-   "assigned" | "staged" }` (src/loop/loop-state.ts).
-2. **Module.** New src/scheduling/claims.ts:
-   - `heldKeys(runners, eligibleKeys, listedKeys)`;
-   - `assignNext(free)`: the first free entry in file order. Overlap between claimed entries'
-     files is allowed: conflicts are settled at landing (Robust conflict landing 1/2–2/2);
-   - `claimReleaseReason(runner, ctx)`: one of `left` (key no longer listed), `ineligible`,
-     `disabled` (not `loopEnabled`, idle, no queued landing, no `revision`), `stale` (older
-     than `CLAIM_IDLE_MAX_MS` = 24 h, and the runner is idle with no queued landing, no
-     `revision` and no `resumePending`), or null.
-3. **Scheduling.** In `pollRunnerReasons`, once per multi-instance base role, compute
-   `eligibleEntries` (part 2/7) and release the claims that `claimReleaseReason` names. For
-   each runner that passes every gate, just before `reasons.set`:
-   - **It holds a claim:** proceed.
-   - **Reason is not `inbox`/`resume` and `free` is non-empty:** assign `assignNext(free)` and
-     log `claim` `assigned`.
-   - **Index ≥ 2, no claim, empty `free`:** `continue`. No tick runs and no backoff is touched.
-   - **Primary, no claim, empty `free`:** proceed unassigned, as today.
-4. **Prompt.** `buildAssignmentNote(claim, range, othersHeld)` (src/gates/gate-prompts.ts) is
-   appended by `assembleTickPrompt` when `state.claim` is set and no user request was dequeued.
-   It says:
-   - implement or fix only that entry, which replaces the charter's choosing step;
-   - if it is too large, add the Needs-review note and end with that note only;
-   - if it should not be done, refuse it;
-   - do not edit the other held entries.
-
-   With no claim but held entries, a one-line exclusion list is appended.
-5. **Claim at staging** (src/tick/tick-stage.ts), comparing the worktree's PLANS.md or BUGS.md
-   to the merge-base with `actionableEntryRanges`:
-   - **An unassigned tick** whose diff removes an entry from `## Planned`/`## Open` records
-     `claim { source: "staged" }`.
-   - **An assigned tick** that removes a different entry yields a stage-check finding, "assigned
-     <X>, moved <Y>", which gets one fix-up turn (src/tick/stage-check.ts).
-6. **Release after a tick.** In `finalizeTick` (src/tick/tick-finalize.ts), results
-   `no_change`, `refused`, `user_aborted` and `skipped`, with no `revision` and no
-   `resumePending`, clear the claim and log `claim` `released`. Every other result keeps it.
-7. **Event.** `claim` with `action` (`assigned` / `released`), `key`, `title` and `reason`
-   (src/events/events.ts).
-
-**Files touched.** src/loop/loop-state.ts, src/scheduling/claims.ts (new),
-src/orchestrator/orchestrator-scheduling.ts, src/tick/tick-prompt.ts,
-src/gates/gate-prompts.ts, src/tick/tick-stage.ts, src/tick/stage-check.ts,
-src/tick/tick-finalize.ts, src/events/events.ts. Tests: test/claims.test.ts (new), plus cases in
-the orchestrator-scheduling, tick-prompt, tick-stage and tick-finalize tests.
-
-**Acceptance criteria.**
-- **Distinct entries.** Runners `feature` and `feature-2`, with two eligible plans and both due
-  in one poll, get different claims, and each prompt names its own entry.
-- **Idle extra.** With one eligible plan, `feature-2` is not admitted and its state's
-  `nextRunAt` and `backoffSeconds` are untouched.
-- **Blocked entries** are never assigned.
-- **Held through.** The claim survives `queued`, a rejection with a revision (the revision tick
-  re-applies on the same instance and keeps the claim), a conflict hand-back, and a crash and
-  resume. An exhausted revision ends in a Needs-replan note, which makes the entry ineligible
-  and releases the claim.
-- **Released by** the entry landing into `## Done` (next poll), a `no_change` tick, a Refused
-  note, and the 24 h idle stale rule (with a warning).
-- **Staging.** An unassigned primary that moves plan X gets `claim` X with source `staged`. An
-  assigned tick that moves Y gets the stage-check finding.
-- **Single runner.** With one runner per role, prompts and scheduling are unchanged.
-- `npm run test` green.
-
 ### Parallel work instances, part 5/7: `roles.<id>.instances` runs several feature or bugfix loops, each active only while unclaimed work exists; the plan target scales (planned 2026-10-07 by operator; requires parts 3/7 and 4/7, Robust conflict landing 2/2 and Worktree pool 4/5 landed)
 
 Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
@@ -379,8 +305,9 @@ worktree; hence the prerequisite. The plan charter currently stops at two waitin
    validation, src/config/config-editable-keys.ts (so `config set roles.feature.instances 3`
    works), tumwater.example.json, src/config/config-example.ts and the docs config table.
 2. **Ids.** `loopIdsFor` and `loopIds(config)` in src/roles/loop-ids.ts expand enabled roles by
-   instances. `loopEnabled` reads the configured count. `knownRoleIds` (src/config/config.ts)
-   includes the ids, so the CLI and GUI accept `--role feature-2`.
+   instances. `loopEnabled` already reads the configured count through a cast (landed with
+   part 4/7); this part replaces the cast with the schema field and its defaults. `knownRoleIds`
+   (src/config/config.ts) includes the ids, so the CLI and GUI accept `--role feature-2`.
 3. **Runners.**
    - `runOrchestrator` (src/orchestrator/orchestrator.ts) builds runners from `loopIds`.
    - `newLiveConfigReload` (src/config/config-live.ts) adds runners for new ids and logs one
@@ -486,6 +413,101 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 4/7: the harness assigns each multi-instance loop one backlog entry and holds the claim through landing (planned 2026-10-07 by operator; requires parts 1/7 and 2/7 landed; done 2026-10-07 by feature)
+
+Design: plans/parallel-work-instances.md ("Claims").
+
+**What landed (2026-10-07).** src/scheduling/claims.ts holds the pure policies (heldKeys,
+assignNext, claimReleaseReason, listedKeys, movedOutEntries/stagedMovedEntries); the poll's
+per-multi-runner-group setup releases claims and assigns free entries, and an extra instance
+with none free is skipped without touching its backoff. The assignment note is
+buildAssignmentNote (gate-prompts.ts), appended by assembleTickPrompt, whose entry-range
+lookup resolves an instance id through its base role (eligibleEntries) so a bugfix instance
+reads BUGS.md's range. tick-stage records a staged claim only for a multi-instance base
+(`configuredInstances > 1`, src/roles/loop-ids.ts) — a single-runner role stages none, so its
+next prompt and scheduling are unchanged — and raises the assigned-moved finding through
+assignedMovedFinding (stage-check.ts); tick-finalize releases on a terminal result. Two
+pieces landed outside the entry's original file list: `loopEnabled`/`configuredInstances`
+(src/roles/loop-ids.ts) read `roles.<id>.instances` through a cast so an extra instance can
+be eligible before part 5/7 adds the schema field and its validation (part 5/7 replaces the
+cast), and loop.ts passes `mainBranch` into TickStageContext (optional, so existing callers
+keep compiling). The
+prompt's sibling held-titles exclusion list is not landed: assembleTickPrompt sees only its
+own state, and reading sibling loop states for a prompt was not worth the extra I/O; no
+acceptance criterion requires it.
+
+Context: if instances picked work themselves, those started in the same poll would read the
+same index and pick the same entry. `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts)
+is serial, so assigning there cannot race. Storing the claim in `LoopState` makes resumes,
+leftover recovery, revisions (plans/revise-rejected.md) and restarts carry it with no new store.
+This part only acts for a role with more than one runner, so tests build two runners directly,
+and the fleet is unchanged until part 5/7.
+
+**Approach.**
+1. **State.** `LoopState.claim?: { file: "PLANS.md" | "BUGS.md"; key; title; at; source:
+   "assigned" | "staged" }` (src/loop/loop-state.ts).
+2. **Module.** New src/scheduling/claims.ts:
+   - `heldKeys(runners, eligibleKeys, listedKeys)`;
+   - `assignNext(free)`: the first free entry in file order. Overlap between claimed entries'
+     files is allowed: conflicts are settled at landing (Robust conflict landing 1/2–2/2);
+   - `claimReleaseReason(runner, ctx)`: one of `left` (key no longer listed), `ineligible`,
+     `disabled` (not `loopEnabled`, idle, no queued landing, no `revision`), `stale` (older
+     than `CLAIM_IDLE_MAX_MS` = 24 h, and the runner is idle with no queued landing, no
+     `revision` and no `resumePending`), or null.
+3. **Scheduling.** In `pollRunnerReasons`, once per multi-instance base role, compute
+   `eligibleEntries` (part 2/7) and release the claims that `claimReleaseReason` names. For
+   each runner that passes every gate, just before `reasons.set`:
+   - **It holds a claim:** proceed.
+   - **Reason is not `inbox`/`resume` and `free` is non-empty:** assign `assignNext(free)` and
+     log `claim` `assigned`.
+   - **Index ≥ 2, no claim, empty `free`:** `continue`. No tick runs and no backoff is touched.
+   - **Primary, no claim, empty `free`:** proceed unassigned, as today.
+4. **Prompt.** `buildAssignmentNote(claim, range, othersHeld)` (src/gates/gate-prompts.ts) is
+   appended by `assembleTickPrompt` when `state.claim` is set and no user request was dequeued.
+   It says:
+   - implement or fix only that entry, which replaces the charter's choosing step;
+   - if it is too large, add the Needs-review note and end with that note only;
+   - if it should not be done, refuse it;
+   - do not edit the other held entries.
+
+   With no claim but held entries, a one-line exclusion list is appended.
+5. **Claim at staging** (src/tick/tick-stage.ts), comparing the worktree's PLANS.md or BUGS.md
+   to the merge-base with `actionableEntryRanges`:
+   - **An unassigned tick** whose diff removes an entry from `## Planned`/`## Open` records
+     `claim { source: "staged" }`.
+   - **An assigned tick** that removes a different entry yields a stage-check finding, "assigned
+     <X>, moved <Y>", which gets one fix-up turn (src/tick/stage-check.ts).
+6. **Release after a tick.** In `finalizeTick` (src/tick/tick-finalize.ts), results
+   `no_change`, `refused`, `user_aborted` and `skipped`, with no `revision` and no
+   `resumePending`, clear the claim and log `claim` `released`. Every other result keeps it.
+7. **Event.** `claim` with `action` (`assigned` / `released`), `key`, `title` and `reason`
+   (src/events/events.ts).
+
+**Files touched (landed).** src/loop/loop-state.ts, src/scheduling/claims.ts (new),
+src/roles/loop-ids.ts, src/loop/loop.ts, src/orchestrator/orchestrator-scheduling.ts,
+src/tick/tick-prompt.ts, src/gates/gate-prompts.ts, src/tick/tick-stage.ts,
+src/tick/stage-check.ts, src/tick/tick-finalize.ts, src/events/events.ts. Tests:
+test/claims.test.ts (new), plus cases in the orchestrator-scheduling, tick-stage and
+tick-finalize tests.
+
+**Acceptance criteria.**
+- **Distinct entries.** Runners `feature` and `feature-2`, with two eligible plans and both due
+  in one poll, get different claims, and each prompt names its own entry.
+- **Idle extra.** With one eligible plan, `feature-2` is not admitted and its state's
+  `nextRunAt` and `backoffSeconds` are untouched.
+- **Blocked entries** are never assigned.
+- **Held through.** The claim survives `queued`, a rejection with a revision (the revision tick
+  re-applies on the same instance and keeps the claim), a conflict hand-back, and a crash and
+  resume. An exhausted revision ends in a Needs-replan note, which makes the entry ineligible
+  and releases the claim.
+- **Released by** the entry landing into `## Done` (next poll), a `no_change` tick, a Refused
+  note, and the 24 h idle stale rule (with a warning).
+- **Staging.** An unassigned primary that moves plan X gets `claim` X with source `staged`. An
+  assigned tick that moves Y gets the stage-check finding.
+- **Single runner.** With one runner per role, prompts and scheduling are unchanged.
+- `npm run test` green.
+
 
 ### Parallel work instances, part 1/7: one role, several loop ids — normalize every catalog-role lookup through `baseRoleOf` (planned 2026-10-07 by operator; done 2026-10-07 by feature)
 

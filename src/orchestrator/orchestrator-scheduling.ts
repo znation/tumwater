@@ -10,10 +10,19 @@ import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf, instanceIndex } from "../roles/loop-ids.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
-import { logEvent } from "../events/events.js";
+import { logEvent, warnEvent } from "../events/events.js";
+import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
+import {
+  CLAIM_IDLE_MAX_MS,
+  assignNext,
+  claimReleaseReason,
+  heldKeys,
+  listedKeys,
+  type ClaimReleaseReason,
+} from "../scheduling/claims.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when
  * the scheduling pass runs (FleetGatePoll's fields beside the pass's own inputs). */
@@ -105,6 +114,54 @@ export async function pollRunnerReasons(
   // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
   // landing that completes mid-pass just keeps its role blocked one extra poll (conservative).
   const queuedLandingRoles = new Set(queuedLandingFiles(root).map((q) => q.entry.role));
+  // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
+  // with more than one runner assigns each due instance a distinct eligible entry, and releases
+  // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
+  // per poll and only for a multi-runner base, so a single-runner fleet is unchanged. The
+  // release runs before assignment so a freed key counts as free below.
+  const claimGroups = new Map<
+    string,
+    { eligible: EligibleEntry[]; eligibleKeys: Set<string>; held: Set<string> }
+  >();
+  const baseCounts = new Map<string, number>();
+  for (const runner of runners) {
+    const base = baseRoleOf(runner.role);
+    baseCounts.set(base, (baseCounts.get(base) ?? 0) + 1);
+  }
+  for (const [base, count] of baseCounts) {
+    if (count <= 1) continue;
+    const groupRunners = runners.filter((r) => baseRoleOf(r.role) === base);
+    const eligible = eligibleEntries(root, base);
+    const eligibleKeys = new Set(eligible.map((e) => e.key));
+    const listed = listedKeys(root, base);
+    const enabled = groupRunners[0]!.config.roles[base]?.enabled === true;
+    for (const r of groupRunners) {
+      const released = claimReleaseReason(r, {
+        listedKeys: listed,
+        eligibleKeys,
+        now,
+        hasQueuedLanding: queuedLandingRoles.has(r.role),
+        enabled,
+      });
+      if (released === null) continue;
+      const title = r.state.claim?.title ?? "";
+      r.state.claim = undefined;
+      const reason: ClaimReleaseReason = released;
+      logEvent(root, { loop: r.role, type: "claim", action: "released", title, reason });
+      if (reason === "stale") {
+        warnEvent(
+          root,
+          r.role,
+          `released a stale claim on "${title}" after ${Math.round(CLAIM_IDLE_MAX_MS / 3_600_000)}h idle`,
+        );
+      }
+    }
+    claimGroups.set(base, {
+      eligible,
+      eligibleKeys,
+      held: heldKeys(groupRunners, eligibleKeys, listed),
+    });
+  }
   // The fleet gates' block predicate (the director exempt — an explicit human prompt
   // outranks any autonomous gate, quiet hours included): the once-mode settle below and
   // the start gate must agree on exactly when a fleet gate holds, so the compound lives
@@ -232,6 +289,39 @@ export async function pollRunnerReasons(
       }
     } else if (deferredDue.get(runner.role)) {
       deferredDue.set(runner.role, false); // an inbox/resume run ends the episode
+    }
+    // Parallel work instances (part 4/7): a multi-runner base role's claim assignment, after
+    // every gate has admitted this runner. A runner that already holds a claim proceeds — its
+    // revision, resume or retry is the same entry. Otherwise, when the tick is not an
+    // inbox/resume run, it takes the first free entry; an extra instance with none free is
+    // skipped without touching its backoff, and the primary runs unassigned as today.
+    const claimGroup = claimGroups.get(baseRoleOf(runner.role));
+    if (claimGroup) {
+      if (runner.state.claim) {
+        // keeps its claim
+      } else if (reason !== "inbox" && reason !== "resume") {
+        const free = claimGroup.eligible.filter((e) => !claimGroup.held.has(e.key));
+        const pick = assignNext(free);
+        if (pick) {
+          runner.state.claim = {
+            file: baseRoleOf(runner.role) === BUGFIX_ROLE ? "BUGS.md" : "PLANS.md",
+            key: pick.key,
+            title: pick.title,
+            at: now,
+            source: "assigned",
+          };
+          claimGroup.held.add(pick.key);
+          logEvent(root, {
+            loop: runner.role,
+            type: "claim",
+            action: "assigned",
+            key: pick.key,
+            title: pick.title,
+          });
+        } else if (instanceIndex(runner.role) >= 2) {
+          continue; // an idle extra instance: no tick, no backoff climb
+        }
+      }
     }
     reasons.set(runner, reason);
   }

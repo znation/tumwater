@@ -762,6 +762,7 @@ export class LoopRunner {
       tickTurns: this.usage.turns,
       userPrompt,
       revisionRound,
+      mainBranch: this.mainBranch,
       wt,
       finalText: pi.finalText,
       flow,

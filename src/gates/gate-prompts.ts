@@ -1,6 +1,6 @@
 import { shortSha } from "../text/format.js";
 import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
-import { NEEDS_REPLAN_NOTE } from "../roles/role-guidance.js";
+import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -351,6 +351,26 @@ ${SUMMARY_BLOCK}
 When an objection shows the change should not exist (its premise is disproven, it duplicates main,
 or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} instead, and the
 harness drops the change.`;
+}
+
+/** The note appended to a work instance's tick prompt when it holds a claim (plans/parallel-
+ * work-instances.md "Claims", part 4/7): the harness has already picked its entry, so the
+ * charter's choosing step is replaced. A pure function so its shape is pinned in tests; the
+ * range is optional because a claim whose entry was already released still gets the note. */
+export function buildAssignmentNote(
+  claim: { file: string; title: string; source: "assigned" | "staged" },
+  range?: { start: number; end: number },
+): string {
+  const where = range ? ` (${claim.file} lines ${range.start}-${range.end})` : ` (${claim.file})`;
+  const intro =
+    claim.source === "staged"
+      ? `Your change moved ONE backlog entry, so it is now your task, replacing your charter's "pick one" step:`
+      : `The harness has assigned you ONE backlog entry, replacing your charter's "pick one" step:`;
+  return `<assigned-entry>
+${intro}
+"${claim.title}"${where}.
+Implement or fix only that entry. If it is too large for one run, append ${NEEDS_REVIEW_NOTE} under its heading and end your reply with that note alone. If it should not be done, append a Refused note under its heading with your objection and change nothing else. Do not edit any other backlog entry.
+</assigned-entry>`;
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change

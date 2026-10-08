@@ -5,7 +5,7 @@ import { logEvent, usageFragment, warnEvent } from "../events/events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
 import { restoreMidTickWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
-import type { TickOutcome } from "./tick-outcome.js";
+import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import type { TickUsage } from "./tick-usage.js";
 
 /** What finalizeTick needs from the runner: everything the post-outcome bookkeeping reads,
@@ -33,6 +33,15 @@ interface FinalizeTickDeps {
    * finishRecoveryTick); undefined for a tick that ran no leftover recovery. */
   recoveryFailure?: string;
 }
+
+/** The tick results that end an instance's claim: the tick found nothing to do, refused the
+ * entry, was aborted by the user, or was skipped — none of them leaves work in flight. */
+const CLAIM_RELEASING: ReadonlySet<TickResult> = new Set([
+  "no_change",
+  "refused",
+  "user_aborted",
+  "skipped",
+]);
 
 /** Fold a finished tick's outcome into the loop's state and the event feed — everything that
  * happens AFTER the pi run, extracted from LoopRunner.tick (src/loop/loop.ts) so the runner keeps
@@ -67,6 +76,21 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // Record the outcome on state and schedule the next run (see src/tick/tick-apply.ts for the
   // per-result policy: prompt retry, backoff, bounded cut-off resumes).
   applyTickOutcome(s, config, role, outcome);
+  // A tick that ends without producing or keeping work releases this instance's backlog claim
+  // (plans/parallel-work-instances.md "Claims", part 4/7): the next tick may take a different
+  // entry. Every other result — queued, changed, rejected with a revision, an error, an abort
+  // that resumes — keeps the claim so the same instance retries it; an outstanding revision or
+  // a pending resume also holds it, because the entry is still this instance's task.
+  if (
+    s.claim &&
+    CLAIM_RELEASING.has(outcome.result) &&
+    s.revision === undefined &&
+    s.resumePending !== true
+  ) {
+    const title = s.claim.title;
+    s.claim = undefined;
+    logEvent(root, { loop: role, type: "claim", action: "released", title, reason: outcome.result });
+  }
   // A wake consumed while this tick ran stamped the shared state in place, but the outcome
   // schedule above overwrites it (lastTickEndedAt past wokenAt, nextRunAt a fresh gap or
   // backoff out), so a plain `tumwater wake --role` with an empty queue would silently wait
