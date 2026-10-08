@@ -9,10 +9,10 @@ import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-c
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
- * (landing-merge.ts), the adversarial pre-merge review (review.ts), and the notes that carry the gate's
- * verdicts back to the loop that authored the change (loop.ts, main-red.ts). The
- * machine-detectable half of the gate's reply contract — verdict constants and detection for
- * parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
+ * (landing-merge.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
+ * gate's verdicts back to the loop that authored the change (loop.ts, tick-prompt.ts,
+ * main-red.ts). The machine-detectable half of the gate's reply contract — verdict constants
+ * and detection for parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
 
 /** The listed-reasons placeholder the review and revision notes share when a rejection recorded
  * none: one home so a revision round's note and the next rejection's note cannot disagree on
