@@ -158,6 +158,23 @@ test("checkTierModels fails a pair pi cannot resolve and warns on an unready pro
   assert.match(roleModel.detail, /paid\/no-such-qa-model does not resolve/);
 });
 
+test("checkTierModels warns on a declared selector that names no provider", async () => {
+  const models = writeModels();
+  const root = readyRepo();
+  // A slash-less selector is a bare pattern with no provider (model-selector.ts): pi
+  // resolves it against its own default, so tumwater cannot verify it — warn rather than
+  // look it up as the empty-string provider and fail. The auth stub must never be called.
+  writeConfig(root, { model: "bare-model" });
+  let probed = 0;
+  const outcome = await checkTierModels(root, models, async () => {
+    probed++;
+    return "ready";
+  });
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /bare-model names no provider/);
+  assert.equal(probed, 0, "a providerless pair is not probed");
+});
+
 test("checkTierModels warns when a priced model's cache reads are declared free", async () => {
   const dir = tmpdir("doctor-models-");
   const file = path.join(dir, "models.json");
@@ -264,6 +281,16 @@ test("piProviderAuth reads ready out of the agent binary's auth check and never 
   writeScript(path.join(binDir, "pi"), 'echo \'{"ready":false}\'');
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "not-ready");
 
+  // A `ready` that is not the boolean false is not not-ready: valid JSON with a non-boolean
+  // `ready` reads unknown, never not-ready (which would blame the credentials).
+  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":"yes"}\'');
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
+
+  // A valid `{"ready":false}` on a nonzero exit is unknown: the exit-code gate is first, so
+  // a crashed check is never read as "credentials missing".
+  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":false}\'; exit 3');
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
+
   writeScript(path.join(binDir, "pi"), "echo not-json");
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
 
@@ -272,6 +299,11 @@ test("piProviderAuth reads ready out of the agent binary's auth check and never 
 
   // A binary that does not exist is unknown, not a thrown error.
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", tmpdir("doctor-empty-bins-")), "unknown");
+
+  // A spawn that throws before a child exists (a NUL byte in the resolved bin, which Node
+  // rejects synchronously) is unknown too: a malformed agentBin must not reject the probe
+  // and crash `tumwater doctor`.
+  assert.equal(await piProviderAuth({ agentBin: "bad\0bin" } as TumwaterConfig, "local", binDir), "unknown");
 });
 
 // A probe whose child never delivers `'close'`, or floods its pipe, must settle at its own
