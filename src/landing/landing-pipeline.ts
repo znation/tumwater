@@ -3,7 +3,7 @@ import type { Semaphore } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { deleteRef, removeLandWorktree } from "../git/git.js";
-import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
+import { removeLandingChange, writeLandingOutcome, type LandingUsage } from "./landing-slot.js";
 import { landingRefName, landWorktreePath, rejectedRefName } from "../paths.js";
 import type { AbortableLanding } from "../operator/operator-requests.js";
 import type { LandingEntry } from "./landing-queue.js";
@@ -46,7 +46,7 @@ export interface VettedLanding extends AbortableLanding, FoldsUsage {
   /** The authoring runner its vet ran with — reused by its merge, so both fold into one state. */
   author: LoopRunner;
   /** The landing's own spend so far (its reviewer). */
-  usage: { tokens: number; cost: number };
+  usage: LandingUsage;
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
@@ -176,7 +176,7 @@ export async function settleLandingOutcome(
   state: LoopState,
   result: TickResult,
   durationMs: number,
-  usage: { tokens: number; cost: number },
+  usage: LandingUsage,
   file: string,
 ): Promise<void> {
   writeLandingOutcome(root, entry, state, result, durationMs, usage, file);

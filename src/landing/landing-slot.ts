@@ -258,7 +258,7 @@ export function writeLandingOutcome(
   state: LoopState,
   result: TickResult,
   durationMs: number,
-  usage: { tokens: number; cost: number },
+  usage: LandingUsage,
   file: string,
 ): void {
   applyLandingOutcome(state, result, entry);
@@ -290,8 +290,10 @@ export function writeLandingOutcome(
   dropLanding(file);
 }
 
-/** One landing's own spend (reviewer + conflict resolution), accumulated across its pi runs. */
-type LandingUsage = { tokens: number; cost: number };
+/** One landing's own spend (reviewer + conflict resolution), accumulated across its pi runs.
+ * The single home of the shape: writeLandingOutcome and landingUsage build it here, and
+ * landing-pipeline.ts's VettedLanding and settleLandingOutcome carry the same object. */
+export type LandingUsage = { tokens: number; cost: number };
 
 /** A fresh usage accumulator for one landing plus the foldUsage callback that charges each of
  * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
