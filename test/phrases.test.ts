@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backendKindPhrase, budgetPhrase, describeToolCall, firstReason } from "../src/text/phrases.js";
+import { backendKindPhrase, budgetPhrase, describeToolCall, firstReason, shortSpanPhrase } from "../src/text/phrases.js";
 
 // text/phrases.ts is the single home of the fleet's shared wording fragments (the tool-call label,
 // the backend-hold kind phrasing, and their siblings). These tests pin the documented contracts
@@ -88,4 +88,16 @@ test("budgetPhrase reads a non-numeric or non-finite event field as $0.00, never
   assert.equal(budgetPhrase("oops", null), "$0.00 of $0.00");
   assert.equal(budgetPhrase(Number.NaN, Number.POSITIVE_INFINITY), "$0.00 of $0.00");
   assert.equal(budgetPhrase(undefined, 50), "$0.00 of $50.00");
+});
+
+// --- shortSpanPhrase (the shared seconds/minutes duration) ---
+
+test("shortSpanPhrase rounds a near-two-minute span into the minute arm, never 120s", () => {
+  assert.equal(shortSpanPhrase(0), "0s");
+  assert.equal(shortSpanPhrase(60_000), "60s", "the one-minute base hold reads 60s");
+  assert.equal(shortSpanPhrase(119_000), "119s");
+  assert.equal(shortSpanPhrase(119_500), "2m", "119.5s rounds up past the two-minute cutoff");
+  assert.equal(shortSpanPhrase(119_999), "2m", "the seconds arm never prints the out-of-vocabulary 120s");
+  assert.equal(shortSpanPhrase(120_000), "2m");
+  assert.equal(shortSpanPhrase(130_000), "2m");
 });

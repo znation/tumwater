@@ -184,7 +184,10 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   const t = openDrawer(["toggleLoop", "loadLoopTicks"], {
     status: workingStatus(),
     responses: {
-      "/api/history?n=8&role=clean": { rows: [{ tick: 3, ts: now - 120_000, result: "changed", detail: "tidied the drawer", durationMs: 65_000, time: "12:00:00" }] },
+      "/api/history?n=8&role=clean": { rows: [
+        { tick: 3, ts: now - 120_000, result: "changed", detail: "tidied the drawer", durationMs: 65_000, time: "12:00:00" },
+        { tick: 2, ts: now - 240_000, result: "changed", detail: "raced the cutoff", durationMs: 119_999, time: "11:58:00" },
+      ] },
       "/api/transcript?role=clean&n=200": { lines: ["── tick 3", "→ npm test"] },
     },
   });
@@ -218,6 +221,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(meta, /tidied the drawer/);
   assert.match(meta, /2m ago/);
   assert.match(meta, />65s</); // fmtSpan(65_000)
+  assert.match(meta, />2m</); // fmtSpan(119_999) rounds into the minute arm, never "120s"
 
   // The transcript rendered through transcriptHtml and pinned to the bottom.
   const pre = t.el("transcript");

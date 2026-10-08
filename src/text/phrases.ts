@@ -176,11 +176,14 @@ export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
   return `${usd(finiteNumber(spentUsd, 0))} of ${usd(finiteNumber(capUsd, 0))}`;
 }
 
-/** A short duration as `Ns` under two minutes, else whole `Nm` — the one home of that cutoff
- * and rounding, shared by holdPhrase ("for 60s") and the event feed's countdowns
- * ("(in 90s)"), so the threshold or the units cannot drift between the two renderings. */
+/** A short duration as `Ns` while the rounded seconds count is under two minutes, else whole
+ * `Nm` — the one home of that cutoff and rounding, shared by holdPhrase ("for 60s") and the
+ * event feed's countdowns ("(in 90s)"), so the threshold or the units cannot drift between the
+ * two renderings. */
 export function shortSpanPhrase(ms: number): string {
-  return ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
+  const seconds = Math.round(ms / 1000);
+  // A seconds count that rounds up to two minutes belongs to the minute arm, not "120s".
+  return seconds < 120 ? `${seconds}s` : `${Math.round(ms / 60_000)}m`;
 }
 
 /** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one home of

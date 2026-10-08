@@ -195,8 +195,15 @@ const FORMAT_JS = String.raw`  // format:start
     return sec < 60 ? "just now" : humanSeconds(sec) + " ago";
   };
   const fmtClock = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  // A tick's duration: seconds under two minutes, then minutes, then hours.
-  const fmtSpan = (ms) => (ms < 120000 ? Math.round(ms / 1000) + "s" : ms < 7200000 ? Math.round(ms / 60000) + "m" : (ms / 3600000).toFixed(1) + "h");
+  // A tick's duration: seconds under two minutes, then minutes, then hours. Each bucket is
+  // chosen from the rounded count so a span just under a cutoff never prints "120s" or "120m".
+  const fmtSpan = (ms) => {
+    const sec = Math.round(ms / 1000);
+    if (sec < 120) return sec + "s";
+    const min = Math.round(ms / 60000);
+    if (min < 120) return min + "m";
+    return (ms / 3600000).toFixed(1) + "h";
+  };
   // Server text sometimes carries ISO instants (a restart cooldown's deadline); show them in
   // the viewer's local time.
   const localizeInstants = (s) => String(s).replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => fmtClock(Date.parse(iso)));
