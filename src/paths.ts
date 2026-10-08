@@ -28,6 +28,17 @@ export function configPath(root: string): string {
   return path.join(root, CONFIG_BASENAME);
 }
 
+/** The cross-process lock serializing read-modify-write updates of tumwater.json
+ * (writeConfigMutation and applyConfigRequest in config/config-write.ts): the CLI's
+ * `tumwater config set`, a standalone `tumwater gui` server, and the running fleet are separate
+ * processes that can rewrite one config in the same instant, and without serialization each
+ * one's whole-file write silently drops the others' change. A lock directory owned by the
+ * shared mkdir-and-pid mutex (withSyncLock, src/concurrency/lock.ts), which creates and removes
+ * it; lives under .tumwater/state so it never enters the tracked tree. */
+export function configLockPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "config.lock");
+}
+
 /** The repo's tracked settings template, beside the config it seeds (plans/portability.md
  * §4a/7): shipped by the project, read by init's seeding and doctor's drift check. */
 export function exampleConfigPath(root: string): string {

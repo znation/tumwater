@@ -1,8 +1,10 @@
 import test from "node:test";
 import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   applyConfigRequest,
   parseConfigKey,
@@ -540,4 +542,53 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
   const typo = parseConfigKey("model.stong");
   assert.equal(typo.kind, "error");
   if (typo.kind === "error") assert.match(typo.error, /did you mean `strong`/);
+});
+
+// The cross-process read-modify-write race (BUGS.md 2026-10-07): `tumwater config set` (CLI),
+// a standalone dashboard server, and the running fleet are separate processes. Without a lock,
+// two writers each load the same snapshot and the later whole-file write drops the earlier one.
+// The child holds the config lock while it snapshots, waits to see whether the parent's write
+// lands (an unlocked writer's does; a locked one's waits), then writes its own key from the
+// snapshot. The fix serializes the parent's read→write, so both keys survive.
+test("a concurrent config write cannot drop another process's update", async () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const stateDir = path.join(dir, ".tumwater", "state");
+  const lock = path.join(stateDir, "config.lock");
+  const ready = path.join(dir, "child-ready");
+  const configFile = path.join(dir, "tumwater.json");
+  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const child = spawn(process.execPath, [
+    "-e",
+    `const fs = require("node:fs");
+     fs.mkdirSync(${JSON.stringify(stateDir)}, { recursive: true });
+     import(${JSON.stringify(lockModule)}).then(({ withSyncLock }) => withSyncLock(${JSON.stringify(lock)}, () => {
+       const snapshot = JSON.parse(fs.readFileSync(${JSON.stringify(configFile)}, "utf8"));
+       fs.writeFileSync(${JSON.stringify(ready)}, "1");
+       const parentSet = () => { try { return JSON.parse(fs.readFileSync(${JSON.stringify(configFile)}, "utf8")).maxDailyCostUsd === 42; } catch { return false; } };
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !parentSet()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       snapshot.quietHours = "22:00-06:00";
+       fs.writeFileSync(${JSON.stringify(configFile)}, JSON.stringify(snapshot, null, 2) + "\\n");
+     }));`,
+  ]);
+  child.stderr?.resume();
+  const childExit = new Promise((resolve) => child.on("exit", resolve));
+  try {
+    for (let i = 0; !fs.existsSync(ready); i++) {
+      if (i > 500) throw new Error("the holder child never took the config lock");
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const result = setConfigKey(dir, "maxDailyCostUsd", "42");
+    assert.ok(result.ok, result.ok ? "" : result.error);
+    await childExit;
+    const cfg = readJson(configFile) as { maxDailyCostUsd?: number; quietHours?: string };
+    assert.equal(cfg.maxDailyCostUsd, 42, "the parent's update survives");
+    assert.equal(cfg.quietHours, "22:00-06:00", "the child's update survives");
+  } finally {
+    child.kill();
+    await childExit;
+  }
 });

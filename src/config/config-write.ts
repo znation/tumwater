@@ -13,11 +13,13 @@ import {
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { configPath, configRequestPath } from "../paths.js";
+import { configPath, configLockPath, configRequestPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
+import { ensureParentDir } from "../files/files.js";
+import { withSyncLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
@@ -57,37 +59,58 @@ const PER_KEY_VALIDATORS: Record<string, (value: unknown) => string | null> = {
   quietHours: checkQuietHours,
 };
 
+/** Serialize a config write through the cross-process lock (paths.ts's configLockPath): the
+ * CLI, a standalone dashboard's server, and the running fleet are separate processes, so an
+ * unguarded read-modify-write lets one writer's whole-file write silently drop another's change
+ * (the same lost update paused-roles.json already guards against). A lock that cannot be
+ * acquired within the budget throws rather than writing unlocked — a silently lost config edit
+ * is worse than a write that reports an error. */
+const CONFIG_LOCK_TIMEOUT_MS = 10_000;
+function withConfigLock<T>(root: string, fn: () => T): T {
+  const lock = configLockPath(root);
+  ensureParentDir(lock); // The state dir may not exist yet (a CLI write before any state file).
+  return withSyncLock(lock, fn, CONFIG_LOCK_TIMEOUT_MS);
+}
+
 /** The one load → mutate → validate → atomic-write idiom every top-level config writer
  * shares (setDailyBudgetUsd, setConfigKey): a fresh loadConfig that bypasses config.ts's
  * stat cache (a writer must see the latest file), the caller's mutation applied in memory,
  * validateConfig over the whole merged candidate, then writeJsonAtomic (tmp file + rename)
- * because readers poll tumwater.json every ~2 s and two writers could race. On any
- * failure — a broken on-disk file, a type-invalid candidate, a failed write — the file is
+ * because readers poll tumwater.json every ~2 s. The whole load-to-write sequence runs under
+ * withConfigLock, so two processes racing different keys cannot each write from the same
+ * pre-race snapshot and lose one update. On any failure — a broken on-disk file, a
+ * type-invalid candidate, a failed write, or a lock that cannot be acquired — the file is
  * left untouched (and no tmp remnant is left behind); the error surfaces as a string so
  * callers (both dashboards, the CLI) can print it without try/catch plumbing. */
 function writeConfigMutation(
   root: string,
   mutate: (cfg: TumwaterConfig) => TumwaterConfig,
 ): { ok: true } | { ok: false; error: string } {
-  let cfg: TumwaterConfig;
   try {
-    cfg = loadConfig(root); // fresh — bypasses the stat cache on purpose
+    return withConfigLock(root, (): { ok: true } | { ok: false; error: string } => {
+      let cfg: TumwaterConfig;
+      try {
+        cfg = loadConfig(root); // fresh — bypasses the stat cache on purpose
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
+      }
+      const candidate = mutate(cfg);
+      try {
+        validateConfig(candidate); // throws listing every problem — nothing is written on failure
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+      try {
+        // The trailing newline is tumwater.json's convention (POSIX text file).
+        writeJsonAtomic(configPath(root), candidate, true);
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+      return { ok: true };
+    });
   } catch (err) {
-    return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
+    return { ok: false, error: errorMessage(err) }; // lock acquire timeout/failure — nothing written
   }
-  const candidate = mutate(cfg);
-  try {
-    validateConfig(candidate); // throws listing every problem — nothing is written on failure
-  } catch (err) {
-    return { ok: false, error: errorMessage(err) };
-  }
-  try {
-    // The trailing newline is tumwater.json's convention (POSIX text file).
-    writeJsonAtomic(configPath(root), candidate, true);
-  } catch (err) {
-    return { ok: false, error: errorMessage(err) };
-  }
-  return { ok: true };
 }
 
 /** Set the daily cost budget cap in tumwater.json through the shared writer idiom (see
@@ -345,22 +368,27 @@ export function applyConfigRequest(
     const loops = parsed.customLoops;
     if (!Array.isArray(loops))
       throw new Error(`config request's customLoops must be an array (got ${show(loops)})`);
-    const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
-    // Strip roles.<id> entries for custom loops this request removes (see docstring). Structurally
-    // valid names only; anything else stays for validateConfig to reject — never dereference a
-    // request entry before validation.
-    const requestedNames = new Set<string>();
-    for (const entry of loops) {
-      if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);
-    }
-    const roles = { ...current.roles };
-    for (const c of current.customLoops) {
-      if (!requestedNames.has(c.name)) delete roles[c.name];
-    }
-    const candidate: TumwaterConfig = { ...current, customLoops: loops as TumwaterConfig["customLoops"], roles };
-    validateConfig(candidate); // throws listing every problem — nothing is written on failure
-    applied = candidate.customLoops.map((c) => c.name);
-    writeJsonAtomic(configPath(root), candidate, true);
+    // The load-to-write sequence is one critical section under withConfigLock: a concurrent
+    // `config set`/dashboard write between the load and this write must not be dropped by the
+    // whole-file overwrite (see writeConfigMutation).
+    withConfigLock(root, () => {
+      const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
+      // Strip roles.<id> entries for custom loops this request removes (see docstring). Structurally
+      // valid names only; anything else stays for validateConfig to reject — never dereference a
+      // request entry before validation.
+      const requestedNames = new Set<string>();
+      for (const entry of loops) {
+        if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);
+      }
+      const roles = { ...current.roles };
+      for (const c of current.customLoops) {
+        if (!requestedNames.has(c.name)) delete roles[c.name];
+      }
+      const candidate: TumwaterConfig = { ...current, customLoops: loops as TumwaterConfig["customLoops"], roles };
+      validateConfig(candidate); // throws listing every problem — nothing is written on failure
+      writeJsonAtomic(configPath(root), candidate, true);
+      applied = candidate.customLoops.map((c) => c.name);
+    });
   } catch (err) {
     applied = []; // no write happened, or it must not be reported as applied
     error = errorMessage(err);
