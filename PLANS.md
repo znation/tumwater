@@ -85,6 +85,15 @@ src/orchestrator/orchestrator.ts, docs/how-it-works.md. Tests: test/worktree-poo
 
 ### Worktree pool, part 4/5: role ticks lease pooled slot worktrees (planned 2026-10-06 by operator; requires parts 1/5–3/5 landed)
 
+**Needs review 2026-10-07 by feature: too large for one run** — its prerequisites are not on
+main: the pool module with its `leaseSlot` API and the `worktreeSlots` config are part 2/5's
+deliverables, and none exists (no `leaseSlot`, no `worktreeSlots`, no pool module under src/git/).
+Landing this run would therefore also have to build the pool core, its config, the
+orchestrator's legacy-worktree migration and the loop/orchestrator tests that assert
+`.tumwater/worktrees/<role>` paths. Extract the pool core and `worktreeSlots` config from part 2/5
+into their own small plan (part 2/5 is itself flagged too large), or land them as this part's
+corrected scope, before picking it up.
+
 Design: plans/worktree-pool.md ("Role ticks lease slots").
 
 Context: each role keeps a persistent `.tumwater/worktrees/<role>` with its own build outputs,
