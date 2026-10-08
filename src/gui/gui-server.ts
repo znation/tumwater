@@ -15,6 +15,7 @@ import {
   type SupervisorWatchSeams,
   watchReloadSupervisor,
 } from "../redeploy/self-reload.js";
+import { warnEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import {
   handleBacklog,
@@ -265,9 +266,19 @@ export function startGui(
   }, watch.supervisor);
   server.once("close", stopSupervisorWatch);
   return new Promise((resolve, reject) => {
-    server.once("error", reject);
+    const onListenError = (err: Error): void => reject(err);
+    server.once("error", onListenError);
+    const onListening = (): void => {
+      // The listen-time listener must not outlive the listen: an 'error' after this point
+      // would call reject on a settled promise and be swallowed. Replace it with a handler
+      // that records the failure, so a post-listen socket error (EMFILE on accept, …) is
+      // visible in the event feed instead of silently leaving a dead dashboard.
+      server.removeListener("error", onListenError);
+      server.on("error", (err) => warnEvent(root, "harness", `dashboard server error: ${errorMessage(err)}`));
+      resolve(server);
+    };
     const host = guiBindHost(allInterfaces);
-    if (host === undefined) server.listen(port, () => resolve(server));
-    else server.listen(port, host, () => resolve(server));
+    if (host === undefined) server.listen(port, onListening);
+    else server.listen(port, host, onListening);
   });
 }

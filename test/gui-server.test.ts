@@ -797,3 +797,23 @@ test("gui closes its server and re-execs exactly once when a newer build appears
     server.close();
   }
 });
+
+test("a post-listen server error is recorded, not swallowed by the listen-time reject", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui post-listen error test");
+  const { server } = await startLocalGui(repo);
+  try {
+    // The listen-time `once("error", reject)` would fire here against an already-settled
+    // promise and vanish, leaving a dashboard that still holds its port but no longer
+    // serves. The fix replaces it once listening with a handler that records a warning, so
+    // the failure is visible in the feed.
+    server.emit("error", new Error("EMFILE: accept failed"));
+    const warning = readEvents(repo).find(
+      (e) => e.type === "warning" && /dashboard server error/.test(String(e.message ?? "")),
+    );
+    assert.ok(warning, "the post-listen error was recorded as a warning event");
+    assert.match(String(warning.message ?? ""), /EMFILE/);
+  } finally {
+    server.close();
+  }
+});
