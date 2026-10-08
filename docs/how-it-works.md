@@ -20,8 +20,10 @@ then exits, for cron and CI and for trying one round before committing to a flee
 
 ## A loop tick
 
-1. Reset the role's persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`)
-   to main.
+1. Lease a worktree slot from the shared pool (`.tumwater/worktrees/_slot-<n>`; `worktreeSlots`
+   of them, default `maxConcurrent` + 1). The role's persistent branch `tumwater/<role>` is
+   checked out as-is when present, so its unlanded commit survives, and created from main
+   otherwise. The director instead keeps its own `.tumwater/worktrees/director`.
 2. Run pi in a fresh session with a role-specific "find one thing to do" prompt. Nothing carries
    over between ticks except the role's own notebook (see Prompts); durable knowledge lives in
    the repo's markdown files.

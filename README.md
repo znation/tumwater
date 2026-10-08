@@ -75,7 +75,9 @@ holding the worktrees drops below it, no new work starts until free space recove
 0 disables), a `diskReclaimGB` pressure-reclaim threshold (default 40; below it idle worktrees
 drop their gitignored build outputs before the hold engages; 0 disables), and a
 `worktreeIdleReclaimHours` window (default 24; an hourly pass drops a worktree's gitignored build
-outputs once it has sat unused that long, whatever the free space; 0 disables) — user-defined
+outputs once it has sat unused that long, whatever the free space; 0 disables), a
+`worktreeSlots` count of pooled checkouts shared by role ticks and landing vets (default
+`maxConcurrent` + 1; the director's worktree sits outside the pool) — user-defined
 `customLoops`, and an
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak
