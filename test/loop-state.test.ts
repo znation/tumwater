@@ -173,6 +173,7 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
       quietKillStreak: [1],
       consecutiveErrors: -1,
       unreviewFailures: "lots",
+      parkedSince: "soon",
     }),
   );
   const s = loadLoopState(dir, "dirty");
@@ -191,10 +192,82 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
     "quietKillStreak",
     "consecutiveErrors",
     "unreviewFailures",
+    "parkedSince",
   ] as const) {
     assert.equal(s[key], 0, `field ${key} should heal to 0`);
   }
   assert.equal(s.dayCostUsd, 4);
+});
+
+test("loadLoopState heals corrupt numeric fields inside nested records", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "nested");
+  ensureParentDir(file);
+  // The nested scheduling records carry epoch-ms stamps, recovery counts, and the fallback
+  // episode's clock; a hand-edited or foreign-typed value there feeds comparisons and
+  // arithmetic, so it heals to 0 exactly as the top-level fields do.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      role: "nested",
+      lastReview: { verdict: "reject", reasons: [], at: "yesterday" },
+      claim: { file: "PLANS.md", key: "k", title: "t", at: -1, source: "assigned" },
+      revision: { sha: "abc", round: "2", at: null },
+      mergeConflicts: { sha: "abc", count: "many" },
+      conflictDiscard: { sha: "abc", summary: "s", attempts: -3, at: {} },
+      conflictHandback: { sha: "abc", at: "later", round: -4, reason: "landing", applied: false },
+      landingCheckFailures: { patchId: "p", count: [1] },
+      modelFallback: { failures: "3", since: -1, probeAt: null, cooldownMs: "500", reason: "r" },
+    }),
+  );
+  const s = loadLoopState(dir, "nested");
+  assert.equal(s.lastReview?.at, 0);
+  assert.equal(s.claim?.at, 0);
+  assert.equal(s.revision?.round, 0);
+  assert.equal(s.revision?.at, 0);
+  assert.equal(s.mergeConflicts?.count, 0);
+  assert.equal(s.conflictDiscard?.attempts, 0);
+  assert.equal(s.conflictDiscard?.at, 0);
+  assert.equal(s.conflictHandback?.at, 0);
+  assert.equal(s.conflictHandback?.round, 0);
+  assert.equal(s.landingCheckFailures?.count, 0);
+  assert.equal(s.modelFallback?.failures, 0);
+  assert.equal(s.modelFallback?.since, 0);
+  assert.equal(s.modelFallback?.probeAt, 0);
+  assert.equal(s.modelFallback?.cooldownMs, 0);
+});
+
+test("loadLoopState drops a nested record that is not a plain object, keeping real ones", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "torn");
+  ensureParentDir(file);
+  // A scalar/array in a nested slot would throw on the first property write (landing-core
+  // sets lastReview.exhausted; tick-apply adds to mergeConflicts.count), so it reads as absent
+  // — the same no-data policy readJsonFile applies to the file as a whole.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      role: "torn",
+      lastReview: "not an object",
+      revision: [1, 2],
+      mergeConflicts: null,
+      conflictDiscard: true,
+      conflictHandback: 0,
+      landingCheckFailures: "none",
+      modelFallback: "primary",
+      claim: { file: "BUGS.md", key: "k", title: "t", at: 42, source: "staged" }, // real record kept
+    }),
+  );
+  const s = loadLoopState(dir, "torn");
+  assert.equal(s.lastReview, undefined);
+  assert.equal(s.revision, undefined);
+  assert.equal(s.mergeConflicts, undefined);
+  assert.equal(s.conflictDiscard, undefined);
+  assert.equal(s.conflictHandback, undefined);
+  assert.equal(s.landingCheckFailures, undefined);
+  assert.equal(s.modelFallback, undefined);
+  assert.equal(s.claim?.at, 42, "a valid record keeps its real values");
+  assert.equal(s.claim?.key, "k");
 });
 
 test("loadLoopState recovers from torn or non-object JSON", () => {

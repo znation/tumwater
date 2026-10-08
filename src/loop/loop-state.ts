@@ -1,7 +1,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { finiteNumber } from "../files/json-object.js";
+import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { statePath } from "../paths.js";
 
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
@@ -239,19 +239,36 @@ export function freshLoopState(role: string): LoopState {
 }
 
 /** A persisted numeric field, healed to a finite non-negative number (the fallback when it is
- * absent, foreign, NaN/±Infinity, or negative). Every top-level numeric field on LoopState is a
- * count, a duration, an epoch-ms stamp, or an amount, so zero is the only sensible repair; the
- * `tick-usage.ts` and `budget.ts` writers floor the same three quantities they own. */
+ * absent, foreign, NaN/±Infinity, or negative). Every numeric field on LoopState — top-level or
+ * inside one of the nested records below — is a count, a duration, an epoch-ms stamp, or an
+ * amount, so zero is the only sensible repair; the `tick-usage.ts` and `budget.ts` writers floor
+ * the same three quantities they own. A guard count (mergeConflicts, landingCheckFailures,
+ * unreviewFailures) heals to 0 like the rest: a corrupt strike tally re-accumulates from the
+ * next attempt, the same "the field is unusable, start the count over" repair the top-level heal
+ * already gives the error streak. */
 function healNumber(value: unknown, fallback: number): number {
   const n = finiteNumber(value, fallback);
   return n >= 0 ? n : fallback;
 }
 
+/** Heal one persisted nested record: absent stays absent; a present non-object (a string,
+ * number, NaN, null, or array) is dropped to undefined — every consumer of these records reads
+ * them with property access or mutation (landing-core sets `lastReview.exhausted`, tick-apply
+ * adds to `mergeConflicts.count`), and property access on a torn scalar reads undefined where
+ * the mutation throws "Cannot create property … on string" in a strict ES module; a present
+ * object keeps its shape with each numeric field repaired by `heal`. */
+function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void): T | undefined {
+  if (value === undefined || !isJsonObject(value)) return undefined;
+  heal(value as T);
+  return value;
+}
+
 /** Load the loop's persisted state; never throws — a missing or unreadable file yields a
- * fresh state, fields absent from an older file fall back to defaults, and a top-level numeric
- * field that is present but not a finite non-negative number is healed to 0. The load is the
- * one read boundary for the state file (readJsonFile returns an unchecked cast), so healing
- * here keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
+ * fresh state, fields absent from an older file fall back to defaults, and a numeric field
+ * (top-level or nested) that is present but not a finite non-negative number is healed to 0,
+ * while a nested record that is present but not a plain object is dropped. The load is the one
+ * read boundary for the state file (readJsonFile returns an unchecked cast), so healing here
+ * keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
  * arithmetic instead of relying on each reader to guard it. Optional fields that are absent
  * stay absent, so an older state file's shape is preserved. */
 export function loadLoopState(root: string, role: string): LoopState {
@@ -272,6 +289,49 @@ export function loadLoopState(root: string, role: string): LoopState {
   if (s.quietKillStreak !== undefined) s.quietKillStreak = healNumber(s.quietKillStreak, 0);
   if (s.consecutiveErrors !== undefined) s.consecutiveErrors = healNumber(s.consecutiveErrors, 0);
   if (s.unreviewFailures !== undefined) s.unreviewFailures = healNumber(s.unreviewFailures, 0);
+  if (s.parkedSince !== undefined) s.parkedSince = healNumber(s.parkedSince, 0);
+  // The nested scheduling records carry the same numeric class — epoch-ms stamps, recovery
+  // counts, and the fallback episode's clock — and are read by comparison or arithmetic
+  // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `cooldownMs * 2`), so a
+  // foreign value there is healed the same way the top-level fields are.
+  if (s.lastReview !== undefined)
+    s.lastReview = healRecord(s.lastReview, (v) => {
+      v.at = healNumber(v.at, 0);
+    });
+  if (s.claim !== undefined)
+    s.claim = healRecord(s.claim, (v) => {
+      v.at = healNumber(v.at, 0);
+    });
+  if (s.revision !== undefined)
+    s.revision = healRecord(s.revision, (v) => {
+      v.round = healNumber(v.round, 0);
+      v.at = healNumber(v.at, 0);
+    });
+  if (s.mergeConflicts !== undefined)
+    s.mergeConflicts = healRecord(s.mergeConflicts, (v) => {
+      v.count = healNumber(v.count, 0);
+    });
+  if (s.conflictDiscard !== undefined)
+    s.conflictDiscard = healRecord(s.conflictDiscard, (v) => {
+      v.attempts = healNumber(v.attempts, 0);
+      v.at = healNumber(v.at, 0);
+    });
+  if (s.conflictHandback !== undefined)
+    s.conflictHandback = healRecord(s.conflictHandback, (v) => {
+      v.at = healNumber(v.at, 0);
+      if (v.round !== undefined) v.round = healNumber(v.round, 0);
+    });
+  if (s.landingCheckFailures !== undefined)
+    s.landingCheckFailures = healRecord(s.landingCheckFailures, (v) => {
+      v.count = healNumber(v.count, 0);
+    });
+  if (s.modelFallback !== undefined)
+    s.modelFallback = healRecord(s.modelFallback, (v) => {
+      v.failures = healNumber(v.failures, 0);
+      v.since = healNumber(v.since, 0);
+      v.probeAt = healNumber(v.probeAt, 0);
+      v.cooldownMs = healNumber(v.cooldownMs, 0);
+    });
   return s;
 }
 
