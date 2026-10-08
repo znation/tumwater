@@ -1,13 +1,13 @@
 /** Reading a node:test-style runner's summary counts out of check output — the harness's own
  * attestation of how a declared check fared (PLANS.md 2026-09-29), so no model has to restate
  * the numbers. Split out of build-check.ts: pure parsing, no process execution, with its own
- * importers (the build_check event's shape in build-check-events.ts, the status snapshot's
- * mainCheck readers, and the UI's main-count badge). */
+ * importers (build-check.ts's parser and BuildCheckOutcome counts field, the status poll layer
+ * in status/status-polls.ts, and the UI's main-count badge in ui/badges.ts). */
 
 /** What a node:test-style runner's summary block reports, as parseTestCounts read it. The
  * build_check event carries it verbatim (build-check-events.ts spreads the outcome's counts
- * through), so the event's readers — the status snapshot's mainCheck (src/status/status-data.ts) — import
- * this shape instead of re-declaring it. */
+ * through), so the event's reader — the status poll layer's MainCheckStatus
+ * (src/status/status-polls.ts) — imports this shape instead of re-declaring it. */
 export interface TestCounts {
   tests: number;
   pass: number;
