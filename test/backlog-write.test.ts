@@ -117,6 +117,28 @@ test("a filed entry keeps the blank-line separators the rest of the backlog file
   assert.match(grown, /## Open\n\n### symptom with a body shape[^\n]*\n$/, "grown section keeps the template's blank-line shape");
 });
 
+test("an unreadable BUGS.md fails the write instead of seeding over it", async () => {
+  // A transient read failure (EACCES, EMFILE) is not the same as a missing file: treating
+  // it as "absent" makes appendEntry write the init template plus the entry over the real
+  // file, destroying every existing entry. The read must tolerate only ENOENT.
+  const repo = makeRepo();
+  await initProject(repo, "bug write unreadable");
+  fileBug(repo, "existing bug", 'tumwater bug "<symptom>"');
+  const file = path.join(repo, "BUGS.md");
+  const before = fs.readFileSync(file, "utf8");
+  fs.chmodSync(file, 0o000);
+  let err: unknown;
+  try {
+    fileBug(repo, "new bug", 'tumwater bug "<symptom>"');
+  } catch (e) {
+    err = e;
+  } finally {
+    fs.chmodSync(file, 0o644); // restore so the assertion and harness cleanup can read it
+  }
+  assert.match(String(err), /EACCES/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
 test("tumwater bug files the entry, confirms, and wakes the bugfix loop", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli bug test");

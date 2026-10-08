@@ -49,6 +49,21 @@ export function readTextOrNull(file: string): string | null {
   }
 }
 
+/** Read a text file whole, or null only when it does not exist (ENOENT) — the read half of a
+ * read-modify-write that must never mistake an unreadable file for an absent one. A permission
+ * or I/O failure (EACCES, EISDIR, EMFILE) is rethrown so the writer fails loudly, instead of
+ * seeding a fresh scaffold over the existing file and destroying its contents. Unlike
+ * readTextOrNull, whose missing-and-unreadable policy serves the render paths that must never
+ * throw. */
+export function readTextIfExists(file: string): string | null {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return null;
+    throw err;
+  }
+}
+
 /** Unlink each file, tolerating only "already absent" (ENOENT) and rethrowing any other
  * error — the unwind policy shared by the inbox paths that roll back saved images after a
  * failed submit or a failed multi-image save: a file vanished mid-roll-back needs no action,

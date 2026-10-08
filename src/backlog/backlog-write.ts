@@ -10,7 +10,7 @@
  * other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
-import { readTextOrNull, writeTextAtomic } from "../files/files.js";
+import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
@@ -42,7 +42,9 @@ function appendEntry(
   body: string,
 ): void {
   const file = path.join(root, fileName);
-  const md = readTextOrNull(file) ?? template;
+  // Read-then-write: an unreadable file must fail here, not read as "absent" and get seeded
+  // over (readTextIfExists tolerates only ENOENT — a transient EACCES must not destroy entries).
+  const md = readTextIfExists(file) ?? template;
   const lines = md.split("\n");
   // Find the section's heading line (fence-aware; a `## <sectionTitle>` quoted in a fence
   // is never it), then the section's end at the next real `## ` line.
