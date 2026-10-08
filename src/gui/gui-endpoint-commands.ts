@@ -236,7 +236,7 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
       return;
     }
     if (forSeconds * 1000 > PAUSE_FOR_MAX_MS) {
-      sendJson(res, 400, { error: `forSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} (90 days) — pause without it for a standing pause` });
+      sendJson(res, 400, { error: `forSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(forSeconds)} — pause without it for a standing pause` });
       return;
     }
   }

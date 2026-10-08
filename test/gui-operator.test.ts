@@ -347,6 +347,15 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
     assert.equal(res.status, 400, JSON.stringify(body));
     assert.match(((await res.json()) as { error: string }).error, /forSeconds/);
   }
+  // The over-cap refusal names both the cap and the offending value, like every sibling
+  // value-shape error in the handler and the CLI's shared duration-cap message, so the
+  // operator sees how far past the cap they are.
+  res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify({ paused: true, forSeconds: 91 * 86_400 }) });
+  assert.equal(res.status, 400);
+  assert.match(
+    ((await res.json()) as { error: string }).error,
+    /capped at 7776000 seconds \(90 days\) \(got 7862400\)/,
+  );
   assert.equal((readJson(pausedPath(repo)) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
 
   // A pause without forSeconds is a standing one, as before.
