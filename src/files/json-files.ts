@@ -3,10 +3,10 @@ import { ensureParentDir, writeTextAtomic } from "./files.js";
 import { parseJsonObject } from "./json-object.js";
 
 /** The harness's plain JSON marker/info/state files: tolerant reads of files written by other
- * processes, and pretty-printed overwrites — plain or atomic (tmp+rename) — whose format
- * cannot drift per writer. Split out of src/files/files.ts — which keeps the generic file operations —
- * because this is one self-contained convention with its own error policy (a missing or torn
- * file is "no data", never an error) shared by every reader and writer of those files. */
+ * processes, and pretty-printed overwrites — plain or atomic (tmp+rename) — whose format cannot
+ * drift per writer. Split out of src/files/files.ts — which keeps the generic file operations —
+ * because this is one self-contained convention with its own error policy (a missing or torn file
+ * is "no data", never an error) shared by every reader and writer of those files. */
 
 /** Read and parse a JSON *object* file, returning null when it does not exist, cannot be read
  * or parsed, or parses to a valid JSON value that is not a plain object (a scalar, `null`, or
@@ -20,8 +20,9 @@ import { parseJsonObject } from "./json-object.js";
  * array), so the object check is part of the no-data policy, not an extra one. */
 export function readJsonFile<T extends object>(file: string): T | null {
   try {
-    // The parse-or-no-data half (torn text, a scalar, `null`, an array) is src/files/json-object.ts's
-    // parseJsonObject; only the unreadable-file half keeps its own try/catch here.
+    // The parse-or-no-data half (torn text, a scalar, `null`, an array) is
+    // src/files/json-object.ts's parseJsonObject; only the unreadable-file half keeps its own
+    // try/catch here.
     return parseJsonObject(fs.readFileSync(file, "utf8")) as T;
   } catch {
     return null; // Missing or torn — no data.
