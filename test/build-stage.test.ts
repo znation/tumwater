@@ -6,7 +6,7 @@ import path from "node:path";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
-import { mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
+import { eventsLogPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 // The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects, exercised
@@ -181,6 +181,38 @@ test("swapDist retries transient directory races on dist.prev instead of abortin
     assert.ok((opts.retryDelay ?? 0) > 0, "retries are spaced out");
   }
   assert.deepEqual(fs.readdirSync(dist), ["new.js"], "the swap still lands the new build");
+});
+
+test("swapDist reports a successful swap when its superseded-staging sweep cannot even list", (t) => {
+  // The swap is committed by the staged->dist rename; the sweep that follows only deletes
+  // dead weight (superseded stagings). An unreadable staging root there must not be reported
+  // as a failed swap — the redeployer would block the restart on it while dist/ already holds
+  // the new build, leaving the fleet on the old code under a misleading "swap failed" reason.
+  // The failure must still be visible in the event feed rather than swallowed.
+  const root = tmpdir();
+  const dist = path.join(root, "dist");
+  fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  fs.mkdirSync(stagingDir(root, HEAD_B), { recursive: true });
+  fs.writeFileSync(path.join(stagingDir(root, HEAD_B), "new.js"), "new");
+  fs.mkdirSync(stagingDir(root, HEAD_C), { recursive: true }); // a superseded staging the sweep cannot see
+
+  const stagingRoot = stagingRootDir(root);
+  const real = fs.readdirSync as (...args: unknown[]) => unknown;
+  t.mock.method(fs, "readdirSync", ((p: fs.PathLike, ...args: unknown[]) => {
+    if (path.resolve(String(p)) === path.resolve(stagingRoot)) throw new Error("EACCES: simulated unreadable staging root");
+    return real(p, ...args);
+  }) as typeof fs.readdirSync);
+  try {
+    assert.doesNotThrow(() => swapDist(root, dist, HEAD_B));
+  } finally {
+    t.mock.restoreAll();
+  }
+
+  assert.deepEqual(fs.readdirSync(dist), ["new.js"], "the new build is in place despite the sweep failure");
+  const events = fs.readFileSync(eventsLogPath(root), "utf8");
+  assert.match(events, /could not list staged builds under/);
+  assert.match(events, /simulated unreadable staging root/);
 });
 
 test("compileStaged compiles the mirror worktree with the project's tsc and stamps the result", async () => {

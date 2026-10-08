@@ -6,6 +6,7 @@ import { resolveFromNodeModules } from "./build-check-detect.js";
 import { ensureDir, removeTree } from "../files/files.js";
 import { stagingDir, stagingRootDir } from "../paths.js";
 import { execFileAsync } from "../process/process.js";
+import { warnEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 
@@ -211,9 +212,52 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
       `could not move the staged build for ${shortSha(mainHead)} into ${dist}: ${errorMessage(err)}`,
     );
   }
-  removeTree(prev);
-  // Superseded staged builds (heads that moved on before their swap) are dead weight.
-  for (const entry of fs.readdirSync(stagingRootDir(root), { withFileTypes: true })) {
-    if (entry.isDirectory()) removeTree(path.join(stagingRootDir(root), entry.name));
+  // The swap is committed: the rename above put the new build at dist/. Everything below is
+  // cleanup of superseded trees — the old build stepped aside at dist.prev, and the stagings
+  // of heads that moved on before their own swap. It is dead weight a later swap or compile
+  // collects, so a removal that fails (a directory surviving removeTree's retries, an
+  // unreadable staging root) must not be reported as a failed swap: the redeployer would
+  // block the restart while dist/ already holds the new build, leaving the fleet running the
+  // old code under a misleading `restart BLOCKED: swapping the new build into place failed`.
+  // Warn and continue, the same best-effort policy pruneStaleStagings applies so pruning
+  // never fails the work it follows.
+  removeSupersededQuiet(root, prev);
+  sweepSupersededStagings(root);
+}
+
+/** Remove one post-swap leftover tree, warning instead of throwing: the swap is already
+ * committed, so a failure here is dead weight for a later pass, not a failed swap. */
+function removeSupersededQuiet(root: string, dir: string): void {
+  try {
+    removeTree(dir);
+  } catch (err) {
+    warnCleanup(root, `could not remove superseded build tree ${dir}: ${errorMessage(err)}`);
+  }
+}
+
+/** Best-effort sweep of the staging root after a successful swap: every directory left there
+ * is a superseded staging. An unreadable root or a directory that will not remove is warned
+ * and skipped, never thrown (see the caller). */
+function sweepSupersededStagings(root: string): void {
+  const stagingRoot = stagingRootDir(root);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
+  } catch (err) {
+    warnCleanup(root, `could not list staged builds under ${stagingRoot}: ${errorMessage(err)}`);
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) removeSupersededQuiet(root, path.join(stagingRoot, entry.name));
+  }
+}
+
+/** Log a post-swap cleanup failure without letting the warning itself fail the swap: if the
+ * event log is unwritable too, the new dist/ is already in place and stays the outcome. */
+function warnCleanup(root: string, message: string): void {
+  try {
+    warnEvent(root, "harness", message);
+  } catch {
+    // Cleanup must not throw; the swap already succeeded.
   }
 }
