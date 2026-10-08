@@ -65,14 +65,23 @@ function readBody(req: http.IncomingMessage): Promise<string> {
       req.off("aborted", onClose);
       req.off("close", onClose);
     };
+    /** Settle the request once: detach the listeners and return this request's buffered bytes
+     * to the shared counter. Returns false when another arm already settled it, so each
+     * terminal handler is a no-op then — the one home of the guard and teardown the arms
+     * otherwise open-coded. */
+    const settle = (): boolean => {
+      if (settled) return false;
+      settled = true;
+      cleanup();
+      releaseBuffer();
+      return true;
+    };
     function onData(chunk: Buffer): void {
       if (settled) return; // over the cap: discard — only memory would grow
       bytes += chunk.length;
       if (bytes > MAX_BODY_BYTES) {
-        settled = true;
         chunks.length = 0; // release what we kept before rejecting
-        releaseBuffer();
-        cleanup();
+        settle();
         req.resume(); // keep draining so the upload can finish and the socket closes cleanly
         // Name the offending value and the fix, like every sibling error: the operator
         // pasting an oversized prompt into the dashboard sees how far over they are
@@ -89,18 +98,11 @@ function readBody(req: http.IncomingMessage): Promise<string> {
       inFlightBufferedBytes += chunk.length;
     }
     function onEnd(): void {
-      if (settled) return;
-      settled = true;
-      const body = Buffer.concat(chunks).toString("utf8");
-      cleanup();
-      releaseBuffer();
-      resolve(body);
+      if (!settle()) return;
+      resolve(Buffer.concat(chunks).toString("utf8"));
     }
     function onError(err: Error): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      releaseBuffer();
+      if (!settle()) return;
       reject(err);
     }
     // A request whose body never completes emits `aborted`/`close` with neither `end` nor
@@ -111,10 +113,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     // onEnd has settled by then, so this is the premature-close arm alone. Listen to both:
     // `aborted` names the client-side abort and `close` the underlying connection teardown.
     function onClose(): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      releaseBuffer();
+      if (!settle()) return;
       reject(new Error("request closed before its body was fully read"));
     }
     req.on("data", onData);
