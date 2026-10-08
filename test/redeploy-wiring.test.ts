@@ -8,7 +8,7 @@ import { createRedeployer, redeployDeps } from "../src/redeploy/redeploy.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
-import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 
 /** The production WIRING half of the self-redeploy tests, mirroring the src split
@@ -33,7 +33,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "project");
-  const greenHead = sh(root, "git", "rev-parse", "HEAD");
+  const greenHead = headSha(root);
 
   const events: HarnessEventInput[] = [];
   const deps = redeployDeps(root, { sha: greenHead, builtAt: 1, root }, (e) => events.push(e), async () => null);
@@ -45,7 +45,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
     projManifest({ test: "node -e 'process.exit(1)'" }),
   );
   sh(root, "git", "commit", "-aqm", "break the suite");
-  const redHead = sh(root, "git", "rev-parse", "HEAD");
+  const redHead = headSha(root);
   assert.equal(await deps.mainGreen(redHead), false, "a failing suite reads red");
 
   // Each check priced exactly one baseline build_check event through the wiring's own log —
@@ -60,7 +60,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   );
   // The mirror worktree the closure created is real and repointed at each asked head.
   assert.equal(
-    sh(mirrorWorktreePath(root), "git", "rev-parse", "HEAD"),
+    headSha(mirrorWorktreePath(root)),
     redHead,
     "the mirror sits at the head its check verified",
   );
@@ -81,14 +81,14 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   // (the gate's flake rule, BUGS.md 2026-09-30) — instead of waiting for role ticks that will
   // never baseline a SHA that is no longer main's tip.
   sh(root, "git", "commit", "-q", "--allow-empty", "-m", "another red tree, never baselined");
-  const coldRedHead = sh(root, "git", "rev-parse", "HEAD");
+  const coldRedHead = headSha(root);
   assert.equal(
     await deps.buildRed(coldRedHead),
     true,
     "a cold-cache red verdict is established by the witness check and survives its confirmation re-run",
   );
   assert.equal(
-    sh(witnessWorktreePath(root), "git", "rev-parse", "HEAD"),
+    headSha(witnessWorktreePath(root)),
     coldRedHead,
     "the witness worktree sits at the build SHA it verified",
   );
@@ -117,7 +117,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   const failOnce = "node -e 'const fs=require(\"fs\"),p=\".flake-marker\";if(fs.existsSync(p))process.exit(0);fs.writeFileSync(p,\"x\");process.exit(1)'";
   fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: failOnce }));
   sh(root, "git", "commit", "-aqm", "a suite that fails once, then passes");
-  const flakeHead = sh(root, "git", "rev-parse", "HEAD");
+  const flakeHead = headSha(root);
   assert.equal(
     await deps.buildRed(flakeHead),
     false,
@@ -155,7 +155,7 @@ test("createRedeployer composes the production Redeployer from the running build
   // Through the real wiring, a non-self-hosted build takes no action on any main move — and
   // never asks the successor's startup gate or writes the restart record, which only a
   // restart decision touches.
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = headSha(root);
   assert.equal(await r.poll(head, IDLE, true), "none");
   assert.equal(await r.poll(head, IDLE, true), "none", "the inert verdict is not a one-poll accident");
   assert.deepEqual(events, [], "no build_stale, no restart events");
@@ -176,7 +176,7 @@ test("buildRed with no declared check answers unknown (null), not not-red", asyn
   const root = makeRepo(); // no package.json, no declared check anywhere
   const events: HarnessEventInput[] = [];
   const deps = redeployDeps(root, { sha: "stale", builtAt: 1, root }, (e) => events.push(e), async () => null);
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = headSha(root);
   assert.equal(await deps.buildRed(head), null, "no check means no verdict, not a green one");
   assert.deepEqual(events, [], "a null verdict costs no suite run and logs no build_check");
 });
@@ -192,7 +192,7 @@ test("the staleness, compile, and swap closures drive the real mechanics in a fi
   fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(0)'" }));
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "project");
-  const buildSha = sh(root, "git", "rev-parse", "HEAD");
+  const buildSha = headSha(root);
   const deps = redeployDeps(root, { sha: buildSha, builtAt: 1, root }, () => {}, async () => null);
 
   // A build sitting at main's head is fresh. A commit touching none of the build inputs
@@ -202,14 +202,14 @@ test("the staleness, compile, and swap closures drive the real mechanics in a fi
   fs.writeFileSync(path.join(root, "NOTES.md"), "docs only\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "docs");
-  const docsHead = sh(root, "git", "rev-parse", "HEAD");
+  const docsHead = headSha(root);
   assert.deepEqual(await deps.staleness(docsHead), { stale: false, aheadCommits: 1 });
 
   // One package.json commit later the same closure reads stale with the ahead count the
   // dashboards publish.
   fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
   sh(root, "git", "commit", "-aqm", "move main");
-  const newHead = sh(root, "git", "rev-parse", "HEAD");
+  const newHead = headSha(root);
   assert.deepEqual(await deps.staleness(newHead), { stale: true, aheadCommits: 2 });
 
   // A sha that is no commit of this repo reads null — the "not our build" verdict isSelfHosted
@@ -224,7 +224,7 @@ test("the staleness, compile, and swap closures drive the real mechanics in a fi
   assert.equal(compiled.ok, false, "a fixture without typescript cannot stage a build");
   assert.match(compiled.detail, /typescript is not installed/);
   assert.equal(
-    sh(mirrorWorktreePath(root), "git", "rev-parse", "HEAD"),
+    headSha(mirrorWorktreePath(root)),
     newHead,
     "the compile's mirror sits at the head it was to compile",
   );

@@ -16,7 +16,7 @@ import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { advanceMain } from "./lander-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
-import { assertWorktreeSettled, commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { assertWorktreeSettled, commitIn, gitOnlyBinDir, headSha, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
@@ -69,7 +69,7 @@ test("a clean rebase lands as changed with a merged event and linear history", a
 
   assert.equal(result, "changed");
   assert.equal(calls.length, 0, "no conflict — pi is never invoked");
-  assert.equal(mainSha(root), sh(wt, "git", "rev-parse", "HEAD"));
+  assert.equal(mainSha(root), headSha(wt));
   assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
   assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "", "history stays linear");
   const merged = eventsOfType(root, "merged");
@@ -306,7 +306,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
   commitIn(wt, "first edit");
   fs.writeFileSync(path.join(wt, "seed.txt"), "two\n");
   commitIn(wt, "second edit");
-  const branchHead = sh(wt, "git", "rev-parse", "HEAD");
+  const branchHead = headSha(wt);
   fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
   commitIn(root, "main edit");
   const mainBefore = mainSha(root);
@@ -319,7 +319,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
 
   assert.equal(result, "merge_conflict", "one resolution attempt per tick — no retry loop");
   assertWorktreeSettled(wt);
-  assert.equal(sh(wt, "git", "rev-parse", "HEAD"), branchHead, "abort restored the branch");
+  assert.equal(headSha(wt), branchHead, "abort restored the branch");
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "two\n");
   assert.equal(mainSha(root), mainBefore);
   assert.equal(await aheadOfMain(wt, "main"), 2, "both commits survive for the next attempt");
@@ -368,7 +368,7 @@ test("the landing-flow git helpers are exported from landing-git.js (regression)
   commitIn(root, "main edit");
   assert.equal(await landingGit.rebaseOntoMain(wt, "main"), true);
   assert.equal(await landingGit.ffMainTo(root, branchName("improve"), "main"), true);
-  assert.equal(mainSha(root), sh(wt, "git", "rev-parse", "HEAD"));
+  assert.equal(mainSha(root), headSha(wt));
 });
 
 /** A detached worktree (no branch) with one commit ahead of main; returns its head sha.
@@ -379,7 +379,7 @@ function detachedAheadOfMain(repo: string): string {
   fs.writeFileSync(path.join(wt, "new.txt"), "hi\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "detached work");
-  return sh(wt, "git", "rev-parse", "HEAD");
+  return headSha(wt);
 }
 
 /** The regression merge queue 2/5 exists for: the lander pins a BARE SHA (a branch ref tracks
@@ -394,7 +394,7 @@ test("a detached worktree's pinned sha lands when main moved after the commit (f
   const wt = await ensureDetachedWorktree(root, mergeWorktreePath(root), "main");
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "detached work");
-  const pinnedSha = sh(wt, "git", "rev-parse", "HEAD").trim();
+  const pinnedSha = headSha(wt);
   // Advance main after the commit: the rebase must rewrite the detached head on top of it.
   fs.writeFileSync(path.join(root, "other.txt"), "main\n");
   commitIn(root, "main advance");
@@ -405,7 +405,7 @@ test("a detached worktree's pinned sha lands when main moved after the commit (f
   assert.equal(result, "changed", "the ff targets the post-rebase tip, not the stale pinned sha");
   const mainHead = mainSha(root);
   assert.notEqual(mainHead, pinnedSha, "the rebase rewrote the commit — main is NOT at the pin");
-  assert.equal(sh(wt, "git", "rev-parse", "HEAD"), mainHead);
+  assert.equal(headSha(wt), mainHead);
   assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
 });
 
@@ -589,7 +589,7 @@ test("a no-op rebase skips the re-check and seeds the baseline for the landed SH
   sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
-  const head = sh(wt, "git", "rev-parse", "HEAD");
+  const head = headSha(wt);
   const { ctx } = makeCtx(root);
 
   // The gate's pre-check just ran green on exactly this head (GateResult.verifiedHead).
@@ -613,7 +613,7 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   sh(wt, "git", "reset", "--hard", "main");
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
-  const head = sh(wt, "git", "rev-parse", "HEAD");
+  const head = headSha(wt);
   const { ctx } = makeCtx(root);
   ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true" } };
   const mainBefore = mainSha(root);

@@ -22,7 +22,7 @@ import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
-import { commitIn, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./lander-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
@@ -37,17 +37,17 @@ test("applyRevision re-applies a rejected change onto moved main as uncommitted 
   sh(root, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(root, "feature.ts"), "export const feature = true;\n");
   commitIn(root, "the rejected work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   // main moves in a file the rejected change does not touch.
   fs.writeFileSync(path.join(root, "other.ts"), "export const other = true;\n");
   commitIn(root, "move main");
-  const mainSha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const mainSha = headSha(root);
 
   assert.equal(await applyRevision(root, "main", sha), true);
   assert.equal(fs.readFileSync(path.join(root, "feature.ts"), "utf8"), "export const feature = true;\n");
   assert.equal(await isDirty(root), true, "the re-applied diff is uncommitted");
-  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), mainSha, "HEAD is still main");
+  assert.equal(headSha(root), mainSha, "HEAD is still main");
 });
 
 test("applyRevision on a conflict resets to clean main and returns false", async () => {
@@ -55,7 +55,7 @@ test("applyRevision on a conflict resets to clean main and returns false", async
   sh(root, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(root, "seed.txt"), "theirs\n");
   commitIn(root, "the rejected work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   fs.writeFileSync(path.join(root, "seed.txt"), "main version\n");
   commitIn(root, "main moved the same line");
@@ -70,7 +70,7 @@ test("applyWithConflicts applies a clean diff as uncommitted edits with no confl
   sh(root, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(root, "feature.ts"), "export const feature = true;\n");
   commitIn(root, "the handed-back work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   fs.writeFileSync(path.join(root, "other.ts"), "export const other = true;\n");
   commitIn(root, "move main");
@@ -86,7 +86,7 @@ test("applyWithConflicts leaves the conflict markers as ordinary uncommitted edi
   sh(root, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(root, "seed.txt"), "theirs\n");
   commitIn(root, "the handed-back work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   fs.writeFileSync(path.join(root, "seed.txt"), "main version\n");
   commitIn(root, "main moved the same line");
@@ -110,7 +110,7 @@ test("applyWithConflicts decodes the C-quoted name of a non-ASCII conflicted fil
   sh(root, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(root, "héllo.md"), "theirs\n");
   commitIn(root, "the handed-back work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   fs.writeFileSync(path.join(root, "héllo.md"), "main version\n");
   commitIn(root, "main moved the same line");
@@ -122,20 +122,20 @@ test("applyWithConflicts decodes the C-quoted name of a non-ASCII conflicted fil
 
 test("applyWithConflicts on a non-conflict failure resets to main and reports not applied", async () => {
   const root = makeRepo();
-  const before = sh(root, "git", "rev-parse", "HEAD").trim();
+  const before = headSha(root);
   const result = await applyWithConflicts(root, "main", "0".repeat(40));
   assert.deepEqual(result, { applied: false, conflicted: [] });
-  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), before);
+  assert.equal(headSha(root), before);
   assert.equal(await isDirty(root), false, "clean main after a failed apply");
 });
 
 test("applyRevision resets to clean main when the rejected commit no longer exists", async () => {
   const root = makeRepo();
-  const before = sh(root, "git", "rev-parse", "HEAD").trim();
+  const before = headSha(root);
   // A missing object makes `git merge-base main <sha>` fail, the first failure mode the
   // function names: the worktree must be left at clean main, not part-way into a pick.
   assert.equal(await applyRevision(root, "main", "0".repeat(40)), false);
-  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), before);
+  assert.equal(headSha(root), before);
   assert.equal(await isDirty(root), false, "clean main after a missing object");
 });
 
@@ -144,17 +144,17 @@ test("applyWithConflicts resets to main when the cherry-pick fails without confl
   sh(root, "git", "checkout", "--detach");
   fs.writeFileSync(path.join(root, "landed.ts"), "export const landed = true;\n");
   commitIn(root, "work main already has");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   // main fast-forwards onto the same commit, so merge-base is the commit itself and the
   // `base..sha` range is empty: cherry-pick fails with no unmerged paths. Unlike the
   // bogus-sha case above (which fails at merge-base), this reaches the picked===null arm.
   sh(root, "git", "merge", "--ff-only", sha);
-  const before = sh(root, "git", "rev-parse", "HEAD").trim();
+  const before = headSha(root);
 
   const result = await applyWithConflicts(root, "main", sha);
   assert.deepEqual(result, { applied: false, conflicted: [] });
-  assert.equal(sh(root, "git", "rev-parse", "HEAD").trim(), before);
+  assert.equal(headSha(root), before);
   assert.equal(await isDirty(root), false, "clean main after a failed apply");
 });
 
@@ -402,7 +402,7 @@ test("the director never gets a revision: a rejection leaves no revision state",
     sh(root, "git", "checkout", "--detach");
     fs.writeFileSync(path.join(root, "seed.txt"), "director work\n");
     commitIn(root, "director work");
-    const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+    const sha = headSha(root);
     sh(root, "git", "checkout", "main");
     await setRef(root, landingRefName(DIRECTOR_ROLE), sha);
     const state = freshLoopState(DIRECTOR_ROLE);
@@ -451,7 +451,7 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
       commitTrailer(role, 7, 3, 100, undefined, 1),
     ),
   );
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   await setRef(root, landingRefName(role), sha);
 
   const recovered = await recoverLeftover({ root, role, mainBranch: "main", tick: 8, wt: root });
@@ -471,7 +471,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
   fs.writeFileSync(path.join(repo, "seed.txt"), "rejected version\n");
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "the rejected work");
-  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(repo);
   sh(repo, "git", "checkout", "main");
   fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
   sh(repo, "git", "commit", "-am", "main moved the same line");
@@ -514,7 +514,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
 // queued to be retried every tick.
 test("a revision whose diff no longer applies falls back to the plain rejection", async () => {
   const repo = await initializedRepo();
-  const rejected = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const rejected = headSha(repo);
   await setRef(repo, rejectedRefName("improve"), rejected);
 
   const prompts = path.join(tmpdir(), "revision-gone-prompts.log");
@@ -549,7 +549,7 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
 test("a landed revision deletes the rejected ref", async () => {
   const root = makeRepo();
   const role = "improve";
-  const rejected = sh(root, "git", "rev-parse", "HEAD").trim();
+  const rejected = headSha(root);
   assert.equal(await setRef(root, rejectedRefName(role), rejected), true, "the rejected ref is set");
   const state = freshLoopState(role);
   const revision = {
@@ -569,7 +569,7 @@ test("a landed revision deletes the rejected ref", async () => {
 test("a fresh landing leaves a pending revision's rejected ref alone", async () => {
   const root = makeRepo();
   const role = "improve";
-  const rejected = sh(root, "git", "rev-parse", "HEAD").trim();
+  const rejected = headSha(root);
   assert.equal(await setRef(root, rejectedRefName(role), rejected), true, "the rejected ref is set");
   const state = freshLoopState(role);
   const fresh = { role, sha: "b".repeat(40), tick: 3, summary: "fresh work", enqueuedAt: Date.now() };

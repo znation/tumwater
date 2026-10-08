@@ -14,7 +14,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { assertClean, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRanMarker, withApprovePi } from "./fakes/fake-pi.js";
 import {
   ROLE,
@@ -374,7 +374,7 @@ test("a synced rebase moves the landing ref so a failed gate keeps the tree that
     // head — it is the rebased commit the vet's pooled slot sits at.
     const slot = readSlotsState(root).slots.find((s) => s.lastRole === ROLE)?.dir;
     assert.ok(slot, "the vet released the pooled slot it leased");
-    const syncedHead = sh(slot, "git", "rev-parse", "HEAD").trim();
+    const syncedHead = headSha(slot);
     assert.notEqual(syncedHead, sha, "the rebase rewrote the pin onto main's fix");
     assert.equal(
       await refSha(root, REF),
@@ -524,7 +524,7 @@ test("a fix-claim-blocked landing retries once, then rejects with the block reas
   // .tumwater/worktrees/improve entry into the pin and the diff would not be md-only.
   sh(root, "git", "add", "BUGS.md");
   sh(root, "git", "commit", "-m", "fix claim");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, REF, sha);
   // Main moves after the pin, so the in-lock rebase rewrites the head and verifyLanding's
@@ -662,7 +662,7 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
   fs.writeFileSync(path.join(root, "more.txt"), "more by alpha\n");
   sh(root, "git", "add", "more.txt");
   sh(root, "git", "commit", "-m", "more alpha work");
-  shas.alpha = sh(root, "git", "rev-parse", "HEAD");
+  shas.alpha = headSha(root);
   await setRef(root, landingRefName("alpha"), shas.alpha);
   sh(root, "git", "checkout", "main");
   const mainBefore = mainSha(root);
@@ -859,7 +859,7 @@ test("the gate re-pins the landing ref to the head its verdict judged", async ()
     fs.appendFileSync(path.join(wt, "extra.txt"), "work after queueing\n");
     sh(wt, "git", "add", "-A");
     sh(wt, "git", "commit", "-m", "later work");
-    const judged = sh(wt, "git", "rev-parse", "HEAD").trim();
+    const judged = headSha(wt);
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
 

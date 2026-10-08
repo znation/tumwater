@@ -35,7 +35,7 @@ import {
 } from "./fixtures/orchestrator-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
@@ -62,7 +62,7 @@ function seedSurvivorCommit(repo: string, file: string, label: string): string {
   const parentTree = sh(repo, "git", "ls-tree", "HEAD");
   const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\t${file}\n`);
   const sha = gitIn(
-    ["commit-tree", tree, "-p", sh(repo, "git", "rev-parse", "HEAD"), "-m", `tumwater(feature): ${label}`],
+    ["commit-tree", tree, "-p", headSha(repo), "-m", `tumwater(feature): ${label}`],
     "",
   );
   sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
@@ -225,7 +225,7 @@ test("an entry whose sha main already holds is dropped at the drain without a la
       "the change to land on main",
     );
     // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
-    const sha = sh(repo, "git", "rev-parse", "HEAD");
+    const sha = headSha(repo);
     enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
     await waitFor(() => queueDepth(repo) === 0, "the stale entry to be dropped");
     assert.equal(
@@ -256,7 +256,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
   const repo = await makeFastRepo("stale marker drain e2e test", ["clean"]);
   // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
-  const sha = sh(repo, "git", "rev-parse", "HEAD");
+  const sha = headSha(repo);
   enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "already merged", enqueuedAt: Date.now() });
   writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
   assert.ok(fs.existsSync(landingStatePath(repo)), "fixture sanity: the stale marker exists");
@@ -461,7 +461,7 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
     fs.writeFileSync(path.join(repo, `${role}.txt`), `${role}\n`);
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", `${role} work`);
-    const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+    const sha = headSha(repo);
     await setRef(repo, landingRefName(role), sha);
     enqueueLanding(repo, { role, sha, tick: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }

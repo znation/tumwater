@@ -11,7 +11,7 @@ import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit a
 // previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is
@@ -34,7 +34,7 @@ async function pinnedFixture(): Promise<{ root: string; sha: string }> {
   fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "stranded work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, landingRefName(ROLE), sha);
   return { root, sha };
@@ -160,7 +160,7 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
       commitTrailer("improve", 5, 44, 20_000, 4.2),
     ].join("\n"),
   );
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, landingRefName(ROLE), sha);
   const wt = await ensureWorktree(root, ROLE, "main");
@@ -200,7 +200,7 @@ test("an unpinned commit ahead of main (crash in the commit→pin window) is ado
   fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "committed but the pin write never happened");
-  const tip = sh(wt, "git", "rev-parse", "HEAD").trim();
+  const tip = headSha(wt);
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "fixture sanity: no pin exists");
 
   assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
@@ -220,7 +220,7 @@ test("a failed pin adoption is logged and queues nothing: the commit stays on th
   fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "committed but the pin write never happened");
-  const tip = sh(wt, "git", "rev-parse", "HEAD").trim();
+  const tip = headSha(wt);
   // A read-only .git tree makes `git update-ref` fail (cannot create or lock the ref) while
   // every read (rev-parse, rev-list) still succeeds — a standing stand-in for a failed pin
   // write. Recursive: git needs write permission on the specific ref directory it locks.
@@ -231,7 +231,7 @@ test("a failed pin adoption is logged and queues nothing: the commit stays on th
     assert.deepEqual(recovered, { kind: "unpinned", sha: tip }, "the caller learns the commit is still unpinned");
     assert.deepEqual(queuedLandings(root), [], "a landing without its pin is never queued");
     assert.equal(await refSha(root, landingRefName(ROLE)), null, "no pin was created");
-    assert.equal(sh(wt, "git", "rev-parse", "HEAD").trim(), tip, "the commit is still on the branch");
+    assert.equal(headSha(wt), tip, "the commit is still on the branch");
     // The failed adoption is recorded for the transcript, not swallowed.
     const warn = readEvents(root).find((e) => e.type === "warning");
     assert.ok(warn, "the adoption failure is logged as a warning event");
@@ -253,7 +253,7 @@ test("an unreadable ref read and an unreadable worktree both read as no leftover
 test("deleteRef is idempotent (terminal-outcome cleanup can run twice)", async () => {
   const root = makeRepo();
   sh(root, "git", "commit", "--allow-empty", "-m", "pin target");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   await setRef(root, landingRefName(ROLE), sha);
 
   await deleteRef(root, landingRefName(ROLE));
@@ -273,7 +273,7 @@ async function pinnedEmptyMessageFixture(): Promise<{ root: string; sha: string 
   fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "--allow-empty-message", "-m", "");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, landingRefName(ROLE), sha);
   return { root, sha };

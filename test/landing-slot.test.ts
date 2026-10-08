@@ -34,7 +34,7 @@ import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
@@ -324,7 +324,7 @@ test("a queued landing's record names each phase while it runs: the gate's check
   fs.appendFileSync(path.join(root, "seed.txt"), "the work\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "the work");
-  const sha = sh(root, "git", "rev-parse", "HEAD");
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, landingRefName("improve"), sha);
   const entry: LandingEntry = { role: "improve", sha, tick: 3, summary: "the work", enqueuedAt: Date.now() };

@@ -14,7 +14,7 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing/landing-git.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
-import { assertWorktreeSettled, commitIn, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
+import { assertWorktreeSettled, commitIn, headSha, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
 
 // Behavioral coverage for the landing flow's git plumbing (landing-git.ts). The export pin in
 // landing-merge.test.ts only checks that these helpers exist; these tests drive real rebases,
@@ -83,10 +83,10 @@ test("rebaseOntoMainLeaveConflicts returns failed and cleans up when the rebase 
 
 test("rebaseOntoMain returns false on a conflict and aborts, leaving the worktree settled", async () => {
   const { wt } = await conflictingSetup();
-  const before = sh(wt, "git", "rev-parse", "HEAD");
+  const before = headSha(wt);
   assert.equal(await rebaseOntoMain(wt, "main"), false);
   assertWorktreeSettled(wt);
-  assert.equal(sh(wt, "git", "rev-parse", "HEAD"), before, "the branch is back at its original tip");
+  assert.equal(headSha(wt), before, "the branch is back at its original tip");
 });
 
 test("continueRebase finishes the rebase with the resolution and returns the new HEAD", async () => {
@@ -94,7 +94,7 @@ test("continueRebase finishes the rebase with the resolution and returns the new
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   fs.writeFileSync(path.join(wt, "seed.txt"), "merged line\n");
   const head = await continueRebase(wt);
-  assert.equal(head, sh(wt, "git", "rev-parse", "HEAD"));
+  assert.equal(head, headSha(wt));
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "merged line\n");
   assertWorktreeSettled(wt);
   // The rebase kept history linear: the resolved commit now sits on top of main's tip.
@@ -108,13 +108,13 @@ test("continueRebase finishes cleanly when the resolution leaves no unique conte
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   fs.writeFileSync(path.join(wt, "seed.txt"), "main line\n");
   const head = await continueRebase(wt);
-  assert.equal(head, sh(wt, "git", "rev-parse", "HEAD"));
+  assert.equal(head, headSha(wt));
   assertWorktreeSettled(wt);
 });
 
 test("mainCommitsTouching lists only main commits touching the given files, newest first", async () => {
   const { root, wt } = await initializedWorktree();
-  const fork = sh(wt, "git", "rev-parse", "HEAD").trim();
+  const fork = headSha(wt);
   fs.writeFileSync(path.join(root, "touched.txt"), "one\n");
   commitIn(root, "main touch one");
   fs.writeFileSync(path.join(root, "other.txt"), "other\n");
@@ -133,7 +133,7 @@ test("mainCommitsTouching lists only main commits touching the given files, newe
 
 test("mainCommitsTouching caps the list and the body, reporting what it dropped", async () => {
   const { root, wt } = await initializedWorktree();
-  const fork = sh(wt, "git", "rev-parse", "HEAD").trim();
+  const fork = headSha(wt);
   for (let i = 0; i < 16; i++) {
     fs.writeFileSync(path.join(root, "touched.txt"), `line ${i}\n`);
     commitIn(root, `touch ${i}`);
@@ -165,7 +165,7 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "landed.txt"), "landed\n");
   commitIn(wt, "landing candidate");
-  const ref = sh(wt, "git", "rev-parse", "HEAD");
+  const ref = headSha(wt);
   const lock = primaryWorktreeLockPath(root);
   const landed = path.join(root, "landed.txt");
   const ready = path.join(root, "child-ready");

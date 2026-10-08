@@ -19,7 +19,7 @@ import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
-import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -35,7 +35,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   fs.writeFileSync(path.join(wt, "unpinned.txt"), "committed but unpinned\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "the pin write fails");
-  const sha = sh(wt, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(wt);
 
   // Block the adoption: a leftover lock file makes update-ref fail without touching the ref.
   const lockDir = path.join(repo, ".git", "refs", "tumwater", "landing");

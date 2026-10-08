@@ -5,7 +5,7 @@ import path from "node:path";
 import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing/landing-git.js";
 import { loadConfig } from "../src/config/config.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { assertClean, commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { assertClean, commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 /** landing-git.ts's config write-back across a landing that untracks tumwater.json, split out
  * of landing-merge.test.ts (whose mergeToMain clusters stay there): these tests exercise
@@ -33,7 +33,7 @@ async function untrackingBranch(root: string): Promise<string> {
   fs.rmSync(path.join(wt, "tumwater.json"));
   fs.appendFileSync(path.join(wt, ".gitignore"), "tumwater.json\n");
   commitIn(wt, "untrack the config");
-  return sh(wt, "git", "rev-parse", "HEAD");
+  return headSha(wt);
 }
 
 test("a landing that untracks the config preserves the live file byte-identical", async () => {
@@ -62,7 +62,7 @@ test("a landing whose tree keeps the config leaves the live file untouched", asy
   const wt = await ensureWorktree(root, "improve", "main");
   fs.writeFileSync(path.join(wt, "seed.txt"), "changed\n");
   commitIn(wt, "edit seed");
-  const sha = sh(wt, "git", "rev-parse", "HEAD");
+  const sha = headSha(wt);
 
   assert.equal(await configBytesToPreserve(root, sha), null, "config present in ref: no preserve");
   assert.ok(await ffMainTo(root, sha, "main"));
@@ -78,7 +78,7 @@ test("a landing on a repo with no config needs no preserve and still fast-forwar
   const wt = await ensureWorktree(root, "improve", "main");
   fs.writeFileSync(path.join(wt, "new.txt"), "new\n");
   commitIn(wt, "add a file");
-  const sha = sh(wt, "git", "rev-parse", "HEAD");
+  const sha = headSha(wt);
 
   assert.equal(await configBytesToPreserve(root, sha), null, "no live config: nothing to preserve");
   assert.ok(await ffMainTo(root, sha, "main"));

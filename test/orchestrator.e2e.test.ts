@@ -39,7 +39,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { headSha, landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -424,7 +424,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   const state = freshLoopState("organize");
   state.ticks = 1;
   state.lastResult = "no_change";
-  state.lastMainHead = sh(repo, "git", "rev-parse", "HEAD");
+  state.lastMainHead = headSha(repo);
   state.lastTickEndedAt = Date.now() - 60_000;
   state.nextRunAt = Date.now() - DEFER_MAX_MS - 60_000;
   saveLoopState(repo, state);

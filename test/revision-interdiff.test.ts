@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { revisionInterdiff } from "../src/git/git-diff.js";
 import { headOf } from "../src/git/git.js";
-import { commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 /** Unit coverage for the revision interdiff (plans/revise-rejected.md part 2/2): the re-review
@@ -17,7 +17,7 @@ test("revisionInterdiff shows only the revision's amendment, not main's movement
   sh(root, "git", "checkout", "-b", "rejected-work");
   fs.writeFileSync(path.join(root, "feature.ts"), "export const a = 1;\nexport const b = 2;\n");
   commitIn(root, "the rejected change");
-  const priorSha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const priorSha = headSha(root);
   // main moves on in an unrelated file while the review runs.
   sh(root, "git", "checkout", "main");
   fs.writeFileSync(path.join(root, "other.ts"), "export const other = true;\n");
@@ -51,7 +51,7 @@ test("revisionInterdiff caps its total length and never splits a surrogate pair"
   sh(root, "git", "checkout", "-b", "rejected-work");
   fs.writeFileSync(path.join(root, "feature.ts"), "export const a = 1;\n");
   commitIn(root, "the rejected change");
-  const priorSha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const priorSha = headSha(root);
   // The revision pads past the cap and carries an astral character after the padding, so a
   // cut can be aimed exactly between the emoji's two UTF-16 units.
   // Trailing padding past the emoji keeps the full interdiff longer than the aimed cap, so

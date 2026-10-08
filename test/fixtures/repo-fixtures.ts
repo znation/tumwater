@@ -62,6 +62,14 @@ export function mainSha(dir: string): string {
   return sh(dir, "git", "rev-parse", "main");
 }
 
+/** The current commit sha of `dir` (its HEAD), wherever it is a worktree or the repo itself —
+ * the one home of the tests' 129 `sh(dir, "git", "rev-parse", "HEAD")` reads, so the ref
+ * spelling and the `sh()` trimEnd contract cannot drift between them. (orchestrator-director's
+ * shaOnSideBranch keeps its own read through a local spawnSync wrapper, `g`.) */
+export function headSha(dir: string): string {
+  return sh(dir, "git", "rev-parse", "HEAD");
+}
+
 /** Assert a repo or worktree dir has a clean `git status --porcelain` — the single home of the
  * tests' "no stray edits / no uncommitted work" assertion (init, cli, lander, landing, and
  * loop tests carried ~20 identical copies). An optional label is forwarded so the sites that

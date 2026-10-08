@@ -43,7 +43,7 @@ import {
 import { branchName } from "../src/paths.js";
 import { pidAlive } from "../src/process/process.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
-import { mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 
 test("isGitRepo and hasCommits", async () => {
@@ -123,21 +123,21 @@ test("ffMainTo works via ref push when root is on another branch", async () => {
 test("setRef creates and moves a ref; refSha reads it back", async () => {
   const repo = makeRepo();
   sh(repo, "git", "commit", "--allow-empty", "-m", "one");
-  const first = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const first = headSha(repo);
 
   assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), null, "absent before creation");
   await setRef(repo, "refs/tumwater/landing/improve", first);
   assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), first);
 
   sh(repo, "git", "commit", "--allow-empty", "-m", "two");
-  const second = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const second = headSha(repo);
   await setRef(repo, "refs/tumwater/landing/improve", second);
   assert.equal(await refSha(repo, "refs/tumwater/landing/improve"), second, "re-pinning moves the ref");
 });
 
 test("deleteRef removes a ref and is idempotent on an absent one", async () => {
   const repo = makeRepo();
-  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(repo);
   await setRef(repo, "refs/tumwater/landing/improve", sha);
 
   await deleteRef(repo, "refs/tumwater/landing/improve");
@@ -147,9 +147,9 @@ test("deleteRef removes a ref and is idempotent on an absent one", async () => {
 
 test("isMergedInto is true for ancestors and equality, false otherwise", async () => {
   const repo = makeRepo();
-  const base = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const base = headSha(repo);
   sh(repo, "git", "commit", "--allow-empty", "-m", "one");
-  const one = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const one = headSha(repo);
 
   assert.ok(await isMergedInto(repo, base, "main"), "an ancestor counts as contained");
   assert.ok(await isMergedInto(repo, one, "main"), "the tip itself counts (equality)");
@@ -157,7 +157,7 @@ test("isMergedInto is true for ancestors and equality, false otherwise", async (
   // A commit on a side branch that main does not hold.
   sh(repo, "git", "checkout", "-b", "side");
   sh(repo, "git", "commit", "--allow-empty", "-m", "side work");
-  const side = sh(repo, "git", "rev-parse", "HEAD").trim();
+  const side = headSha(repo);
   assert.ok(!(await isMergedInto(repo, side, "main")), "unlanded work is not contained");
 });
 
@@ -563,7 +563,7 @@ function patchFixture(): { repo: string; side: string } {
   sh(repo, "git", "checkout", "-q", "-b", "side");
   fs.writeFileSync(path.join(repo, "a.txt"), lines.map((l, i) => (i === 5 ? "changed" : l)).join("\n") + "\n");
   sh(repo, "git", "commit", "-am", "side change");
-  return { repo, side: sh(repo, "git", "rev-parse", "HEAD") };
+  return { repo, side: headSha(repo) };
 }
 
 /** Advance main by one commit that rewrites a.txt with `edit`, then return to `side`. */
@@ -584,7 +584,7 @@ test("patchId is the same for one diff at two shas: a clean rebase onto a moved 
   // The old head, against the moved main, still reads its own change (the merge-base range).
   assert.equal(await patchId(repo, "main", side), before);
   sh(repo, "git", "rebase", "-q", "main");
-  const rebased = sh(repo, "git", "rev-parse", "HEAD");
+  const rebased = headSha(repo);
   assert.notEqual(rebased, side, "the rebase rewrote the sha");
   assert.equal(await patchId(repo, "main", rebased), before, "same diff, same patch-id");
 });

@@ -8,7 +8,7 @@ import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
-import { commitIn, makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 
 // `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests reach
 // it through child-process CLI runs, whose coverage node --test never sees, and the collector
@@ -97,7 +97,7 @@ test("a slot leased for a role's tick serves its change to the diff reader", asy
   });
 
   // The legacy checkout still points at main, so only the resolver can yield the slot's work.
-  assert.equal(sh(legacy, "git", "rev-parse", "HEAD"), sh(repo, "git", "rev-parse", "main"));
+  assert.equal(headSha(legacy), sh(repo, "git", "rev-parse", "main"));
   const view = await collectRoleChange(repo, "feature");
   assert.equal(view.state, "ready");
   assert.equal(view.ahead, 1);

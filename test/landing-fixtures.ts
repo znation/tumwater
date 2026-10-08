@@ -22,7 +22,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./fixtures/pi-events.js";
 
 /** Shared fixtures for the landing-drain tests — landing-drain.test.ts and
@@ -43,7 +43,7 @@ export function pinnedCommit(root: string, role: string): string {
   fs.appendFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", `work by ${role}`);
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   return sha;
 }

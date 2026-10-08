@@ -13,7 +13,7 @@ import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
-import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { headSha, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { runPi } from "../src/pi/pi.js";
 import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
@@ -76,7 +76,7 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
   fs.appendFileSync(path.join(root, "seed.txt"), "the work\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "the work");
-  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, REF, sha);
   const wt = await ensureWorktree(root, ROLE, "main"); // the role worktree: clean at main
@@ -140,7 +140,7 @@ async function batchPinnedFixture(
     else fs.appendFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
     sh(root, "git", "add", "-A");
     sh(root, "git", "commit", "-m", `work by ${role}`);
-    const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+    const sha = headSha(root);
     shas[role] = sha;
     await setRef(root, landingRefName(role), sha);
   }

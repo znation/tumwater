@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ffStackToMain } from "../src/landing/landing-stack.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { headSha, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
@@ -24,11 +24,11 @@ async function stackFixture(): Promise<{ root: string; shaA: string; shaB: strin
   fs.writeFileSync(path.join(root, "a.txt"), "a\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "work A");
-  const shaA = sh(root, "git", "rev-parse", "HEAD").trim();
+  const shaA = headSha(root);
   fs.writeFileSync(path.join(root, "b.txt"), "b\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "work B");
-  const shaB = sh(root, "git", "rev-parse", "HEAD").trim();
+  const shaB = headSha(root);
   sh(root, "git", "checkout", "main");
   return { root, shaA, shaB };
 }
@@ -92,7 +92,7 @@ test("ffStackToMain emits question_posted for questions the stack adds, not pre-
   fs.writeFileSync(path.join(root, "a.txt"), "a\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "work A");
-  const shaA = sh(root, "git", "rev-parse", "HEAD").trim();
+  const shaA = headSha(root);
   fs.writeFileSync(
     path.join(root, "QUESTIONS.md"),
     existing.replace(
@@ -102,7 +102,7 @@ test("ffStackToMain emits question_posted for questions the stack adds, not pre-
   );
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "post a question");
-  const shaB = sh(root, "git", "rev-parse", "HEAD").trim();
+  const shaB = headSha(root);
   sh(root, "git", "checkout", "main");
 
   assert.equal(

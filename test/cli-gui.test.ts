@@ -10,7 +10,7 @@ import { initProject } from "../src/init/init.js";
 import { pidAlive } from "../src/process/process.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
-import { makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
@@ -324,7 +324,7 @@ test("the gui reloads onto a newer build: closes, re-execs, re-binds the same po
   fs.cpSync(path.join(distDir(), "src"), path.join(dist, "src"), { recursive: true });
   const stampDist = (sha: string) =>
     fs.writeFileSync(buildInfoPath(dist), JSON.stringify({ sha, builtAt: Date.now(), root }));
-  const startupSha = sh(repo, "git", "rev-parse", "HEAD");
+  const startupSha = headSha(repo);
   stampDist(startupSha);
 
   // Detached so the kill below reaches the whole tree: the re-exec'd server is a child of
@@ -352,7 +352,7 @@ test("the gui reloads onto a newer build: closes, re-execs, re-binds the same po
     // swap. The watch polls within a second, confirms the stamp names a commit of this repo,
     // then the glue closes and re-execs.
     sh(repo, "git", "commit", "--allow-empty", "-q", "-m", "the next build");
-    const reloadedSha = sh(repo, "git", "rev-parse", "HEAD");
+    const reloadedSha = headSha(repo);
     stampDist(reloadedSha);
     await waitFor(() => banners() >= 2, "the re-exec'd server's banner on the same port");
     let reloaded: { serverBuildSha?: string | null } | undefined;

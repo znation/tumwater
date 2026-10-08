@@ -25,7 +25,7 @@ import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "
 import { roleWt } from "./fixtures/loop-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
-import { landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -40,7 +40,7 @@ test("a stale self-hosted build drains the fleet, swaps, and returns restart", a
   try {
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
-    const head = sh(repo, "git", "rev-parse", "HEAD");
+    const head = headSha(repo);
     assert.deepEqual(swaps, [head], "the compiled head was swapped into dist");
     const types = readEvents(repo).map((e) => e.type);
     assert.ok(types.indexOf("build_stale") < types.indexOf("restart_pending"), "stale, then pending");

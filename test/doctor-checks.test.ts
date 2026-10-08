@@ -20,7 +20,7 @@ import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { backdate } from "./helpers/backdate.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";
 
@@ -405,7 +405,7 @@ test("checkBuildCheck names the declared script and walks up from a worktree to 
 // stamp and head are injected so every branch runs without compiling anything.
 test("checkBuild reports an unstamped dist, a foreign harness, a matching build, and a stale one", async () => {
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   const here = { sha: head, builtAt: 1, root: path.resolve(repo) };
 
   const unstamped = await checkBuild(repo, null);

@@ -25,7 +25,7 @@ import {
 } from "./redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
@@ -616,7 +616,7 @@ test("a toolchain-broken suite leaves no latched block: the skip reads as green 
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "project");
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = headSha(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
 
   const f = fakeDeps({ mainGreen: () => mainIsGreen(mirror, CFG) }); // the production wiring, real check

@@ -10,7 +10,7 @@ import { baselineFixture, runsOf } from "./fixtures/loop-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
+import { gitOnlyBinDir, headSha, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { pathReplace, projManifest } from "./fakes/fake-commands.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
@@ -226,7 +226,7 @@ test("noteGreenBaseline records a directly-observed green verdict: checkMainBase
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
   // The landing path just verified this exact tree (branch HEAD == main here) and passed:
   // record that verdict the way verifyLanding does after a green runBuildCheck.
-  noteGreenBaseline(sh(root, "git", "rev-parse", "HEAD"));
+  noteGreenBaseline(headSha(root));
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "green");
   assert.ok(!fs.existsSync(counter), "the suite never ran — the landing path's verdict is trusted for this SHA");
@@ -277,7 +277,7 @@ test("a baseline run takes the same process-wide check permit as the scoped chec
 
 test("mainIsGreen: no declared check reads as green", async () => {
   const root = makeRepo();
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = headSha(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   // No package.json anywhere up the tree of this temp repo: nothing to verify, nothing to block on.
   assert.equal(await mainIsGreen(mirror, CFG), true);
@@ -293,7 +293,7 @@ test("mainIsGreen runs a configured check.command on a repo with no npm install 
   fs.chmodSync(checkScript, 0o755);
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "check");
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = headSha(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
 
   const cfg = { ...defaultConfig(), check: { command: `${checkScript} -q` } };
@@ -306,7 +306,7 @@ test("mainIsGreen runs a configured check.command on a repo with no npm install 
   fs.writeFileSync(checkScript, "#!/bin/sh\necho 'pytest: 1 failing'; exit 1\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "check now fails");
-  const redHead = sh(root, "git", "rev-parse", "HEAD");
+  const redHead = headSha(root);
   const redMirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), redHead);
   const red = await checkMainBaseline(redMirror, cfg);
   assert.equal(red.baseline?.status, "red");
@@ -326,7 +326,7 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "project");
-  const head = sh(root, "git", "rev-parse", "HEAD");
+  const head = headSha(root);
 
   // A role worktree without the marker judges main red and caches that verdict.
   const role = path.join(root, ".tumwater", "worktrees", "role");

@@ -13,7 +13,7 @@ import {
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
-import { assertClean, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 test("initProject creates and commits the harness files", async () => {
   const repo = makeRepo();
@@ -270,7 +270,7 @@ test("initProject --dry-run writes nothing: no files, no gitignore edit, no comm
   fs.writeFileSync(path.join(repo, ".gitignore"), "node_modules\n");
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "own gitignore");
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   const listing = fs.readdirSync(repo).sort();
   const result = await initProject(repo, "Dry brief.", undefined, { dryRun: true });
   assert.ok(result.dryRun);
@@ -285,7 +285,7 @@ test("initProject --dry-run writes nothing: no files, no gitignore edit, no comm
   assert.deepEqual(fs.readdirSync(repo).sort(), listing);
   assert.equal(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), "node_modules\n");
   assertClean(repo);
-  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+  assert.equal(headSha(repo), head);
 
   // Outside a git repo, a dry run reports the repo it would seed without running `git init`.
   const dir = tmpdir();

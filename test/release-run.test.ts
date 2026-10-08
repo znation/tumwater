@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { pathPrepend, writeScript } from "./fakes/fake-commands.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
@@ -70,7 +70,7 @@ test("release pushes main, tags the CI-green commit locally and on origin", () =
     );
     // The tag must name the commit CI just green-lit, not later history: HEAD did not move
     // after the push, and the bump is a separate future commit.
-    assert.equal(sh(root, "git", "rev-parse", "v0.1.0^{commit}"), sh(root, "git", "rev-parse", "HEAD"));
+    assert.equal(sh(root, "git", "rev-parse", "v0.1.0^{commit}"), headSha(root));
   } finally {
     restore();
   }

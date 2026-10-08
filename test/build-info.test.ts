@@ -10,7 +10,7 @@ import {
   readBuildInfo,
   stampBuild,
 } from "../src/build/build-info.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 // Build provenance (src/build/build-info.ts): the stamp `npm run build` writes into dist/, and the
@@ -22,7 +22,7 @@ function commitFile(repo: string, rel: string, content: string, message: string)
   fs.writeFileSync(path.join(repo, rel), content);
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-q", "-m", message);
-  return sh(repo, "git", "rev-parse", "HEAD");
+  return headSha(repo);
 }
 
 test("stampBuild writes the checkout's HEAD and root; readBuildInfo reads it back", async () => {
@@ -30,7 +30,7 @@ test("stampBuild writes the checkout's HEAD and root; readBuildInfo reads it bac
   const dist = path.join(tmpdir(), "dist");
   const info = await stampBuild(repo, dist);
   assert.ok(info, "a git checkout with a HEAD is stampable");
-  assert.equal(info.sha, sh(repo, "git", "rev-parse", "HEAD"));
+  assert.equal(info.sha, headSha(repo));
   assert.equal(info.root, path.resolve(repo));
   assert.ok(info.builtAt > 0);
   assert.ok(fs.existsSync(buildInfoPath(dist)), "the stamp lives in the dist dir");
@@ -85,7 +85,7 @@ test("readBuildInfo is null for a missing, torn, or shapeless stamp", () => {
 
 test("isSelfHosted: built from this root AND a commit of this repo", async () => {
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   assert.equal(await isSelfHosted(repo, { sha: head, builtAt: 1, root: path.resolve(repo) }), true);
   // Same root, unknown commit (a dist copied in from elsewhere): not this repo's build.
   assert.equal(await isSelfHosted(repo, { sha: "a".repeat(40), builtAt: 1, root: path.resolve(repo) }), false);
@@ -96,7 +96,7 @@ test("isSelfHosted: built from this root AND a commit of this repo", async () =>
 
 test("buildStaleness counts main's commits but goes stale only when build inputs change", async () => {
   const repo = makeRepo();
-  const build = sh(repo, "git", "rev-parse", "HEAD");
+  const build = headSha(repo);
   assert.deepEqual(await buildStaleness(repo, build, build), { stale: false, aheadCommits: 0 });
   // Docs and tests move main without changing the running code.
   const docs = commitFile(repo, "README.md", "# hi\n", "docs only");
@@ -110,7 +110,7 @@ test("buildStaleness counts main's commits but goes stale only when build inputs
   for (const input of BUILD_INPUTS) {
     if (input === "src") continue;
     const fresh = makeRepo();
-    const base = sh(fresh, "git", "rev-parse", "HEAD");
+    const base = headSha(fresh);
     const moved = commitFile(fresh, input, "{}\n", `touch ${input}`);
     assert.equal((await buildStaleness(fresh, base, moved))?.stale, true, `${input} is a build input`);
   }
@@ -118,6 +118,6 @@ test("buildStaleness counts main's commits but goes stale only when build inputs
 
 test("buildStaleness is null for a build sha this repo does not have", async () => {
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   assert.equal(await buildStaleness(repo, "b".repeat(40), head), null);
 });

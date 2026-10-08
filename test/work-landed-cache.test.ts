@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
-import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/scheduling/work-landed-cache.ts — the caching layer around scheduling.workLanded
 // that the orchestrator's need-based deferral consults. The caching rule (PLANS.md
@@ -16,7 +16,7 @@ import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 /** Commit (empty, subjects are all these fixtures need) and return the new head sha. */
 function commit(root: string, subject: string): string {
   sh(root, "git", "commit", "--allow-empty", "-q", "-m", subject);
-  return sh(root, "git", "rev-parse", "HEAD").trim();
+  return headSha(root);
 }
 
 /** The 200-entry bound tests below need 201 distinct since-heads; a commit()+rev-parse spawn
@@ -25,7 +25,7 @@ function commit(root: string, subject: string): string {
  * config, all timestamps epoch 0 (subjects are the only thing the verdicts read). Returns the
  * new commits' shas, oldest first. */
 function bulkCommits(root: string, subjects: string[]): string[] {
-  const base = sh(root, "git", "rev-parse", "HEAD");
+  const base = headSha(root);
   let stream = "";
   for (const [i, subject] of subjects.entries()) {
     // `from` on the first commit chains the history onto the repo's existing head; later
@@ -40,7 +40,7 @@ function bulkCommits(root: string, subjects: string[]): string[] {
 
 test("a false verdict is cached at the main head it was checked against, and re-checked once main moves", async () => {
   const root = makeRepo();
-  const base = sh(root, "git", "rev-parse", "HEAD").trim();
+  const base = headSha(root);
   const m1 = commit(root, "tumwater(organize): tidy"); // maintenance-only since base
   const cache = new WorkLandedCache(root, "main");
 
@@ -57,7 +57,7 @@ test("a false verdict is cached at the main head it was checked against, and re-
 
 test("a true verdict stays true as main moves — qualifying work never un-lands", async () => {
   const root = makeRepo();
-  const base = sh(root, "git", "rev-parse", "HEAD").trim();
+  const base = headSha(root);
   commit(root, "tumwater(feature): ship it");
   const m1 = commit(root, "tumwater(organize): tidy");
   const cache = new WorkLandedCache(root, "main");
@@ -70,7 +70,7 @@ test("a true verdict stays true as main moves — qualifying work never un-lands
 
 test("an unresolvable main head is never trusted or stored", async () => {
   const root = makeRepo();
-  const base = sh(root, "git", "rev-parse", "HEAD").trim();
+  const base = headSha(root);
   commit(root, "tumwater(organize): tidy");
   const cache = new WorkLandedCache(root, "main");
 
@@ -86,7 +86,7 @@ test("an unresolvable main head is never trusted or stored", async () => {
 
 test("a range that cannot be evaluated reads as work landed — conservative", async () => {
   const root = makeRepo();
-  const head = sh(root, "git", "rev-parse", "HEAD").trim();
+  const head = headSha(root);
   const cache = new WorkLandedCache(root, "main");
   const ghost = "0123456789abcdef0123456789abcdef01234567";
 
@@ -101,7 +101,7 @@ test("a range that cannot be evaluated reads as work landed — conservative", a
 test("the true-verdict cache stays correct past its 200-entry bound", async () => {
   const root = makeRepo();
   const heads = [
-    sh(root, "git", "rev-parse", "HEAD").trim(),
+    headSha(root),
     ...bulkCommits(root, Array.from({ length: 201 }, (_, i) => `tumwater(feature): work ${i + 1}`)),
   ];
   const end = heads[heads.length - 1]!;
@@ -117,7 +117,7 @@ test("the true-verdict cache stays correct past its 200-entry bound", async () =
 test("the false-verdict cache stays correct past its 200-entry bound", async () => {
   const root = makeRepo();
   const heads = [
-    sh(root, "git", "rev-parse", "HEAD").trim(),
+    headSha(root),
     ...bulkCommits(root, Array.from({ length: 200 }, (_, i) => `tumwater(organize): tidy ${i + 1}`)),
   ];
   const end = heads[heads.length - 1]!;

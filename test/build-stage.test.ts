@@ -7,7 +7,7 @@ import { readBuildInfo } from "../src/build/build-info.js";
 import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { eventsLogPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
-import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects, exercised
 // against temp projects: swapDist's dist replacement and restore-on-failure invariants, and
@@ -44,7 +44,7 @@ function tinyTsProject(root: string, body = "export const answer: number = 42;\n
   fs.writeFileSync(path.join(root, "src/a.ts"), body);
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "tiny project");
-  return sh(root, "git", "rev-parse", "HEAD");
+  return headSha(root);
 }
 
 // ── Real effects ───────────────────────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   // A type error fails the compile with the compiler's tail in the detail.
   fs.writeFileSync(path.join(root, "src/a.ts"), "export const answer: number = 'no';\n");
   sh(root, "git", "commit", "-q", "-am", "break it");
-  const bad = sh(root, "git", "rev-parse", "HEAD");
+  const bad = headSha(root);
   const mirror2 = await ensureDetachedWorktree(root, mirrorWorktreePath(root), bad);
   const failed = await compileStaged(root, mirror2, bad);
   assert.equal(failed.ok, false);

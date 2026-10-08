@@ -12,7 +12,7 @@ import {
 } from "../src/git/worktree.js";
 import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
-import { assertClean, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The worktree helpers (src/git/worktree.ts): role worktrees, the mirror's detached checkout,
 // reset-to-main, and abortSync's interrupted-merge/rebase cleanup. The mirror test moved here
@@ -24,23 +24,23 @@ import { assertClean, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } 
 
 test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing one", async () => {
   const root = makeRepo();
-  const first = sh(root, "git", "rev-parse", "HEAD");
+  const first = headSha(root);
   const dir = mirrorWorktreePath(root);
   assert.equal(await ensureDetachedWorktree(root, dir, first), dir);
-  assert.equal(sh(dir, "git", "rev-parse", "HEAD"), first);
+  assert.equal(headSha(dir), first);
   fs.writeFileSync(path.join(root, "seed.txt"), "moved\n");
   sh(root, "git", "commit", "-q", "-am", "move main");
-  const second = sh(root, "git", "rev-parse", "HEAD");
+  const second = headSha(root);
   fs.writeFileSync(path.join(dir, "stray.txt"), "stray"); // dirt in the mirror is discarded
   await ensureDetachedWorktree(root, dir, second);
-  assert.equal(sh(dir, "git", "rev-parse", "HEAD"), second);
+  assert.equal(headSha(dir), second);
   assert.equal(fs.existsSync(path.join(dir, "stray.txt")), false);
   assert.equal(fs.readFileSync(path.join(dir, "seed.txt"), "utf8"), "moved\n");
 });
 
 test("ensureDetachedWorktree clears a stale index.lock left by a killed git", async () => {
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   const dir = mirrorWorktreePath(repo);
   await ensureDetachedWorktree(repo, dir, head);
   const lock = path.join(resolveGitDir(dir)!, "index.lock");
@@ -50,12 +50,12 @@ test("ensureDetachedWorktree clears a stale index.lock left by a killed git", as
 
   await ensureDetachedWorktree(repo, dir, head);
   assert.equal(fs.existsSync(lock), false, "the stale lock is gone");
-  assert.equal(sh(dir, "git", "rev-parse", "HEAD"), head, "the re-point completed");
+  assert.equal(headSha(dir), head, "the re-point completed");
 });
 
 test("removeLegacyLandWorktrees removes _land-<role> checkouts and leaves the pool and roles alone", async () => {
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   const wt = (name: string) => path.join(repo, ".tumwater", "worktrees", name);
   await ensureDetachedWorktree(repo, wt("_land-feature"), head);
   await ensureDetachedWorktree(repo, wt("_land-qa"), head);
@@ -140,7 +140,7 @@ test("ensureWorktree recovers when the worktree's .git pointer file is lost", as
 // per repository; a burst like this one must register every worktree.
 test("concurrent worktree setups in one repository all succeed (prune/add race)", async () => {
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   for (let round = 0; round < 2; round++) {
     await Promise.all([
       ...[0, 1, 2, 3, 4, 5].map((i) =>
@@ -168,7 +168,7 @@ test("worktree reaping prunes an aged dist/ build dir and never the worktree roo
   fs.writeFileSync(path.join(repo, ".gitignore"), "dist\n");
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-q", "-m", "ignore dist");
-  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const head = headSha(repo);
   const dir = mirrorWorktreePath(repo);
   await ensureDetachedWorktree(repo, dir, head);
   touchDist(dir); // clean -fd leaves a gitignored dist/ behind, exactly the stale shape
@@ -177,7 +177,7 @@ test("worktree reaping prunes an aged dist/ build dir and never the worktree roo
   await ensureDetachedWorktree(repo, dir, head);
   assert.ok(fs.existsSync(dir), "the worktree root survives its own aged mtime");
   assert.equal(fs.existsSync(path.join(dir, "dist")), false, "the aged dist/ build dir is reaped");
-  assert.equal(sh(dir, "git", "rev-parse", "HEAD"), head, "the surviving worktree still holds the ref");
+  assert.equal(headSha(dir), head, "the surviving worktree still holds the ref");
 
   // A young dist/ is live build output, not dead weight: it stays.
   const wt = await ensureWorktree(repo, "dry", "main");
@@ -382,7 +382,7 @@ test("concurrent ensureDetachedWorktree calls serialize and both resolve to the 
   const second = ensureDetachedWorktree(repo, dir, head);
   const [a, b] = await Promise.all([first, second]);
   assert.equal(b, a, "both callers get the same checkout");
-  assert.equal(sh(a, "git", "rev-parse", "HEAD"), head, "checked out at the requested ref");
+  assert.equal(headSha(a), head, "checked out at the requested ref");
   assert.equal(await currentBranch(a), null, "the checkout is detached");
   assertClean(a, "the checkout is clean");
 });
