@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 // Oracle: the tail reader must match a full re-read rendered by transcript.ts.
-import { formatTranscript } from "../src/ui/transcript.js";
+import { formatTranscript, type TranscriptEntry } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/files/tail.js";
 import { expectedTimestamp } from "./oracles.js";
@@ -13,11 +13,21 @@ import { tmpdir } from "./repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, kindMarker, runMarker, userLine } from "./pi-events.js";
 
+/** The oracle a tail read must match: the whole log read from a fresh stat and rendered exactly
+ * as transcript.ts renders it. `entries` is the full re-read; `size` is that stat, for tests
+ * that also pin the window's end offset. */
+function fullRead(
+  file: string,
+  opts?: { includePrompts?: boolean },
+): { entries: TranscriptEntry[]; size: number } {
+  const size = fs.statSync(file).size;
+  return { entries: formatTranscript(readCompleteLines(file, 0, size).lines, opts), size };
+}
+
 test("readTranscriptTail matches a full re-read on a small log", () => {
   const { file } = writeTurnLog(3);
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full, size } = fullRead(file);
   for (const limit of [1, 2, 50]) {
     const tail = readTranscriptTail(file, limit);
     assert.ok(tail);
@@ -51,8 +61,7 @@ test("readTranscriptTail matches a full re-read with prompts included, newest en
     [agentStart(), userLine("newest prompt\nwith two lines", FIXED_TS + 7 * 60_000)].join("\n") + "\n",
   );
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines, { includePrompts: true });
+  const { entries: full } = fullRead(file, { includePrompts: true });
   for (const limit of [1, 2, 3, 50]) {
     assert.deepEqual(
       readTranscriptTail(file, limit, { includePrompts: true })?.entries,
@@ -110,7 +119,7 @@ test("readTranscriptTail matches a full re-read on a multi-MB log and reads only
   const tail = readTranscriptTail(file, 50);
   t.mock.restoreAll();
 
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines); // after the mock is gone
+  const { entries: full } = fullRead(file); // after the mock is gone
   assert.ok(tail);
   assert.deepEqual(tail.entries, full.slice(-50));
   assert.equal(tail.end, readCompleteLines(file, 0, size).end);
@@ -118,7 +127,7 @@ test("readTranscriptTail matches a full re-read on a multi-MB log and reads only
 
   // With prompts opted in, user message_end lines become entry candidates too; the backward
   // scan must stay exact across the multi-chunk log.
-  const fullWithPrompts = formatTranscript(readCompleteLines(file, 0, size).lines, { includePrompts: true });
+  const { entries: fullWithPrompts } = fullRead(file, { includePrompts: true });
   assert.deepEqual(readTranscriptTail(file, 3, { includePrompts: true })?.entries, fullWithPrompts.slice(-3));
 });
 
@@ -136,8 +145,7 @@ test("readTranscriptTail re-reads fully when contentless turns undercount candid
   }
   writeLogLines(file, lines);
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   for (const limit of [1, 2, 50]) {
     assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit));
   }
@@ -169,8 +177,7 @@ test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
   ];
   writeLogLines(file, lines);
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full, size } = fullRead(file);
   assert.equal(full.length, 3, "sanity: three rendered runs");
   for (const limit of [1, 2, 50]) {
     const tail = readTranscriptTail(file, limit);
@@ -286,8 +293,7 @@ test("readTranscriptTail includes a marker line when it labels the boundary run"
   // walking to its marker — the window starts at M even though A is what armed the stop.
   const { file } = writeTurnLog(5, { reviewMarkerAt: () => true });
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   for (const limit of [1, 2, 50]) {
     assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
   }
@@ -305,8 +311,7 @@ test("readTranscriptTail matches a full re-read with interleaved labels at every
   // slides, boundaries land on markers and agent_starts alike; the oracle must hold throughout.
   const { file } = writeTurnLog(40, { reviewMarkerAt: (i) => i % 2 === 0 });
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   for (const limit of [1, 2, 3, 7, 50]) {
     assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
   }
@@ -318,8 +323,7 @@ test("readTranscriptTail matches a full re-read with a stale marker, mislabel in
   // Run 3's marker is stale — its reviewer died before emitting anything.
   const { file } = writeTurnLog(5, { reviewMarkerAt: (i) => i === 3 });
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   assert.ok(
     full.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 3 * 60_000)} ──`),
     "sanity: the stale marker mislabels run 3 in a full re-read",
@@ -334,8 +338,7 @@ test("readTranscriptTail excludes a labeled run older than the window boundary",
   // and contributes nothing, while the whole-file window still carries its label.
   const { file } = writeTurnLog(6, { reviewMarkerAt: (i) => i === 1 });
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   for (const limit of [1, 2, 50]) {
     assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
   }
@@ -365,8 +368,7 @@ test("readTranscriptTail stops at the arming agent_start when EOF precedes any m
   for (let i = 1; i <= 10; i++) lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   writeLogLines(file, lines);
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full, size } = fullRead(file);
   // Limits that arm (≤ the run's own candidate count), limits that don't (≥ total entries), and
   // the whole-file window — the oracle must hold across all of them.
   for (const limit of [1, 2, 5, 8, 13, 50]) {
@@ -406,8 +408,7 @@ test("readTranscriptTail skips kind-only markers to the label a full re-read app
   ];
   writeLogLines(file, lines);
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   assert.ok(
     full.flat().includes(`── review @ ${expectedTimestamp(FIXED_TS + 2 * 60_000)} ──`),
     "sanity: the stale label applies to run 2 in a full re-read",
@@ -430,8 +431,7 @@ test("readTranscriptTail matches a full re-read when every run carries a kind-on
   }
   writeLogLines(file, lines);
 
-  const size = fs.statSync(file).size;
-  const full = formatTranscript(readCompleteLines(file, 0, size).lines);
+  const { entries: full } = fullRead(file);
   for (const limit of [1, 2, 3, 7, 50]) {
     assert.deepEqual(readTranscriptTail(file, limit)?.entries, full.slice(-limit), `limit ${limit}`);
   }
