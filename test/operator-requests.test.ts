@@ -12,6 +12,7 @@ import {
 import { readEvents } from "../src/events/event-read.js";
 import {
   abortRequestPath,
+  eventsLogPath,
   reclaimRequestPath,
   resetRequestPath,
   statePath,
@@ -299,6 +300,41 @@ test("consumeAbortRequests ignores non-abort files in the state directory", () =
   consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(readEvents(root).length, 0);
+});
+
+test("consumeAbortRequests consumes every marker when one tick abort cannot be logged", () => {
+  const root = tmpdir();
+  // events.jsonl as a directory makes logEvent throw (EISDIR) at the first marker's
+  // tick_aborted append. The pre-fix broad catch swallowed that throw and skipped every
+  // abort request that sorted after it, so the second marker never got its turn.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  const a = fakeRunner("coverage", true);
+  const b = fakeRunner("clean", true);
+  const markerA = abortRequestPath(root, "coverage");
+  const markerB = abortRequestPath(root, "clean");
+  writeMarker(markerA, { at: 1 });
+  writeMarker(markerB, { at: 1 });
+  assert.doesNotThrow(() => consumeAbortRequests(root, asRunners(a, b), []));
+  assert.equal(fs.existsSync(markerA), false, "the first marker is consumed despite the failed log");
+  assert.equal(fs.existsSync(markerB), false, "one marker's failure must not skip the next");
+  assert.equal(a.aborts + b.aborts, 2, "both running ticks were aborted");
+});
+
+test("consumeAbortRequests keeps a marker whose abort side effect throws, without skipping later ones", () => {
+  const root = tmpdir();
+  const bad = fakeRunner("coverage", true);
+  bad.abortTick = () => {
+    throw new Error("boom");
+  };
+  const good = fakeRunner("clean", true);
+  const markerBad = abortRequestPath(root, "coverage");
+  const markerGood = abortRequestPath(root, "clean");
+  writeMarker(markerBad, { at: 1 });
+  writeMarker(markerGood, { at: 1 });
+  assert.doesNotThrow(() => consumeAbortRequests(root, asRunners(bad, good), []));
+  assert.equal(fs.existsSync(markerBad), true, "a failed side effect leaves its marker for the next poll");
+  assert.equal(fs.existsSync(markerGood), false, "the later marker is still consumed");
+  assert.equal(good.aborts, 1);
 });
 
 test("consumeReclaimRequest arms one manual pass and removes the marker", () => {

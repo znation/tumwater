@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { LoopRunner } from "../loop/loop.js";
-import { logEvent } from "../events/events.js";
+import { logEvent, warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
+import { errorMessage } from "../text/text.js";
 import { readJsonFile } from "../files/json-files.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
@@ -173,25 +174,50 @@ export function consumeAbortRequests(
   runners: LoopRunner[],
   landings: readonly AbortableLanding[],
 ): void {
+  let markers: string[];
   try {
-    const markers = fs.readdirSync(path.join(root, STATE_DIR));
-    for (const name of markers) {
-      const m = /^abort-(.+)\.json$/.exec(name);
-      if (!m) continue;
-      const role = m[1]!;
-      const runner = runners.find((r) => r.role === role);
+    markers = fs.readdirSync(path.join(root, STATE_DIR));
+  } catch {
+    return; // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
+  }
+  // Best-effort report of one marker's failure: the warning can itself throw when the
+  // unwritable event feed is what failed, and there is nothing left to report on then.
+  const warnFailure = (role: string, err: unknown): void => {
+    try {
+      warnEvent(root, "harness", `could not consume abort request for ${role}: ${errorMessage(err)}`);
+    } catch {
+      // The feed is the failure; the remaining markers still get their turn below.
+    }
+  };
+  for (const name of markers) {
+    const m = /^abort-(.+)\.json$/.exec(name);
+    if (!m) continue;
+    const role = m[1]!;
+    const runner = runners.find((r) => r.role === role);
+    // One marker's failure must not skip the rest of the batch: an unwritable event log used
+    // to throw on every poll at the first marker and starve every abort request that sorted
+    // after it forever. Apply the side effects first; a failure there keeps the marker for the
+    // next poll (retry), but still moves on so it cannot starve the others.
+    try {
       for (const landing of landings) {
         if (!landing.roles.includes(role)) continue;
         landing.userAborted = true;
         landing.controller.abort();
       }
-      if (runner?.state.running) {
-        runner.abortTick();
-        logEvent(root, { loop: role, type: "tick_aborted" });
-      }
-      removeQuiet(abortRequestPath(root, role));
+      if (runner?.state.running) runner.abortTick();
+    } catch (err) {
+      warnFailure(role, err);
+      continue;
     }
-  } catch {
-    // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
+    // The side effects applied: acknowledge the request. The tick_aborted event is
+    // observability, so a log failure must not un-acknowledge an abort that already happened.
+    removeQuiet(abortRequestPath(root, role));
+    if (runner?.state.running) {
+      try {
+        logEvent(root, { loop: role, type: "tick_aborted" });
+      } catch (err) {
+        warnFailure(role, err);
+      }
+    }
   }
 }
