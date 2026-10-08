@@ -38,7 +38,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../files/json-files.js";
-import type { OrchestratorInfo } from "../fleet/fleet-state.js";
+import { assignInfoFieldIfChanged, type OrchestratorInfo } from "../fleet/fleet-state.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
@@ -196,15 +196,10 @@ export function pollFleetGates(
   const engagedDemotion =
     states.budget.engaged !== null ? demotions[states.budget.engaged] : undefined;
   const budget = { spentUsd, capUsd };
-  const demotionsChanged = JSON.stringify(demotions) !== JSON.stringify(info.fallbackDemotions);
-  const engagedChanged = JSON.stringify(engagedDemotion) !== JSON.stringify(info.fallbackDemoted);
-  const budgetChanged = JSON.stringify(budget) !== JSON.stringify(info.budget);
-  if (demotionsChanged || engagedChanged || budgetChanged) {
-    if (demotionsChanged) info.fallbackDemotions = demotions;
-    if (engagedChanged) info.fallbackDemoted = engagedDemotion;
-    if (budgetChanged) info.budget = budget;
-    writeJsonFile(infoFile, info);
-  }
+  const demotionsChanged = assignInfoFieldIfChanged(info, "fallbackDemotions", demotions);
+  const engagedChanged = assignInfoFieldIfChanged(info, "fallbackDemoted", engagedDemotion);
+  const budgetChanged = assignInfoFieldIfChanged(info, "budget", budget);
+  if (demotionsChanged || engagedChanged || budgetChanged) writeJsonFile(infoFile, info);
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
@@ -338,10 +333,7 @@ export function pollFleetGates(
           held: diskHeld,
           ...(ctx.reclaim?.lastReclaim ? { lastReclaim: ctx.reclaim.lastReclaim } : {}),
         };
-  if (JSON.stringify(disk) !== JSON.stringify(info.disk)) {
-    info.disk = disk;
-    writeJsonFile(infoFile, info);
-  }
+  if (assignInfoFieldIfChanged(info, "disk", disk)) writeJsonFile(infoFile, info);
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier

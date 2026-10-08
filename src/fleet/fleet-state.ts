@@ -309,6 +309,22 @@ export interface OrchestratorInfo {
   disk?: DiskStatus;
 }
 
+/** Assign one field of the orchestrator info file in place, but only when the value differs
+ * from what it already carries, and report whether it changed. This is the shared rule for the
+ * fields observers cannot recompute (build, budget, fallback demotions, disk): an unchanged
+ * poll leaves the file untouched, while a changed one stages the value so the caller can write
+ * once after several fields. The comparison uses JSON serialization, matching the info file's
+ * own writeJsonFile format, so a value equal to the stored one is never treated as a change. */
+export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
+  info: OrchestratorInfo,
+  field: K,
+  value: OrchestratorInfo[K],
+): boolean {
+  if (JSON.stringify(value) === JSON.stringify(info[field])) return false;
+  info[field] = value;
+  return true;
+}
+
 /** Read the running orchestrator's info file; null when it is missing or unreadable.
  * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
  * that poll this every second (TUI, GUI, status). */

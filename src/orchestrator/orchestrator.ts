@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { OrchestratorInfo } from "../fleet/fleet-state.js";
+import { assignInfoFieldIfChanged, type OrchestratorInfo } from "../fleet/fleet-state.js";
 import { enabledRoleIds } from "../config/config.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
@@ -389,10 +389,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           now,
         );
         const build = redeploy.status(now);
-        if (JSON.stringify(build) !== JSON.stringify(info.build)) {
-          info.build = build;
-          writeJsonFile(infoFile, info);
-        }
+        if (assignInfoFieldIfChanged(info, "build", build)) writeJsonFile(infoFile, info);
         if (action === "restart") {
           restart = true;
           // Only permit holders have a pi run to cut off (the director is guaranteed finished by
