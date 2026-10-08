@@ -24,7 +24,7 @@ import { errnoError } from "./helpers/fs-faults.js";
 // run's cross-group leftovers at exit. The probe-level reads (systemProcessProbe.runMarkers)
 // stay pinned in process.test.ts; here the marker plumbing itself is under test, and the
 // probe only observes the victim fixture's marks.
-import { armVictimKill, exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
+import { armVictimKill, exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./fixtures/victim-fixture.js";
 
 test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
   assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
@@ -135,7 +135,7 @@ test("a fixture victim keeps the enclosing run's mark and exits by itself once i
   const pidFile = path.join(dir, "victim.pid");
   const outer = makeRunMarker();
   const own = makeRunMarker();
-  const fixture = new URL("./victim-fixture.js", import.meta.url).href;
+  const fixture = new URL("./fixtures/victim-fixture.js", import.meta.url).href;
   const hostScript = [
     `const { spawnMarkedVictim } = await import(${JSON.stringify(fixture)});`,
     `spawnMarkedVictim({ after() {} }, ${JSON.stringify(own)}, process.argv[1],`,

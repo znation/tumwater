@@ -13,7 +13,7 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { assertClean, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRanMarker, withApprovePi } from "./fakes/fake-pi.js";
 import {
@@ -34,7 +34,7 @@ import {
   perRoleReviewerPi,
   runBatchRecorded,
 } from "./lander-fixtures.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 // Unit coverage for the two halves of a landing — landing-batch.ts's vetRequest (checkout in
 // _land-<role>, rebase onto main, landing-core.ts's review gate) and landVetted (the merge: one change

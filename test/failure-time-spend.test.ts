@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { atLocalTs as at } from "./helpers/oracles.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("time and spend: one 30-minute timeout outranks ten 1-second errors", () => {

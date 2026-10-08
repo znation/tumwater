@@ -18,8 +18,8 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { assistantLine } from "./pi-events.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import {
   DEFAULT_BUDGET,
   headerOf,
@@ -29,7 +29,7 @@ import {
   tableCells,
   toolStart,
   writePiLog,
-} from "./status-fixtures.js";
+} from "./fixtures/status-fixtures.js";
 
 test("status table ends with a totals row summing tokens and cost", () => {
   const snap = snapshotWith([

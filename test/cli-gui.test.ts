@@ -14,7 +14,7 @@ import { makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js
 import { sleep, waitFor } from "./helpers/wait.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
-import { exitWithOwnerEnv } from "./victim-fixture.js";
+import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 
 // `tumwater gui` through the real CLI entry point: argument validation, the serve loop
 // (banner, --token gate, --all-interfaces LAN URLs), and the failure paths (port in use,

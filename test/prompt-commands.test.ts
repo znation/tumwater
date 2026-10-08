@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/inbox/prompt-commands.js";
 import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";

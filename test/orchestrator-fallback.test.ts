@@ -22,10 +22,10 @@ import path from "node:path";
 
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
-import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 

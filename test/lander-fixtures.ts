@@ -16,7 +16,7 @@ import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { runPi } from "../src/pi/pi.js";
-import { assistantLine, leasedRoleShell } from "./pi-events.js";
+import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-restack.test.ts and
@@ -85,7 +85,7 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
 
 // The reviewer's fake-pi shim and its approver preset live in pi-events.ts (next to the
 // assistant-line helpers they build on); re-exported here for the lander fixtures' imports.
-export { reviewerPi, APPROVE_PI } from "./pi-events.js";
+export { reviewerPi, APPROVE_PI } from "./fixtures/pi-events.js";
 
 export function request(sha: string, overrides: Partial<LandRequest> = {}): LandRequest {
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };

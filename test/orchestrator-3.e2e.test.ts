@@ -32,13 +32,13 @@ import {
   startRedeployRun,
   startLiveOrchestrator,
   stopOrchestrator,
-} from "./orchestrator-fixtures.js";
-import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
-import { eventsOfType, writeMarker } from "./log-fixtures.js";
+} from "./fixtures/orchestrator-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, leasedRoleShell } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
 

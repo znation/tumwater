@@ -13,11 +13,11 @@ import { saveConfig } from "../src/config/config.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
+import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
-import { assistantLine, leasedRoleShell } from "./pi-events.js";
+import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 function readOrder(runDir: string): string[] {
   try {

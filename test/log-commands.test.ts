@@ -5,7 +5,7 @@ import { cmdLogs } from "../src/cli/log-commands.js";
 import { logEvent } from "../src/events/events.js";
 import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { captureStdout } from "./helpers/exit-capture.js";
 

@@ -14,13 +14,13 @@ import { readEvents } from "../src/events/event-read.js";
 import { refSha } from "../src/git/git.js";
 import { queueDepth } from "../src/landing/landing-queue.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
-import { eventsOfType, warningMessages } from "./log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 // Thrash flag (plans/refusal-and-thrash.md item b): a changed tick whose authoring run burned
 // BOTH more than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —

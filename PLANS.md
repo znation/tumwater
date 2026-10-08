@@ -322,41 +322,6 @@ Tests:
 - **Unset.** Removing `bootstrap` from tumwater.json lifts every hold on the next poll.
 - `npm run test` green.
 
-### Organize the test suite, part 5/6: log, loop, orchestrator and status fixtures plus `pi-events` and `victim-fixture` move to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–4/6 landed)
-
-**Goal.** Move `test/log-fixtures.ts`, `test/loop-fixtures.ts`, `test/orchestrator-fixtures.ts`,
-`test/status-fixtures.ts`, `test/pi-events.ts`, and `test/victim-fixture.ts` into `test/fixtures/`.
-
-**Approach.**
-- `git mv` the six modules into `test/fixtures/`.
-- Rewrite every importer's `./<name>.js` specifier to `./fixtures/<name>.js` (≈223 specifiers).
-- Re-base the moved modules' own imports (its own directory is `test/fixtures/`, part 4's
-  `repo-fixtures.ts` is already a sibling):
-  - `log-fixtures.ts`: `./repo-fixtures.js` and `./pi-events.js` stay siblings.
-  - `loop-fixtures.ts`: `./repo-fixtures.js` stays a sibling; `./fake-commands.js` becomes
-    `../fakes/fake-commands.js`.
-  - `orchestrator-fixtures.ts`: `./repo-fixtures.js` stays a sibling; `./fake-pi.js` becomes
-    `../fakes/fake-pi.js`; `./wait.js` becomes `../helpers/wait.js`.
-  - `status-fixtures.ts`: `./log-fixtures.js` stays a sibling; `./oracles.js` becomes
-    `../helpers/oracles.js`.
-  - `victim-fixture.ts`: `./helpers/exit-with-owner.js` becomes `../helpers/exit-with-owner.js`,
-    and `OWNER_PRELOAD`'s `new URL("./helpers/exit-with-owner.js", import.meta.url)` becomes
-    `new URL("../helpers/exit-with-owner.js", import.meta.url)`.
-  - `pi-events.ts` has no relative imports.
-- `test/helpers/cli-harness.ts` (already moved there) imports `../victim-fixture.js` from part 3;
-  update it to `../fixtures/victim-fixture.js`.
-- Update BUGS.md references to `test/pi-events.ts`, `test/victim-fixture.ts`, and the moved
-  fixtures.
-
-**Files touched.** The six modules; every `test/*.ts` importing them; `test/helpers/cli-harness.ts`;
-BUGS.md references.
-
-**Acceptance criteria.**
-- The six modules live in `test/fixtures/`; no `test/*.ts` specifier names any at the root.
-- `victim-fixture.ts`'s `OWNER_PRELOAD` resolves `../helpers/exit-with-owner.js`; `cli-harness.ts`
-  resolves `../fixtures/victim-fixture.js`.
-- `npm run test` green and selects the same `*.test.ts` files.
-
 ### Organize the test suite, part 6/6: remaining fixtures move to `test/fixtures/`, leaving the root clean (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–5/6 landed)
 
 **Goal.** Move the remaining fixture modules — `config-fixtures.ts`, `doctor-fixtures.ts`,
@@ -384,9 +349,7 @@ BUGS.md references.
   - `models-fixtures.ts` has no relative imports.
 - Update the remaining doc/comment references to moved paths: `DEVELOPMENT.md`'s
   `writeScript (test/fakes/fake-commands.ts)`, BUGS.md's `test/doctor-fixtures.ts` /
-  `test/gui-fixtures.ts` citations,
-  `src/landing/landing-vetting.ts`'s `test/orchestrator-fixtures.ts` comment, and any `docs/` or
-  `src/` comment naming an old flat path.
+  `test/gui-fixtures.ts` citations, and any `docs/` or `src/` comment naming an old flat path.
 
 **Files touched.** The nine modules; every `test/*.ts` importing them; the doc/comment references.
 
@@ -693,6 +656,45 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 ## Done
 
+### Organize the test suite, part 5/6: log, loop, orchestrator and status fixtures plus `pi-events` and `victim-fixture` move to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–4/6 landed; done 2026-10-08 by feature)
+
+**Goal.** Move the `test/`-root modules `log-fixtures.ts`, `loop-fixtures.ts`,
+`orchestrator-fixtures.ts`, `status-fixtures.ts`, `pi-events.ts`, and `victim-fixture.ts` into
+`test/fixtures/`.
+
+**Approach.**
+- `git mv` the six modules into `test/fixtures/`.
+- Rewrite every importer's `./<name>.js` specifier to `./fixtures/<name>.js`, and each moved
+  module's sibling imports as below.
+- Re-base the moved modules' own imports (its own directory is `test/fixtures/`, part 4's
+  `repo-fixtures.ts` is already a sibling):
+  - The six modules' `../src/...` imports gain a level (`../../src/...`); `pi-events.ts` has
+    no relative imports.
+  - `log-fixtures.ts`: `./repo-fixtures.js` and `./pi-events.js` stay siblings.
+  - `loop-fixtures.ts`: `./repo-fixtures.js` stays a sibling; `./fake-commands.js` becomes
+    `../fakes/fake-commands.js`.
+  - `orchestrator-fixtures.ts`: `./repo-fixtures.js` stays a sibling; `./fake-pi.js` becomes
+    `../fakes/fake-pi.js`; `./wait.js` becomes `../helpers/wait.js`.
+  - `status-fixtures.ts`: `./log-fixtures.js` stays a sibling; `./oracles.js` becomes
+    `../helpers/oracles.js`.
+  - `victim-fixture.ts`: `./helpers/exit-with-owner.js` becomes `../helpers/exit-with-owner.js`,
+    and `OWNER_PRELOAD`'s `new URL("./helpers/exit-with-owner.js", import.meta.url)` becomes
+    `new URL("../helpers/exit-with-owner.js", import.meta.url)`.
+- `test/helpers/cli-harness.ts` (already moved there) imports `../victim-fixture.js` from part 3;
+  update it to `../fixtures/victim-fixture.js`.
+- Update comment/doc references to the moved paths: BUGS.md's `test/fixtures/victim-fixture.ts` citations
+  and `src/landing/landing-vetting.ts`'s `test/fixtures/orchestrator-fixtures.ts` comment (the latter moves
+  part 6/6's item forward, since this tick already moved the file).
+
+**Files touched.** The six modules; every `test/*.ts` importing them; `test/helpers/cli-harness.ts`;
+BUGS.md references; `src/landing/landing-vetting.ts` (comment only).
+
+**Acceptance criteria.**
+- The six modules live in `test/fixtures/`; no `test/*.ts` specifier names any at the root.
+- `victim-fixture.ts`'s `OWNER_PRELOAD` resolves `../helpers/exit-with-owner.js`; `cli-harness.ts`
+  resolves `../fixtures/victim-fixture.js`.
+- `npm run test` green and selects the same `*.test.ts` files.
+
 ### Organize the test suite, part 4/6: `repo-fixtures.ts` moves to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–3/6 landed; done 2026-10-08 by feature)
 
 **Goal.** Move the highest-fanout support module, the `test/` root's `repo-fixtures.ts`, into
@@ -738,16 +740,16 @@ test/semaphore.test.ts and an orchestrator scheduling test.
     (moves in part 4); `./fakes/fake-pi.js` becomes `../fakes/fake-pi.js` (part 1); its three
     `../src/...` imports gain a level.
   - `oracles.ts`, `exit-capture.ts`, and `exit-with-owner.ts` have no relative imports.
-- `test/victim-fixture.ts` (still at the root) points both its `./exit-with-owner.js` import and
-  its `OWNER_PRELOAD` `new URL(...)` at `./helpers/exit-with-owner.js` now — the file is no
-  longer a sibling. (Part 5 re-bases both to `../helpers/exit-with-owner.js` when victim itself
-  moves.)
+- After part 3, `victim-fixture.ts` (then at the root) pointed both its `./exit-with-owner.js`
+  import and its `OWNER_PRELOAD` `new URL(...)` at `./helpers/exit-with-owner.js` — the file was
+  no longer a sibling. (Part 5 re-based both to `../helpers/exit-with-owner.js` when victim moved
+  into `test/fixtures/`.)
 - `test/build-check-process.test.ts` embeds `./exit-with-owner.js` in a generated path; point it at
   `./helpers/exit-with-owner.js`. Update comment/doc references to the moved files: BUGS.md's
   citations and the `test/<name>.ts` mentions in test bodies.
 
 **Files touched.** The six modules; every `test/*.ts` importing them (≈87 specifiers); plus
-`test/victim-fixture.ts` and `test/build-check-process.test.ts`.
+`test/fixtures/victim-fixture.ts` and `test/build-check-process.test.ts`.
 
 **Acceptance criteria.**
 - The six modules live in `test/helpers/`; no `test/*.ts` specifier names any at the root.
@@ -850,11 +852,11 @@ This part leans on 4a/5 for the keep/resume and pin-on-release API.
 5. `DIRECTOR_ROLE` keeps `ensureWorktree(root, DIRECTOR_ROLE, mainBranch)`; note in
    `ensureWorktree`'s doc (src/git/worktree.ts) that it now serves the director only.
 6. Update the fixtures and cases that reach a non-director role worktree by path —
-   test/loop-fixtures.ts, test/loop-2.test.ts, test/loop-merge-conflicts.test.ts and any other
+   test/fixtures/loop-fixtures.ts, test/loop-2.test.ts, test/loop-merge-conflicts.test.ts and any other
    loop test naming `.tumwater/worktrees/<role>` — to resolve the slot through `roleWorktreeDir`
    or `slotForDir` instead.
 
-**Files touched.** src/loop/loop.ts, src/git/worktree.ts (doc). Tests: test/loop-fixtures.ts and
+**Files touched.** src/loop/loop.ts, src/git/worktree.ts (doc). Tests: test/fixtures/loop-fixtures.ts and
 the loop tests naming a non-director role worktree path.
 
 **Acceptance criteria.**
@@ -880,7 +882,7 @@ the code matches the world:
   returns, so it is still false in `runTick`'s `finally`. `runTickInLease` captures the outcome
   and pins on those results (a later tick clears the pin on release).
 
-Tests also gained `roleWt` and `pinWorktreeAsSlot` in test/loop-fixtures.ts, and a loop-5 test
+Tests also gained `roleWt` and `pinWorktreeAsSlot` in test/fixtures/loop-fixtures.ts, and a loop-5 test
 covering the slot budget, the absence of legacy role worktrees, and the director's dedicated
 checkout. Non-director role worktree paths in the orchestrator e2e tier — orchestrator-2,
 orchestrator-3 and orchestrator-redeploy — resolve through `roleWt` too; the director's stay
@@ -950,7 +952,7 @@ and test/orchestrator-once.test.ts for the startup call site.
 
 **Files touched.** src/orchestrator/orchestrator.ts, src/paths.ts, src/git/git.ts,
 src/git/worktree.ts, src/ui/progress-data.ts, src/landing/landing-pipeline.ts. Tests:
-test/status-fixtures.ts, test/progress.test.ts, test/paths.test.ts,
+test/fixtures/status-fixtures.ts, test/progress.test.ts, test/paths.test.ts,
 test/doctor-orphans.test.ts, test/landing-drain-vetting.test.ts, test/worktree.test.ts,
 test/orchestrator-once.test.ts.
 
@@ -980,7 +982,7 @@ legacy `_land-clean` deletion.
 **Files touched.** src/landing/landing-core.ts, src/landing/landing-stack.ts,
 src/landing/landing-batch.ts, src/landing/landing-check-failures.ts. Tests: test/lander.test.ts,
 test/landing-merge.test.ts, test/orchestrator-3.e2e.test.ts,
-test/loop-leftover-recovery.test.ts, test/landing-pipeline.test.ts, test/pi-events.ts.
+test/loop-leftover-recovery.test.ts, test/landing-pipeline.test.ts, test/fixtures/pi-events.ts.
 
 **Acceptance criteria.**
 - A single merge, a stack with its bisect, and red attribution all run in `_merge`; no
@@ -1004,7 +1006,7 @@ per-role lander, but it would delete a pooled slot, so that cleanup now drops on
 (src/landing/landing-core.ts), and the lease's own release frees the slot.
 
 **Files touched.** src/landing/landing-batch.ts, src/landing/landing-core.ts. Tests:
-test/pi-events.ts and test/landing-fixtures.ts (a `leasedRoleShell` helper reads the reviewing
+test/fixtures/pi-events.ts and test/landing-fixtures.ts (a `leasedRoleShell` helper reads the reviewing
 role from the slot lease, since the cwd no longer names it), test/lander-fixtures.ts,
 test/landing-drain-vetting.test.ts, test/landing-pipeline.test.ts, test/lander.test.ts,
 test/loop-4.test.ts, test/loop-5.test.ts, test/loop-leftover-recovery.test.ts,

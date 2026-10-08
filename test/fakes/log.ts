@@ -8,7 +8,7 @@
  * Node built-ins only.
  */
 import type { HarnessEvent } from "../../src/events/events.js";
-import { writeEvents } from "../log-fixtures.js";
+import { writeEvents } from "../fixtures/log-fixtures.js";
 
 /** A `tick_end` event with the shape tick-finalize stamps: the feature loop, tick 1,
  * `changed`. Overrides pass through (`tickEnd({ result: "error", error: "pi unreachable" })`). */

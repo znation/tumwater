@@ -6,7 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
-import { seedCounters } from "./loop-fixtures.js";
+import { seedCounters } from "./fixtures/loop-fixtures.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 

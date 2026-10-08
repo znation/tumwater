@@ -10,7 +10,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { assistantLine, errorLine } from "./pi-events.js";
+import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { resolverConfig } from "../src/config/config-views.js";
 
 // LoopPi (src/loop/loop-pi.ts) is the pi-invocation plumbing of one role loop: the shared

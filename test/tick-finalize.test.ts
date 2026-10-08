@@ -12,7 +12,7 @@ import {
 } from "../src/tick/tick-apply.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 
 /** Run finalizeTick with the standard shape: an initialized repo, a fresh-ish loop state
  * reserved for a tick that started 50ms ago, and the project's default config. Tests override

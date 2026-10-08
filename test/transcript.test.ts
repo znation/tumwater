@@ -4,10 +4,10 @@ import fs from "node:fs";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
-import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
+import { writeLogLines, writeTurnLog } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
+import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./fixtures/pi-events.js";
 
 test("formatTranscript renders a run separator and an assistant turn", () => {
   const lines = [

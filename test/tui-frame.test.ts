@@ -19,7 +19,7 @@ import {
   transcriptTone,
 } from "../src/ui/tui/tui-frame.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The TUI frame's pure pieces (src/ui/tui/tui-frame.ts) and the toned status spans they paint

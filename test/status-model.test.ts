@@ -15,8 +15,8 @@ import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { assistantLine } from "./pi-events.js";
-import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./status-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
+import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./fixtures/status-fixtures.js";
 
 test("workingDetail without a pi log shows only the elapsed time", () => {
   const root = tmpdir();

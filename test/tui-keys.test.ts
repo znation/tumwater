@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 

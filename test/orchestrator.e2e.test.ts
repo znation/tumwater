@@ -28,7 +28,7 @@ import {
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { resetRequestPath } from "../src/paths.js";
-import { eventsOfType, writeMarker } from "./log-fixtures.js";
+import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import {
   FAST_POLL_MS,
   awaitSettledTick,
@@ -38,11 +38,11 @@ import {
   startIdleOrchestrator,
   startLiveOrchestrator,
   stopOrchestrator,
-} from "./orchestrator-fixtures.js";
+} from "./fixtures/orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
   // BUGS.md 2026-09-18: the restart drain's p75 sample spans `tick_start`..`tick_end`, so the

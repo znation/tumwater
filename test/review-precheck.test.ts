@@ -19,11 +19,11 @@ import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { shortSha } from "../src/text/format.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 

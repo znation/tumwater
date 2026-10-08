@@ -12,7 +12,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PiStreamParser } from "../src/pi/pi-stream.js";
 import { REFUSED_SENTINEL } from "../src/verdict/reply-contract.js";
-import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
+import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 test("parser keeps the last non-empty assistant text and sums usage", () => {
   const parser = new PiStreamParser();

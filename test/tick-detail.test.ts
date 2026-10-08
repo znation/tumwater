@@ -4,7 +4,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
 import { cmdTick, renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";

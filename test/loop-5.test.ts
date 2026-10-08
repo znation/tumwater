@@ -16,13 +16,13 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-s
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
-import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 // The pin write can fail too: a stale lock file (a crash between lock and rename) blocks
 // update-ref, so adoption cannot pin the tip. Recovery must fail the tick naming the commit,

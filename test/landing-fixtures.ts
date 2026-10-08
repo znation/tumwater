@@ -20,10 +20,10 @@ import { snapshot } from "../src/status/status-data.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
+import { assistantLine, leasedRoleShell, reviewerPi } from "./fixtures/pi-events.js";
 
 /** Shared fixtures for the landing-drain tests — landing-drain.test.ts and
  * landing-pipeline.test.ts, which node --test runs as parallel processes (top-level tests

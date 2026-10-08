@@ -7,8 +7,8 @@ import { readEvents } from "../src/events/event-read.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { eventsLogPath } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 
 function cloneConfig(c: TumwaterConfig): TumwaterConfig {

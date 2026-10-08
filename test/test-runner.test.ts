@@ -24,7 +24,7 @@ import {
   timedOutFailure,
 } from "./test-runner.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { exitWithOwnerEnv } from "./victim-fixture.js";
+import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
 function fakeDistDir(...files: string[]): string {

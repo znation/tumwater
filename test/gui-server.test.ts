@@ -6,7 +6,7 @@ import path from "node:path";
 import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
 import { tickRows } from "../src/history/history-data.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { dequeuePrompt, enqueueRolePrompt, inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";

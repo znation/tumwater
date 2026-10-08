@@ -10,12 +10,12 @@ import assert from "node:assert/strict";
 import { saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { eventsOfType } from "./log-fixtures.js";
-import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 /** A fake pi that records how many runs were in flight when it started (one sample line per
  * run), holds its slot for ~1.5s so overlapping runs are observable, and declares

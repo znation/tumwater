@@ -12,14 +12,14 @@ import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../sr
 import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, readRunLines } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import { runPiFixture, runFakePi, runPiVerified } from "./helpers/pi-run-harness.js";
-import { ownerAliveSh } from "./victim-fixture.js";
+import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 // The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves
 // its session and worktree edits intact, so the loop resumes them instead of discarding hours

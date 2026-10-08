@@ -5,12 +5,12 @@
  * the fake-pi line builders these logs are assembled from live in pi-events.ts. */
 import fs from "node:fs";
 import path from "node:path";
-import { readEvents } from "../src/events/event-read.js";
-import type { HarnessEvent } from "../src/events/events.js";
-import { orchestratorStatePath, piLogPath } from "../src/paths.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readEvents } from "../../src/events/event-read.js";
+import type { HarnessEvent } from "../../src/events/events.js";
+import { orchestratorStatePath, piLogPath } from "../../src/paths.js";
+import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, runMarker, userLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files/files.js";
+import { ensureParentDir } from "../../src/files/files.js";
 
 /** Stamp a marker/request file the way tests simulate CLI/operator side effects: create the
  * parent directories, then write `value` as compact JSON directly to `file` with a plain

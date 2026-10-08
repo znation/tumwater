@@ -1,6 +1,6 @@
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import fs from "node:fs";
-import { APPROVE_PI, assistantLine } from "../pi-events.js";
+import { APPROVE_PI, assistantLine } from "../fixtures/pi-events.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
 import path from "node:path";

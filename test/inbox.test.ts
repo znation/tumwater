@@ -16,7 +16,7 @@ import { cancelPrompt, cancelRolePrompt } from "../src/inbox/inbox-cancel.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { eventsOfType, warningMessages } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { errCode } from "../src/errno.js";
 import { errnoError } from "./helpers/fs-faults.js";

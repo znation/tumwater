@@ -6,11 +6,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { warningMessages } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 // Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a
 // tick to handleRefusal, where only the markdown objection note may land — it is the durable

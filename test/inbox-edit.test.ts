@@ -8,7 +8,7 @@ import { cancelListedPrompt } from "../src/inbox/inbox-cancel.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError } from "./helpers/fs-faults.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";

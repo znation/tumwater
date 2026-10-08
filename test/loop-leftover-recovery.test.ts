@@ -22,9 +22,9 @@ import { landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
-import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { landHead, landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Simulate an interrupted tick's leftover — the crash state every test in this file starts
@@ -49,7 +49,7 @@ async function pinLeftover(
 }
 import { conflictingMainEdit, fakePi, firstRunThenIdle, seedBranchEdit } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, reviewerPi } from "./fixtures/pi-events.js";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
 // and its landing leaves the pin on disk (the branch is already reset to main). The next tick
 // must re-land that sha through the SAME gate — reviewed, never smuggled in unreviewed.

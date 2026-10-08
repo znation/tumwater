@@ -38,13 +38,13 @@ import {
   startLiveOrchestrator,
   startRedeployRun,
   stopOrchestrator,
-} from "./orchestrator-fixtures.js";
+} from "./fixtures/orchestrator-fixtures.js";
 import { fakePi, fakePiIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { ownerAliveSh } from "./victim-fixture.js";
+import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 /** The session name (pi's `-n` value) of a run block recorded by logPromptsTo: the line after
  * the `-n` flag. Empty when the block records no session. */

@@ -4,13 +4,13 @@
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
 import path from "node:path";
-import type { StatusSnapshot } from "../src/status/status-data.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
-import { applyTickOutcome } from "../src/tick/tick-apply.js";
-import { defaultConfig } from "../src/config/config.js";
-import { piLogPath, worktreesDir } from "../src/paths.js";
+import type { StatusSnapshot } from "../../src/status/status-data.js";
+import { freshLoopState } from "../../src/loop/loop-state.js";
+import { applyTickOutcome } from "../../src/tick/tick-apply.js";
+import { defaultConfig } from "../../src/config/config.js";
+import { piLogPath, worktreesDir } from "../../src/paths.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { clockOf } from "./helpers/oracles.js";
+import { clockOf } from "../helpers/oracles.js";
 
 export const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 

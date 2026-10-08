@@ -35,11 +35,11 @@ import {
   rowReader,
   runnersFor,
 } from "./landing-fixtures.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
-import { assistantLine, leasedRoleShell } from "./pi-events.js";
+import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 /** Second slice of the landing-drain suite (landing-drain.test.ts carries the first) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run

@@ -10,13 +10,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
-import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { eventsOfType, harnessWarnings } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logPromptsTo } from "./fakes/fake-pi.js";
-import { APPROVE_PI, assistantLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 // --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing
 // roles skip authoring entirely instead of burning runs the gate would reject deterministically.

@@ -11,7 +11,7 @@ import fs from "node:fs";
 import { collectReport } from "../src/report/report-data.js";
 import { eventsLogPath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 

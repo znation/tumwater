@@ -15,7 +15,7 @@ import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, w
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli } from "./helpers/cli-harness.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a

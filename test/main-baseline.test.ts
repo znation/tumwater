@@ -6,7 +6,7 @@ import path from "node:path";
 import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen, noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
-import { baselineFixture, runsOf } from "./loop-fixtures.js";
+import { baselineFixture, runsOf } from "./fixtures/loop-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";

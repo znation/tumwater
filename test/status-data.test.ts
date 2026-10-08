@@ -24,7 +24,7 @@ import { MODELS_JSON } from "./models-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
-import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { projectCapHit, recordDailyCost } from "../src/budget/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { landQueueDir, landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";

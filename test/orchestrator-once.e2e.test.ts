@@ -14,12 +14,12 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-s
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { fastConfig, makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { fastConfig, makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { cli } from "./helpers/cli-harness.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 test("once: a fleet where every role finds nothing to do exits on its own, one tick each", async () => {
   const repo = await makeFastRepo("once round test", ["clean", "dry"]);

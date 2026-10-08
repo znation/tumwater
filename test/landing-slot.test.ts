@@ -32,11 +32,11 @@ import { readEvents } from "../src/events/event-read.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import { landHead } from "./orchestrator-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
  * but PiRunResult is fully required, so the rest are neutral defaults. */

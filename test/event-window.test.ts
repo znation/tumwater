@@ -8,7 +8,7 @@ import { collectReport } from "../src/report/report-data.js";
 import { renderReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { writeEvents, writeLogLines } from "./log-fixtures.js";
+import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 
 // `readWindowEvents` scans the append-only event log BACKWARDS in 8 KB chunks and early-stops
 // once the oldest complete line in hand predates the window. The subtle parts — a line torn by

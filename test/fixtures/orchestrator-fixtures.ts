@@ -1,25 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import { strict as assert } from "node:assert";
-import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
-import { initProject } from "../src/init/init.js";
-import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
-import { runOrchestrator } from "../src/orchestrator/orchestrator.js";
-import { drainMerge } from "../src/landing/landing-drain.js";
-import { newLandingPipeline, type LandingPipelineContext } from "../src/landing/landing-pipeline.js";
-import { startVet } from "../src/landing/landing-vetting.js";
-import { headLanding } from "../src/landing/landing-queue.js";
-import { landingRefName } from "../src/paths.js";
-import { Semaphore } from "../src/concurrency/semaphore.js";
-import { loadLoopState } from "../src/loop/loop-state.js";
-import { logEvent } from "../src/events/events.js";
-import type { RedeployDeps } from "../src/redeploy/redeploy-policy.js";
-import { Redeployer } from "../src/redeploy/redeployer.js";
-import { LoopRunner } from "../src/loop/loop.js";
-import { fakePiIdle } from "./fakes/fake-pi.js";
-import { waitFor } from "./helpers/wait.js";
-import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { TickResult } from "../src/tick/tick-outcome.js";
+import { defaultConfig, loadConfig, saveConfig } from "../../src/config/config.js";
+import { initProject } from "../../src/init/init.js";
+import { makeRepo, sh } from "./repo-fixtures.js";
+import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
+import { drainMerge } from "../../src/landing/landing-drain.js";
+import { newLandingPipeline, type LandingPipelineContext } from "../../src/landing/landing-pipeline.js";
+import { startVet } from "../../src/landing/landing-vetting.js";
+import { headLanding } from "../../src/landing/landing-queue.js";
+import { landingRefName } from "../../src/paths.js";
+import { Semaphore } from "../../src/concurrency/semaphore.js";
+import { loadLoopState } from "../../src/loop/loop-state.js";
+import { logEvent } from "../../src/events/events.js";
+import type { RedeployDeps } from "../../src/redeploy/redeploy-policy.js";
+import { Redeployer } from "../../src/redeploy/redeployer.js";
+import { LoopRunner } from "../../src/loop/loop.js";
+import { fakePiIdle } from "../fakes/fake-pi.js";
+import { waitFor } from "../helpers/wait.js";
+import type { TumwaterConfig } from "../../src/config/config-schema.js";
+import type { TickResult } from "../../src/tick/tick-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its landing pipeline: fast configs and repos, a start/stop wrapper around

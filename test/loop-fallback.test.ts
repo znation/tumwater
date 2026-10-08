@@ -8,12 +8,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { transientErrorText } from "./fakes/transient.js";
-import { assistantLine, errorLine } from "./pi-events.js";
+import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 
 /** A fake pi that records each run's --provider/--model flags then fails the run with an
  * HTTP 503 backend error. `server` is a backend kind the transient retry does NOT cover, so

@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { branchName, landingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
 import { collectRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
-import { landingRefExists } from "./orchestrator-fixtures.js";
+import { landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";

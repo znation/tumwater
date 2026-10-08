@@ -12,14 +12,14 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
-import { warningMessages } from "./log-fixtures.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
 test("a run that recovers from a predict-stream timeout internally is not re-run by the harness", async () => {
   const repo = await initializedRepo();

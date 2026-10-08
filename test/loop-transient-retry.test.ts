@@ -9,14 +9,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { makeLoopRunner } from "./loop-fixtures.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { failingThenIdle } from "./fakes/transient.js";
 import { sleepRecorder } from "./fakes/time.js";
-import { warningMessages } from "./log-fixtures.js";
-import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
+import { APPROVE_PI, assistantLine, errorLine } from "./fixtures/pi-events.js";
 
 test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
   const repo = await initializedRepo();

@@ -7,11 +7,11 @@ import { formatTranscript, type TranscriptEntry } from "../src/ui/transcript.js"
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/files/tail.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
-import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
+import { writeLogLines, writeTurnLog } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./helpers/fs-faults.js";
-import { FIXED_TS, agentStart, assistantBlocks, kindMarker, runMarker, userLine } from "./pi-events.js";
+import { FIXED_TS, agentStart, assistantBlocks, kindMarker, runMarker, userLine } from "./fixtures/pi-events.js";
 
 /** The oracle a tail read must match: the whole log read from a fresh stat and rendered exactly
  * as transcript.ts renders it. `entries` is the full re-read; `size` is that stat, for tests

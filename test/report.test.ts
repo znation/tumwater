@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { collectReport, collectReportSince, type ReportData } from "../src/report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { cli, runCli } from "./helpers/cli-harness.js";
 

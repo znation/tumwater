@@ -8,11 +8,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import { makeLoopRunner, pinWorktreeAsSlot } from "./loop-fixtures.js";
+import { makeLoopRunner, pinWorktreeAsSlot } from "./fixtures/loop-fixtures.js";
 import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
+import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 // PLANS.md "Per-role prompts 1/2" criterion (b), red-gate arm: a per-role prompt is dequeued
 // before the red-main gate runs (the gate needs the assembled prompt), so a blocked tick MUST

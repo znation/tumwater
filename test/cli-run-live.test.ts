@@ -10,12 +10,12 @@ import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { readEvents } from "../src/events/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
+import { eventsOfType, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
-import { fastConfig } from "./orchestrator-fixtures.js";
+import { fastConfig } from "./fixtures/orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./helpers/cli-harness.js";
 import { sleep, waitForFile } from "./helpers/wait.js";
 

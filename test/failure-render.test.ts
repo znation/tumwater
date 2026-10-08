@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 

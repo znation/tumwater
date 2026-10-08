@@ -5,7 +5,7 @@ import { initProject } from "../src/init/init.js";
 import { eventsLogPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
-import { writeLogLines } from "./log-fixtures.js";
+import { writeLogLines } from "./fixtures/log-fixtures.js";
 
 // The `logs` command's window-and-filter CLI tests — --since, --grep, and the docs pin —
 // split from cli-logs.test.ts so node --test runs them in parallel processes. That file

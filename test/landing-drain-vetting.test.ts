@@ -25,10 +25,10 @@ import {
   rowReader,
   runnersFor,
 } from "./landing-fixtures.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { leasedRoleShell } from "./pi-events.js";
+import { leasedRoleShell } from "./fixtures/pi-events.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
 import { readJson } from "./helpers/json-read.js";
 

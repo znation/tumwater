@@ -12,13 +12,13 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { piLogPath, sessionDir } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 test("a tick cut off at the context ceiling warns, skips backoff, and resumes", async () => {
   const repo = await initializedRepo();

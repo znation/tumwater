@@ -19,13 +19,13 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-s
 import { clearBackoff } from "../src/scheduling/backoff.js";
 import { branchName, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { roleWt, seedCounters } from "./loop-fixtures.js";
-import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
+import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
+import { roleWt, seedCounters } from "./fixtures/loop-fixtures.js";
+import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 const FAST_POLL_MS = 100;

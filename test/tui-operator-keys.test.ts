@@ -12,7 +12,7 @@ import { pauseFleet, pausedRoles } from "../src/fleet/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, withTui } from "./tui-fixtures.js";
 
 // PLANS.md "TUI per-loop controls": Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is

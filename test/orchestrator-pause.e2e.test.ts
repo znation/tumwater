@@ -15,12 +15,12 @@ import { loadLoopState } from "../src/loop/loop-state.js";
 import { pauseRole, resumeRole } from "../src/fleet/fleet-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { pausedPath } from "../src/paths.js";
-import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
+import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
+import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { sh } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
-import { APPROVE_PI, assistantLine } from "./pi-events.js";
+import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 const FAST_POLL_MS = 100;
 

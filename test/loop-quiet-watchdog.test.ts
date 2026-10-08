@@ -12,13 +12,13 @@ import { initProject } from "../src/init/init.js";
 import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { piLogPath } from "../src/paths.js";
-import { warningMessages } from "./log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./loop-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
+import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
-import { assistantLine } from "./pi-events.js";
-import { ownerAliveSh } from "./victim-fixture.js";
+import { assistantLine } from "./fixtures/pi-events.js";
+import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 // Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
 // boundary events — streaming deltas never count), not merely when it stops running fast.

@@ -18,7 +18,7 @@ import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, STATE_DIR, wakeRequestPath } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/files/json-files.js";
-import { writeMarker } from "./log-fixtures.js";
+import { writeMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** src/operator/operator-intent.ts's own tests: the marker-writing cores are shared by the CLI, the

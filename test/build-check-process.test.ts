@@ -5,11 +5,11 @@ import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
 import { errCode } from "../src/errno.js";
 import { pidAlive } from "../src/process/process.js";
-import { buildCheckFixture } from "./loop-fixtures.js";
+import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
-import { ownerAliveSh } from "./victim-fixture.js";
+import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 // The build check's process-tree teardown hygiene, split out of build-check.test.ts beside its
 // local helpers (groupAlive, checkClock, readPid): what a timed-out check owes its process tree

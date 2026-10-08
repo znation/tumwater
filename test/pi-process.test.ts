@@ -9,9 +9,9 @@ import { pidAlive, signalTree } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import { runPiFixture } from "./helpers/pi-run-harness.js";
-import { ownerAliveSh } from "./victim-fixture.js";
+import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 // The process-tree-hygiene regressions: a run — killed or exited normally — must take its
 // tool-call children, grandchildren, and backgrounded cross-group orphans with it, and

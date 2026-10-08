@@ -7,7 +7,7 @@ import { renderDoctor } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fixtures.js";

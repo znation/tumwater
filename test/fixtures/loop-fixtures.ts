@@ -5,15 +5,15 @@
  * scripts these fixtures install come from fake-commands.ts. */
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig } from "../src/config/config.js";
-import { LoopRunner } from "../src/loop/loop.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { gitInit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { pathPrepend, projManifest, writeScript } from "./fakes/fake-commands.js";
-import { ensureParentDir } from "../src/files/files.js";
-import { readSlotsState, updateSlotsState } from "../src/git/slots-state.js";
-import { worktreePath } from "../src/paths.js";
+import { defaultConfig } from "../../src/config/config.js";
+import { LoopRunner } from "../../src/loop/loop.js";
+import { freshLoopState, saveLoopState } from "../../src/loop/loop-state.js";
+import type { TumwaterConfig } from "../../src/config/config-schema.js";
+import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
+import { pathPrepend, projManifest, writeScript } from "../fakes/fake-commands.js";
+import { ensureParentDir } from "../../src/files/files.js";
+import { readSlotsState, updateSlotsState } from "../../src/git/slots-state.js";
+import { worktreePath } from "../../src/paths.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a

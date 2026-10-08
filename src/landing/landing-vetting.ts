@@ -131,7 +131,7 @@ export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeli
  * written at once and its entry dropped, which frees its author on the next poll while the
  * other vets run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted vet discards its
  * pin; a shutdown keeps it. Never rejects for a failed landing: an unexpected throw becomes an
- * "error" outcome. Exported for test/orchestrator-fixtures.ts's landHead, which lands one queue
+ * "error" outcome. Exported for test/fixtures/orchestrator-fixtures.ts's landHead, which lands one queue
  * entry through the pipeline without draining the rest of the queue. */
 export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry: LandingEntry, file: string): void {
   const { root, mainBranch, signal, semaphore } = ctx;

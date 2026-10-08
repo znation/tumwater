@@ -6,7 +6,7 @@
  * shim on PATH (fake-pi.ts installs it; this module only writes the script): the shim
  * stays the pi boundary, this fake scripts what pi answers. Node built-ins only.
  */
-import { errorLine, assistantLine } from "../pi-events.js";
+import { errorLine, assistantLine } from "../fixtures/pi-events.js";
 
 /** The retriable failure classes the retry policy distinguishes, each with the error text
  * the real backend (LM Studio, a provider, a proxy) produces — the single home of the

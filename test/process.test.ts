@@ -20,7 +20,7 @@ import {
 } from "../src/process/process-table.js";
 import { makeRunMarker, runMarkerEnv } from "../src/process/run-marker.js";
 import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
-import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
+import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./fixtures/victim-fixture.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { errnoError } from "./helpers/fs-faults.js";
 

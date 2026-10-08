@@ -10,7 +10,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { eventsLogPath } from "../src/paths.js";
-import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { fakePiIdle } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 

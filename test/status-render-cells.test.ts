@@ -13,7 +13,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { dayKey } from "./helpers/oracles.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 import {
   PENDING_SHA,
   SESSION,
@@ -24,7 +24,7 @@ import {
   writePiLog,
   rowOf,
   pendingFeature,
-} from "./status-fixtures.js";
+} from "./fixtures/status-fixtures.js";
 
 // Last tick cell: absolute local time of the last tick end alongside the relative age.
 

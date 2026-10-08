@@ -6,8 +6,8 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/baseline/
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
-import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
-import { baselineFixture, fakeNpm, runsOf } from "./loop-fixtures.js";
+import { eventsOfType, harnessWarnings } from "./fixtures/log-fixtures.js";
+import { baselineFixture, fakeNpm, runsOf } from "./fixtures/loop-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";

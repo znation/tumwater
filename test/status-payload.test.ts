@@ -15,9 +15,9 @@ import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
+import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
-import { assistantLine } from "./pi-events.js";
+import { assistantLine } from "./fixtures/pi-events.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 

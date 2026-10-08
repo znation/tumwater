@@ -11,7 +11,7 @@ import { shortSha } from "../src/text/format.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.js";
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { baselineFixture, fakeNpm } from "./loop-fixtures.js";
+import { baselineFixture, fakeNpm } from "./fixtures/loop-fixtures.js";
 
 // Unit coverage for attributeRedCheck (src/landing/landing-check-failures.ts): the gate's final attribution
 // step, shared by a batch bisect's last move and a single landing's in-lock check at the

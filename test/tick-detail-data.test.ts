@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { writeEvents } from "./log-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 
 function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "feature", type: "tick_start", tick: 1, ...over } as HarnessEvent;

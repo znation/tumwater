@@ -16,7 +16,7 @@ import { dailyCost, todayStamp } from "../src/budget/budget.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 /** The persisted-state file's own tests (src/loop/loop-state.ts): fresh defaults, the tolerant load,

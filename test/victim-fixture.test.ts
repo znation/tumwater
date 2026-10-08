@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 
 import { pidAlive } from "../src/process/process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { armVictimKill, exitWithOwnerEnv, ownerAliveSh } from "./victim-fixture.js";
+import { armVictimKill, exitWithOwnerEnv, ownerAliveSh } from "./fixtures/victim-fixture.js";
 
 // The owner watch (exit-with-owner.ts) that the victim fixtures and every other long-lived
 // test child ride on. A child started under exitWithOwnerEnv must leave once its owner dies,
@@ -22,7 +22,7 @@ test("a child under exitWithOwnerEnv and the node grandchild it starts both exit
   // The owner is a stand-in test process (the host). It spawns the child through the helper;
   // the child starts a detached grandchild with a plain inherited environment, the way the
   // CLI's own children are started; both idle until killed.
-  const fixture = new URL("./victim-fixture.js", import.meta.url).href;
+  const fixture = new URL("./fixtures/victim-fixture.js", import.meta.url).href;
   const childScript = [
     "const { spawn } = require('node:child_process');",
     "const g = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1 << 30)'], { detached: true, stdio: 'ignore' });",

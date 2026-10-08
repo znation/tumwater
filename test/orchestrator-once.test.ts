@@ -19,8 +19,8 @@ import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { pauseRole } from "../src/fleet/fleet-state.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { fakePiIdle } from "./fakes/fake-pi.js";
 
 test("once: an idle fleet exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {

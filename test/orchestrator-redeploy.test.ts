@@ -16,7 +16,7 @@ import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { eventsLogPath } from "../src/paths.js";
 import type { BuildStatus } from "../src/build/build-info.js";
 import type { Redeployer } from "../src/redeploy/redeployer.js";
-import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator, withHangGuard } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator, withHangGuard } from "./fixtures/orchestrator-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor } from "./helpers/wait.js";

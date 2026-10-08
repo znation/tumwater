@@ -6,7 +6,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../../src/process/supervisor.js";
-import { exitWithOwnerEnv } from "../victim-fixture.js";
+import { exitWithOwnerEnv } from "../fixtures/victim-fixture.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
 // tested as a child process: the built dist/src/cli.js with cwd set to a temp repo.

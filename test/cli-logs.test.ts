@@ -8,8 +8,8 @@ import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { makeRepo, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
-import { assistantLine } from "./pi-events.js";
-import { writeLogLines } from "./log-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
+import { writeLogLines } from "./fixtures/log-fixtures.js";
 
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live

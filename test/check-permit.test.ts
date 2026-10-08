@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { readEvents } from "../src/events/event-read.js";
-import { buildCheckFixture } from "./loop-fixtures.js";
+import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
 import { flushImmediate, sleep } from "./helpers/wait.js";
 
 // A held permit is module-global state, so every test must let its work finish (and any

@@ -33,9 +33,9 @@ import {
   onceRound,
   startIdleOrchestrator,
   stopOrchestrator,
-} from "./orchestrator-fixtures.js";
+} from "./fixtures/orchestrator-fixtures.js";
 import { fakePiIdle } from "./fakes/fake-pi.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 
 /** The state a finished no_change tick on the current main head leaves on disk, due now. */

@@ -6,7 +6,7 @@
 // instead. `stopChild` bundles the SIGKILL-and-wait teardown both share.
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { exitWithOwnerEnv } from "../victim-fixture.js";
+import { exitWithOwnerEnv } from "../fixtures/victim-fixture.js";
 
 /** The part of a spawned child the teardown needs — a superset of what `spawnReadyChild`
  * returns, so `stopChild` accepts either kind of handle. */
