@@ -108,3 +108,33 @@ test("resolveBacklogInsertConflicts treats an unreadable path as still conflicte
   const remaining = await resolveBacklogInsertConflicts(root, ["QUESTIONS.md"]);
   assert.deepEqual(remaining, ["QUESTIONS.md"]);
 });
+
+test("resolveBacklogInsertConflicts leaves the conflicted file intact when a write dies mid-way", async () => {
+  const root = makeRepo();
+  const text = `## Done\n\n${insertOnlyHunk("### Entry A", "### Entry C")}\n### Entry Z\n`;
+  const file = path.join(root, "PLANS.md");
+  fs.writeFileSync(file, text);
+  const original = fs.writeFileSync;
+  // Simulate the process dying mid-write: put a truncated prefix on disk, then fail. The
+  // atomic helper's tmp file matches the same predicate, so the injection lands on it — the
+  // target changes only if a partial file is written straight to it (the pre-fix shape).
+  (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = ((target, data, ...rest) => {
+    original(target, String(data).slice(0, 8), ...rest);
+    throw new Error("simulated torn write");
+  }) as typeof fs.writeFileSync;
+  let rejected = false;
+  try {
+    await resolveBacklogInsertConflicts(root, ["PLANS.md"]);
+  } catch {
+    rejected = true;
+  } finally {
+    fs.writeFileSync = original;
+  }
+  assert.equal(rejected, true, "the failed write is not swallowed");
+  assert.equal(fs.readFileSync(file, "utf8"), text, "the conflicted file is untouched");
+  assert.deepEqual(
+    fs.readdirSync(root).filter((name) => name.startsWith("PLANS.md.tmp")),
+    [],
+    "no tmp remnant is left behind",
+  );
+});

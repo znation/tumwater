@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
+import { writeTextAtomic } from "../files/files.js";
 import { git } from "../git/git-run.js";
 
 /** A parsed diff3 conflict hunk: the three sides between `<<<<<<<`, `|||||||`, `=======` and
@@ -105,7 +106,11 @@ export async function resolveBacklogInsertConflicts(
       remaining.push(file);
       continue;
     }
-    fs.writeFileSync(p, resolved);
+    // Atomic (tmp + rename): a landing process killed mid-write (SIGKILL, the timeout
+    // group-kill) must leave either the conflicted file or the fully resolved one, never a
+    // truncated backlog — the CLI's backlog writers (backlog-write.ts, question-commands.ts)
+    // already write these unbounded-history files through this helper.
+    writeTextAtomic(p, resolved);
     await git(wt, "add", "--", file);
   }
   return remaining;
