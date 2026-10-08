@@ -2,6 +2,7 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { recordDailyCost } from "../budget/budget.js";
+import { finiteNumber } from "../files/json-object.js";
 
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
@@ -11,6 +12,18 @@ import { recordDailyCost } from "../budget/budget.js";
  * fold() is the once-per-run choke point: every pi run of a tick — main attempt, transient
  * retry, conflict resolution, landing runs via foldLandingUsage — lands here exactly once, so
  * adding a usage field to PiRunResult touches this single place. */
+/** One persisted lifetime counter, healed to a finite non-negative number before it is read
+ * and rewritten. LoopState is restored by loadLoopState's unchecked cast (`{ ...fresh,
+ * ...readJsonFile }`), so a hand-edited or torn `generatedTokens`/`peakContextTokens`/
+ * `totalCostUsd` can be a string, NaN, ±Infinity, or negative despite the interface: a string
+ * would make `+=` concatenate, NaN would propagate through Math.max and every display that
+ * renders the figure, and a negative would run a lifetime total backwards. Unusable reads as
+ * 0, the same policy budget.ts's daily window applies to its stored spend. */
+function counter(value: unknown): number {
+  const n = finiteNumber(value, 0);
+  return n >= 0 ? n : 0;
+}
+
 export class TickUsage {
   /** Assistant turns folded into THIS tick so far (non-persisted): reset at tick start,
    * grown in fold. Read at commit time for the trailer, where it holds exactly the
@@ -70,9 +83,9 @@ export class TickUsage {
    * through foldLandingUsage: those never advance the tick's pre-edit counter, which measures
    * the authoring search. */
   fold(s: LoopState, run: PiRunResult, authoring = true): void {
-    s.generatedTokens += run.outputTokens;
-    s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
-    s.totalCostUsd += run.costUsd;
+    s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;
+    s.peakContextTokens = Math.max(counter(s.peakContextTokens), run.peakContextTokens);
+    s.totalCostUsd = counter(s.totalCostUsd) + run.costUsd;
     this.costUsd += run.costUsd;
     this.promptTokens += run.promptTokens;
     this.cacheReadTokens += run.cacheReadTokens;

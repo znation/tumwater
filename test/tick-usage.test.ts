@@ -85,6 +85,22 @@ test("fold feeds the daily cost budget: dayStamp is set and dayCostUsd accumulat
   assert.equal(s.dayCostUsd, 1.0);
 });
 
+test("fold heals a corrupt persisted lifetime counter instead of poisoning it", () => {
+  const s: LoopState = freshLoopState("coverage");
+  // loadLoopState casts the state file without validating it, so any of these can come back
+  // as a foreign type or an out-of-range number.
+  (s as { generatedTokens: unknown }).generatedTokens = "123";
+  (s as { peakContextTokens: unknown }).peakContextTokens = Number.POSITIVE_INFINITY;
+  (s as { totalCostUsd: unknown }).totalCostUsd = -5;
+  const u = new TickUsage();
+
+  u.fold(s, run({ outputTokens: 10, peakContextTokens: 4_000, costUsd: 0.5 }));
+
+  assert.equal(s.generatedTokens, 10, "string seed reads as 0, then adds the run");
+  assert.equal(s.peakContextTokens, 4_000, "Infinity seed reads as 0, so the run's peak wins");
+  assert.equal(s.totalCostUsd, 0.5, "negative seed reads as 0, then adds the run");
+});
+
 test("lastRateLimit is stamped only by a run that ENDED on the 429, with the Retry-After hint", () => {
   const s: LoopState = freshLoopState("coverage");
   const u = new TickUsage();
