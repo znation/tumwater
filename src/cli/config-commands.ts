@@ -9,8 +9,8 @@ import {
 import { modelTierMap } from "../config/config-schema.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 
-/** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which holds
- * only the operator-intent marker commands): with no arguments, print the effective merged
+/** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which
+ * keeps the other operator-command bodies): with no arguments, print the effective merged
  * config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
  * debugging scheduling or custom-loop wiring sees what the fleet would actually load instead
  * of overlaying defaults onto tumwater.json by hand. A query, not a writer: no redaction (the
