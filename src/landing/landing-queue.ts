@@ -9,12 +9,12 @@ import { landQueueDir } from "../paths.js";
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
  * author slot through review or the build check. The orchestrator drains the queue through its
  * landing pipeline (landing-drain.ts): it vets every queued entry, merges the vetted ones in
- * queue order on one merge slot, and drops each entry after EVERY outcome (a non-terminal one keeps the landing
- * ref, so the retry rides next-tick leftover recovery at normal cadence — the queue never
- * retries). Timestamped filenames order the queue across processes; a crash between enqueue
- * and drop loses nothing — the next start drains the survivors, deduping shas main already
- * holds. Same reasons the director's inbox is a directory of files (inbox.ts). The entry's
- * shape (LandingEntry) lives here beside the queue's reader/writer — moved out of the
+ * queue order on one merge slot, and drops each entry after EVERY outcome (a non-terminal one
+ * keeps the landing ref, so the retry rides next-tick leftover recovery at normal cadence — the
+ * queue never retries). Timestamped filenames order the queue across processes; a crash between
+ * enqueue and drop loses nothing — the next start drains the survivors, deduping shas main
+ * already holds. Same reasons the director's inbox is a directory of files (inbox.ts). The
+ * entry's shape (LandingEntry) lives here beside the queue's reader/writer — moved out of the
  * types.ts grab-bag. */
 
 /** The review that rejected the change a revision is revising (plans/revise-rejected.md part
@@ -38,7 +38,8 @@ export interface LandingEntry {
   role: string;
   /** The pinned commit to land — checked out detached in this role's lander worktree. */
   sha: string;
-  /** The authoring tick number, for the unique per-run session names (review + conflict resolution). */
+  /** The authoring tick number, for the unique per-run session names (review + conflict
+   * resolution). */
   tick: number;
   /** The change's one-line summary (the commit subject minus its prefix). */
   summary: string;
@@ -152,8 +153,8 @@ export function queuedLandings(root: string): LandingEntry[] {
   return queuedLandingFiles(root).map((q) => q.entry);
 }
 
-/** The head of the queue — its oldest entry — plus the file to drop on completion, or null when the queue is empty or its oldest file is
- * a vanished/torn entry. */
+/** The head of the queue — its oldest entry — plus the file to drop on completion, or null when
+ * the queue is empty or its oldest file is a vanished/torn entry. */
 export function headLanding(root: string): { entry: LandingEntry; file: string } | null {
   const file = queueFiles(root)[0];
   if (!file) return null;
@@ -167,8 +168,8 @@ export function headLanding(root: string): { entry: LandingEntry; file: string }
  * drops this file with a warning so the queue can drain: headLanding reads null for it
  * forever and nothing else will remove it, stranding every live entry behind it (each
  * author's interlock, the per-poll queued-roles set, pins its ticks along with them). The
- * crashed entry's commit, if any, still lives in its landing ref — next-tick leftover recovery re-lands
- * it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
+ * crashed entry's commit, if any, still lives in its landing ref — next-tick leftover recovery
+ * re-lands it — so the drop loses nothing recoverable from the file (BUGS.md 2026-09-16). */
 export function staleHeadFile(root: string): string | null {
   const file = queueFiles(root)[0];
   if (!file) return null;
