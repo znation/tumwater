@@ -91,7 +91,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
     roles: picks.map((v) => v.entry.role),
     userAborted: false,
   };
-  abortOnShutdown(signal, merge.controller);
+  const detachShutdown = abortOnShutdown(signal, merge.controller);
   const wiring = new Map<string, BatchRoleWiring>(
     picks.map((v) => [
       v.entry.role,
@@ -160,6 +160,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         }
       }
     } finally {
+      detachShutdown();
       if (merge.userAborted) await discardPinnedRefs(root, merge.roles);
       p.merge = null;
     }

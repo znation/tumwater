@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { drainLandings, settleAbortedVetted } from "../src/landing/landing-drain.js";
@@ -103,6 +104,30 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
     assert.equal(landed[0]!.loop, "improve");
     assert.equal(landed[0]!.result, "changed");
     assert.equal(loadLoopState(root, "improve").lastResult, "changed", "the outcome folded into the author's state");
+  } finally {
+    restore();
+  }
+});
+
+test("a settled landing detaches its shutdown listener: the long-lived stop signal keeps no per-landing wiring", async () => {
+  // The fleet shutdown signal is one object for the whole run and abortOnShutdown wires every
+  // vet and merge to it. A task that settles while the signal is still live must detach its
+  // listener; otherwise the signal accumulates one per landing — and the controller each
+  // retains — unbounded until shutdown. The runners carry no signal here, so every abort
+  // listener on the shutdown signal is a landing task's.
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  const restore = fakePi(APPROVE());
+  const shutdown = new AbortController();
+  try {
+    const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]), { signal: shutdown.signal });
+    assert.equal(getEventListeners(shutdown.signal, "abort").length, 0, "nothing is wired before a landing starts");
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the entry to land");
+    assert.equal(
+      getEventListeners(shutdown.signal, "abort").length,
+      0,
+      "the vet's and merge's wiring detached as each task settled",
+    );
   } finally {
     restore();
   }

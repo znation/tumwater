@@ -144,7 +144,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
     userAborted: false,
     parked: true,
   };
-  abortOnShutdown(signal, vet.controller);
+  const detachShutdown = abortOnShutdown(signal, vet.controller);
   p.vetting.set(role, vet);
   vet.promise = (async () => {
     try {
@@ -201,6 +201,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
         if (vet.userAborted) await discardPinnedRefs(root, [role]);
       }
     } finally {
+      detachShutdown();
       p.vetting.delete(role);
     }
   })();

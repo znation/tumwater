@@ -119,9 +119,13 @@ export function abortableLandings(p: LandingPipeline): AbortableLanding[] {
 }
 
 /** Wire harness shutdown to one task's own controller — through the shared register/abort
- * race helper, so an already-fired signal aborts at once. */
-export function abortOnShutdown(signal: AbortSignal, controller: AbortController): void {
-  runOnAbort(signal, () => controller.abort());
+ * race helper, so an already-fired signal aborts at once. Returns the detach function. The
+ * fleet shutdown signal outlives every landing, so each task that settles while the signal is
+ * still live must detach in its own finally; without that, the one long-lived signal
+ * accumulates a listener (and the retained controller behind it) for every landing the fleet
+ * ever runs, growing without bound until the shutdown it was waiting for. */
+export function abortOnShutdown(signal: AbortSignal, controller: AbortController): () => void {
+  return runOnAbort(signal, () => controller.abort());
 }
 
 /** Take a permit at `tier` unless `signal` fires first: resolves to its release, or to null

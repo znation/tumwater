@@ -33,12 +33,21 @@ export function execFileAsync(
  * added after the abort event never fires, so `addEventListener` alone would leave the caller
  * waiting on a shutdown that has come and gone. A missing signal (no shutdown wiring)
  * registers nothing. Shared by spawnSupervised (supervisor.ts), runPi's child spawn (pi.ts),
- * sleepInterruptible (tick-timing.ts), and abortOnShutdown (landing-pipeline.ts); a caller that
- * must detach `fn` later holds the same reference for `removeEventListener`. */
-export function runOnAbort(signal: AbortSignal | undefined, fn: () => void): void {
-  if (!signal) return;
-  if (signal.aborted) fn();
-  else signal.addEventListener("abort", fn, { once: true });
+ * sleepInterruptible (tick-timing.ts), and abortOnShutdown (landing-pipeline.ts).
+ *
+ * Returns a disposer that detaches `fn`. A `{ once: true }` listener detaches itself when the
+ * signal fires, so a caller whose work outlives the abort need not dispose; a caller that
+ * settles while the signal is still live MUST run the disposer, or a long-lived signal — the
+ * fleet shutdown, wired once per landing — accumulates one listener and its closure per task
+ * that ever settled. */
+export function runOnAbort(signal: AbortSignal | undefined, fn: () => void): () => void {
+  if (!signal) return () => {};
+  if (signal.aborted) {
+    fn();
+    return () => {};
+  }
+  signal.addEventListener("abort", fn, { once: true });
+  return () => signal.removeEventListener("abort", fn);
 }
 
 /** True when a process with this pid exists — a signal-0 send, which cannot affect the
