@@ -32,7 +32,12 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   // and the address bar follows the open drawer, so a loop's live view can be linked to.
   let routed = false;
   function route() {
-    const h = decodeURIComponent(location.hash.slice(1));
+    // A malformed percent-escape in the fragment (#%, an unencoded paste) makes
+    // decodeURIComponent throw; routing on the raw text instead keeps the page alive. This
+    // matters at boot: route() runs before pollLoop(), so an unguarded throw here aborts the
+    // script and the dashboard never polls again — a frozen page from a hand-edited URL.
+    let h = location.hash.slice(1);
+    try { h = decodeURIComponent(h); } catch { /* malformed escape: route on the raw fragment */ }
     if (h.startsWith("loop/")) {
       if (!routed) switchView("fleet");
       if (openLoopRole() !== h.slice(5)) openLoop(h.slice(5));

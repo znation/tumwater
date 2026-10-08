@@ -140,3 +140,21 @@ test("route follows #loop/<role> into the drawer over fleet, and idempotently on
   assert.deepEqual(calls, ["openLoop feature"]);
   assert.deepEqual(log, [], "no view switch behind the drawer once routed — history stays visible");
 });
+
+test("route survives a malformed percent-escape in the fragment instead of aborting boot", () => {
+  const log: string[] = [];
+  const calls: string[] = [];
+  const scope = bootScope({
+    location: { hash: "#%" },
+    lastStatus: { loops: [] },
+    renderFleet: () => calls.push("renderFleet"),
+    fetchHistory: () => calls.push("fetchHistory"),
+  }, log);
+
+  // decodeURIComponent("%") throws; the raw fragment is no known view, so routing falls back
+  // to fleet. The assertion that matters is doesNotThrow: route() runs before pollLoop() at
+  // boot, so a throw here would abort the served script and freeze the whole dashboard.
+  assert.doesNotThrow(() => scope.route());
+  assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
+  assert.deepEqual(calls, ["renderFleet"]);
+});
