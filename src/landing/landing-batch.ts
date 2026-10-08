@@ -127,11 +127,11 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
  * the first half of the ones the last red check ran over — so every prefix that lands, lands on
  * its own green check with nothing rewritten before its ff. A green prefix lands and the rest of
  * the red run is bisected next; a red one is halved. The one change a red check ran over alone
- * is attributed through main's own baseline (landing-check-failures.ts's attributeRedCheck): main green → rejected with the
- * check's reasons, no pi run; main red → "main_red", pin kept. Its red is the second one observed
- * with it in the tree, so a single flaky run never rejects a change. The changes after it stay
- * unattempted for the next merge. A stack of N with one broken change costs about log2(N) + 1
- * extra checks, never a second model review.
+ * is attributed through main's own baseline (landing-check-failures.ts's attributeRedCheck): main
+ * green → rejected with the check's reasons, no pi run; main red → "main_red", pin kept. Its red
+ * is the second one observed with it in the tree, so a single flaky run never rejects a change.
+ * The changes after it stay unattempted for the next merge. A stack of N with one broken change
+ * costs about log2(N) + 1 extra checks, never a second model review.
  *
  * Un-assemblable (a cherry-pick conflict, on the first stack or any prefix) → ABANDON the changes
  * not yet landed to one-at-a-time, in queue order, stopping at the first non-terminal outcome,
