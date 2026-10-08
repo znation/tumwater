@@ -87,6 +87,25 @@ interface MainBaselineCheck {
  * role until main moves — see shouldRerunRed. */
 const baselineCache = new Map<string, MainBaseline>();
 
+/** Safety cap so the per-process verdict cache can never grow unbounded: it is keyed by every
+ * merged code SHA and a red entry carries the failed run's output tail, so a fleet running for
+ * weeks would accumulate one entry per landing forever. Evicting the oldest entry (Map's
+ * insertion order) costs at most one redundant suite run if that SHA is consulted again: a
+ * green for a SHA that becomes main is re-seeded by the next landing (or its own
+ * checkMainBaseline run), and a red is provisional by shouldRerunRed anyway. In-place updates
+ * never grow the map and are never evicted. */
+const BASELINE_CACHE_MAX = 256;
+
+/** Insert or update `sha`'s verdict, evicting the oldest entry when a NEW SHA would exceed the
+ * cap. Both write sites route through here so the cap cannot be bypassed. */
+function rememberBaseline(sha: string, baseline: MainBaseline): void {
+  if (!baselineCache.has(sha) && baselineCache.size >= BASELINE_CACHE_MAX) {
+    const oldest = baselineCache.keys().next().value;
+    if (oldest !== undefined) baselineCache.delete(oldest);
+  }
+  baselineCache.set(sha, baseline);
+}
+
 /** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
  * every blocked role at once) share one check run instead of racing N npm invocations. Keyed by
  * SHA for ordinary checks; a re-verification adds its worktree, because joining another
@@ -132,7 +151,7 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
  * directly observed pass may seed this; skips and failures leave the baseline unknown (the caller
  * decides). */
 export function noteGreenBaseline(sha: string): void {
-  baselineCache.set(sha, { status: "green", sha });
+  rememberBaseline(sha, { status: "green", sha });
 }
 
 /** The cached verdict for `sha` WITHOUT running anything — "green", "red", or undefined when
@@ -228,7 +247,7 @@ export async function checkMainBaseline(
             };
       // A green always lands (promoting a provisional red); a red never overwrites a green —
       // a concurrent run may have promoted this SHA while this one was still going.
-      if (baselineCache.get(sha)?.status !== "green") baselineCache.set(sha, baseline);
+      if (baselineCache.get(sha)?.status !== "green") rememberBaseline(sha, baseline);
       return { baseline };
     })();
     baselineInFlight.set(key, pending);

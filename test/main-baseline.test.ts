@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
-import { checkMainBaseline, mainIsGreen, noteGreenBaseline } from "../src/baseline/main-baseline.js";
+import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen, noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
@@ -375,4 +375,21 @@ test("a baseline run the host slept through is unverified and never cached red",
   assert.equal(runsOf(counter), 2, "the slept failure did not latch the red into the cache");
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "green");
   assert.equal(runsOf(counter), 2, "the clean green is cached as always");
+});
+
+// The verdict cache is keyed by every merged code SHA, so without a cap the orchestrator would
+// hold one entry per landing for the life of the process. It keeps the most recent capped set
+// and evicts the oldest; eviction costs at most one redundant suite run if that SHA is consulted
+// again, which is why it is safe to bound. Inserting twice the cap makes the assertion
+// independent of whatever earlier tests left in the cache.
+test("the baseline verdict cache is bounded: pushing past the cap evicts the oldest SHAs", () => {
+  const CAP = 256;
+  const shas = Array.from({ length: CAP * 2 }, (_, i) => `cache-cap-sha-${i}`);
+  for (const sha of shas) noteGreenBaseline(sha);
+  assert.equal(cachedBaselineVerdict(shas[CAP - 1]!), undefined, "the oldest SHAs were evicted");
+  assert.equal(cachedBaselineVerdict(shas[CAP]!), "green", "the newest capped set is retained");
+  assert.equal(cachedBaselineVerdict(shas[CAP * 2 - 1]!), "green", "the most recent verdict survives");
+  // A re-seed of a still-cached SHA updates in place and must not evict another entry.
+  noteGreenBaseline(shas[CAP]!);
+  assert.equal(cachedBaselineVerdict(shas[CAP + 1]!), "green", "an in-place update evicts nothing");
 });
