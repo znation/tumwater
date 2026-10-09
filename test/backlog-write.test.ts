@@ -638,6 +638,40 @@ test("editPlan re-collapses a wrapped heading onto one line with its stamp intac
   assert.ok(!md.includes("\n2026-09-03)"), "the continuation line is folded into the heading");
 });
 
+test("editing an unstamped entry does not adopt a stamp-like parenthetical from its body", () => {
+  // A heading that closes its parens has no wrapped metadata, so the body line after it is
+  // body, not heading: the body's `(planned …)` must not be reattached as the edited
+  // heading's stamp (BUGS.md 2026-10-09).
+  const repo = makeRepo();
+  const file = path.join(repo, "PLANS.md");
+  fs.writeFileSync(
+    file,
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### A plain title with no stamp",
+      "",
+      "Intro prose (planned 2026-01-02)",
+      "",
+      "more body",
+      "",
+      "## Done",
+      "",
+      "_None yet._",
+      "",
+    ].join("\n"),
+  );
+  editPlan(repo, 1, "A corrected plain title", "new body", 'tumwater plan "<title>" [body...]');
+  const md = fs.readFileSync(file, "utf8");
+  assert.match(md, /### A corrected plain title\n\nnew body\n\n## Done\n/);
+  assert.ok(
+    !md.includes("(planned 2026-01-02)"),
+    "the body's parenthetical is not reattached as the heading's stamp",
+  );
+});
+
 test("tumwater bug --edit replaces the entry, confirms, and wakes no loop", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli bug edit");

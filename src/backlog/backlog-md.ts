@@ -230,18 +230,25 @@ export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): st
  * headings only, continuation lines up to and including the first line ending in `)` (capped
  * at 3 lines) — wrapped headings carry their date on the second line, while `- ` epitaphs are
  * single-line by construction, so a bullet's own line is its whole metadata (a following prose
- * paragraph is body, never matched). Joining with a space keeps "done\n2026-…" matchable.
- * Returns the joined text and the index of the first line NOT consumed as metadata, so a
- * walker can resume its scan there. Extracted from entryDates (its only original caller) so
+ * paragraph is body, never matched). A continuation is joined ONLY when the start line leaves a
+ * parenthetical open: a heading that already balances its parens has no wrapped metadata, so the
+ * body lines after it — which may themselves end in a stamp-like `(planned …)`/`(reported …)` —
+ * are never pulled into the join (BUGS.md 2026-10-09). Joining with a space keeps "done\n2026-…"
+ * matchable. Returns the joined text and the index of the first line NOT consumed as metadata,
+ * so a walker can resume its scan there. Extracted from entryDates (its only original caller) so
  * the stranded-plan detector (src/backlog/backlog-structure.ts) matches dates against exactly the
  * same joined text instead of growing a second, drifting copy of the join rule. */
 export function headingMetadata(lines: string[], start: number): { text: string; next: number } {
   const line = lines[start] ?? "";
   const meta: string[] = [line];
+  // A wrapped heading's first line opens a parenthetical its continuation will close; an
+  // unbalanced count is therefore the only shape that has metadata beyond the first line.
+  const wrapped =
+    (line.match(/\(/g) ?? []).length > (line.match(/\)/g) ?? []).length;
   let closed = line.endsWith(")");
   let j = start + 1;
   // Continuation is a heading-only concern (wrapped headings); bullets are single-line.
-  while (line.startsWith("### ") && meta.length < 3 && j < lines.length && !closed) {
+  while (wrapped && line.startsWith("### ") && meta.length < 3 && j < lines.length && !closed) {
     const next = lines[j] ?? "";
     if (next.startsWith("### ") || next.startsWith("- ")) break; // The entry ends at the next start.
     meta.push(next);
