@@ -6,7 +6,7 @@ import { defaultConfig, loadConfig, loadConfigSafe, saveConfig } from "../src/co
 import { show } from "../src/config/config-field-checks.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
-import { validationError } from "./config-fixtures.js";
+import { validationError } from "./fixtures/config-fixtures.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // Tests for src/config/config-validation.ts — validateConfig — plus the load and save paths that

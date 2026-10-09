@@ -16,7 +16,7 @@ import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { loopbackHostAllowed, startGui } from "../src/gui/gui-server.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
-import { postJson, startLocalGui } from "./gui-fixtures.js";
+import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 

@@ -23,7 +23,7 @@ import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./lander-fixtures.js";
+import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";

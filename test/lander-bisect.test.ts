@@ -21,7 +21,7 @@ import {
   checkAfterGates,
   countingCheck,
   advanceMain,
-} from "./lander-fixtures.js";
+} from "./fixtures/lander-fixtures.js";
 
 // The bisect slice of the landing tests (see lander.test.ts for the split and what each file
 // holds): landVetted's red-stack bisect and its one-at-a-time fallback. The reviewer runs are

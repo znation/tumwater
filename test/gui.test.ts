@@ -11,7 +11,7 @@ import { initProject } from "../src/init/init.js";
 import { inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
-import { fetchLoopback, postJson, startLocalGui } from "./gui-fixtures.js";
+import { fetchLoopback, postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { clockOf, dayKey } from "./helpers/oracles.js";

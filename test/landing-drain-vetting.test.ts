@@ -24,7 +24,7 @@ import {
   REVIEWING,
   rowReader,
   runnersFor,
-} from "./landing-fixtures.js";
+} from "./fixtures/landing-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";

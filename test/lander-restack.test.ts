@@ -22,7 +22,7 @@ import {
   commitOnMain,
   parkUntil,
   batchChecks,
-} from "./lander-fixtures.js";
+} from "./fixtures/lander-fixtures.js";
 
 // The re-stack slice of the landing tests (see lander.test.ts for the split and what each
 // file holds): landVetted's merge over N vetted changes — stacked into one worktree, one

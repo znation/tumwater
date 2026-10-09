@@ -22,7 +22,7 @@ import {
   fakeDeps,
   harness,
   settle,
-} from "./redeploy-fixtures.js";
+} from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";

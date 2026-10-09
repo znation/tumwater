@@ -20,7 +20,7 @@ import { initProject } from "../src/init/init.js";
 import { mainSha, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { MODELS_JSON } from "./models-fixtures.js";
+import { MODELS_JSON } from "./fixtures/models-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { withCountedReads } from "./helpers/fs-faults.js";

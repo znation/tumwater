@@ -16,7 +16,7 @@ import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, runningAsRoot, sh } from "./fixtures/repo-fixtures.js";
-import { reviewGate, ROLE } from "./gate-fixtures.js";
+import { reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { fakePi, piRanMarker } from "./fakes/fake-pi.js";
 
 // Regression coverage for the 2026-09-22 false-fix record (BUGS.md): commit 9cea8c3 was an

@@ -1,23 +1,23 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LandRequest, LanderContext } from "../src/landing/landing-core.js";
-import { landVetted, vetRequest, type BatchContext, type BatchRoleWiring } from "../src/landing/landing-batch.js";
-import { setRef } from "../src/git/git.js";
-import { ensureWorktree } from "../src/git/worktree.js";
-import { eventsLogPath, landingRefName } from "../src/paths.js";
-import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
-import { readEvents } from "../src/events/event-read.js";
-import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { TickResult } from "../src/tick/tick-outcome.js";
-import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import type { LoopState } from "../src/loop/loop-state.js";
-import { projManifest, writeScript } from "./fakes/fake-commands.js";
-import { headSha, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
-import { piRunResult } from "./fakes/fake-pi.js";
-import { runPi } from "../src/pi/pi.js";
-import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
-import { ensureParentDir } from "../src/files/files.js";
+import type { LandRequest, LanderContext } from "../../src/landing/landing-core.js";
+import { landVetted, vetRequest, type BatchContext, type BatchRoleWiring } from "../../src/landing/landing-batch.js";
+import { setRef } from "../../src/git/git.js";
+import { ensureWorktree } from "../../src/git/worktree.js";
+import { eventsLogPath, landingRefName } from "../../src/paths.js";
+import { defaultConfig } from "../../src/config/config.js";
+import { freshLoopState } from "../../src/loop/loop-state.js";
+import { readEvents } from "../../src/events/event-read.js";
+import type { TumwaterConfig } from "../../src/config/config-schema.js";
+import type { TickResult } from "../../src/tick/tick-outcome.js";
+import type { PiRunResult } from "../../src/pi/pi-run-result.js";
+import type { LoopState } from "../../src/loop/loop-state.js";
+import { projManifest, writeScript } from "../fakes/fake-commands.js";
+import { headSha, mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { piRunResult } from "../fakes/fake-pi.js";
+import { runPi } from "../../src/pi/pi.js";
+import { assistantLine, leasedRoleShell } from "./pi-events.js";
+import { ensureParentDir } from "../../src/files/files.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-restack.test.ts and
  * lander-bisect.test.ts,
@@ -85,7 +85,7 @@ export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: 
 
 // The reviewer's fake-pi shim and its approver preset live in pi-events.ts (next to the
 // assistant-line helpers they build on); re-exported here for the lander fixtures' imports.
-export { reviewerPi, APPROVE_PI } from "./fixtures/pi-events.js";
+export { reviewerPi, APPROVE_PI } from "./pi-events.js";
 
 export function request(sha: string, overrides: Partial<LandRequest> = {}): LandRequest {
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };

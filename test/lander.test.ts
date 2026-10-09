@@ -33,7 +33,7 @@ import {
   advanceMain,
   perRoleReviewerPi,
   runBatchRecorded,
-} from "./lander-fixtures.js";
+} from "./fixtures/lander-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 // Unit coverage for the two halves of a landing — landing-batch.ts's vetRequest (checkout in
@@ -46,7 +46,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
 // Split in three so node --test runs them in parallel processes: this file holds the vet and
 // single-change landings, the batch basics, aborts and the per-change status hook;
 // lander-restack.test.ts the re-stack on a moved main; lander-bisect.test.ts the red-stack
-// bisect and the one-at-a-time fallback. Shared fixtures live in test/lander-fixtures.ts. Keep the three
+// bisect and the one-at-a-time fallback. Shared fixtures live in test/fixtures/lander-fixtures.ts. Keep the three
 // roughly equal in measured duration when moving tests between them.
 
 test("an approved landing lands on main and deletes the ref", async () => {

@@ -6,7 +6,7 @@ import type { HarnessEventInput } from "../src/events/events.js";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { createRedeployer, redeployDeps } from "../src/redeploy/redeploy.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
-import { IDLE } from "./redeploy-fixtures.js";
+import { IDLE } from "./fixtures/redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
 import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";

@@ -6,7 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./redeploy-fixtures.js";
+import { HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./fixtures/redeploy-fixtures.js";
 
 test("a compile that never ran is a rejection, not a verdict: retried instead of blocked", async () => {
   // `tsc exited ENOENT` is execFile's spawn-failure code, not a compiler exit: the compile said

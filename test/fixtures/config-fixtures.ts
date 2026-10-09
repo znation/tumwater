@@ -2,8 +2,8 @@
  * test/config-validation.test.ts: run `validateConfig` and return its rejection message, or
  * throw when it accepts the input. Topic-named like the other fixture modules; imports only
  * the production validator and the shared error renderer. */
-import { validateConfig } from "../src/config/config-validation.js";
-import { errorMessage } from "../src/text/text.js";
+import { validateConfig } from "../../src/config/config-validation.js";
+import { errorMessage } from "../../src/text/text.js";
 
 export function validationError(raw: unknown): string {
   try {

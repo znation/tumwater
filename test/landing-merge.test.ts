@@ -14,7 +14,7 @@ import { readEvents } from "../src/events/event-read.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
-import { advanceMain } from "./lander-fixtures.js";
+import { advanceMain } from "./fixtures/lander-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { assertWorktreeSettled, commitIn, gitOnlyBinDir, headSha, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";

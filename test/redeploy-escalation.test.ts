@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events/events.js";
-import { HEAD_B, IDLE, fakeDeps, harness, settle } from "./redeploy-fixtures.js";
+import { HEAD_B, IDLE, fakeDeps, harness, settle } from "./fixtures/redeploy-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";
 
 // --- The sustained-pin escalation (BUGS.md 2026-09-29) -------------------------------------

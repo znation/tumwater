@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
-import { reviewAheadOfMain } from "../src/review/review.js";
-import { runPi } from "../src/pi/pi.js";
-import { headOf } from "../src/git/git.js";
-import { ensureWorktree } from "../src/git/worktree.js";
-import { commitIn, makeRepo } from "./fixtures/repo-fixtures.js";
+import { defaultConfig } from "../../src/config/config.js";
+import { freshLoopState } from "../../src/loop/loop-state.js";
+import { reviewAheadOfMain } from "../../src/review/review.js";
+import { runPi } from "../../src/pi/pi.js";
+import { headOf } from "../../src/git/git.js";
+import { ensureWorktree } from "../../src/git/worktree.js";
+import { commitIn, makeRepo } from "./repo-fixtures.js";
 
 /** Shared scaffolding for the review-gate orchestration tests — the "Gate orchestration"
  * sections of review.test.ts and fix-claim.test.ts, which both drive reviewAheadOfMain

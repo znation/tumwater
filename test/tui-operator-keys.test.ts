@@ -3,7 +3,7 @@
  * wake marker, and the keys' inertness outside transcript views and in budget mode
  * (PLANS.md "TUI per-loop controls"). Like the other topic-named slices (loop-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
- * fake-TTY harness lives in tui-fixtures.ts. Each test file gets its own process, so the
+ * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the
  * harness's global stdout/stdin/readline patches never meet another file's environment. */
 import fs from "node:fs";
 import test from "node:test";
@@ -13,7 +13,7 @@ import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
-import { makeTuiRepo, withTui } from "./tui-fixtures.js";
+import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
 // PLANS.md "TUI per-loop controls": Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is
 // on screen, through the same marker-writing cores the CLI's --role flags call, so the two

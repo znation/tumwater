@@ -10,7 +10,7 @@ import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./fixtures/
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
-import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
+import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 
 // Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order, header,
 // verdict counting, and corrupt-config resilience, renderDoctor's rendering, and the `tumwater
@@ -18,7 +18,7 @@ import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fix
 // The individual checks' ok/fail/warn branches are unit-covered in test/doctor-checks.test.ts
 // (it pins src/doctor/doctor-checks.ts), the model-readiness checks in
 // test/doctor-model-checks.test.ts, the orphan check in test/doctor-orphans.test.ts, and the
-// fixtures all three files share live in test/doctor-fixtures.ts.
+// fixtures all three files share live in test/fixtures/doctor-fixtures.ts.
 test("runDoctor composes the full report — fixed check order, not-running header, ready verdict", async () => {
   const root = readyRepo();
   // An npm check so the report's all-ok sweep below holds — a repo with neither a configured

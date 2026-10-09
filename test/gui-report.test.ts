@@ -10,7 +10,7 @@ import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
 import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
-import { withGui } from "./gui-fixtures.js";
+import { withGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";

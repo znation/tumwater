@@ -20,7 +20,7 @@ import { exampleConfigPath } from "../src/paths.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { backdate } from "./helpers/backdate.js";
-import { validationError } from "./config-fixtures.js";
+import { validationError } from "./fixtures/config-fixtures.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 

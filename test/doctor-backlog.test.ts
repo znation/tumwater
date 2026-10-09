@@ -11,7 +11,7 @@ import { vanishOnReadFile } from "./helpers/fs-faults.js";
 // checks' own coverage lives in test/doctor-checks.test.ts (the model-readiness checks in
 // test/doctor-model-checks.test.ts); report composition, rendering, and
 // the CLI wiring (`tumwater doctor` exit codes through main()) are pinned in
-// test/doctor.test.ts, and the fixtures those files share live in test/doctor-fixtures.ts.
+// test/doctor.test.ts, and the fixtures those files share live in test/fixtures/doctor-fixtures.ts.
 
 // checkFixClaims — the standalone false-fix detector: the newest Fixed records of BUGS.md are
 // re-verified against the tree with src/verdict/fix-claim.ts's parsing (the document shapes below

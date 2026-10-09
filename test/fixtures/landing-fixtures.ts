@@ -1,29 +1,29 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep } from "../helpers/wait.js";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandings } from "../src/landing/landing-drain.js";
+import { drainLandings } from "../../src/landing/landing-drain.js";
 import {
   landingTasks,
   newLandingPipeline,
   type InFlightLanding,
   type LandingPipeline,
   type LandingPipelineContext,
-} from "../src/landing/landing-pipeline.js";
-import { LoopRunner } from "../src/loop/loop.js";
-import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
-import { landingRefName } from "../src/paths.js";
-import { setRef } from "../src/git/git.js";
-import { Semaphore } from "../src/concurrency/semaphore.js";
-import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
-import { snapshot } from "../src/status/status-data.js";
-import { landingForRole, loopPhase } from "../src/ui/status-model.js";
-import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { LandingEntry } from "../src/landing/landing-queue.js";
-import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { assistantLine, leasedRoleShell, reviewerPi } from "./fixtures/pi-events.js";
+} from "../../src/landing/landing-pipeline.js";
+import { LoopRunner } from "../../src/loop/loop.js";
+import { enqueueLanding, queueDepth } from "../../src/landing/landing-queue.js";
+import { landingRefName } from "../../src/paths.js";
+import { setRef } from "../../src/git/git.js";
+import { Semaphore } from "../../src/concurrency/semaphore.js";
+import { defaultConfig } from "../../src/config/config.js";
+import { freshLoopState } from "../../src/loop/loop-state.js";
+import { snapshot } from "../../src/status/status-data.js";
+import { landingForRole, loopPhase } from "../../src/ui/status-model.js";
+import type { TumwaterConfig } from "../../src/config/config-schema.js";
+import type { LandingEntry } from "../../src/landing/landing-queue.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { makeLoopRunner } from "./loop-fixtures.js";
+import { headSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
 /** Shared fixtures for the landing-drain tests — landing-drain.test.ts and
  * landing-pipeline.test.ts, which node --test runs as parallel processes (top-level tests

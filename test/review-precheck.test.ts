@@ -5,7 +5,7 @@
  * green check attests its head to the landing path and names itself in the reviewer's
  * prompt, and an approval reused across a moved main survives only while the patch and the
  * check stay green. The check's own unit tests live in build-check.test.ts. Extracted from
- * review.test.ts (2026-09-29); the shared gate scaffolding lives in gate-fixtures.ts. */
+ * review.test.ts (2026-09-29); the shared gate scaffolding lives in fixtures/gate-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -24,7 +24,7 @@ import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
-import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
+import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // The gate's integration with the deterministic build pre-check (src/build/build-check.ts): a

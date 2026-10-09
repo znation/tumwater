@@ -15,7 +15,7 @@ import { CLI, cli } from "./helpers/cli-harness.js";
 import { flushImmediate, waitFor } from "./helpers/wait.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
-import { makeTuiRepo, startTui, withTui } from "./tui-fixtures.js";
+import { makeTuiRepo, startTui, withTui } from "./fixtures/tui-fixtures.js";
 
 test("runTui renders the fleet table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();

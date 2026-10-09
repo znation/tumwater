@@ -16,7 +16,7 @@ import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
-import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
+import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review/review.ts shipped with a
 // syntax error and latent type errors and had zero tests, so nothing caught it. The pure
@@ -25,7 +25,7 @@ import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
 // The gate-orchestration section drives the real reviewAheadOfMain end-to-end against a git
 // repo with a fake pi on PATH, covering every decision branch of the gate that guards each
 // merge. The gate's build pre-check slice lives in review-precheck.test.ts (extracted
-// 2026-09-29); both files share the scaffolding in gate-fixtures.ts.
+// 2026-09-29); both files share the scaffolding in fixtures/gate-fixtures.ts.
 
 test("parseVerdict returns null when no VERDICT line exists (fail closed)", () => {
   assert.equal(parseVerdict(""), null);

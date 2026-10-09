@@ -322,46 +322,6 @@ Tests:
 - **Unset.** Removing `bootstrap` from tumwater.json lifts every hold on the next poll.
 - `npm run test` green.
 
-### Organize the test suite, part 6/6: remaining fixtures move to `test/fixtures/`, leaving the root clean (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–5/6 landed)
-
-**Goal.** Move the remaining fixture modules — `config-fixtures.ts`, `doctor-fixtures.ts`,
-`gate-fixtures.ts`, `gui-fixtures.ts`, `lander-fixtures.ts`, `landing-fixtures.ts`,
-`models-fixtures.ts`, `redeploy-fixtures.ts`, `tui-fixtures.ts` — into `test/fixtures/`, leaving
-`test/` root with only `*.test.ts` and the three runner-infrastructure modules.
-
-**Approach.**
-- `git mv` the nine modules into `test/fixtures/`.
-- Rewrite every importer's `./<name>.js` specifier to `./fixtures/<name>.js`.
-- Re-base the moved modules' own imports (targets already in subdirectories use
-  `../<dir>/<name>.js`):
-  - `doctor-fixtures.ts`: `./fake-commands.js` → `../fakes/fake-commands.js`; its existing
-    `./fakes/process.js` import is unchanged; `./repo-fixtures.js` stays a sibling.
-  - `lander-fixtures.ts`: `./fake-commands.js` and `./fake-pi.js` → `../fakes/...`;
-    `./pi-events.js` and `./repo-fixtures.js` stay siblings.
-  - `landing-fixtures.ts`: `./wait.js` → `../helpers/wait.js`; `./log-fixtures.js`,
-    `./loop-fixtures.js`, `./repo-fixtures.js`, and `./pi-events.js` stay siblings.
-  - `tui-fixtures.ts`: `./wait.js` → `../helpers/wait.js`; `./repo-fixtures.js` stays a sibling.
-  - `gate-fixtures.ts`: `./repo-fixtures.js` stays a sibling.
-  - `redeploy-fixtures.ts`: `./wait.js` → `../helpers/wait.js`.
-  - `gui-fixtures.ts`: `../src/gui/gui-server.js` → `../../src/gui/gui-server.js`.
-  - `config-fixtures.ts`: `../src/config/config-validation.js` and `../src/text/text.js` become
-    `../../src/...`.
-  - `models-fixtures.ts` has no relative imports.
-- Update the remaining doc/comment references to moved paths: `DEVELOPMENT.md`'s
-  `writeScript (test/fakes/fake-commands.ts)`, BUGS.md's `test/doctor-fixtures.ts` /
-  `test/gui-fixtures.ts` citations, and any `docs/` or `src/` comment naming an old flat path.
-
-**Files touched.** The nine modules; every `test/*.ts` importing them; the doc/comment references.
-
-**Acceptance criteria.**
-- All 30 support modules live under `test/fakes/`, `test/fixtures/`, or `test/helpers/`; the
-  `test/` root holds only `*.test.ts` plus `test-runner.ts`, `test-durations-reporter.ts`, and
-  `coverage-table.ts`.
-- A grep over `src/`, `test/`, `scripts/`, `docs/`, `DEVELOPMENT.md`, `PLANS.md`, and `BUGS.md`
-  for each moved basename at its old flat path (`test/lander-fixtures.ts`,
-  …) finds no stale reference.
-- `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
-
 ### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; replanned 2026-10-08 by plan after two review rejections; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed)
 
 Design: plans/worktree-pool.md ("Role ticks lease slots", "Legacy role worktrees").
@@ -655,6 +615,44 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Organize the test suite, part 6/6: remaining fixtures move to `test/fixtures/`, leaving the root clean (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–5/6 landed; done 2026-10-08 by feature)
+
+**Goal.** Move the remaining fixture modules — `config-fixtures.ts`, `doctor-fixtures.ts`,
+`gate-fixtures.ts`, `gui-fixtures.ts`, `lander-fixtures.ts`, `landing-fixtures.ts`,
+`models-fixtures.ts`, `redeploy-fixtures.ts`, `tui-fixtures.ts` — into `test/fixtures/`, leaving
+`test/` root with only `*.test.ts` and the three runner-infrastructure modules.
+
+**What landed (2026-10-08).** The nine modules were `git mv`'d into `test/fixtures/`. Every
+`test/*.test.ts` importer's `./<name>.js` specifier became `./fixtures/<name>.js`. The moved
+modules' own imports were rebased: their `../src/...` imports became `../../src/...` (config,
+gate, gui, lander, landing, redeploy, tui); `./fakes/...` became `../fakes/...` (doctor,
+lander); `./helpers/...` became `../helpers/...` (landing, redeploy, tui); and their
+`./fixtures/<sibling>.js` references became the plain `./<sibling>.js` sibling form (doctor,
+gate, lander, landing, tui). `models-fixtures.ts` has no relative imports.
+
+Two anchors in the entry had drifted from the code parts 1/6–5/6 left behind, and were corrected
+rather than followed literally: the modules did not start from flat imports —
+`doctor-fixtures.ts` already imported `./fakes/fake-commands.js` and
+`./fixtures/repo-fixtures.js`, and the rest already reached `src/` through `../src/` — so the
+rebasing above targets the specifiers that actually existed; and `DEVELOPMENT.md`'s
+`writeScript` reference already named `test/fakes/fake-commands.ts` (part 1/6), so it needed no
+change.
+
+Comment and doc references to the moved paths were updated in the root test files' headers and
+in BUGS.md's `test/fixtures/doctor-fixtures.ts` / `test/fixtures/gui-fixtures.ts` citations. No
+`src/`, `scripts/`, or `docs/` file named a moved path (grep).
+
+**Files touched.** The nine modules; every `test/*.test.ts` importing them; comment/doc
+references in the root test files, BUGS.md, and PLANS.md.
+
+**Acceptance criteria.**
+- All 35 support modules live under `test/fakes/`, `test/fixtures/`, or `test/helpers/`; the
+  `test/` root holds only `*.test.ts` plus `test-runner.ts`, `test-durations-reporter.ts`, and
+  `coverage-table.ts`.
+- A grep over `src/`, `test/`, `scripts/`, `docs/`, `DEVELOPMENT.md`, `PLANS.md`, and `BUGS.md`
+  for each moved basename at the `test/` root finds no stale reference.
+- `npm run test` (eslint + tsc + the suite) is green and selects the same `*.test.ts` files.
 
 ### Organize the test suite, part 5/6: log, loop, orchestrator and status fixtures plus `pi-events` and `victim-fixture` move to `test/fixtures/` (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–4/6 landed; done 2026-10-08 by feature)
 
@@ -975,7 +973,7 @@ conflict-resolution rejection and strike-cap discard (landing-core.ts), and red 
 and the next merge reuses it. `rejectChange` and `attributeRedCheck` no longer take a worktree.
 Anchors the entry missed: test/landing-pipeline.test.ts and test/loop-leftover-recovery.test.ts
 had no merge-side `_land-<role>` shim left to update (part 2b/5 had already moved them), and
-test/lander-fixtures.ts's reviewer keys on the slot lease; test/orchestrator-3.e2e.test.ts's
+test/fixtures/lander-fixtures.ts's reviewer keys on the slot lease; test/orchestrator-3.e2e.test.ts's
 containment test now seeds the shared `_merge` checkout rather than a per-role one and drops the
 legacy `_land-clean` deletion.
 
@@ -1006,8 +1004,8 @@ per-role lander, but it would delete a pooled slot, so that cleanup now drops on
 (src/landing/landing-core.ts), and the lease's own release frees the slot.
 
 **Files touched.** src/landing/landing-batch.ts, src/landing/landing-core.ts. Tests:
-test/fixtures/pi-events.ts and test/landing-fixtures.ts (a `leasedRoleShell` helper reads the reviewing
-role from the slot lease, since the cwd no longer names it), test/lander-fixtures.ts,
+test/fixtures/pi-events.ts and test/fixtures/landing-fixtures.ts (a `leasedRoleShell` helper reads the reviewing
+role from the slot lease, since the cwd no longer names it), test/fixtures/lander-fixtures.ts,
 test/landing-drain-vetting.test.ts, test/landing-pipeline.test.ts, test/lander.test.ts,
 test/loop-4.test.ts, test/loop-5.test.ts, test/loop-leftover-recovery.test.ts,
 test/orchestrator-3.e2e.test.ts, test/orchestrator-permits.e2e.test.ts.

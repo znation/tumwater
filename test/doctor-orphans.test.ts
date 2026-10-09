@@ -6,7 +6,7 @@ import { checkOrphans } from "../src/doctor/doctor-orphans.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./doctor-fixtures.js";
+import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 
 // Unit coverage for the orphaned-worktree-process check (src/doctor/doctor-orphans.ts): every leak
 // shape below is a real leak the fleet produced, driven through a fake process table — no

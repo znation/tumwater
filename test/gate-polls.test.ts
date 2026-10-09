@@ -23,7 +23,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
-import { MODELS_JSON } from "./models-fixtures.js";
+import { MODELS_JSON } from "./fixtures/models-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 

@@ -4,7 +4,7 @@ import { readJson } from "./helpers/json-read.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { wakeRequestPath } from "../src/paths.js";
-import { makeTuiRepo, withTui } from "./tui-fixtures.js";
+import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
 // Ctrl+R role-prompt mode: the per-loop prompt editor on the transcript view — Enter queues
 // into that loop's own inbox queue and wakes it, a failed submit flashes and keeps the editor

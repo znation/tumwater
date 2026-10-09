@@ -15,7 +15,7 @@ import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { mainSha } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";
-import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./lander-fixtures.js";
+import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./fixtures/lander-fixtures.js";
 
 /** The fixture's wiring with a conflict resolver that always throws — the merge stage's pi
  * run failing as a thrown error, the shape these catches exist for. */
