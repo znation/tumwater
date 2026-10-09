@@ -24,6 +24,24 @@ async function ranWithLock(lock: string, timeoutMs = 5000): Promise<boolean> {
   return ran;
 }
 
+/** Run `withLock` on an already-prepared lock, assert it rejects with `expected`, and report
+ *  whether its critical section ran (a rejected acquire never should). */
+async function rejectedWithLock(lock: string, expected: RegExp, message?: string): Promise<boolean> {
+  let ran = false;
+  await assert.rejects(
+    withLock(
+      lock,
+      async () => {
+        ran = true;
+      },
+      700,
+    ),
+    expected,
+    message,
+  );
+  return ran;
+}
+
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");
   fs.mkdirSync(dir);
@@ -156,17 +174,7 @@ test("withLock does not break a fresh lock that has no pid file yet", async () =
   // wait rather than steal, so two live processes never hold the lock at once.
   const lock = path.join(tmpdir(), "fresh-orphan.lock");
   fs.mkdirSync(lock);
-  let ran = false;
-  await assert.rejects(
-    withLock(
-      lock,
-      async () => {
-        ran = true;
-      },
-      700,
-    ),
-    /timed out after 0\.7s waiting for lock/,
-  );
+  const ran = await rejectedWithLock(lock, /timed out after 0\.7s waiting for lock/);
   assert.ok(!ran, "must not enter the critical section of a fresh no-pid lock");
   assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");
 });
@@ -187,14 +195,8 @@ test("withLock swallows a failed cleanup of a stale lock and waits instead of cr
   fs.chmodSync(root, 0o555); // no write on the parent: the stale dir cannot be removed
   let ran = false;
   try {
-    await assert.rejects(
-      withLock(
-        lock,
-        async () => {
-          ran = true;
-        },
-        700,
-      ),
+    ran = await rejectedWithLock(
+      lock,
       /timed out after 0\.7s waiting for lock/,
       "the cleanup failure surfaces as the ordinary wait timeout, not the rmdir error",
     );
@@ -316,16 +318,7 @@ test("withLock removes its own temp dir when the pid write fails", async () => {
   });
   let ran = false;
   try {
-    await assert.rejects(
-      withLock(
-        lock,
-        async () => {
-          ran = true;
-        },
-        700,
-      ),
-      /simulated pid write failure/,
-    );
+    ran = await rejectedWithLock(lock, /simulated pid write failure/);
   } finally {
     restoreWrite();
   }
@@ -343,19 +336,9 @@ test("withLock times out instead of breaking a fresh lock held by a live pid", a
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); // alive + fresh mtime
-  let ran = false;
-  await assert.rejects(
-    withLock(
-      lock,
-      async () => {
-        ran = true;
-      },
-      700,
-    ),
-    // The message reports the wait budget (0.7s here) — it surfaces as a tick's lastError,
-    // where "gave up after N s" is what distinguishes a slow holder from a wedged one.
-    /timed out after 0\.7s waiting for lock/,
-  );
+  // The message reports the wait budget (0.7s here) — it surfaces as a tick's lastError,
+  // where "gave up after N s" is what distinguishes a slow holder from a wedged one.
+  const ran = await rejectedWithLock(lock, /timed out after 0\.7s waiting for lock/);
   assert.ok(!ran, "must not enter the critical section of a live holder");
   assert.ok(fs.existsSync(lock), "the foreign lock is left untouched");
 });
