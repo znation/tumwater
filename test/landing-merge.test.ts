@@ -59,6 +59,20 @@ function makeCtx(
   };
 }
 
+/** A worktree and main that both edit seed.txt, so rebasing the branch onto main conflicts.
+ * The messages parameterize the branch and main commits for tests that read intent from them. */
+async function conflictedWorktree(
+  branchMsg = "branch edit",
+  mainMsg = "main edit",
+): Promise<{ root: string; wt: string }> {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, branchMsg);
+  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+  commitIn(root, mainMsg);
+  return { root, wt };
+}
+
 test("a clean rebase lands as changed with a merged event and linear history", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
@@ -115,12 +129,8 @@ test("a fix-claim block in the landing's exempt arm warns, names the reason to t
 });
 
 test("a rebase conflict is resolved by one pi run and lands with linear history", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
   // Advance main with a conflicting edit while the tick's work is unmerged.
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\n"); // resolve the markers
     return piResult();
@@ -142,11 +152,7 @@ test("a rebase conflict is resolved by one pi run and lands with linear history"
 });
 
 test("the conflict resolver prompt carries both sides' intent", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit\n\nWHY: the branch reason");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit\n\nWHY: the main reason");
+  const { root, wt } = await conflictedWorktree("branch edit\n\nWHY: the branch reason", "main edit\n\nWHY: the main reason");
   const { ctx, calls } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\n");
     return piResult();
@@ -165,11 +171,7 @@ test("the conflict resolver prompt carries both sides' intent", async () => {
 });
 
 test("the conflict resolver runs on the strong tier over the config the landing was handed", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\n");
     return piResult();
@@ -187,11 +189,7 @@ test("the conflict resolver runs on the strong tier over the config the landing 
 });
 
 test("a conflict resolution that adds lines the reviewed change never added is re-reviewed before landing", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     // The resolution goes beyond combining the two sides: "sneaky extra" is a line neither the
     // reviewed branch diff nor main contains — the shape of the 2026-10-01 restoration bug.
@@ -213,11 +211,7 @@ test("a conflict resolution that adds lines the reviewed change never added is r
 });
 
 test("a conflict resolution that stays inside the reviewed change's lines lands with no re-review", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     // Keep both sides verbatim: the resolved diff ahead of main adds only "branch", which the
     // reviewed change added too — nothing the reviewer never judged.
@@ -239,11 +233,7 @@ test("a conflict resolution that stays inside the reviewed change's lines lands 
 });
 
 test("a re-review that rejects a diverging conflict resolution is terminal — nothing lands", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const { ctx } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\nsneaky extra\n");
     return piResult();
@@ -259,11 +249,7 @@ test("a re-review that rejects a diverging conflict resolution is terminal — n
 });
 
 test("a conflict pi leaves unresolved aborts and reports merge_conflict", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root); // runPi does nothing: markers stay
 
@@ -278,11 +264,7 @@ test("a conflict pi leaves unresolved aborts and reports merge_conflict", async 
 });
 
 test("a failed pi run aborts even when it resolved every marker", async () => {
-  const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
-  commitIn(wt, "branch edit");
-  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-  commitIn(root, "main edit");
+  const { root, wt } = await conflictedWorktree();
   const mainBefore = mainSha(root);
   // The run resolves the file but reports failure (e.g. it timed out): merge must not
   // conclude a rebase on work pi did not stand behind.
