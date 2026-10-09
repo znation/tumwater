@@ -19,26 +19,33 @@ const { renderStatus } = await import("../dist/src/ui/status-render.js");
 const ROLES = await distRoleIds();
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-bench-"));
-seedLiveFleet(root, ROLES);
+try {
+  seedLiveFleet(root, ROLES);
 
-// Warm up: first frame seeds tail state and stat caches.
-snapshot(root);
-renderStatus(root, snapshot(root), 120);
+  // Warm up: first frame seeds tail state and stat caches.
+  snapshot(root);
+  renderStatus(root, snapshot(root), 120);
 
-const FRAMES = 20_000;
-let best = Infinity;
-for (let rep = 0; rep < 3; rep++) {
-  const t0 = process.hrtime.bigint();
-  for (let i = 0; i < FRAMES; i++) {
-    const snap = snapshot(root);
-    renderStatus(root, snap, 120);
+  // Sanity: the rendered table must show live detail for a working loop. Checked before the
+  // timed loop, not after it: a broken fixture must fail in a second rather than behind a
+  // full benchmark's worth of meaningless us/frame numbers.
+  const out = renderStatus(root, snapshot(root), 200);
+  if (!/turn \d/.test(out)) throw new Error("benchmark fixture broken: no live turn detail in output");
+
+  const FRAMES = 20_000;
+  let best = Infinity;
+  for (let rep = 0; rep < 3; rep++) {
+    const t0 = process.hrtime.bigint();
+    for (let i = 0; i < FRAMES; i++) {
+      const snap = snapshot(root);
+      renderStatus(root, snap, 120);
+    }
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    if (ms < best) best = ms;
   }
-  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-  if (ms < best) best = ms;
+  console.log(`best of 3: ${FRAMES} frames in ${best.toFixed(1)} ms -> ${(best / FRAMES * 1000).toFixed(1)} us/frame`);
+} finally {
+  // The timed loop is minutes of work; a fixture that breaks mid-run must not leave the
+  // tempdir behind.
+  fs.rmSync(root, { recursive: true, force: true });
 }
-console.log(`best of 3: ${FRAMES} frames in ${best.toFixed(1)} ms -> ${(best / FRAMES * 1000).toFixed(1)} us/frame`);
-
-// Sanity: the rendered table must show live detail for a working loop.
-const out = renderStatus(root, snapshot(root), 200);
-if (!/turn \d/.test(out)) throw new Error("benchmark fixture broken: no live turn detail in output");
-fs.rmSync(root, { recursive: true, force: true });
