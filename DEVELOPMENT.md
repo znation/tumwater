@@ -112,10 +112,17 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,
   `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
+- `src/gui/`: the `tumwater gui` command and the dashboard's HTTP transport — the CLI entry
+  (`gui-command.ts`), the server (`gui-server.ts`), its /api GET and POST handlers
+  (`gui-endpoints.ts`, `gui-endpoint-commands.ts`), the shared request/response plumbing
+  (`http-body.ts`), and the endpoint argument checks (`gui-args.ts`). The browser view it
+  serves lives in `src/ui/gui/`; this directory owns the socket and the operator endpoints,
+  not the page.
 - `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
   holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
-  renderer. Imported only by each other and the CLI command layer that drives it (`cli.ts` and
-  the `src/cli/` command bodies).
+  renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
+  dispatcher, the read-only command bodies in `src/cli/`, and the dashboard transport in
+  `src/gui/`; `test/layering.test.ts` pins that importer set.
 - `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`, `tick`, and `report`
   CLI command bodies, beside the collector modules (`history-data.ts`, `src/tick/tick-detail-data.ts`,
   `src/report/report-data.ts`) whose payloads they print, `src/cli/log-commands.ts` (the `logs` command body),
