@@ -32,13 +32,23 @@ import { assistantLine } from "./fixtures/pi-events.js";
  * rejected commit is kept alive under its own ref, re-applied to current main as uncommitted
  * edits on the author's next tick, and dropped/conflicted/exhausted with its own event. */
 
-test("applyRevision re-applies a rejected change onto moved main as uncommitted edits", async () => {
+/** A makeRepo'd repo with `content` written to `file` and committed off main (detached), the
+ * commit's sha returned with main checked out clean again — the unreviewed-commit base the
+ * applyRevision/applyWithConflicts and revision/rejection tests stand on. Callers that need
+ * main moved after the commit make that commit on main themselves (the conflict cases do).
+ * The default `message` is the suite's rejected-work vocabulary. */
+function commitOffMain(file: string, content: string, message = "the rejected work"): { root: string; sha: string } {
   const root = makeRepo();
   sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, "feature.ts"), "export const feature = true;\n");
-  commitIn(root, "the rejected work");
+  fs.writeFileSync(path.join(root, file), content);
+  commitIn(root, message);
   const sha = headSha(root);
   sh(root, "git", "checkout", "main");
+  return { root, sha };
+}
+
+test("applyRevision re-applies a rejected change onto moved main as uncommitted edits", async () => {
+  const { root, sha } = commitOffMain("feature.ts", "export const feature = true;\n");
   // main moves in a file the rejected change does not touch.
   fs.writeFileSync(path.join(root, "other.ts"), "export const other = true;\n");
   commitIn(root, "move main");
@@ -51,12 +61,7 @@ test("applyRevision re-applies a rejected change onto moved main as uncommitted 
 });
 
 test("applyRevision on a conflict resets to clean main and returns false", async () => {
-  const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, "seed.txt"), "theirs\n");
-  commitIn(root, "the rejected work");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const { root, sha } = commitOffMain("seed.txt", "theirs\n");
   fs.writeFileSync(path.join(root, "seed.txt"), "main version\n");
   commitIn(root, "main moved the same line");
 
@@ -66,12 +71,7 @@ test("applyRevision on a conflict resets to clean main and returns false", async
 });
 
 test("applyWithConflicts applies a clean diff as uncommitted edits with no conflicted paths", async () => {
-  const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, "feature.ts"), "export const feature = true;\n");
-  commitIn(root, "the handed-back work");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const { root, sha } = commitOffMain("feature.ts", "export const feature = true;\n", "the handed-back work");
   fs.writeFileSync(path.join(root, "other.ts"), "export const other = true;\n");
   commitIn(root, "move main");
 
@@ -82,12 +82,7 @@ test("applyWithConflicts applies a clean diff as uncommitted edits with no confl
 });
 
 test("applyWithConflicts leaves the conflict markers as ordinary uncommitted edits", async () => {
-  const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, "seed.txt"), "theirs\n");
-  commitIn(root, "the handed-back work");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const { root, sha } = commitOffMain("seed.txt", "theirs\n", "the handed-back work");
   fs.writeFileSync(path.join(root, "seed.txt"), "main version\n");
   commitIn(root, "main moved the same line");
 
@@ -106,12 +101,7 @@ test("applyWithConflicts decodes the C-quoted name of a non-ASCII conflicted fil
   // name as `"h\303\251llo.md"`, which does not exist on disk. Undecoded, the hand-back
   // prompt listed a bogus path and its "what main changed" block found nothing; the fix is
   // the same conflictedFiles decode landing-git.ts uses (review objection).
-  const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, "héllo.md"), "theirs\n");
-  commitIn(root, "the handed-back work");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const { root, sha } = commitOffMain("héllo.md", "theirs\n", "the handed-back work");
   fs.writeFileSync(path.join(root, "héllo.md"), "main version\n");
   commitIn(root, "main moved the same line");
 
@@ -140,12 +130,7 @@ test("applyRevision resets to clean main when the rejected commit no longer exis
 });
 
 test("applyWithConflicts resets to main when the cherry-pick fails without conflicts", async () => {
-  const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, "landed.ts"), "export const landed = true;\n");
-  commitIn(root, "work main already has");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const { root, sha } = commitOffMain("landed.ts", "export const landed = true;\n", "work main already has");
   // main fast-forwards onto the same commit, so merge-base is the commit itself and the
   // `base..sha` range is empty: cherry-pick fails with no unmerged paths. Unlike the
   // bogus-sha case above (which fails at merge-base), this reaches the picked===null arm.
@@ -388,12 +373,7 @@ test("the tick prompt skips the plain rejection note while a revision is due", (
 test("the director never gets a revision: a rejection leaves no revision state", async () => {
   const restore = fakePi(reviewerPi("VERDICT: reject\n1. no good"));
   try {
-    const root = makeRepo();
-    sh(root, "git", "checkout", "--detach");
-    fs.writeFileSync(path.join(root, "seed.txt"), "director work\n");
-    commitIn(root, "director work");
-    const sha = headSha(root);
-    sh(root, "git", "checkout", "main");
+    const { root, sha } = commitOffMain("seed.txt", "director work\n", "director work");
     await setRef(root, landingRefName(DIRECTOR_ROLE), sha);
     const state = freshLoopState(DIRECTOR_ROLE);
     const { ctx } = makeCtx(root, state);
