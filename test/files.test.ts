@@ -134,10 +134,12 @@ test("unlinkAllMissingTolerant rethrows a real removal failure", () => {
   assert.ok(fs.existsSync(sub), "the failed target is left in place");
 });
 
-test("pruneOldFiles skips files it cannot delete instead of crashing the session cleanup", () => {
-  // A read-only directory makes rmSync fail with EACCES; the walk must skip that file,
-  // still prune what it can, and count only what was actually removed. Under root the
-  // permission is bypassed — then the file IS pruned, which also satisfies "no crash".
+/**
+ * Run the prune pass over a `locked/` subdir holding an old file plus a free old file.
+ * `lockedMode` is the permission applied to `locked/` as non-root; `unremovableMsg` is the
+ * final assertion's message. Under root the permission is bypassed and both files prune.
+ */
+function lockingPruneCase(lockedMode: number, unremovableMsg: string): void {
   const asRoot = runningAsRoot();
   const dir = tmpdir();
   const lockedDir = path.join(dir, "locked");
@@ -150,7 +152,7 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
   backdate(freeOld, 10 * 24 * 3600 * 1000);
 
   try {
-    if (!asRoot) fs.chmodSync(lockedDir, 0o555); // readable and searchable, not writable
+    if (!asRoot) fs.chmodSync(lockedDir, lockedMode);
     let pruned = -1;
     assert.doesNotThrow(() => {
       pruned = pruneOldFiles(dir, 7);
@@ -160,11 +162,18 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
       assert.equal(pruned, 2);
     } else {
       assert.equal(pruned, 1, "only the removable file counts");
-      assert.ok(fs.existsSync(lockedOld), "the unremovable file stays for the next pass");
+      assert.ok(fs.existsSync(lockedOld), unremovableMsg);
     }
   } finally {
     fs.chmodSync(lockedDir, 0o755); // restore so temp-dir cleanup can remove it
   }
+}
+
+test("pruneOldFiles skips files it cannot delete instead of crashing the session cleanup", () => {
+  // A read-only directory makes rmSync fail with EACCES; the walk must skip that file,
+  // still prune what it can, and count only what was actually removed. Under root the
+  // permission is bypassed — then the file IS pruned, which also satisfies "no crash".
+  lockingPruneCase(0o555, "the unremovable file stays for the next pass"); // not writable
 });
 
 test("pruneOldFiles skips an unreadable subdirectory instead of crashing the session cleanup", () => {
@@ -173,33 +182,7 @@ test("pruneOldFiles skips an unreadable subdirectory instead of crashing the ses
   // throw ends the whole fleet; the walk must skip the directory and still prune what it can.
   // Under root the permission is bypassed — then the locked file IS pruned, which also
   // satisfies "no crash".
-  const asRoot = runningAsRoot();
-  const dir = tmpdir();
-  const lockedDir = path.join(dir, "locked");
-  fs.mkdirSync(lockedDir);
-  const lockedOld = path.join(lockedDir, "old.jsonl");
-  fs.writeFileSync(lockedOld, "old");
-  backdate(lockedOld, 10 * 24 * 3600 * 1000);
-  const freeOld = path.join(dir, "free.jsonl");
-  fs.writeFileSync(freeOld, "old");
-  backdate(freeOld, 10 * 24 * 3600 * 1000);
-
-  try {
-    if (!asRoot) fs.chmodSync(lockedDir, 0o111); // execute only: listing it fails with EACCES
-    let pruned = -1;
-    assert.doesNotThrow(() => {
-      pruned = pruneOldFiles(dir, 7);
-    });
-    assert.ok(!fs.existsSync(freeOld), "the removable file is still pruned");
-    if (asRoot) {
-      assert.equal(pruned, 2);
-    } else {
-      assert.equal(pruned, 1, "only the removable file counts");
-      assert.ok(fs.existsSync(lockedOld), "the unreadable subdirectory is left for the next pass");
-    }
-  } finally {
-    fs.chmodSync(lockedDir, 0o755); // restore so temp-dir cleanup can remove it
-  }
+  lockingPruneCase(0o111, "the unreadable subdirectory is left for the next pass"); // execute only
 });
 
 test("pruneOldFiles skips symlinks: it neither deletes a linked file nor walks a linked directory", () => {
