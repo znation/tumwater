@@ -20,8 +20,8 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 
 /** The mainCheck field's shape (StatusSnapshot's contract): a runner summary block as the
  * build_check event carries it (build/build-check-events.ts spreads the outcome's counts through).
- * TestCounts is parseTestCounts's exported type, single-homed in build/build-check-counts.ts beside its
- * parser. Structurally checked on read (asTestCounts in build/build-check-counts.ts): the event
+ * TestCounts is parseTestCounts's exported type, single-homed in build/build-check-counts.ts beside
+ * its parser. Structurally checked on read (asTestCounts in build/build-check-counts.ts): the event
  * log is loose-typed. */
 export interface MainCheckStatus {
   sha?: string;
@@ -44,15 +44,14 @@ export interface MainCheckStatus {
 const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
 
 /** Per-root note that the previous scan had to grow past the default event tail
- * (DEFAULT_EVENT_TAIL) without finding a merge-scope check. A check rides every landing, so a
- * poll that grew all the way to the cap is a burst of quiet or failing ticks — hundreds of
- * events between landings — and the
- * next poll's growth starts straight at the cap instead of re-scanning the ×4 ladder's
- * intermediate windows (200→800→3200→5000 ≈ 9.2k re-parsed events per fresh tail, vs 5.2k for
- * 200→cap; measured on a 6k-event check-free log, ~2.3 ms → ~1.2 ms per append+poll). A poll
- * that finds a check clears the note, so the ordinary find-in-200 / find-in-800 path pays the
- * same small windows as before. In-memory only: a wrong guess costs the ladder it skipped, never
- * a wrong verdict — every window's scan is complete for its size. */
+ * (DEFAULT_EVENT_TAIL) without finding a merge-scope check. A check rides every landing, so a poll
+ * that grew all the way to the cap is a burst of quiet or failing ticks — hundreds of events
+ * between landings — and the next poll's growth starts straight at the cap instead of re-scanning
+ * the ×4 ladder's intermediate windows (200→800→3200→5000 ≈ 9.2k re-parsed events per
+ * fresh tail, vs 5.2k for 200→cap; measured on a 6k-event check-free log, ~2.3 ms → ~1.2 ms per
+ * append+poll). A poll that finds a check clears the note, so the ordinary find-in-200 /
+ * find-in-800 path pays the same small windows as before. In-memory only: a wrong guess costs the
+ * ladder it skipped, never a wrong verdict — every window's scan is complete for its size. */
 const mainCheckGrewFull = new Set<string>();
 const MAIN_CHECK_FULL_SET_MAX = 64;
 

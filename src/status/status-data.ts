@@ -211,9 +211,9 @@ export interface StatusSnapshot {
    * scheduler's own predicate — so the dashboards and the hold cannot disagree. Fresh per
    * poll, like `quietHours`. */
   inQuietHours: boolean;
-  /** The running harness's build (src/build/build-info.ts) as the orchestrator published it: the stamp
-   * plus whether main's build inputs have moved past it. Null when no harness is running or its
-   * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
+  /** The running harness's build (src/build/build-info.ts) as the orchestrator published it: the
+   * stamp plus whether main's build inputs have moved past it. Null when no harness is running or
+   * its dist carries no stamp. Both dashboards render it in the header — a stale build is the one
    * fact about the fleet that nothing inside the fleet can otherwise see. */
   build: BuildStatus | null;
   /** Prompts queued per loop (`tumwater prompt --role <id>`, PLANS.md "Per-role prompts 2/2"),
