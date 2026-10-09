@@ -18,8 +18,8 @@ export type { Role };
  * an un-targeted `stop` signals the whole orchestrator, director included. */
 export const DIRECTOR_ROLE = "director";
 
-/** The bugfix loop's id. It is the one work role that also defers like a maintenance role
- * while its backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. */
+/** The bugfix loop's id. It is the one work role that also defers like a maintenance role while its
+ * backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. */
 export const BUGFIX_ROLE = "bugfix";
 
 /** Work-tier roles (need-based prioritization, PLANS.md "Prioritize loops by need"): they
@@ -27,12 +27,12 @@ export const BUGFIX_ROLE = "bugfix";
  * never deferred and slot allocation always orders them ahead of maintenance. */
 const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 
-/** Observer roles (plans/observer-roles.md 1/2): a role whose product is an observation, not
- * a commit, and for which `no_change` means "checked, all well" rather than "found nothing to
- * do". The idle ladder's premise — a loop that keeps finding nothing stops burning model time
- * — does not hold for these, so their no_change tick schedules at `minTickIntervalSeconds` and
- * leaves `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and they
- * are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
+/** Observer roles (plans/observer-roles.md 1/2): a role whose product is an observation, not a
+ * commit, and for which `no_change` means "checked, all well" rather than "found nothing to do".
+ * The idle ladder's premise — a loop that keeps finding nothing stops burning model time — does
+ * not hold for these, so their no_change tick schedules at `minTickIntervalSeconds` and leaves
+ * `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and
+ * they are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `telemetry`) is not a function of whether main moved. */
 export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
 

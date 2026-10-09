@@ -110,15 +110,14 @@ export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
  * note a later fresh tick reads, with no code parsing it. */
 export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds**`;
 
-/** How a role with no backlog (organize, clean, dry, perf, security, robustness, improve)
- * finds its one task, as numbered steps. Written
- * against the observed failure: with nothing to point at, a local model reads the codebase file
- * by file — thirty whole-file reads, ~300 KB of tool output — and then either fills its window or
- * declares nothing-to-do (improve: 41 of 44 ticks in the first week of September landed nothing).
- * Cheap signals shortlist candidates; a decision deadline ends the search; the harness's own
- * commit subjects (`tumwater(<role>): …`) are the only cross-tick memory of what the role did
- * lately, so the text names them. Takes the role id so the git command is literal, not a
- * placeholder the model has to fill in. */
+/** How a role with no backlog (organize, clean, dry, perf, security, robustness, improve) finds its
+ * one task, as numbered steps. Written against the observed failure: with nothing to point at, a
+ * local model reads the codebase file by file — thirty whole-file reads, ~300 KB of tool output
+ * — and then either fills its window or declares nothing-to-do (improve: 41 of 44 ticks in the
+ * first week of September landed nothing). Cheap signals shortlist candidates; a decision deadline
+ * ends the search; the harness's own commit subjects (`tumwater(<role>): …`) are the only
+ * cross-tick memory of what the role did lately, so the text names them. Takes the role id so the
+ * git command is literal, not a placeholder the model has to fill in. */
 export function searchGuidance(roleId: string): string {
   return `How to search — do not read the codebase file by file: a whole-tree survey costs most of
 the run and rarely finds anything a targeted look would not.

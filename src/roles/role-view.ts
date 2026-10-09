@@ -78,9 +78,9 @@ export interface RoleViewPayload {
   nextPrompt: string | null;
 }
 
-/** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions
- * location — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback
- * pair is configured (the freeness verdict needs the definitions; nothing else does). */
+/** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions location
+ * — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback pair is
+ * configured (the freeness verdict needs the definitions; nothing else does). */
 export function rolePayload(root: string, role: string, modelsPath = piModelsPath()): RoleViewPayload {
   // loadConfigSafe (not loadConfigCached's hold-last-good machinery — this is a one-shot
   // command, not a poller): a broken or missing file degrades to the defaults, so the
