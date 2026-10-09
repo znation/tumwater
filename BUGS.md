@@ -5,7 +5,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### `stageCheckFindings`'s missing-path check reads test fixtures as tree paths, so a test that names another repo's paths is told they "do not exist in the tree" and the tick spends its bounded fix-up turn on a non-fault (found by coverage loop 2026-10-08 while adding test/categories-oss.test.ts, whose fixture table of typedoc and yargs paths tripped src/tick/stage-check.ts's `missingPathFindings`)
+
+- **Symptom:** `missingPathFindings` (src/tick/stage-check.ts) scans every added diff line for path-shaped tokens whose first segment is a tracked top-level directory, then reports each one absent from the staged tree. A test whose fixtures are paths from another repository — the exact input `docs/code-metrics/categories-oss.cjs`'s `category(f)` is built to classify — has added lines naming typedoc and yargs paths under `src/` and `lib/` that are deliberately not in this tree, so the stage self-check reports "added lines name paths that do not exist in the tree" and the tick spends its one fix-up turn on a non-fault.
+- **Reproduce:** offline, no model. Add a test whose body holds a literal path from another repo under a tracked top segment (for example a `src/` path that is not a file here) and call `stageCheckFindings`; the findings include the missing-path line naming it, though nothing in the production tree is stale.
+- **Cause:** the check is a language-neutral heuristic for the organize loop's path drift, and it cannot tell a fixture argument from a real reference; test files routinely name paths that exist only in the software under test.
+- **Expected / fix sketch:** keep the check for source and prose while sparing test fixtures — for example skip the added-nonexistent-path scan for added lines whose file lives under the top-level `test/` directory, or treat a token as a reference only when it is the whole of a quoted or backticked span. The rename/delete stale-reference scan should keep covering test files; only the added-nonexistent-path heuristic needs the exemption.
+- **Validation gap:** pending — a stage-check case that stages a test file whose body names an absent path under a tracked top segment and asserts no missing-path finding, while a source file naming the same path still yields one.
 
 ## Fixed
 
