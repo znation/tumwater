@@ -20,7 +20,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fakes/fake-pi.js";
+import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
@@ -43,8 +43,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   fs.writeFileSync(path.join(lockDir, "improve.lock"), "");
 
   const ran = path.join(tmpdir(), "ran-pin");
-  const restore = fakePi(`touch "${ran}"`);
-  try {
+  await withPi(`touch "${ran}"`, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error", "a failed pin adoption fails the tick");
@@ -60,29 +59,25 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
     assert.equal(await refSha(repo, landingRefName("improve")), null, "no pin was written");
     assert.equal(queueDepth(repo), 0, "nothing was queued without a pin");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  const restore = fakePi(
+  await withPi(
     [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+    async () => {
+      const runner = makeLoopRunner(repo, "improve");
+      runner.state.resumePending = true; // e.g. the sessions were pruned since the abort
+      assert.equal((await runner.tick()).result, "no_change");
+      const run = fs.readFileSync(argsFile, "utf8").trim();
+      assert.ok(!run.includes("--continue"), "nothing to resume: a fresh session is started");
+      assert.ok(run.includes(" -n"));
+      assert.equal(runner.state.resumePending, false, "the flag is still consumed");
+      assert.equal(eventsOfType(repo, "resume").length, 0);
+    },
   );
-  try {
-    const runner = makeLoopRunner(repo, "improve");
-    runner.state.resumePending = true; // e.g. the sessions were pruned since the abort
-    assert.equal((await runner.tick()).result, "no_change");
-    const run = fs.readFileSync(argsFile, "utf8").trim();
-    assert.ok(!run.includes("--continue"), "nothing to resume: a fresh session is started");
-    assert.ok(run.includes(" -n"));
-    assert.equal(runner.state.resumePending, false, "the flag is still consumed");
-    assert.equal(eventsOfType(repo, "resume").length, 0);
-  } finally {
-    restore();
-  }
 });
 
 test("a crashed process (stale running flag) resumes like a graceful abort", async () => {
@@ -104,8 +99,7 @@ test("a crashed process (stale running flag) resumes like a graceful abort", asy
 
 test("an aborted director tick re-queues the user prompt", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`exec sleep 30`);
-  try {
+  await withPi(`exec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
     const controller = new AbortController();
@@ -116,9 +110,7 @@ test("an aborted director tick re-queues the user prompt", async () => {
     assert.equal(inboxSize(repo), 1, "prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
     assert.ok(!runner.state.resumePending, "the director recovers via the re-queued prompt, not a resume");
-  } finally {
-    restore();
-  }
+  });
 });
 
 // User-initiated abort (tumwater abort --role <id>) vs harness shutdown: both kill the pi
@@ -129,8 +121,7 @@ test("an aborted director tick re-queues the user prompt", async () => {
 test("a user-aborted tick discards work, backs off, and does not resume", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
-  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
-  try {
+  await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
     const runner = makeLoopRunner(repo, "improve", config);
     const before = mainSha(repo);
@@ -166,16 +157,13 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 1);
     assert.equal(ends[0]?.result, "user_aborted");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a user-aborted director tick drops the prompt instead of re-queueing it", async () => {
   const repo = await initializedRepo();
   // Hangs until killed; writes a marker first so the test can wait for the run to be in flight.
-  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
-  try {
+  await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
     const runner = makeLoopRunner(repo, "director");
@@ -203,9 +191,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
       null,
       "the dequeued prompt was discarded from the runner",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a user-abort mid-review discards the committed work too", async () => {
@@ -217,70 +203,67 @@ test("a user-abort mid-review discards the committed work too", async () => {
   // loop level an aborted landing KEEPS the pin — the drain adds the deliberate-stop ref
   // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
   // retry rides the pin, never the queue.
-  const restore = fakePi(
+  await withPi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
       `echo hello > hello.txt`,
     ].join("\n"),
+    async () => {
+      const controller = new AbortController();
+      try {
+        enqueuePrompt(repo, "ship the hello file");
+        const runner = makeLoopRunner(repo, "director");
+        const outcome = await runner.tick();
+        assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
+        const head = headLanding(repo);
+        assert.ok(head, "the landing is queued");
+        const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
+        // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
+        await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
+        controller.abort();
+        assert.equal(await landing, "aborted", "a mid-review abort is an abort, not a failed review");
+
+        // Fail closed: nothing merged — the role worktree is clean at main AND the pin survives
+        // the abort at this level for next-start recovery; a deliberate user stop discards the
+        // ref, and that deletion is the DRAIN's job (pinned in the orchestrator tests, which run
+        // the full loop with its userAborted flag). The queue entry is dropped either way.
+        assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
+        const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
+        assert.ok(pinned.length === 40, "the pin survived the aborted landing");
+        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
+        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");
+
+        // The tick COMPLETED (it committed and enqueued), so the prompt is consumed, not
+        // re-queued — the work's recovery is the pin, not a fresh prompt run.
+        assert.equal(inboxSize(repo), 0);
+        const s = loadLoopState(repo, "director");
+        assert.equal(s.lastResult, "aborted");
+        assert.ok(!s.resumePending, "the director never resumes an author session");
+        assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
+      } finally {
+        controller.abort(); // kill the hung reviewer before PATH is restored
+      }
+    },
   );
-  const controller = new AbortController();
-  try {
-    enqueuePrompt(repo, "ship the hello file");
-    const runner = makeLoopRunner(repo, "director");
-    const outcome = await runner.tick();
-    assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
-    const head = headLanding(repo);
-    assert.ok(head, "the landing is queued");
-    const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-    // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
-    await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
-    controller.abort();
-    assert.equal(await landing, "aborted", "a mid-review abort is an abort, not a failed review");
-
-    // Fail closed: nothing merged — the role worktree is clean at main AND the pin survives
-    // the abort at this level for next-start recovery; a deliberate user stop discards the
-    // ref, and that deletion is the DRAIN's job (pinned in the orchestrator tests, which run
-    // the full loop with its userAborted flag). The queue entry is dropped either way.
-    assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
-    const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
-    assert.ok(pinned.length === 40, "the pin survived the aborted landing");
-    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
-    assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");
-
-    // The tick COMPLETED (it committed and enqueued), so the prompt is consumed, not
-    // re-queued — the work's recovery is the pin, not a fresh prompt run.
-    assert.equal(inboxSize(repo), 0);
-    const s = loadLoopState(repo, "director");
-    assert.equal(s.lastResult, "aborted");
-    assert.ok(!s.resumePending, "the director never resumes an author session");
-    assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
-  } finally {
-    controller.abort(); // kill the hung reviewer before PATH is restored
-    restore();
-  }
 });
 
 test("a failing director tick re-queues the user prompt (regression)", async () => {
   const repo = await initializedRepo();
   // pi fails hard: non-zero exit, no assistant text, and no file changes.
-  const restore = fakePi(`echo 'pi exploded' >&2\nexit 1`);
-  try {
+  await withPi(`echo 'pi exploded' >&2\nexit 1`, async () => {
     enqueuePrompt(repo, "please do the thing");
     const runner = makeLoopRunner(repo, "director");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "please do the thing");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a timed-out director tick re-queues the user prompt (regression)", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`exec sleep 30`);
-  try {
+  await withPi(`exec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
     const config = defaultConfig();
     config.tickTimeoutSeconds = 1;
@@ -290,29 +273,23 @@ test("a timed-out director tick re-queues the user prompt (regression)", async (
     assert.match(runner.state.lastError ?? "", /timed out/);
     assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a director tick that handles a prompt with no file changes does not re-queue it", async () => {
   const repo = await initializedRepo();
   // pi answers the question in its reply and changes nothing: that IS fulfillment.
-  const restore = fakePi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`);
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`, async () => {
     enqueuePrompt(repo, "what is the answer?");
     const runner = makeLoopRunner(repo, "director");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(inboxSize(repo), 0, "a handled prompt must not loop back into the inbox");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a timed-out tick reports an error and never commits partial work", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
-  try {
+  await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
     config.tickTimeoutSeconds = 1;
     const runner = makeLoopRunner(repo, "improve", config);
@@ -322,9 +299,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
     assert.match(runner.state.lastError ?? "", /timed out/);
     assert.equal(mainSha(repo), before);
     assert.ok(runner.state.backoffSeconds > 0);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // A deadline that fires on a run still making progress killed a slow run, not a hung one —
@@ -335,27 +310,25 @@ test("a tick timeout that fires on a run still making progress is resumed like a
   const repo = await initializedRepo();
   // Speaks one real progress event, writes an edit, then runs on silently past the deadline:
   // a slow run. Contrast the zero-byte fixture above, whose timeout still discards.
-  const restore = fakePi(
+  await withPi(
     [`printf '%s\\n' '${assistantLine("still working")}'`, `echo partial > partial.txt`, `exec sleep 30`].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      config.tickTimeoutSeconds = 1;
+      const runner = makeLoopRunner(repo, "improve", config);
+      const before = mainSha(repo);
+      const outcome = await runner.tick();
+      assert.equal(outcome.result, "quiet_killed");
+      assert.match(runner.state.lastError ?? "", /timed out .* making progress/);
+      assert.equal(mainSha(repo), before, "nothing landed on main");
+      assert.equal(runner.state.resumePending, true, "the slow run's session is resumed, not discarded");
+      assert.equal(runner.state.resumeCause, "timeout");
+      assert.ok(
+        fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
+        "the slow run's half-done edit survives for its resume",
+      );
+    },
   );
-  try {
-    const config = defaultConfig();
-    config.tickTimeoutSeconds = 1;
-    const runner = makeLoopRunner(repo, "improve", config);
-    const before = mainSha(repo);
-    const outcome = await runner.tick();
-    assert.equal(outcome.result, "quiet_killed");
-    assert.match(runner.state.lastError ?? "", /timed out .* making progress/);
-    assert.equal(mainSha(repo), before, "nothing landed on main");
-    assert.equal(runner.state.resumePending, true, "the slow run's session is resumed, not discarded");
-    assert.equal(runner.state.resumeCause, "timeout");
-    assert.ok(
-      fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
-      "the slow run's half-done edit survives for its resume",
-    );
-  } finally {
-    restore();
-  }
 });
 
 test("a timed-out run that emitted bytes but no progress event still discards (regression)", async () => {
@@ -363,8 +336,7 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
   // Plain text on stdout: bytes without a single structured event are not progress (the same
   // rule that keeps zombie-stream keepalives from feeding the quiet watchdog), so the run has
   // not demonstrably begun and keeps today's discard path.
-  const restore = fakePi(`echo just bytes\nexec sleep 30`);
-  try {
+  await withPi(`echo just bytes\nexec sleep 30`, async () => {
     const config = defaultConfig();
     config.tickTimeoutSeconds = 1;
     const runner = makeLoopRunner(repo, "improve", config);
@@ -374,9 +346,7 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
     assert.match(runner.state.lastError ?? "", /^timed out after 1s$/);
     assert.equal(mainSha(repo), before);
     assert.ok(runner.state.backoffSeconds > 0);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // The budget handback (PLANS.md 2026-09-30): when the budget gate reopens, the orchestrator
@@ -466,8 +436,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
 test("role ticks lease pooled slots; no legacy role worktree is created", async () => {
   const repo = await initializedRepo();
   writeConfig(repo, { maxConcurrent: 2, worktreeSlots: 2 });
-  const restore = fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     const roles = ["improve", "clean", "perf"];
     for (const role of roles) {
       const runner = makeLoopRunner(repo, role);
@@ -489,7 +458,5 @@ test("role ticks lease pooled slots; no legacy role worktree is created", async 
     enqueuePrompt(repo, "say hello");
     assert.equal((await makeLoopRunner(repo, "director").tick()).result, "no_change");
     assert.ok(fs.existsSync(path.join(wtDir, "director")), "the director keeps its dedicated worktree");
-  } finally {
-    restore();
-  }
+  });
 });
