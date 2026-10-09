@@ -5,8 +5,9 @@ import { errCode } from "../errno.js";
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
  * PATH lookup for the pi-installation preflight, size-based rotation, recursive directory
- * creation before file writes, quiet deletes after marker consumption, and age-based pruning
- * of pi session files. The JSON state-file convention (tolerant reads of possibly-torn
+ * creation before file writes, quiet deletes after marker consumption, age-based pruning
+ * of pi session files, and a generic ancestor climb for the build check and the extension
+ * harness-root lookup. The JSON state-file convention (tolerant reads of possibly-torn
  * writes, pretty-printed overwrites) lives in src/files/json-files.ts; stat-keyed caching of
  * polled values in src/files/stat-cache.ts; incremental consumption of the append-only logs
  * (complete-line tail reading, the backwards chunk scan readTailText behind it, tail-state
@@ -121,6 +122,23 @@ export function ensureDir(dir: string): void {
  * or appending a file whose path may not exist yet. */
 export function ensureParentDir(file: string): void {
   ensureDir(path.dirname(file));
+}
+
+/** Walk UP from `startDir` — at most `maxLevels` ancestors after it, starting with `startDir`
+ * itself — calling `visit` on each directory and returning the first non-null result; null
+ * when no level qualifies or the filesystem root is reached. The shared climb of the build
+ * check's two walk-ups (build-check-detect.ts) and the extension-side harness-root lookup
+ * (pi-extension/full-output.ts). */
+export function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => T | null): T | null {
+  let dir = startDir;
+  for (let level = 0; level <= maxLevels; level++) {
+    const found = visit(dir);
+    if (found !== null) return found;
+    const parent = path.dirname(dir);
+    if (parent === dir) break; // Filesystem root reached.
+    dir = parent;
+  }
+  return null;
 }
 
 /** Write `data` — UTF-8 text or raw bytes — to `file` via a tmp file + rename, so a concurrent

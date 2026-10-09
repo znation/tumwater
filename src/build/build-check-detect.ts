@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
+import { walkUp } from "../files/files.js";
 import { isNonBlankString } from "../text/text.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 
@@ -11,8 +12,8 @@ import type { CheckConfigSlice } from "../config/config-schema.js";
  * pure filesystem concern with no subprocess in sight, and its consumers divide the same
  * way: doctor.ts and main-baseline.ts only detect, build-stage.ts only needs the sibling
  * node_modules walk-up to resolve a toolchain binary, and none of them should import the
- * execution machinery to get it. The walk-up algorithm and its WALK_UP_LEVELS bound are
- * shared by both exported walks (and the one npm's run-script PATH walk makes). */
+ * execution machinery to get it. Both exported walks share files.ts's generic `walkUp`
+ * climb and this file's WALK_UP_LEVELS bound. */
 
 /** The project's declared deterministic check. Two shapes: the npm auto-detection (an npm
  * script name plus the directory whose package.json declares it — the walk-up target holding
@@ -90,22 +91,6 @@ function buildCheckFrom(dir: string): BuildCheck | null {
 function isCheckScript(s: Record<string, unknown>, key: string): boolean {
   const v = s[key];
   return isNonBlankString(v);
-}
-
-/** Walk UP from `startDir` — at most `maxLevels` ancestors, starting with `startDir`
- * itself — calling `visit` on each directory and returning the first non-null result; null
- * when no level qualifies or the filesystem root is reached. The shared climb of both
- * walk-ups in this file (and the one npm's run-script PATH walk makes). */
-function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => T | null): T | null {
-  let dir = startDir;
-  for (let level = 0; level <= maxLevels; level++) {
-    const found = visit(dir);
-    if (found !== null) return found;
-    const parent = path.dirname(dir);
-    if (parent === dir) break; // Filesystem root reached.
-    dir = parent;
-  }
-  return null;
 }
 
 /** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors (default

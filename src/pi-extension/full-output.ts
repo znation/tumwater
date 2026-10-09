@@ -15,26 +15,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { toolOutputDir } from "../paths.js";
-import { writeTextAtomic } from "../files/files.js";
+import { walkUp, writeTextAtomic } from "../files/files.js";
 
 /** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
  * under it (`.tumwater/worktrees/<role>`, lander, gate alike) reach it three levels up
  * (`../../..`, the repo checkout that owns `.tumwater/`); a harness root carries it directly.
- * Returns null when no ancestor has one, so a bare pi run outside the harness writes nothing.
- * Exported for tests. */
+ * Bounded to 64 directories including `startDir` so a bare pi run outside the harness
+ * terminates without walking to the filesystem root; returns null when no ancestor within
+ * that bound has one, so such a run writes nothing. Exported for tests. */
 export function findTumwaterRoot(startDir: string = process.cwd()): string | null {
-  let dir = startDir;
-  for (let depth = 0; depth < 64; depth += 1) {
+  return walkUp(startDir, 63, (dir) => {
     try {
-      if (fs.statSync(path.join(dir, ".tumwater")).isDirectory()) return dir;
+      return fs.statSync(path.join(dir, ".tumwater")).isDirectory() ? dir : null;
     } catch {
-      // Not here — keep walking up.
+      return null; // Not here — keep walking up.
     }
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
-  return null;
+  });
 }
 
 /** Persist a full tool output under the harness's gitignored `.tumwater/` area and return
