@@ -28,7 +28,7 @@ import {
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { resetRequestPath, worktreePath } from "../src/paths.js";
-import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
+import { eventTypes, eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import {
   FAST_POLL_MS,
   awaitSettledTick,
@@ -205,7 +205,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
 
     // Shutdown removed the state file and logged both lifecycle events.
     assert.equal(readOrchestratorInfo(repo), null, "state file removed on shutdown");
-    const types = readEvents(repo).map((e) => e.type);
+    const types = eventTypes(repo);
     assert.ok(types.includes("orchestrator_start"));
     assert.ok(types.includes("orchestrator_stop"));
     // Both enabled roles got their startup tick.

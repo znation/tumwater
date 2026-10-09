@@ -23,6 +23,7 @@ import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
+import { eventTypes } from "./fixtures/log-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 
@@ -400,9 +401,7 @@ test("pollFleetGates: a low disk holds new work; recovery and a live floor edit 
   const lifted = pollFleetGates(states, { ...ctx, sampleFree: () => 15 * BYTES_PER_GB });
   assert.equal(lifted.diskHeld, false);
   assert.deepEqual(
-    readEvents(root, 100)
-      .map((e) => e.type)
-      .filter((t) => t === "disk_low" || t === "disk_ok"),
+    eventTypes(root).filter((t) => t === "disk_low" || t === "disk_ok"),
     ["disk_low", "disk_ok", "disk_low", "disk_ok"],
   );
 });

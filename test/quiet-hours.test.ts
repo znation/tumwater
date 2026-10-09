@@ -17,18 +17,12 @@ import {
 } from "../src/scheduling/quiet-hours.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { eventTypes } from "./fixtures/log-fixtures.js";
 
 function localDate(hours: number, minutes: number): Date {
   // A fixed calendar date with the wall-clock fields under test set in LOCAL time —
   // inQuietHours reads getHours/getMinutes, so the assertion travels with the machine's zone.
   return new Date(2026, 8, 30, hours, minutes, 0, 0);
-}
-
-function types(root: string, ...names: string[]): string[] {
-  return readEvents(root, 100)
-    .map((e) => e.type)
-    .filter((t) => names.includes(t))
-    .sort();
 }
 
 // parseQuietHours — the one definition of a valid quietHours value, shared by validateConfig
@@ -128,19 +122,19 @@ test("pollQuietHoursGate: one started/ended event per crossing, none while settl
 
   // Entering the window logs exactly one quiet_hours_started (with the window string).
   assert.equal(at(10, 30), true);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), ["quiet_hours_started"]);
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), ["quiet_hours_started"]);
   // Still inside: the ~2s poll cadence must not re-log.
   assert.equal(at(11, 0), true);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), ["quiet_hours_started"]);
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), ["quiet_hours_started"]);
   // Exiting logs exactly one quiet_hours_ended.
   assert.equal(at(12, 30), false);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), [
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), [
     "quiet_hours_ended",
     "quiet_hours_started",
   ]);
   // Settled outside: nothing further.
   at(13, 0);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), [
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), [
     "quiet_hours_ended",
     "quiet_hours_started",
   ]);
@@ -158,14 +152,14 @@ test("pollQuietHoursGate: unset window is silent, restart mid-window logs one ev
   const off = newQuietHoursGateState();
   assert.equal(pollQuietHoursGate(root, undefined, off, localDate(10, 30)), false);
   assert.equal(pollQuietHoursGate(root, "", off, localDate(10, 30)), false);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), []);
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), []);
 
   // A fresh state (a restarted orchestrator) meeting an active window logs one started event
   // on the first poll — then nothing, like the pause gate's restart story.
   const fresh = newQuietHoursGateState();
   assert.equal(pollQuietHoursGate(root, "10:00-12:00", fresh, localDate(11, 0)), true);
   assert.equal(pollQuietHoursGate(root, "10:00-12:00", fresh, localDate(11, 30)), true);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), ["quiet_hours_started"]);
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), ["quiet_hours_started"]);
 });
 
 test("pollQuietHoursGate: a live edit from a window to off logs the ended crossing", () => {
@@ -175,7 +169,7 @@ test("pollQuietHoursGate: a live edit from a window to off logs the ended crossi
   // The operator empties the window live (what `config set quietHours ""` does): the next
   // poll reads "off" and logs exactly one quiet_hours_ended.
   assert.equal(pollQuietHoursGate(root, "", state, localDate(11, 1)), false);
-  assert.deepEqual(types(root, "quiet_hours_started", "quiet_hours_ended"), [
+  assert.deepEqual(eventTypes(root, "quiet_hours_started", "quiet_hours_ended"), [
     "quiet_hours_ended",
     "quiet_hours_started",
   ]);

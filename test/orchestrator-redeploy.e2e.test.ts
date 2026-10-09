@@ -23,7 +23,7 @@ import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { worktreePath } from "../src/paths.js";
 import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "./fixtures/orchestrator-fixtures.js";
 import { roleWt } from "./fixtures/loop-fixtures.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventTypes, eventsOfType } from "./fixtures/log-fixtures.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 import { headSha, landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
@@ -42,7 +42,7 @@ test("a stale self-hosted build drains the fleet, swaps, and returns restart", a
     assert.deepEqual(exit, { restart: true });
     const head = headSha(repo);
     assert.deepEqual(swaps, [head], "the compiled head was swapped into dist");
-    const types = readEvents(repo).map((e) => e.type);
+    const types = eventTypes(repo);
     assert.ok(types.indexOf("build_stale") < types.indexOf("restart_pending"), "stale, then pending");
     assert.ok(types.indexOf("restart_pending") < types.indexOf("restart"), "pending, then restart");
     assert.ok(types.indexOf("restart") < types.indexOf("orchestrator_stop"), "the stop follows the restart");

@@ -21,11 +21,7 @@ import {
 import { worktreesDir } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { warningEvents } from "./fixtures/log-fixtures.js";
-
-function typesAt(root: string): string[] {
-  return readEvents(root, 100).map((e) => e.type);
-}
+import { eventTypes, warningEvents } from "./fixtures/log-fixtures.js";
 
 test("sampleFreeBytes measures the worktrees volume once it exists, else the root", () => {
   const root = tmpdir("disk-gate-sample-");
@@ -61,7 +57,7 @@ test("pollDiskGate holds below the floor and one disk_low logs per crossing", ()
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
   // Still low on the next poll: held, no second event.
   assert.equal(pollDiskGate(root, 9.5 * BYTES_PER_GB, 10, state), true);
-  assert.deepEqual(typesAt(root), ["disk_low"]);
+  assert.deepEqual(eventTypes(root), ["disk_low"]);
   const low = readEvents(root, 100)[0]!;
   assert.equal(low.loop, "harness");
   assert.equal(low.freeGB, 9);
@@ -77,7 +73,7 @@ test("pollDiskGate hysteresis: stays held until floor + 5, lifts with one disk_o
   assert.equal(pollDiskGate(root, (10 + DISK_HOLD_HYSTERESIS_GB) * BYTES_PER_GB, 10, state), false);
   // Settled out of the hold: further high samples add no event.
   assert.equal(pollDiskGate(root, 40 * BYTES_PER_GB, 10, state), false);
-  assert.deepEqual(typesAt(root), ["disk_low", "disk_ok"]);
+  assert.deepEqual(eventTypes(root), ["disk_low", "disk_ok"]);
   assert.equal(readEvents(root, 100)[1]!.freeGB, 15);
 });
 
@@ -86,7 +82,7 @@ test("pollDiskGate: diskHoldGB 0 disables the hold at any free space", () => {
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 1 * BYTES_PER_GB, 0, state), false);
   assert.equal(pollDiskGate(root, 0, 0, state), false);
-  assert.deepEqual(typesAt(root), []);
+  assert.deepEqual(eventTypes(root), []);
 });
 
 test("pollDiskGate: a live edit to diskHoldGB 0 lifts an active hold on the next poll", () => {
@@ -96,7 +92,7 @@ test("pollDiskGate: a live edit to diskHoldGB 0 lifts an active hold on the next
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
   assert.equal(pollDiskGate(root, 3 * BYTES_PER_GB, 0, state), false);
-  assert.deepEqual(typesAt(root), ["disk_low", "disk_ok"]);
+  assert.deepEqual(eventTypes(root), ["disk_low", "disk_ok"]);
   assert.equal(readEvents(root, 100)[1]!.freeGB, 3);
 });
 
@@ -112,7 +108,7 @@ test("pollDiskGate: a null sample never holds and warns once per process", () =>
   // A measurable sample after the unmeasurable ones re-arms a fresh hold event.
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
   assert.deepEqual(
-    readEvents(root, 100).map((e) => e.type),
+    eventTypes(root),
     ["warning", "disk_low"],
   );
 });
@@ -129,12 +125,12 @@ test("pollDiskGate: waitForReclaim defers entering the hold until the pass settl
   const root = tmpdir("disk-gate-wait-");
   const state = newDiskGateState();
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, true), false);
-  assert.deepEqual(typesAt(root), [], "no hold while reclaim still runs");
+  assert.deepEqual(eventTypes(root), [], "no hold while reclaim still runs");
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, false), true);
-  assert.deepEqual(typesAt(root), ["disk_low"]);
+  assert.deepEqual(eventTypes(root), ["disk_low"]);
   // It never lifts an active hold: reclaim starting while held changes nothing.
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, true), true);
-  assert.deepEqual(typesAt(root), ["disk_low"]);
+  assert.deepEqual(eventTypes(root), ["disk_low"]);
 });
 
 test("pollDiskGate: an unwritable events feed does not throw out of the poll", () => {

@@ -7,6 +7,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { eventTypes } from "./fixtures/log-fixtures.js";
 import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 /** A fleet at a paid top-level model, a free fallback configured, one role pinned to the
  * paid model, and a reviewer override — everything the fallback view must strip. */
@@ -134,7 +135,7 @@ test("raising the cap resumes the gate: one budget_resumed event and the live co
   assert.equal(p.gate, "open");
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, raised); // the fallback view is dropped at once
-  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback", "budget_resumed"]);
+  assert.deepEqual(eventTypes(root), ["budget_fallback", "budget_resumed"]);
 });
 
 test("resumed is true on exactly the reopening poll, with the fallback pair it left", () => {
@@ -203,7 +204,7 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
   // Dropping back below (a new local day, a raised cap) re-arms: crossing again warns again.
   poll(root, state, cfg, models, [spent(threshold - 3)]); // still open the whole time: no transition events
   poll(root, state, cfg, models, [spent(threshold)]);
-  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_warning", "budget_warning"]);
+  assert.deepEqual(eventTypes(root), ["budget_warning", "budget_warning"]);
 });
 
 test("no budget warning at the cap itself, and none with the cap disabled", () => {
@@ -215,12 +216,12 @@ test("no budget warning at the cap itself, and none with the cap disabled", () =
   // Straight to the cap: the fallback transition logs its own event, the warning never
   // doubles the page on the poll the gate stops being open.
   poll(root, state, cfg, models, [spent(10)]);
-  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback"]);
+  assert.deepEqual(eventTypes(root), ["budget_fallback"]);
 
   // A cap of 0 disables the budget entirely: no warning at any spend.
   const state2 = newBudgetGateState(configWith(0));
   poll(root, state2, configWith(0), models, [spent(100)]);
-  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback"]);
+  assert.deepEqual(eventTypes(root), ["budget_fallback"]);
 });
 
 test("tickOnPair matches only an in-flight tick on the fallback pair", () => {

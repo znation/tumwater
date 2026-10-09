@@ -94,6 +94,15 @@ export function eventsOfType(root: string, type: HarnessEvent["type"]): HarnessE
   return readEvents(root).filter((e) => e.type === type);
 }
 
+/** Every event type in the repo's harness event log, oldest first. Pass one or more types to
+ * keep only those, sorted — the shape the edge-triggered gate tests assert on; omit them for
+ * the raw run order. Single-homes the no-limit `readEvents(root).map((e) => e.type)` phrase;
+ * the one boundary read in events.test.ts passes its own limit and stays inline. */
+export function eventTypes(root: string, ...names: HarnessEvent["type"][]): string[] {
+  const types = readEvents(root).map((e) => e.type);
+  return names.length === 0 ? types : types.filter((t) => names.includes(t)).sort();
+}
+
 /** Every warning event in an already-read event array. The array-taking counterpart of
  * `eventsOfType`; `warningMessagesOf` and the tests that already hold the list build on it.
  * Generic so both a read-back `HarnessEvent[]` and a harness's in-memory `HarnessEventInput[]`

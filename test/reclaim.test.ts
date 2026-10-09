@@ -22,6 +22,7 @@ import { writeJsonAtomic } from "../src/files/json-files.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { eventsLogPath, worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
+import { eventTypes } from "./fixtures/log-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 
 /** Give a linked worktree a tracked modified file, an untracked file, an ignored `build/`
@@ -44,10 +45,6 @@ function seedWorktree(wt: string): { tracked: string; untracked: string; nested:
   sh(nested, "git", "init", "-b", "main");
   fs.writeFileSync(path.join(nested, "inner.txt"), "inner\n");
   return { tracked, untracked, nested };
-}
-
-function typesAt(root: string): string[] {
-  return readEvents(root, 100).map((e) => e.type);
 }
 
 test("reclaimWorktree removes only gitignored files, keeping edits and nested repos", async () => {
@@ -146,7 +143,7 @@ test("reclaimPass cleans least-recently-used first and stops once the sampler re
   assert.deepEqual(result.worktrees, ["feature"]);
   assert.equal(fs.existsSync(path.join(first, "build")), false, "first candidate cleaned");
   assert.equal(fs.existsSync(path.join(second, "build")), true, "second candidate untouched");
-  assert.deepEqual(typesAt(root).filter((t) => t === "disk_reclaim"), ["disk_reclaim"]);
+  assert.deepEqual(eventTypes(root).filter((t) => t === "disk_reclaim"), ["disk_reclaim"]);
   const event = readEvents(root, 100).find((e) => e.type === "disk_reclaim")!;
   assert.equal(event.mode, "pressure");
   assert.deepEqual(event.worktrees, ["feature"]);
@@ -156,7 +153,7 @@ test("reclaimPass returns null and logs nothing when there is nothing to clean",
   const root = makeRepo();
   const result = await reclaimPass(root, "pressure", { reclaimGB: 40, candidates: [] });
   assert.equal(result, null);
-  assert.deepEqual(typesAt(root), []);
+  assert.deepEqual(eventTypes(root), []);
 });
 
 test("reclaimPass still returns its result when the events feed is unwritable", async () => {
@@ -185,7 +182,7 @@ test("reclaimWorktree reports false when a worktree has nothing ignored to clean
   const wt = worktreeAt(root, "feature");
   // A fresh worktree has no ignored files, so `git clean -fdX` removes nothing: not a reclaim.
   assert.equal(await reclaimWorktree(root, wt), false);
-  assert.deepEqual(typesAt(root).filter((t) => t === "disk_reclaim"), []);
+  assert.deepEqual(eventTypes(root).filter((t) => t === "disk_reclaim"), []);
 });
 
 test("ReclaimController runs one pass per drop, then lets the disk hold engage", async () => {
