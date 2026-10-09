@@ -317,6 +317,18 @@ test("falseFixReason passes an md-only edit with no Fixed transition or a backed
   assert.equal(await falseFixReason(root, "main", ["docs/notes.md"]), undefined);
 });
 
+test("falseFixReason tolerates a deleted BUGS.md instead of throwing out of the gate", async () => {
+  // An md-only diff may delete BUGS.md. The read must read as "no Fixed transition to
+  // check" and let the gate's sibling backlog-structure check report the dropped section —
+  // not throw ENOENT and turn that deterministic rejection into a failed gate.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### A bug (found 2026-09-27)\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.rmSync(path.join(root, "BUGS.md"));
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
 // ── The two holes the phantom-markdown carries exploited (BUGS.md 2026-09-23) ───────────
 
 test("falseFixReason checks an already-Fixed entry whose narrative the diff rewrites", async () => {

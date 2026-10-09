@@ -26,6 +26,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { readTextOrNull } from "../files/files.js";
 import { parseEntryDetails, type BacklogEntry } from "../backlog/backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace } from "../text/text.js";
@@ -170,7 +171,11 @@ export async function falseFixReason(
   files: string[],
 ): Promise<string | undefined> {
   if (!files.includes("BUGS.md")) return undefined;
-  const head = readFileSync(join(wt, "BUGS.md"), "utf8");
+  // A deleted or unreadable BUGS.md reads as empty: there is no Fixed transition to verify,
+  // so this check passes and lets the gate's sibling structural check (backlog-structure.ts)
+  // report the dropped section. Reading it raw would throw ENOENT out of the gate instead —
+  // and a file the change deletes is exactly the input the sibling check already handles.
+  const head = readTextOrNull(join(wt, "BUGS.md")) ?? "";
   if (!head.includes("## Fixed")) return undefined;
   // The diff's own base, not main's tip: the gate diffs `mainBranch...HEAD` against the
   // merge-base, and the entry's Open/Fixed state lives in the tree the change builds on —
