@@ -266,6 +266,15 @@ export function writeBacklogFile(
   fs.writeFileSync(path.join(root, file), out.join("\n") + "\n");
 }
 
+/** A PLANS.md document string with two one-line planned entries, Alpha and Beta, under
+ * `## Planned`, and an empty `## Done`: the two-deep eligible queue the instance-claim and
+ * staging tests start from. The single home of the byte-identical array three test files
+ * hand-rolled (orchestrator.e2e, orchestrator-scheduling, tick-stage). */
+export function twoPlansDoc(): string {
+  const entry = (name: string) => `### ${name} (planned 2026-01-01 by operator)\n\nBody.`;
+  return ["# Plans", "", "## Planned", "", entry("Alpha"), "", entry("Beta"), "", "## Done", ""].join("\n");
+}
+
 /** Seed one open bug into BUGS.md's `## Open` placeholder: read-modify-write the file the
  * orchestrator e2e scenarios stand on, swapping the section's `_None yet._` body for a single
  * `### An open bug` heading. The section-anchored pattern hits only that placeholder, so

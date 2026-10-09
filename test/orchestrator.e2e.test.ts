@@ -39,7 +39,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { headSha, landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { headSha, landWork, makeRepo, seedOpenBug, sh, tmpdir, twoPlansDoc, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -224,25 +224,7 @@ test("runOrchestrator starts one runner per loop id and an unclaimed extra insta
   saveConfig(repo, config);
   // Two eligible plans: feature and feature-2 take one each (part 4/7's claims); feature-3 has
   // no free entry and never ticks.
-  fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    [
-      "# Plans",
-      "",
-      "## Planned",
-      "",
-      "### Alpha (planned 2026-01-01 by operator)",
-      "",
-      "Body.",
-      "",
-      "### Beta (planned 2026-01-01 by operator)",
-      "",
-      "Body.",
-      "",
-      "## Done",
-      "",
-    ].join("\n"),
-  );
+  fs.writeFileSync(path.join(repo, "PLANS.md"), twoPlansDoc());
   const restore = fakePiIdle();
   const controller = new AbortController();
   try {

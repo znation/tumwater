@@ -12,7 +12,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { eventsLogPath } from "../src/paths.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
 // holds the roles whose tick model is on P while roles on a healthy provider Q keep ticking,
@@ -127,22 +127,7 @@ function twoFeatureInstances(): TumwaterConfig {
   return config;
 }
 
-const TWO_PLANS = [
-  "# Plans",
-  "",
-  "## Planned",
-  "",
-  "### Alpha (planned 2026-01-01 by operator)",
-  "",
-  "Body.",
-  "",
-  "### Beta (planned 2026-01-01 by operator)",
-  "",
-  "Body.",
-  "",
-  "## Done",
-  "",
-].join("\n");
+const TWO_PLANS = twoPlansDoc();
 
 const ONE_BLOCKED_PLAN = [
   "# Plans",
