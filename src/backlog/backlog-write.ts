@@ -96,12 +96,12 @@ function appendEntryLocked(
   trimLeadingBlankLines(content);
   trimTrailingBlankLines(content);
   const rest = lines.slice(sectionEnd);
-  // One blank line after the entry block, before whatever follows the section: the trailing
-  // blanks the trim above popped were the separator between the section and the next `## `
-  // heading, and without restoring one here the filed entry's heading abuts that heading —
-  // the only writer of these files that produced a heading-on-heading join. The edge blanks
-  // are the trim helpers' (text.ts's trimLeadingBlankLines/trimTrailingBlankLines). When the section
-  // ends at EOF the blank is the file's trailing newline shape, never an extra line.
+  // One blank line after the entry block, before whatever follows the section: the trailing blanks
+  // the trim above popped were the separator between the section and the next `## ` heading, and
+  // without restoring one here the filed entry's heading abuts that heading — the only writer of
+  // these files that produced a heading-on-heading join. The edge blanks are the trim helpers'
+  // (text.ts's trimLeadingBlankLines/trimTrailingBlankLines). When the section ends at EOF the
+  // blank is the file's trailing newline shape, never an extra line.
   const out = [
     ...lines.slice(0, sectionIdx + 1),
     ...(content.length > 0 ? ["", ...content] : []),

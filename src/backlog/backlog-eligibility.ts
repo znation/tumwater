@@ -105,11 +105,12 @@ export function requiredParts(title: string): PartRef[] {
   return refs;
 }
 
-/** Why `entry` is held against the still-`planned` entries, or null when it may be taken:
- * a `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
+/** Why `entry` is held against the still-`planned` entries, or null when it may be taken: a
+ * `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
  * (needs-replan — the plan loop owns it), or a prerequisite `(series, part)` still among
  * `planned` ({ blockedBy }). Series compare case-insensitively; part tokens compare verbatim.
- * Bodies mentioning "requires" are never consulted — only the heading's trailing parenthetical. */
+ * Bodies mentioning "requires" are never consulted — only the heading's trailing
+ * parenthetical. */
 export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[]): EntryHold {
   if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
   if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) return "needs-review";

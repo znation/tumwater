@@ -253,8 +253,8 @@ export function renderBacklogStructureBlock(root: string): string | undefined {
   const listed = stranded
     .map((e) => `- (now under ## ${e.section}) ${e.title}`)
     .join("\n");
-  // The task wording lives in the clean role's find text (src/roles/role-catalog.ts); the block only
-  // carries the evidence, like the digest and coverage blocks do.
+  // The task wording lives in the clean role's find text (src/roles/role-catalog.ts); the block
+  // only carries the evidence, like the digest and coverage blocks do.
   return `Plan headings filed under the wrong section of PLANS.md — invisible to the readers
 that scan one section, so no loop sees them as backlog work:
 <backlog-structure>
