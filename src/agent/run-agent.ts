@@ -401,8 +401,11 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     });
 
     child.on("close", (code) => {
-      // Flush any bytes the decoder held back at stream end so a final line is not lost.
+      // Flush any bytes the decoder held back at stream end so a final line is not lost, then
+      // let the translator flush its own pending canonical line(s) — a batching backend's
+      // unclosed last assistant message, which a killed run never closes with a later event.
       feedCanonical(decoder.end());
+      for (const canonical of translator.finalize?.() ?? []) parser.feed(canonical + "\n", onLine);
       const killed = aborted || wd.timedOut || wd.quietKilled;
       const failed =
         killed ||

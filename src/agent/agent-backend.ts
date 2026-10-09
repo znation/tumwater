@@ -63,6 +63,13 @@ export interface StreamTranslator {
    * `agent_unknown_event` warning after the run. Optional: a translator whose native stream IS
    * canonical (pi's identity) reports none, and a fully-mapped run reports an empty list. */
   warnings?(): string[];
+  /** Flush any canonical line(s) the translator still holds when the native stream ends,
+   * called once at process close after the last native line. A batching translator (claude)
+   * folds split-block assistant events into one `message_end` emitted only when the next
+   * message / user event / result arrives, so a run the harness kills before that closing
+   * event would otherwise drop its last assistant message from the canonical stream and raw
+   * log. The identity translator holds nothing and omits this. */
+  finalize?(): string[];
 }
 
 /** What the runner knows at exit that a backend's `classifyExit` may need. `killed` is true

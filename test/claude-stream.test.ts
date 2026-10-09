@@ -199,3 +199,34 @@ test("thinking blocks translate to canonical thinking content", () => {
     ["thinking", "text"],
   );
 });
+
+/** The stream-end flush a translator may expose, read structurally so the test compiles before
+ * the seam declares it (it fails on the assertion, not on the type). */
+const finalize = (t: ClaudeStreamTranslator): string[] =>
+  (t as { finalize?: () => string[] }).finalize?.() ?? [];
+
+test("a killed run's unclosed assistant message flushes at stream end", () => {
+  // claude emits one event per content block; the translator emits its folded message_end only
+  // when the NEXT message, a user event, or the result closes it. A run the harness kills (the
+  // quiet watchdog, the tick deadline, a shutdown) never sends that closing event, so without a
+  // stream-end flush the last assistant message is dropped from the canonical stream and the
+  // raw log — the very turn a timed-out review's transcript needs (BUGS.md 2026-10-09).
+  const translator = claudeTranslator();
+  assert.deepEqual(
+    translator.translate(claudeAssistant({ id: "msg-1", blocks: [claudeText("still working")], usage: { output: 3 } })),
+    [],
+    "the split-block message stays pending until it closes",
+  );
+  const flushed = finalize(translator);
+  assert.equal(flushed.filter((l) => JSON.parse(l).type === "message_end").length, 1, "finalize emits the pending message_end");
+  // The runner folds finalize's lines through the parser like any other canonical line.
+  const parser = new PiStreamParser();
+  for (const line of flushed) parser.feed(line + "\n");
+  assert.equal(parser.turns, 1, "the flushed turn counts");
+  assert.match(parser.finalText, /still working/, "the flushed text reaches the final reply");
+  // A normal result already flushed the message; finalize on that same run emits nothing.
+  const closed = claudeTranslator();
+  closed.translate(claudeAssistant({ id: "msg-2", blocks: [claudeText("done")], usage: {} }));
+  assert.ok(closed.translate(claudeResult({ totalCostUsd: 0.01 })).length > 0);
+  assert.deepEqual(finalize(closed), [], "a completed run's finalize is empty");
+});

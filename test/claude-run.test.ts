@@ -90,6 +90,33 @@ test("runAgent runs the claude backend on a fake and folds its stream", async ()
   }
 });
 
+test("a run killed before its result still flushes the last assistant message", async () => {
+  // A batching backend closes its folded assistant message only on the next event or the
+  // result. A run the watchdog kills mid-turn sends neither, so run-agent must ask the
+  // translator to flush at stream end (StreamTranslator.finalize) or the raw log readers lose
+  // the last turn (BUGS.md 2026-10-09). The fake prints one assistant event and then sleeps
+  // until the quiet watchdog kills it.
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay(
+    [claudeAssistant({ id: "m1", blocks: [claudeText("still working")], usage: { output: 3 } })],
+    { extraScript: ['cat "$streamFile"', "exec sleep 60"] },
+  );
+  try {
+    const run = claudeRun(dir, {
+      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", tickTimeoutSeconds: 5, quietTimeoutSeconds: 1 },
+    });
+    const result = await runAgent(run);
+    assert.equal(result.ok, false, "the killed run is a failure");
+    const raw = fs.readFileSync(run.rawLogFile, "utf8");
+    assert.match(raw, /"type":"message_end"/, "the flushed turn reaches the raw log");
+    assert.match(raw, /still working/, "the pending assistant text is in the flushed message");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
 test("a continueSession run resumes the recorded claude id in its own cwd", async () => {
   const dir = tmpdir();
   const restoreHome = setEnv("HOME", tmpdir());

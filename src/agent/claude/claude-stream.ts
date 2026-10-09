@@ -341,6 +341,11 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
 
   return {
     translate,
+    finalize(): string[] {
+      // The stream ended (a completed run's result already flushed, a killed one did not):
+      // emit whatever assistant message is still pending so the last turn is not lost.
+      return flush();
+    },
     warnings(): string[] {
       // A claude run's authoritative cost is the result's total_cost_usd; a stream that did
       // real work yet never produced that total has no trustworthy cost. Recorded lazily so a
