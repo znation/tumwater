@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -265,17 +265,16 @@ test("a merge-scope check killed by an external signal rejects, naming the signa
   assert.doesNotMatch(String(warning?.message ?? ""), /timed out/);
 });
 
-// A merge-scope timeout whose deadline demonstrably fired late is the same weather a kill is:
-// the harness's own evidence (deadlineLateMs) says the host slept through the deadline, so the
-// check ran seconds and was killed at a wake — no verdict about the tree, and not a slow suite
-// (BUGS.md 2026-09-28). It owes the killed path's one retry, whose verdict stands; each
-// attempt is priced as its own event.
-test("a merge-scope timeout the host slept through is retried once, and the clean retry's verdict stands", async (t) => {
+// A host-sleep timeout earns the same one retry at either scope: the first attempt is killed
+// late and skipped, and its clean retry's verdict stands. Each attempt is priced as its own
+// build_check event. Both scopes owe the retry in this scenario, so the scope is the only
+// variable.
+async function assertHostSleepRetry(t: TestContext, scope: "landing" | "gate") {
   const { root, wt } = buildCheckFixture();
   // The 2026-09-21 pattern: a Date-only mock jumps the wall clock the way a host sleep does,
   // while the real deadline timer keeps its schedule — so the timer fires minutes late.
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-  const pending = runScopedBuildCheck(root, ROLE, "landing", wt, {
+  const pending = runScopedBuildCheck(root, ROLE, scope, wt, {
     check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
   });
   await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
@@ -286,6 +285,14 @@ test("a merge-scope timeout the host slept through is retried once, and the clea
   assert.equal(events.length, 2, "each attempt is priced as its own build_check event");
   assert.equal(events[0]?.status, "skipped");
   assert.equal(events[1]?.status, "passed");
+}
+
+// A merge-scope timeout whose deadline demonstrably fired late is the same weather a kill is:
+// the harness's own evidence (deadlineLateMs) says the host slept through the deadline, so the
+// check ran seconds and was killed at a wake — no verdict about the tree, and not a slow suite
+// (BUGS.md 2026-09-28). It owes the killed path's one retry, whose verdict stands.
+test("a merge-scope timeout the host slept through is retried once, and the clean retry's verdict stands", async (t) => {
+  await assertHostSleepRetry(t, "landing");
 });
 
 // The gate earns the same retry as a merge scope: the lateness is the harness's own evidence the
@@ -293,19 +300,7 @@ test("a merge-scope timeout the host slept through is retried once, and the clea
 // would otherwise judge the change unverified. The gate stays fail-open — a retry that also
 // times out is still skipped — so the clean retry's verdict stands. BUGS.md 2026-10-07.
 test("a gate-scope timeout the host slept through is retried once, and the clean retry's verdict stands", async (t) => {
-  const { root, wt } = buildCheckFixture();
-  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-  const pending = runScopedBuildCheck(root, ROLE, "gate", wt, {
-    check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
-  });
-  await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
-  t.mock.timers.tick(10_000); // the host sleeps 10 s through the 2 s deadline
-  const result = await pending;
-  assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
-  const events = eventsOfType(root, "build_check");
-  assert.equal(events.length, 2, "each attempt is priced as its own build_check event");
-  assert.equal(events[0]?.status, "skipped");
-  assert.equal(events[1]?.status, "passed");
+  await assertHostSleepRetry(t, "gate");
 });
 
 // When the weather persists, the retry's verdictless timeout still rejects — never merge
