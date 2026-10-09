@@ -402,3 +402,20 @@ test("status payload ships the disk block and its preformatted badge", async () 
   });
   assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago");
 });
+
+// The pinned clock reaches the alerts too: fleetAlerts' pause countdown must read the
+// payload's `now`, or a test pinning the clock cannot assert the countdown and the passed
+// instant and the displayed one disagree.
+test("status payload's paused alert countdown honors the pinned clock", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload pause clock test");
+  const at = Date.now();
+  const until = at + 30 * 60_000;
+  writeJsonFile(pausedPath(repo), { at, until });
+  // Pin the payload's clock 10 minutes in (20 minutes before the deadline): a wall-clock read
+  // would still report the full 30m remaining here.
+  const payload = statusPayload(repo, until - 20 * 60_000) as { alerts: Array<{ key: string; title: string }> };
+  const paused = payload.alerts.find((a) => a.key === "paused");
+  assert.ok(paused, "the fleet pause raises its alert");
+  assert.match(paused.title, /resumes in 20m/, "the countdown reads the payload's pinned now");
+});

@@ -310,13 +310,13 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // deliverableAt is exactly `notBeforeMs === null || notBeforeMs <= now` (prompt-not-before.ts)
   // over the same cached text — so the old second pass (queuedRolePromptCount's own readdir +
   // deliverability filter, once per role per poll across all 12 non-director loops) repeated
-  // work the entries pass had just done. One clock read outside the loop pins the count and the
-  // entries to the same instant.
-  const nowMs = Date.now();
+  // work the entries pass had just done. One instant — the snapshot's own pinned `now` — pins
+  // the count and the entries to the same moment, so a caller that pins the clock sees
+  // deliverability advance with it instead of the wall clock.
   for (const r of roles) {
     if (r === DIRECTOR_ROLE) continue;
     const entries = queuedRolePromptEntries(root, r);
-    roleInbox[r] = entries.filter((e) => deliverableAt(e.notBeforeMs, nowMs)).length;
+    roleInbox[r] = entries.filter((e) => deliverableAt(e.notBeforeMs, now)).length;
     if (entries.length) roleInboxPrompts[r] = entries;
   }
   const running = orchestratorAlive(root, info);

@@ -32,9 +32,9 @@ function eventItem(e: HarnessEvent): { ts: number; loop: string; type: string; r
  * serving HTTP: snapshot() supplies the core state, and the per-loop phase/metrics fields come
  * from the same status-model helpers the TUI table uses.
  *
- * `now` pins the poll's clock for the budget block (see snapshot's seam of the same name) —
- * one instant for spend stamp-check and burn-rate projection alike, so a test's expected badge
- * cannot race the payload's own Date.now(). */
+ * `now` pins the poll's clock for the time-derived fields (see snapshot's seam of the same
+ * name) — spend stamp-check, burn-rate projection, disk badge, and the pause countdown — so a
+ * test's expected value cannot race the payload's own Date.now(). */
 export function statusPayload(root: string, now = Date.now()): object {
   const snap = snapshot(root, undefined, now);
   // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always
@@ -209,6 +209,6 @@ export function statusPayload(root: string, now = Date.now()): object {
     questions,
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: fleetAlerts(snap, questions, loops, Date.now()),
+    alerts: fleetAlerts(snap, questions, loops, now),
   };
 }

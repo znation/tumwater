@@ -699,6 +699,19 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   assert.ok(!("director" in snap.roleInboxPrompts), "the director's rows ride inboxFiles, not roleInboxPrompts");
 });
 
+test("snapshot's roleInbox deliverability advances with its pinned clock", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "roleInbox clock seam test");
+  const now = Date.now();
+  const until = now + 30 * 60_000;
+  enqueueRolePrompt(repo, "clean", "later", until);
+  // Still deferred at the pinned instant: not deliverable, so not counted.
+  assert.equal(snapshot(repo, undefined, now).roleInbox.clean, 0);
+  // At the deferred time itself (deliverableAt is `at <= now`), it counts — a wall-clock read
+  // would leave this at 0 and make deferred deliverability untestable through the seam.
+  assert.equal(snapshot(repo, undefined, until).roleInbox.clean, 1);
+});
+
 // --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---
 
 test("pausedUntil carries only a standing fleet timed-pause deadline", async () => {
