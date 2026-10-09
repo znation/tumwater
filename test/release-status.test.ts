@@ -11,16 +11,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { gitOnlyBinDir, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, pushedRepo, seedCommit, seedPackage, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
-
-function seedPackage(root: string, version: string): void {
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "tumwater", version }));
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "package");
-}
 
 function runRelease(root: string, args: string[]): { status: number | null; stdout: string; stderr: string } {
   return spawnSync(process.execPath, [SCRIPT, ...args], { cwd: root, encoding: "utf8" });
@@ -60,7 +54,7 @@ test("--status names the missing gh instead of dying when origin answers but gh 
 });
 
 test("--status reports the latest CI run from gh's JSON, not the array's last row", () => {
-  const [root] = repoPushedToBareOrigin();
+  const { root } = pushedRepo();
   const bin = tmpdir("release-gh-");
   // The newer run sits first: a report trusting the array order would call run 7 the latest.
   writeScript(
@@ -79,7 +73,7 @@ test("--status reports the latest CI run from gh's JSON, not the array's last ro
 });
 
 test("--status names gh's non-JSON output instead of dying on the parse", () => {
-  const [root] = repoPushedToBareOrigin();
+  const { root } = pushedRepo();
   const bin = tmpdir("release-gh-bad-");
   writeScript(path.join(bin, "gh"), `printf '%s' 'not json'`);
 
@@ -148,18 +142,6 @@ test("the release path still refuses to act offline rather than treating the tag
 // exists. They must die before any push/tag, so the tests assert the message and that nothing
 // was written (stderr only, no half-done release output).
 
-/** A repo on main with a bare `origin` it has pushed to — the smallest non-diverged base a
- * refusal test can then perturb. Returns [root, origin]. */
-function repoPushedToBareOrigin(version = "0.1.0"): [string, string] {
-  const root = makeRepo();
-  seedPackage(root, version);
-  const origin = tmpdir("release-origin-");
-  sh(origin, "git", "init", "--bare");
-  sh(root, "git", "remote", "add", "origin", origin);
-  sh(root, "git", "push", "origin", "main");
-  return [root, origin];
-}
-
 test("bump refuses when HEAD is not on main", () => {
   const root = makeRepo();
   seedPackage(root, "0.1.0");
@@ -198,7 +180,7 @@ test("bump refuses an origin that has no main", () => {
 });
 
 test("bump refuses a main diverged from origin/main", () => {
-  const [root, origin] = repoPushedToBareOrigin();
+  const { root, origin } = pushedRepo();
   seedCommit(root, "local.txt", "local\n", "advance local main");
   // A second clone advances origin from the shared base, so origin's main is a sibling of
   // root's main. Fetching brings the commit object local, so guardMain's merge-base check —
@@ -216,7 +198,7 @@ test("bump refuses a main diverged from origin/main", () => {
 });
 
 test("release refuses when the version's tag already exists locally", () => {
-  const [root] = repoPushedToBareOrigin("0.1.0");
+  const { root } = pushedRepo("0.1.0");
   sh(root, "git", "tag", "v0.1.0");
 
   const r = runRelease(root, []);

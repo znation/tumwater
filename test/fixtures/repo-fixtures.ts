@@ -184,6 +184,26 @@ export function commitIn(dir: string, msg: string): void {
   sh(dir, "git", "commit", "-m", msg);
 }
 
+/** Give a repo a committed package.json carrying `version` — the base the release-script
+ * tests stand on, since scripts/release.mjs reads the version from it. */
+export function seedPackage(root: string, version: string): void {
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "tumwater", version }));
+  commitIn(root, "package");
+}
+
+/** A makeRepo'd repo on main with a committed package.json and a bare `origin` it has already
+ * pushed main to: the smallest non-diverged base the release path needs to get past guardMain
+ * and reach its push/CI/tag behavior. */
+export function pushedRepo(version = "0.1.0"): { root: string; origin: string } {
+  const root = makeRepo();
+  seedPackage(root, version);
+  const origin = tmpdir("release-origin-");
+  sh(origin, "git", "init", "--bare");
+  sh(root, "git", "remote", "add", "origin", origin);
+  sh(root, "git", "push", "origin", "main");
+  return { root, origin };
+}
+
 /** Seed a fixture's tumwater.json with the given (partial) config: the project config file's
  * name and write convention live here, so a test states only the keys under test. Fixtures
  * that deliberately write torn or invalid JSON keep their own raw writeFileSync. */

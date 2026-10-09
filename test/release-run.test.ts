@@ -6,32 +6,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { headSha, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, pushedRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { pathPrepend, writeScript } from "./fakes/fake-commands.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
-
-function seedPackage(root: string, version: string): void {
-  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "tumwater", version }));
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "package");
-}
-
-/** A repo on main with a bare `origin` it has already pushed to — the base the release path
- * needs to get past guardMain and reach its push/CI/tag behavior. */
-function pushedRepo(version = "0.1.0"): { root: string; origin: string } {
-  const root = makeRepo();
-  seedPackage(root, version);
-  const origin = tmpdir("release-origin-");
-  sh(origin, "git", "init", "--bare");
-  sh(root, "git", "remote", "add", "origin", origin);
-  sh(root, "git", "push", "origin", "main");
-  return { root, origin };
-}
 
 /** Install a fake gh at the front of PATH that reports one CI run with `conclusion`. Both the
  * `run list` and `run view` polls get an immediate completed answer, so ciWait returns without
