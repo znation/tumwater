@@ -36,53 +36,46 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `report --since 6h --days 3` still exits non-zero naming `--days`; `report --since 6h --failures` exits zero (the rival loop in test/report.test.ts loses its `--failures` arm); `report --failures --days 2` is unchanged; an over-cap or unparseable `--since` still fails as before.
 - `npm run test` green.
 
-### Agent backends, part 3/7: the claude adapter — invocation, isolation, stream translation, sessions (planned 2026-10-09 by operator; requires parts 1/7 and 2/7 landed)
+### Agent backends, part 3a/7: the claude stream translator and canonical vocabulary (planned 2026-10-09 by plan; split from part 3/7; requires parts 1/7 and 2/7 landed)
 
-**Needs review 2026-10-09 by feature: too large for one run**
+Design: plans/agent-backends.md ("Canonical event stream").
 
-Design: plans/agent-backends.md ("Findings", "Canonical event stream", "The claude invocation").
-
-Adds the adapter and registers it. It is not yet selectable from tumwater.json (part 4/7);
-tests drive it through `runAgent` with `config.agent = "claude"`.
+Pure translation — no backend registration and nothing selectable from tumwater.json yet. Tests
+feed fixture lines straight into the translator and the parser.
 
 **Approach.**
-1. **Invocation.** src/agent/claude/claude-args.ts builds the argv in the design's "The claude
-   invocation":
-   - the prompt goes on stdin;
-   - `--session-id` comes from a minted UUID recorded in the ledger;
-   - `--resume <id>` comes from the ledger's resumable line;
-   - `--effort` comes from the thinking level (`off`/`minimal` → `low`).
-2. **Environment.** src/agent/claude/claude-env.ts:
-   - scrubs a host Claude Code session's variables, with the allowlist from the design;
-   - sets the `CLAUDE_CODE_DISABLE_*`, `BASH_*_TIMEOUT_MS`, `DISABLE_AUTOUPDATER`,
-     `DISABLE_TELEMETRY` and `DISABLE_ERROR_REPORTING` variables (telemetry off by operator
-     decision, 2026-10-09);
-   - keeps the `TUMWATER_RUN` and notebook layers;
-   - **first verifies that claude tolerates the macOS `NODE_OPTIONS` preload**, falling back to
-     the `--settings` env route the design describes if it does not.
-3. **Translator.** src/agent/claude/claude-stream.ts implements the design's mapping table:
-   - per-`message.id` coalescing with usage counted once;
-   - tool-name and `file_path` mapping;
-   - `api_retry` → `auto_retry_start`, and `compact_boundary` → `compaction_start`;
-   - `result` → `run_cost` plus an explicit `tumwaterKind` error classification;
-   - `system/init.apiKeySource` (plus the run env's third-party-provider flags) → the result's
+1. **Translator.** Add a new `claude-stream` module under src/agent/claude/, implementing the design's mapping
+   table as an `AgentBackend.translator()`-shaped factory (`translate(line): string[]`), stateful
+   per run:
+   - `system/init` → canonical `session` (`cwd`, `id`) then `agent_start`;
+   - per-`message.id` coalescing of `assistant` events into one `message_end` (content blocks
+     merged in order), usage counted once, `cost.total` 0;
+   - each `tool_use` → `tool_execution_start` and each `user` `tool_result` →
+     `tool_execution_end`, with the tool-name and `file_path` mapping;
+   - `system/api_retry` → `auto_retry_start`; `system/compact_boundary` → `compaction_start`;
+   - `result` → canonical `run_cost {total}` plus a synthetic error-bearing `message_end` when
+     the run ended in error, carrying `tumwaterKind` and the classification below;
+   - `rate_limit_event` → canonical `rate_limit` carrying the reading (type, status, `resetsAt`,
+     `utilization`, `overageStatus`, `isUsingOverage`);
+   - `system/init.apiKeySource` (+ the run env's third-party-provider flags) → canonical
      `billing: "subscription" | "api"`;
-   - `rate_limit_event` → the result's `rateWindows` (every `rate_limit_info`, newest per
-     `rateLimitType`) and `usedOverage`. Part 3 only records these; parts 6 and 7 act on them;
-   - an `agent_unknown_event` warning, once per unmapped type;
-   - the native stream is written to `.tumwater/log/<role>.claude.native.jsonl`.
-4. **Parser.** `PiStreamParser` learns `run_cost` (it replaces the per-message cost sum) and
-   `tumwaterKind` (trusted before the regexes). `PiRunResult` gains `resumeMissing`,
-   `budgetCapped`, `billing`, `rateWindows` and `usedOverage`.
-5. **Missing session.** On `resumeMissing`, `runWithTransientRetry` (src/loop/loop-pi.ts) retries
-   once as a fresh `handoff` run.
-6. **Fakes.** test/fakes/fake-claude.ts is a PATH shim that:
-   - replays canned stream-json;
-   - logs argv and stdin per run;
-   - fakes `~/.claude/projects/<slug>/<id>.jsonl` under a temp HOME.
-
-   test/fixtures/claude-events.ts holds the builders. Strip `TUMWATER_CLAUDE_BIN`, `CLAUDECODE`
-   and `CLAUDE_CODE_*` in test/test-runner.ts.
+   - each unmapped native type is recorded once (a `warnings()` on the concrete translator, not
+     on the `StreamTranslator` seam); part 3c turns each into an `agent_unknown_event` warning.
+2. **Classification.** The translator sets `tumwaterKind` (and, for a rate-limit rejection,
+   `retryAfterSeconds` from `resetsAt`) from `api_error_status`/`terminal_reason` per the
+   design's table — 429 → `transientRateLimit`; 5xx/529 → `transientBackend`/`server`;
+   connection/timeout text → `transientBackend`/`connection`|`timeout`; 400/401/403/404 and
+   "Not logged in"/"issue with the selected model" → `configError`; "prompt is too long" →
+   `contextExceeded`; `error_max_budget_usd` → `budgetCapped`; "No conversation found with
+   session ID" → `resumeMissing`.
+3. **Parser and result.** `PiStreamParser` (src/pi/pi-stream.ts) learns `run_cost` — its `total`
+   becomes the run's authoritative `costUsd`, replacing the per-message sum — and `tumwaterKind`,
+   trusted before the existing text regexes. A run that emitted no `run_cost` logs the
+   `cost_unknown` warning with cost 0. `PiRunResult` (src/pi/pi-run-result.ts) gains
+   `resumeMissing`, `budgetCapped`, `billing`, `rateWindows` and `usedOverage`.
+4. **Fixtures.** the `claude-events.ts` fixture holds builders for the shapes above, trimmed from
+   the 2026-10-09 captures (split-block assistant, 404, not-logged-in, SIGTERM, compact,
+   `api_retry`, rate-limit-rejected).
 
 **Interactions (resume, handoff, revision, conflict hand-back).** Added 2026-10-09 by operator.
 Agent backends 2/7 took three review rounds because its plan left out how a handoff combines
@@ -124,33 +117,132 @@ this section whole.
   (`resumeBlocked`). Add one claude case proving it.
 
 **Files touched.**
-- src/agent/claude/{claude-args,claude-env,claude-stream,claude-backend}.ts (new)
-- src/agent/agent-backend.ts
+- `claude-stream.ts` under src/agent/claude/ (new)
 - src/pi/pi-stream.ts, src/pi/pi-run-result.ts
-- src/loop/loop-pi.ts
-- src/paths.ts, src/orchestrator/retention.ts
-- test/fakes/fake-claude.ts, test/fixtures/claude-events.ts, test/test-runner.ts
-
-Tests: test/claude-stream.test.ts, test/claude-args.test.ts, test/claude-env.test.ts, plus a
-runAgent test on fake-claude.
+- `claude-events.ts` and `claude-stream.test.ts` under test/ (new)
 
 **Acceptance criteria.**
 - **Usage.** A split-block assistant message (text + tool_use, same id, usage repeated) folds to
-  1 turn and its tokens once. `costUsd` equals `result.total_cost_usd`.
-- **Errors.**
-  - The 404 unknown-model result yields `configError`.
-  - "Not logged in" yields `configError`.
-  - 429 yields `transientRateLimit`; 529 yields `transientBackend` (`server`).
-  - "prompt is too long" yields `contextExceeded`.
-  - A SIGTERM `aborted_tools` result yields `aborted`/`quietKilled` from the harness flags, not
-    an error classification.
-- **Readers.** On a claude run, the raw log renders in `tumwater logs --role` and the progress
-  tail exactly as a pi run would. suite-rerun detects a reviewer's `Bash` `npm test`.
-- **Env.** The spawned env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` even when the suite's
-  parent had them, and stdin carries the prompt.
+  one `message_end`, 1 turn, tokens once. With a `result`, `costUsd` equals
+  `result.total_cost_usd`; without one, the result logs `cost_unknown` and keeps cost 0.
+- **Errors.** The fixtures yield `configError` (404, not-logged-in), `transientRateLimit` (429),
+  `transientBackend`/`server` (529), `contextExceeded`, `budgetCapped` and `resumeMissing`; a
+  SIGTERM `aborted_tools` result carries no error classification.
+- **Unknown events.** The translator reports an unmapped native type once; a run over it does
+  not fail.
 - `npm run test` green.
 
-### Agent backends, part 4/7: `agent` / `agents` config, selector routing, per-tier claude defaults, doctor and labels (planned 2026-10-09 by operator; requires part 3/7 landed)
+### Agent backends, part 3b/7: the claude invocation and isolation environment (planned 2026-10-09 by plan; split from part 3/7; requires part 3a/7 landed)
+
+Design: plans/agent-backends.md ("The claude invocation", "Findings", "Risks").
+
+Two pure builders, unit-tested without a spawned process or a registered backend. The session
+decision (which `--session-id`/`--resume` to use) is an input to the argv builder, so this part
+stays ledger-free; part 3c supplies it.
+
+**Approach.**
+1. **Args.** Add a new `claude-args` module under src/agent/claude/: build the design's argv — `-p --output-format
+   stream-json --verbose --model <id> [--effort <level>]`, the session flag passed in by the
+   caller, `--permission-mode bypassPermissions`, `--tools Bash,Read,Edit,Write,Glob,Grep`,
+   `--setting-sources project`, `--strict-mcp-config` (`--mcp-config` when a notes path is
+   present), `--disable-slash-commands`, `--exclude-dynamic-system-prompt-sections`,
+   `--append-system-prompt-file AGENTS.md` only when the worktree has AGENTS.md and no CLAUDE.md,
+   and `[--max-budget-usd <remaining>]` (passed in), then the configured passthrough args. The
+   prompt is returned as `stdin`, never an argv element. `--effort` maps the thinking level
+   (`off`/`minimal` → `low`). A reserved flag repeated in the passthrough is rejected.
+2. **Env.** Add a new `claude-env` module under src/agent/claude/: start from the run-marker/notebook environment
+   (as pi's adapter builds it, src/pi/pi-backend.ts `withNotesPath`), then remove `CLAUDECODE`,
+   every `CLAUDE_CODE_*`/`CLAUDE_AGENT_SDK_*` except the allowlist, `CLAUDE_PID`, `CLAUDE_EFFORT`,
+   and `ANTHROPIC_BASE_URL` when `CLAUDECODE` was set; set
+   `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`,
+   `BASH_DEFAULT_TIMEOUT_MS=600000`, `BASH_MAX_TIMEOUT_MS` = `quietTimeoutSeconds` × 1000 − 60 s,
+   `DISABLE_AUTOUPDATER=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`.
+3. **Preload check.** Verify claude tolerates the macOS `NODE_OPTIONS` `--import=data:` preload.
+   If it does, leave the environment as above; if it chokes, move the preload into the Bash
+   tool's environment via `--settings '{"env":…}'` and record the choice in the module comment.
+
+**Files touched.**
+- `claude-args.ts` and `claude-env.ts` under src/agent/claude/ (new)
+- `claude-args.test.ts` and `claude-env.test.ts` under test/ (new)
+
+**Acceptance criteria.**
+- **Argv.** The built argv matches the design's order and set, carries the passed session id or
+  resume id, and carries no prompt (stdin does); `off`/`minimal` thinking yields `--effort low`.
+- **Env.** The built env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID`/`CLAUDE_PID` and drops
+  `ANTHROPIC_BASE_URL` only when `CLAUDECODE` was set; the allowlisted variables survive;
+  `BASH_MAX_TIMEOUT_MS` is derived from `quietTimeoutSeconds`.
+- The NODE_OPTIONS preload decision is made and recorded.
+- `npm run test` green.
+
+### Agent backends, part 3c/7: the claude backend, ledger-backed sessions, and PATH fake (planned 2026-10-09 by plan; split from part 3/7; requires parts 3a/7 and 3b/7 landed)
+
+Design: plans/agent-backends.md ("The seam", "Sessions", "Testing").
+
+Registers claude as an adapter and proves a run end to end on a fake. Still not selectable from
+tumwater.json (part 4/7); tests drive it through `runAgent` with `config.agent = "claude"`.
+
+**Approach.**
+1. **Adapter.** Add a new `claude-backend` module under src/agent/claude/ as an `AgentBackend`: `id: "claude"`, a
+   label, `defaultBin: "claude"`, `binEnv: "TUMWATER_CLAUDE_BIN"`, `resolveBin` via
+   src/pi/pi-bin.ts, `invocation` composing claude-args (with the session decision) +
+   claude-env, `translator` from part 3a, and `classifyExit` (the stderr half of `configError`,
+   e.g. a 404 or "Not logged in" printed on stderr). Register it in src/agent/run-agent.ts.
+2. **Sessions.** In `invocation`, mint a UUID for a fresh run and `recordSession` before the
+   spawn; for a resume, take `resumableSession(dir, {kind, cwd, agent: "claude"})` and pass
+   `--resume <id>` only when its transcript file exists and the record's cwd matches (the cwd
+   half part 2/7 deferred here).
+3. **Native log.** src/agent/run-agent.ts writes each native line to
+   `.tumwater/log/<role>.<agent>.native.jsonl` (a `nativeLogPath` helper in src/paths.ts),
+   rotated and pruned like the raw log; canonical lines keep going to the existing raw log. The
+   runner emits part 3a's unmapped-type reports once each as `agent_unknown_event` warnings.
+4. **Fake.** Add `fake-claude.ts` under test/fakes/ — a PATH shim named `claude` replaying canned
+   stream-json, logging argv and stdin per run, and creating
+   `~/.claude/projects/<slug>/<id>.jsonl` under a temp HOME. Strip `TUMWATER_CLAUDE_BIN`,
+   `CLAUDECODE` and `CLAUDE_CODE_*` in test/test-runner.ts.
+
+**Files touched.**
+- `claude-backend.ts` under src/agent/claude/ (new)
+- src/agent/run-agent.ts, src/paths.ts, src/orchestrator/retention.ts
+- `fake-claude.ts` under test/fakes/ (new); `claude-run.test.ts` under test/ (new); test/test-runner.ts
+
+**Acceptance criteria.**
+- **Run.** `runAgent` on fake-claude with `config.agent = "claude"` produces the folded
+  `PiRunResult` (cost, turns, tokens), and the raw log renders in `tumwater logs --role` and the
+  progress tail as a pi run would.
+- **Sessions.** A fresh run mints an id, records a ledger line and passes `--session-id`; a
+  requested resume from the same cwd/kind passes `--resume <id>`; a record from another cwd does
+  not.
+- **Readers.** suite-rerun detects a reviewer's `Bash` `npm test` through the `bash` mapping.
+- **Env.** The spawned env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` even when the suite's
+  parent had them, and stdin carries the prompt.
+- The native log file is written and rotated with the raw log.
+- `npm run test` green.
+
+### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c/7 landed)
+
+Design: plans/agent-backends.md ("Sessions").
+
+**Approach.**
+1. When a run ends with `PiRunResult.resumeMissing` (part 3a), `runWithTransientRetry`
+   (src/loop/loop-pi.ts) retries once with `continueSession` unset and the `handoff` cause from
+   part 2/7: `buildHandoffPrompt` (src/prompt/prompt-followup.ts) carries the bridge text, and
+   the worktree is left as is, so the retry's fresh session still sees the interrupted run's
+   uncommitted edits.
+2. The retry follows the existing transient-retry shape (warn, fold the failed attempt, run the
+   fresh handoff), and the `resume` event reports the `handoff` cause.
+
+**Files touched.**
+- src/loop/loop-pi.ts
+- test/loop-pi.test.ts or test/loop-interrupted.test.ts
+
+**Acceptance criteria.**
+- A fake-claude run whose `--resume` id has no transcript yields `resumeMissing`, and the loop
+  retries once fresh with the handoff bridge prompt; the worktree's uncommitted edits are still
+  present for the retry.
+- A run that does not report `resumeMissing` is not retried.
+- `npm run test` green.
+
+### Agent backends, part 4/7: `agent` / `agents` config, selector routing, per-tier claude defaults, doctor and labels (planned 2026-10-09 by operator; requires part 3d/7 landed)
 
 Design: plans/agent-backends.md ("Config", "Every seam, checked" — doctor, startup and status
 rows).
