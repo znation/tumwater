@@ -6,6 +6,82 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Split the LoopRunner tick pipeline out of src/loop/loop.ts (planned 2026-10-08 by organize)
+
+Design principle: a file with too many responsibilities should be divided along the seams it already
+has. This is a code move plus the context each phase needs — no behavior change.
+
+Context. `src/loop/loop.ts` is 949 lines, the largest module in the tree (next: redeployer.ts at
+600). It is one class whose methods already fall into four concerns:
+
+- runner lifecycle and public surface: the constructor and fields, `save`, `warn`,
+  `resetCounters`, `wake`, `abortTick`, `handBackTick`, `tickModel`, `runConfig`, `runProvider`,
+  `runSignal`, `tickPrompt`, and the landing faces `runLandingPi`, `runGatePi`, `foldUsage`,
+  `foldLandingUsage`;
+- the tick pipeline: `tick` (:445), `runTick` (:608), `runTickInLease` (:644),
+  `checkoutRoleBranch` (:685), `tickWithWorktree` (:695, ~193 lines — the largest method, doing
+  worktree setup, leftover recovery, red-main gating, conflict hand-back, revision apply, the
+  authoring run, and result dispatch in one body), and `handlePiResult` (:889);
+- recovery/landing bookkeeping: `finishAbortedTick` (:290), `pinAndReset` (:337),
+  `finishRecoveryTick` (:361), and the `recoveryFailure` field (:132) that exists only to carry a
+  value from `finishRecoveryTick` to `tick`;
+- model-fallback integration: `foldModelFallback` (:542) and `emitFallbackEnded` (:592).
+
+The other loop concerns are already split out — `loop-pi.ts` (428), `loop-state.ts` (388),
+`model-fallback.ts` (131), `leftover.ts` (182), `revision.ts` (77). What remains is orchestration
+glue; it is cohesive but too large to hold in view, and its phases are discoverable only by
+scrolling. This continues the same incremental shrink of loop.ts that produced loop-pi.ts and
+loop-state.ts, judged on the end state rather than one move.
+
+Goal. Keep `LoopRunner` as the orchestrator's handle, but move the tick pipeline, the recovery
+helpers, and the fallback integration into their own modules, each taking an explicit context —
+the shape `src/tick/tick-stage.ts`, `tick-verdict.ts`, and `tick-finalize.ts` already use.
+
+**Target structure.**
+- `src/loop/loop.ts` (~300 lines): the class. Constructor and fields; the lifecycle methods above;
+  and `tick` as the thin entry that assembles the phase context, calls the pipeline, and calls
+  `finalizeTick`.
+- the new `loop-tick.ts` beside it: the bodies of `runTick`, `runTickInLease`,
+  `checkoutRoleBranch`, `tickWithWorktree`, and `handlePiResult`, as context-taking functions
+  (`runTickPhase`, `handlePiResultPhase`, and their private helpers). The context carries root,
+  role, mainBranch, baseRole, the live config, the shared `state`/`usage`/`pending` objects, the
+  `pi` plumbing, and the `save`/`warn` callbacks.
+- the new `loop-recovery.ts`: `finishAbortedTickPhase`, `pinAndResetPhase`, and
+  `finishRecoveryTickPhase`. `finishRecoveryTickPhase` takes a `setRecoveryFailure` callback
+  instead of reaching into a runner field; `LoopRunner` keeps the field so `tick` still passes it
+  to `finalizeTick`, unchanged.
+- the new `loop-fallback.ts`: `foldModelFallbackPhase({root, role, state, save}, ctx, pi)`
+  and the private `emitFallbackEnded` it shares with the config-dropped-pair path. The pure state
+  machine stays in `model-fallback.ts`. While moving, the `wasIn && !willBeIn` branch of
+  `foldModelFallback` should call the shared `emitFallbackEnded` helper instead of re-inlining the
+  same `model_fallback_ended` event (the helper exists for both ending paths, but only the
+  config-dropped path calls it today) — a no-op refactor, not an event-shape change.
+
+**Test seams to preserve.** Tests monkeypatch or read these; each keeps its name and place on the
+class as a thin delegate to the phase function:
+- `runner.runTick` — overridden in `test/loop.test.ts` (:400, :446) to bypass the pipeline;
+- `runner.pending` — read in `test/loop-5.test.ts` (:202);
+- `runner.state`, `runner.tick`, `runner.abortTick`, `runner.handBackTick`, `runner.tickModel`,
+  `runner.runConfig`, `runner.runProvider`, `runner.resetCounters`, `runner.wake`, `runner.config`,
+  `runner.root`, `runner.role`, `runner.lastRateLimit`, `runner.lastBackendFailure` — the public
+  surface the orchestrator and tests use.
+
+**Files touched.**
+- `src/loop/loop.ts`, plus the new `loop-tick.ts`, `loop-recovery.ts`, and
+  `loop-fallback.ts` beside it.
+- `DEVELOPMENT.md`: the `src/loop/loop.ts` Layout bullet gains the new companions.
+- New focused tests only where a moved pure helper needs one; the existing loop suite is the
+  regression net and must pass unchanged.
+
+**Acceptance criteria.**
+- `src/loop/loop.ts` is under ~350 lines and contains no `tickWithWorktree` or `handlePiResult`
+  body.
+- No behavior change: `npm run test` green with no test edits beyond type-only import updates;
+  the seams above are intact.
+- `grep -rn` over `src`, `test`, and the markdown finds no stale reference to a moved method name
+  or a pre-move path.
+- `npm run test` green.
+
 ### Work ratio, part 1/4: code-maintenance landings are budgeted against work landings (planned 2026-10-08 by operator)
 
 Design: plans/work-ratio.md ("Maintenance follows work").
