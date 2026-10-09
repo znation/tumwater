@@ -6,6 +6,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### A review retry picks up the timed-out reviewer's session instead of reviewing from scratch (planned 2026-10-09 by operator)
+
+When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the commit is kept; the next attempt reviews it from scratch". The next attempt then starts over: a fresh session, a fresh prompt, and the same budget. So a change too big to review inside one budget never finishes. On 2026-10-09 feature-2's ~980-line Agent backends 3a/7 revision (bed22438) went through five progressing timeouts (900 s and 1800 s) plus one connection error, about 3 hours of reviewer time and a six-error streak that raised the `failing` banner. The seventh attempt, starting fresh again, finished in 9 minutes. The author side already resumes a progressing timeout's session (`resumePending`). The reviewer should do the same: continue the same reviewer session, which already holds everything it read and concluded, and finish with a verdict.
+
+**Approach.**
+1. **Record the resumable review.** On a progressing timeout of the review run itself (`!pi.ok && pi.timedOutProgressing`, not aborted, not a follow-up/nudge failure), save `state.reviewResume = { patchId, sessionDir, sessionName, attempts, at }` on the authoring role's `LoopState`. `patchId` is the patch-id of the change's diff against its frozen base (the same identity the landing's `lastApprovedPatchId` uses), so a sync rebase onto a moved main does not count as a different change. `attempts` counts resumes already spent on this change. A non-timeout failure, any verdict, a discard, or a landing clears the field. Heal it in `loadLoopState` like the other nested fields.
+2. **Resume an exact session, not "the latest one".** `reviewSessionDir(root, role)` is shared by every review of the role, and `--continue` reaches the newest session in the directory, so another review in between would be the one resumed. Run each review in its own subdirectory (`reviewSessionDir(root, role)/<tick>-<shortsha>` or similar, pruned by the existing age-based prune) and save that path in `reviewResume.sessionDir`. A resume continues that directory. `requestVerdict`/`requestNoRerun` (src/review/review-followup.ts) continue the directory the run just used.
+3. **The resume turn.** When `reviewAheadOfMain` starts a review whose patch-id matches `state.reviewResume.patchId`, `attempts < REVIEW_RESUME_LIMIT` (2), and `sessionResumable` holds for the saved directory, run the gate with `continueSession: true` in that directory and a short prompt instead of `buildReviewPrompt`. The prompt says the previous run hit its time budget, asks the reviewer to continue from where it stopped rather than re-reading what it already checked, and to finish with the VERDICT line. If the base moved, it names the new frozen base SHA and states that the change's own diff is unchanged (same patch-id). It uses the same `reviewRunConfig` budget, and the no-re-run rule and suite-rerun tripwire apply as on a fresh run. Increment `attempts` before the run so a crash cannot loop. If the patch-id differs, the session is gone, or the limit is spent, review fresh as today and clear the field.
+4. **Wording.** Rewrite `reviewTimeoutRewrite`'s message to say what will actually happen: "the commit is kept; the next attempt continues this review" while a resume remains, and the current "reviews it from scratch" once the limit is spent. Update the matching failure-digest cluster pattern in src/failure/failure-cluster.ts. A resumed run's `review_start` event carries `resumed: true`, and the event feed renders it as `review resumed`.
+5. **Streak.** A progressing review timeout that will be resumed is still a failed review for `consecutiveErrors` (no change to the counting). The point is that the next attempt converges.
+
+**Files touched.**
+- src/review/review.ts (record/clear `reviewResume`, the resume branch, the wording)
+- src/review/review-followup.ts (follow-ups continue the run's own session directory)
+- src/gates/gate-prompts.ts (the resume prompt, beside `buildReviewPrompt`)
+- src/loop/loop-state.ts (the `reviewResume` field and its heal)
+- src/landing/landing-core.ts or src/landing/landing-vetting.ts only if the patch-id must be computed where the pinned change is synced
+- src/events/event-format.ts (`review resumed`), src/failure/failure-cluster.ts (the new message)
+- test/review.test.ts, test/review-followup.test.ts, test/gate-prompts.test.ts, test/loop-state.test.ts, test/failure-cluster.test.ts
+
+**Acceptance criteria.**
+- With a fake pi whose first gate run times out while progressing, the next review of the same change runs with `--continue` in the same session directory, its prompt is the resume prompt (not the full diff prompt), and an approve verdict from it lands the change. `review_start` for that run has `resumed: true`.
+- If another review ran in the role's review directory between the two attempts, the resume still continues the timed-out run's own session (per-review subdirectory).
+- A rebase onto a moved main that leaves the patch-id unchanged still resumes. A change whose patch-id differs (a new commit, a revision) reviews fresh and clears `reviewResume`.
+- After `REVIEW_RESUME_LIMIT` resumes, the next attempt reviews fresh, and the failure message switches back to "reviews it from scratch".
+- A non-progressing timeout, a connection error, or a failed verdict follow-up does not set `reviewResume` and behaves exactly as today.
+- `loadLoopState` drops a malformed `reviewResume` without throwing.
+- `npm run test` is green.
+
 ### Retract a config value: `tumwater config unset <key>` (planned 2026-10-09 by plan)
 
 **Goal:** an operator can remove one value from `tumwater.json` — a top-level key, one
