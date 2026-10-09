@@ -11,8 +11,9 @@ import { errCode } from "../errno.js";
  * group — exactly like pi — and settles exactly once, bounding a timed-out tree at its
  * deadline plus the SIGTERM → SIGKILL escalation grace. Split out of process.ts, whose other
  * residents (the exec helper, the liveness and process-table probes, the LaunchServices
- * preload) are generic child-process plumbing shared across the harness: this runner's only
- * runtime consumer is the build check (build/build-check.ts), and its result carries that caller's
+ * preload) are generic child-process plumbing shared across the harness: this runner's two
+ * runtime consumers both sit in the build boundary — the build check (build/build-check.ts)
+ * and the lockfile install (build/dep-install.ts) — and its result carries the build check's
  * run record, so it lives beside that boundary instead of inside the shared module. The
  * signals it escalates with come from process.ts's signalTree; the children it starts carry
  * withoutLaunchServicesCheckIn's preload, so its npm trees check in with launchservicesd
