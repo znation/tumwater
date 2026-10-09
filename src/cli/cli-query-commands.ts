@@ -151,7 +151,9 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     return;
   }
   if (words[0] !== "answer")
-    fail(`unknown questions subcommand: ${words[0]} (use "answer <n> <decision>")`);
+    fail(
+      `unknown questions subcommand: ${words[0]} (use "answer <n> <decision>", or run \`tumwater questions\` with no subcommand to list them)`,
+    );
   // The offending token carries the same ` (got "...")` suffix every sibling number parser
   // adds (parsePositiveInt's flag callers, --cancel); the bare `answer` form names none.
   const raw = words.length > 1 ? words[1] : undefined;

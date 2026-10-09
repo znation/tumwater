@@ -150,10 +150,13 @@ test("questions rejects a non-answer subcommand and an answer with no decision",
   await initProject(repo, "cli questions arity");
 
   // Anything but `answer` as the first word is a subcommand typo, not a list arg: fail with
-  // the right spelling rather than treating "frobnicate" as prose.
+  // the right spelling rather than treating "frobnicate" as prose — and name the listing form
+  // (bare `tumwater questions`), since `questions list` is the natural typo this message
+  // answers.
   const sub = await cli(repo, "questions", "frobnicate");
   assert.equal(sub.code, 1);
   assert.match(sub.stderr, /unknown questions subcommand: frobnicate/);
+  assert.match(sub.stderr, /run `tumwater questions` with no subcommand to list them/);
 
   // `answer <n>` with nothing after the number has no decision to record — the command
   // fails with the decision form instead of writing an empty answer.
