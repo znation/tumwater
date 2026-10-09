@@ -1,10 +1,9 @@
-/** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or
- * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi) and
- * whose PiStreamParser in pi-stream.ts folds those lines into a run result — because these are
- * shared by every observer that folds raw pi log lines into per-type state (src/ui/progress-data.ts's live
- * tail, transcript.ts's renderer), and those display modules should not import from the
- * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
- * sentinel/verdict text. */
+/** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or file
+ * I/O. Split out of pi.ts — which keeps the child-process integration (runPi) and whose
+ * PiStreamParser in pi-stream.ts folds those lines into a run result — because these are shared
+ * by every observer that folds raw pi log lines into per-type state (src/ui/progress-data.ts's live
+ * tail, transcript.ts's renderer), and those display modules should not import from the subprocess
+ * layer for a pure parse: the same separation reply-contract.ts gives the sentinel/verdict text. */
 
 import { isJsonObject, parseJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
@@ -56,9 +55,9 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
   return parseJsonObject(trimmed) as T | null;
 }
 
-/** True when a tool_execution_update's partialResult carries new output content. bash emits
- * one empty-content update right after start, and only updates with real text prove the command
- * is alive — so stalled-tool-call tracking (src/pi/pi.ts's warning, src/ui/progress-data.ts's flag)
+/** True when a tool_execution_update's partialResult carries new output content. bash emits one
+ * empty-content update right after start, and only updates with real text prove the command is
+ * alive — so stalled-tool-call tracking (src/pi/pi.ts's warning, src/ui/progress-data.ts's flag)
  * moves its clock on these alone: a content-free keepalive must not mask a hang, exactly as
  * message_update deltas cannot reset the quiet watchdog. */
 export function toolUpdateHasContent(partialResult: unknown): boolean {

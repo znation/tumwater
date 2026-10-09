@@ -42,12 +42,12 @@ function costIsFree(cost: unknown): boolean {
 }
 
 /** Per-poll cache of the parsed definitions, keyed by models path: both dashboards poll
- * fleetModelsFree every second while models.json changes only when a user edits it — and it
- * grows with the model catalog (every added provider/model entry), so an unchanged file costs
- * one stat per poll instead of a re-read plus JSON.parse of the whole catalog. Any write
- * invalidates via dev/ino/mtime/size (stat-cache.cachedByStat, same freshness check as the
- * other polled files in status/status-polls.ts); a missing or malformed file yields null and is not cached,
- * so a mid-edit broken file recovers on the next poll exactly like before. */
+ * fleetModelsFree every second while models.json changes only when a user edits it — and it grows
+ * with the model catalog (every added provider/model entry), so an unchanged file costs one stat
+ * per poll instead of a re-read plus JSON.parse of the whole catalog. Any write invalidates via
+ * dev/ino/mtime/size (stat-cache.cachedByStat, same freshness check as the other polled files in
+ * status/status-polls.ts); a missing or malformed file yields null and is not cached, so a mid-edit
+ * broken file recovers on the next poll exactly like before. */
 const providersCache = new Map<string, StatKeyedValue<Map<string, PiModelDef[]>>>();
 
 /** The parsed provider→models map from pi's definitions, or null when the file is missing,

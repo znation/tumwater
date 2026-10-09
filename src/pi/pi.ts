@@ -109,8 +109,8 @@ function spawnErrorMessage(resolved: ResolvedAgentBin, errMessage: string): stri
   return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
 }
 
-/** `base` plus TUMWATER_NOTES_PATH when this run carries a notebook. Kept out of runMarkerEnv
- * so the two environment concerns — cross-group attribution and the notebook — stay separate. */
+/** `base` plus TUMWATER_NOTES_PATH when this run carries a notebook. Kept out of runMarkerEnv so
+ * the two environment concerns — cross-group attribution and the notebook — stay separate. */
 function withNotesPath(base: NodeJS.ProcessEnv, notesPath?: string): NodeJS.ProcessEnv {
   if (!notesPath) return base;
   return { ...base, TUMWATER_NOTES_PATH: notesPath };
