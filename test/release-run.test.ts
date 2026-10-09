@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -77,4 +78,74 @@ test("release refuses to tag when CI is red, leaving no tag on either side", () 
   } finally {
     restore();
   }
+});
+
+// --- bump: the version commit that follows a release -------------------------
+// The bump path stages package.json + package-lock.json and commits them, then pushes with a
+// retry when the fleet moved origin under it. None of it ran before these tests.
+
+/** A pushedRepo carrying the committed package-lock.json `npm version` updates, so the bump's
+ * `git add package.json package-lock.json` finds both paths and the tree stays clean. */
+function pushedRepoWithLock(version = "0.1.0"): { root: string; origin: string } {
+  const { root, origin } = pushedRepo(version);
+  seedCommit(root, "package-lock.json", JSON.stringify({ name: "tumwater", version }) + "\n", "lock");
+  sh(root, "git", "push", "origin", "main");
+  return { root, origin };
+}
+
+/** Reject the first `git push` from `root` and let every later one through, so the bump's
+ * replay-on-rejection branch runs without a real concurrent writer. The marker lives outside
+ * the repo so the failed push leaves no untracked file to trip the rebase. */
+function installRejectOncePushHook(root: string): void {
+  const marker = path.join(tmpdir("release-hook-"), "pushed");
+  const hook = path.join(root, ".git", "hooks", "pre-push");
+  fs.mkdirSync(path.dirname(hook), { recursive: true });
+  fs.writeFileSync(hook, `#!/bin/sh\nif [ -f "${marker}" ]; then exit 0; fi\ntouch "${marker}"\nexit 1\n`);
+  fs.chmodSync(hook, 0o755);
+}
+
+test("bump commits the next patch version and pushes it to origin", () => {
+  const { root } = pushedRepoWithLock("0.1.0");
+
+  const r = runRelease(root, ["bump", "patch"]);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /bumped 0\.1\.0 → 0\.1\.1 \(patch\); committed and pushed/);
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version,
+    "0.1.1",
+    "package.json carries the bumped version",
+  );
+  assert.equal(
+    JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8")).version,
+    "0.1.1",
+    "package-lock.json carries the bumped version",
+  );
+  assert.equal(sh(root, "git", "log", "-1", "--format=%s"), "tumwater(release): 0.1.1");
+  assert.equal(
+    sh(root, "git", "ls-remote", "origin", "refs/heads/main").split(/\s+/)[0],
+    headSha(root),
+    "origin/main names the bump commit",
+  );
+});
+
+test("bump replays on the new main when the first push is rejected", () => {
+  const { root } = pushedRepoWithLock("0.1.0");
+  installRejectOncePushHook(root);
+
+  const r = runRelease(root, ["bump", "patch"]);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /push rejected — origin moved; replaying the bump on the new main…/);
+  assert.match(r.stdout, /bumped 0\.1\.0 → 0\.1\.1 \(patch\); committed and pushed/);
+  assert.equal(
+    sh(root, "git", "log", "-1", "--format=%s"),
+    "tumwater(release): 0.1.1",
+    "the replayed bump survived the rebase",
+  );
+  assert.equal(
+    sh(root, "git", "ls-remote", "origin", "refs/heads/main").split(/\s+/)[0],
+    headSha(root),
+    "the retried push landed the bump commit",
+  );
 });
