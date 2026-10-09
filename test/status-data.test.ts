@@ -939,3 +939,42 @@ test("snapshot carries the running orchestrator's published disk state", async (
   assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
   assert.equal(snapshot(repo).disk, undefined);
 });
+
+// The orchestrator info file's nested fields sit behind a hand-editable boundary: a foreign
+// `fallbackDemotions` (a scalar, not the pair-keyed record) must read as "no demotions" rather
+// than throw out of the every-second snapshot — `modelPairName(p) in publishedDemotions` throws
+// `Cannot use 'in' operator` on a string/number — which the TUI, GUI and `tumwater status` all
+// poll.
+test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "foreign orchestrator info test");
+  const dir = tmpdir("status-foreign-info-");
+  fs.mkdirSync(dir, { recursive: true });
+  const modelsFile = path.join(dir, "models.json");
+  fs.writeFileSync(
+    modelsFile,
+    JSON.stringify({
+      providers: {
+        local: { models: [{ id: "local-free", cost: { input: 0, output: 0 } }] },
+        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+      },
+    }),
+  );
+  const cfg = loadConfig(repo);
+  cfg.provider = "paid";
+  cfg.model = "gpt-x";
+  cfg.fallbackModel = { provider: "local", model: "local-free" };
+  saveConfig(repo, cfg);
+  ensureParentDir(orchestratorStatePath(repo));
+  writeJsonFile(orchestratorStatePath(repo), {
+    pid: process.pid,
+    startedAt: Date.now(),
+    roles: [],
+    fallbackDemotions: "oops",
+  });
+  let snap: ReturnType<typeof snapshot> | undefined;
+  assert.doesNotThrow(() => {
+    snap = snapshot(repo, modelsFile);
+  }, "a foreign fallbackDemotions must not crash the poll");
+  assert.equal(snap!.running, true, "the running orchestrator still reads as running");
+});

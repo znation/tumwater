@@ -1,6 +1,7 @@
 import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { pidAlive } from "../process/process.js";
 import { orchestratorStatePath } from "../paths.js";
 
@@ -85,9 +86,95 @@ export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
 
 /** Read the running orchestrator's info file; null when it is missing or unreadable.
  * Never throws — a torn write (e.g. a crash mid-write) must not take down observers
- * that poll this every second (TUI, GUI, status). */
+ * that poll this every second (TUI, GUI, status). The nested fields cross the same
+ * hand-editable boundary as the file body, so each known field is validated here rather than
+ * trusted because the `OrchestratorInfo` annotation says so: a foreign shape (a scalar
+ * `fallbackDemotions`, a `disk` missing its numbers) would otherwise throw out of a render —
+ * `modelPairName(p) in publishedDemotions` or `formatGB(undefined)` — on every second's
+ * poll. An unreadable field is dropped, so observers read it as absent. */
 export function readOrchestratorInfo(root: string): OrchestratorInfo | null {
-  return readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
+  const info = readJsonFile<OrchestratorInfo>(orchestratorStatePath(root));
+  if (info === null) return null;
+  normalizeInfoFields(info as unknown as Record<string, unknown>);
+  return info;
+}
+
+/** Number type-guard over the shared `finiteNumber` read (json-object.ts): that helper is the
+ * one home of the "the field is the number or it is nothing" rule, narrowed here so callers
+ * can assign the checked field to its declared type. */
+function isFiniteNumber(v: unknown): v is number {
+  return finiteNumber(v, undefined) !== undefined;
+}
+
+/** One pair-keyed demotion record, or undefined for any foreign shape. */
+function parseDemotion(v: unknown): FallbackDemotion | undefined {
+  if (!isJsonObject(v)) return undefined;
+  if (typeof v.pair !== "string" || !isFiniteNumber(v.failures) || !isFiniteNumber(v.probeAt))
+    return undefined;
+  return { pair: v.pair, failures: v.failures, probeAt: v.probeAt };
+}
+
+/** The running build's stamp, or undefined for any foreign shape. `sha`/`builtAt` are the
+ * required pair observers render; each optional staleness field is kept only when it carries
+ * the type its consumer reads, so a foreign value drops rather than reaching a render. */
+function parseBuild(v: unknown): BuildStatus | undefined {
+  if (!isJsonObject(v)) return undefined;
+  if (typeof v.sha !== "string" || !isFiniteNumber(v.builtAt)) return undefined;
+  const build: BuildStatus = { sha: v.sha, builtAt: v.builtAt };
+  if (typeof v.stale === "boolean") build.stale = v.stale;
+  if (isFiniteNumber(v.aheadCommits)) build.aheadCommits = v.aheadCommits;
+  if (typeof v.checkedHead === "string") build.checkedHead = v.checkedHead;
+  if (typeof v.restartPending === "boolean") build.restartPending = v.restartPending;
+  if (typeof v.restartBlocked === "string") build.restartBlocked = v.restartBlocked;
+  return build;
+}
+
+function isLastReclaim(v: unknown): boolean {
+  if (!isJsonObject(v)) return false;
+  const mode = v.mode;
+  return (
+    isFiniteNumber(v.at) &&
+    isFiniteNumber(v.freedGB) &&
+    (mode === "pressure" || mode === "idle" || mode === "manual")
+  );
+}
+
+/** Degrade each known nested field to a usable shape or drop it, mutating the freshly parsed
+ * object in place so a well-formed file keeps its values unchanged. */
+function normalizeInfoFields(rec: Record<string, unknown>): void {
+  const build = parseBuild(rec.build);
+  if (build === undefined) delete rec.build;
+  else rec.build = build;
+
+  const demoted = parseDemotion(rec.fallbackDemoted);
+  if (demoted === undefined) delete rec.fallbackDemoted;
+  else rec.fallbackDemoted = demoted;
+
+  const demotions = rec.fallbackDemotions;
+  if (!isJsonObject(demotions)) delete rec.fallbackDemotions;
+  else {
+    for (const [key, value] of Object.entries(demotions)) {
+      const parsed = parseDemotion(value);
+      if (parsed === undefined) delete demotions[key];
+      else demotions[key] = parsed;
+    }
+  }
+
+  const budget = rec.budget;
+  if (!isJsonObject(budget) || !isFiniteNumber(budget.spentUsd)) delete rec.budget;
+
+  const disk = rec.disk;
+  if (
+    !isJsonObject(disk) ||
+    !isFiniteNumber(disk.freeGB) ||
+    !isFiniteNumber(disk.holdGB) ||
+    !isFiniteNumber(disk.reclaimGB) ||
+    typeof disk.held !== "boolean"
+  ) {
+    delete rec.disk;
+  } else if (disk.lastReclaim !== undefined && !isLastReclaim(disk.lastReclaim)) {
+    delete disk.lastReclaim;
+  }
 }
 
 /** Publish the running orchestrator's info file atomically (writeJsonAtomic's tmp + rename).

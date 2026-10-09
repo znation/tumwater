@@ -84,3 +84,68 @@ test("orchestratorAlive is false with no info and reflects pid liveness otherwis
   fs.writeFileSync(file, JSON.stringify(live));
   assert.equal(orchestratorAlive(root), true, "disk-loaded live pid reads alive");
 });
+
+// The nested fields cross the same hand-editable boundary as the file body: a foreign shape
+// must read as absent rather than be trusted because the annotation says so. A scalar
+// `fallbackDemotions` throws `Cannot use 'in' operator` in the snapshot's `usable`, and a
+// `disk` whose numbers are missing throws `undefined.toFixed` in `formatGB`; both are polled
+// every second by the TUI, GUI and `tumwater status`. `build` is included too, so the module's
+// "each known field is validated" read has one test pinning all five.
+test("readOrchestratorInfo drops nested fields with a foreign shape and keeps well-formed ones", () => {
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      pid: process.pid,
+      startedAt: 1,
+      roles: [],
+      fallbackDemotions: "oops",
+      build: "oops",
+      budget: { spentUsd: "5", capUsd: 10 },
+      disk: { freeGB: "lots", holdGB: 10, reclaimGB: 40, held: true },
+    }),
+  );
+  const info = readOrchestratorInfo(root);
+  assert.equal(info?.build, undefined, "a scalar build drops");
+  assert.equal(info?.fallbackDemotions, undefined, "a scalar demotion map drops");
+  assert.equal(info?.budget, undefined, "a string spend drops");
+  assert.equal(info?.disk, undefined, "a disk missing its numbers drops");
+  assert.equal(info?.pid, process.pid, "the required fields survive");
+
+  const demoted = { pair: "local/local-free", failures: 3, probeAt: 123 };
+  const build = {
+    sha: "abcdef012345",
+    builtAt: 100,
+    stale: true,
+    aheadCommits: 2,
+    checkedHead: "0123456789ab",
+  };
+  const disk = {
+    freeGB: 8.2,
+    holdGB: 10,
+    reclaimGB: 40,
+    held: true,
+    lastReclaim: { at: 1, mode: "manual", freedGB: 2 },
+  };
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      pid: process.pid,
+      startedAt: 1,
+      roles: [],
+      build,
+      fallbackDemoted: demoted,
+      fallbackDemotions: { "local/local-free": demoted },
+      budget: { spentUsd: 1.5, capUsd: 10 },
+      disk,
+    }),
+  );
+  const ok = readOrchestratorInfo(root);
+  assert.deepEqual(ok?.build, build, "a well-formed build stays");
+  assert.deepEqual(ok?.fallbackDemoted, demoted, "a well-formed demotion stays");
+  assert.deepEqual(ok?.fallbackDemotions, { "local/local-free": demoted }, "a well-formed map stays");
+  assert.deepEqual(ok?.budget, { spentUsd: 1.5, capUsd: 10 }, "a well-formed budget stays");
+  assert.deepEqual(ok?.disk, disk, "a well-formed disk stays");
+});
