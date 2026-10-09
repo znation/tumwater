@@ -1,7 +1,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { finiteNumber, isJsonObject } from "../files/json-object.js";
+import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { statePath } from "../paths.js";
 
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
@@ -247,8 +247,7 @@ export function freshLoopState(role: string): LoopState {
  * next attempt, the same "the field is unusable, start the count over" repair the top-level heal
  * already gives the error streak. */
 function healNumber(value: unknown, fallback: number): number {
-  const n = finiteNumber(value, fallback);
-  return n >= 0 ? n : fallback;
+  return nonNegativeNumber(value, fallback);
 }
 
 /** Heal one persisted nested record: absent stays absent; a present non-object (a string,

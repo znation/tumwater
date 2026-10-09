@@ -7,7 +7,7 @@ import {
   type OpenToolCall,
 } from "./pi-event-line.js";
 import { describeToolCall } from "../text/phrases.js";
-import { parseJsonObject } from "../files/json-object.js";
+import { nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi,
@@ -41,7 +41,7 @@ interface PiMessage {
  * daily cap would never trip while the dashboards render "$NaN". Unusable degrades to
  * "ignore this turn's number", the same policy parseJsonObject takes to torn lines. */
 function usageNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return nonNegativeNumber(value, 0);
 }
 
 /** The fields feedLine reads off one parsed pi event line. pi's stream is one JSON object per

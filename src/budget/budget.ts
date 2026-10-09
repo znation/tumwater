@@ -9,7 +9,7 @@
  * loop-state.ts. */
 
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
-import { finiteNumber } from "../files/json-object.js";
+import { nonNegativeNumber } from "../files/json-object.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { dayAt, dayKey } from "../text/datetime.js";
 
@@ -19,13 +19,12 @@ export function todayStamp(now = Date.now()): string {
   return dayKey(now);
 }
 
-/** A spend figure is finite and non-negative; a string, NaN, ±Infinity, or a negative
- * hand-edited value reads as $0. Negative spend is as poisonous to the cap as NaN: it makes
- * every `>= cap` comparison false — and drags the fleet sum down — silently defeating the
- * budget's safety valve. */
+/** A spend figure is finite and non-negative (json-object.ts's nonNegativeNumber); a string,
+ * NaN, ±Infinity, or a negative hand-edited value reads as $0. Negative spend is as poisonous
+ * to the cap as NaN: it makes every `>= cap` comparison false — and drags the fleet sum down —
+ * silently defeating the budget's safety valve. */
 function spendNumber(value: unknown): number {
-  const n = finiteNumber(value, 0);
-  return n >= 0 ? n : 0;
+  return nonNegativeNumber(value, 0);
 }
 
 /** This loop's spend for the local day (the daily cost budget window): $0 when its stamp is

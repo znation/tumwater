@@ -36,15 +36,26 @@ export function stringList(value: unknown): string[] {
  * gigabytes (v → 0), minutes (ms → 0), and the build_stale/restart renderers (aheadCommits and
  * abortedTicks → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
- * budget/budget.ts's spendNumber (dayCostUsd/usd → 0); loop/loop-state.ts's healNumber (every
- * top-level numeric state field → 0); tick/tick-usage.ts's counter (each persisted count → 0);
- * failure/failure-state-change.ts's build_stale aheadCommits → 0; and test/test-runner.ts's
- * orderByDuration cost (→ Infinity, the "no recorded duration" marker).
- * Fields that carry an extra constraint beyond finiteness keep their own check beside the
- * call (pi/pi-stream.ts's usageNumber, failure/time-spend.ts's tickDurationMs and
- * budget/budget.ts's spendNumber additionally require >= 0). */
+ * failure/failure-state-change.ts's build_stale aheadCommits → 0; this file's own
+ * nonNegativeNumber (how budget's spend reads, loop-state's healNumber, tick-usage's counters,
+ * pi-stream's usageNumber, and time-spend's tickDurationMs reach it); and
+ * test/test-runner.ts's orderByDuration cost (→ Infinity, the "no recorded duration" marker). */
 export function finiteNumber<T>(value: unknown, fallback: T): number | T {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** Read an untrusted JSON field or wire number that must be non-negative, returning `fallback`
+ * when it is absent, not a number, not finite, or negative — finiteness plus the >= 0 floor,
+ * the shared base of every "a count or amount is unusable, read the fallback" site. A negative
+ * amount is as poisonous as NaN: it runs a spend total backwards and makes every `>= cap`
+ * comparison false, so the daily budget's safety valve would never trip. The call sites:
+ * budget/budget.ts's spendNumber (dayCostUsd/usd → 0), loop/loop-state.ts's healNumber (every
+ * numeric LoopState field → 0), tick/tick-usage.ts's counter (each persisted usage count → 0),
+ * pi/pi-stream.ts's usageNumber (one wire usage number → 0), and time-spend.ts's tickDurationMs
+ * (an event's durationMs → null, the "no own duration" marker). */
+export function nonNegativeNumber<T>(value: unknown, fallback: T): number | T {
+  const n = finiteNumber(value, fallback);
+  return typeof n === "number" && n >= 0 ? n : fallback;
 }
 
 /** Parse `text` as JSON and require the result to be a plain object, returning null when

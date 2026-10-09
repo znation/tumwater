@@ -2,7 +2,7 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { recordDailyCost } from "../budget/budget.js";
-import { finiteNumber } from "../files/json-object.js";
+import { nonNegativeNumber } from "../files/json-object.js";
 
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
@@ -21,8 +21,7 @@ import { finiteNumber } from "../files/json-object.js";
  * re-enter the state through a save. Unusable reads as 0, the same policy budget.ts's daily
  * window applies to its stored spend. */
 function counter(value: unknown): number {
-  const n = finiteNumber(value, 0);
-  return n >= 0 ? n : 0;
+  return nonNegativeNumber(value, 0);
 }
 
 export class TickUsage {

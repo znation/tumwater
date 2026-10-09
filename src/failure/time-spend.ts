@@ -9,7 +9,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
-import { stringList } from "../files/json-object.js";
+import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
@@ -102,9 +102,7 @@ interface LossDraft {
  * known. 0 when neither source has the start (rotation cut it); the fold prices no time it
  * cannot attest but still counts the tick. */
 function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
-  const own = typeof ev.durationMs === "number" && Number.isFinite(ev.durationMs) && ev.durationMs >= 0
-    ? ev.durationMs
-    : null;
+  const own = nonNegativeNumber(ev.durationMs, null);
   if (own !== null) return own;
   return tickSpanMs(ev, starts) ?? 0;
 }
