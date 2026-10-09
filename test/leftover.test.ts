@@ -7,7 +7,7 @@ import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { enqueueLanding, queuedLandings } from "../src/landing/landing-queue.js";
-import { landQueueDir, landingRefName } from "../src/paths.js";
+import { eventsLogPath, landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
@@ -284,4 +284,59 @@ test("a handed-back commit with no readable subject falls back to the bare sha l
     attempts: MERGE_CONFLICT_LIMIT,
   });
   assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin stays for the author's re-apply");
+});
+
+// recoverLeftover's event writes are best-effort (src/events/events.ts): the enqueue, the pin
+// delete, and the unpinned return are durable before the warning/log runs, so an unwritable
+// events feed (ENOSPC, EACCES, the path replaced by a directory) must not throw out of recovery
+// and turn a completed salvage into a tick error. Fault injected as in
+// test/gate-event-best-effort.test.ts — a directory where events.jsonl belongs, so every append
+// throws EISDIR while the rest of the root still writes.
+function unwritableEvents(root: string): void {
+  const file = eventsLogPath(root);
+  fs.rmSync(file, { recursive: true, force: true });
+  fs.mkdirSync(file, { recursive: true });
+}
+
+test("a pinned leftover is still queued when the events feed is unwritable", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  unwritableEvents(root);
+
+  const recovered = await recoverLeftover(makeCtx(root, wt));
+
+  assert.equal(recovered?.kind, "enqueued", "the enqueue result survives the failed log");
+  assert.deepEqual(queuedLandings(root).map((e) => e.sha), [sha], "the entry is on the queue");
+});
+
+test("a failed pin adoption still returns unpinned when the events feed is unwritable", async () => {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "unpinned work\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "committed but the pin write never happened");
+  const tip = headSha(wt);
+  sh(root, "chmod", "-R", "a-w", ".git");
+  try {
+    unwritableEvents(root);
+    assert.deepEqual(await recoverLeftover(makeCtx(root, wt)), { kind: "unpinned", sha: tip });
+  } finally {
+    sh(root, "chmod", "-R", "u+w", ".git");
+  }
+});
+
+test("a discarded leftover is still deleted when the events feed is unwritable", async () => {
+  const { root, sha } = await pinnedFixture();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  const atCap = {
+    ...makeCtx(root, wt),
+    mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT },
+    conflictHandback: { sha, at: Date.now(), reason: "landing" as const, applied: true },
+  };
+  unwritableEvents(root);
+
+  const recovered = await recoverLeftover(atCap);
+
+  assert.equal(recovered?.kind, "discarded", "the discard result survives the failed warning");
+  assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin is deleted");
 });

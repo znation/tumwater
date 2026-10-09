@@ -1,6 +1,6 @@
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
 import { parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { enqueueLanding, queuedLandings, type LandingEntry } from "../landing/landing-queue.js";
 import { landingRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
@@ -115,7 +115,11 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     // discarded on a user abort — behaves exactly as for a normally pinned one. A failed
     // adoption is logged and leaves the commit on the branch (see `unpinned`).
     if (!(await setRef(ctx.root, ref, sha))) {
-      warnEvent(ctx.root, ctx.role, `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`);
+      warnEventBestEffort(
+        ctx.root,
+        ctx.role,
+        `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`,
+      );
       return { kind: "unpinned", sha };
     }
   }
@@ -133,7 +137,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       // This lineage already used its one hand-back and still conflicts at the cap: drop the
       // pin (the warning names its sha and both attempts) and let the author start over.
       await deleteRef(ctx.root, ref);
-      warnEvent(
+      warnEventBestEffort(
         ctx.root,
         ctx.role,
         `discarding leftover ${shortSha(sha)} after ${attempts} landings ended in unresolved merge conflicts with main, even after a hand-back`,
@@ -166,7 +170,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     enqueuedAt: Date.now(),
   };
   enqueueLanding(ctx.root, entry);
-  logEvent(ctx.root, { loop: ctx.role, type: "land_queued", commit: sha, summary: entry.summary });
+  logEventBestEffort(ctx.root, { loop: ctx.role, type: "land_queued", commit: sha, summary: entry.summary });
   return { kind: "enqueued", entry };
 }
 
