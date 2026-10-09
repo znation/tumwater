@@ -136,6 +136,8 @@ no CLI to remove it, so it can only be retracted by hand-editing the file, which
 
 ### Agent backends, part 3c/7: the claude backend, ledger-backed sessions, and PATH fake (planned 2026-10-09 by plan; split from part 3/7; requires parts 3a/7 and 3b/7 landed)
 
+**Needs review 2026-10-09 by feature: too large for one run**
+
 Design: plans/agent-backends.md ("The seam", "Sessions", "Testing").
 
 Registers claude as an adapter and proves a run end to end on a fake. Still not selectable from
