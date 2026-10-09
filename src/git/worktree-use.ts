@@ -11,6 +11,7 @@
 
 import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { worktreeUseLockPath, worktreeUsePath } from "../paths.js";
 
@@ -53,9 +54,36 @@ function liveEntry(dir: string): LiveEntry {
   return e;
 }
 
-/** The durable registry, or an empty one when the file is missing or unreadable. */
+/** Coerce one persisted registry entry, or null for a foreign one: `lastUsedAt` is the
+ * required finite epoch-ms, and `reclaimedAt` is kept only when finite. The registry crosses
+ * the same hand-editable boundary as the harness's other state files, and a hand editor's
+ * `1e999` parses to Infinity (`JSON.stringify` cannot write Infinity, so only a hand edit
+ * produces one). An Infinity `lastUsedAt` would sort a worktree as used forever —
+ * `now - Infinity` is below any idle window — so the worktree could never be idle-reclaimed;
+ * an Infinity `reclaimedAt` would read as reclaimed after every use, blocking the same
+ * reclaim. Either reads as absent, the same finiteNumber rule fleet-state.ts's and
+ * operator-requests.ts's persisted deadlines read by. */
+function readWorktreeRecord(value: unknown): WorktreeUseRecord | null {
+  if (!isJsonObject(value)) return null;
+  const lastUsedAt = finiteNumber(value.lastUsedAt, undefined);
+  if (lastUsedAt === undefined) return null;
+  const reclaimedAt = finiteNumber(value.reclaimedAt, undefined);
+  return reclaimedAt === undefined ? { lastUsedAt } : { lastUsedAt, reclaimedAt };
+}
+
+/** The durable registry, or an empty one when the file is missing or unreadable. Each entry is
+ * read through readWorktreeRecord, so a foreign record or a non-finite timestamp is dropped
+ * here rather than reaching the reclaim ordering — a worktree the read dropped reads as
+ * never-seen, the same as one the registry never had. */
 export function readWorktreeUse(root: string): WorktreeUseRegistry {
-  return readJsonFile<WorktreeUseRegistry>(worktreeUsePath(root)) ?? {};
+  const raw = readJsonFile<WorktreeUseRegistry>(worktreeUsePath(root));
+  if (raw === null) return {};
+  const registry: WorktreeUseRegistry = {};
+  for (const [name, value] of Object.entries(raw)) {
+    const record = readWorktreeRecord(value);
+    if (record) registry[name] = record;
+  }
+  return registry;
 }
 
 /** Run `fn` holding the cross-process worktree-use lock. withStateLock creates the

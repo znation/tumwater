@@ -96,6 +96,21 @@ test("reclaimCandidates seeds unknown worktrees as used and excludes them from t
   assert.deepEqual(reclaimCandidates(root).map((c) => c.name).sort(), ["bugfix", "feature"]);
 });
 
+test("a non-finite registry timestamp reads as never seen, not as used forever", () => {
+  const root = makeRepo();
+  worktreeAt(root, "feature");
+  // A hand edit's `1e999` parses to Infinity; JSON.stringify cannot write it, so the file is
+  // written as raw text. Infinity is not finite, so both fields must read as absent: the
+  // worktree is seeded as never seen (and excluded from this pass) rather than sorted as used
+  // forever — `now - Infinity` is below every idle window, so it would never be reclaimed.
+  const registryFile = worktreeUsePath(root);
+  fs.mkdirSync(path.dirname(registryFile), { recursive: true });
+  fs.writeFileSync(registryFile, '{"feature":{"lastUsedAt":1e999,"reclaimedAt":1e999}}');
+  assert.deepEqual(reclaimCandidates(root).map((c) => c.name), [], "seeded as never seen");
+  const healed = readJson(registryFile) as Record<string, { lastUsedAt: number }>;
+  assert.equal(Number.isFinite(healed["feature"]?.lastUsedAt), true, "the healed stamp is finite");
+});
+
 test("reclaimCandidates orders least-recently-used first, resume-pending last, and skips reserved and in-use", async () => {
   const root = makeRepo();
   const feature = worktreeAt(root, "feature");
