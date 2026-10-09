@@ -18,8 +18,7 @@
  * free of runtime dependencies (PRINCIPLES.md).
  */
 
-import fs from "node:fs";
-import path from "node:path";
+import { writeTextAtomic } from "../files/files.js";
 import { gotSuffix } from "../text/text.js";
 
 /** The cap on a role's note, in UTF-8 bytes. Small enough to cost little on every turn, large
@@ -49,27 +48,12 @@ export function validateRoleNote(text: string): string | null {
   return null;
 }
 
-/** Replace the note file at `notesPath` with `text`, writing to a temp file in the same
- * directory and renaming it over the target so a reader never sees a half-written note.
- * Creates the directory if needed. Callers validate first; this does not. A failed write or
- * rename (ENOSPC under disk pressure, a torn filesystem) removes the temp before rethrowing,
- * so a role's notebook cannot litter `.tumwater/state/notes/` with `<note>.<pid>.tmp` files
- * that nothing prunes — the same no-remnant contract as src/files/files.ts's writeAtomic. */
+/** Replace the note file at `notesPath` with `text` through src/files/files.ts's
+ * writeTextAtomic — the one home of the parent-dir creation, tmp+rename, and
+ * no-remnant-on-failure contract, so a role's notebook cannot litter `.tumwater/state/notes/`
+ * with a temp file that nothing prunes. Callers validate first; this does not. */
 export function writeRoleNote(notesPath: string, text: string): void {
-  fs.mkdirSync(path.dirname(notesPath), { recursive: true });
-  const tmp = `${notesPath}.${process.pid}.tmp`;
-  try {
-    fs.writeFileSync(tmp, text, "utf8");
-    fs.renameSync(tmp, notesPath);
-  } catch (err) {
-    // Best-effort: a vanished or unremovable tmp must not mask the write failure itself.
-    try {
-      fs.rmSync(tmp, { force: true });
-    } catch {
-      // Ignore — the original error is what the caller needs.
-    }
-    throw err;
-  }
+  writeTextAtomic(notesPath, text);
 }
 
 /** Minimal structural types for pi's extension API — pi itself loads this file, so the real

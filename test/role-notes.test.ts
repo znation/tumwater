@@ -75,9 +75,9 @@ test("writeRoleNote removes its temp file when the write cannot complete", () =>
   fs.mkdirSync(notes, { recursive: true }); // the target path is a directory, so the rename fails
   assert.throws(() => writeRoleNote(notes, "cannot land"), "the failure is rethrown, not swallowed");
   assert.deepEqual(
-    fs.readdirSync(notesDir).filter((f) => f.endsWith(".tmp")),
+    fs.readdirSync(notesDir).filter((f) => f.includes(".tmp-")),
     [],
-    "a failed write leaves no .tmp remnant behind",
+    "a failed write leaves no temp remnant behind",
   );
 });
 
