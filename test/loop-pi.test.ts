@@ -12,6 +12,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { resolverConfig } from "../src/config/config-views.js";
+import { recordSession } from "../src/agent/session-ledger.js";
 
 // LoopPi (src/loop/loop-pi.ts) is the pi-invocation plumbing of one role loop: the shared
 // per-loop wiring, the landing slot's shutdown-only signal, and the SUMMARY follow-up.
@@ -631,6 +632,31 @@ test("requestSummary returns null when the role has no resumable session", async
     const result = await loopPi.requestSummary(root);
     assert.equal(result, null);
     assert.ok(!fs.existsSync(args), "no pi run is spawned when there is no session to continue");
+  } finally {
+    restore();
+  }
+});
+
+test("requestSummary refuses a session whose newest ledger line names another agent", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args);
+  try {
+    const dir = sessionDir(root, "feature");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "s.jsonl"), "{}\n");
+    recordSession(dir, {
+      agent: "claude",
+      id: "c",
+      kind: "author",
+      name: "n",
+      cwd: root,
+      at: Date.now(),
+    });
+    const { loopPi } = makeHost(root);
+    const result = await loopPi.requestSummary(root);
+    assert.equal(result, null, "another agent's session is not ours to --continue");
+    assert.ok(!fs.existsSync(args), "no pi run for another agent's session");
   } finally {
     restore();
   }

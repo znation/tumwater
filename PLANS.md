@@ -36,50 +36,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `--json` prints `{ file, title }` as data; the prose form names the file and the removed title.
 - `npm run test` green.
 
-### Agent backends, part 2/7: a session ledger and the `handoff` resume (planned 2026-10-09 by operator; requires part 1/7 landed)
-
-Design: plans/agent-backends.md ("Sessions").
-
-Backend-neutral, so it can land and be exercised on pi alone. It also fixes a latent pi hazard: a
-landing conflict resolver's fresh session in the author's session dir is "newest", so a later
-`--continue` would resume the resolver instead of the author.
-
-**Approach.**
-1. **Ledger.** Add src/agent/session-ledger.ts:
-   - append `{agent, id, kind, name, cwd, model, at}` to `<sessionDir>/sessions.jsonl` before
-     each spawn, rotated with the session dir's retention;
-   - `resumable(dir, {kind, cwd, agent})` returns the newest matching line, or null;
-   - for pi, it also requires today's `*.jsonl` check, and that the newest *same-kind* line is
-     pi's.
-2. **Resumability.** Replace `hasResumableSession` call sites with the ledger query:
-   src/tick/tick-resume.ts:70, src/loop/loop-pi.ts:344, src/review/review-followup.ts:35.
-3. **Handoff cause.** Add a `handoff` resume cause. When `resumePending` is set but the newest
-   author session belongs to another agent or another cwd, resume as a **fresh session in the
-   unreset worktree**:
-   - the prompt is `buildHandoffPrompt(role, tickPrompt)` (src/prompt/prompt-followup.ts): the
-     tick prompt plus "an earlier run on another model was interrupted; its uncommitted edits
-     are in your worktree — review `git diff`, then finish or discard them";
-   - the edits are not lost to the fresh path's reset.
-4. **Event.** `tick_start` gains `resumeCause: "handoff"`, and event-format renders it.
-
-**Files touched.**
-- src/agent/session-ledger.ts (new)
-- src/tick/tick-resume.ts, src/loop/loop-pi.ts, src/review/review-followup.ts
-- src/prompt/prompt-followup.ts
-- src/events/events.ts, src/events/event-format.ts
-- src/orchestrator/retention.ts
-
-Tests: test/session-ledger.test.ts, plus cases in test/tick-resume.test.ts and
-test/loop-pi.test.ts.
-
-**Acceptance criteria.**
-- **Kind isolation.** With an author session followed by a conflict-resolver session in the same
-  dir, a SUMMARY follow-up resumes the author's.
-- **Handoff.** A resume whose newest author line names another agent runs fresh. The worktree's
-  uncommitted edits are still present, and the prompt carries the handoff bridge.
-- **Unchanged.** A same-agent, same-cwd resume still passes `--continue` to pi.
-- `npm run test` green.
-
 ### Agent backends, part 3/7: the claude adapter — invocation, isolation, stream translation, sessions (planned 2026-10-09 by operator; requires parts 1/7 and 2/7 landed)
 
 Design: plans/agent-backends.md ("Findings", "Canonical event stream", "The claude invocation").
@@ -401,6 +357,62 @@ and a loop test for `budgetCapped` → handoff.
 
 
 ## Done
+
+### Agent backends, part 2/7: a session ledger and the `handoff` resume (planned 2026-10-09 by operator; requires part 1/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("Sessions").
+
+Backend-neutral, so it can land and be exercised on pi alone. It also fixes a latent pi hazard: a
+landing conflict resolver's fresh session in the author's session dir is "newest", so a later
+`--continue` would resume the resolver instead of the author.
+
+**Approach.**
+1. **Ledger.** Add src/agent/session-ledger.ts:
+   - append `{agent, id, kind, name, cwd, model, at}` to `<sessionDir>/sessions.jsonl` before
+     each spawn, rotated with the session dir's retention;
+   - `resumableSession(dir, {kind, cwd, agent})` returns the newest matching line, or null — the
+     id-selecting query for a backend that names a session itself (claude, part 3/7);
+   - `sessionResumable(dir, {kind, cwd, agent}, fileExists)` is the pi `--continue` guard: a
+     session file must exist and the newest line OVERALL must match, because pi resumes the
+     newest file in the dir whatever its kind — a newer gate or resolver run must refuse the
+     continue.
+2. **Resumability.** Replace `hasResumableSession` call sites with the ledger query:
+   src/tick/tick-resume.ts:70, src/loop/loop-pi.ts:344, src/review/review-followup.ts:35.
+3. **Handoff cause.** Add a `handoff` resume cause. When `resumePending` is set but the newest
+   ledger line is not this agent's author run, resume as a **fresh session in the unreset
+   worktree**:
+   - the prompt is `buildHandoffPrompt(role, tickPrompt)` (src/prompt/prompt-followup.ts): the
+     tick prompt plus "an earlier run on another model was interrupted; its uncommitted edits
+     are in your worktree — review `git diff`, then finish or discard them";
+   - the edits are not lost to the fresh path's reset.
+4. **Event.** The existing `resume` event carries cause `handoff`, and event-format renders it.
+
+**Files touched.**
+- src/agent/session-ledger.ts (new)
+- src/tick/tick-resume.ts, src/loop/loop-pi.ts, src/review/review-followup.ts
+- src/prompt/prompt-followup.ts
+- src/events/events.ts, src/events/event-format.ts
+- src/orchestrator/retention.ts
+
+Tests: test/session-ledger.test.ts, plus cases in test/tick-resume.test.ts,
+test/loop-pi.test.ts and test/loop-interrupted.test.ts (the handoff keeps the worktree edits).
+
+**Acceptance criteria.**
+- **Kind isolation.** With an author session followed by a conflict-resolver session in the same
+  dir, a SUMMARY follow-up passes no `--continue`: the newest file is the resolver's, so the
+  follow-up is skipped rather than resumed into it.
+- **Handoff.** A resume whose newest author line names another agent runs fresh. The worktree's
+  uncommitted edits are still present, and the prompt carries the handoff bridge.
+- **Unchanged.** A same-agent, same-cwd resume still passes `--continue` to pi.
+- `npm run test` green.
+
+**Done note (2026-10-09 by feature).** Landed. Deviations from the entry, recorded here and in
+the code: the `handoff` cause rides the existing `resume` event rather than `tick_start`, because
+`tick_start` is logged before the resume decision is made (src/loop/loop-tick.ts's `tickPhase`)
+and cannot carry it; the `cwd` half of the handoff condition is deferred to part 3/7, where
+claude's cwd-scoped resume introduces it — part 2's exercised backend is pi, which resumes by
+session dir; retention reports ledger-line trims under their own warning, separate from the
+session/tool-output file count, so each warning names its unit.
 
 ### Agent backends, part 1/7: the `AgentBackend` seam, with pi as its only adapter (planned 2026-10-09 by operator; done 2026-10-09 by feature)
 

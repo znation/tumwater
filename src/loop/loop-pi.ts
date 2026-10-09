@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { hasResumableSession, runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
+import { sessionResumable } from "../agent/session-ledger.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
@@ -341,8 +342,14 @@ export class LoopPi {
     timeoutS: number,
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult | null> {
-    if (!hasResumableSession(sessionDir(this.host.root, this.host.role))) return null;
     const cfg = config ?? configForRole(this.host.config(), this.host.role);
+    const dir = sessionDir(this.host.root, this.host.role);
+    // The follow-up continues THIS tick's author session. The ledger keeps it honest: a
+    // conflict resolver's gate run in the same dir would otherwise be the newest session the
+    // continue flag reaches, so only a newest author line for this tick's agent may resume.
+    if (!sessionResumable(dir, { kind: "author", agent: cfg.agent ?? "pi" }, hasResumableSession(dir))) {
+      return null;
+    }
     return this.runWithTransientRetry({
       ...this.loopPiOpts(
         wt,

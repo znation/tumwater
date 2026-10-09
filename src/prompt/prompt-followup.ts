@@ -14,9 +14,11 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
 
 /** Why a tick is being resumed: a harness restart interrupted it, it ran out of context (the
  * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
- * deadline killed a still-making-progress run, or the budget gate reopened mid-run and the
- * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30). */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed";
+ * deadline killed a still-making-progress run, the budget gate reopened mid-run and the
+ * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30), or the
+ * newest author session belongs to another agent (plans/agent-backends.md "Sessions") — a
+ * handoff runs a fresh session over the interrupted run's uncommitted worktree. */
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff";
 
 /** The shared closing paragraph of the three resume bridges that hand the same task back
  * unchanged (restart, hung-tool, budget-resumed): finish or redo what you started rather than
@@ -72,6 +74,16 @@ ${CONTEXT_BUDGET_RULE}
 - Never create, amend, or revert git commits — the harness handles all git operations.
 - Your last message is plain text — never a tool call or an announcement of a next step.
 ${REPLY_ENDINGS}`;
+}
+
+/** The bridge for a `handoff` resume (plans/agent-backends.md "Sessions"): the newest session
+ * in the worktree's session dir belongs to another agent, so this tick runs a FRESH session —
+ * the full assembled tick prompt, plus the one fact a fresh session cannot know: an interrupted
+ * run's uncommitted edits are sitting in the worktree. The worktree is NOT reset for a handoff,
+ * so the bridge must send the new run to `git diff` before it starts its own work. */
+export function buildHandoffPrompt(roleId: string, tickPrompt: string): string {
+  return `${tickPrompt}\n\nAn earlier run of the "${roleId}" loop on another model was interrupted; its
+uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them.`;
 }
 
 /** The one-turn follow-up sent into a tick's OWN session (--continue) when the run changed files

@@ -381,10 +381,13 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator
-      // reading the feed can tell a restart from a loop fighting the context ceiling.
+      // reading the feed can tell a restart from a loop fighting the context ceiling, and a
+      // cross-agent handoff from either — the handoff keeps the worktree but starts fresh.
       return e.cause === "cut-off"
         ? "resuming the run cut off at the context ceiling (compacted pi session, same worktree)"
-        : "resuming the tick a shutdown interrupted (same pi session and worktree)";
+        : e.cause === "handoff"
+          ? "handing the interrupted tick off to a fresh session on another agent (same worktree, uncommitted edits kept)"
+          : "resuming the tick a shutdown interrupted (same pi session and worktree)";
     case "slot_wait": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
       // working as designed. Names the wait, the pool it waited on, and how many slots are

@@ -11,12 +11,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
-import { piLogPath, sessionDir } from "../src/paths.js";
+import { piLogPath, rejectedRefName, sessionDir } from "../src/paths.js";
+import { recordSession } from "../src/agent/session-ledger.js";
+import { setRef } from "../src/git/git.js";
+import { queuedLandings } from "../src/landing/landing-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
-import { initializedRepo, mainSha, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, logFlagsTo } from "./fakes/fake-pi.js";
+import { initializedRepo, mainSha, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
+import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
@@ -159,6 +162,208 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
     assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the interrupted edits landed on main");
     assert.equal(resumed.state.resumePending, false, "the flag is consumed");
     assert.equal(eventsOfType(repo, "resume").length, 1);
+  } finally {
+    restore();
+  }
+});
+
+// plans/agent-backends.md "Sessions": when the newest author session in the dir belongs to
+// another agent, pi's --continue would reach a session that is not this tick's. The tick must
+// run a FRESH session over the same unreset worktree, and the bridge must point it at the
+// interrupted edits so a fresh context does not silently overwrite or abandon them.
+test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  // First run: leaves a half-done edit, then hangs until the shutdown abort kills it.
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort(); // don't leave the hung fake pi running after a wait timeout
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
+    restore();
+
+    // The aborted run wrote its own pi session and ledger line; append a NEWER author line for
+    // another agent. The newest author session is now not this tick's to --continue.
+    const dir = sessionDir(repo, "improve");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
+    recordSession(dir, {
+      agent: "claude",
+      id: "c",
+      kind: "author",
+      name: "n",
+      cwd: roleWt(repo, "improve"),
+      at: Date.now(),
+    });
+
+    // The handoff runs a fresh session and finishes the task; it must not --continue, and its
+    // prompt must carry the handoff bridge.
+    restore = fakePi(
+      [
+        APPROVE_PI,
+        logPromptsTo(argsFile),
+        `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'`,
+      ].join("\n"),
+    );
+    const resumed = makeLoopRunner(repo, "improve");
+    assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
+    const outcome = await resumed.tick();
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    const run = readPromptRuns(argsFile).join("\n");
+    assert.ok(!run.includes("--continue"), "the handoff starts a fresh session");
+    assert.match(
+      run,
+      /uncommitted edits are in your worktree/,
+      "the bridge points the fresh run at the kept edits",
+    );
+    assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the kept edit landed on main");
+    assert.equal(resumed.state.resumePending, false, "the flag is consumed");
+  } finally {
+    restore();
+  }
+});
+
+// plans/agent-backends.md "Sessions" + plans/revise-rejected.md: a handoff over an interrupted
+// revision already holds the applied rejected diff in its kept worktree. Re-cherry-picking it
+// collides with those edits, fails, and resets the worktree to main — destroying the revision.
+// The handoff must instead carry the round the way a resume does, with no re-apply.
+test("a cross-agent handoff over an interrupted revision keeps its edits and carries the round", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort();
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
+    restore();
+
+    // The rejected diff adds the very path the kept edit left untracked, so a re-apply
+    // collides and resets the worktree — the exact regression this test pins.
+    const sha = pinOffMain(
+      repo,
+      (d) => fs.writeFileSync(path.join(d, "partial.txt"), "rejected\n"),
+      "the rejected work",
+    );
+    await setRef(repo, rejectedRefName("improve"), sha);
+    // The aborted run's session, then a NEWER author line for another agent: the newest author
+    // session is not this tick's to --continue, so the tick hands off.
+    const dir = sessionDir(repo, "improve");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
+    recordSession(dir, {
+      agent: "claude",
+      id: "c",
+      kind: "author",
+      name: "n",
+      cwd: roleWt(repo, "improve"),
+      at: Date.now(),
+    });
+
+    restore = fakePi(
+      [
+        APPROVE_PI,
+        logPromptsTo(argsFile),
+        `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the interrupted revision")}'`,
+      ].join("\n"),
+    );
+    const resumed = makeLoopRunner(repo, "improve");
+    resumed.state.resumePending = true;
+    resumed.state.revision = { sha, round: 1, at: Date.now() };
+    resumed.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
+    assert.equal((await resumed.tick()).result, "queued");
+    assert.equal(eventsOfType(repo, "revision").length, 0, "no re-apply runs on a handoff");
+    // The handoff is a FRESH session and tick-prompt suppresses the rejected-review note while
+    // state.revision is set, so the revision note must ride this tick's prompt.
+    const run = readPromptRuns(argsFile).join("\n");
+    assert.match(run, /is revision 1 of \d+/, "the fresh handoff is told it is revising the rejected change");
+    assert.match(run, /fix it/, "the fresh handoff receives the review objections");
+    assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
+    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    assert.ok(
+      fs.existsSync(path.join(repo, "partial.txt")),
+      "the handoff must not reset the interrupted revision's edits",
+    );
+  } finally {
+    restore();
+  }
+});
+
+// The conflict-hand-back block is guarded by !resuming so a resume does not re-apply a landed
+// diff onto its kept worktree; a handoff keeps the worktree too, so it must be guarded the same
+// way — re-applying collides with the kept edits, fails, and resets them.
+test("a cross-agent handoff does not re-apply a pending conflict hand-back", async () => {
+  const repo = await initializedRepo();
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort();
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
+    restore();
+
+    const sha = pinOffMain(
+      repo,
+      (d) => fs.writeFileSync(path.join(d, "partial.txt"), "handed back\n"),
+      "the handed-back work",
+    );
+    const dir = sessionDir(repo, "improve");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
+    recordSession(dir, {
+      agent: "claude",
+      id: "c",
+      kind: "author",
+      name: "n",
+      cwd: roleWt(repo, "improve"),
+      at: Date.now(),
+    });
+
+    restore = fakePi(
+      [APPROVE_PI, `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the interrupted work")}'`].join("\n"),
+    );
+    const resumed = makeLoopRunner(repo, "improve");
+    resumed.state.resumePending = true;
+    resumed.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: false };
+    assert.equal((await resumed.tick()).result, "queued");
+    assert.equal(
+      resumed.state.conflictHandback?.applied,
+      false,
+      "the pending hand-back is left for a fresh tick",
+    );
+    assert.equal(
+      eventsOfType(repo, "conflict_handback").length,
+      0,
+      "the handoff does not touch the pending hand-back",
+    );
+    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    assert.ok(
+      fs.existsSync(path.join(repo, "partial.txt")),
+      "the handoff must not reset the kept edits by re-applying the hand-back",
+    );
   } finally {
     restore();
   }

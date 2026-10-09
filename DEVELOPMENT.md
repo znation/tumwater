@@ -116,7 +116,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   (admitting due runners to their ticks).
 - `src/agent/`: the backend-neutral agent runner (`run-agent.ts` — the spawn, the
   `tumwater_run` marker, watchdogs, abort, group kill and marker sweep, stderr capture, and
-  result assembly) and the `AgentBackend` seam with its id-keyed registry (`agent-backend.ts`).
+  result assembly), the `AgentBackend` seam with its id-keyed registry (`agent-backend.ts`),
+  and the per-run session ledger the resume paths query (`session-ledger.ts`).
 - `src/pi/pi.ts`: the pi facade (`runPi` alias, `hasResumableSession`, the stderr-match
   constants) over the backend-neutral runner, beside its adapter (`pi-backend.ts`) and plumbing
   (`pi-args.ts`, `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`,

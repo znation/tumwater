@@ -19,6 +19,7 @@ import { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_AGENT, agentBackend, registerAgentBackend } from "./agent-backend.js";
+import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
@@ -141,6 +142,19 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       agentBin: resolved.bin,
       runMarker,
       notesPath: opts.notesPath,
+    });
+    // Record the run in the session ledger before its spawn, so a later resume can pick the
+    // newest session of its own kind instead of whatever file is newest in the dir. The id is
+    // the session name here: pi mints no id ahead of the run and resumes by dir, while claude
+    // (part 3/7) mints its own UUID and reuses it for a resume.
+    recordSession(opts.sessionDir, {
+      agent: backend.id,
+      id: opts.sessionName,
+      kind: opts.kind,
+      name: opts.sessionName,
+      cwd: opts.cwd,
+      ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
+      at: Date.now(),
     });
     const translator = backend.translator();
     // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8")

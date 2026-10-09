@@ -5,6 +5,7 @@
  * spend; null means there was no session to continue. */
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { hasResumableSession } from "../pi/pi.js";
+import { sessionResumable } from "../agent/session-ledger.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { piLogPath, reviewSessionDir } from "../paths.js";
@@ -31,9 +32,14 @@ async function runFollowupTurn(
     onToolCallStart?: (toolName: string, args: unknown) => void;
   },
 ): Promise<PiRunResult | null> {
-  const sessionDir = reviewSessionDir(ctx.root, ctx.role);
-  if (!hasResumableSession(sessionDir)) return null;
+  const dir = reviewSessionDir(ctx.root, ctx.role);
   const cfg = reviewRunConfig(ctx.config);
+  // The verdict/re-run follow-up continues the review session the gate just wrote. The ledger
+  // keeps a newer line of another kind from being the session the continue flag actually
+  // reaches; a pre-ledger review dir falls back to the session-file check.
+  if (!sessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" }, hasResumableSession(dir))) {
+    return null;
+  }
   return ctx.runGatePi({
     cwd: ctx.wt,
     kind: "gate",
@@ -42,7 +48,7 @@ async function runFollowupTurn(
       ...cfg,
       ...cappedRequestTimeouts(cfg, VERDICT_REQUEST_TIMEOUT_S, VERDICT_REQUEST_QUIET_S),
     },
-    sessionDir,
+    sessionDir: dir,
     // The whole point: continue the just-finished review's session, which already holds
     // everything the reviewer read and concluded.
     continueSession: true,

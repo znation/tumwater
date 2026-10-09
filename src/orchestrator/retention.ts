@@ -7,6 +7,7 @@
 
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { pruneOldFiles } from "../files/files.js";
+import { pruneSessionLedgers } from "../agent/session-ledger.js";
 import { sessionsRootDir, toolOutputDir } from "../paths.js";
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
@@ -62,8 +63,16 @@ export class RetentionPruner {
   }
 
   private prune(root: string, days: number): void {
-    const pruned = pruneOldFiles(sessionsRootDir(root), days) + pruneOldFiles(toolOutputDir(root), days);
+    const sessions = sessionsRootDir(root);
+    // Age out session/tool-output files first: an entirely stale dir is gone before the line
+    // pass reads it. Ledger lines are counted separately — a ledger's mtime stays young while
+    // its role runs, so pruneOldFiles never ages the file out; trimming its lines is what
+    // bounds it, and each warning must name the unit it pruned.
+    const pruned = pruneOldFiles(sessions, days) + pruneOldFiles(toolOutputDir(root), days);
     if (pruned > 0)
       warnEventBestEffort(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
+    const prunedLines = pruneSessionLedgers(sessions, days);
+    if (prunedLines > 0)
+      warnEventBestEffort(root, "harness", `pruned ${prunedLines} stale session ledger line(s)`);
   }
 }

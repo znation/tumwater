@@ -7,6 +7,7 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { sessionDir } from "../src/paths.js";
+import { recordSession } from "../src/agent/session-ledger.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // tick-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
@@ -47,6 +48,7 @@ test("a fresh tick takes the assembled prompt and derives the restart cause", ()
   const p = plan(dir, s);
   assert.ok(p);
   assert.equal(p.resuming, false);
+  assert.equal(p.handoff, false);
   assert.equal(p.resumeCause, "restart");
   assert.equal(p.prompt, "assembled tick prompt");
   assert.equal(p.userPrompt, null);
@@ -101,8 +103,45 @@ test("a review-phase interruption never resumes — the author's work is already
   const p = plan(dir, s);
   assert.ok(p);
   assert.equal(p.resuming, false, "a review-phase flag must fall back to a fresh tick");
+  assert.equal(p.handoff, false, "a review-phase flag never hands off either");
   assert.equal(p.prompt, "assembled tick prompt");
   assert.equal(s.resumePending, false);
+});
+
+test("a resume whose newest author line names another agent hands off with the bridge", () => {
+  const dir = tmpdir();
+  const s = state({ resumePending: true });
+  withSession(dir, "feature");
+  recordSession(sessionDir(dir, "feature"), {
+    agent: "claude",
+    id: "c",
+    kind: "author",
+    name: "n",
+    cwd: "/wt",
+    at: Date.now(),
+  });
+  const p = plan(dir, s);
+  assert.ok(p);
+  assert.equal(p.resuming, false, "a cross-agent resume must not --continue another agent's session");
+  assert.equal(p.handoff, true);
+  assert.equal(p.resumeCause, "handoff");
+  assert.match(p.prompt, /assembled tick prompt/, "the handoff carries the assembled tick prompt");
+  assert.match(p.prompt, /uncommitted edits are in your worktree/);
+  assert.equal(s.resumePending, false);
+});
+
+test("a newer gate session in the author dir hands off instead of resuming the resolver", () => {
+  const dir = tmpdir();
+  const s = state({ resumePending: true });
+  withSession(dir, "feature");
+  const base = { id: "i", name: "n", cwd: "/wt", at: 0 };
+  recordSession(sessionDir(dir, "feature"), { agent: "pi", kind: "author", ...base, at: 1000 });
+  recordSession(sessionDir(dir, "feature"), { agent: "pi", kind: "gate", ...base, at: 2000 });
+  const p = plan(dir, s);
+  assert.ok(p);
+  assert.equal(p.resuming, false, "the newest file is the resolver's, so a continue would reach it");
+  assert.equal(p.handoff, true);
+  assert.match(p.prompt, /uncommitted edits are in your worktree/);
 });
 
 test("resumePending without a session file falls back to a fresh tick", () => {

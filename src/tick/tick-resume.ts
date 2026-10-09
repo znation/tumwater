@@ -1,9 +1,10 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { hasResumableSession } from "../pi/pi.js";
+import { latestSession } from "../agent/session-ledger.js";
 import { RETRIABLE_LANDING_RESULTS } from "../landing/landing-core.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { sessionDir } from "../paths.js";
-import { buildResumePrompt, type ResumeCause } from "../prompt/prompt-followup.js";
+import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prompt/prompt-followup.js";
 
 /** What a tick starts with, decided before any worktree or pi work: whether it resumes the
  * interrupted session (and why), the prompt it runs, and the raw user request it executes.
@@ -19,6 +20,12 @@ export interface TickStartPlan {
   priorLandingFailure: string | undefined;
   /** Resume the interrupted session instead of starting fresh. */
   resuming: boolean;
+  /** Run a fresh session but leave the worktree as the interrupted run left it, with the
+   * handoff bridge (plans/agent-backends.md "Sessions"): the newest author session belongs to
+   * another agent or another kind, so it is not ours to `--continue` — but the interrupted
+   * run's uncommitted edits are still in the worktree and must survive the fresh path's reset.
+   * Mutually exclusive with `resuming`. */
+  handoff: boolean;
   /** Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
    * bridge then warns against re-running it unchanged) or on the tick deadline while still
    * making progress (the bridge asks for the smallest finish against the same limit); a
@@ -50,6 +57,10 @@ export function planTickStart(opts: {
   /** Assemble a fresh tick's prompt (null when the loop has nothing to run); the runner's
    * tickPrompt() so the dequeued user request is recorded as pending exactly as before. */
   tickPrompt: () => string | null;
+  /** The backend this tick would run on, for the resume decision: a newest author ledger line
+   * naming another agent hands off instead of resuming. Defaults to pi (the only backend until
+   * part 4/7 makes the choice configurable). */
+  agent?: string;
 }): TickStartPlan | null {
   const s = opts.state;
   // The last landing's failure, read before the clear below: a landing that failed
@@ -67,7 +78,25 @@ export function planTickStart(opts: {
   // is consumed here so a resume that fails falls back to a normal fresh tick; another
   // shutdown mid-resume sets it again. Nothing to resume (sessions pruned, or pi never
   // started) also falls back to fresh.
-  const resumableSession = s.resumePending === true && hasResumableSession(sessionDir(opts.root, opts.role));
+  //
+  // The session ledger decides WHICH session a continue would reach. pi's --continue resumes
+  // the newest file in the dir, so a conflict resolver's gate run in the same dir (or another
+  // backend's session) would shadow the author's: only a newest author line for THIS agent is
+  // resumable; any other newest line hands off to a fresh session in the unreset worktree.
+  // A pre-ledger dir falls back to the historical any-*.jsonl check.
+  const dir = sessionDir(opts.root, opts.role);
+  const agent = opts.agent ?? "pi";
+  const resumePending = s.resumePending === true;
+  const latest = resumePending ? latestSession(dir) : null;
+  const piSession = resumePending ? hasResumableSession(dir) : false;
+  let resumableSession = false;
+  let handoff = false;
+  if (latest !== null) {
+    if (latest.kind === "author" && latest.agent === agent) resumableSession = piSession;
+    else handoff = true;
+  } else {
+    resumableSession = piSession;
+  }
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
   const pendingResumeCause = s.resumeCause;
   s.resumePending = false;
@@ -77,23 +106,34 @@ export function planTickStart(opts: {
   // via a fresh tick instead: continuing the author session would burn a run on finished
   // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
   // path's reset below.
-  const resuming = resumableSession && s.phase !== "review";
+  const resumeBlocked = s.phase === "review";
+  const resuming = resumableSession && !resumeBlocked;
+  const handingOff = handoff && !resumeBlocked;
   // Reclaim the prompt the interrupted tick re-queued for its resume (src/inbox/pending-prompt.ts):
   // the resumed session still owns that request in its context, so this tick's bookkeeping
-  // operates on the queue's copy. Consumed even when this tick does not resume, so a stale
-  // record never survives into a later resume.
+  // operates on the queue's copy. A handoff runs a FRESH session, so it does not reclaim — the
+  // fresh tick dequeues the re-queued request like any other. Consumed even when this tick does
+  // not resume, so a stale record never survives into a later resume.
   opts.pending.reclaimForResume(s, resuming);
 
   // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
   // bridge then warns against re-running it unchanged) or on the tick deadline while still
   // making progress (the bridge asks for the smallest finish against the same limit); a
   // cut-off streak means the last run ran out of context and pi compacted the session (the
-  // bridge asks for the smallest finish); otherwise a shutdown/crash.
-  const resumeCause = pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
-  const prompt = resuming ? buildResumePrompt(opts.role, resumeCause) : opts.tickPrompt();
+  // bridge asks for the smallest finish); otherwise a shutdown/crash. A handoff names itself.
+  const resumeCause: ResumeCause = handingOff
+    ? "handoff"
+    : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
+  let prompt: string | null;
+  if (resuming) {
+    prompt = buildResumePrompt(opts.role, resumeCause);
+  } else {
+    const assembled = opts.tickPrompt();
+    prompt = assembled === null ? null : handingOff ? buildHandoffPrompt(opts.role, assembled) : assembled;
+  }
   if (prompt === null) return null;
   // The raw user prompt a director tick is executing (null for role loops), so an
   // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
   const userPrompt = opts.pending.get();
-  return { priorLandingFailure, resuming, resumeCause, prompt, userPrompt };
+  return { priorLandingFailure, resuming, handoff: handingOff, resumeCause, prompt, userPrompt };
 }

@@ -1,0 +1,165 @@
+/** The per-run session ledger (plans/agent-backends.md "Sessions"): one `sessions.jsonl` line
+ * per agent run, written into the run's own session dir before its spawn. Backend-neutral — the
+ * runner records and the resume paths query — so a later resume can pick the newest session of
+ * its own KIND instead of whatever file happens to be newest in the dir. That is the latent pi
+ * hazard: a landing conflict resolver's fresh session shares the author's dir, and pi's
+ * `--continue` (newest file in the dir) would otherwise resume the resolver.
+ *
+ * pi resumes by session dir and claude by id; the record carries both so each caller reads what
+ * it needs. `id` is backend-specific: claude mints a UUID before its spawn, pi leaves it as the
+ * session name because pi has no separate id to hand out ahead of the run. */
+
+import fs from "node:fs";
+import path from "node:path";
+import { ensureParentDir, readTextOrNull, writeTextAtomic } from "../files/files.js";
+
+/** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
+ * the backend's own session files; readers that count session files must exclude it. */
+export const SESSION_LEDGER_FILE = "sessions.jsonl";
+
+/** One run's ledger line. `at` is epoch ms. */
+export interface SessionRecord {
+  /** The owning backend's id (plans/agent-backends.md "The seam"). */
+  agent: string;
+  /** Backend session id; the session name for pi (which mints no id ahead of the run). */
+  id: string;
+  /** The run's kind (PiRunKind: "author" | "gate"), so a follow-up can ignore another kind's
+   * session in the same dir. */
+  kind: string;
+  /** The run's session name. */
+  name: string;
+  /** The worktree the run started in (claude's resume is cwd-scoped). */
+  cwd: string;
+  /** The resolved model selector, when one is configured. */
+  model?: string;
+  /** When the run was recorded, epoch ms. */
+  at: number;
+}
+
+/** The ledger's path under a session dir. */
+export function sessionLedgerPath(dir: string): string {
+  return path.join(dir, SESSION_LEDGER_FILE);
+}
+
+/** Append one run's record to `dir`'s ledger, before its spawn. Best-effort: an unwritable
+ * session dir or a full disk must degrade to "no resumable session" on a later tick, never
+ * fail the run it was trying to describe. */
+export function recordSession(dir: string, record: SessionRecord): void {
+  try {
+    ensureParentDir(sessionLedgerPath(dir));
+    fs.appendFileSync(sessionLedgerPath(dir), JSON.stringify(record) + "\n");
+  } catch {
+    // Best effort: a lost ledger line costs resumability, not the run.
+  }
+}
+
+/** Every valid record in `dir`'s ledger, oldest first. A missing ledger reads as no records; a
+ * torn or malformed line is skipped rather than poisoning the rest (a crash mid-append must not
+ * cost every earlier record). */
+export function readSessions(dir: string): SessionRecord[] {
+  const text = readTextOrNull(sessionLedgerPath(dir));
+  if (text === null) return [];
+  const out: SessionRecord[] = [];
+  for (const line of text.split("\n")) {
+    if (!line) continue;
+    try {
+      const record = JSON.parse(line) as SessionRecord;
+      if (typeof record.agent === "string" && typeof record.kind === "string") out.push(record);
+    } catch {
+      // Torn or malformed line — no data.
+    }
+  }
+  return out;
+}
+
+/** The newest ledger record, optionally limited to `kind`, or null when the ledger holds none.
+ * "Newest" is file order: lines are appended per run, so the last matching line is the latest
+ * run (concurrent appends still leave a total order). */
+export function latestSession(dir: string, kind?: string): SessionRecord | null {
+  const records = readSessions(dir).filter((r) => kind === undefined || r.kind === kind);
+  return records.length > 0 ? records[records.length - 1]! : null;
+}
+
+/** The newest record of `kind` this run may resume: its agent matches `agent` and, when `cwd`
+ * is given, its cwd matches (claude's resume is cwd-scoped; pi's is not, so pi callers omit
+ * cwd). This is the id-selecting query a backend uses to name the session it wants; pi's
+ * `--continue` picks the newest FILE whatever its kind, so pi callers use `sessionResumable`
+ * instead. Null when none matches — including a pre-ledger dir, where the caller falls back to
+ * the backend's own session-file check. */
+export function resumableSession(
+  dir: string,
+  opts: { kind: string; agent: string; cwd?: string },
+): SessionRecord | null {
+  const record = latestSession(dir, opts.kind);
+  if (record === null) return null;
+  if (record.agent !== opts.agent) return null;
+  if (opts.cwd !== undefined && record.cwd !== opts.cwd) return null;
+  return record;
+}
+
+/** Whether pi may `--continue` in `dir`: a session file must exist (`sessionFileExists`, the
+ * backend's own check — the ledger never replaces it) AND, when a ledger exists, its NEWEST
+ * line overall must be this kind and agent (and cwd when given). The overall rule — not
+ * `resumableSession`'s newest-of-kind one — is what makes `--continue` safe: pi resumes the
+ * newest file in the dir whatever its kind, so a newer gate or conflict-resolver run shadows
+ * the author's session and must refuse the continue. A pre-ledger dir is governed by the file
+ * check alone. */
+export function sessionResumable(
+  dir: string,
+  opts: { kind: string; agent: string; cwd?: string },
+  sessionFileExists: boolean,
+): boolean {
+  if (!sessionFileExists) return false;
+  const newest = latestSession(dir);
+  if (newest === null) return true;
+  return (
+    newest.kind === opts.kind &&
+    newest.agent === opts.agent &&
+    (opts.cwd === undefined || newest.cwd === opts.cwd)
+  );
+}
+
+/** Drop ledger lines older than `days` from every session dir under `sessionsRoot`. The ledger
+ * file's mtime keeps it young while its role runs, so pruneOldFiles never ages it out; trimming
+ * its lines is what actually bounds it, under the same window the session files prune by.
+ * Returns the number of lines removed; a missing root or unreadable dir reads as nothing to do. */
+export function pruneSessionLedgers(sessionsRoot: string, days: number): number {
+  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  let pruned = 0;
+  const walk = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // Vanished or unreadable — skip this directory.
+    }
+    for (const entry of entries) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(file);
+        continue;
+      }
+      if (!entry.isFile() || entry.name !== SESSION_LEDGER_FILE) continue;
+      const text = readTextOrNull(file);
+      if (text === null) continue;
+      const lines = text.split("\n").filter((line) => line !== "");
+      const kept: string[] = [];
+      for (const line of lines) {
+        let at: unknown;
+        try {
+          at = (JSON.parse(line) as { at?: unknown }).at;
+        } catch {
+          pruned += 1; // Malformed line: no timestamp to keep, so it ages out.
+          continue;
+        }
+        if (typeof at === "number" && at >= cutoff) kept.push(line);
+        else pruned += 1;
+      }
+      if (kept.length !== lines.length) {
+        writeTextAtomic(file, kept.length > 0 ? kept.join("\n") + "\n" : "");
+      }
+    }
+  };
+  walk(sessionsRoot);
+  return pruned;
+}

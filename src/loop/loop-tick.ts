@@ -26,6 +26,7 @@ import {
   type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
+import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
@@ -230,6 +231,7 @@ export async function runTickPhase(
     state: s,
     pending: ctx.pending,
     tickPrompt: () => ctx.tickPrompt(),
+    agent: cfg.agent ?? DEFAULT_AGENT,
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
@@ -261,7 +263,7 @@ async function runTickInLeasePhase(
     role: ctx.role,
     purpose: "tick",
     ref: ctx.mainBranch,
-    keep: plan.resuming,
+    keep: plan.resuming || plan.handoff,
     signal: ctx.runSignal(),
     // The live view's pool budget: this read must not depend on tumwater.json being
     // readable right now (a broken file must not error the tick before its pi run).
@@ -315,12 +317,14 @@ async function tickWithWorktreePhase(
   leasedDir?: string,
 ): Promise<TickOutcome> {
   const s = ctx.state;
-  const { priorLandingFailure, resuming, resumeCause, userPrompt } = plan;
+  const { priorLandingFailure, resuming, handoff, resumeCause, userPrompt } = plan;
   let prompt = plan.prompt;
 
   const wt = leasedDir ?? (await ensureWorktree(ctx.root, ctx.role, ctx.mainBranch));
-  if (resuming) {
-    // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state.
+  if (resuming || handoff) {
+    // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state. A
+    // handoff resumes a FRESH session over those same edits (the newest author session belongs
+    // to another agent), so it preserves the worktree exactly as a resume does.
     await abortSync(wt);
     logEventBestEffort(ctx.root, { loop: ctx.role, type: "resume", cause: resumeCause });
   } else {
@@ -396,13 +400,16 @@ async function tickWithWorktreePhase(
   // author's tick has not applied yet — is re-applied over current main with the conflict
   // markers left as ordinary uncommitted edits so this tick resolves them (PLANS.md "Robust
   // conflict landing, part 2/2"). The landing ref is deleted once the diff is in the worktree.
-  // Runs before the revision branch, which applies a revision hand-back itself.
+  // Runs before the revision branch, which applies a revision hand-back itself. A resume or
+  // handoff keeps the interrupted worktree as-is, so re-applying here would cherry-pick onto
+  // those kept edits; both skip it, exactly as before this feature for a resume.
   if (
     s.conflictHandback &&
     !s.conflictHandback.applied &&
     ctx.role !== DIRECTOR_ROLE &&
     userPrompt === null &&
-    !resuming
+    !resuming &&
+    !handoff
   ) {
     const hb = s.conflictHandback;
     const applied = await applyWithConflicts(wt, ctx.mainBranch, hb.sha);
@@ -440,10 +447,19 @@ async function tickWithWorktreePhase(
   let revisionRound: number | undefined;
   if (s.revision && ctx.role !== DIRECTOR_ROLE && userPrompt === null) {
     const { sha, round } = s.revision;
-    if (resuming) {
-      // The interrupted revision run's applied edits are still in the worktree (the resume
-      // path keeps uncommitted work), so this tick still owns the revision.
+    if (resuming || handoff) {
+      // The interrupted revision run's applied edits are still in the worktree (both the
+      // resume and the cross-agent handoff keep uncommitted work), so this tick still owns
+      // the revision. A handoff runs the revision in a fresh session rather than
+      // re-cherry-picking it onto the already-dirty worktree.
       revisionRound = round;
+      if (handoff) {
+        // A handoff is a FRESH session: it has none of the interrupted run's context, and
+        // tick-prompt.ts suppresses the rejected-review note whenever state.revision is set,
+        // so without this the fresh run would see neither the objections nor the revision
+        // instructions. A resume keeps its session context and must not see the note twice.
+        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
+      }
     } else if (await applyRevision(wt, ctx.mainBranch, sha)) {
       revisionRound = round;
       logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "applied", round, sha });

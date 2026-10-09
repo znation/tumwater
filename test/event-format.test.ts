@@ -486,6 +486,9 @@ test("formatEvent tells a cut-off resume from a restart resume", () => {
   assert.match(restart, /resuming the tick a shutdown interrupted/);
   // Events written by builds that predate the cause field render the restart wording.
   assert.equal(formatEvent({ ts: 0, loop: "improve", type: "resume" } as never), restart);
+  // A cross-agent handoff keeps the worktree but starts a fresh session — its own line.
+  const handoff = formatEvent({ ts: 0, loop: "improve", type: "resume", cause: "handoff" } as never);
+  assert.match(handoff, /handing the interrupted tick off to a fresh session on another agent/);
 });
 
 test("formatEvent prices the gates: build_check lines and review durations", () => {
