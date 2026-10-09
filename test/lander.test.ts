@@ -37,17 +37,18 @@ import {
 import { assistantLine } from "./fixtures/pi-events.js";
 
 // Unit coverage for the two halves of a landing — landing-batch.ts's vetRequest (checkout in
-// _land-<role>, rebase onto main, landing-core.ts's review gate) and landVetted (the merge: one change
-// through landApprovedChange, or a stack with one check, one fast-forward, the re-stack, 3d's
-// prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the
+// _land-<role>, rebase onto main, landing-core.ts's review gate) and landVetted (the merge: one
+// change through landApprovedChange, or a stack with one check, one fast-forward, the re-stack,
+// 3d's prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the
 // landing pipeline runs them (landing-drain.ts). The reviewer run is a real pi subprocess behind
-// the fake shim; landing-merge.ts's conflict resolver goes through the wiring's runPi, which is stubbed.
+// the fake shim; landing-merge.ts's conflict resolver goes through the wiring's runPi, which is
+// stubbed.
 //
 // Split in three so node --test runs them in parallel processes: this file holds the vet and
 // single-change landings, the batch basics, aborts and the per-change status hook;
-// lander-restack.test.ts the re-stack on a moved main; lander-bisect.test.ts the red-stack
-// bisect and the one-at-a-time fallback. Shared fixtures live in test/fixtures/lander-fixtures.ts. Keep the three
-// roughly equal in measured duration when moving tests between them.
+// lander-restack.test.ts the re-stack on a moved main; lander-bisect.test.ts the red-stack bisect
+// and the one-at-a-time fallback. Shared fixtures live in test/fixtures/lander-fixtures.ts. Keep
+// the three roughly equal in measured duration when moving tests between them.
 
 test("an approved landing lands on main and deletes the ref", async () => {
   const restore = fakePi(
@@ -430,12 +431,12 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
     restore();
   }
 });
-// A gate pre-check failure that survives its one re-run is attributed through main's own
-// baseline verdict (src/review/review.ts), and the landing's ref lifecycle follows the two outcomes: a
-// green main's reject deletes the pin, a red main's no-strike failure keeps it for the next
-// re-land. Neither spends a pi run. makeRepo's seed commit is byte-identical across tests run in
-// the same second and the baseline cache is keyed by SHA, so the red case moves main to a commit
-// of its own before asking.
+// A gate pre-check failure that survives its one re-run is attributed through main's own baseline
+// verdict (src/review/review.ts), and the landing's ref lifecycle follows the two outcomes: a green
+// main's reject deletes the pin, a red main's no-strike failure keeps it for the next re-land.
+// Neither spends a pi run. makeRepo's seed commit is byte-identical across tests run in the same
+// second and the baseline cache is keyed by SHA, so the red case moves main to a commit of its own
+// before asking.
 
 test("a failing pre-check on a green main rejects the landing and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();

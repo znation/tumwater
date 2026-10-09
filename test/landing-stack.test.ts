@@ -14,8 +14,8 @@ import { headSha, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
-/** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then
- * b.txt on top), detached — the shape a stack's assembly (landing-stack.ts) leaves before the ff. */
+/** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then b.txt on
+ * top), detached — the shape a stack's assembly (landing-stack.ts) leaves before the ff. */
 async function stackFixture(): Promise<{ root: string; shaA: string; shaB: string }> {
   const root = makeRepo();
   // The merge lock's parent dir — withLock mkdir's <root>/.tumwater/merge.lock without

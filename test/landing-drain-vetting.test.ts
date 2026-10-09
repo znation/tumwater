@@ -156,7 +156,8 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
       signal: shutdown.signal,
       held: () => held,
     });
-    // Two role ticks hold two of the three permits: one is free, so beta's vet parks behind alpha's.
+    // Two role ticks hold two of the three permits: one is free, so beta's vet parks behind
+    // alpha's.
     await ctx.semaphore.acquire(0);
     await ctx.semaphore.acquire(0);
     try {
@@ -198,13 +199,13 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
 });
 
 test("three T-long reviews run at once at cap 4, so all three merge in about T, not 3T", async () => {
-  // Acceptance for land-queue speed 2c. Each review records how many reviews were in flight as
-  // it started, holds (bounded) until all three are in flight — three vets that may overlap can
-  // still happen not to, and the overlap a working pipeline allows is made certain rather than
-  // left to a long hold — and then holds T. As in lander.test.ts's timing tests, the span is
-  // read off the harness's own timeline — first review_start to last `merged` — and held against
-  // the reviews' own summed durations (the floor of any one-after-another schedule), so a loaded
-  // host's git plumbing cannot swamp the bound.
+  // Acceptance for land-queue speed 2c. Each review records how many reviews were in flight as it
+  // started, holds (bounded) until all three are in flight — three vets that may overlap can
+  // still happen not to, and the overlap a working pipeline allows is made certain rather than left
+  // to a long hold — and then holds T. As in lander.test.ts's timing tests, the span is read off
+  // the harness's own timeline — first review_start to last `merged` — and held against the
+  // reviews' own summed durations (the floor of any one-after-another schedule), so a loaded host's
+  // git plumbing cannot swamp the bound.
   const T = 2;
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];

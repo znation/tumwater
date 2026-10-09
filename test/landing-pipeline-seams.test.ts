@@ -5,15 +5,15 @@ import assert from "node:assert/strict";
 import { abortOnShutdown, acquireUnlessAborted } from "../src/landing/landing-pipeline.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 
-// Unit-tier coverage for the landing pipeline's two shutdown seams (src/landing/landing-pipeline.ts):
-// the wiring that turns the harness stop into a landing task's own abort, and the
-// permit-taking race that lets a parked vet lose its grant to a shutdown without leaking the
-// permit. Both run in every shutdown of every fleet (landing-drain.ts and landing-vetting.ts
-// call them for every task), and both carry a documented edge a naive version gets wrong — an
-// already-aborted signal that addEventListener alone would never fire; a grant that arrives
-// after the abort and must be handed straight back ("a hop, never a leak") or maxConcurrent
-// starves by one permit per aborted vet. Until now both ran only under the e2e tier, which
-// the gating `npm test` never executes, so a wiring slip here would pass the gate.
+// Unit-tier coverage for the landing pipeline's two shutdown seams
+// (src/landing/landing-pipeline.ts): the wiring that turns the harness stop into a landing task's
+// own abort, and the permit-taking race that lets a parked vet lose its grant to a shutdown without
+// leaking the permit. Both run in every shutdown of every fleet (landing-drain.ts and
+// landing-vetting.ts call them for every task), and both carry a documented edge a naive version
+// gets wrong — an already-aborted signal that addEventListener alone would never fire; a grant
+// that arrives after the abort and must be handed straight back ("a hop, never a leak") or
+// maxConcurrent starves by one permit per aborted vet. Until now both ran only under the e2e tier,
+// which the gating `npm test` never executes, so a wiring slip here would pass the gate.
 
 /** Flush the microtasks (and the auto-release callback) a resolved waiter chain needs. */
 function settle(): Promise<void> {
@@ -44,8 +44,8 @@ test("acquireUnlessAborted returns null for an already-aborted signal and takes 
   const semaphore = new Semaphore(1);
   const release = await acquireUnlessAborted(semaphore, 0, AbortSignal.abort());
   assert.equal(release, null, "no release function for a run that never started");
-  // The permit was never taken: a plain acquire on the fresh semaphore resolves at once
-  // (capacity 1 — a leaked permit would park this acquire forever, and within() would read false).
+  // The permit was never taken: a plain acquire on the fresh semaphore resolves at once (capacity 1
+  // — a leaked permit would park this acquire forever, and within() would read false).
   assert.ok(await within(semaphore.acquire(0)), "no permit was taken by the aborted entry");
 });
 

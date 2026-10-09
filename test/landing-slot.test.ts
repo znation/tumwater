@@ -1,11 +1,12 @@
-/** Unit coverage for src/landing/landing-slot.ts's bookkeeping — the usage accounting that charges a
- * landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live state and
- * records them on the landed/land_failed event, the write-back, and the 4/5 marker's per-change
- * records. The full landing flow is pinned end-to-end through the pipeline
- * (orchestrator-fixtures.ts's landHead) in the loop and orchestrator tests, but those drive a fake pi that reports no
- * usage, so the nonzero-usage branches were never exercised: a landing whose reviewer burns
- * tokens and cost is exactly what feeds `tumwater report` and the daily budget cap, and a broken
- * fold there would silently lose that spend. These pin the accounting branches directly. */
+/** Unit coverage for src/landing/landing-slot.ts's bookkeeping — the usage accounting that
+ * charges a landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live
+ * state and records them on the landed/land_failed event, the write-back, and the 4/5 marker's
+ * per-change records. The full landing flow is pinned end-to-end through the pipeline
+ * (orchestrator-fixtures.ts's landHead) in the loop and orchestrator tests, but those drive a fake
+ * pi that reports no usage, so the nonzero-usage branches were never exercised: a landing whose
+ * reviewer burns tokens and cost is exactly what feeds `tumwater report` and the daily budget cap,
+ * and a broken fold there would silently lose that spend. These pin the accounting branches
+ * directly. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

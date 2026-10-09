@@ -48,12 +48,12 @@ import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
  * between the files. This slice carries the pipeline's end-to-end behaviors — torn-head
  * recovery, the merge stack, abort and shutdown, and the failure recoveries — while the dedupe
  * basics live in landing-drain.test.ts. */
-// Unit coverage for src/landing/landing-drain.ts — the scheduler seam between the durable land queue and
-// the landing pipeline (land-queue speed 2c): the dedupe against main and torn-head recovery,
-// the vetting stage (one vet per queued change, each on a shared maxConcurrent permit), and the
-// merge slot (every vetted change, stacked), with the abort and shutdown rules and the marker
-// records the observers read. The review gate's pi runs are real subprocesses behind the fake
-// shim, exactly as lander.test.ts drives vetRequest and landVetted directly.
+// Unit coverage for src/landing/landing-drain.ts — the scheduler seam between the durable land
+// queue and the landing pipeline (land-queue speed 2c): the dedupe against main and torn-head
+// recovery, the vetting stage (one vet per queued change, each on a shared maxConcurrent permit),
+// and the merge slot (every vetted change, stacked), with the abort and shutdown rules and the
+// marker records the observers read. The review gate's pi runs are real subprocesses behind the
+// fake shim, exactly as lander.test.ts drives vetRequest and landVetted directly.
 
 /** The fixture the three busy-merge-slot tests below share: an alpha+beta queue on a real
  * repo, a landing config whose check is a no-op, the fake approver, and a pipeline whose merge

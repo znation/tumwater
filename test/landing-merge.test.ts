@@ -94,10 +94,10 @@ test("a clean rebase lands as changed with a merged event and linear history", a
 
 test("a fix-claim block in the landing's exempt arm warns, names the reason to the lander, and never runs pi", async () => {
   const { root, wt } = await initializedWorktree();
-  // BUGS.md's template ends with "## Fixed"; an appended entry lands in that section. Its
-  // body names no symbol that exists on the tree, so the exempt arm's fix-claim cross-check
-  // (falseFixReason, src/verdict/fix-claim.ts) must block the landing — and, per BUGS.md 2026-10-02,
-  // say so on the feed and to the lander instead of failing silently.
+  // BUGS.md's template ends with "## Fixed"; an appended entry lands in that section. Its body
+  // names no symbol that exists on the tree, so the exempt arm's fix-claim cross-check
+  // (falseFixReason, src/verdict/fix-claim.ts) must block the landing — and, per BUGS.md
+  // 2026-10-02, say so on the feed and to the lander instead of failing silently.
   fs.appendFileSync(
     wt + "/BUGS.md",
     "\n### A bug nobody fixed (found by test 2026-10-02)\n\n- Fix: `noSuchHelperFn` handles it.\n",

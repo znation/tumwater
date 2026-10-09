@@ -255,7 +255,8 @@ test("an un-assemblable stack's fallback lands pins from an older main with one 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both");
     const reviews = eventsOfType(root, "review_start");
     // BUGS.md 2026-10-02: alpha's resolution writes "both", a line neither the reviewed diff nor
-    // main contains — out of the reviewed change's lines — so it pays one re-review (N+1, not 2N).
+    // main contains — out of the reviewed change's lines — so it pays one re-review (N+1, not
+    // 2N).
     assert.equal(reviews.length, 3, "one model review per change plus the resolution's re-review");
     assert.equal(folded.get("alpha")!.length, 1);
     assert.equal(folded.get("beta")!.length, 2, "the re-review's reviewer run folds into beta's tick (its stack pick conflicted)");
@@ -295,7 +296,8 @@ test("a vet reviews each pin rebased onto main's current tip, so no reviewer's c
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
-    // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a race.
+    // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a
+    // race.
     const starts = eventsOfType(root, "review_start");
     assert.equal(starts.length, 2);
     const heads = new Map(starts.map((e) => [e.loop, String(e.head)]));
@@ -329,7 +331,8 @@ test("a vet's rebase conflict reviews the bare pin and the fallback's resolver l
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-    // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a race.
+    // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a
+    // race.
     const starts = eventsOfType(root, "review_start");
     // BUGS.md 2026-10-02: alpha's resolution writes "both" — a line neither side had — so it is
     // re-reviewed before landing: two review_starts for alpha (bare pin, then resolved head),
@@ -368,9 +371,9 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
 });
 
 test("a lost pin degrades its vet to a terminal error instead of starving the queue", async () => {
-  // The queue entry can outlive its commit (a crash between pin and drop, or an outside gc):
-  // its sha no longer resolves, so the vet's checkout throws. The vet must degrade that request
-  // to a terminal "error" — the pipeline's write-back then drops its entry — rather than let the
+  // The queue entry can outlive its commit (a crash between pin and drop, or an outside gc): its
+  // sha no longer resolves, so the vet's checkout throws. The vet must degrade that request to a
+  // terminal "error" — the pipeline's write-back then drops its entry — rather than let the
   // throw escape: a permanently uncheckable entry would re-fail on every poll with its author
   // interlocked forever. The other changes' vets and merge are untouched by it.
   await withApprovePi(async () => {
