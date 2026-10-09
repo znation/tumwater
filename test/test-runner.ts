@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printCoverageTable } from "./coverage-table.js";
+import { findOnPath } from "../src/files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
@@ -220,21 +221,6 @@ export function suiteGitEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return env;
 }
 
-/** The first executable named `name` on `pathVar`, as execvp would pick it — or undefined. */
-function whichOnPath(name: string, pathVar: string): string | undefined {
-  for (const dir of pathVar.split(path.delimiter)) {
-    if (!dir) continue;
-    const candidate = path.join(dir, name);
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      if (fs.statSync(candidate).isFile()) return candidate;
-    } catch {
-      // Not here — keep walking.
-    }
-  }
-  return undefined;
-}
-
 /** Wall-clock bound on the suite's own macOS `xcrun --find git` probe. The probe is the shared
  * xcrun-git.ts's `realGitFromXcrun` (also the harness's git-run probe): a synchronous spawnSync,
  * so a wedged xcrun (an Xcode license prompt, a corrupt developer directory) would block the
@@ -282,7 +268,7 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   const templates = path.join(scratch, "git-templates");
   fs.mkdirSync(templates);
   env.GIT_TEMPLATE_DIR = templates;
-  if (process.platform === "darwin" && whichOnPath("git", env.PATH ?? "") === "/usr/bin/git") {
+  if (process.platform === "darwin" && findOnPath("git", env.PATH ?? "") === "/usr/bin/git") {
     const real = realGitFromXcrun(SUITE_XCRUN_TIMEOUT_MS);
     if (real) {
       const bin = path.join(scratch, "bin");
