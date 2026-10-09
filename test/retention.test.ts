@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
-import { sessionsRootDir, toolOutputDir } from "../src/paths.js";
+import { sessionsRootDir, toolOutputDir, eventsLogPath } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -66,4 +66,19 @@ test("RetentionPruner: poll re-prunes immediately on a window change and logs on
   assert.equal(changes.length, 1);
   assert.equal(changes[0]?.from, 7);
   assert.equal(changes[0]?.to, 1);
+});
+
+test("RetentionPruner: a window change and a prune survive an unwritable events feed", () => {
+  const root = tmpdir();
+  // Put a directory where events.jsonl belongs: every logEvent under `root` throws EISDIR,
+  // exactly as it would on a full disk or a feed path replaced by a directory.
+  const feed = eventsLogPath(root);
+  fs.rmSync(feed, { recursive: true, force: true });
+  fs.mkdirSync(feed, { recursive: true });
+  const pruner = new RetentionPruner(root, 0); // 0 disables pruning, so lastRetention is 0.
+  const toolOut = staleFile(toolOutputDir(root), "tool-out.txt");
+  // The window change logs retention_changed and then prunes; both writes are best-effort, so
+  // the throw must not skip the prune itself.
+  assert.doesNotThrow(() => pruner.poll(root, 7));
+  assert.equal(fs.existsSync(toolOut), false);
 });

@@ -5,7 +5,7 @@
  * orchestrator → retention; this module owns the whole "which files age out, and when" concern
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { pruneOldFiles } from "../files/files.js";
 import { sessionsRootDir, toolOutputDir } from "../paths.js";
 
@@ -46,7 +46,7 @@ export class RetentionPruner {
       // are visible in logs/TUI/GUI even when nothing was pruned; pruning itself still runs
       // only for a positive window.
       if (retentionDays !== this.lastRetention) {
-        logEvent(root, {
+        logEventBestEffort(root, {
           loop: "harness",
           type: "retention_changed",
           from: this.lastRetention,
@@ -63,6 +63,7 @@ export class RetentionPruner {
 
   private prune(root: string, days: number): void {
     const pruned = pruneOldFiles(sessionsRootDir(root), days) + pruneOldFiles(toolOutputDir(root), days);
-    if (pruned > 0) warnEvent(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
+    if (pruned > 0)
+      warnEventBestEffort(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
   }
 }
