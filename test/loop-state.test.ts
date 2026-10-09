@@ -237,6 +237,34 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
   assert.equal(s.modelFallback?.cooldownMs, 0);
 });
 
+test("loadLoopState heals a foreign-typed lastReview.reasons to an empty list", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "reasons");
+  ensureParentDir(file);
+  // reasons is the one nested non-numeric slot whose foreign type throws rather than merely
+  // reading odd: the rejected-review notes build a numbered list from it (numberedList's
+  // `.map`), so a hand-edited "because" or a dropped field would crash the next tick's prompt
+  // builder. Heal it to its string entries, or [] when it is not an array at all.
+  const cases: Array<[unknown, string[]]> = [
+    ["because", []],
+    [[1, "kept"], ["kept"]],
+    [null, []],
+  ];
+  for (const [bad, expected] of cases) {
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        role: "reasons",
+        lastReview: { verdict: "reject", reasons: bad, at: 1 },
+      }),
+    );
+    const s = loadLoopState(dir, "reasons");
+    assert.deepEqual(s.lastReview?.reasons, expected);
+    assert.equal(s.lastReview?.verdict, "reject");
+    assert.equal(s.lastReview?.at, 1);
+  }
+});
+
 test("loadLoopState drops a nested record that is not a plain object, keeping real ones", () => {
   const dir = tmpdir();
   const file = statePath(dir, "torn");

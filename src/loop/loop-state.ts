@@ -266,7 +266,8 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
 /** Load the loop's persisted state; never throws — a missing or unreadable file yields a
  * fresh state, fields absent from an older file fall back to defaults, and a numeric field
  * (top-level or nested) that is present but not a finite non-negative number is healed to 0,
- * while a nested record that is present but not a plain object is dropped. The load is the one
+ * a nested record that is present but not a plain object is dropped, and lastReview.reasons is
+ * rebuilt to its string entries. The load is the one
  * read boundary for the state file (readJsonFile returns an unchecked cast), so healing here
  * keeps a hand-edited string, null, or negative out of the schedulers and the dashboards'
  * arithmetic instead of relying on each reader to guard it. Optional fields that are absent
@@ -297,6 +298,14 @@ export function loadLoopState(root: string, role: string): LoopState {
   if (s.lastReview !== undefined)
     s.lastReview = healRecord(s.lastReview, (v) => {
       v.at = healNumber(v.at, 0);
+      // The one nested non-numeric slot whose foreign type throws rather than reads odd: the
+      // rejected-review notes build a numbered list from `reasons` (numberedList's `.map`), so
+      // a hand-edited scalar or a missing field would crash the next tick's prompt. Rebuild it
+      // to its string entries — the same "the field is unusable, start it over" repair the
+      // numeric fields get.
+      v.reasons = Array.isArray(v.reasons)
+        ? v.reasons.filter((r) => typeof r === "string")
+        : [];
     });
   if (s.claim !== undefined)
     s.claim = healRecord(s.claim, (v) => {
