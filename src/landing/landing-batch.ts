@@ -37,6 +37,12 @@ export interface BatchContext extends GateRunsPi, LandingScopeContext {
    * (setLandingChangeStatus) so each row reads its own change's state; absent for callers with
    * no marker to keep. */
   onChangeStatus?(role: string, status: LandingChangeStatus): void;
+  /** Called once per change the moment its result is final, before the merge moves on to a
+   * slower batch-mate. The drain settles each result here (write-back, drop the entry) so a
+   * change already on main stops reading its stale pre-landing streak while a later change's
+   * conflict resolver blocks (BUGS.md 2026-10-09). Absent for callers that settle the
+   * returned array themselves. */
+  onResult?(index: number, result: TickResult): void | Promise<void>;
 }
 
 /** One change's wiring, resolved by the drain from its authoring runner: the live state object
@@ -183,6 +189,13 @@ export async function landVetted(
     signal: ctx.signal,
   });
   let aborted = false;
+  // Every finalized result goes through here: record it, then hand it to the caller's
+  // onResult (the drain's per-change write-back) so settling does not wait behind a slower
+  // batch-mate's conflict resolver (BUGS.md 2026-10-09).
+  const emit = async (s: number, result: TickResult): Promise<void> => {
+    results[s] = result;
+    await ctx.onResult?.(s, result);
+  };
   const finish = (): Array<TickResult | undefined> =>
     aborted ? results.map((r) => r ?? "aborted") : results;
   // The landing step the degenerate case and the abandon fallback share: land one request
@@ -192,10 +205,10 @@ export async function landVetted(
   // and test/lander-errors.test.ts, which pins the degradation).
   const landOne = async (s: number, req: LandRequest): Promise<void> => {
     try {
-      results[s] = await landApprovedChange(landerCtx(wiringFor(req.role)), req);
+      await emit(s, await landApprovedChange(landerCtx(wiringFor(req.role)), req));
     } catch (err) {
-      results[s] = "error";
       wiringFor(req.role).state.lastError = errorMessage(err);
+      await emit(s, "error");
     }
   };
 
@@ -234,7 +247,7 @@ export async function landVetted(
         // after it unattempted for the next drain.
         const { state } = wiringFor(entries[front]!.role);
         const entry = entries[front]!;
-        results[front] = await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state);
+        await emit(front, await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state));
         report(front, "done");
         break;
       }
@@ -243,14 +256,14 @@ export async function landVetted(
       // later step's degrades to "error" on the change at its front (ref kept for recovery),
       // the rest unattempted, so the prefixes already on main keep their "changed".
       if (firstAttempt) throw err;
-      results[front] = "error";
       wiringFor(entries[front]!.role).state.lastError = errorMessage(err);
+      await emit(front, "error");
       report(front, "done");
       break;
     }
     if (outcome.kind === "landed") {
       for (let s = front; s < front + size; s++) {
-        results[s] = "changed";
+        await emit(s, "changed");
         report(s, "done");
       }
       landedCount += size;
@@ -267,7 +280,7 @@ export async function landVetted(
       // The race was lost on every attempt — main is moving faster than a check completes.
       // Every change not yet landed keeps its ref with "merge_blocked": leftover recovery
       // re-lands each through its own gate + tryMerge, whose in-lock check cannot lose it.
-      for (let s = front; s < entries.length; s++) results[s] = "merge_blocked";
+      for (let s = front; s < entries.length; s++) await emit(s, "merge_blocked");
       break;
     } else {
       aborted = true; // every result still undefined reads "aborted" (finish), refs kept
@@ -297,6 +310,14 @@ export async function landVetted(
   // merge, or an abort's write-back), so it must not keep a live row meanwhile.
   for (let s = 0; s < vetted.length; s++) {
     if (results[s] === undefined) report(s, "done");
+  }
+  // An abort settles every change without a result as "aborted" here, through onResult, so a
+  // stopping merge writes each one back before it returns rather than leaving it to the
+  // caller's end-of-batch loop.
+  if (aborted) {
+    for (let s = 0; s < results.length; s++) {
+      if (results[s] === undefined) await emit(s, "aborted");
+    }
   }
   return finish();
 }

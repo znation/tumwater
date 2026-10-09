@@ -113,6 +113,14 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
   merge.promise = (async () => {
     let results: Array<TickResult | undefined>;
     let threw = false;
+    // A result reaches settleLandingOutcome the moment landVetted finalizes it, not after the
+    // whole batch; this set lets the end-of-batch loop skip what is already written back.
+    const settled = new Set<number>();
+    const settleOne = async (s: number, result: TickResult): Promise<void> => {
+      const v = picks[s]!;
+      settled.add(s);
+      await settleLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+    };
     try {
       results = await landVetted(
         {
@@ -121,6 +129,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           config: roleConfig,
           signal: () => merge.controller.signal,
           onChangeStatus: (role, status) => setLandingChangeStatus(root, role, status),
+          onResult: settleOne,
           runGatePi: (opts) => picks[0]!.author.runGatePi(opts),
         },
         picks.map((v) => ({
@@ -147,6 +156,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       for (let s = 0; s < picks.length; s++) {
         const v = picks[s]!;
         const { role } = v.entry;
+        if (settled.has(s)) continue; // already written back through onResult
         const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
         if (result === undefined && !threw) {
           p.vetted.set(role, v);
@@ -154,7 +164,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           continue;
         }
         if (result !== undefined) {
-          await settleLandingOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file);
+          await settleOne(s, result);
         } else {
           removeLandingChange(root, role);
         }

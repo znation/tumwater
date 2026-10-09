@@ -17,7 +17,7 @@ import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig } from "../src/config/config.js";
-import { loadLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import {
   APPROVE,
@@ -271,6 +271,69 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
     assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
   } finally {
     if (held) ctx.semaphore.release();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
+test("a change settled early in a batch writes back before a slower batch-mate's resolver returns", async () => {
+  // BUGS.md 2026-10-09: a change whose landing is already final must not keep its stale error
+  // streak (and with it the dashboard's red "failing tick after tick" banner) until every
+  // later change in the batch settles — including a conflict-resolution model run that can
+  // take its whole timeout. alpha lands cleanly while beta's resolver blocks; alpha's streak
+  // reset and `landed` event must already be on disk before the resolver returns.
+  const root = makeRepo();
+  await queueChanges(root, ["alpha", "beta"]);
+  // main edits beta's file after both pins: beta's vet rebases to a conflict (and reviews the
+  // bare pin), and its merge needs the resolver. alpha is untouched and lands cleanly.
+  fs.writeFileSync(path.join(root, "beta.txt"), "main's beta\n");
+  sh(root, "git", "add", "beta.txt");
+  sh(root, "git", "commit", "-m", "main edits beta.txt");
+  // alpha enters its landing with the stale streak the bug report saw.
+  const alphaState = freshLoopState("alpha");
+  alphaState.consecutiveErrors = 6;
+  alphaState.lastResult = "review_error";
+  saveLoopState(root, alphaState);
+
+  const flags = tmpdir("batch-settle-");
+  const started = path.join(flags, "resolver-started");
+  const release = path.join(flags, "resolver-release");
+  const restore = fakePi(
+    [
+      leasedRoleShell(),
+      `for a in "$@"; do case "$a" in`,
+      `tumwater-*-conflict) echo resolved > beta.txt; touch '${started}'; i=0; while [ ! -f '${release}' ] && [ $i -lt 600 ]; do sleep 0.1; i=$((i+1)); done; printf '%s\\n' '${assistantLine("resolved")}'; exit 0;;`,
+      `*"VERDICT:"*) printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
+      `esac; done`,
+    ].join("\n"),
+  );
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
+  pipeline.merge = busySlot();
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitFor(() => pipeline.vetted.size === 2, "both changes to be vetted", 60_000);
+    pipeline.merge = null;
+    await waitForFile(started, 60_000);
+
+    assert.equal(
+      loadLoopState(root, "alpha").consecutiveErrors,
+      0,
+      "alpha's landed change reset its streak before beta's resolver returned",
+    );
+    assert.ok(
+      readEvents(root).some((e) => e.type === "landed" && e.loop === "alpha"),
+      "alpha's landed event was written before beta's resolver returned",
+    );
+
+    fs.writeFileSync(release, "");
+    await waitFor(drained(root, pipeline), "both changes to land", 60_000);
+    assert.ok(
+      readEvents(root).some((e) => e.type === "landed" && e.loop === "beta"),
+      "beta landed once its resolver was released",
+    );
+  } finally {
+    fs.writeFileSync(release, "");
+    await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
     restore();
   }
