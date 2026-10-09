@@ -25,6 +25,7 @@ import {
 } from "./test-runner.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
+import { withWedgedXcrun, xcrunProbeUnsupported } from "./helpers/wedged-xcrun.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
 function fakeDistDir(...files: string[]): string {
@@ -285,28 +286,15 @@ test("suiteEnv drops every variable the harness resolves, so a fleet-started sui
  * failed. */
 test(
   "a wedged xcrun cannot freeze the suite environment probe: the probe is bounded",
-  { skip: process.platform !== "darwin" || !fs.existsSync("/usr/bin/git") },
+  { skip: xcrunProbeUnsupported },
   () => {
-    const scratch = tmpdir("suite-xcrun-");
-    const oldPath = process.env.PATH;
-    try {
-      const bin = path.join(scratch, "bin");
-      fs.mkdirSync(bin);
-      const fake = path.join(bin, "xcrun");
-      // `exec` makes the sleeping process the child spawnSync's timeout kills, with no
-      // grandchild left holding the capture pipe open past the kill.
-      fs.writeFileSync(fake, "#!/bin/sh\nexec sleep 3\n");
-      fs.chmodSync(fake, 0o755);
-      process.env.PATH = `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin`;
+    withWedgedXcrun("suite-xcrun-", () => {
       const started = Date.now();
       const real = realGitFromXcrun(300);
       const elapsed = Date.now() - started;
       assert.equal(real, null, "an unanswered probe leaves PATH alone");
       assert.ok(elapsed < 1_500, `probe took ${elapsed}ms; it was not bounded`);
-    } finally {
-      process.env.PATH = oldPath;
-      fs.rmSync(scratch, { recursive: true, force: true });
-    }
+    });
   },
 );
 
