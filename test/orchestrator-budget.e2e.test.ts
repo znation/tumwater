@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../src/config/config.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
@@ -174,15 +175,27 @@ function writeFallbackModels(): string {
   return file;
 }
 
+/** The fallback tests' standard config: fastConfig for the given roles plus the tiny cap and
+ * paid-primary/free-fallback pair that writeFallbackModels() defines. One fake run costs $1,
+ * so the startup tick closes the $0.50 gate. `fallbackModel` overrides the free pair for the
+ * refusal case, which names an unlisted model on purpose. */
+function fallbackConfig(
+  roles: string[],
+  fallbackModel: TumwaterConfig["fallbackModel"] = { provider: "local", model: "local-free" },
+): TumwaterConfig {
+  const config = fastConfig(roles);
+  config.maxDailyCostUsd = 0.5;
+  config.provider = "paid";
+  config.model = "big-paid";
+  config.fallbackModel = fallbackModel;
+  return config;
+}
+
 test("a reached cap switches role loops to the free fallback model instead of stopping them", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget fallback e2e test");
   // Tiny cap: exactly one fake run's cost, so clean's startup tick closes the gate.
-  const config = fastConfig(["clean", "director"]);
-  config.maxDailyCostUsd = 0.5;
-  config.provider = "paid";
-  config.model = "big-paid";
-  config.fallbackModel = { provider: "local", model: "local-free" };
+  const config = fallbackConfig(["clean", "director"]);
   // A role pinned to its own paid model: the switch must drop that override too, or the cap
   // would keep being exceeded by exactly the loop that opted out of the default model.
   config.roles.clean = { enabled: true, model: "also-paid" };
@@ -253,13 +266,9 @@ test("a reached cap switches role loops to the free fallback model instead of st
 test("a fallback pi cannot price at zero is refused and the fleet pauses as before", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget fallback refusal test");
-  const config = fastConfig(["clean"]);
-  config.maxDailyCostUsd = 0.5;
-  config.provider = "paid";
-  config.model = "big-paid";
   // Names a model pi's definitions do not list: unverifiable, so it must never engage — a
   // fallback that can spend would defeat the cap it exists to survive.
-  config.fallbackModel = { provider: "local", model: "typo-free" };
+  const config = fallbackConfig(["clean"], { provider: "local", model: "typo-free" });
   saveConfig(repo, config);
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
@@ -287,11 +296,7 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
 test("a free fallback whose ticks keep failing is demoted to a pause, then probed back once it serves", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget fallback breaker test");
-  const config = fastConfig(["clean"]);
-  config.maxDailyCostUsd = 0.5;
-  config.provider = "paid";
-  config.model = "big-paid";
-  config.fallbackModel = { provider: "local", model: "local-free" };
+  const config = fallbackConfig(["clean"]);
   saveConfig(repo, config);
   const dir = tmpdir("fallback-breaker-");
   const healed = path.join(dir, "healed");
@@ -380,11 +385,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
 test("budget_resumed hands the in-flight fallback ticks back to the primary", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget handback e2e test");
-  const config = fastConfig(["clean"]);
-  config.maxDailyCostUsd = 0.5;
-  config.provider = "paid";
-  config.model = "big-paid";
-  config.fallbackModel = { provider: "local", model: "local-free" };
+  const config = fallbackConfig(["clean"]);
   saveConfig(repo, config);
   const argsFile = path.join(tmpdir(), "handback-e2e-runs.log");
   const flagsFile = path.join(tmpdir(), "handback-e2e-flags.log");
