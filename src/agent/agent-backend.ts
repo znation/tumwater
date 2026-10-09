@@ -13,6 +13,7 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import type { ResolvedAgentBin } from "../pi/pi-bin.js";
+import { hasResumableSession } from "./session-ledger.js";
 
 /** The backend id used when a config names none — the harness's historical, only agent. */
 export const DEFAULT_AGENT = "pi";
@@ -97,6 +98,11 @@ export interface AgentBackend {
   /** Observe one stderr chunk (with the runner's carried tail for a match that straddles two
    * chunks) for a backend-specific warning worth surfacing; the matched text, or undefined. */
   matchStderrWarning?(chunk: string, carriedTail: string): string | undefined;
+  /** Whether this backend can resume a session in `dir` for a run of `opts.kind`: the
+   * backend-aware resume guard (plans/agent-backends.md "Sessions"). pi continues the newest
+   * session file in the dir, claude resumes a ledger id from its recorded cwd. Optional — a
+   * backend with no hook falls back to the session-file check. */
+  resumable?(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean;
   /** Classify the exit's stderr into the run result's transient/config fields. */
   classifyExit(info: AgentExitInfo): AgentExitClassification;
 }
@@ -112,4 +118,18 @@ export function registerAgentBackend(backend: AgentBackend): void {
  * an unknown id is a hard error. */
 export function agentBackend(id: string): AgentBackend | undefined {
   return registry.get(id);
+}
+
+/** Whether the backend for `opts.agent` can resume a session in `dir` for a run of
+ * `opts.kind`: the one resume guard every resume point uses (plans/agent-backends.md
+ * "Sessions"), so a claude author or gate run resumes through its ledger id instead of being
+ * read as having no session. Falls back to the backend-neutral session-file check when the
+ * backend is unregistered or supplies no `resumable` hook — today's pi-only behavior. */
+export function agentSessionResumable(
+  dir: string,
+  opts: { kind: string; agent: string; cwd?: string },
+): boolean {
+  const backend = agentBackend(opts.agent);
+  if (backend?.resumable) return backend.resumable(dir, opts);
+  return hasResumableSession(dir);
 }

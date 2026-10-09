@@ -1,5 +1,5 @@
 import type { LoopState } from "../loop/loop-state.js";
-import { hasResumableSession } from "../pi/pi.js";
+import { agentSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";
 import { RETRIABLE_LANDING_RESULTS } from "../landing/landing-core.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -88,15 +88,20 @@ export function planTickStart(opts: {
   const agent = opts.agent ?? "pi";
   const resumePending = s.resumePending === true;
   const latest = resumePending ? latestSession(dir) : null;
-  const piSession = resumePending ? hasResumableSession(dir) : false;
-  let resumableSession = false;
-  let handoff = false;
-  if (latest !== null) {
-    if (latest.kind === "author" && latest.agent === agent) resumableSession = piSession;
-    else handoff = true;
-  } else {
-    resumableSession = piSession;
-  }
+  // Our backend decides whether the newest session of this kind is actually resumable: pi
+  // continues the newest FILE in the dir (only a newest author line for pi is safe), while
+  // claude resumes an id (safe across a newer gate line). A backend with no `resumable` hook
+  // falls back to the session-file check (the historical pi-only behavior).
+  const resumable = resumePending
+    ? agentSessionResumable(dir, { kind: "author", agent })
+    : false;
+  let resumableSession = resumable;
+  // A newest line of another kind or another agent is not ours to continue. When our backend
+  // cannot resume it either, the interrupted run's uncommitted edits still deserve a handoff
+  // rather than the fresh path's worktree reset. A missing transcript (claude) is not a
+  // handoff: there is no session left to continue, so the worktree resets as today.
+  const handoff =
+    latest !== null && !(latest.kind === "author" && latest.agent === agent) && !resumable;
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
   const pendingResumeCause = s.resumeCause;
   s.resumePending = false;

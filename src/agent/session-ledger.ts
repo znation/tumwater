@@ -15,7 +15,7 @@ import { ensureParentDir, readTextOrNull, writeTextAtomic } from "../files/files
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
  * the backend's own session files; readers that count session files must exclude it. */
-export const SESSION_LEDGER_FILE = "sessions.jsonl";
+const SESSION_LEDGER_FILE = "sessions.jsonl";
 
 /** One run's ledger line. `at` is epoch ms. */
 export interface SessionRecord {
@@ -50,6 +50,20 @@ export function recordSession(dir: string, record: SessionRecord): void {
     fs.appendFileSync(sessionLedgerPath(dir), JSON.stringify(record) + "\n");
   } catch {
     // Best effort: a lost ledger line costs resumability, not the run.
+  }
+}
+
+/** True when `dir` holds at least one session file a backend could resume by directory. This is
+ * the backend-neutral filesystem check behind pi's `--continue` and the fallback for an
+ * unregistered backend. The ledger file shares the dir and is a `.jsonl` too, so it is
+ * excluded — it is the harness's record of runs, not a session. */
+export function hasResumableSession(dir: string): boolean {
+  try {
+    return fs
+      .readdirSync(dir)
+      .some((f) => f.endsWith(".jsonl") && f !== SESSION_LEDGER_FILE);
+  } catch {
+    return false; // Missing directory — nothing to resume.
   }
 }
 

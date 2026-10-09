@@ -8,7 +8,16 @@ import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
+import { registerAgentBackend } from "../src/agent/agent-backend.js";
+import { piBackend } from "../src/pi/pi-backend.js";
+import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { setEnv } from "./helpers/env.js";
+
+// The resume guard dispatches to the registered backend, so this process must register the two
+// real adapters exactly as src/agent/run-agent.ts does when the harness loads.
+registerAgentBackend(piBackend);
+registerAgentBackend(claudeBackend);
 
 // tick-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
 // the interrupted session (and under which cause), what prompt it runs, and which side effects
@@ -28,10 +37,26 @@ function withSession(root: string, role: string): void {
   fs.writeFileSync(path.join(dir, "session-abc.jsonl"), "{}\n");
 }
 
+/** Record one claude author run and plant the transcript its resume check reads, under the
+ * caller's temp HOME. A claude resume is id-based, so no pi session file is needed. */
+function withClaudeAuthor(root: string, cwd: string, id = "c1"): void {
+  recordSession(sessionDir(root, "feature"), {
+    agent: "claude",
+    id,
+    kind: "author",
+    name: "n",
+    cwd,
+    at: Date.now(),
+  });
+  const transcript = claudeTranscriptPath(cwd, id);
+  fs.mkdirSync(path.dirname(transcript), { recursive: true });
+  fs.writeFileSync(transcript, "");
+}
+
 function plan(
   root: string,
   s: LoopState,
-  opts: { tickPrompt?: () => string | null; pending?: PendingPrompt } = {},
+  opts: { tickPrompt?: () => string | null; pending?: PendingPrompt; agent?: string } = {},
 ) {
   return planTickStart({
     root,
@@ -39,6 +64,7 @@ function plan(
     state: s,
     pending: opts.pending ?? new PendingPrompt(root, s.role),
     tickPrompt: opts.tickPrompt ?? (() => "assembled tick prompt"),
+    agent: opts.agent,
   });
 }
 
@@ -142,6 +168,96 @@ test("a newer gate session in the author dir hands off instead of resuming the r
   assert.equal(p.resuming, false, "the newest file is the resolver's, so a continue would reach it");
   assert.equal(p.handoff, true);
   assert.match(p.prompt, /uncommitted edits are in your worktree/);
+});
+
+test("a claude author resumes its recorded session when the transcript exists", () => {
+  const root = tmpdir();
+  const cwd = fs.realpathSync(root);
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const s = state({ resumePending: true });
+    withClaudeAuthor(root, cwd);
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, true, "a claude ledger id with a transcript resumes");
+    assert.equal(p.handoff, false);
+    assert.equal(p.resumeCause, "restart");
+    assert.equal(s.resumePending, false);
+  } finally {
+    restoreHome();
+  }
+});
+
+test("a claude author resumes its id even when a newer gate line shares the dir", () => {
+  const root = tmpdir();
+  const cwd = fs.realpathSync(root);
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const s = state({ resumePending: true });
+    withClaudeAuthor(root, cwd);
+    // claude resumes by id, not by newest file, so a newer gate run does not shadow it
+    // (unlike pi's --continue).
+    recordSession(sessionDir(root, "feature"), {
+      agent: "claude",
+      id: "g1",
+      kind: "gate",
+      name: "n",
+      cwd,
+      at: Date.now() + 1,
+    });
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, true);
+    assert.equal(p.handoff, false);
+  } finally {
+    restoreHome();
+  }
+});
+
+test("a claude resume with no transcript resets fresh, not a handoff", () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const s = state({ resumePending: true });
+    recordSession(sessionDir(root, "feature"), {
+      agent: "claude",
+      id: "gone",
+      kind: "author",
+      name: "n",
+      cwd: root,
+      at: Date.now(),
+    });
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, false);
+    assert.equal(p.handoff, false, "no session is left to continue, so the worktree resets");
+    assert.equal(p.prompt, "assembled tick prompt");
+  } finally {
+    restoreHome();
+  }
+});
+
+test("a claude resume whose only ledger line names another agent hands off", () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const s = state({ resumePending: true });
+    recordSession(sessionDir(root, "feature"), {
+      agent: "pi",
+      id: "p1",
+      kind: "author",
+      name: "n",
+      cwd: root,
+      at: Date.now(),
+    });
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, false);
+    assert.equal(p.handoff, true, "another agent's session is not claude's to resume");
+    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+  } finally {
+    restoreHome();
+  }
 });
 
 test("resumePending without a session file falls back to a fresh tick", () => {

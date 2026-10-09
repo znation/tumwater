@@ -44,57 +44,6 @@ native shapes the translator could not map are visible in the event feed.
   none.
 - The project's check passes.
 
-### Agent backends, part 3c3/7: backend-aware resumability across the loop (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed)
-
-Design: plans/agent-backends.md ("Sessions"). The conflict hand-back note on a handoff already
-landed in loop-tick.ts (`if (handoff && s.conflictHandback?.applied)`), so this part is only the
-resumability guards.
-
-**Goal:** every resume and same-session guard asks the run's own backend whether its session is
-resumable, so a claude author or gate run resumes through its ledger id instead of being read
-as having no session (which would reset the worktree and lose the interrupted run's edits).
-
-**Approach.**
-1. **Session-file check moved.** Move `hasResumableSession` from `src/pi/pi.ts` to
-   `src/agent/session-ledger.ts` (its filesystem check is backend-neutral: a `.jsonl` in the
-   dir other than `SESSION_LEDGER_FILE`), and re-export it from `src/pi/pi.ts` so every existing
-   importer and test is unchanged. Moving it avoids an import cycle: session-ledger.ts imports
-   only files.ts, while pi.ts reaches run-agent.ts.
-2. **Hook + dispatcher.** `src/agent/agent-backend.ts`: add optional `resumable?(dir: string,
-   opts: { kind: string; agent: string; cwd?: string }): boolean` to `AgentBackend`, and export
-   `agentSessionResumable(dir, opts)` dispatching to `agentBackend(opts.agent)?.resumable`, or
-   falling back to `hasResumableSession(dir)` when the backend is unregistered or has no hook
-   (today's pi-only behavior).
-3. **pi implementation.** `src/pi/pi-backend.ts`: `resumable(dir, opts)` =
-   `sessionResumable(dir, opts, hasResumableSession(dir))`.
-4. **claude implementation.** `claude-backend.ts` in the claude adapter directory: `resumable(dir, opts)` when
-   `resumableSession(dir, opts)` returns a record AND `fs.existsSync(claudeTranscriptPath(record.cwd,
-   record.id))` AND (when `opts.cwd` is given) `record.cwd === opts.cwd`.
-5. **Replace the three guards** with `agentSessionResumable`: `planTickStart`
-   (src/tick/tick-resume.ts, passing `{ kind: "author", agent }` and no cwd, since it runs
-   before the lease — the adapter's own cwd match in `invocation` stays the runtime second
-   line), `requestFollowUp`'s guard (src/loop/loop-pi.ts), and the review-follow-up guard
-   (src/review/review-followup.ts).
-6. **Tests.** `test/loop-interrupted.test.ts` (a claude author's interrupted tick is kept and
-   resumed, not reset; a newest line naming another agent still hands off),
-   `test/review-followup.test.ts` (a claude gate session resumes), and the adapter's
-   `resumable` predicate in `claude-run.test.ts`.
-
-**Files touched:** `src/agent/agent-backend.ts`, `src/agent/session-ledger.ts`,
-`src/pi/pi-backend.ts`, `src/pi/pi.ts`, `claude-backend.ts` under src/agent/claude/,
-`src/tick/tick-resume.ts`, `src/loop/loop-pi.ts`, `src/review/review-followup.ts`,
-`test/loop-interrupted.test.ts`, `test/review-followup.test.ts`, `claude-run.test.ts`.
-
-**Acceptance criteria:**
-- With `config.agent = "claude"` and a transcript present for the newest author ledger line,
-  `planTickStart` sets `resuming: true` and the tick's slot is kept (`keep`); with the transcript
-  absent it does not resume and the worktree is reset as today. A newest line naming another
-  agent still hands off.
-- A claude `requestFollowUp` and a claude review follow-up pass `--resume <recorded id>`; a pi
-  session dir still uses pi's `--continue` exactly as today.
-- A ledger line whose cwd differs from the requested cwd is not resumable.
-- The project's check passes.
-
 ### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c3/7 landed)
 
 Design: plans/agent-backends.md ("Sessions").
@@ -528,6 +477,63 @@ and asserting the refetch shows the second loop's note (not the first's).
 
 
 ## Done
+
+### Agent backends, part 3c3/7: backend-aware resumability across the loop (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("Sessions"). The conflict hand-back note on a handoff already
+landed in loop-tick.ts (`if (handoff && s.conflictHandback?.applied)`), so this part is only the
+resumability guards.
+
+**Goal:** every resume and same-session guard asks the run's own backend whether its session is
+resumable, so a claude author or gate run resumes through its ledger id instead of being read
+as having no session (which would reset the worktree and lose the interrupted run's edits).
+
+**Approach.**
+1. **Session-file check moved.** `hasResumableSession` now lives in
+   `src/agent/session-ledger.ts` (its filesystem check is backend-neutral: a `.jsonl` in the
+   dir other than `SESSION_LEDGER_FILE`, which is no longer exported), and `src/pi/pi.ts`
+   re-exports it so every existing importer and test is unchanged. Moving it avoids an import
+   cycle: session-ledger.ts imports only files.ts, while pi.ts reaches run-agent.ts.
+2. **Hook + dispatcher.** `src/agent/agent-backend.ts` adds optional `resumable?(dir: string,
+   opts: { kind: string; agent: string; cwd?: string }): boolean` to `AgentBackend`, and exports
+   `agentSessionResumable(dir, opts)` dispatching to `agentBackend(opts.agent)?.resumable`, or
+   falling back to `hasResumableSession(dir)` when the backend is unregistered or has no hook.
+3. **pi implementation.** `src/pi/pi-backend.ts`: `resumable(dir, opts)` =
+   `sessionResumable(dir, opts, hasResumableSession(dir))`.
+4. **claude implementation.** `claude-backend.ts` under src/agent/claude/: a shared
+   `claudeResumableRecord` (newest record of the kind at the requested cwd whose transcript
+   exists) backs both `resumable(dir, opts)` and the invocation's `--resume` choice, so the
+   guard and the run cannot drift.
+5. **Replace the same-session guards** with `agentSessionResumable`: `planTickStart`
+   (src/tick/tick-resume.ts, passing `{ kind: "author", agent }` and no cwd, since it runs
+   before the lease — the adapter's own cwd match in `invocation` stays the runtime second
+   line), `requestFollowUp`'s guard (src/loop/loop-pi.ts), the review-follow-up guard
+   (src/review/review-followup.ts), and the reviewer's two timeout-progressing resume guards
+   (src/review/review.ts) — the original three-guard list missed review.ts, whose guards would
+   otherwise read a claude gate run as having no session.
+6. **Tests.** `test/tick-resume.test.ts` (a claude author resumes when its transcript exists,
+   resets fresh — not a handoff — when it does not, resumes its id past a newer gate line, and
+   hands off when the only ledger line names another agent), `test/review-followup.test.ts`
+   (a claude gate session resumes without a pi session file), and the adapter's `resumable`
+   predicate in `test/claude-run.test.ts`. The entry named `test/loop-interrupted.test.ts`; the
+   decision it targets is pinned directly in tick-resume.test.ts because planTickStart owns it
+   and `loop-tick.ts` keeps the slot from `plan.resuming || plan.handoff` unchanged.
+
+**Files touched:** `src/agent/agent-backend.ts`, `src/agent/session-ledger.ts`,
+`src/pi/pi-backend.ts`, `src/pi/pi.ts`, `claude-backend.ts` under src/agent/claude/,
+`src/tick/tick-resume.ts`, `src/loop/loop-pi.ts`, `src/review/review-followup.ts`,
+`src/review/review.ts`, `test/tick-resume.test.ts`, `test/review-followup.test.ts`,
+`test/claude-run.test.ts`.
+
+**Acceptance criteria:**
+- With `config.agent = "claude"` and a transcript present for the newest author ledger line,
+  `planTickStart` sets `resuming: true` and the tick's slot is kept (`keep`); with the transcript
+  absent it does not resume and the worktree is reset as today. A newest line naming another
+  agent still hands off.
+- A claude `requestFollowUp` and a claude review follow-up pass `--resume <recorded id>`; a pi
+  session dir still uses pi's `--continue` exactly as today.
+- A ledger line whose cwd differs from the requested cwd is not resumable.
+- The project's check passes.
 
 ### Agent backends, part 3c1/7: the claude backend adapter and PATH fake (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7, which feature judged too large for one run; requires parts 3a/7 and 3b/7 landed; done 2026-10-09 by feature)
 

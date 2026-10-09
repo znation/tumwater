@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
 import { claudeBackend, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
-import { readSessions } from "../src/agent/session-ledger.js";
+import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { agentBinSourceLabel } from "../src/pi/pi-bin.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
@@ -124,6 +124,58 @@ test("a ledger record whose cwd differs is not resumed", async () => {
     assert.ok(runs[1]!.includes("--session-id"), "it mints a fresh session instead");
   } finally {
     fake.restore();
+    restoreHome();
+  }
+});
+
+test("claude's resumable predicate requires the kind, the recorded cwd, and a transcript", () => {
+  const sessions = path.join(tmpdir(), "sessions");
+  const cwd = fs.realpathSync(tmpdir());
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    recordSession(sessions, {
+      agent: "claude",
+      id: "rec-id",
+      kind: "author",
+      name: "n",
+      cwd,
+      at: Date.now(),
+    });
+    const transcript = claudeTranscriptPath(cwd, "rec-id");
+    fs.mkdirSync(path.dirname(transcript), { recursive: true });
+    fs.writeFileSync(transcript, "");
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd }),
+      true,
+      "a transcript at the recorded cwd is resumable",
+    );
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "claude" }),
+      true,
+      "without a requested cwd the record's own cwd decides",
+    );
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd: "/elsewhere" }),
+      false,
+      "a different cwd is not resumable",
+    );
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "gate", agent: "claude", cwd }),
+      false,
+      "another kind's record is not resumable",
+    );
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "pi", cwd }),
+      false,
+      "another agent's record is not resumable",
+    );
+    fs.rmSync(transcript);
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd }),
+      false,
+      "a missing transcript is not resumable",
+    );
+  } finally {
     restoreHome();
   }
 });

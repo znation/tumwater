@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { hasResumableSession, runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
-import { sessionResumable } from "../agent/session-ledger.js";
+import { runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
+import { agentSessionResumable } from "../agent/agent-backend.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
@@ -344,10 +344,10 @@ export class LoopPi {
   ): Promise<PiRunResult | null> {
     const cfg = config ?? configForRole(this.host.config(), this.host.role);
     const dir = sessionDir(this.host.root, this.host.role);
-    // The follow-up continues THIS tick's author session. The ledger keeps it honest: a
-    // conflict resolver's gate run in the same dir would otherwise be the newest session the
-    // continue flag reaches, so only a newest author line for this tick's agent may resume.
-    if (!sessionResumable(dir, { kind: "author", agent: cfg.agent ?? "pi" }, hasResumableSession(dir))) {
+    // The follow-up continues THIS tick's author session. The backend's own resumable rule
+    // keeps it honest: pi would reach the newest file, claude its recorded id, so a conflict
+    // resolver's gate run in the same dir cannot be mistaken for this tick's session.
+    if (!agentSessionResumable(dir, { kind: "author", agent: cfg.agent ?? "pi" })) {
       return null;
     }
     return this.runWithTransientRetry({

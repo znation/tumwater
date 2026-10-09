@@ -4,8 +4,7 @@
  * return the run even when it failed, so the caller can honor a shutdown abort and fold the
  * spend; null means there was no session to continue. */
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { hasResumableSession } from "../pi/pi.js";
-import { sessionResumable } from "../agent/session-ledger.js";
+import { agentSessionResumable } from "../agent/agent-backend.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { piLogPath } from "../paths.js";
@@ -34,10 +33,10 @@ async function runFollowupTurn(
 ): Promise<PiRunResult | null> {
   const dir = ctx.sessionDir;
   const cfg = reviewRunConfig(ctx.config);
-  // The verdict/re-run follow-up continues the review session the gate just wrote. The ledger
-  // keeps a newer line of another kind from being the session the continue flag actually
-  // reaches; a pre-ledger review dir falls back to the session-file check.
-  if (!sessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" }, hasResumableSession(dir))) {
+  // The verdict/re-run follow-up continues the review session the gate just wrote. The
+  // backend's own resumable rule keeps a newer line of another kind from being the session a
+  // pi continue would actually reach; claude resumes its recorded id.
+  if (!agentSessionResumable(dir, { kind: "gate", agent: cfg.agent ?? "pi" })) {
     return null;
   }
   return ctx.runGatePi({

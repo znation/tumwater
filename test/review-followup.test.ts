@@ -15,9 +15,12 @@ import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { ToolCallStart } from "../src/review/suite-rerun.js";
 import { hasResumableSession} from "../src/pi/pi.js";
+import { recordSession } from "../src/agent/session-ledger.js";
+import { claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { ReviewContext } from "../src/review/review.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { setEnv } from "./helpers/env.js";
 
 import type { PiRunOptions } from "../src/pi/pi.js";
 
@@ -94,6 +97,33 @@ test("requestVerdict continues the reviewer's session with capped budgets and th
   assert.equal(opts.rawLogFile, piLogPath(root, "feature"));
   assert.equal(opts.config.tickTimeoutSeconds, 900);
   assert.equal(opts.config.quietTimeoutSeconds, 300);
+});
+
+test("a claude gate session resumes through the ledger without a pi session file", async () => {
+  const config = defaultConfig() as TumwaterConfig & { agent?: string };
+  config.agent = "claude";
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const { ctx, captured } = makeCtx(config);
+    const dir = ctx.sessionDir;
+    recordSession(dir, {
+      agent: "claude",
+      id: "gate-1",
+      kind: "gate",
+      name: "n",
+      cwd: ctx.wt,
+      at: Date.now(),
+    });
+    const transcript = claudeTranscriptPath(ctx.wt, "gate-1");
+    fs.mkdirSync(path.dirname(transcript), { recursive: true });
+    fs.writeFileSync(transcript, "");
+    assert.equal(hasResumableSession(dir), false, "claude leaves no pi session file in the dir");
+    const run = await requestVerdict(ctx);
+    assert.equal(run, captured.result);
+    assert.equal(captured.opts!.continueSession, true, "the claude gate session is continued");
+  } finally {
+    restoreHome();
+  }
 });
 
 test("requestVerdict honors a smaller configured budget and a disabled quiet timeout", async () => {

@@ -26,7 +26,7 @@ import { resolveBinFrom, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { claudeArgs } from "./claude-args.js";
 import { claudeEnv } from "./claude-env.js";
 import { claudeTranslator } from "./claude-stream.js";
-import { resumableSession } from "../session-ledger.js";
+import { resumableSession, type SessionRecord } from "../session-ledger.js";
 import {
   type AgentBackend,
   type AgentExitClassification,
@@ -66,19 +66,32 @@ function classifyClaudeExit(info: AgentExitInfo): AgentExitClassification {
   return {};
 }
 
+/** The ledger record this run may resume, or null: the newest record of `opts.kind` for
+ * claude, at `opts.cwd` when one is given, whose transcript file exists. Shared by
+ * `resolveClaudeSession` and the backend's `resumable` hook, so the resume guard and the
+ * invocation can never drift on what counts as resumable. */
+function claudeResumableRecord(
+  dir: string,
+  opts: { kind: string; agent: string; cwd?: string },
+): SessionRecord | null {
+  const record = resumableSession(dir, opts);
+  if (record === null) return null;
+  if (opts.cwd !== undefined && record.cwd !== opts.cwd) return null;
+  if (!fs.existsSync(claudeTranscriptPath(record.cwd, record.id))) return null;
+  return record;
+}
+
 /** The session id this run uses: for a continue, the ledger's newest record of this kind when
  * it is claude's, this cwd's, and its transcript file exists; otherwise a fresh UUID. Returns
  * the id and the `--resume` id when resuming. */
 function resolveClaudeSession(run: AgentRunSpec): { sessionId: string; resumeSessionId?: string } {
   if (run.continueSession) {
-    const record = resumableSession(run.sessionDir, {
+    const record = claudeResumableRecord(run.sessionDir, {
       kind: run.kind,
       agent: "claude",
       cwd: run.cwd,
     });
-    if (record !== null && fs.existsSync(claudeTranscriptPath(run.cwd, record.id))) {
-      return { sessionId: record.id, resumeSessionId: record.id };
-    }
+    if (record !== null) return { sessionId: record.id, resumeSessionId: record.id };
   }
   return { sessionId: randomUUID() };
 }
@@ -119,6 +132,10 @@ export const claudeBackend: AgentBackend = {
 
   translator(): StreamTranslator {
     return claudeTranslator();
+  },
+
+  resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {
+    return claudeResumableRecord(dir, opts) !== null;
   },
 
   classifyExit: classifyClaudeExit,

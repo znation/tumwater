@@ -9,6 +9,7 @@ import { resolveAgentBin, type ResolvedAgentBin } from "./pi-bin.js";
 import { withoutLaunchServicesCheckIn } from "../process/process.js";
 import { runMarkerEnv } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-stream.js";
+import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import {
   type AgentBackend,
@@ -77,6 +78,13 @@ export const piBackend: AgentBackend = {
 
   translator(): StreamTranslator {
     return identityTranslator;
+  },
+
+  resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {
+    // pi continues the newest session FILE in the dir, so a session must exist AND (when a
+    // ledger exists) its newest line overall must be this run's kind and agent — a newer gate
+    // or conflict-resolver run shadows the author's session and must refuse the continue.
+    return sessionResumable(dir, opts, hasResumableSession(dir));
   },
 
   matchStderrWarning(chunk: string, carriedTail: string): string | undefined {

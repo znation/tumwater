@@ -12,8 +12,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildReviewPrompt, buildReviewResumePrompt } from "../gates/gate-prompts.js";
-import { hasResumableSession } from "../pi/pi.js";
-import { sessionResumable } from "../agent/session-ledger.js";
+import { agentSessionResumable } from "../agent/agent-backend.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
@@ -274,11 +273,10 @@ export async function reviewAheadOfMain(
     priorResume !== undefined &&
     priorResume.patchId === reviewedPatchId &&
     priorResume.attempts < REVIEW_RESUME_LIMIT &&
-    sessionResumable(
-      priorResume.sessionDir,
-      { kind: "gate", agent: reviewCfg.agent ?? "pi" },
-      hasResumableSession(priorResume.sessionDir),
-    );
+    agentSessionResumable(priorResume.sessionDir, {
+      kind: "gate",
+      agent: reviewCfg.agent ?? "pi",
+    });
   if (resuming) {
     // Count the resume before the run: a crash must not let the same session be resumed
     // forever without ever spending the budget.
@@ -483,15 +481,14 @@ export async function reviewAheadOfMain(
       pi.timedOutProgressing &&
       reviewedPatchId !== undefined &&
       resumeAttempts < REVIEW_RESUME_LIMIT &&
-      // The promise must be one the next attempt can keep: only a dir that still holds a gate
-      // session to `--continue` earns the marker (and the "continues this review" wording).
-      // Without this a backend that leaves no session file would record a resume the next
-      // attempt silently declines, reviewing from scratch anyway.
-      sessionResumable(
-        reviewSessionDir,
-        { kind: "gate", agent: reviewCfg.agent ?? "pi" },
-        hasResumableSession(reviewSessionDir),
-      );
+      // The promise must be one the next attempt can keep: only a dir whose backend still
+      // holds a gate session to resume earns the marker (and the "continues this review"
+      // wording). Without this a backend that leaves no session file would record a resume the
+      // next attempt silently declines, reviewing from scratch anyway.
+      agentSessionResumable(reviewSessionDir, {
+        kind: "gate",
+        agent: reviewCfg.agent ?? "pi",
+      });
     const reviewTimeoutRewrite = (message: string): string =>
       message.replace(
         " — session and worktree edits preserved for resume",
