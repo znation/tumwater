@@ -50,94 +50,167 @@ Part 2/3 already writes the accurate `review_failed` message itself (its conditi
 - The failure digest clusters the two timeout messages under distinct causes, and a line with only the from-scratch wording still clusters where it used to.
 - The project's check passes.
 
-### Agent backends, part 3c/7: the claude backend, ledger-backed sessions, and PATH fake (planned 2026-10-09 by plan; split from part 3/7; requires parts 3a/7 and 3b/7 landed)
-
-**Needs review 2026-10-09 by feature: too large for one run**
+### Agent backends, part 3c1/7: the claude backend adapter and PATH fake (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7, which feature judged too large for one run; requires parts 3a/7 and 3b/7 landed)
 
 Design: plans/agent-backends.md ("The seam", "Sessions", "Testing").
 
 Registers claude as an adapter and proves a run end to end on a fake. Still not selectable from
 tumwater.json (part 4/7); tests drive it through `runAgent` with `config.agent = "claude"`.
+Parts 3c2/7 (native log and translator warnings) and 3c3/7 (backend-aware resumability across
+the loop) build on this and require it landed.
+
+**Goal:** `runAgent` runs claude on a fake and folds its stream exactly as it folds pi's, with a
+per-run session ledger the loop's later resume paths can query by ledger id.
 
 **Approach.**
-1. **Adapter.** Add a new `claude-backend` module under src/agent/claude/ as an `AgentBackend`: `id: "claude"`, a
-   label, `defaultBin: "claude"`, `binEnv: "TUMWATER_CLAUDE_BIN"`, `resolveBin` via
-   src/pi/pi-bin.ts, `invocation` composing claude-args (with the session decision) +
-   claude-env, `translator` from part 3a, and `classifyExit` (the stderr half of `configError`,
-   e.g. a 404 or "Not logged in" printed on stderr). Register it in src/agent/run-agent.ts.
-2. **Sessions.** In `invocation`, mint a UUID for a fresh run and `recordSession` before the
-   spawn; for a resume, take `resumableSession(dir, {kind, cwd, agent: "claude"})` and pass
-   `--resume <id>` only when its transcript file exists and the record's cwd matches (the cwd
-   half part 2/7 deferred here).
-3. **Native log.** src/agent/run-agent.ts writes each native line to
-   `.tumwater/log/<role>.<agent>.native.jsonl` (a `nativeLogPath` helper in src/paths.ts),
-   rotated and pruned like the raw log; canonical lines keep going to the existing raw log. The
-   runner emits part 3a's translator warnings — the unmapped-type reports and a result-less
-   run's `cost_unknown` — once each as `agent_unknown_event` warnings.
-4. **Fake.** Add `fake-claude.ts` under test/fakes/ — a PATH shim named `claude` replaying canned
-   stream-json, logging argv and stdin per run, and creating
-   `~/.claude/projects/<slug>/<id>.jsonl` under a temp HOME. Strip `TUMWATER_CLAUDE_BIN`,
-   `CLAUDECODE` and `CLAUDE_CODE_*` in test/test-runner.ts.
+1. **Seam additions.** `src/agent/agent-backend.ts`: add `kind: PiRunKind` to `AgentRunSpec`
+   (the adapter needs it for the ledger and the translator); add `sessionId?: string` to
+   `AgentInvocation` — the backend session id this run used (minted for a fresh claude run, the
+   resumed record's id for a continue), absent for pi, which mints no id ahead of the run.
+   `src/agent/run-agent.ts` records it: `recordSession(opts.sessionDir, { ..., id:
+   invocation.sessionId ?? opts.sessionName, ... })`.
+2. **Binary resolution.** `src/pi/pi-bin.ts`: extract `resolveBinFrom(binEnv, defaultBin,
+   configured?)` from `resolveAgentBin` (pi keeps env → `config.agentBin` → `"pi"`); give
+   `agentBinSourceLabel(source, binEnv = "TUMWATER_PI_BIN")` the env name so a spawn error names
+   `TUMWATER_CLAUDE_BIN`; `run-agent.ts`'s `spawnErrorMessage` passes `backend.binEnv`.
+3. **Adapter.** New `claude-backend.ts` in the claude adapter directory (src/agent/claude/) exporting `claudeBackend: AgentBackend`:
+   `id: "claude"`, `label: "Claude Code"`, `defaultBin: "claude"`, `binEnv:
+   "TUMWATER_CLAUDE_BIN"`, `resolveBin` via `resolveBinFrom`, and:
+   - `invocation(run)`: pick the session id (step 4), then `claudeArgs({ cwd: run.cwd, model:
+     run.config.model, thinking: run.config.thinking, sessionId | resumeSessionId, prompt:
+     run.prompt })`; layer the environment as pi's adapter does —
+     `runMarkerEnv(withoutLaunchServicesCheckIn(process.env), run.runMarker)` then
+     `claudeEnv(base, { quietTimeoutSeconds: run.config.quietTimeoutSeconds })` (both modules
+     landed in 3b/7). Throw a clear error when `run.config.model` is undefined, since part 4/7
+     resolves the tier defaults. Return `{ args, stdin, env, sessionId }`.
+   - `translator()`: `claudeTranslator()` from 3a/7.
+   - `classifyExit(info)`: `{}` when `info.killed`; otherwise `{ configError: true }` when
+     `info.code !== 0` and stderr matches
+     `/Not logged in|issue with the selected model|does not support this model/i`, else `{}`.
+     (The event path in claude-stream.ts classifies the stream itself; this is the stderr half.)
+4. **Session decision.** In `invocation`, fresh (`!run.continueSession`): `randomUUID()` and pass
+   it as `sessionId`. Continue: `resumableSession(run.sessionDir, { kind: run.kind, agent:
+   "claude", cwd: run.cwd })`; resume with `resumeSessionId: record.id` only when the record
+   exists and its transcript file exists, else mint a fresh id. Add
+   `claudeTranscriptPath(cwd, id)` = `path.join(os.homedir(), ".claude", "projects",
+   claudeProjectSlug(cwd), `${id}.jsonl`)` with `claudeProjectSlug(cwd) =
+   cwd.replace(/[^A-Za-z0-9]/g, "-")`, exported so the fake and tests create the same file.
+5. **Registration.** `run-agent.ts`: `registerAgentBackend(claudeBackend)` beside `piBackend`.
+6. **Fake.** New `fake-claude.ts` under test/fakes/ on fake-pi.ts's conventions: a PATH shim named
+   `claude` replaying canned stream-json, logging argv and stdin per run, and creating the
+   transcript at `claudeTranscriptPath` under a temp HOME. `test/test-runner.ts`'s `suiteEnv`
+   additionally deletes `TUMWATER_CLAUDE_BIN`, `CLAUDECODE`, and every `CLAUDE_CODE_*`.
+7. **Tests.** New `claude-run.test.ts` under test/ driving `runAgent`.
 
-**Interactions (resume, handoff, revision, conflict hand-back).** Added 2026-10-09 by operator.
-Agent backends 2/7 took three review rounds because its plan left out how a handoff combines
-with the revise-rejected and conflict hand-back paths. This part makes handoffs routine: every
-`resumeMissing` becomes one. Each case below needs a fake-claude test in
-test/loop-interrupted.test.ts.
-- **Resume.**
-  - In `planTickStart` (src/tick/tick-resume.ts), the newest author line for this agent is
-    resumable only when `hasResumableSession(dir)` finds a pi session file in the tumwater
-    session dir.
-  - A claude transcript lives under `~/.claude/projects/<slug>/` instead, so that check becomes
-    per-backend: the transcript for the line's `id` must exist.
-  - The line's `cwd` must also equal the leased worktree, because claude's resume is
-    cwd-scoped. `sessionResumable` already takes `cwd`. A pinned slot normally gives the same
-    cwd; a different cwd is a handoff, never a `--resume`.
-- **`resumeMissing` → handoff.** The retry in `runWithTransientRetry` (src/loop/loop-pi.ts) must
-  behave exactly like tick-resume's handoff:
-  - keep the worktree;
-  - skip both re-applies, the conflict hand-back and the revision (the `!resuming && !handoff`
-    guards in src/loop/loop-tick.ts);
-  - send the fresh-session notes below.
-  Route it through the same plan rather than a second copy of the rules.
-- **Fresh-session notes.** A handoff starts a fresh session, so every note the interrupted run
-  had in its context must be re-sent.
-  - The revision note already is (the `if (handoff)` branch in loop-tick.ts's revision block).
-  - **The conflict hand-back note is not.** A handoff over a hand-back that was already applied
-    (`conflictHandback.applied`, markers in the worktree, including a revision that re-applied
-    with conflicts) appends no `buildConflictHandbackNote`. The fresh run meets the markers
-    with no explanation.
-  - Fix it in this part, with a test: an interrupted tick with an applied hand-back plus a
-    handoff produces a prompt that contains the hand-back note, and the markers are intact.
-- **Same-session retries and follow-ups.** These continue the run that just finished. For
-  claude that is `--resume <that run's ledger id>`, never "the newest session":
-  - the transient retry (`continueSession: true` in loop-pi.ts);
-  - the SUMMARY follow-up (`requestFollowUp`, prompt-followup.ts);
-  - the review follow-ups (review-followup.ts).
-- **Interrupted review.** Unchanged: `phase === "review"` blocks both resume and handoff
-  (`resumeBlocked`). Add one claude case proving it.
+**Files touched:** new `claude-backend.ts` under src/agent/claude/, `src/agent/agent-backend.ts`,
+`src/agent/run-agent.ts`, `src/pi/pi-bin.ts`, new `fake-claude.ts` under test/fakes/,
+new `claude-run.test.ts` under test/, `test/test-runner.ts`.
 
-**Files touched.**
-- `claude-backend.ts` under src/agent/claude/ (new)
-- src/agent/run-agent.ts, src/paths.ts, src/orchestrator/retention.ts
-- `fake-claude.ts` under test/fakes/ (new); `claude-run.test.ts` under test/ (new); test/test-runner.ts
+**Acceptance criteria:**
+- `runAgent` on fake-claude with `config.agent = "claude"` and a set `config.model` returns the
+  folded `PiRunResult` (cost from the final `result`), and the raw log holds canonical lines the
+  existing readers render.
+- A fresh run's argv carries `--session-id <uuid>`; the session ledger gains one line with that
+  id, `agent: "claude"`, the run's kind and cwd; the fake created the transcript at the matching
+  `claudeTranscriptPath`.
+- A `continueSession` run from the same cwd and kind passes `--resume <recorded id>`; a ledger
+  record whose cwd differs, or whose transcript file is absent, gets a fresh `--session-id`.
+- The spawned env strips `CLAUDECODE` and `CLAUDE_CODE_SESSION_ID` even when the suite's parent
+  carries them; stdin carries the prompt.
+- `classifyExit` maps a nonzero exit with "Not logged in" stderr to `configError` and leaves a
+  killed run unclassified.
+- The project's check passes.
 
-**Acceptance criteria.**
-- **Run.** `runAgent` on fake-claude with `config.agent = "claude"` produces the folded
-  `PiRunResult` (cost, turns, tokens), and the raw log renders in `tumwater logs --role` and the
-  progress tail as a pi run would.
-- **Sessions.** A fresh run mints an id, records a ledger line and passes `--session-id`; a
-  requested resume from the same cwd/kind passes `--resume <id>`; a record from another cwd does
-  not.
-- **Readers.** suite-rerun detects a reviewer's `Bash` `npm test` through the `bash` mapping.
-- **Env.** The spawned env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` even when the suite's
-  parent had them, and stdin carries the prompt.
-- The native log file is written and rotated with the raw log.
-- **Warnings.** A result-less run's `cost_unknown` and an unmapped native type each log once as an
-  `agent_unknown_event`; a run over an unmapped type does not fail.
-- `npm run test` green.
+### Agent backends, part 3c2/7: the claude native log and translator warnings (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed)
 
-### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c/7 landed)
+Design: plans/agent-backends.md ("Canonical event stream": the native stream is kept for
+debugging only); part 3a/7's `ClaudeStreamTranslator.warnings()` already collects the unmapped
+native types and a result-less run's `cost_unknown`.
+
+**Goal:** a claude run's raw stdout is kept beside the canonical log for debugging, and the
+native shapes the translator could not map are visible in the event feed.
+
+**Approach.**
+1. **Path.** `src/paths.ts`: add `nativeLogPath(root, role, agent)` =
+   `.tumwater/log/<role>.<agent>.native.jsonl`, beside `piLogPath`, documented as debug-only.
+   Add `nativeLogFile: string` to `PiRunOptions` (src/agent/run-agent.ts) and pass it at the
+   three `rawLogFile` construction sites: `loopPiOpts` in src/loop/loop-pi.ts, src/review/review.ts,
+   src/review/review-followup.ts (each already computes `piLogPath(root, role)`).
+2. **Write.** In `run-agent.ts`, open the native log like the raw log (`ensureParentDir` +
+   `rotateIfLarge`); in `feedCanonical` write each complete native `line` to it before
+   `translator.translate`. A broken native log is non-fatal exactly as `rawLogBroken` is.
+3. **Warnings.** Add optional `warnings?(): string[]` to `StreamTranslator`
+   (src/agent/agent-backend.ts); `ClaudeStreamTranslator` already has it. Add
+   `onAgentWarning?: (warning: string) => void` to `PiRunOptions`; after the run, `run-agent.ts`
+   forwards each `translator.warnings?.() ?? []` entry once. Wire it in `loopPiOpts` as
+   `(w) => this.host.warn(`agent_unknown_event: ${w}`)`.
+4. **Tests.** Extend `claude-run.test.ts`.
+
+**Files touched:** `src/paths.ts`, `src/agent/run-agent.ts`, `src/agent/agent-backend.ts`,
+`src/loop/loop-pi.ts`, `src/review/review.ts`, `src/review/review-followup.ts`,
+`claude-run.test.ts`.
+
+**Acceptance criteria:**
+- A fake-claude run writes its raw native lines to `.tumwater/log/<role>.claude.native.jsonl`
+  and canonical lines to the raw log; a run with no native output writes none.
+- The native file rotates under `logMaxBytes` the way the raw log does.
+- A run with an unmapped native type and a result-less run each produce exactly one
+  `agent_unknown_event` warning naming the type / `cost_unknown`; a fully-mapped run produces
+  none.
+- The project's check passes.
+
+### Agent backends, part 3c3/7: backend-aware resumability across the loop (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed)
+
+Design: plans/agent-backends.md ("Sessions"). The conflict hand-back note on a handoff already
+landed in loop-tick.ts (`if (handoff && s.conflictHandback?.applied)`), so this part is only the
+resumability guards.
+
+**Goal:** every resume and same-session guard asks the run's own backend whether its session is
+resumable, so a claude author or gate run resumes through its ledger id instead of being read
+as having no session (which would reset the worktree and lose the interrupted run's edits).
+
+**Approach.**
+1. **Session-file check moved.** Move `hasResumableSession` from `src/pi/pi.ts` to
+   `src/agent/session-ledger.ts` (its filesystem check is backend-neutral: a `.jsonl` in the
+   dir other than `SESSION_LEDGER_FILE`), and re-export it from `src/pi/pi.ts` so every existing
+   importer and test is unchanged. Moving it avoids an import cycle: session-ledger.ts imports
+   only files.ts, while pi.ts reaches run-agent.ts.
+2. **Hook + dispatcher.** `src/agent/agent-backend.ts`: add optional `resumable?(dir: string,
+   opts: { kind: string; agent: string; cwd?: string }): boolean` to `AgentBackend`, and export
+   `agentSessionResumable(dir, opts)` dispatching to `agentBackend(opts.agent)?.resumable`, or
+   falling back to `hasResumableSession(dir)` when the backend is unregistered or has no hook
+   (today's pi-only behavior).
+3. **pi implementation.** `src/pi/pi-backend.ts`: `resumable(dir, opts)` =
+   `sessionResumable(dir, opts, hasResumableSession(dir))`.
+4. **claude implementation.** `claude-backend.ts` in the claude adapter directory: `resumable(dir, opts)` when
+   `resumableSession(dir, opts)` returns a record AND `fs.existsSync(claudeTranscriptPath(record.cwd,
+   record.id))` AND (when `opts.cwd` is given) `record.cwd === opts.cwd`.
+5. **Replace the three guards** with `agentSessionResumable`: `planTickStart`
+   (src/tick/tick-resume.ts, passing `{ kind: "author", agent }` and no cwd, since it runs
+   before the lease — the adapter's own cwd match in `invocation` stays the runtime second
+   line), `requestFollowUp`'s guard (src/loop/loop-pi.ts), and the review-follow-up guard
+   (src/review/review-followup.ts).
+6. **Tests.** `test/loop-interrupted.test.ts` (a claude author's interrupted tick is kept and
+   resumed, not reset; a newest line naming another agent still hands off),
+   `test/review-followup.test.ts` (a claude gate session resumes), and the adapter's
+   `resumable` predicate in `claude-run.test.ts`.
+
+**Files touched:** `src/agent/agent-backend.ts`, `src/agent/session-ledger.ts`,
+`src/pi/pi-backend.ts`, `src/pi/pi.ts`, `claude-backend.ts` under src/agent/claude/,
+`src/tick/tick-resume.ts`, `src/loop/loop-pi.ts`, `src/review/review-followup.ts`,
+`test/loop-interrupted.test.ts`, `test/review-followup.test.ts`, `claude-run.test.ts`.
+
+**Acceptance criteria:**
+- With `config.agent = "claude"` and a transcript present for the newest author ledger line,
+  `planTickStart` sets `resuming: true` and the tick's slot is kept (`keep`); with the transcript
+  absent it does not resume and the worktree is reset as today. A newest line naming another
+  agent still hands off.
+- A claude `requestFollowUp` and a claude review follow-up pass `--resume <recorded id>`; a pi
+  session dir still uses pi's `--continue` exactly as today.
+- A ledger line whose cwd differs from the requested cwd is not resumable.
+- The project's check passes.
+
+### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c3/7 landed)
 
 Design: plans/agent-backends.md ("Sessions").
 
