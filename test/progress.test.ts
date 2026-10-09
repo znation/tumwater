@@ -86,6 +86,27 @@ test("parseProgress resets output/peak at a new session", () => {
   assert.equal(p.peakContextTokens, 1_000);
 });
 
+test("parseProgress ignores corrupt usage numbers instead of poisoning the live cell", () => {
+  // pi's log carries unvalidated JSON, and some providers serialize usage numbers as strings
+  // (the same wire shape pi-stream.ts's usageNumber guards): a string output must not turn the
+  // `+=` accumulator into concatenation, and a string/negative total must not make peak NaN.
+  const usageLine = (usage: unknown): string =>
+    JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant", content: [{ type: "text", text: "later" }], usage },
+    });
+  const lines = [
+    SESSION,
+    assistantLine("first", { tokens: 1_000, output: 40 }),
+    usageLine({ totalTokens: "5000", output: "900" }),
+    usageLine({ totalTokens: -3, output: -7 }),
+  ];
+  const p = parseProgress(lines, 0);
+  assert.equal(p.outputTokens, 40, "a string or negative output is read as absent, not concatenated");
+  assert.equal(p.contextTokens, 1_000, "an unusable total keeps the last good context");
+  assert.equal(p.peakContextTokens, 1_000, "the peak never becomes NaN");
+});
+
 test("parseProgress survives noise and blank lines", () => {
   const p = parseProgress([SESSION, "", "not json", assistantLine("hi", { tokens: 10 })], 0);
   assert.equal(p.turns, 1);

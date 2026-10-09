@@ -10,6 +10,7 @@ import { bufferedCommandStallMs, commandBuffersOutput } from "../pi/command-shap
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
+import { nonNegativeNumber } from "../files/json-object.js";
 import { worktreesDir } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../files/tail.js";
 
@@ -184,7 +185,10 @@ interface ProgressEvent {
   toolName?: string;
   args?: unknown;
   partialResult?: unknown;
-  message?: { role?: string; content?: unknown; usage?: { totalTokens?: number; output?: number } };
+  // usage's counts are unvalidated wire JSON: pi-stream.ts guards the identical fields (its
+  // usageNumber), because some providers serialize usage numbers as strings. They stay unknown
+  // here so the guard below is the only way to read them.
+  message?: { role?: string; content?: unknown; usage?: { totalTokens?: unknown; output?: unknown } };
 }
 
 /** Apply one parsed progress event to a progress object (mutates it). */
@@ -230,9 +234,16 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
         progress.turns += 1;
         const usage = event.message.usage;
         if (usage) {
-          progress.contextTokens = usage.totalTokens ?? progress.contextTokens;
-          progress.outputTokens += usage.output ?? 0;
-          progress.peakContextTokens = Math.max(progress.peakContextTokens, usage.totalTokens ?? 0);
+          // Guard each count like pi-stream's usageNumber does: a string-serialized or corrupt
+          // wire value would otherwise poison the live cell — `+=` would concatenate output into
+          // a string and Math.max would yield NaN. An unusable total keeps the previous context
+          // (this cell is "latest value"), while output and the peak floor treat it as absent.
+          progress.contextTokens = nonNegativeNumber(usage.totalTokens, progress.contextTokens);
+          progress.outputTokens += nonNegativeNumber(usage.output, 0);
+          progress.peakContextTokens = Math.max(
+            progress.peakContextTokens,
+            nonNegativeNumber(usage.totalTokens, 0),
+          );
         }
         // The first text the loop speaks in this run is its work item ("I'll implement plan X");
         // later messages never replace it.

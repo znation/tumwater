@@ -53,7 +53,9 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * comparison false, so the daily budget's safety valve would never trip. The call sites:
  * budget/budget.ts's spendNumber (dayCostUsd/usd → 0), loop/loop-state.ts's healNumber (every
  * numeric LoopState field → 0), tick/tick-usage.ts's counter (each persisted usage count → 0),
- * pi/pi-stream.ts's usageNumber (one wire usage number → 0), and time-spend.ts's tickDurationMs
+ * pi/pi-stream.ts's usageNumber (one wire usage number → 0), ui/progress-data.ts's message_end
+ * read (totalTokens → the previous context, output and its peak floor → 0), and
+ * time-spend.ts's tickDurationMs
  * (an event's durationMs → null, the "no own duration" marker). */
 export function nonNegativeNumber<T>(value: unknown, fallback: T): number | T {
   const n = finiteNumber(value, fallback);
