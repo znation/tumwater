@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork } from "../src/tick/tick-timing.js";
-import { readEvents } from "../src/events/event-read.js";
 import { writeLandingMarker, readLandingMarker } from "../src/landing/landing-slot.js";
 import type { InFlightLanding } from "../src/landing/landing-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 
 // drainInFlightWork is the shutdown drain's policy: on an operator stop it waits out the
 // reserved ticks and every landing task unboundedly (the harness signal already aborted the
@@ -14,13 +14,6 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 // would never settle). The abandoned path is the one that hangs the restart forever if the
 // condition regresses, so its tick stands in as a promise that never settles under a test
 // timeout: a regression fails the test instead of passing silently.
-
-/** The warning messages logged under `root`, in order. */
-function warnings(root: string): string[] {
-  return readEvents(root)
-    .filter((e) => e.type === "warning")
-    .map((e) => String(e.message));
-}
 
 /** A minimal in-flight landing whose promise the test controls. */
 function landing(promise: Promise<void>, roles: string[]): InFlightLanding {
@@ -40,7 +33,7 @@ test("drainInFlightWork on an operator stop waits out ticks and landings, announ
   // could read, so an elapsed check races the clock (it read 29 ms of a 30 ms tick in CI).
   assert.ok(tickSettledAt > 0, "the drain waited out the reserved tick");
   assert.ok(landingSettledAt > 0, "the drain waited out the landing");
-  const w = warnings(root);
+  const w = warningMessages(root);
   assert.equal(w.length, 1, "only the landing wait is announced");
   assert.match(w[0]!, /^shutdown waiting on the in-flight landing of clean, dry$/);
 });
@@ -54,7 +47,7 @@ test("drainInFlightWork on a restart with a landing inside its window waits out 
   await drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["organize"])], true, 5_000, () => void aborts++);
   assert.equal(aborts, 0, "a landing inside its window is never aborted");
   assert.ok(tickSettledAt > 0, "the restart still waits out reserved ticks that settled");
-  const w = warnings(root);
+  const w = warningMessages(root);
   assert.equal(w.length, 1, "the hand-off's own wait announcement, not the shutdown one");
   assert.match(w[0]!, /^restart hand-off waiting on the in-flight landing of organize/);
 });
@@ -72,7 +65,7 @@ test("drainInFlightWork hands off without a wedged landing and without waiting o
   assert.equal(aborts, 1, "the hand-off aborted the wedged landing exactly once");
   assert.ok(elapsed >= 100 && elapsed < 5_000, `the drain is bounded by two hand-off windows (${elapsed}ms)`);
   assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
-  const w = warnings(root);
+  const w = warningMessages(root);
   assert.equal(w.length, 3, "wait, lapse, and abandon are each announced");
   assert.match(w[2]!, /the aborted landing of clean was still running 0\.05s later — handing off without it/);
 });

@@ -26,6 +26,7 @@ function stepHolds(
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 
 // The orchestrator's exported unit-test seams (src/orchestrator/orchestrator.ts): the permit-holding
 // wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the
@@ -386,13 +387,6 @@ test("pollFleetHold trips on two roles' same-kind backend failures and names the
 // promise stands in for the slot's task, so each phase (finished, aborted, abandoned) is
 // reached deterministically: the e2e tier drives the real batch through the first abort.
 
-/** The warning messages logged under `root`, in order. */
-function warnings(root: string): string[] {
-  return readEvents(root)
-    .filter((e) => e.type === "warning")
-    .map((e) => String(e.message));
-}
-
 test("awaitLandingForHandoff announces the wait and lets a landing that finishes in time land", async () => {
   const root = tmpdir();
   let aborts = 0;
@@ -404,7 +398,7 @@ test("awaitLandingForHandoff announces the wait and lets a landing that finishes
   );
   assert.equal(outcome, "finished");
   assert.equal(aborts, 0, "a landing inside its window is never aborted");
-  const w = warnings(root);
+  const w = warningMessages(root);
   assert.equal(w.length, 1, "only the wait itself is announced");
   assert.match(w[0]!, /^restart hand-off waiting on the in-flight landing of clean, dry \(deadline 5s\)$/);
 });
@@ -422,7 +416,7 @@ test("awaitLandingForHandoff aborts a landing past its window and waits for it t
   assert.equal(outcome, "aborted");
   assert.equal(aborts, 1, "aborted exactly once, when the window lapsed");
   assert.ok(Date.now() - startedAt >= 200, "the landing had its whole window first");
-  const w = warnings(root);
+  const w = warningMessages(root);
   assert.equal(w.length, 2);
   assert.match(w[1]!, /the landing of organize outlived its 0\.2s deadline — aborted/, "the lapse names what was awaited");
 });
@@ -439,7 +433,7 @@ test("awaitLandingForHandoff hands off without a landing still running after the
   assert.equal(aborts, 1);
   assert.ok(elapsed >= 200 && elapsed < 5_000, `the hand-off is bounded by two windows (${elapsed}ms)`);
   assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
-  const w = warnings(root);
+  const w = warningMessages(root);
   assert.equal(w.length, 3);
   assert.match(w[2]!, /the aborted landing of clean was still running 0\.1s later — handing off without it/);
 });
