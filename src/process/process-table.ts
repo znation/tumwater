@@ -91,6 +91,23 @@ export function parseLsofCwds(stdout: string): Map<number, string> {
   return cwds;
 }
 
+/** Parse lsof's `-Fn` output through an injected runner: the gating suite must not read the
+ * host's real `lsof` (BUGS.md 2026-10-08), so tests feed a canned stdout — or a failing
+ * runner — while the real probe keeps the argv and the timeout at its call site, as
+ * `readLaunchServicesPorts` does for `top`. lsof exits 1 whenever ANY named pid is absent or
+ * unreadable — a pid that exited since ps ran is routine — and still prints everything it did
+ * find, so a numeric exit status with stdout is an answer, not a failure. No lsof binary, a
+ * timeout, or a signal is a real failure. */
+export async function readLsofCwds(runLsof: () => Promise<string>): Promise<Map<number, string>> {
+  try {
+    return parseLsofCwds(await runLsof());
+  } catch (err) {
+    const e = err as { code?: unknown; stdout?: unknown };
+    if (typeof e.code === "number" && typeof e.stdout === "string") return parseLsofCwds(e.stdout);
+    throw err;
+  }
+}
+
 /** The #PORTS of the process named `command` in macOS `top -l 1 -stats pid,command,ports`
  * output — the largest, should several share the name — or null when no row has it. top
  * appends a `+`/`-` trend mark to a count only between samples of one run; it is ignored. */
@@ -145,20 +162,14 @@ export const systemProcessProbe: ProcessProbe = {
       }
       return cwds;
     }
-    try {
+    // The exit-1 trap (the qa GUI leak in BUGS.md was missed through exactly it) and the
+    // parser live in readLsofCwds; only the real lsof argv and timeout stay here.
+    return readLsofCwds(async () => {
       const { stdout } = await execFileAsync("lsof", ["-w", "-a", "-d", "cwd", "-Fn", "-p", pids.join(",")], {
         timeout: PROBE_TIMEOUT_MS,
       });
-      return parseLsofCwds(stdout);
-    } catch (err) {
-      // lsof exits 1 whenever ANY named pid is absent or unreadable — a pid that exited since
-      // ps ran is routine — and still prints everything it did find, so a numeric exit status
-      // with stdout is an answer, not a failure (the qa GUI leak in BUGS.md was missed through
-      // exactly this exit-1 trap). No lsof binary, a timeout, or a signal is a real failure.
-      const e = err as { code?: unknown; stdout?: unknown };
-      if (typeof e.code === "number" && typeof e.stdout === "string") return parseLsofCwds(e.stdout);
-      throw err;
-    }
+      return stdout;
+    });
   },
   async runMarkers(pids) {
     if (pids.length === 0) return new Map();

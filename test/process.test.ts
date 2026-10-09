@@ -13,6 +13,7 @@ import {
 } from "../src/process/process.js";
 import {
   parseLsofCwds,
+  readLsofCwds,
   readLaunchServicesPorts,
   parsePsOutput,
   parseTopPorts,
@@ -151,18 +152,13 @@ test("systemProcessProbe.runMarkers reads a live child's mark and skips vanished
   assert.deepEqual([...marks], [[child.pid as number, expected]]);
 });
 
-test("systemProcessProbe lists this process with its parent and reads its cwd past a vanished pid", async () => {
+test("systemProcessProbe lists this process with its parent", async () => {
   const rows = await systemProcessProbe.list();
   const self = rows.find((r) => r.pid === process.pid);
   assert.ok(self, "the table includes the calling process");
   assert.equal(self.ppid, process.ppid);
   assert.match(self.command, /node/);
-  // A pid beyond any pid space rides along: lsof exits 1 whenever any named pid is absent, and
-  // that exit must still yield the cwds it did print (on Linux the /proc read just skips it).
-  const cwds = await systemProcessProbe.cwds([process.pid, 2_000_000_000]);
-  assert.equal(cwds.get(process.pid), fs.realpathSync(process.cwd()));
-  assert.equal(cwds.has(2_000_000_000), false);
-  assert.deepEqual(await systemProcessProbe.cwds([]), new Map());
+  assert.deepEqual(await systemProcessProbe.cwds([]), new Map(), "no pids is an empty map without a lookup");
 });
 
 test("systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)', and skips vanished pids", async (t) => {
@@ -193,16 +189,32 @@ test("systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)', and ski
   }
 });
 
-test("systemProcessProbe.cwds takes the lsof success path when every named pid is readable", async (t) => {
-  // The vanished-pid test above only reaches lsof's exit-1 partial-result path; this is the
-  // other half of the same branch — every pid readable, lsof exits 0, and the map comes
-  // straight from its output.
-  if (process.platform === "linux") {
-    t.skip("the lsof path is not taken on Linux");
-    return;
-  }
-  const cwds = await systemProcessProbe.cwds([process.pid]);
-  assert.deepEqual([...cwds], [[process.pid, fs.realpathSync(process.cwd())]]);
+test("readLsofCwds answers lsof's parsed map on exit 0 and keeps its partial output on a nonzero exit", async () => {
+  // The success path (every pid readable, lsof exits 0) and the exit-1 partial-result path
+  // (lsof exits 1 whenever ANY named pid is absent or unreadable — routine when a pid exited
+  // since ps — and still prints everything it did find). The runner is injected so the gating
+  // suite never reads the host's real lsof (BUGS.md 2026-10-08); the real wiring lives in
+  // process.e2e.test.ts.
+  const success = await readLsofCwds(async () =>
+    ["p101", "fcwd", "n/one", "p102", "fcwd", "n/two with space", ""].join("\n"),
+  );
+  assert.deepEqual([...success], [[101, "/one"], [102, "/two with space"]]);
+
+  const partial = await readLsofCwds(async () => {
+    throw Object.assign(new Error("lsof exited 1"), { code: 1, stdout: "p101\nfcwd\nn/one\n" });
+  });
+  assert.deepEqual([...partial], [[101, "/one"]]);
+});
+
+test("readLsofCwds rejects when the runner could not run at all — no lsof, a timeout, or a signal", async () => {
+  // A missing lsof (or a timeout, or a signal) is a real failure, not an empty answer: the
+  // error carries no numeric exit status with stdout, so the probe must reject rather than
+  // hand back a silent empty map that would read as "no orphans" in doctor's check.
+  await assert.rejects(
+    readLsofCwds(async () => {
+      throw Object.assign(new Error("spawn lsof ENOENT"), { code: "ENOENT" });
+    }),
+  );
 });
 
 test("systemProcessProbe.cwds rejects when no lookup could run at all — no lsof on PATH", async (t) => {
