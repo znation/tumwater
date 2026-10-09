@@ -8,7 +8,7 @@ import { finiteNumber } from "../files/json-object.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../paths.js";
 import { type AutoRestartRecord, type RedeployDeps, RESTART_DRAIN_MAX_MS } from "./redeploy-policy.js";
-import { type RedeployEvent, Redeployer } from "./redeployer.js";
+import { type RedeployEvent, Redeployer, bestEffortLog } from "./redeployer.js";
 
 /** The self-redeploy WIRING (the state machine itself lives in redeployer.ts): the
  * production RedeployDeps bound to one repo — the mirror worktree both the green check and the
@@ -41,6 +41,11 @@ export function redeployDeps(
   bootProblem: () => Promise<string | null>,
 ): RedeployDeps {
   const dist = distDir();
+  // The green and witness checks call this sink from checkMainBaseline's run hook; a `logEvent`
+  // throw there (ENOSPC, EACCES, the path replaced by a directory) would reject the whole check,
+  // so the redeployer would read a green main as a check that could not run and re-run the suite
+  // every poll instead of redeploying. Wrap once here: the event is best-effort, the verdict is not.
+  const safeLog = bestEffortLog(log);
   // The mirror worktree — main checked out detached at the pending head — serves both the green
   // check and the compile; it is (re)pointed at each head before use.
   const mirror = async (mainHead: string) => ensureDetachedWorktree(root, mirrorWorktreePath(root), mainHead);
@@ -52,7 +57,7 @@ export function redeployDeps(
       mainIsGreen(
         await mirror(mainHead),
         liveConfig(root),
-        baselineCheckEventLogger("harness", log),
+        baselineCheckEventLogger("harness", safeLog),
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
@@ -69,7 +74,7 @@ export function redeployDeps(
       const cached = cachedBaselineVerdict(buildSha);
       if (cached !== undefined) return cached === "red";
       const witness = await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha);
-      const onRun = baselineCheckEventLogger("harness", log);
+      const onRun = baselineCheckEventLogger("harness", safeLog);
       const baseline = await checkMainBaseline(witness, liveConfig(root), onRun);
       if (!baseline.baseline || baseline.baseline.status !== "red") {
         return baseline.baseline ? false : null;

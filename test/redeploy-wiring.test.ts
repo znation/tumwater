@@ -134,6 +134,46 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   );
 });
 
+test("an unwritable event feed cannot reject the green check it reports on", async (t) => {
+  // The green check's onRun hook calls the redeploy wiring's log (logEvent); before the fix that
+  // throw propagated out of checkMainBaseline's run hook and rejected the whole check, so the
+  // redeployer read a green main as "could not run" and re-ran the suite every poll instead of
+  // redeploying. The verdict must not depend on a best-effort event write.
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    projManifest({ test: "node -e 'process.exit(0)'" }),
+  );
+  fs.mkdirSync(path.join(root, "node_modules"));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+  const head = headSha(root);
+
+  const errWrites: string[] = [];
+  t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+    errWrites.push(String(chunk));
+    return true;
+  });
+  const deps = redeployDeps(
+    root,
+    { sha: head, builtAt: 1, root },
+    () => {
+      throw new Error("EISDIR: illegal operation on a directory, open '.tumwater/log/events.jsonl'");
+    },
+    async () => null,
+  );
+  assert.equal(
+    await deps.mainGreen(head),
+    true,
+    "the check's green verdict stands even though its event could not be written",
+  );
+  assert.match(
+    errWrites.join(""),
+    /could not record build_check event: EISDIR/,
+    "the swallowed write failure stays loud on stderr",
+  );
+});
+
 test("createRedeployer composes the production Redeployer from the running build's own stamp", async () => {
   // The composition itself (redeploy.ts's createRedeployer) had never run under test: the unit
   // tier drove Redeployer with scripted deps while the real boot executed only inside a live

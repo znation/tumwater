@@ -31,10 +31,13 @@ export type RedeployEvent = HarnessEventInput;
  * directory) on the first build_stale/restart_refused/restart_blocked transition would end the
  * fleet, and for a forced restart leave its marker unacknowledged — the same "logging must not
  * throw" policy the orchestrator poll body's `emit` and the abort-request consumer apply. The
- * state change the event describes has already applied, so the failed write is swallowed here
- * but still made loud on stderr, the fallback warnTickRejected uses when the feed cannot take a
- * warning. */
-function bestEffortLog(log: (event: RedeployEvent) => void): (event: RedeployEvent) => void {
+ * redeploy wiring (redeploy.ts's redeployDeps) wraps its sink with this too: the green and
+ * witness checks call that sink from inside checkMainBaseline's run hook, whose throw would
+ * reject the whole check and make the redeployer treat a green main as a check that could not
+ * run. The state change the event describes has already applied, so the failed write is
+ * swallowed here but still made loud on stderr, the fallback warnTickRejected uses when the feed
+ * cannot take a warning. */
+export function bestEffortLog(log: (event: RedeployEvent) => void): (event: RedeployEvent) => void {
   return (event) => {
     try {
       log(event);
