@@ -13,7 +13,7 @@ import {
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { configPath, configLockPath, configRequestPath } from "../paths.js";
+import { configPath, configLockPath, configRequestPath, CONFIG_BASENAME } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { writeJsonAtomic } from "../files/json-files.js";
@@ -21,7 +21,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, parseJsonConfig } from "./config.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
@@ -98,6 +98,11 @@ function writeConfigMutation(
         return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
       }
       const candidate = mutate(cfg);
+      // An unset that finds nothing to remove returns the loaded config unchanged. Write nothing:
+      // re-serializing the merged config would reformat tumwater.json (defaults expanded) and
+      // break the no-op's "changes nothing" contract. The bytes stay identical; validation of an
+      // already-validated config is unnecessary.
+      if (candidate === cfg) return { ok: true };
       try {
         validateConfig(candidate); // throws listing every problem — nothing is written on failure
       } catch (err) {
@@ -321,6 +326,117 @@ export function setConfigKey(
   });
   if (!result.ok) return result;
   return { ok: true, value, oldValue };
+}
+
+/** A shallow copy of `obj` without `key` — the shape every `unsetConfigKey` branch returns
+ * when the removed value leaves its containing key/section empty (an emptied map, the last
+ * field of a `roles.<id>` entry, an emptied `model` map), so tumwater.json never keeps an
+ * empty object. */
+function without<T extends Record<string, unknown>>(obj: T, key: string): T {
+  const copy = { ...obj };
+  delete copy[key];
+  return copy;
+}
+
+/** The raw parsed tumwater.json as a plain object — the pre-defaults view `unsetConfigKey`'s
+ * presence check needs, because the merged config always carries defaults a top-level key or a
+ * `roles.<id>.<field>` (e.g. the seeded `minTickIntervalSeconds`) may never have been set to.
+ * Read inside writeConfigMutation's lock; a missing or unparsable file is `{}` (loadConfig has
+ * already rejected a broken file before a mutation runs, and an absent file is the bare
+ * defaults — there is nothing to retract). */
+function rawConfigObject(root: string): Record<string, unknown> {
+  const { raw } = parseJsonConfig(configPath(root), CONFIG_BASENAME);
+  return isJsonObject(raw) ? raw : {};
+}
+
+/** Remove ONE value of tumwater.json from its raw CLI text (`tumwater config unset <key>`):
+ * the inverse of setConfigKey. A bare top-level key is deleted (reverting to its default or
+ * to absence); a dotted key (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`,
+ * `model.<tier>`, `roles.<id>.<field>` — parseConfigKey) deletes that one entry or field,
+ * preserving its siblings, so an operator retracts one role's override without re-typing the
+ * rest. The containing map/`model` key is dropped when it empties, so the file never keeps an
+ * empty object (a `roles.<id>` entry cannot empty through the CLI: loadConfig always seeds
+ * `enabled`/`minTickIntervalSeconds`). Presence is judged against the raw FILE, not the merged
+ * config: a key the file never set but the defaults fill in (a top-level `quietHours`/
+ * `maxConcurrent`, a seeded `roles.<id>.minTickIntervalSeconds`) is nothing to remove, so the
+ * mutation returns the loaded config unchanged and writeConfigMutation skips the write — the
+ * file's bytes stay identical rather than being re-serialized with the defaults expanded.
+ * Legacy `provider`/`fallbackModel` unset normally — only
+ * `set` refuses to add them. Everything runs through writeConfigMutation (see there): the
+ * cross-process lock, validateConfig over the whole merged candidate, and the atomic write
+ * still own truth, so a rejected candidate leaves the file byte-identical. oldValue is the
+ * file's own value removed, or `undefined` when the file never held it. */
+export function unsetConfigKey(
+  root: string,
+  key: string,
+): { ok: true; oldValue: unknown } | { ok: false; error: string } {
+  const parsed = parseConfigKey(key);
+  if (parsed.kind === "error") return { ok: false, error: parsed.error };
+  if (parsed.kind === "role") {
+    const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
+    if (fieldError) return { ok: false, error: fieldError };
+  }
+  if (parsed.kind === "top") {
+    const unknown = unknownConfigKeyError(key);
+    if (unknown) return { ok: false, error: unknown };
+  }
+  let oldValue: unknown;
+  const result = writeConfigMutation(root, (cfg) => {
+    const raw = rawConfigObject(root); // the file's own keys, before defaults fill them in
+    const record = cfg as unknown as {
+      roles?: Record<string, Record<string, unknown>>;
+      model?: string | Record<string, string>;
+      [key: string]: unknown;
+    };
+    if (parsed.kind === "top") {
+      // Absent from the file (only a default carries it): nothing to remove.
+      if (!Object.hasOwn(raw, parsed.key)) return cfg;
+      oldValue = raw[parsed.key];
+      return without(record, parsed.key) as unknown as TumwaterConfig;
+    }
+    if (parsed.kind === "map") {
+      const rawMapCandidate = raw[parsed.map];
+      const rawMap = isJsonObject(rawMapCandidate) ? rawMapCandidate : {};
+      if (!Object.hasOwn(rawMap, parsed.role)) return cfg; // absent file entry: a no-op success
+      oldValue = rawMap[parsed.role];
+      const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
+      const next = { ...existing };
+      delete next[parsed.role];
+      if (Object.keys(next).length === 0) return without(record, parsed.map) as unknown as TumwaterConfig;
+      return { ...cfg, [parsed.map]: next } as unknown as TumwaterConfig;
+    }
+    if (parsed.kind === "tier") {
+      // A string `model` resolves to { default } (modelTierMap); unsetting a tier the FILE
+      // does not hold is a no-op that leaves the string untouched.
+      const rawTiers = modelTierMap(raw.model);
+      if (!Object.hasOwn(rawTiers, parsed.tier)) return cfg;
+      oldValue = rawTiers[parsed.tier];
+      const existing = modelTierMap(record.model);
+      const next = { ...existing };
+      delete next[parsed.tier];
+      if (Object.keys(next).length === 0) return without(record, "model") as unknown as TumwaterConfig;
+      return { ...cfg, model: next } as unknown as TumwaterConfig;
+    }
+    const rawRolesCandidate = raw.roles;
+    const rawRoles = isJsonObject(rawRolesCandidate) ? rawRolesCandidate : {};
+    const rawEntryCandidate = rawRoles[parsed.id];
+    const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
+    if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
+    oldValue = rawEntry[parsed.field];
+    const roles = record.roles ?? {};
+    const existing = roles[parsed.id] ?? {};
+    const nextEntry = { ...existing };
+    delete nextEntry[parsed.field];
+    if (Object.keys(nextEntry).length > 0)
+      return { ...cfg, roles: { ...roles, [parsed.id]: nextEntry } } as unknown as TumwaterConfig;
+    // The entry emptied: drop it, and the whole `roles` section when it was the last one.
+    const nextRoles = { ...roles };
+    delete nextRoles[parsed.id];
+    if (Object.keys(nextRoles).length === 0) return without(record, "roles") as unknown as TumwaterConfig;
+    return { ...cfg, roles: nextRoles } as unknown as TumwaterConfig;
+  });
+  if (!result.ok) return result;
+  return { ok: true, oldValue };
 }
 
 /** Consume the director's config-write request file (plans/portability.md §3/7). After its pi

@@ -55,14 +55,16 @@ Usage:
                                    (read-only; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
                                    and verdict)
-  tumwater config [get <key> | set <key> <value>]
+  tumwater config [get <key> | set <key> <value> | unset <key>]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one
                                    top-level key — quietHours ("23:00-07:00" or ""),
                                    quietHoursPerRole (per-role windows), maxDailyCostUsd,
                                    fallbackModel, among others
                                    (JSON-parsed when parseable, else a literal string) —
-                                   and confirm it. Dotted keys (maxDailyCostUsdPerRole.feature
+                                   and confirm it; unset one key, removing its value so it
+                                   reverts to its default or disappears from its map or
+                                   section. Dotted keys (maxDailyCostUsdPerRole.feature
                                    1.5, roles.qa.model x) merge one entry into the existing
                                    map or role entry; bare keys replace the whole value
   tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>] [--json]

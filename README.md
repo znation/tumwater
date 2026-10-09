@@ -95,9 +95,11 @@ breaker trip, a failed landing, a blocked restart — the command gets `TUMWATER
 `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment).
 Edits apply live while the fleet runs.
 From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
-<key>` reads one resolved value, and `tumwater config set <key> <value>` writes one top-level
-key; dotted keys (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry
-into the existing map or role entry, while bare keys replace the whole value.
+<key>` reads one resolved value, `tumwater config set <key> <value>` writes one top-level
+key, and `tumwater config unset <key>` removes one — the inverse of `set`, so a value reverts
+to its default or disappears from its map or section; dotted keys
+(`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry into the existing
+map or role entry, while bare keys replace the whole value.
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to
 one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a map of tiers

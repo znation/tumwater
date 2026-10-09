@@ -105,13 +105,15 @@ async function main(): Promise<void> {
       break;
     case "config": {
       // Subcommand arity before the ready-repo gate, so a malformed get/set fails with its
-      // usage no matter the directory: bare config takes nothing, `get` exactly one key,
-      // `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped) args.
+      // usage no matter the directory: bare config takes nothing, `get`/`unset` exactly one
+      // key, `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped)
+      // args.
       if (args.length > 0) {
-        if (args[0] !== "get" && args[0] !== "set")
+        if (args[0] !== "get" && args[0] !== "set" && args[0] !== "unset")
           fail(CONFIG_USAGE);
         if (args[0] === "get" && args.length !== 2) fail("usage: tumwater config get <key>");
         if (args[0] === "set" && args.length !== 3) fail("usage: tumwater config set <key> <value>");
+        if (args[0] === "unset" && args.length !== 2) fail("usage: tumwater config unset <key>");
       }
       // An initialized repo always has tumwater.json, so this gate doubles as "a config
       // exists to print" — the command never runs outside a project.

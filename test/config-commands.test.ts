@@ -214,3 +214,94 @@ test("set of a dotted role field merges the entry; a bad field fails naming the 
   assert.match(bad.stderr, /unknown role field "colour" for roles\.qa/);
   assert.match(bad.stderr, /valid fields:/);
 });
+
+// unset — the inverse of set: remove one value and confirm, or fail with the same screens
+// get/set run. The verbose shell wording is pinned here so a reviewer sees the exact contract.
+test("unset removes a top-level key and confirms the removed value; get then reads null", async () => {
+  const root = makeRepo();
+  writeConfig(root, { quietHours: "23:00-07:00" });
+  const out = await attemptAsync(() => cmdConfig(root, ["unset", "quietHours"]));
+  assert.ok(!out.exited);
+  assert.equal(out.stdout, 'unset quietHours (was "23:00-07:00")\n');
+  assert.ok(
+    !("quietHours" in (readJson(path.join(root, "tumwater.json")) as Record<string, unknown>)),
+    "the key is gone from the file",
+  );
+  const get = await attemptAsync(() => cmdConfig(root, ["get", "quietHours"]));
+  assert.ok(!get.exited);
+  assert.equal(get.stdout, "null\n", "the removed value now reads as JSON null");
+});
+
+test("unset removes a dotted role field, preserving the entry's other fields, and a no-op prints no value", async () => {
+  const root = makeRepo();
+  writeConfig(root, { roles: { qa: { model: "m-qa", instructions: "test things" } } });
+  const out = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.model"]));
+  assert.ok(!out.exited);
+  assert.equal(out.stdout, 'unset roles.qa.model (was "m-qa")\n');
+  const raw = readJson(path.join(root, "tumwater.json")) as { roles: Record<string, Record<string, unknown>> };
+  assert.equal(raw.roles.qa!.instructions, "test things", "the entry's other fields preserved");
+  const afterFirstUnset = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+
+  const miss = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.model"]));
+  assert.ok(!miss.exited);
+  assert.equal(miss.stdout, "unset roles.qa.model\n", "an absent field is a no-op that names the key only");
+  assert.equal(
+    fs.readFileSync(path.join(root, "tumwater.json"), "utf8"),
+    afterFirstUnset,
+    "the no-op left the file byte-identical rather than rewriting it",
+  );
+});
+
+test("unset of a default-carrying key or a default-seeded role field the file never set is a true no-op", async () => {
+  const root = makeRepo();
+  // Minimal raw file: no trailing newline, no defaults expanded, so any write at all changes
+  // the bytes. maxConcurrent and quietHours live only in the merged defaults; roles.qa seeds
+  // minTickIntervalSeconds 7200. None is in the file, so none is anything to remove.
+  writeConfig(root, { maxDailyCostUsdPerRole: { qa: 2 } });
+  const file = path.join(root, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+
+  for (const key of ["maxConcurrent", "quietHours"]) {
+    const out = await attemptAsync(() => cmdConfig(root, ["unset", key]));
+    assert.ok(!out.exited, `${key}: ${out.stderr}`);
+    assert.equal(out.stdout, `unset ${key}\n`, `${key}: an absent top-level key names the key only`);
+    assert.equal(fs.readFileSync(file, "utf8"), before, `${key}: the no-op left the file byte-identical`);
+  }
+
+  const seeded = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.minTickIntervalSeconds"]));
+  assert.ok(!seeded.exited, seeded.stderr);
+  assert.equal(
+    seeded.stdout,
+    "unset roles.qa.minTickIntervalSeconds\n",
+    "a default the operator never wrote reports no removed value",
+  );
+  assert.equal(fs.readFileSync(file, "utf8"), before, "the seeded-field no-op left the file byte-identical");
+});
+
+test("unset of an unknown key, role, or role field fails with the shared wording and writes nothing", async () => {
+  const root = makeRepo();
+  writeConfig(root, { roles: { qa: { model: "m-qa" } } });
+  const file = path.join(root, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+
+  const badKey = await attemptAsync(() => cmdConfig(root, ["unset", "modle"]));
+  assert.ok(badKey.exited && badKey.code === 1);
+  assert.match(badKey.stderr, /unknown config key "modle"/);
+
+  const badRole = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qqq.model"]));
+  assert.ok(badRole.exited && badRole.code === 1);
+  assert.match(badRole.stderr, /unknown role: qqq/);
+
+  const badField = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.colour"]));
+  assert.ok(badField.exited && badField.code === 1);
+  assert.match(badField.stderr, /unknown role field "colour" for roles\.qa/);
+
+  assert.equal(fs.readFileSync(file, "utf8"), before, "all three failures left the file byte-identical");
+});
+
+test("the defensive tail fails unset with no key using CONFIG_USAGE", async () => {
+  const root = makeRepo();
+  const out = await attemptAsync(() => cmdConfig(root, ["unset"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, new RegExp(CONFIG_USAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});

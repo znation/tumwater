@@ -251,7 +251,11 @@ than a recurring search, has no notebook.
 `tumwater.json` is untracked and seeded from the tracked `tumwater.example.json`; edit the example
 to share a baseline with collaborators. It sets enabled roles, provider, model, and thinking level
 (globally or per role), tick intervals, backoff, and the settings above. Edits apply within ~2 s
-while the fleet runs, and each one logs a `config_changed` event.
+while the fleet runs, and each one logs a `config_changed` event. From the terminal,
+`tumwater config get <key>` reads one resolved value, `tumwater config set <key> <value>`
+writes one, and `tumwater config unset <key>` removes one (the inverse of `set`, so a value
+reverts to its default or disappears from its map or section) — all through the same lock,
+validation, and atomic write, so an operator never has to hand-edit the file.
 
 - **Custom loops:** add `customLoops` entries by hand or by prompting the director ("add a loop
   named X that does Y"). The TUI marks them with `*`, the web dashboard with a `custom` tag.

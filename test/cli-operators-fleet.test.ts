@@ -341,15 +341,15 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli config args");
 
-  // Anything that is not get/set fails with the usage, whatever the arity.
+  // Anything that is not get/set/unset fails with the usage, whatever the arity.
   let r = await cli(repo, "config", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value>\]/);
+  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value> \| unset <key>\]/);
   r = await cli(repo, "config", "show");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config/);
 
-  // get takes exactly one arg; set exactly two.
+  // get and unset take exactly one arg; set exactly two.
   r = await cli(repo, "config", "get");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config get <key>/);
@@ -362,10 +362,16 @@ test("config get/set arg shapes, repo gating, and the help table", async () => {
   r = await cli(repo, "config", "set", "model", "gpt-5", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /usage: tumwater config set <key> <value>/);
+  r = await cli(repo, "config", "unset");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config unset <key>/);
+  r = await cli(repo, "config", "unset", "model", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config unset <key>/);
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value>\]\s+Show the effective config/);
+  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value> \| unset <key>\]\s+Show the effective config/);
 
   // Outside an initialized repo the ready-repo gate fires before any config is read.
   const bare = makeRepo();

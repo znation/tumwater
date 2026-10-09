@@ -2,6 +2,7 @@ import { loadConfigSafe, knownRoleIds } from "../config/config.js";
 import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import {
   setConfigKey,
+  unsetConfigKey,
   parseConfigKey,
   unknownConfigKeyError,
   unknownRoleFieldError,
@@ -22,48 +23,54 @@ import { unknownRoleMessage } from "../roles/roles.js";
  * absent key is the undefined *value*, which say would render as the bare word `undefined`:
  * not parseable JSON for a script and indistinguishable from a crash for a human. `set <key>
  * <value>` writes one top-level key through setConfigKey and prints one confirmation line
- * naming the key and its new value; a running fleet picks the change up on its next ~2 s
- * config poll (newLiveConfigReload). A malformed or invalid tumwater.json fails with
- * validateConfig's actionable message and prints no JSON — the same surfacing doctor's config
- * check produces. The reading/writing halves live beside it in config.ts and config-write.ts;
- * this file holds only the command shell around them. */
+ * naming the key and its new value; `unset <key>` removes one value through unsetConfigKey
+ * (the inverse of set) and confirms what, if anything, was removed. A running fleet picks the
+ * change up on its next ~2 s config poll (newLiveConfigReload). A malformed or invalid
+ * tumwater.json fails with validateConfig's actionable message and prints no JSON — the same
+ * surfacing doctor's config check produces. The reading/writing halves live beside it in
+ * config.ts and config-write.ts; this file holds only the command shell around them. */
 
 /** The config command's malformed-shapes usage line: cli.ts's arity gate fails a non-get/set
  * or wrongly-shaped subcommand with it, and cmdConfig repeats it as the defensive tail for an
  * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
  * sites (mirrors tick-detail.ts's TICK_USAGE). */
 export const CONFIG_USAGE =
-  "usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)";
+  "usage: tumwater config [get <key> | set <key> <value> | unset <key>] (bare config prints the whole resolved config)";
+
+/** The key screens `config get` and `config unset` run before resolving or removing a value:
+ * the shape parser's own error; the shared unknown-top-level-key message; then, for a dotted
+ * key, the catalog's known-role check and the shared unknown-role-field message. A dotted key
+ * naming a role the catalog (plus customLoops) does not know can never resolve, and a silent
+ * `null`/removal for it would read as a real unset when the operator misspelled the id. Fails
+ * the process with whichever message applies; returns the parsed key and the freshly loaded
+ * config for the caller's own read/mutation. (An unknown role id in the FILE is already a
+ * validation error — this is the same rule at the CLI boundary.) */
+function screenOperableKey(root: string, k: string) {
+  const parsed = parseConfigKey(k); // shape only — the verbs below own the unknown-key wording
+  if (parsed.kind === "error") fail(parsed.error);
+  if (parsed.kind === "top") {
+    const unknown = unknownConfigKeyError(k); // the shared unknown-key error, so a typo'd key reads the same whichever verb misspelled it
+    if (unknown) fail(unknown);
+  }
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
+  if (parsed.kind === "map" || parsed.kind === "role") {
+    const id = parsed.kind === "map" ? parsed.role : parsed.id;
+    const ids = knownRoleIds(config);
+    if (!ids.includes(id)) fail(unknownRoleMessage(id, ids));
+    if (parsed.kind === "role") {
+      const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
+      if (fieldError) fail(fieldError);
+    }
+  }
+  return { parsed, config };
+}
 
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
   const [sub, key, ...rest] = args;
   if (sub === "get") {
     const k = key ?? "";
-    const parsed = parseConfigKey(k); // shape only — the verbs below own the unknown-key wording
-    const unknown =
-      parsed.kind === "error"
-        ? parsed.error
-        : parsed.kind === "top"
-          ? unknownConfigKeyError(k) // setConfigKey's shared unknown-key error, so a typo'd key reads the same whichever verb misspelled it
-          : null;
-    if (unknown) fail(unknown);
-    const { config, error } = loadConfigSafe(root);
-    if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-    // A dotted key naming a role the catalog (plus customLoops) does not know can never
-    // resolve: printing `null` for it would read as "this role has no entry" when the
-    // operator misspelled the id. The role field is checked the same way setConfigKey checks
-    // it, so the two verbs agree on what a valid dotted role key is and a typo'd field cannot
-    // silently return null either. (An unknown role id in the FILE is already a validation
-    // error — this is the same rule at the CLI boundary.)
-    if (parsed.kind === "map" || parsed.kind === "role") {
-      const id = parsed.kind === "map" ? parsed.role : parsed.id;
-      const ids = knownRoleIds(config);
-      if (!ids.includes(id)) fail(unknownRoleMessage(id, ids));
-      if (parsed.kind === "role") {
-        const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
-        if (fieldError) fail(fieldError);
-      }
-    }
+    const { parsed, config } = screenOperableKey(root, k);
     const record = config as unknown as Record<string, unknown>;
     const value =
       parsed.kind === "map"
@@ -76,6 +83,24 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
               ]
             : record[k];
     sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
+    return;
+  }
+  if (sub === "unset") {
+    // cli.ts's arity gate requires exactly two args (`unset <key>`) before cmdConfig runs;
+    // this is the defensive tail for a direct caller, matching the bare-config tail below.
+    if (key === undefined) fail(CONFIG_USAGE);
+    const k = key;
+    // The same screens get runs first, so a typo'd top-level key, role id, or role field
+    // fails identically — unsetConfigKey's own parse/field checks are the mutation-side
+    // backstop, not the wording the operator sees.
+    screenOperableKey(root, k);
+    const result = unsetConfigKey(root, k);
+    if (!result.ok) fail(result.error);
+    say(
+      result.oldValue === undefined
+        ? `unset ${k}`
+        : `unset ${k} (was ${JSON.stringify(result.oldValue)})`,
+    );
     return;
   }
   if (sub === "set") {
