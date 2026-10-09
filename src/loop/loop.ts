@@ -88,9 +88,10 @@ export class LoopRunner {
    * commit trailer and tick_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
-  /** The dequeued user prompt a tick is executing and its requeue policy (src/inbox/pending-prompt.ts):
-   * the raw director request is recorded at dequeue so an unfulfilled tick (abort, timeout, or
-   * failure without changes) can re-queue it instead of losing the request. */
+  /** The dequeued user prompt a tick is executing and its requeue policy
+   * (src/inbox/pending-prompt.ts): the raw director request is recorded at dequeue so an
+   * unfulfilled tick (abort, timeout, or failure without changes) can re-queue it instead of
+   * losing the request. */
   private readonly pending: PendingPrompt;
   /** Per-tick abort controller, recreated at every tick start: `abortTick()` kills the
    * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
@@ -306,12 +307,13 @@ export class LoopRunner {
     return this.handedBack ? { result: "aborted", resumeCause: "budget-resumed" } : { result: "aborted" };
   }
 
-  /** Land the worktree branch on main (see src/landing/landing-merge.ts for the rebase → verify → ff-merge →
-   * conflict-retry flow): delegates with this loop's identity, tick number, and shared pi wiring
-   * so a conflict-resolution run folds into this tick's counters like any other pi run. Since
-   * merge queue 2/5 only the refusal-note landing (src/verdict/refusal.ts) still uses it — reviewed
-   * changes land through the landing pipeline's leased vet slot instead; md-only notes are
-   * review-exempt by construction, so they keep this branch path (plans/merge-queue.md 2/5). */
+  /** Land the worktree branch on main (see src/landing/landing-merge.ts for the
+   * rebase → verify → ff-merge → conflict-retry flow): delegates with this loop's identity,
+   * tick number, and shared pi wiring so a conflict-resolution run folds into this tick's
+   * counters like any other pi run. Since merge queue 2/5 only the refusal-note landing
+   * (src/verdict/refusal.ts) still uses it — reviewed changes land through the landing
+   * pipeline's leased vet slot instead; md-only notes are review-exempt by construction, so
+   * they keep this branch path (plans/merge-queue.md 2/5). */
   private async merge(wt: string, summary: string): Promise<TickResult> {
     return mergeToMain(
       {
@@ -405,18 +407,20 @@ export class LoopRunner {
    * outside any tick, so `tumwater abort --role` (which targets a tick's per-tick abort
    * controller) must never reach it, and the stale per-tick controller of a finished tick must
    * not abort it either. Session naming is the caller's (the reviewer composes its own from
-   * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
-   * The plumbing itself lives in src/loop/loop-pi.ts; this is the landing slot's public face. */
+   * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through
+   * LanderContext.runPi). The plumbing itself lives in src/loop/loop-pi.ts; this is the landing
+   * slot's public face. */
   async runLandingPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult> {
     return this.pi.runLandingPi(wt, prompt, sessionName, config);
   }
 
-  /** Run pi for the landing gate's reviewer (the review run and its verdict follow-up) through
-   * the loop's shared transient-retry wiring — the same retry an authoring run gets, so a 429
-   * in the gate is waited out and retried once instead of failing the review on first contact
-   * (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time (the fleet-wide
-   * rate-limit hold's input); the FINAL run's usage is folded by the gate's caller, exactly as
-   * before — the plumbing lives in src/loop/loop-pi.ts; this is the landing wiring's public face. */
+  /** Run pi for the landing gate's reviewer (the review run and its verdict follow-up)
+   * through the loop's shared transient-retry wiring — the same retry an authoring run gets,
+   * so a 429 in the gate is waited out and retried once instead of failing the review on
+   * first contact (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time
+   * (the fleet-wide rate-limit hold's input); the FINAL run's usage is folded by the gate's
+   * caller, exactly as before — the plumbing lives in src/loop/loop-pi.ts; this is the
+   * landing wiring's public face. */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
     return this.pi.runGatePi(opts);
   }
@@ -705,13 +709,13 @@ export class LoopRunner {
       await abortSync(wt);
       logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
-      // Salvage a commit a previous tick left unlanded (src/loop/leftover.ts): recovery puts it back
-      // on the land queue, so it lands through the orchestrator's landing pipeline — the same
-      // gate as a fresh tick's change, and main keeps exactly one writer (an in-tick recovery
-      // landing raced the slot's batches into `merge_blocked`). A salvaged leftover ENDS the
-      // tick: the role holds one landing ref, and the leftover owns it until its landing
-      // resolves. With nothing to salvage the branch holds nothing either, so the reset below
-      // leaves pristine main for the red-main gate.
+      // Salvage a commit a previous tick left unlanded (src/loop/leftover.ts): recovery puts it
+      // back on the land queue, so it lands through the orchestrator's landing pipeline — the
+      // same gate as a fresh tick's change, and main keeps exactly one writer (an in-tick
+      // recovery landing raced the slot's batches into `merge_blocked`). A salvaged leftover
+      // ENDS the tick: the role holds one landing ref, and the leftover owns it until its
+      // landing resolves. With nothing to salvage the branch holds nothing either, so the reset
+      // below leaves pristine main for the red-main gate.
       // A permanent reviewer config error -- held from re-queueing -- clears once the resolved
       // reviewer selector changes, so fixing the model config recovers the pin automatically
       // (BUGS.md 2026-10-06).
@@ -746,13 +750,14 @@ export class LoopRunner {
         prompt += `\n\n${buildConflictDiscardNote(recovered.summary, recovered.attempts)}`;
       } else if (recovered) return this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
       await resetWorktreeToMain(wt, this.mainBranch);
-      // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right now —
-      // verify main's own suite before spending an authoring run on top of it. Only roles whose
-      // diff can carry code changes are blocked; resume ticks skip this by construction (their
-      // worktree is not pristine main). The `bugfix` healer is exempt because its fix is the
-      // fleet's only way back to green, so instead of blocking it we hand it the failure (PLANS.md
-      // "Red-main handoff"): the same check runs, but a red main appends a <main-red> note to
-      // this tick's prompt so it reproduces and fixes that failure rather than hunting blind.
+      // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right
+      // now — verify main's own suite before spending an authoring run on top of it. Only roles
+      // whose diff can carry code changes are blocked; resume ticks skip this by construction
+      // (their worktree is not pristine main). The `bugfix` healer is exempt because its fix is
+      // the fleet's only way back to green, so instead of blocking it we hand it the failure
+      // (PLANS.md "Red-main handoff"): the same check runs, but a red main appends a <main-red>
+      // note to this tick's prompt so it reproduces and fixes that failure rather than hunting
+      // blind.
       if (this.baseRole === "bugfix") {
         const note = await bugfixMainRedNote(this.root, this.role, wt);
         if (note) prompt += `\n\n${note}`;
