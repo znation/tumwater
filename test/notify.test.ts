@@ -180,6 +180,48 @@ test("a notify command whose spawn fails logs one warning and does not throw out
   }
 });
 
+test("a spawn-failure warning whose event write throws falls back to stderr, not an uncaught throw", async () => {
+  // The async child `error` handler reports through warnEvent. That write can fail later in
+  // the process's life (the disk fills, .tumwater/log is replaced); a throw out of a Node
+  // `'error'` listener is an uncaught exception, so the reporting failure would kill the
+  // fleet. Sabotage the feed after the triggering event is written but before the warning —
+  // see the poison subscriber below — and watch where the failure goes.
+  const root = tmpdir();
+  const stderrWrites: string[] = [];
+  const originalWrite = process.stderr.write;
+  process.stderr.write = ((chunk: unknown) => {
+    stderrWrites.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  // Subscribe the poison before the notifier so the listener loop poisons the feed after the
+  // triggering event is written but before the notifier spawns: whatever the child error's
+  // timing (synchronous inside spawn or a later tick), the warning's write meets a root that
+  // is now a regular file, so it cannot create .tumwater/log under it.
+  const offPoison = subscribeEvents((e) => {
+    if (e.type !== "budget_paused") return;
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.writeFileSync(root, "");
+  });
+  const notifier = newNotifier(root);
+  try {
+    // A command line past every platform's per-argument limit makes node emit `error`.
+    notifier.update({ notify: `echo ${"x".repeat(2_000_000)}` });
+    logEvent(root, { loop: "feature", type: "budget_paused" });
+    await waitFor(
+      () => stderrWrites.some((line) => /notify command could not start/.test(line)),
+      "the stderr fallback for the unwritable warning",
+    );
+    assert.ok(
+      stderrWrites.some((line) => /warning log unwritable/.test(line)),
+      "the fallback names why the event log could not take the warning",
+    );
+  } finally {
+    offPoison();
+    process.stderr.write = originalWrite;
+    notifier.dispose();
+  }
+});
+
 test("setting notify live takes effect on the next update(liveConfig) poll, no restart", async () => {
   const root = tmpdir();
   const out = path.join(root, "notify-out.txt");

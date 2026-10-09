@@ -45,6 +45,22 @@ interface Notifier {
   dispose(): void;
 }
 
+/** Log the spawn-failure warning without letting the log write's own failure escape the
+ * caller. warnEvent appends to the event log, which can fail (ENOSPC, EACCES, the path
+ * replaced by a directory); the async child `error` handler runs on the event loop, so a
+ * throw there is an uncaught exception that kills the fleet — the opposite of this warning's
+ * purpose. The stderr fallback keeps the failure loud when the feed cannot take it, the same
+ * policy orchestrator-launch's warnTickRejected and gui-server's recordServerError apply. */
+function warnBestEffort(root: string, message: string): void {
+  try {
+    warnEvent(root, "harness", message);
+  } catch (err) {
+    process.stderr.write(
+      `tumwater: harness: ${message} (warning log unwritable: ${errorMessage(err)})\n`,
+    );
+  }
+}
+
 /** Subscribe to this process's event feed and spawn the configured command for allowlisted
  * events. Fire-and-forget: the spawn is never awaited from the poll loop — the command runs
  * detached with stdio ignored, so it outlives whatever the orchestrator does next, and a
@@ -82,10 +98,10 @@ export function newNotifier(
       // exceeds the OS arg limit): one warning names it and the listener keeps working. A
       // command that starts but exits nonzero is not a harness concern and is ignored.
       child.on("error", (err) => {
-        warnEvent(root, "harness", `notify command could not start: ${err.message}`);
+        warnBestEffort(root, `notify command could not start: ${err.message}`);
       });
     } catch (err) {
-      warnEvent(root, "harness", `notify command could not start: ${errorMessage(err)}`);
+      warnBestEffort(root, `notify command could not start: ${errorMessage(err)}`);
     }
   });
   return {
