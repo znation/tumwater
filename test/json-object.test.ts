@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isJsonObject, stringList } from "../src/files/json-object.js";
+import {
+  finiteNumber,
+  isJsonObject,
+  nonNegativeNumber,
+  parseJsonObject,
+  stringList,
+} from "../src/files/json-object.js";
 
 // src/files/json-object.ts is the one definition of "a JSON object at this position" for every consumer
 // that parses untrusted JSON — the state/marker/info files, the harness event log, pi's stdout
@@ -76,4 +82,41 @@ test("non-plain host objects behave as the typeof check reads them", () => {
   assert.equal(isJsonObject(new Date()), true, "a Date is an object, not null, not an array");
   assert.equal(isJsonObject(new Map()), true, "a Map is an object, not null, not an array");
   assert.equal(isJsonObject(() => {}), false, "a function is typeof \"function\", so the guard rejects it");
+});
+
+// finiteNumber and nonNegativeNumber are the one home of the "the field is a usable number or it
+// is nothing" read, and their whole point is the poison values a lenient `typeof x === "number"`
+// check lets through: NaN and ±Infinity make every comparison false (a NaN cost silently never
+// trips the budget cap) and a negative amount runs an accumulator backwards. Consumers exercise
+// the happy path, so pin the rejections at the helper itself — dropping Number.isFinite or the
+// `>= 0` floor must fail here, not just shift a dashboard cell.
+test("finiteNumber accepts any finite number, negative included, and rejects poison", () => {
+  assert.equal(finiteNumber(0, -1), 0);
+  assert.equal(finiteNumber(1.5, -1), 1.5);
+  assert.equal(finiteNumber(-3, -1), -3, "negative is finite, so it passes: the floor is not here");
+  for (const poison of [NaN, Infinity, -Infinity, "5", null, undefined, {}, [], true]) {
+    assert.equal(finiteNumber(poison, 42), 42, `${String(poison)} is not a finite number`);
+  }
+  assert.equal(finiteNumber(undefined, null), null, "the fallback is returned as typed, not coerced");
+  assert.equal(finiteNumber(undefined, Infinity), Infinity, "an Infinity fallback is a caller's sentinel");
+});
+
+test("nonNegativeNumber keeps zero and positives, rejects negatives and poison", () => {
+  assert.equal(nonNegativeNumber(0, 9), 0, "zero is the boundary the >= 0 floor keeps");
+  assert.equal(nonNegativeNumber(2.5, 9), 2.5);
+  for (const poison of [-1, -0.0001, NaN, Infinity, -Infinity, "5", null, undefined, {}, []]) {
+    assert.equal(nonNegativeNumber(poison, 9), 9, `${String(poison)} is not a non-negative number`);
+  }
+  assert.equal(nonNegativeNumber(undefined, null), null, "an absent field returns the caller's fallback");
+});
+
+// parseJsonObject is the line-oriented parsers' "read one JSON value or read it as no data"
+// policy: a torn or partial line, or a syntactically valid scalar/null/array, must read as
+// nothing rather than a truthy stand-in the caller then indexes.
+test("parseJsonObject parses an object and reads every other JSON value as no data", () => {
+  assert.deepEqual(parseJsonObject('{"role":"feature","ticks":3}'), { role: "feature", ticks: 3 });
+  assert.deepEqual(parseJsonObject("  {\"a\":{\"b\":2}}  "), { a: { b: 2 } }, "surrounding whitespace is tolerated");
+  for (const text of ["null", "[]", "[1,2]", '"x"', "5", "true", "", "not json", "{"]) {
+    assert.equal(parseJsonObject(text), null, `\`${text}\` is not a JSON object`);
+  }
 });
