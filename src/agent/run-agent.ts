@@ -316,6 +316,11 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       finalMessageContentless: parser.finalMessageContentless,
       producedAssistantContent: parser.producedAssistantContent,
       compacted: parser.compacted,
+      budgetCapped: parser.budgetCapped,
+      resumeMissing: parser.resumeMissing,
+      billing: parser.billing,
+      rateWindows: parser.rateWindows.length > 0 ? parser.rateWindows : undefined,
+      usedOverage: parser.usedOverage,
       ...overrides,
     });
 

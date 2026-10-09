@@ -94,102 +94,6 @@ The failure digest's Fleet state changes section replays `STATE_CHANGE_TYPES` (s
 - The digest's own section surfaces them: a `collectFailureReport`/`renderFailureMarkdown` fixture whose events.jsonl holds one `role_streak_paused` and one `model_fallback_started` lists both under `## Fleet state changes` in chronological order, each with its bounded line (the time/role cells the render adds are unchanged).
 - Every existing `describeStateChange` case and every existing failure-digest test is unchanged; `npm run test` is green.
 
-### Agent backends, part 3a/7: the claude stream translator and canonical vocabulary (planned 2026-10-09 by plan; split from part 3/7; requires parts 1/7 and 2/7 landed)
-
-Design: plans/agent-backends.md ("Canonical event stream").
-
-Pure translation — no backend registration and nothing selectable from tumwater.json yet. Tests
-feed fixture lines straight into the translator and the parser.
-
-**Approach.**
-1. **Translator.** Add a new `claude-stream` module under src/agent/claude/, implementing the design's mapping
-   table as an `AgentBackend.translator()`-shaped factory (`translate(line): string[]`), stateful
-   per run:
-   - `system/init` → canonical `session` (`cwd`, `id`) then `agent_start`;
-   - per-`message.id` coalescing of `assistant` events into one `message_end` (content blocks
-     merged in order), usage counted once, `cost.total` 0;
-   - each `tool_use` → `tool_execution_start` and each `user` `tool_result` →
-     `tool_execution_end`, with the tool-name and `file_path` mapping;
-   - `system/api_retry` → `auto_retry_start`; `system/compact_boundary` → `compaction_start`;
-   - `result` → canonical `run_cost {total}` plus a synthetic error-bearing `message_end` when
-     the run ended in error, carrying `tumwaterKind` and the classification below;
-   - `rate_limit_event` → canonical `rate_limit` carrying the reading (type, status, `resetsAt`,
-     `utilization`, `overageStatus`, `isUsingOverage`);
-   - `system/init.apiKeySource` (+ the run env's third-party-provider flags) → canonical
-     `billing: "subscription" | "api"`;
-   - each unmapped native type is recorded once (a `warnings()` on the concrete translator, not
-     on the `StreamTranslator` seam); part 3c turns each into an `agent_unknown_event` warning.
-2. **Classification.** The translator sets `tumwaterKind` (and, for a rate-limit rejection,
-   `retryAfterSeconds` from `resetsAt`) from `api_error_status`/`terminal_reason` per the
-   design's table — 429 → `transientRateLimit`; 5xx/529 → `transientBackend`/`server`;
-   connection/timeout text → `transientBackend`/`connection`|`timeout`; 400/401/403/404 and
-   "Not logged in"/"issue with the selected model" → `configError`; "prompt is too long" →
-   `contextExceeded`; `error_max_budget_usd` → `budgetCapped`; "No conversation found with
-   session ID" → `resumeMissing`.
-3. **Parser and result.** `PiStreamParser` (src/pi/pi-stream.ts) learns `run_cost` — its `total`
-   becomes the run's authoritative `costUsd`, replacing the per-message sum — and `tumwaterKind`,
-   trusted before the existing text regexes. A run that emitted no `run_cost` logs the
-   `cost_unknown` warning with cost 0. `PiRunResult` (src/pi/pi-run-result.ts) gains
-   `resumeMissing`, `budgetCapped`, `billing`, `rateWindows` and `usedOverage`.
-4. **Fixtures.** the `claude-events.ts` fixture holds builders for the shapes above, trimmed from
-   the 2026-10-09 captures (split-block assistant, 404, not-logged-in, SIGTERM, compact,
-   `api_retry`, rate-limit-rejected).
-
-**Interactions (resume, handoff, revision, conflict hand-back).** Added 2026-10-09 by operator.
-Agent backends 2/7 took three review rounds because its plan left out how a handoff combines
-with the revise-rejected and conflict hand-back paths. This part makes handoffs routine: every
-`resumeMissing` becomes one. Each case below needs a fake-claude test in
-test/loop-interrupted.test.ts. When this entry is split, the sub-part that owns sessions carries
-this section whole.
-- **Resume.**
-  - In `planTickStart` (src/tick/tick-resume.ts), the newest author line for this agent is
-    resumable only when `hasResumableSession(dir)` finds a pi session file in the tumwater
-    session dir.
-  - A claude transcript lives under `~/.claude/projects/<slug>/` instead, so that check becomes
-    per-backend: the transcript for the line's `id` must exist.
-  - The line's `cwd` must also equal the leased worktree, because claude's resume is
-    cwd-scoped. `sessionResumable` already takes `cwd`. A pinned slot normally gives the same
-    cwd; a different cwd is a handoff, never a `--resume`.
-- **`resumeMissing` → handoff.** The retry in `runWithTransientRetry` (src/loop/loop-pi.ts) must
-  behave exactly like tick-resume's handoff:
-  - keep the worktree;
-  - skip both re-applies, the conflict hand-back and the revision (the `!resuming && !handoff`
-    guards in src/loop/loop-tick.ts);
-  - send the fresh-session notes below.
-  Route it through the same plan rather than a second copy of the rules.
-- **Fresh-session notes.** A handoff starts a fresh session, so every note the interrupted run
-  had in its context must be re-sent.
-  - The revision note already is (the `if (handoff)` branch in loop-tick.ts's revision block).
-  - **The conflict hand-back note is not.** A handoff over a hand-back that was already applied
-    (`conflictHandback.applied`, markers in the worktree, including a revision that re-applied
-    with conflicts) appends no `buildConflictHandbackNote`. The fresh run meets the markers
-    with no explanation.
-  - Fix it in this part, with a test: an interrupted tick with an applied hand-back plus a
-    handoff produces a prompt that contains the hand-back note, and the markers are intact.
-- **Same-session retries and follow-ups.** These continue the run that just finished. For
-  claude that is `--resume <that run's ledger id>`, never "the newest session":
-  - the transient retry (`continueSession: true` in loop-pi.ts);
-  - the SUMMARY follow-up (`requestFollowUp`, prompt-followup.ts);
-  - the review follow-ups (review-followup.ts).
-- **Interrupted review.** Unchanged: `phase === "review"` blocks both resume and handoff
-  (`resumeBlocked`). Add one claude case proving it.
-
-**Files touched.**
-- `claude-stream.ts` under src/agent/claude/ (new)
-- src/pi/pi-stream.ts, src/pi/pi-run-result.ts
-- `claude-events.ts` and `claude-stream.test.ts` under test/ (new)
-
-**Acceptance criteria.**
-- **Usage.** A split-block assistant message (text + tool_use, same id, usage repeated) folds to
-  one `message_end`, 1 turn, tokens once. With a `result`, `costUsd` equals
-  `result.total_cost_usd`; without one, the result logs `cost_unknown` and keeps cost 0.
-- **Errors.** The fixtures yield `configError` (404, not-logged-in), `transientRateLimit` (429),
-  `transientBackend`/`server` (529), `contextExceeded`, `budgetCapped` and `resumeMissing`; a
-  SIGTERM `aborted_tools` result carries no error classification.
-- **Unknown events.** The translator reports an unmapped native type once; a run over it does
-  not fail.
-- `npm run test` green.
-
 ### Agent backends, part 3b/7: the claude invocation and isolation environment (planned 2026-10-09 by plan; split from part 3/7; requires part 3a/7 landed)
 
 Design: plans/agent-backends.md ("The claude invocation", "Findings", "Risks").
@@ -252,11 +156,50 @@ tumwater.json (part 4/7); tests drive it through `runAgent` with `config.agent =
 3. **Native log.** src/agent/run-agent.ts writes each native line to
    `.tumwater/log/<role>.<agent>.native.jsonl` (a `nativeLogPath` helper in src/paths.ts),
    rotated and pruned like the raw log; canonical lines keep going to the existing raw log. The
-   runner emits part 3a's unmapped-type reports once each as `agent_unknown_event` warnings.
+   runner emits part 3a's translator warnings — the unmapped-type reports and a result-less
+   run's `cost_unknown` — once each as `agent_unknown_event` warnings.
 4. **Fake.** Add `fake-claude.ts` under test/fakes/ — a PATH shim named `claude` replaying canned
    stream-json, logging argv and stdin per run, and creating
    `~/.claude/projects/<slug>/<id>.jsonl` under a temp HOME. Strip `TUMWATER_CLAUDE_BIN`,
    `CLAUDECODE` and `CLAUDE_CODE_*` in test/test-runner.ts.
+
+**Interactions (resume, handoff, revision, conflict hand-back).** Added 2026-10-09 by operator.
+Agent backends 2/7 took three review rounds because its plan left out how a handoff combines
+with the revise-rejected and conflict hand-back paths. This part makes handoffs routine: every
+`resumeMissing` becomes one. Each case below needs a fake-claude test in
+test/loop-interrupted.test.ts.
+- **Resume.**
+  - In `planTickStart` (src/tick/tick-resume.ts), the newest author line for this agent is
+    resumable only when `hasResumableSession(dir)` finds a pi session file in the tumwater
+    session dir.
+  - A claude transcript lives under `~/.claude/projects/<slug>/` instead, so that check becomes
+    per-backend: the transcript for the line's `id` must exist.
+  - The line's `cwd` must also equal the leased worktree, because claude's resume is
+    cwd-scoped. `sessionResumable` already takes `cwd`. A pinned slot normally gives the same
+    cwd; a different cwd is a handoff, never a `--resume`.
+- **`resumeMissing` → handoff.** The retry in `runWithTransientRetry` (src/loop/loop-pi.ts) must
+  behave exactly like tick-resume's handoff:
+  - keep the worktree;
+  - skip both re-applies, the conflict hand-back and the revision (the `!resuming && !handoff`
+    guards in src/loop/loop-tick.ts);
+  - send the fresh-session notes below.
+  Route it through the same plan rather than a second copy of the rules.
+- **Fresh-session notes.** A handoff starts a fresh session, so every note the interrupted run
+  had in its context must be re-sent.
+  - The revision note already is (the `if (handoff)` branch in loop-tick.ts's revision block).
+  - **The conflict hand-back note is not.** A handoff over a hand-back that was already applied
+    (`conflictHandback.applied`, markers in the worktree, including a revision that re-applied
+    with conflicts) appends no `buildConflictHandbackNote`. The fresh run meets the markers
+    with no explanation.
+  - Fix it in this part, with a test: an interrupted tick with an applied hand-back plus a
+    handoff produces a prompt that contains the hand-back note, and the markers are intact.
+- **Same-session retries and follow-ups.** These continue the run that just finished. For
+  claude that is `--resume <that run's ledger id>`, never "the newest session":
+  - the transient retry (`continueSession: true` in loop-pi.ts);
+  - the SUMMARY follow-up (`requestFollowUp`, prompt-followup.ts);
+  - the review follow-ups (review-followup.ts).
+- **Interrupted review.** Unchanged: `phase === "review"` blocks both resume and handoff
+  (`resumeBlocked`). Add one claude case proving it.
 
 **Files touched.**
 - `claude-backend.ts` under src/agent/claude/ (new)
@@ -274,6 +217,8 @@ tumwater.json (part 4/7); tests drive it through `runAgent` with `config.agent =
 - **Env.** The spawned env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` even when the suite's
   parent had them, and stdin carries the prompt.
 - The native log file is written and rotated with the raw log.
+- **Warnings.** A result-less run's `cost_unknown` and an unmapped native type each log once as an
+  `agent_unknown_event`; a run over an unmapped type does not fail.
 - `npm run test` green.
 
 ### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c/7 landed)
@@ -600,6 +545,66 @@ and a loop test for `budgetCapped` → handoff.
 
 
 ## Done
+
+### Agent backends, part 3a/7: the claude stream translator and canonical vocabulary (planned 2026-10-09 by plan; split from part 3/7; requires parts 1/7 and 2/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("Canonical event stream").
+
+Pure translation — no backend registration and nothing selectable from tumwater.json yet. Tests
+feed fixture lines straight into the translator and the parser.
+
+**Approach.**
+1. **Translator.** Add a new `claude-stream` module under src/agent/claude/, implementing the design's mapping
+   table as an `AgentBackend.translator()`-shaped factory (`translate(line): string[]`), stateful
+   per run:
+   - `system/init` → canonical `session` (`cwd`, `id`) then `agent_start`;
+   - per-`message.id` coalescing of `assistant` events into one `message_end` (content blocks
+     merged in order), usage counted once, `cost.total` 0;
+   - each `tool_use` → `tool_execution_start` and each `user` `tool_result` →
+     `tool_execution_end`, with the tool-name and `file_path` mapping;
+   - `system/api_retry` → `auto_retry_start`; `system/compact_boundary` → `compaction_start`;
+   - `result` → canonical `run_cost {total}` plus a synthetic error-bearing `message_end` when
+     the run ended in error, carrying `tumwaterKind` and the classification below;
+   - `rate_limit_event` → canonical `rate_limit` carrying the reading (type, status, `resetsAt`,
+     `utilization`, `overageStatus`, `isUsingOverage`);
+   - `system/init.apiKeySource` (+ the run env's third-party-provider flags) → canonical
+     `billing: "subscription" | "api"`;
+   - each unmapped native type is recorded once (a `warnings()` on the concrete translator, not
+     on the `StreamTranslator` seam); part 3c turns each into an `agent_unknown_event` warning.
+2. **Classification.** The translator sets `tumwaterKind` (and, for a rate-limit rejection,
+   `retryAfterSeconds` from `resetsAt`) from `api_error_status`/`terminal_reason` per the
+   design's table — 429 → `transientRateLimit`; 5xx/529 → `transientBackend`/`server`;
+   connection/timeout text → `transientBackend`/`connection`|`timeout`; 400/401/403/404 and
+   "Not logged in"/"issue with the selected model" → `configError`; "prompt is too long" →
+   `contextExceeded`; `error_max_budget_usd` → `budgetCapped`; "No conversation found with
+   session ID" → `resumeMissing`.
+3. **Parser and result.** `PiStreamParser` (src/pi/pi-stream.ts) learns `run_cost` — its `total`
+   becomes the run's authoritative `costUsd`, replacing the per-message sum — and `tumwaterKind`,
+   trusted before the existing text regexes. A run that emitted no `run_cost` logs the
+   `cost_unknown` warning with cost 0. `PiRunResult` (src/pi/pi-run-result.ts) gains
+   `resumeMissing`, `budgetCapped`, `billing`, `rateWindows` and `usedOverage`.
+4. **Fixtures.** the `claude-events.ts` fixture holds builders for the shapes above, trimmed from
+   the 2026-10-09 captures (split-block assistant, 404, not-logged-in, SIGTERM, compact,
+   `api_retry`, rate-limit-rejected).
+
+**Files touched.**
+- `claude-stream.ts` under src/agent/claude/ (new)
+- src/pi/pi-stream.ts, src/pi/pi-run-result.ts
+- src/agent/run-agent.ts (the new parser fields are assembled into PiRunResult there)
+- `claude-events.ts` and `claude-stream.test.ts` under test/ (new)
+
+**Acceptance criteria.**
+- **Usage.** A split-block assistant message (text + tool_use, same id, usage repeated) folds to
+  one `message_end`, 1 turn, tokens once. With a `result`, `costUsd` equals
+  `result.total_cost_usd`; without one, the run logs the `cost_unknown` warning (recorded on the
+  translator's warning log; part 3c surfaces translator warnings as `agent_unknown_event`) and the
+  cost stays 0.
+- **Errors.** The fixtures yield `configError` (404, not-logged-in), `transientRateLimit` (429),
+  `transientBackend`/`server` (529), `contextExceeded`, `budgetCapped` and `resumeMissing`; a
+  SIGTERM `aborted_tools` result carries no error classification.
+- **Unknown events.** The translator reports an unmapped native type once; a run over it does
+  not fail.
+- `npm run test` green.
 
 ### A trailing window for the failure digest: `tumwater report --failures --since <duration>` (planned 2026-10-09 by plan; done 2026-10-09 by feature)
 

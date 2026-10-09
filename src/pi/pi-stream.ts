@@ -48,6 +48,36 @@ function usageNumber(value: unknown): number {
   return nonNegativeNumber(value, 0);
 }
 
+/** The classification a backend translator may attach to an error-bearing canonical event,
+ * replacing the parser's text regexes with the backend's own explicit signal (plans/
+ * agent-backends.md "Canonical event stream"). pi's translator emits none and keeps the
+ * regexes; claude's sets one from `api_error_status`/`terminal_reason`. */
+export type TumwaterKind =
+  | "transientRateLimit"
+  | "transientBackend"
+  | "configError"
+  | "contextExceeded"
+  | "budgetCapped"
+  | "resumeMissing";
+
+/** One account rate-limit window a run reported (a canonical `rate_limit` event). The
+ * subscription usage window (plans/agent-backends.md part 6) collects the newest reading per
+ * `type`; the parser carries them so the run result does. */
+export interface RateWindow {
+  /** `rateLimitType` — `five_hour`, plus any longer window an account reports. */
+  type: string;
+  /** `allowed` | `allowed_warning` | `rejected`. */
+  status: string;
+  /** Unix-seconds stamp when the window resets, when reported. */
+  resetsAt?: number;
+  /** Fraction of the window consumed (0–1), when reported. */
+  utilization?: number;
+  /** The account's overage state word, when reported. */
+  overageStatus?: string;
+  /** True while the account is spending into overage. */
+  isUsingOverage?: boolean;
+}
+
 /** The fields feedLine reads off one parsed pi event line. pi's stream is one JSON object per
  * line, so anything that is not an object (a scalar, `null`, or an array) is torn or foreign
  * noise — see the object check in feedLine. */
@@ -60,6 +90,22 @@ interface PiStreamEvent {
   toolName?: string;
   args?: unknown;
   partialResult?: unknown;
+  /** A translator's explicit classification of an error-bearing event (claude). */
+  tumwaterKind?: string;
+  /** The transient backend failure kind, when tumwaterKind is `transientBackend`. */
+  backendKind?: string;
+  retryAfterSeconds?: unknown;
+  /** run_cost events only: the run's authoritative cost. */
+  total?: unknown;
+  /** rate_limit events only, the account-window reading. */
+  rateLimitType?: unknown;
+  status?: unknown;
+  resetsAt?: unknown;
+  utilization?: unknown;
+  overageStatus?: unknown;
+  isUsingOverage?: unknown;
+  /** billing events only: `subscription` | `api`. */
+  billing?: unknown;
 }
 
 /** One content block's fields, each unknown until the consumer guards what it reads. */
@@ -183,6 +229,20 @@ export function matchBackendFailure(text: string): BackendFailureKind | undefine
   return TRANSIENT_BACKEND.test(text) ? backendKind(text) : undefined;
 }
 
+/** The valid `backendKind` values, for validating a translator-supplied string at the wire
+ * boundary (the same untrusted-JSON policy every other field read here applies). */
+const BACKEND_FAILURE_KINDS: readonly BackendFailureKind[] = [
+  "connection",
+  "timeout",
+  "server",
+  "model-load",
+  "stream-severed",
+];
+
+function isBackendFailureKind(value: unknown): value is BackendFailureKind {
+  return typeof value === "string" && (BACKEND_FAILURE_KINDS as readonly string[]).includes(value);
+}
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -257,6 +317,22 @@ export class PiStreamParser {
    * rather than re-queuing it at suite speed (BUGS.md 2026-10-06). Matched only when the text
    * did not match rate-limit or a transient backend pattern first. */
   configError = false;
+  /** True when a translator classified the run's error as a per-run budget cap
+   * (`error_max_budget_usd`, plans/agent-backends.md part 7). claude-only; pi never sets it. */
+  budgetCapped = false;
+  /** True when a translator classified the run as resuming a session its backend cannot find
+   * (`No conversation found with session ID`) — the caller retries fresh (plans/agent-backends.md
+   * part 3c). claude-only; pi never sets it. */
+  resumeMissing = false;
+  /** How the run was paid for, from a canonical `billing` event (claude's `system/init`
+   * `apiKeySource`): a `subscription` window or API credit. Undefined when the backend
+   * reported neither. */
+  billing: "subscription" | "api" | undefined;
+  /** The newest account rate-limit reading per `rateLimitType` (plans/agent-backends.md part 6),
+   * in first-seen order of the type. Empty on backends that report no windows. */
+  rateWindows: RateWindow[] = [];
+  /** True when any rate-limit reading reported the account spending into overage. */
+  usedOverage = false;
   /** True when the run's LAST assistant message carried no text and no tool call
    * (thinking-only or empty). A compliant finish always ends with a text block (the
    * SUMMARY/sentinel line), so this signals a generation cut off mid-stream — typically
@@ -296,6 +372,58 @@ export class PiStreamParser {
    * call of every run. */
   constructor(private readonly onToolCallStart?: (toolName: string, args: unknown) => void) {}
 
+  /** Apply a translator-supplied `tumwaterKind`, trusted before the text regexes. An unknown
+   * kind is ignored (the same forward-compatible policy as an unknown event type). */
+  private applyTumwaterKind(kind: string, event: PiStreamEvent): void {
+    switch (kind) {
+      case "transientRateLimit":
+        this.transientRateLimit = true;
+        if (typeof event.retryAfterSeconds === "number" && Number.isFinite(event.retryAfterSeconds))
+          this.retryAfterSeconds = Math.max(0, Math.round(event.retryAfterSeconds));
+        break;
+      case "transientBackend":
+        this.transientBackend = true;
+        this.backendFailureKind = isBackendFailureKind(event.backendKind) ? event.backendKind : "server";
+        break;
+      case "configError":
+        this.configError = true;
+        break;
+      case "contextExceeded":
+        this.contextExceeded = true;
+        break;
+      case "budgetCapped":
+        this.budgetCapped = true;
+        break;
+      case "resumeMissing":
+        this.resumeMissing = true;
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** Fold one canonical `rate_limit` reading: keep the newest per type, note overage, and
+   * treat a `rejected` window as the transient rate limit it is (with the resetsAt-derived
+   * wait the translator attached). */
+  private applyRateLimit(event: PiStreamEvent): void {
+    const type = typeof event.rateLimitType === "string" && event.rateLimitType ? event.rateLimitType : "unknown";
+    const reading: RateWindow = { type, status: typeof event.status === "string" ? event.status : "" };
+    if (typeof event.resetsAt === "number" && Number.isFinite(event.resetsAt)) reading.resetsAt = event.resetsAt;
+    if (typeof event.utilization === "number" && Number.isFinite(event.utilization))
+      reading.utilization = event.utilization;
+    if (typeof event.overageStatus === "string") reading.overageStatus = event.overageStatus;
+    if (event.isUsingOverage === true) reading.isUsingOverage = true;
+    const existing = this.rateWindows.findIndex((w) => w.type === type);
+    if (existing >= 0) this.rateWindows[existing] = reading;
+    else this.rateWindows.push(reading);
+    if (reading.isUsingOverage === true) this.usedOverage = true;
+    if (reading.status === "rejected") {
+      this.transientRateLimit = true;
+      if (typeof event.retryAfterSeconds === "number" && Number.isFinite(event.retryAfterSeconds))
+        this.retryAfterSeconds = Math.max(0, Math.round(event.retryAfterSeconds));
+    }
+  }
+
   feed(chunk: string, onLine?: (line: string) => void): void {
     this.buffer += chunk;
     // Scan with an offset instead of slicing the remainder off after every line: each old
@@ -332,27 +460,42 @@ export class PiStreamParser {
     const parsed = parseJsonObject(line);
     if (!parsed) return; // Non-JSON noise on stdout; ignore.
     const event = parsed as PiStreamEvent;
-    for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
-      if (!text) continue;
-      if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;
-      // Kept narrow on purpose: a false positive would mask real repeated failures from
-      // the session-poisoning heuristic and trigger needless retries.
-      if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
-      if (TRANSIENT_RATE_LIMIT.test(text)) {
-        this.transientRateLimit = true;
-        const hint = RETRY_AFTER.exec(text);
-        if (hint) this.retryAfterSeconds = Number(hint[1]);
-      } else if (TRANSIENT_BACKEND.test(text)) {
-        // Rate-limit matched first, so a 429 stays a 429; this branch only sees the
-        // connection/5xx/model-load texts the hold groups by kind.
-        this.transientBackend = true;
-        this.backendFailureKind = backendKind(text);
-      } else if (isPermanentConfigError(text)) {
-        // A permanent 4xx config error: transient checks had their turn first, so 408/429
-        // never land here.
-        this.configError = true;
+    // A translator-classified error (claude's `tumwaterKind`) is trusted before the text
+    // regexes: the backend read schemas, not prose, and its signal wins.
+    if (typeof event.tumwaterKind === "string" && event.tumwaterKind) {
+      this.applyTumwaterKind(event.tumwaterKind, event);
+    } else {
+      for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
+        if (!text) continue;
+        if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;
+        // Kept narrow on purpose: a false positive would mask real repeated failures from
+        // the session-poisoning heuristic and trigger needless retries.
+        if (TRANSIENT_SERVER_TIMEOUT.test(text)) this.transientServerTimeout = true;
+        if (TRANSIENT_RATE_LIMIT.test(text)) {
+          this.transientRateLimit = true;
+          const hint = RETRY_AFTER.exec(text);
+          if (hint) this.retryAfterSeconds = Number(hint[1]);
+        } else if (TRANSIENT_BACKEND.test(text)) {
+          // Rate-limit matched first, so a 429 stays a 429; this branch only sees the
+          // connection/5xx/model-load texts the hold groups by kind.
+          this.transientBackend = true;
+          this.backendFailureKind = backendKind(text);
+        } else if (isPermanentConfigError(text)) {
+          // A permanent 4xx config error: transient checks had their turn first, so 408/429
+          // never land here.
+          this.configError = true;
+        }
       }
     }
+    // A canonical run_cost is the run's authoritative cost and REPLACES the per-message sum
+    // (claude's split-block messages report cost.total 0; the final result carries the real
+    // number). A backend that emits none keeps the summed per-message figure (pi).
+    if (event.type === "run_cost") this.costUsd = usageNumber(event.total);
+    // A canonical rate_limit event carries an account-window reading: collect the newest per
+    // type, note any overage, and treat a rejected window as the transient rate limit it is.
+    if (event.type === "rate_limit") this.applyRateLimit(event);
+    if (event.type === "billing" && (event.billing === "subscription" || event.billing === "api"))
+      this.billing = event.billing;
     // Every structured event (turn/tool/message boundaries, retries, session) is real
     // progress — streaming deltas never are (message_update is skipped above, before
     // parsing), and neither is a content-free tool_execution_update: bash emits one right

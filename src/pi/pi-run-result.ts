@@ -2,7 +2,7 @@
  * pi run reads: the tick loop, the landing wiring, the usage accounting, the failure
  * digests. It lives apart from pi.ts so callers that only handle run results (tick-usage,
  * failure-data, the landing batch) need not import the spawn machinery to name the type. */
-import type { BackendFailureKind } from "./pi-stream.js";
+import type { BackendFailureKind, RateWindow } from "./pi-stream.js";
 
 export interface PiRunResult {
   ok: boolean;
@@ -110,4 +110,21 @@ export interface PiRunResult {
   producedAssistantContent: boolean;
   /** pi auto-compacted the session during (or at the end of) the run. */
   compacted: boolean;
+  /** True when a backend translator classified the run as hitting a per-run budget cap
+   * (claude's `error_max_budget_usd`, plans/agent-backends.md part 7). Undefined on backends
+   * that report no such signal. */
+  budgetCapped?: boolean;
+  /** True when a backend translator classified the run as resuming a session its backend
+   * cannot find (`No conversation found with session ID`): the caller retries fresh as a
+   * handoff (plans/agent-backends.md part 3c). Undefined on backends that report no such
+   * signal. */
+  resumeMissing?: boolean;
+  /** How the run was paid for, from the backend's own report: a subscription window or API
+   * credit (plans/agent-backends.md parts 3a and 6). Undefined when the backend names neither. */
+  billing?: "subscription" | "api";
+  /** The newest account rate-limit reading per window type, when the backend reports them
+   * (plans/agent-backends.md part 6). Undefined on backends that report no windows. */
+  rateWindows?: RateWindow[];
+  /** True when any reported rate-limit window showed the account spending into overage. */
+  usedOverage?: boolean;
 }
