@@ -596,3 +596,12 @@ test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots
   const tiny = checkWorkInstances(root, loadConfig(root), now);
   assert.match(tiny.detail, /worktreeSlots 1 is below maxConcurrent/);
 });
+
+// A disabled role runs no instances, so its `instances` count cannot contend for the checkout
+// pool: the work-instance check must stay silent for it rather than warn about a role that is
+// not running.
+test("checkWorkInstances does not warn about a disabled instance role's pool", () => {
+  const root = readyRepo();
+  writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claims held" });
+});

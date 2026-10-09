@@ -367,8 +367,10 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
  * fleet's claims and the two states an operator should act on — a claim whose key is no longer
  * listed under its role's section (its instance is stuck on an entry that moved), and a claim
  * idle for more than CLAIM_IDLE_MAX_MS (the scheduler releases these, so seeing one means the
- * reader's view and the scheduler's disagree). A multi-instance role configured with fewer
- * pooled slots than maxConcurrent also warns: instances then contend for the same checkouts.
+ * reader's view and the scheduler's disagree). An enabled multi-instance role configured with
+ * fewer pooled slots than maxConcurrent also warns: instances then contend for the same
+ * checkouts. A disabled role runs none of its configured instances, so it never contends and
+ * stays out of that warning.
  * Read-only, like every check; `now` is the claim-age test seam, and an unreadable
  * tumwater.json (config undefined) skips the walk — checkInit reports the config itself. */
 export function checkWorkInstances(
@@ -385,7 +387,9 @@ export function checkWorkInstances(
   const gone = claims.filter((c) => !listedKeys(root, c.id).has(c.key));
   const stale = claims.filter((c) => !gone.includes(c) && now - c.at > CLAIM_IDLE_MAX_MS);
   const multi = Object.entries(config.roles)
-    .filter(([id, role]) => INSTANCE_ROLES.has(id) && (role.instances ?? 1) > 1)
+    .filter(
+      ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled === true && (role.instances ?? 1) > 1,
+    )
     .map(([id]) => id);
   const slots = slotCount(config);
   const smallPool = multi.length > 0 && slots < config.maxConcurrent;
