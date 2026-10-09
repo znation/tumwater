@@ -1,8 +1,8 @@
-/** The failure digest's time-and-spend fold: read the window's `tick_end`s and price each
- * one into the per-role × outcome-class table (ticks, summed wall-clock ms, cost) plus the
- * loss-cause ranking that weighs causes by agent-hours rather than tick counts. Split from
- * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas, clustered
- * sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
+/** The failure digest's time-and-spend fold: read the window's `tick_end`s and price each one into
+ * the per-role × outcome-class table (ticks, summed wall-clock ms, cost) plus the loss-cause
+ * ranking that weighs causes by agent-hours rather than tick counts. Split from
+ * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas,
+ * clustered sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
  * src/failure/failure-render.ts as a pure function of the collected data. */
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { HarnessEvent } from "../events/events.js";

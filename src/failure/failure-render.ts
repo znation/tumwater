@@ -36,9 +36,9 @@ const RESULT_ORDER: Record<TickResult, number> = {
   user_aborted: 13,
 };
 
-/** The digest table's columns: every TickResult that at least one role logged in the window,
- * ranked by RESULT_ORDER (ties alphabetical), so the table's shape follows the window's
- * evidence instead of the whole fixed vocabulary — a fleet with no errors gets no error column. */
+/** The digest table's columns: every TickResult that at least one role logged in the window, ranked
+ * by RESULT_ORDER (ties alphabetical), so the table's shape follows the window's evidence instead
+ * of the whole fixed vocabulary — a fleet with no errors gets no error column. */
 function columns(outcomes: OutcomeRow[]): TickResult[] {
   const present = new Set<TickResult>();
   for (const row of outcomes) {
@@ -111,16 +111,16 @@ function hoursPhrase(ms: number): string {
 /** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only with
  * the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed by
  * src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed by
- * the cut), and every free string is capped — cluster examples at 120 chars (plus a `… (+N chars)`
- * cut marker when truncated, so a marked cut can never read as a complete message — BUGS.md
- * 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4 names plus a
- * remainder count, and any loop id sliced to 32 chars (config validation already refuses longer
- * custom-loop ids, so the slice is a guard rather than the real bound). Cluster counts are capped
- * at top-N, and the Fleet state changes section is capped at STATE_CHANGE_TOP lines with each
- * payload at STATE_CHANGE_MAX and each free field at STATE_CHANGE_FIELD_MAX; the landed list at
- * LANDED_TOP lines, each capped section closing with one remainder line when its cut dropped
- * anything. Nothing here grows with how bad the window was: measured 6,017 bytes at the CLI's
- * default 14 days on the live fleet, and the worst-case byte-bound fixture in
+ * the cut), and every free string is capped — cluster examples at 120 chars (plus a `… (+N
+ * chars)` cut marker when truncated, so a marked cut can never read as a complete message —
+ * BUGS.md 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4
+ * names plus a remainder count, and any loop id sliced to 32 chars (config validation already
+ * refuses longer custom-loop ids, so the slice is a guard rather than the real bound). Cluster
+ * counts are capped at top-N, and the Fleet state changes section is capped at STATE_CHANGE_TOP
+ * lines with each payload at STATE_CHANGE_MAX and each free field at STATE_CHANGE_FIELD_MAX; the
+ * landed list at LANDED_TOP lines, each capped section closing with one remainder line when its cut
+ * dropped anything. Nothing here grows with how bad the window was: measured 6,017 bytes at the
+ * CLI's default 14 days on the live fleet, and the worst-case byte-bound fixture in
  * test/failure-render.test.ts covers transition events too. Pure function of FailureReportData: no
  * I/O, no clock reads. */
 export function renderFailureMarkdown(data: FailureReportData): string {
@@ -271,8 +271,8 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   return lines.join("\n");
 }
 
-/** Push one "Top … clusters" section: each cluster as a `**N×** roles · first → last — example`
- * line (the collector supplies the order and the top-N cut), or a single `no <noun> in the
+/** Push one "Top … clusters" section: each cluster as a `**N×** roles · first → last —
+ * example` line (the collector supplies the order and the top-N cut), or a single `no <noun> in the
  * window` placeholder when the section is empty. */
 function renderClusters(lines: string[], title: string, section: ClusterSection, noun: string): void {
   lines.push("");
