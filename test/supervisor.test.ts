@@ -14,7 +14,9 @@ import {
   MAX_RAPID_RESPAWNS,
   RESPAWN_WINDOW_MS,
   startParentDeathWatch,
+  expectedSupervisorPid,
   SUPERVISED_ENV,
+  SUPERVISOR_PID_ENV,
   spawnRunChild,
   superviseRun,
 } from "../src/process/supervisor.js";
@@ -188,7 +190,7 @@ function probeScript(dir: string, outFile: string | null, body: string): string 
     p,
     'import fs from "node:fs";\n' +
       (outFile
-        ? `fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ argv2: process.argv[2], ${JSON.stringify(SUPERVISED_ENV)}: process.env[${JSON.stringify(SUPERVISED_ENV)}] }));\n`
+        ? `fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ argv2: process.argv[2], ${JSON.stringify(SUPERVISED_ENV)}: process.env[${JSON.stringify(SUPERVISED_ENV)}], ${JSON.stringify(SUPERVISOR_PID_ENV)}: process.env[${JSON.stringify(SUPERVISOR_PID_ENV)}] }));\n`
         : "") + body,
   );
   return p;
@@ -232,6 +234,11 @@ test("spawnRunChild runs the same script with `run`, SUPERVISED_ENV set, and rep
       const seen = readJson<Record<string, unknown>>(path.join(dir, `evidence-${code}.json`));
       assert.equal(seen.argv2, "run", "the child is the same script with `run` as its command");
       assert.equal(seen[SUPERVISED_ENV], "1", "the child runs the orchestrator, not another supervisor");
+      assert.equal(
+        seen[SUPERVISOR_PID_ENV],
+        String(process.pid),
+        "the child is handed the supervisor's pid, so its watch fires even if this process dies first",
+      );
     }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -326,6 +333,13 @@ test("startParentDeathWatch with an expected parent fires on a parent that was g
   }
 });
 
+test("expectedSupervisorPid reads a handed-down mark only for a live-for-certain pid", () => {
+  assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "4242" }), 4242);
+  assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "1" }), undefined, "1 is launchd/init, never a supervisor");
+  assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "junk" }), undefined);
+  assert.equal(expectedSupervisorPid({}), undefined, "an older supervisor's child falls back to its first read");
+});
+
 test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it", async () => {
   const dir = tmpdir();
   let supervisor: ReturnType<typeof spawn> | undefined;
@@ -338,9 +352,14 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
       grandchild,
       `import { startParentDeathWatch } from ${JSON.stringify(supervisorUrl)};\n` +
         `import fs from "node:fs";\n` +
-        `const [started, gone] = process.argv.slice(2);\n` +
+        `const [started, gone, expectedPpid] = process.argv.slice(2);\n` +
         `fs.writeFileSync(started, String(process.pid));\n` +
-        `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, { intervalMs: 250 });\n` +
+        // A deliberately slow arm: the watch starts well after the test has seen `started`
+        // and SIGKILLed the supervisor. That makes deterministic the production race where a
+        // child dies-before-first-read (its startup runs long before it arms the watch), and
+        // the handed-down pid is what makes the watch fire anyway.
+        `await new Promise((r) => setTimeout(r, 300));\n` +
+        `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, { intervalMs: 250, expectedPpid: Number(expectedPpid) });\n` +
         `setInterval(() => {}, 10_000);\n` +
         // A leak guard, not part of the behavior under test: it must sit far beyond the
         // test's wait budget, because under fleet load the watch's polls and this timer
@@ -352,17 +371,19 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     fs.writeFileSync(
       middle,
       `import { spawn } from "node:child_process";\n` +
-        `spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[4]], { stdio: "ignore" }).unref();\n` +
+        // The spawner hands its own pid down, exactly as the production supervisor does
+        // through SUPERVISOR_PID_ENV.
+        `spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[4], String(process.pid)], { stdio: "ignore" }).unref();\n` +
         `setInterval(() => {}, 10_000);\n` +
         `setTimeout(() => process.exit(1), 180_000);\n`,
     );
     const started = path.join(dir, "started");
     const gone = path.join(dir, "gone");
     supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
-    // The guards (180s) now sit far above the wait budgets (15s start / 40s gone), so
-    // under load the only way this test can fail is budget exhaustion while a late but
-    // alive watch has yet to fire — a 2026-10-04 land-gate run at fleet load exhausted
-    // the old 5s/15s budgets at 15.5s while the guards never fired.
+    // The guards (180s) sit far above the wait budgets (15s start / 40s gone), so the only
+    // way this test can fail is a child that never arms its watch at all; with the handed-down
+    // pid the watch fires on its first poll once it does, even though the arm happens after
+    // the supervisor is already gone.
     for (let i = 0; i < 300 && !fs.existsSync(started); i++) await sleep(50);
     assert.ok(fs.existsSync(started), "the grandchild started with its watch running");
     // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor

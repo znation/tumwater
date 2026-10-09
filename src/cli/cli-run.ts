@@ -125,7 +125,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
   // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
   // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
-  const { SUPERVISED_ENV, startParentDeathWatch } = await import("../process/supervisor.js");
+  const { SUPERVISED_ENV, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
@@ -153,9 +153,12 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
   // generation reparented and ticking the fleet unattended. The parent-death watch polls for the
   // reparent and runs the same graceful stop a forwarded SIGTERM would have run, so a killed
-  // supervisor takes its fleet down with it (BUGS.md 2026-09-30). Everything below runs only in
+  // supervisor takes its fleet down with it (BUGS.md 2026-09-30). The spawner hands its pid
+  // down (SUPERVISOR_PID_ENV), so a supervisor killed during this child's startup — before the
+  // watch's first ppid read — still counts as gone. Everything below runs only in
   // the supervised generation: an unsupervised `run` became the supervisor above and returned.
-  startParentDeathWatch(stop);
+  const expectedPpid = expectedSupervisorPid();
+  startParentDeathWatch(stop, expectedPpid !== undefined ? { expectedPpid } : {});
   const enabled = loopIds(config);
   // A scoped round's loop list is exactly the filter; otherwise every enabled loop runs.
   const roles = roleFilter !== null ? [roleFilter] : enabled;

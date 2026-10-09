@@ -16,6 +16,13 @@ import { childEnv, runOnAbort } from "./process.js";
 /** Marks the child: `tumwater run` with this set runs the orchestrator instead of supervising. */
 export const SUPERVISED_ENV = "TUMWATER_SUPERVISED";
 
+/** Names the supervisor's pid in a supervised child's environment, so the child's parent-death
+ * watch compares against the pid the spawner handed down instead of its own first read. A
+ * supervisor killed before that read — a SIGKILL during the child's startup, before the watch
+ * arms — still counts as gone (the dashboard's DASHBOARD_CHILD_ENV carries the same mark for its
+ * reload watch). */
+export const SUPERVISOR_PID_ENV = "TUMWATER_SUPERVISOR_PID";
+
 /** How often the supervised generation checks that its supervisor still lives (ms). */
 const PARENT_POLL_MS = 5_000;
 
@@ -50,6 +57,14 @@ export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatch
   }, opts.intervalMs ?? PARENT_POLL_MS);
   timer.unref();
   return timer;
+}
+
+/** The supervisor pid a supervised child was handed, or undefined when the mark is absent or
+ * names no process (a number that is not an integer, or 1 — launchd/init, never a supervisor):
+ * the watch's own first read stands instead. */
+export function expectedSupervisorPid(env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const pid = Number(env[SUPERVISOR_PID_ENV]);
+  return Number.isInteger(pid) && pid > 1 ? pid : undefined;
 }
 
 /** Respawns within this window count toward the crash-loop guard. */
@@ -161,9 +176,14 @@ export function fleetDownEvent(down: FleetDown, diagnosis: string | null): Harne
  * `run` as the command — plus any flags the operator's original invocation carried (e.g.
  * `tumwater run --branch x`: the child IS the orchestrator generation, so it must target the
  * same branch) — stdio shared (the child's event stream is what the operator sees), and
- * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again. */
+ * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again, plus
+ * SUPERVISOR_PID_ENV naming this supervisor so the child's own parent-death watch fires even if
+ * this process is killed before the child reads its first ppid. */
 export function spawnRunChild(signal: AbortSignal, extraArgs: string[] = []): Promise<ChildExit> {
-  return spawnSupervised(["run", ...extraArgs], signal, { [SUPERVISED_ENV]: "1" });
+  return spawnSupervised(["run", ...extraArgs], signal, {
+    [SUPERVISED_ENV]: "1",
+    [SUPERVISOR_PID_ENV]: String(process.pid),
+  });
 }
 
 /** The production dashboard spawner for `run --gui`: a `tumwater gui` child on its defaults,

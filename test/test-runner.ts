@@ -9,7 +9,7 @@ import { findOnPath } from "../src/files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
-import { SUPERVISED_ENV } from "../src/process/supervisor.js";
+import { SUPERVISED_ENV, SUPERVISOR_PID_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { typoSuffix } from "../src/text/suggest.js";
 
@@ -267,6 +267,8 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   themselves; test/fakes/fake-pi.ts drops it too, for a file run directly with `node --test`.
  * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
  *   supervisor half. test/helpers/cli-harness.ts also drops it from every CLI child it starts.
+ * - SUPERVISOR_PID_ENV carries the supervisor pid a supervised run was handed, so an inherited
+ *   mark would make a spawned run's watch compare against a stale pid and stop early.
  * - TUMWATER_NOTES_PATH makes the bundled role-notes extension register the `role_notes` tool,
  *   so a non-authoring run that inherited a tick's notebook path would carry a tool the run's
  *   own contract says it must not have (test/loop-pi.test.ts pins the empty env line).
@@ -281,6 +283,7 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   const env = suiteGitEnv(base);
   delete env.TUMWATER_PI_BIN;
   delete env[SUPERVISED_ENV];
+  delete env[SUPERVISOR_PID_ENV];
   delete env.TUMWATER_NOTES_PATH;
   delete env.TUMWATER_RUN;
   delete env[DASHBOARD_CHILD_ENV];

@@ -6,7 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
-import { SUPERVISED_ENV } from "../src/process/supervisor.js";
+import { SUPERVISED_ENV, SUPERVISOR_PID_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { readJson } from "./helpers/json-read.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
@@ -271,6 +271,7 @@ test("suiteEnv drops every variable the harness resolves, so a fleet-started sui
     PATH: "/no/such/dir", // no git on it, so the macOS shim workaround leaves PATH alone
     TUMWATER_PI_BIN: "/opt/pi-wrapper/pi",
     [SUPERVISED_ENV]: "1",
+    [SUPERVISOR_PID_ENV]: "4242",
     TUMWATER_NOTES_PATH: "/state/notes/feature.md",
     TUMWATER_RUN: "4242-abcdef",
     [DASHBOARD_CHILD_ENV]: "4242",
@@ -281,6 +282,7 @@ test("suiteEnv drops every variable the harness resolves, so a fleet-started sui
   const env = suiteEnv(scratch, base);
   assert.equal("TUMWATER_PI_BIN" in env, false, "resolveAgentBin must fall through to the fakes on PATH");
   assert.equal(SUPERVISED_ENV in env, false, "a CLI child's `run` must take its supervisor half");
+  assert.equal(SUPERVISOR_PID_ENV in env, false, "an inherited supervisor pid must not outlive the supervisor it named");
   assert.equal("TUMWATER_NOTES_PATH" in env, false, "a non-authoring run must not carry a notebook");
   assert.equal("TUMWATER_RUN" in env, false, "a spawned run must start its marker from scratch");
   assert.equal(DASHBOARD_CHILD_ENV in env, false, "a reload must take the supervisor branch");
