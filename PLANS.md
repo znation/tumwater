@@ -176,51 +176,6 @@ idles.
   new rule, and the backlog index marks all four as blocked (a test over the rendered blocks).
 - `npm run test` green.
 
-### Work ratio, part 4/4: report commits by role and show work vs maintenance commits on the "Landed today" tile and `tumwater report` (planned 2026-10-08 by operator)
-
-Design: plans/work-ratio.md ("Make the ratio visible").
-
-Context. `foldUsageEvent` (src/report/report-data.ts) counts every `merged` event into
-`commits` with no role. The tile (src/ui/gui/gui-client-fleet.ts, the "Landed today" card) shows
-"64 commits" over "4 features done · 2 bugs fixed", and the operator cannot see which loops made
-the 64. Parts 1/4–3/4 are judged by this split.
-
-**Approach.**
-1. **Fold.**
-   - Count `merged` events into `commitsByRole` (via `eventRole`, keyed by base role) beside
-     `ticksByRole`, in `UsageFold`, `DayFold` and the fold cache.
-   - Also count tier totals `workCommits` and `maintenanceCommits`:
-     - work = feature, bugfix, director;
-     - maintenance = Work ratio 1/4's `QUOTA_ROLES`, or `CODE_MAINTENANCE_ROLES` plus readme
-       until 1/4 lands;
-     - everything else counts toward `commits` only.
-2. **Tile.** The sub-line becomes "4 features done · 2 bugs fixed · 12 work / 52 maintenance".
-   The headline stays "64 commits".
-3. **Report.**
-   - `tumwater report` (src/report/report-render.ts) prints a "commits by role" line, sorted
-     descending, and the work/maintenance split.
-   - Add "commits per backlog item" (commits ÷ (featuresDone + bugsFixed), one decimal) to the
-     day report. Omit it when the denominator is 0.
-   - Add the same split to the GUI report view's tiles (src/ui/gui/gui-client-report.ts).
-
-**Files touched.**
-- src/report/report-data.ts, report-render.ts
-- src/ui/gui/gui-client-fleet.ts, gui-client-report.ts
-- the GUI report endpoint payload, if typed separately
-
-Tests:
-- test/report-data.test.ts
-- test/report-fold-cache.test.ts
-- test/gui-client-report.test.ts
-- the fleet tile's test
-
-**Acceptance criteria.**
-- **Fold.** Five `merged` events (2 feature, 3 clean) fold to `commitsByRole {feature: 2,
-  clean: 3}`, `workCommits 2`, `maintenanceCommits 3`, `commits 5`.
-- **Cache.** A cached day re-folded after an appended merge counts it once.
-- **Tile.** The tile sub-line shows the split, and the day report prints commits per item.
-- `npm run test` green.
-
 ### New-project bootstrap, part 1/2: `tumwater init` recognizes an empty project and opts it into bootstrap (planned 2026-10-08 by operator)
 
 Design: plans/work-ratio.md ("New-project bootstrap").
@@ -491,6 +446,63 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Work ratio, part 4/4: report commits by role and show work vs maintenance commits on the "Landed today" tile and `tumwater report` (planned 2026-10-08 by operator; done 2026-10-08 by feature)
+
+Design: plans/work-ratio.md ("Make the ratio visible").
+
+Context. `foldUsageEvent` (src/report/report-data.ts) counts every `merged` event into
+`commits` with no role. The tile (src/ui/gui/gui-client-fleet.ts, the "Landed today" card) shows
+"64 commits" over "4 features done · 2 bugs fixed", and the operator cannot see which loops made
+the 64. Parts 1/4–3/4 are judged by this split.
+
+**Approach.**
+1. **Fold.**
+   - Count `merged` events into `commitsByRole` (via `eventRole`, keyed by base role) beside
+     `ticksByRole`, in `UsageFold`, `DayFold` and the fold cache.
+   - Also count tier totals `workCommits` and `maintenanceCommits`:
+     - work = feature, bugfix, director;
+     - maintenance = Work ratio 1/4's `QUOTA_ROLES`, or `CODE_MAINTENANCE_ROLES` plus readme
+       until 1/4 lands;
+     - everything else counts toward `commits` only.
+2. **Tile.** The sub-line becomes "4 features done · 2 bugs fixed · 12 work / 52 maintenance".
+   The headline stays "64 commits".
+3. **Report.**
+   - `tumwater report` (src/report/report-render.ts) prints a "commits by role" line, sorted
+     descending, and the work/maintenance split.
+   - Add "commits per backlog item" (commits ÷ (featuresDone + bugsFixed), one decimal) to the
+     day report. Omit it when the denominator is 0.
+   - Add the same split to the GUI report view's tiles (src/ui/gui/gui-client-report.ts).
+
+**Approach (as landed).**
+- The tier mapping lives in a new `commitTier(role)` in src/roles/roles.ts (not in the planned
+  file list): `CODE_MAINTENANCE_ROLES` is private and 1/4's exported `QUOTA_ROLES` has not
+  landed, so the one home for "work = feature/bugfix/director, maintenance = the code-maintenance
+  list + readme" is the roles registry rather than a second list in report-data.ts.
+- `commitsByRole`/`workCommits`/`maintenanceCommits` are added to `UsageFold`, `DayFold`, and
+  `ReportDay`/`ReportData.totals` (optional on the public day shape, always set by
+  `collectReport`). The `--since` collector folds the same `UsageFold` fields but its surfaced
+  totals keep the previous shape, as the entry only asked for the day report.
+
+**Files touched.**
+- src/report/report-data.ts, report-render.ts
+- src/ui/gui/gui-client-fleet.ts, gui-client-report.ts
+- src/roles/roles.ts (the `commitTier` helper, as noted above)
+- the GUI report endpoint payload, if typed separately
+
+Tests:
+- test/report-data.test.ts
+- test/report-fold-cache.test.ts
+- test/report.test.ts (the day render)
+- test/gui-client-fleet.test.ts (the tile)
+- test/gui-client-report.test.ts
+
+**Acceptance criteria.**
+- **Fold.** Five `merged` events (2 feature, 3 clean) fold to `commitsByRole {feature: 2,
+  clean: 3}`, `workCommits 2`, `maintenanceCommits 3`, `commits 5`.
+- **Cache.** A cached day re-folded after an appended merge counts it once.
+- **Tile.** The tile sub-line shows the split, and the day report prints commits per item.
+- `npm run test` green.
 
 ### Parallel work instances, part 5c/7: the plan charter's target scales with `feature.instances` (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7 and 2/7 landed; done 2026-10-08 by feature)
 

@@ -202,7 +202,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       { label: "In flight", icon: "bolt", value: live.length + " <small>of " + loops.length + " loops</small>", sub: esc(liveSub) },
       { label: "Landed today", icon: "merge", act: "view", arg: "history", hint: "See every tick in History",
         value: t ? String(t.commits) + " <small>" + agree(t.commits, "commit", "commits") + "</small>" : "—",
-        sub: t ? esc(plural(t.featuresDone, "feature") + " done · " + plural(t.bugsFixed, "bug") + " fixed") : "counting…" },
+        sub: t ? esc(plural(t.featuresDone, "feature") + " done · " + plural(t.bugsFixed, "bug") + " fixed · " + (t.workCommits ?? 0) + " work / " + (t.maintenanceCommits ?? 0) + " maintenance") : "counting…" },
       { label: "Ticks today", icon: "refresh", act: "view", arg: "usage", hint: "See usage per day and per loop",
         value: t ? String(t.ticks) + " <small>" + agree(t.ticks, "tick", "ticks") + "</small>" : "—",
         sub: t ? esc(fmtTokens(t.tokensOut) + " output tokens" + (t.costUsd > 0 ? " · " + fmtUsd(t.costUsd) : "")) : "counting…" },

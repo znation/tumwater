@@ -135,6 +135,14 @@ export function renderReportMarkdown(data: ReportData): string {
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
+  // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
+  // `commits` carries the count; these lines say who made it and how much of it was work.
+  lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
+  // Commits per backlog item is day-granular backlog data (features done + bugs fixed), so it
+  // belongs only to the day report; zero items means the denominator is absent, not NaN.
+  const items = t.featuresDone + t.bugsFixed;
+  const perItem = items > 0 ? ` · ${(t.commits / items).toFixed(1)} commits per backlog item` : "";
+  lines.push(`**Commits:** ${t.workCommits ?? 0} work / ${t.maintenanceCommits ?? 0} maintenance${perItem}`);
   // The shared SPARSE_WINDOW_NOTE (one voice across the report's two windows and the other
   // windowed renders): covered is false only when events were aggregated from a log whose
   // oldest retained event lies inside the window, so the hedged sentence stays true whenever

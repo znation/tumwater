@@ -168,10 +168,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function reportSummary(data) {
     const t = data.totals;
     const days = Math.max(1, Number(data.days) || data.series.length || 1);
-    const tile = (label, ic, value, perDay) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
-      "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(perDay + " a day") + "</span></div>";
+    const tile = (label, ic, value, perDay, extra) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
+      "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(perDay + " a day" + (extra || "")) + "</span></div>";
     return [
-      tile("Commits landed", "merge", String(t.commits), "≈ " + (t.commits / days).toFixed(1)),
+      tile("Commits landed", "merge", String(t.commits), "≈ " + (t.commits / days).toFixed(1),
+        " · " + (t.workCommits ?? 0) + " work / " + (t.maintenanceCommits ?? 0) + " maintenance"),
       tile("Features done", "plan", String(t.featuresDone), "≈ " + (t.featuresDone / days).toFixed(1)),
       tile("Bugs fixed", "bug", String(t.bugsFixed), "≈ " + (t.bugsFixed / days).toFixed(1)),
       tile("Ticks", "refresh", String(t.ticks), "≈ " + Math.round(t.ticks / days)),

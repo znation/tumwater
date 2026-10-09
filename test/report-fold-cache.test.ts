@@ -44,6 +44,19 @@ test("warm collectReport equals the cold read before and after appends", () => {
   assert.equal(fresh.totals.landingTokens, 42);
 });
 
+test("a merge appended after a warm fold counts once, including in the role split", () => {
+  const root = tmpdir();
+  writeEvents(root, [{ ts: at(1), loop: "feature", type: "merged", commit: "a" }]);
+  assert.equal(warmed(root, 3).totals.commitsByRole?.feature, 1);
+  fs.appendFileSync(eventsLogPath(root), JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "b" }) + "\n");
+  const fresh = collectReport(root, 3);
+  assert.deepEqual(fresh.totals.commitsByRole, { feature: 1, clean: 1 });
+  assert.equal(fresh.totals.workCommits, 1);
+  assert.equal(fresh.totals.maintenanceCommits, 1);
+  assert.equal(fresh.totals.commits, 2);
+  assert.deepEqual(warmed(root, 3), fresh);
+});
+
 test("a torn trailing write is ignored until its newline lands", () => {
   const root = tmpdir();
   writeEvents(root, [{ ts: at(1), loop: "a", type: "tick_end", tokens: 1 }]);

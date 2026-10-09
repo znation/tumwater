@@ -55,7 +55,7 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(d1?.commits, 1);
   assert.equal(d1?.tokensOut, 0);
   const d2 = data.series[2]; // at(2): zero-filled gap
-  assert.deepEqual(d2, { date: dayKey(at(2)), tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
+  assert.deepEqual(d2, { date: dayKey(at(2)), tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
   const d3 = data.series[3]; // at(1)
   assert.equal(d3?.tokensOut, 1500);
   assert.deepEqual(d3?.costByRole, { feature: 1.25 });
@@ -75,6 +75,23 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   }
   assert.equal(data.totals.featuresDone, 0);
   assert.equal(data.totals.bugsFixed, 0);
+});
+
+test("collectReport splits merged events by base role and by work/maintenance tier", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature-2", type: "merged", commit: "a" }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merged", commit: "b" }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "c" }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "d" }),
+    JSON.stringify({ ts: at(0), loop: "readme", type: "merged", commit: "e" }),
+  ]);
+  const data = collectReport(root, 1);
+  // The instance suffix folds into its base role, and the tier split names work vs upkeep.
+  assert.deepEqual(data.totals.commitsByRole, { feature: 1, bugfix: 1, clean: 2, readme: 1 });
+  assert.equal(data.totals.workCommits, 2);
+  assert.equal(data.totals.maintenanceCommits, 3);
+  assert.equal(data.totals.commits, 5);
 });
 
 test("collectReport skips a future-dated or timestamp-less event instead of folding into a missing day", () => {
@@ -427,6 +444,9 @@ test("collectReport degrades to zeros when every source is missing", () => {
     tokensOut: 0,
     ticks: 0,
     commits: 0,
+    commitsByRole: {},
+    workCommits: 0,
+    maintenanceCommits: 0,
     costUsd: 0,
     featuresDone: 0,
     bugsFixed: 0,

@@ -104,6 +104,18 @@ export function baselineBlocked(role: string): boolean {
   return BASELINE_BLOCKED_ROLES.has(baseRoleOf(role));
 }
 
+/** Work ratio 4/4: which commit tier a loop's base role lands into, for the work vs maintenance
+ * split the report and the "Landed today" tile show. `work` is the shipping tier (feature,
+ * bugfix, director); `maintenance` is code upkeep plus readme — Work ratio 1/4's QUOTA_ROLES,
+ * which this predates, so its CODE_MAINTENANCE_ROLES list plus readme. Every other role (plan,
+ * steward, observers, custom) is neither and counts only toward the total commits. */
+export function commitTier(role: string): "work" | "maintenance" | undefined {
+  const base = baseRoleOf(role);
+  if (base === "feature" || base === BUGFIX_ROLE || base === DIRECTOR_ROLE) return "work";
+  if (base === "readme" || CODE_MAINTENANCE_ROLES.includes(base)) return "maintenance";
+  return undefined;
+}
+
 /** Every role id, including the director (which is driven by user prompts, not a find prompt). */
 export function allRoleIds(): string[] {
   return [...ROLES.map((r) => r.id), DIRECTOR_ROLE];

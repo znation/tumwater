@@ -16,6 +16,8 @@ import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate, humanSeconds } from "../text/datetime.js";
 import { addTo } from "../collections.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { commitTier } from "../roles/roles.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window
@@ -33,6 +35,9 @@ interface UsageFold {
   costByRole: Record<string, number>;
   tokensOut: number;
   commits: number;
+  commitsByRole: Record<string, number>;
+  workCommits: number;
+  maintenanceCommits: number;
   costUsd: number;
   landingRuns?: number;
   landingTokens?: number;
@@ -58,6 +63,13 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
   } else if (ev.type === "merged") {
     target.commits++;
+    // Work ratio 4/4: split landed commits by base role and by tier. Instance suffixes fold
+    // into their role (`feature-2` counts as feature) so the split does not fragment.
+    const role = baseRoleOf(eventRole(ev));
+    addTo(target.commitsByRole, role, 1);
+    const tier = commitTier(role);
+    if (tier === "work") target.workCommits++;
+    else if (tier === "maintenance") target.maintenanceCommits++;
   } else if (ev.type === "landed" || ev.type === "land_failed") {
     target.landingRuns = (target.landingRuns ?? 0) + 1;
     const { tokens, costUsd } = eventUsage(ev);
@@ -73,6 +85,9 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
 interface DayFold {
   tokensOut: number;
   commits: number;
+  commitsByRole: Record<string, number>;
+  workCommits: number;
+  maintenanceCommits: number;
   costUsd: number;
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>;
@@ -118,6 +133,9 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
     fold = {
       tokensOut: 0,
       commits: 0,
+      commitsByRole: {},
+      workCommits: 0,
+      maintenanceCommits: 0,
       costUsd: 0,
       ticksByRole: {},
       costByRole: {},
@@ -225,6 +243,9 @@ export interface ReportDay {
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>;
   commits: number;
+  commitsByRole?: Record<string, number>; // landed commits by base role (Work ratio 4/4)
+  workCommits?: number; // of those, feature/bugfix/director
+  maintenanceCommits?: number; // of those, code-maintenance + readme
   costUsd: number;
   featuresDone: number;
   bugsFixed: number;
@@ -257,6 +278,9 @@ export interface ReportData {
   totals: ReportTotals & {
     featuresDone: number;
     bugsFixed: number;
+    commitsByRole?: Record<string, number>;
+    workCommits?: number;
+    maintenanceCommits?: number;
   };
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the window's first day, or the
@@ -314,6 +338,9 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
     costByRole: {},
     tokensOut: 0,
     commits: 0,
+    commitsByRole: {},
+    workCommits: 0,
+    maintenanceCommits: 0,
     costUsd: 0,
     landingRuns: 0,
     landingTokens: 0,
@@ -361,6 +388,9 @@ export function collectReport(root: string, days: number): ReportData {
       ticksByRole: {},
       costByRole: {},
       commits: 0,
+      commitsByRole: {},
+      workCommits: 0,
+      maintenanceCommits: 0,
       costUsd: 0,
       featuresDone: 0,
       bugsFixed: 0,
@@ -377,6 +407,9 @@ export function collectReport(root: string, days: number): ReportData {
     day.ticksByRole = fold.ticksByRole;
     day.costByRole = fold.costByRole;
     day.commits = fold.commits;
+    day.commitsByRole = fold.commitsByRole;
+    day.workCommits = fold.workCommits;
+    day.maintenanceCommits = fold.maintenanceCommits;
     day.costUsd = fold.costUsd;
     day.landingRuns = fold.landingRuns;
     day.landingTokens = fold.landingTokens;
@@ -410,6 +443,9 @@ export function collectReport(root: string, days: number): ReportData {
     tokensOut: 0,
     ticks: 0,
     commits: 0,
+    commitsByRole: {} as Record<string, number>,
+    workCommits: 0,
+    maintenanceCommits: 0,
     costUsd: 0,
     featuresDone: 0,
     bugsFixed: 0,
@@ -421,6 +457,9 @@ export function collectReport(root: string, days: number): ReportData {
     totals.tokensOut += d.tokensOut;
     for (const n of Object.values(d.ticksByRole)) totals.ticks += n;
     totals.commits += d.commits;
+    for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(totals.commitsByRole, role, n);
+    totals.workCommits += d.workCommits ?? 0;
+    totals.maintenanceCommits += d.maintenanceCommits ?? 0;
     totals.costUsd += d.costUsd;
     totals.featuresDone += d.featuresDone;
     totals.bugsFixed += d.bugsFixed;

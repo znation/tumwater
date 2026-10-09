@@ -65,10 +65,10 @@ test("the other backlog tabs render unchanged alongside the queued age", () => {
 // The "In flight" stat tile counts the running set, not just the permit holders: a running
 // director is genuinely in flight though it holds no maxConcurrent permit, so the tile must
 // not read 0 beside a live Director row (BUGS.md 2026-10-06).
-function statsScope() {
+function statsScope(today: unknown = null) {
   const panels: Record<string, string> = {};
   const scope = clientScope<{ renderStats(d: object): void }>(["format", "view-model", "stats"], ["renderStats"], {
-    today: null,
+    today,
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
   });
@@ -87,4 +87,13 @@ test("the In flight tile counts a running director even though it holds no permi
   const html = panels["stats"] ?? "";
   assert.match(html, /In flight<\/span><span class='stat-value'>2 <small>of 2 loops<\/small>/, "the tile counts both live loops");
   assert.match(html, />2 working</, "the subtitle names both as working");
+});
+
+test("the Landed today tile shows the work/maintenance commit split", () => {
+  const { scope, panels } = statsScope({
+    totals: { commits: 5, featuresDone: 4, bugsFixed: 2, workCommits: 2, maintenanceCommits: 3, ticks: 0, tokensOut: 0, costUsd: 0 },
+  });
+  scope.renderStats({ running: true, loops: [] });
+  const html = panels["stats"] ?? "";
+  assert.match(html, /4 features done · 2 bugs fixed · 2 work \/ 3 maintenance/, "the sub-line names the work vs upkeep split");
 });

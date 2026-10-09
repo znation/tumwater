@@ -52,6 +52,22 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   assert.equal(lines[13], "**Cost by role:** -");
 });
 
+test("renderReportMarkdown prints commits by role and the work/maintenance split with commits per item", () => {
+  const data: ReportData = {
+    days: 1,
+    from: "2026-09-10",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 5, commitsByRole: { clean: 3, feature: 2 }, workCommits: 2, maintenanceCommits: 3, costUsd: 0, featuresDone: 1, bugsFixed: 1 },
+    ],
+    totals: { tokensOut: 0, ticks: 0, commits: 5, commitsByRole: { clean: 3, feature: 2 }, workCommits: 2, maintenanceCommits: 3, costUsd: 0, featuresDone: 1, bugsFixed: 1, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  const md = renderReportMarkdown(data);
+  assert.match(md, /\*\*Commits by role:\*\* clean — 3 · feature — 2/);
+  assert.match(md, /\*\*Commits:\*\* 2 work \/ 3 maintenance · 2\.5 commits per backlog item/);
+});
+
 test("renderReportMarkdown shows the landing line under Totals only when landing ran", () => {
   const base = collectReport(tmpdir(), 2);
   // Zero landing runs: the line is omitted entirely, so a fleet with no landing spend
