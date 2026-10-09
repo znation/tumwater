@@ -11,6 +11,7 @@
 
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
+import type { PiRunKind } from "../pi/pi-event-line.js";
 import type { ResolvedAgentBin } from "../pi/pi-bin.js";
 
 /** The backend id used when a config names none — the harness's historical, only agent. */
@@ -26,6 +27,9 @@ export interface AgentRunSpec {
   sessionDir: string;
   sessionName: string;
   continueSession?: boolean;
+  /** Which kind of run this is (authoring or gate). The claude adapter uses it to pick the
+   * session ledger record it may resume, and its translator warning carries it. */
+  kind: PiRunKind;
   /** The resolved agent binary (see AgentBackend.resolveBin). */
   agentBin: string;
   /** This run's cross-group attribution marker, already appended to any inherited one. */
@@ -41,6 +45,10 @@ export interface AgentInvocation {
   args: string[];
   stdin?: string;
   env: NodeJS.ProcessEnv;
+  /** The backend session id this run used: minted for a fresh claude run, the resumed
+   * record's id for a continue. Absent for pi, which mints no id ahead of the run and
+   * resumes by session dir. The runner records it in the session ledger. */
+  sessionId?: string;
 }
 
 /** One run's native-stdout-to-canonical translator (plans/agent-backends.md "Canonical event

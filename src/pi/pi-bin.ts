@@ -28,11 +28,13 @@ export interface ResolvedAgentBin {
 }
 
 /** The operator-facing name of each source, as it appears in failure text and doctor's
- * report. Exported so pi.ts's spawn errors and doctor's checks quote the same string. */
-export function agentBinSourceLabel(source: AgentBinSource): string {
+ * report. Exported so pi.ts's spawn errors and doctor's checks quote the same string.
+ * `binEnv` is the environment variable a backend reads (pi's TUMWATER_PI_BIN by default;
+ * claude's adapter passes TUMWATER_CLAUDE_BIN), so a claude spawn error names its own var. */
+export function agentBinSourceLabel(source: AgentBinSource, binEnv = "TUMWATER_PI_BIN"): string {
   switch (source) {
     case "env":
-      return "TUMWATER_PI_BIN";
+      return binEnv;
     case "config":
       return "agentBin in tumwater.json";
     case "default":
@@ -83,15 +85,26 @@ function absBin(value: string): string {
   return value.includes("/") ? path.resolve(value) : value;
 }
 
-/** Resolve which agent binary the harness spawns: TUMWATER_PI_BIN → config.agentBin →
- * "pi" (plans/portability.md §5/7). An empty or whitespace value falls through to the
- * next source, so `TUMWATER_PI_BIN= tumwater run` cannot wedge the fleet on a typo'd
- * export. This is precedence only — resolvability is checked at the preflight sites
- * (cmdRun and doctor), never here. */
-export function resolveAgentBin(config: Pick<TumwaterConfig, "agentBin">): ResolvedAgentBin {
-  const env = process.env.TUMWATER_PI_BIN?.trim();
+/** The precedence every backend shares, parameterized by its own env override and default
+ * binary name: `<binEnv>` env → `config.agentBin` → `defaultBin`. An empty or whitespace
+ * value falls through to the next source, so `TUMWATER_PI_BIN= tumwater run` cannot wedge
+ * the fleet on a typo'd export. This is precedence only — resolvability is checked at the
+ * preflight sites (cmdRun and doctor), never here. */
+export function resolveBinFrom(
+  binEnv: string,
+  defaultBin: string,
+  configured?: string,
+): ResolvedAgentBin {
+  const env = process.env[binEnv]?.trim();
   if (env) return { bin: absBin(env), source: "env" };
-  const configured = config.agentBin?.trim();
-  if (configured) return { bin: absBin(configured), source: "config" };
-  return { bin: "pi", source: "default" };
+  const cfg = configured?.trim();
+  if (cfg) return { bin: absBin(cfg), source: "config" };
+  return { bin: defaultBin, source: "default" };
+}
+
+/** Resolve which agent binary pi spawns: TUMWATER_PI_BIN → config.agentBin → "pi"
+ * (plans/portability.md §5/7). The claude adapter calls `resolveBinFrom` directly with its
+ * own env name and default. */
+export function resolveAgentBin(config: Pick<TumwaterConfig, "agentBin">): ResolvedAgentBin {
+  return resolveBinFrom("TUMWATER_PI_BIN", "pi", config.agentBin);
 }

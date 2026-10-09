@@ -24,77 +24,6 @@ Part 2/3 already writes the accurate `review_failed` message itself (its conditi
 - The failure digest clusters the two timeout messages under distinct causes, and a line with only the from-scratch wording still clusters where it used to.
 - The project's check passes.
 
-### Agent backends, part 3c1/7: the claude backend adapter and PATH fake (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7, which feature judged too large for one run; requires parts 3a/7 and 3b/7 landed)
-
-Design: plans/agent-backends.md ("The seam", "Sessions", "Testing").
-
-Registers claude as an adapter and proves a run end to end on a fake. Still not selectable from
-tumwater.json (part 4/7); tests drive it through `runAgent` with `config.agent = "claude"`.
-Parts 3c2/7 (native log and translator warnings) and 3c3/7 (backend-aware resumability across
-the loop) build on this and require it landed.
-
-**Goal:** `runAgent` runs claude on a fake and folds its stream exactly as it folds pi's, with a
-per-run session ledger the loop's later resume paths can query by ledger id.
-
-**Approach.**
-1. **Seam additions.** `src/agent/agent-backend.ts`: add `kind: PiRunKind` to `AgentRunSpec`
-   (the adapter needs it for the ledger and the translator); add `sessionId?: string` to
-   `AgentInvocation` — the backend session id this run used (minted for a fresh claude run, the
-   resumed record's id for a continue), absent for pi, which mints no id ahead of the run.
-   `src/agent/run-agent.ts` records it: `recordSession(opts.sessionDir, { ..., id:
-   invocation.sessionId ?? opts.sessionName, ... })`.
-2. **Binary resolution.** `src/pi/pi-bin.ts`: extract `resolveBinFrom(binEnv, defaultBin,
-   configured?)` from `resolveAgentBin` (pi keeps env → `config.agentBin` → `"pi"`); give
-   `agentBinSourceLabel(source, binEnv = "TUMWATER_PI_BIN")` the env name so a spawn error names
-   `TUMWATER_CLAUDE_BIN`; `run-agent.ts`'s `spawnErrorMessage` passes `backend.binEnv`.
-3. **Adapter.** New `claude-backend.ts` in the claude adapter directory (src/agent/claude/) exporting `claudeBackend: AgentBackend`:
-   `id: "claude"`, `label: "Claude Code"`, `defaultBin: "claude"`, `binEnv:
-   "TUMWATER_CLAUDE_BIN"`, `resolveBin` via `resolveBinFrom`, and:
-   - `invocation(run)`: pick the session id (step 4), then `claudeArgs({ cwd: run.cwd, model:
-     run.config.model, thinking: run.config.thinking, sessionId | resumeSessionId, prompt:
-     run.prompt })`; layer the environment as pi's adapter does —
-     `runMarkerEnv(withoutLaunchServicesCheckIn(process.env), run.runMarker)` then
-     `claudeEnv(base, { quietTimeoutSeconds: run.config.quietTimeoutSeconds })` (both modules
-     landed in 3b/7). Throw a clear error when `run.config.model` is undefined, since part 4/7
-     resolves the tier defaults. Return `{ args, stdin, env, sessionId }`.
-   - `translator()`: `claudeTranslator()` from 3a/7.
-   - `classifyExit(info)`: `{}` when `info.killed`; otherwise `{ configError: true }` when
-     `info.code !== 0` and stderr matches
-     `/Not logged in|issue with the selected model|does not support this model/i`, else `{}`.
-     (The event path in claude-stream.ts classifies the stream itself; this is the stderr half.)
-4. **Session decision.** In `invocation`, fresh (`!run.continueSession`): `randomUUID()` and pass
-   it as `sessionId`. Continue: `resumableSession(run.sessionDir, { kind: run.kind, agent:
-   "claude", cwd: run.cwd })`; resume with `resumeSessionId: record.id` only when the record
-   exists and its transcript file exists, else mint a fresh id. Add
-   `claudeTranscriptPath(cwd, id)` = `path.join(os.homedir(), ".claude", "projects",
-   claudeProjectSlug(cwd), `${id}.jsonl`)` with `claudeProjectSlug(cwd) =
-   cwd.replace(/[^A-Za-z0-9]/g, "-")`, exported so the fake and tests create the same file.
-5. **Registration.** `run-agent.ts`: `registerAgentBackend(claudeBackend)` beside `piBackend`.
-6. **Fake.** New `fake-claude.ts` under test/fakes/ on fake-pi.ts's conventions: a PATH shim named
-   `claude` replaying canned stream-json, logging argv and stdin per run, and creating the
-   transcript at `claudeTranscriptPath` under a temp HOME. `test/test-runner.ts`'s `suiteEnv`
-   additionally deletes `TUMWATER_CLAUDE_BIN`, `CLAUDECODE`, and every `CLAUDE_CODE_*`.
-7. **Tests.** New `claude-run.test.ts` under test/ driving `runAgent`.
-
-**Files touched:** new `claude-backend.ts` under src/agent/claude/, `src/agent/agent-backend.ts`,
-`src/agent/run-agent.ts`, `src/pi/pi-bin.ts`, new `fake-claude.ts` under test/fakes/,
-new `claude-run.test.ts` under test/, `test/test-runner.ts`.
-
-**Acceptance criteria:**
-- `runAgent` on fake-claude with `config.agent = "claude"` and a set `config.model` returns the
-  folded `PiRunResult` (cost from the final `result`), and the raw log holds canonical lines the
-  existing readers render.
-- A fresh run's argv carries `--session-id <uuid>`; the session ledger gains one line with that
-  id, `agent: "claude"`, the run's kind and cwd; the fake created the transcript at the matching
-  `claudeTranscriptPath`.
-- A `continueSession` run from the same cwd and kind passes `--resume <recorded id>`; a ledger
-  record whose cwd differs, or whose transcript file is absent, gets a fresh `--session-id`.
-- The spawned env strips `CLAUDECODE` and `CLAUDE_CODE_SESSION_ID` even when the suite's parent
-  carries them; stdin carries the prompt.
-- `classifyExit` maps a nonzero exit with "Not logged in" stderr to `configError` and leaves a
-  killed run unclassified.
-- The project's check passes.
-
 ### Agent backends, part 3c2/7: the claude native log and translator warnings (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed)
 
 Design: plans/agent-backends.md ("Canonical event stream": the native stream is kept for
@@ -617,6 +546,77 @@ and asserting the refetch shows the second loop's note (not the first's).
 
 
 ## Done
+
+### Agent backends, part 3c1/7: the claude backend adapter and PATH fake (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7, which feature judged too large for one run; requires parts 3a/7 and 3b/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("The seam", "Sessions", "Testing").
+
+Registers claude as an adapter and proves a run end to end on a fake. Still not selectable from
+tumwater.json (part 4/7); tests drive it through `runAgent` with `config.agent = "claude"`.
+Parts 3c2/7 (native log and translator warnings) and 3c3/7 (backend-aware resumability across
+the loop) build on this and require it landed.
+
+**Goal:** `runAgent` runs claude on a fake and folds its stream exactly as it folds pi's, with a
+per-run session ledger the loop's later resume paths can query by ledger id.
+
+**Approach.**
+1. **Seam additions.** `src/agent/agent-backend.ts`: add `kind: PiRunKind` to `AgentRunSpec`
+   (the adapter needs it for the ledger and the translator); add `sessionId?: string` to
+   `AgentInvocation` — the backend session id this run used (minted for a fresh claude run, the
+   resumed record's id for a continue), absent for pi, which mints no id ahead of the run.
+   `src/agent/run-agent.ts` records it: `recordSession(opts.sessionDir, { ..., id:
+   invocation.sessionId ?? opts.sessionName, ... })`.
+2. **Binary resolution.** `src/pi/pi-bin.ts`: extract `resolveBinFrom(binEnv, defaultBin,
+   configured?)` from `resolveAgentBin` (pi keeps env → `config.agentBin` → `"pi"`); give
+   `agentBinSourceLabel(source, binEnv = "TUMWATER_PI_BIN")` the env name so a spawn error names
+   `TUMWATER_CLAUDE_BIN`; `run-agent.ts`'s `spawnErrorMessage` passes `backend.binEnv`.
+3. **Adapter.** New `claude-backend.ts` in the claude adapter directory (src/agent/claude/) exporting `claudeBackend: AgentBackend`:
+   `id: "claude"`, `label: "Claude Code"`, `defaultBin: "claude"`, `binEnv:
+   "TUMWATER_CLAUDE_BIN"`, `resolveBin` via `resolveBinFrom`, and:
+   - `invocation(run)`: pick the session id (step 4), then `claudeArgs({ cwd: run.cwd, model:
+     run.config.model, thinking: run.config.thinking, sessionId | resumeSessionId, prompt:
+     run.prompt })`; layer the environment as pi's adapter does —
+     `runMarkerEnv(withoutLaunchServicesCheckIn(process.env), run.runMarker)` then
+     `claudeEnv(base, { quietTimeoutSeconds: run.config.quietTimeoutSeconds })` (both modules
+     landed in 3b/7). Throw a clear error when `run.config.model` is undefined, since part 4/7
+     resolves the tier defaults. Return `{ args, stdin, env, sessionId }`.
+   - `translator()`: `claudeTranslator()` from 3a/7.
+   - `classifyExit(info)`: `{}` when `info.killed`; otherwise `{ configError: true }` when
+     `info.code !== 0` and stderr matches
+     `/Not logged in|issue with the selected model|does not support this model/i`, else `{}`.
+     (The event path in claude-stream.ts classifies the stream itself; this is the stderr half.)
+4. **Session decision.** In `invocation`, fresh (`!run.continueSession`): `randomUUID()` and pass
+   it as `sessionId`. Continue: `resumableSession(run.sessionDir, { kind: run.kind, agent:
+   "claude", cwd: run.cwd })`; resume with `resumeSessionId: record.id` only when the record
+   exists and its transcript file exists, else mint a fresh id. Add
+   `claudeTranscriptPath(cwd, id)` = `path.join(os.homedir(), ".claude", "projects",
+   claudeProjectSlug(cwd), `${id}.jsonl`)` with `claudeProjectSlug(cwd) =
+   cwd.replace(/[^A-Za-z0-9]/g, "-")`, exported so the fake and tests create the same file.
+5. **Registration.** `run-agent.ts`: `registerAgentBackend(claudeBackend)` beside `piBackend`.
+6. **Fake.** New `fake-claude.ts` under test/fakes/ on fake-pi.ts's conventions: a PATH shim named
+   `claude` replaying canned stream-json, logging argv and stdin per run, and creating the
+   transcript at `claudeTranscriptPath` under a temp HOME. `test/test-runner.ts`'s `suiteEnv`
+   additionally deletes `TUMWATER_CLAUDE_BIN`, `CLAUDECODE`, and every `CLAUDE_CODE_*`.
+7. **Tests.** New `claude-run.test.ts` under test/ driving `runAgent`.
+
+**Files touched:** new `claude-backend.ts` under src/agent/claude/, `src/agent/agent-backend.ts`,
+`src/agent/run-agent.ts`, `src/pi/pi-bin.ts`, new `fake-claude.ts` under test/fakes/,
+new `claude-run.test.ts` under test/, `test/test-runner.ts`.
+
+**Acceptance criteria:**
+- `runAgent` on fake-claude with `config.agent = "claude"` and a set `config.model` returns the
+  folded `PiRunResult` (cost from the final `result`), and the raw log holds canonical lines the
+  existing readers render.
+- A fresh run's argv carries `--session-id <uuid>`; the session ledger gains one line with that
+  id, `agent: "claude"`, the run's kind and cwd; the fake created the transcript at the matching
+  `claudeTranscriptPath`.
+- A `continueSession` run from the same cwd and kind passes `--resume <recorded id>`; a ledger
+  record whose cwd differs, or whose transcript file is absent, gets a fresh `--session-id`.
+- The spawned env strips `CLAUDECODE` and `CLAUDE_CODE_SESSION_ID` even when the suite's parent
+  carries them; stdin carries the prompt.
+- `classifyExit` maps a nonzero exit with "Not logged in" stderr to `configError` and leaves a
+  killed run unclassified.
+- The project's check passes.
 
 ### A review retry picks up the timed-out reviewer's session, part 2/3: record and resume a progressing-timeout review session (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 1/3 landed; done 2026-10-09 by feature)
 

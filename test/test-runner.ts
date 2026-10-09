@@ -265,6 +265,12 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   around the real pi, plans/portability.md) displaced every fake pi the suite puts on PATH:
  *   the fake-pi tests ran the agent it named (BUGS.md 2026-09-28). Tests of the variable set it
  *   themselves; test/fakes/fake-pi.ts drops it too, for a file run directly with `node --test`.
+ * - TUMWATER_CLAUDE_BIN is claude's twin of TUMWATER_PI_BIN: a fake-claude suite run from a
+ *   shell that exported it would spawn the operator's binary instead of the PATH shim.
+ * - CLAUDECODE and every CLAUDE_CODE_* mark a host Claude Code session. A run spawned inside
+ *   one that kept them reports "Not logged in" (finding 2), and the isolation env strips them
+ *   at spawn; dropping them here makes a suite started by hand and one started by a tick
+ *   exercise the same parent environment.
  * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
  *   supervisor half. test/helpers/cli-harness.ts also drops it from every CLI child it starts.
  * - SUPERVISOR_PID_ENV carries the supervisor pid a supervised run was handed, so an inherited
@@ -282,6 +288,11 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
 export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env = suiteGitEnv(base);
   delete env.TUMWATER_PI_BIN;
+  delete env.TUMWATER_CLAUDE_BIN;
+  delete env.CLAUDECODE;
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("CLAUDE_CODE_")) delete env[key];
+  }
   delete env[SUPERVISED_ENV];
   delete env[SUPERVISOR_PID_ENV];
   delete env.TUMWATER_NOTES_PATH;

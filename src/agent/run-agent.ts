@@ -21,15 +21,17 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_AGENT, agentBackend, registerAgentBackend } from "./agent-backend.js";
 import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
+import { claudeBackend } from "./claude/claude-backend.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
  * warning split across two `data` events is still seen. The warnings are short lines, so a few
  * hundred characters always cover a straddle. */
 const STDERR_MATCH_TAIL = 512;
 
-// The seam's first (and, in part 1/7, only) adapter. Registering here — where the lookup
-// happens — keeps the registration explicit and lets a test register a fake under its own id.
+// The seam's adapters. Registering here — where the lookup happens — keeps the registration
+// explicit and lets a test register a fake under its own id.
 registerAgentBackend(piBackend);
+registerAgentBackend(claudeBackend);
 
 /** Prefix of PiRunResult.errorMessage when the agent process never started (no session file
  * is created for such a run). The resolved binary follows it, so a configured agentBin
@@ -39,9 +41,15 @@ const SPAWN_ERROR_PREFIX = "failed to spawn";
 /** The spawn-error message for a resolved binary: the default source keeps today's text
  * ("failed to spawn pi: …"); a configured source names the binary and where it came from,
  * so a wrong agentBin does not read as "pi is broken". */
-function spawnErrorMessage(resolved: ResolvedAgentBin, errMessage: string): string {
+function spawnErrorMessage(
+  resolved: ResolvedAgentBin,
+  errMessage: string,
+  binEnv: string,
+): string {
   const source =
-    resolved.source === "default" ? "" : ` (resolved from ${agentBinSourceLabel(resolved.source)})`;
+    resolved.source === "default"
+      ? ""
+      : ` (resolved from ${agentBinSourceLabel(resolved.source, binEnv)})`;
   return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
 }
 
@@ -139,17 +147,18 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       sessionDir: opts.sessionDir,
       sessionName: opts.sessionName,
       continueSession: opts.continueSession,
+      kind: opts.kind,
       agentBin: resolved.bin,
       runMarker,
       notesPath: opts.notesPath,
     });
     // Record the run in the session ledger before its spawn, so a later resume can pick the
     // newest session of its own kind instead of whatever file is newest in the dir. The id is
-    // the session name here: pi mints no id ahead of the run and resumes by dir, while claude
-    // (part 3/7) mints its own UUID and reuses it for a resume.
+    // the backend's own when it mints one ahead of the run (claude's UUID, or the resumed
+    // record's id); pi mints none and keeps the session name.
     recordSession(opts.sessionDir, {
       agent: backend.id,
-      id: opts.sessionName,
+      id: invocation.sessionId ?? opts.sessionName,
       kind: opts.kind,
       name: opts.sessionName,
       cwd: opts.cwd,
@@ -325,7 +334,11 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     });
 
     child.on("error", (err) => {
-      finish(resultFromParser({ errorMessage: spawnErrorMessage(resolved, err.message) }));
+      finish(
+        resultFromParser({
+          errorMessage: spawnErrorMessage(resolved, err.message, backend.binEnv),
+        }),
+      );
     });
 
     // Sweep the run however it ended, a normal exit included, in two passes:
