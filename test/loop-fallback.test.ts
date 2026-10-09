@@ -6,10 +6,13 @@
  * evidence, and a tick that never invoked pi is no probe. */
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
+import { loadLoopState } from "../src/loop/loop-state.js";
+import { eventsLogPath } from "../src/paths.js";
 import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { transientErrorText } from "./fakes/transient.js";
@@ -241,4 +244,29 @@ test("a provider failure the transient retry recovers does not count against the
     assert.equal(runner.state.modelFallback, undefined, "the authoring run answered, so no trip");
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 0);
   });
+});
+
+test("an unwritable events feed cannot reject a tick — its fallback verdict still folds and saves", async () => {
+  const repo = await initializedRepo();
+  const config = defaultConfig();
+  config.model = "primary/m1";
+  config.fallback = "backup/f1";
+  const runner = makeLoopRunner(repo, "clean", config);
+  // An active episode whose probe is due: the next successful idle run on the primary ends it.
+  runner.state.modelFallback = {
+    failures: 0,
+    since: Date.now() - 1000,
+    probeAt: Date.now() - 1,
+    cooldownMs: 5 * 60_000,
+    reason: "server",
+  };
+  // A directory where events.jsonl belongs makes every append throw EISDIR.
+  fs.mkdirSync(eventsLogPath(repo), { recursive: true });
+  await withIdlePi(async () => {
+    // Before the fix the tick_start append rejected tick() itself, before runTick's try; after
+    // it, every event write on the tick path is best-effort and the run resolves normally.
+    assert.equal((await runner.tick()).result, "no_change");
+  });
+  assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded despite the dead feed");
+  assert.equal(loadLoopState(repo, "clean").running, false, "the end-of-tick save ran");
 });

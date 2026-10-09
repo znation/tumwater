@@ -11,7 +11,7 @@ import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.
 import { leaseSlot } from "../git/worktree-pool.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { branchName, worktreePath } from "../paths.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import {
   buildConflictDiscardNote,
@@ -188,7 +188,7 @@ export class LoopRunner {
    * warning site (pin failure, transient retry, error/quiet-kill streak, no-change diagnosis,
    * missing SUMMARY, high friction) stamps this loop and the "warning" type in one place. */
   private warn(message: string): void {
-    warnEvent(this.root, this.role, message);
+    warnEventBestEffort(this.root, this.role, message);
   }
 
   /** Zero the accumulated counters in memory and persist them. The orchestrator calls this
@@ -503,7 +503,7 @@ export class LoopRunner {
     // the budget fallback active the config already names the fallback pair, so the logged
     // string is what the runs actually use. Omitted when no model is configured (pi's own
     // default), so old logs and old configs render unchanged.
-    logEvent(this.root, {
+    logEventBestEffort(this.root, {
       loop: this.role,
       type: "tick_start",
       tick,
@@ -582,7 +582,7 @@ export class LoopRunner {
     const next = recordModelFallback(prior, { verdict, probe: ctx.probe, now, reason });
     const willBeIn = next !== undefined && next.since > 0;
     if (!wasIn && willBeIn) {
-      logEvent(this.root, {
+      logEventBestEffort(this.root, {
         loop: this.role,
         type: "model_fallback_started",
         provider: ctx.fallback.provider,
@@ -590,7 +590,7 @@ export class LoopRunner {
         reason: next?.reason,
       });
     } else if (wasIn && !willBeIn) {
-      logEvent(this.root, {
+      logEventBestEffort(this.root, {
         loop: this.role,
         type: "model_fallback_ended",
         provider: ctx.primary.provider,
@@ -614,7 +614,7 @@ export class LoopRunner {
     wasIn: boolean,
   ): void {
     if (!wasIn) return;
-    logEvent(this.root, {
+    logEventBestEffort(this.root, {
       loop: this.role,
       type: "model_fallback_ended",
       provider: primary.provider,
@@ -725,7 +725,7 @@ export class LoopRunner {
     if (resuming) {
       // Keep the interrupted run's uncommitted edits; clear only stray merge/rebase state.
       await abortSync(wt);
-      logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
+      logEventBestEffort(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
       // Salvage a commit a previous tick left unlanded (src/loop/leftover.ts): recovery puts it
       // back on the land queue, so it lands through the orchestrator's landing pipeline — the
@@ -758,7 +758,7 @@ export class LoopRunner {
           reason: "landing",
           applied: false,
         };
-        logEvent(this.root, { loop: this.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "landing" });
+        logEventBestEffort(this.root, { loop: this.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "landing" });
       } else if (recovered?.kind === "discarded") {
         // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
         // tick authors on a fresh main like any other — told what was dropped and why.
@@ -810,7 +810,7 @@ export class LoopRunner {
       if (applied.applied) {
         s.conflictHandback = { ...hb, applied: true };
         await deleteRef(this.root, landingRefName(this.role));
-        logEvent(this.root, {
+        logEventBestEffort(this.root, {
           loop: this.role,
           type: "conflict_handback",
           action: "applied",
@@ -825,7 +825,7 @@ export class LoopRunner {
         // so the author starts fresh rather than retrying it every tick.
         s.conflictHandback = undefined;
         await deleteRef(this.root, landingRefName(this.role));
-        logEvent(this.root, { loop: this.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
+        logEventBestEffort(this.root, { loop: this.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
       }
     }
 
@@ -847,7 +847,7 @@ export class LoopRunner {
         revisionRound = round;
       } else if (await applyRevision(wt, this.mainBranch, sha)) {
         revisionRound = round;
-        logEvent(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
+        logEventBestEffort(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
         prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
       } else {
         // The clean re-apply conflicted: re-apply with the markers left in place so the author
@@ -863,8 +863,8 @@ export class LoopRunner {
             round,
             applied: true,
           };
-          logEvent(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
-          logEvent(this.root, {
+          logEventBestEffort(this.root, { loop: this.role, type: "revision", action: "applied", round, sha });
+          logEventBestEffort(this.root, {
             loop: this.role,
             type: "conflict_handback",
             action: "applied",
@@ -878,7 +878,7 @@ export class LoopRunner {
         } else {
           s.revision = undefined;
           await deleteRef(this.root, rejectedRefName(this.role));
-          logEvent(this.root, { loop: this.role, type: "revision", action: "conflict", round, sha });
+          logEventBestEffort(this.root, { loop: this.role, type: "revision", action: "conflict", round, sha });
           prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] }, this.role)}`;
           prompt += `\n\nThe rejected diff no longer applies to current main.`;
         }
