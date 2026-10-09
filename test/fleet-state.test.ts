@@ -261,6 +261,16 @@ test("an expired fleet deadline reads as unpaused everywhere and a re-pause star
   assert.equal(isFleetPaused(root), true);
 });
 
+test("a non-finite fleet deadline reads as an indefinite pause, never a bogus countdown", () => {
+  const root = tmpdir();
+  ensureParentDir(pausedPath(root));
+  // A hand edit's overflow literal (`1e999`) parses to Infinity; JSON.stringify can never
+  // write one, so only an edited marker carries it.
+  fs.writeFileSync(pausedPath(root), `{"at":${Date.now()},"until":1e999}`);
+  assert.equal(isFleetPaused(root), true, "a corrupt deadline must not resume the fleet");
+  assert.equal(pausedUntil(root), undefined, "a non-finite deadline is no deadline for the badge");
+});
+
 // The operator pause's why (`tumwater pause --reason <text>`): the marker carries the
 // trimmed, capped note, a fresh write replaces it (last write wins, like `until`), a
 // reasonless write clears a stale one, and the idempotent no-op never touches it.
@@ -390,4 +400,18 @@ test("pauseRole with a deadline writes { roles, at, until } and expiry releases 
   assert.equal((readJson(pausedRolesPath(root)) as { until: number }).until, sooner);
   assert.equal(resumeRole(root, "dry"), true);
   assert.equal(fs.existsSync(pausedRolesPath(root)), false);
+});
+
+test("a non-finite per-role deadline is dropped on a rewrite instead of becoming an expired marker", () => {
+  const root = tmpdir();
+  ensureParentDir(pausedRolesPath(root));
+  fs.writeFileSync(pausedRolesPath(root), '{"roles":["docs"],"at":1,"until":1e999}');
+  assert.deepEqual(pausedRoles(root), ["docs"], "the corrupted deadline leaves the set paused");
+  assert.equal(pauseRole(root, "dry"), true, "a sibling join rewrites the marker");
+  const marker = readJson(pausedRolesPath(root)) as { roles: string[]; until?: unknown };
+  assert.deepEqual(marker.roles, ["docs", "dry"]);
+  // Writing Infinity verbatim would JSON-stringify to null, which the expiry rule reads as a
+  // past deadline and resumes every role the operator believed stopped.
+  assert.equal(marker.until, undefined, "the unusable deadline is dropped, not persisted");
+  assert.deepEqual(pausedRoles(root), ["docs", "dry"], "the set stays paused after the rewrite");
 });

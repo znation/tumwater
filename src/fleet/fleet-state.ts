@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { stringList } from "../files/json-object.js";
+import { finiteNumber, stringList } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { truncate } from "../text/text.js";
@@ -65,11 +65,19 @@ export const PAUSE_REASON_MAX = 200;
  * wrong-shape-reads-as-absent policy — and the type guard is what keeps this function's
  * never-throws contract intact: normalizePauseReason would throw on a number or object,
  * and this read sits on the scheduler's per-cycle isFleetPaused poll and every dashboard
- * snapshot. */
+ * snapshot.
+ *
+ * A non-finite `until` (a hand edit's `1e999` parses to Infinity) is the same wrong-shape
+ * read: it is dropped, so the marker stands as an indefinite pause rather than a pause that
+ * never lapses with its countdown rendered `Infinityd`. The fleet stays stopped — a corrupt
+ * deadline must not resume it — but it no longer claims a deadline no clock can reach. */
 function standingMarker(path: string): PauseMarker | null {
   const m = readJsonFile<PauseMarker>(path);
   if (!m || typeof m.at !== "number") return null;
-  if (m.until !== undefined && m.until <= Date.now()) return null;
+  const until = finiteNumber(m.until, undefined);
+  if (until !== undefined && until <= Date.now()) return null;
+  if (until === undefined) delete m.until;
+  else m.until = until;
   const folded =
     typeof m.reason === "string" ? normalizePauseReason(m.reason) : undefined;
   if (folded) m.reason = folded;
@@ -156,7 +164,12 @@ export function resumeFleet(root: string): boolean {
  * single-definition reason: producer (CLI, GUI) and every consumer read one module. */
 export function pausedRoles(root: string): string[] {
   const state = readJsonFile<{ roles: unknown; at: number; until?: number }>(pausedRolesPath(root));
-  if (!state || (state.until !== undefined && state.until <= Date.now())) return [];
+  if (!state) return [];
+  // A non-finite `until` is ignored, the same wrong-shape read standingMarker applies: the
+  // set stays paused, but on no deadline, so a corrupt value cannot expire the roles it was
+  // meant to hold.
+  const until = finiteNumber(state.until, undefined);
+  if (until !== undefined && until <= Date.now()) return [];
   return stringList(state.roles);
 }
 
@@ -186,12 +199,15 @@ function withPausedRolesLock<T>(root: string, fn: () => T): T {
  * body from scratch, and dropping the field there silently converted the other paused roles'
  * timed pause into a standing one — the operator's `--for` auto-resume promise revoked by a
  * command that named a different role (BUGS.md 2026-09-30). undefined when the file is
- * missing, unreadable, or carries no `until` — or a non-numeric or already-expired one, the
- * same wrong-shape-reads-as-absent discipline standingMarker applies to the fleet marker. */
+ * missing, unreadable, or carries no `until` — or a non-numeric, non-finite, or already-
+ * expired one, the same wrong-shape-reads-as-absent discipline standingMarker applies to the
+ * fleet marker. Dropping a non-finite value here matters beyond the read: a rewrite carries
+ * this value into the next marker body, where JSON.stringify turns Infinity into null — which
+ * the expiry rule then reads as a past deadline and resumes every role. */
 function standingRolesUntil(path: string): number | undefined {
   const state = readJsonFile<{ until?: unknown }>(path);
-  const until = state?.until;
-  return typeof until === "number" && until > Date.now() ? until : undefined;
+  const until = finiteNumber(state?.until, undefined);
+  return until !== undefined && until > Date.now() ? until : undefined;
 }
 
 /** Write the paused-roles marker body — the roles set plus the optional shared `until` — the

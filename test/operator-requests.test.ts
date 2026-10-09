@@ -219,6 +219,18 @@ test("consumeWakeRequest reads a non-numeric notBeforeMs as immediate", () => {
   assert.equal(fs.existsSync(wakeRequestPath(root)), false);
 });
 
+test("consumeWakeRequest reads a non-finite notBeforeMs as immediate", () => {
+  const root = tmpdir();
+  const a = fakeRunner("coverage");
+  // A hand edit's overflow literal parses to Infinity; as a deadline it would hold
+  // `notBefore > Date.now()` true forever, stranding the marker (nothing else deletes it).
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["coverage"] });
+  fs.writeFileSync(wakeRequestPath(root), `{"at":${Date.now()},"roles":["coverage"],"notBeforeMs":1e999}`);
+  consumeWakeRequest(root, asRunners(a));
+  assert.equal(a.wakes, 1, "a deadline no clock can reach reads as immediate, like a non-number");
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false);
+});
+
 test("consumeWakeRequest wakes every named role when a wake event cannot be logged", () => {
   const root = tmpdir();
   // events.jsonl as a directory makes logEvent throw (EISDIR) on the first role's wake event.

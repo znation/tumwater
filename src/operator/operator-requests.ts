@@ -5,6 +5,7 @@ import { logEvent, warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile } from "../files/json-files.js";
+import { finiteNumber } from "../files/json-object.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import {
@@ -117,9 +118,11 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
  * marker is left in place (a later poll retries it — the wake lands within one poll cycle
  * after the deadline, the same delivery granularity prompt --at's consumer gives), and the
  * deadline-crossing poll's `wake()` call is what applies the state change, since the submit
- * deliberately skipped it. A non-numeric value reads as immediate (defensive; validation
- * happens at the CLI). Each woken role logs the existing `wake` event with the operator
- * reason, so the fleet's early ticks read in the feed as deliberate. */
+ * deliberately skipped it. A non-numeric or non-finite value (a hand edit's `1e999`) reads as
+ * immediate (defensive; validation happens at the CLI) — leaving Infinity as a deadline would
+ * hold `notBefore > Date.now()` true forever and strand the marker, which nothing else deletes.
+ * Each woken role logs the existing `wake` event with the operator reason, so the fleet's early
+ * ticks read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = wakeRequestPath(root);
   if (!fs.existsSync(markerFile)) return;
@@ -128,8 +131,7 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   // state files and the marker is consumed unconditionally, so wake every runner (the same
   // superset `roleRequestTargets` gives corrupt markers) and remove it — an early return here
   // would leave the wedge in place forever, since nothing else ever deletes the marker.
-  const notBefore =
-    marker === null ? undefined : typeof marker.notBeforeMs === "number" ? marker.notBeforeMs : undefined;
+  const notBefore = marker === null ? undefined : finiteNumber(marker.notBeforeMs, undefined);
   if (notBefore !== undefined && notBefore > Date.now()) return;
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
