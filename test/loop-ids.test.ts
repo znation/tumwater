@@ -10,6 +10,7 @@ import {
   baseRoleOf,
   instanceIndex,
   loopEnabled,
+  loopIds,
 } from "../src/roles/loop-ids.js";
 import { baselineBlocked, roleById, roleTier, yieldScaledRole } from "../src/roles/roles.js";
 import { configForRole } from "../src/config/config-views.js";
@@ -42,14 +43,46 @@ test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
   assert.equal(instanceIndex("clean-2"), 1);
 });
 
-test("loopEnabled reads the base role and holds extra instances off until part 5/7", () => {
+test("loopEnabled reads the base role and its configured instance count", () => {
   const config = defaultConfig();
   assert.equal(loopEnabled(config, "feature"), true, "a bare enabled role runs");
-  assert.equal(loopEnabled(config, "feature-2"), false, "no instances configured means index > 1 is off");
+  assert.equal(loopEnabled(config, "feature-2"), false, "the default instance count keeps index 2 off");
+
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
+  assert.equal(loopEnabled(config, "feature-3"), true, "instance 3 runs at instances: 3");
+  assert.equal(loopEnabled(config, "feature-4"), false, "index above the count stays off");
+  config.roles.feature = { ...config.roles.feature, instances: 2 };
+  assert.equal(loopEnabled(config, "feature-3"), false, "a lowered count turns instance 3 off");
+
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), enabled: false };
   assert.equal(loopEnabled(config, "feature"), false);
   assert.equal(loopEnabled(config, "feature-2"), false, "a disabled base role disables its instances");
   assert.equal(loopEnabled(config, "my-loop"), false, "an unknown id has no enabled base entry");
+});
+
+test("loopIds enumerates enabled roles and each instance base's extra runners", () => {
+  const config = defaultConfig();
+  assert.deepEqual(loopIds(config), Object.keys(config.roles).filter((id) => config.roles[id]?.enabled),
+    "at the default count it is exactly the enabled bare ids, in config.roles order");
+
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
+  const ids = loopIds(config);
+  const feature = ids.indexOf("feature");
+  assert.deepEqual(ids.slice(feature, feature + 3), ["feature", "feature-2", "feature-3"],
+    "a feature base is followed by its extra instances");
+  assert.ok(!ids.includes("feature-4"));
+  // Only INSTANCE_ROLES split: a configured count on another role would be a validation
+  // error, and here the bare id stays single regardless.
+  config.roles.clean = { ...(config.roles.clean ?? { enabled: true }) };
+  assert.equal(loopIds(config).filter((id) => id.startsWith("clean")).length, 1);
+});
+
+test("loopIds omits disabled roles and their instances", () => {
+  const config = defaultConfig();
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), enabled: false, instances: 3 };
+  const ids = loopIds(config);
+  assert.ok(!ids.includes("feature"), "a disabled base is absent");
+  assert.ok(!ids.includes("feature-2"), "and so are its instances");
 });
 
 test("role helpers resolve an instance id through its base role", () => {

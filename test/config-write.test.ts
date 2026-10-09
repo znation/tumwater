@@ -432,6 +432,14 @@ test("setConfigKey merges one roles.<id>.<field> entry; bad fields and role ids 
   assert.equal(roles.qa!.model, "m-new");
   assert.equal(roles.qa!.instructions, "test things", "the entry's other fields preserved");
 
+  // The per-role instances field (parallel work instances 5a/7) writes and loads like any
+  // other entry.
+  r = setConfigKey(dir, "roles.feature.instances", "3");
+  assert.ok(r.ok && r.value === 3, JSON.stringify(r));
+  const feat = (readJson(file) as { roles: Record<string, Record<string, unknown>> }).roles.feature!;
+  assert.equal(feat.instances, 3);
+  assert.equal(loadConfig(dir).roles.feature!.instances, 3, "the written count survives load");
+
   // A field outside ROLE_ENTRY_KEYS fails with the nearest-key suggestion, file untouched.
   const before = fs.readFileSync(file, "utf8");
   r = setConfigKey(dir, "roles.qa.colour", "x");

@@ -421,51 +421,6 @@ pool, event-format, status and doctor tests.
 
 ---
 
-### Parallel work instances, part 5a/7: the validated `roles.<id>.instances` config field and `loopIds` enumeration (planned 2026-10-08 by plan; split from part 5/7; requires part 4/7 landed)
-
-Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
-ahead").
-
-Context: part 4/7's claim machinery already assigns one entry per runner in a multi-runner
-group and skips an idle extra instance, but a second runner cannot exist: `configuredInstances`
-(src/roles/loop-ids.ts) reads `roles.<base>.instances` through an unchecked cast and no
-config field carries it. This part makes the field real and stays behavior-neutral — it changes
-no runner construction, so the fleet runs exactly as today until 5b/7.
-
-**Approach.**
-1. **Schema.** `RoleConfig.instances?: number` in src/config/config-schema.ts, documented as an
-   integer 1–8, valid only under `roles.feature` and `roles.bugfix`, default 1. Add
-   `"instances"` to `ROLE_ENTRY_KEYS` in the same file, which is what makes `config set
-   roles.feature.instances 3`, `config get` and the unknown-field suffix in
-   src/config/config-write.ts resolve it (`config-editable-keys.ts` is the GUI Settings
-   allowlist and is not the place for this — correcting the oversized entry's earlier anchor).
-2. **Validation.** In src/config/config-validation.ts, beside the per-role `enabled` /
-   `minTickIntervalSeconds` checks, reject a non-integer, `< 1` or `> 8` (a new `NumberRule`
-   like `POSITIVE_INTEGER`) and reject any `instances` under a role outside `INSTANCE_ROLES`
-   (src/roles/loop-ids.ts) — a custom loop's or `roles.plan.instances` fails with a message
-   naming the two allowed roles.
-3. **loop-ids.** `configuredInstances` drops the cast and reads the field; add
-   `loopIds(config): string[]` returning, for every enabled role in `config.roles` order, its
-   bare id then `<id>-2`…`<id>-N` for `INSTANCE_ROLES` (other roles and custom loops stay
-   bare). This is the one answer to "which runners should exist", so 5b/7's orchestrator and
-   live reload reuse it.
-4. **Docs.** No separate config-reference doc exists for per-role keys; the README Settings
-   paragraph is it and the readme loop keeps it current — no docs edit is required here.
-
-**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
-src/roles/loop-ids.ts. Tests: cases in the config-validation and loop-ids tests.
-
-**Acceptance criteria.**
-- `validateConfig` accepts `roles.feature.instances: 3` and `roles.bugfix.instances: 2`;
-  rejects `instances: 0`, `instances: 9`, `instances: 1.5`, and `roles.plan.instances`.
-- `config set roles.feature.instances 3` writes the field and `config get` reads it back;
-  a typo'd `roles.feature.colour` still errors.
-- `loopIds` on `feature.instances: 3` returns `feature, feature-2, feature-3` with the other
-  enabled roles in `config.roles` order; at the default it returns exactly the bare ids
-  `enabledRoleIds` returns today.
-- `loopEnabled(config, "feature-3")` is true at instances 3 and false at 2.
-- `npm run test` green.
-
 ### Parallel work instances, part 5b/7: instance runners spawn at startup and on live reload, gated by claims (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7, 3/7, 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed)
 
 Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
@@ -615,6 +570,58 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 5a/7: the validated `roles.<id>.instances` config field and `loopIds` enumeration (planned 2026-10-08 by plan; split from part 5/7; requires part 4/7 landed; done 2026-10-08 by feature)
+
+Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
+ahead").
+
+Context: part 4/7's claim machinery already assigns one entry per runner in a multi-runner
+group and skips an idle extra instance, but a second runner cannot exist: `configuredInstances`
+(src/roles/loop-ids.ts) reads `roles.<base>.instances` through an unchecked cast and no
+config field carries it. This part makes the field real and stays behavior-neutral — it changes
+no runner construction, so the fleet runs exactly as today until 5b/7.
+
+**What landed (2026-10-08).** `RoleConfig.instances` — integer 1–8, only under `feature` and
+`bugfix` — is in the schema and `ROLE_ENTRY_KEYS`, so `config set`/`config get` resolve it;
+`validateConfig` rejects a bad count and a count under any other role; `configuredInstances`
+reads the field without a cast, and `loopIds` enumerates each enabled role's bare id then its
+extra instance ids in `config.roles` order. No runner construction changed, so the fleet
+behaves as before until 5b/7.
+
+**Approach.**
+1. **Schema.** `RoleConfig.instances?: number` in src/config/config-schema.ts, documented as an
+   integer 1–8, valid only under `roles.feature` and `roles.bugfix`, default 1. Add
+   `"instances"` to `ROLE_ENTRY_KEYS` in the same file, which is what makes `config set
+   roles.feature.instances 3`, `config get` and the unknown-field suffix in
+   src/config/config-write.ts resolve it (`config-editable-keys.ts` is the GUI Settings
+   allowlist and is not the place for this — correcting the oversized entry's earlier anchor).
+2. **Validation.** In src/config/config-validation.ts, beside the per-role `enabled` /
+   `minTickIntervalSeconds` checks, reject a non-integer, `< 1` or `> 8` (a new `NumberRule`
+   like `POSITIVE_INTEGER`) and reject any `instances` under a role outside `INSTANCE_ROLES`
+   (src/roles/loop-ids.ts) — a custom loop's or `roles.plan.instances` fails with a message
+   naming the two allowed roles.
+3. **loop-ids.** `configuredInstances` drops the cast and reads the field; add
+   `loopIds(config): string[]` returning, for every enabled role in `config.roles` order, its
+   bare id then `<id>-2`…`<id>-N` for `INSTANCE_ROLES` (other roles and custom loops stay
+   bare). This is the one answer to "which runners should exist", so 5b/7's orchestrator and
+   live reload reuse it.
+4. **Docs.** No separate config-reference doc exists for per-role keys; the README Settings
+   paragraph is it and the readme loop keeps it current — no docs edit is required here.
+
+**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
+src/roles/loop-ids.ts. Tests: cases in the config-validation and loop-ids tests.
+
+**Acceptance criteria.**
+- `validateConfig` accepts `roles.feature.instances: 3` and `roles.bugfix.instances: 2`;
+  rejects `instances: 0`, `instances: 9`, `instances: 1.5`, and `roles.plan.instances`.
+- `config set roles.feature.instances 3` writes the field and `config get` reads it back;
+  a typo'd `roles.feature.colour` still errors.
+- `loopIds` on `feature.instances: 3` returns `feature, feature-2, feature-3` with the other
+  enabled roles in `config.roles` order; at the default it returns exactly the bare ids
+  `enabledRoleIds` returns today.
+- `loopEnabled(config, "feature-3")` is true at instances 3 and false at 2.
+- `npm run test` green.
 
 ### Organize the test suite, part 6/6: remaining fixtures move to `test/fixtures/`, leaving the root clean (planned 2026-10-07 by plan; split from the 2026-10-07 entry; requires parts 1/6–5/6 landed; done 2026-10-08 by feature)
 

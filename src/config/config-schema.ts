@@ -53,6 +53,10 @@ export interface RoleConfig {
   /** Minimum seconds between two ticks of THIS role, overriding the top-level value — a
    * slow clock for roles that should act rarely (the steward curates on ~6 h). */
   minTickIntervalSeconds?: number;
+  /** How many parallel runners this role may have (plans/parallel-work-instances.md, part
+   * 5/7): the bare id is instance 1, and `feature-2`…`feature-N` are the rest. Integer 1–8,
+   * valid only under the `INSTANCE_ROLES` (`feature`, `bugfix`); absent means 1. */
+  instances?: number;
 }
 
 /** A user-defined loop in tumwater.json's `customLoops` array
@@ -368,6 +372,7 @@ export const ROLE_ENTRY_KEYS = [
   "model",
   "thinking",
   "minTickIntervalSeconds",
+  "instances",
 ];
 
 export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];

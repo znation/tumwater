@@ -407,13 +407,32 @@ test("validateConfig rejects unknown keys with the valid ones listed", () => {
   const roleEntry = validationError({ roles: { feature: { enabed: true } } });
   assert.match(
     roleEntry,
-    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking, minTickIntervalSeconds\)/,
+    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking, minTickIntervalSeconds, instances\)/,
   );
   assert.match(roleEntry, /— did you mean `enabled`\?/);
 
   // A key with no near miss stays a bare valid-keys list (no spurious suggestion).
   const far = validationError({ completelyUnrelated: 1 });
   assert.doesNotMatch(far, /did you mean/);
+});
+
+test("validateConfig bounds the per-role instances field to feature/bugfix and 1-8", () => {
+  // Accepted: both allowed roles, at the ends and inside the range.
+  assert.doesNotThrow(() => validateConfig({ roles: { feature: { instances: 3 }, bugfix: { instances: 2 } } }));
+  assert.doesNotThrow(() => validateConfig({ roles: { feature: { instances: 1 } } }));
+  assert.doesNotThrow(() => validateConfig({ roles: { feature: { instances: 8 } } }));
+
+  // Rejected values: zero, above the cap, and a non-integer.
+  for (const bad of [0, 9, 1.5]) {
+    assert.match(
+      validationError({ roles: { feature: { instances: bad } } }),
+      /roles\.feature\.instances must be an integer from 1 to 8/,
+    );
+  }
+
+  // Only feature and bugfix may split; the message names both and the offending value.
+  const plan = validationError({ roles: { plan: { instances: 2 } } });
+  assert.match(plan, /roles\.plan\.instances is only valid for feature and bugfix \(got 2\)/);
 });
 
 test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring loop)", () => {

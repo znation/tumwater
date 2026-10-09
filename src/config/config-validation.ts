@@ -13,7 +13,7 @@ import {
   TIER_MAP_KEYS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, baseRoleOf } from "../roles/loop-ids.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
@@ -67,6 +67,14 @@ const DURATION_NON_NEGATIVE: NumberRule = {
 const DURATION_OR_DISABLED: NumberRule = {
   ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
   what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS} (0 disables)`,
+};
+
+/** A per-role instance count (`roles.feature.instances`): an integer from 1 to 8. Bounded so
+ * a typo like `instances: 800` cannot spawn hundreds of runners, and integer so
+ * `feature-1.5` — which no loop id can name — is refused. */
+const INSTANCE_COUNT: NumberRule = {
+  ok: (n) => Number.isInteger(n) && n >= 1 && n <= 8,
+  what: "an integer from 1 to 8",
 };
 
 /** Validate one per-role map section (`maxDailyCostUsdPerRole`, `quietHoursPerRole`): the
@@ -425,6 +433,16 @@ function checkSelectorHalves(
         checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
+        // Only feature and bugfix may split (src/roles/loop-ids.ts INSTANCE_ROLES); an
+        // instances count under any other role would never spawn a runner, so reject it
+        // rather than let the operator believe it did something.
+        if ("instances" in o && !INSTANCE_ROLES.has(id)) {
+          problems.push(
+            `roles.${id}.instances is only valid for ${[...INSTANCE_ROLES].join(" and ")} (got ${show(o.instances)})`,
+          );
+        } else {
+          checkNumber(o, `roles.${id}.`, "instances", INSTANCE_COUNT);
+        }
       }
     }
   }
