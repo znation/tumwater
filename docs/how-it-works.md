@@ -272,7 +272,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   the loops grouped by what they are doing, the backlog, and the notable activity. A new
   needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
   across reloads; the Queued tab lists each queued prompt and how long it has waited. Clicking a loop
-  opens its details and live transcript (`#loop/<name>` links straight to it). Its History, Usage,
+  opens its details — its notebook and next tick's prompt included — and its live transcript
+  (`#loop/<name>` links straight to it). Its History, Usage,
   Failures, and Pending views match `tumwater history`, `tumwater report`, `tumwater report
   --failures`, and `tumwater diff`; the Pending view also shows a loop's full unlanded patch in
   its drawer.

@@ -4,14 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleConfig, handleDiff, handleReport, handleFailures, handleTick } from "../src/gui/gui-endpoints.js";
+import { handleConfig, handleDiff, handleReport, handleFailures, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { configPath } from "../src/paths.js";
+import { configPath, roleNotesPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
@@ -23,6 +23,7 @@ import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
+import { rolePayload } from "../src/roles/role-view.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -240,6 +241,39 @@ test("handleTick's error cases: role and tick 400s, a missed tick 404", async ()
   const missing = await serveTick(root, "?role=clean&tick=9");
   assert.equal(missing.captured.status, 404);
   assert.match((missing.data as { error: string }).error, /no tick #9 for clean in the scanned window/);
+});
+
+function serveRole(root: string, query: string) {
+  return captureJson((res) => handleRole(new URLSearchParams(query), res, root));
+}
+
+test("handleRole serves a loop's notebook and next prompt, refusing a missing or unknown role", async () => {
+  const root = tmpdir();
+  // A notebook written by the loop's own earlier tick — the text the drawer's Notebook
+  // section must show verbatim.
+  const notes = roleNotesPath(root, "feature");
+  fs.mkdirSync(path.dirname(notes), { recursive: true });
+  fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
+
+  const { captured, data } = await serveRole(root, "?role=feature");
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  // The body is rolePayload's own collection — the note and the assembled next prompt
+  // `tumwater role <id>` renders — so the dashboard and the CLI cannot drift.
+  const payload = rolePayload(root, "feature");
+  const d = data as { note: string | null; nextPrompt: string | null };
+  assert.equal(d.note, payload.note);
+  assert.equal(d.note, "the scheduler lives in fleet.ts\n");
+  assert.equal(d.nextPrompt, payload.nextPrompt);
+  assert.match(d.nextPrompt ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/);
+
+  // The role is a target, not a filter: a missing or unknown id is rejectBadRole's 400.
+  const missing = await serveRole(root, "");
+  assert.equal(missing.captured.status, 400);
+  assert.match((missing.data as { error: string }).error, /^role required \(valid ids: /);
+  const unknown = await serveRole(root, "?role=nope");
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /^unknown role "nope"/);
 });
 
 test("consumeRestartRequest forces the redeployer once and removes the marker", () => {

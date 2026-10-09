@@ -12,11 +12,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let drawerTicks = null; // the open loop's recent history rows (null until fetched)
   let drawerTicksAt = 0;
   let drawerChange = null; // the open loop's unlanded change: { role, state: "loading"|"ok"|"error", view, message }
+  let drawerRole = null; // the open loop's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
   const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null);
 
   function showDrawer(bodyHtml) {
-    for (const id of ["drawerhead", "draweractions", "drawermeta", "transcript", "entrybody"]) delete lastPaint[id];
+    for (const id of ["drawerhead", "draweractions", "drawermeta", "drawerrole", "transcript", "entrybody"]) delete lastPaint[id];
     $("drawerhead").innerHTML = "";
     $("drawerbody").innerHTML = bodyHtml;
     $("drawer").hidden = false;
@@ -28,11 +29,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView);
     drawerTicks = null;
     drawerChange = null;
+    drawerRole = null;
     $("drawer").hidden = true;
     $("scrim").hidden = true;
     $("drawerhead").innerHTML = "";
     $("drawerbody").innerHTML = "";
-    for (const id of ["drawerhead", "draweractions", "drawermeta", "transcript", "entrybody"]) delete lastPaint[id];
+    for (const id of ["drawerhead", "draweractions", "drawermeta", "drawerrole", "transcript", "entrybody"]) delete lastPaint[id];
     if (lastStatus) renderFleet(lastStatus); // drop the row highlight
   }
 
@@ -43,7 +45,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     drawerTicks = null;
     drawerTicksAt = 0;
     drawerChange = null;
-    showDrawer("<div id='draweractions' class='drawer-actions'></div><div id='drawermeta'></div><section class='transcript-sec'><div class='sec-head'><h3>Live transcript</h3>" +
+    drawerRole = null;
+    showDrawer("<div id='draweractions' class='drawer-actions'></div><div id='drawermeta'></div><div id='drawerrole'></div><section class='transcript-sec'><div class='sec-head'><h3>Live transcript</h3>" +
       "<span class='muted' style='margin-left:auto;font-size:13px'>last 200 lines</span></div>" +
       "<pre id='transcript' class='transcript'><span class='muted'>Loading…</span></pre></section>");
     if (lastStatus) {
@@ -52,6 +55,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }
     loadLoopTicks(true);
     loadDrawerChange(role);
+    loadDrawerRole(role);
     refreshTranscript(true);
   }
   function toggleLoop(role) {
@@ -85,6 +89,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         "</h2><span class='muted'>This loop is no longer part of the fleet.</span>");
       paintPanel("draweractions", "");
       paintPanel("drawermeta", drawerChangeSection());
+      paintPanel("drawerrole", drawerRoleSection());
       return;
     }
     const info = phaseInfo(l.phase);
@@ -140,6 +145,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     paintPanel("draweractions", actions);
     paintPanel("drawermeta", now + last + stats +
       "<section><div class='sec-head'><h3>Recent ticks</h3></div>" + ticks + "</section>" + drawerChangeSection());
+    // The notebook/prompt live in their own panel, outside drawermeta: the poll rewrites
+    // drawermeta whenever its countdown or tick-age text changes, and an innerHTML rewrite
+    // would collapse an opened Next tick prompt. This panel's markup is stable while its
+    // payload is unchanged, so paintPanel leaves it (and the disclosure's open state) alone.
+    paintPanel("drawerrole", drawerRoleSection());
   }
 
   // The open loop's unlanded change, as /api/diff?role serves it: the full patch the CLI's
@@ -184,6 +194,45 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     } catch (e) {
       if (openLoopRole() !== role) return;
       drawerChange = { role, state: "error", message: e && e.message ? e.message : "Pending change unavailable" };
+    }
+    if (lastStatus) renderLoopDrawer(lastStatus);
+  }
+
+  // The open loop's notebook and next-tick prompt, as /api/role serves them (rolePayload):
+  // the same note and assembled prompt the CLI's role command shows, so the operator can
+  // diagnose a loop from the page. The note renders in a <pre>; the next prompt sits in a
+  // <details> so it does not push the rest of the drawer down. Both empty cases say so in a
+  // muted line. It paints into its own #drawerrole panel, not #drawermeta: the poll rewrites
+  // drawermeta whenever its countdown or tick-age text changes, and an innerHTML rewrite would
+  // collapse an opened <details>. This panel's string is stable while the payload is unchanged,
+  // so paintPanel skips it and the disclosure stays open.
+  function drawerRoleSection() {
+    const r = drawerRole;
+    let body;
+    if (!r || r.state === "loading") body = "<p class='muted'>Loading…</p>";
+    else if (r.state === "error") body = "<p class='muted'>" + esc(r.message || "Notebook and prompt unavailable") + "</p>";
+    else {
+      const view = r.view && typeof r.view === "object" ? r.view : {};
+      const note = typeof view.note === "string" && view.note.trim() !== "" ? view.note : null;
+      const nextPrompt = typeof view.nextPrompt === "string" && view.nextPrompt.trim() !== "" ? view.nextPrompt : null;
+      body = "<div class='sec-head'><h3>Notebook</h3></div>" + (note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notebook yet.</p>") +
+        "<details><summary>Next tick prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>";
+    }
+    return "<section>" + body + "</section>";
+  }
+  // Fetch the open loop's notebook and next prompt once when the drawer opens. A stale answer
+  // (the drawer moved to another loop) is dropped; later status polls repaint from the stored
+  // view. Closing the drawer clears it, so reopening refetches.
+  async function loadDrawerRole(role) {
+    if (!role) return;
+    drawerRole = { role, state: "loading" };
+    try {
+      const d = await getJson("/api/role?role=" + encodeURIComponent(role), pollSignal());
+      if (openLoopRole() !== role) return;
+      drawerRole = { role, state: "ok", view: d };
+    } catch (e) {
+      if (openLoopRole() !== role) return;
+      drawerRole = { role, state: "error", message: e && e.message ? e.message : "Notebook and prompt unavailable" };
     }
     if (lastStatus) renderLoopDrawer(lastStatus);
   }

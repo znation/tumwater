@@ -353,3 +353,53 @@ test("transcriptHtml classifies run separators, tool calls, thinking, and warnin
   // The blank line separates runs, but never before the first line.
   assert.equal(t.scope.transcriptHtml(["── a"]), "<span class='l-sep'>── a</span>");
 });
+
+test("a loop with no notebook or queued prompt shows the placeholder lines", async () => {
+  const t = openDrawer(["toggleLoop"], { status: workingStatus() });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<h3>Notebook<\/h3>/);
+  assert.match(role, /No notebook yet\./);
+  assert.match(role, /<summary>Next tick prompt<\/summary>/);
+  assert.match(role, /Nothing to run \(empty inbox\)\./);
+});
+
+test("the loop drawer renders its notebook and next prompt, refetching when the drawer switches roles", async () => {
+  const loop = (role: string) => ({
+    role, phase: "sleeping", inFlight: false, currentWork: "", lastResult: "changed", lastSummary: "x",
+    lastTickEndedAt: Date.now() - 60_000, commits: 1, ticks: 2, generated: 100, peakCtx: 100,
+    todayUsd: 0, costUsd: 0, nextRunAt: Date.now() + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
+  });
+  const t = openDrawer(["toggleLoop", "renderLoopDrawer"], {
+    status: { running: true, pausedRoles: [], loops: [loop("clean"), loop("bugfix")] },
+    responses: {
+      "/api/role?role=clean": { note: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
+      "/api/role?role=bugfix": { note: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
+    },
+  });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const first = t.paintedFor("drawerrole");
+  assert.match(first, /clean keeps the tree tidy/);
+  assert.match(first, /the clean next prompt/);
+
+  // A status poll rewrites drawermeta (its tick-age text changes) but must not repaint
+  // drawerrole: an innerHTML rewrite would collapse an opened Next tick prompt.
+  const rolePaints = t.painted.filter(([id]) => id === "drawerrole").length;
+  const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
+  const older = loop("clean");
+  older.lastTickEndedAt -= 5_000;
+  const polled = { running: true, pausedRoles: [], loops: [older, loop("bugfix")] };
+  t.scope.renderLoopDrawer(polled);
+  assert.ok(t.painted.filter(([id]) => id === "drawermeta").length > metaPaints, "drawermeta repaints on the poll");
+  assert.equal(t.painted.filter(([id]) => id === "drawerrole").length, rolePaints, "drawerrole is not repainted");
+
+  // Switching refetches the new loop's payload rather than leaving the first loop's text cached.
+  t.scope.toggleLoop("bugfix");
+  await flush();
+  const second = t.paintedFor("drawerrole");
+  assert.match(second, /bugfix watches the open bugs/);
+  assert.match(second, /the bugfix next prompt/);
+  assert.doesNotMatch(second, /clean keeps the tree tidy/);
+});

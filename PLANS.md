@@ -329,70 +329,6 @@ and a loop test for `budgetCapped` → handoff.
 - `npm run test` green.
 
 
-### Inspect a loop's notebook and next prompt in the dashboard drawer (planned 2026-10-09 by plan)
-
-**Goal:** the browser dashboard's loop drawer gains a read-only **Notebook** section (what the
-loop remembers between fresh sessions) and a collapsible **Next tick prompt** section (exactly
-what its next tick will read). The operator can diagnose a quiet, stuck, or oddly-behaving loop
-from the page they are already watching, without dropping to the terminal for
-`tumwater role <id>`.
-
-**Context.** `rolePayload` (src/roles/role-view.ts) already collects both: `note` is the loop's
-notebook (`roleNotesPath`, capped at 4 KB) and `nextPrompt` is the next tick's assembled prompt
-through the preview seam; `renderRoleMarkdown` (src/roles/role-render.ts) renders them for the
-CLI. Neither reaches the dashboard: there is no `/api/role` route in src/gui/gui-server.ts's
-route table, and src/ui/gui/gui-client-drawer.ts shows state, controls, current work, last
-result, metrics, recent ticks, live transcript and the unlanded change, but no notebook and no
-next prompt. This is an observability gap only — no new collection, scheduling, or state.
-
-**Approach.**
-1. Add `handleRole(q: URLSearchParams, res: http.ServerResponse, root: string): void` to
-   src/gui/gui-endpoints.ts, beside `handleTranscript`: read `role` from the pre-parsed query,
-   validate with `rejectBadRole(root, res, role)` (missing → `role required (valid ids: …)`,
-   unknown → `unknown role …`, same shared wording and typo hint), then
-   `sendJson(res, 200, rolePayload(root, role as string))`. Return the payload as fields; the
-   drawer renders `note`/`nextPrompt` itself, and `renderRoleMarkdown` stays the CLI's renderer.
-2. Register `"GET /api/role": (_req, res, target) => handleRole(target.searchParams, res, root)`
-   in src/gui/gui-server.ts's route table (beside `GET /api/tick`).
-3. In src/ui/gui/gui-client-drawer.ts add a cached view (`drawerRole`, keyed by role, with
-   `loading`/`ok`/`error` states) fetched from `/api/role?role=` once when a loop opens and
-   cleared by `closeDrawer`; `openLoop` and switching roles refetch. Add a `drawerRoleSection()`
-   helper that renders `<h3>Notebook</h3>` with the note in a `<pre>` (escaped through `esc`), a
-   muted `No notebook yet.` placeholder when `note` is null, and a `<details><summary>Next tick
-   prompt</summary><pre>…</pre></details>` whose body is a muted `Nothing to run (empty inbox).`
-   when `nextPrompt` is null. Append `drawerRoleSection()` to the
-   `paintPanel("drawermeta", …)` chain in `renderLoopDrawer`, after `drawerChangeSection()` so
-   it renders for a role the fleet no longer has too. Keep the section's HTML stable across the
-   1 s poll (identical string → `paintPanel` does not repaint), so an opened `<details>` stays
-   open.
-4. docs/how-it-works.md "Operator notes": extend the dashboard paragraph's "Clicking a loop
-   opens its details" clause to name the notebook and next-tick prompt.
-
-**Files touched.**
-- src/gui/gui-endpoints.ts (`handleRole`)
-- src/gui/gui-server.ts (route table)
-- src/ui/gui/gui-client-drawer.ts (fetch, cache, `drawerRoleSection`, render)
-- docs/how-it-works.md (Operator notes clause)
-- test/gui-endpoints.test.ts, test/gui-client-drawer.test.ts
-
-Tests: in test/gui-endpoints.test.ts add a `handleRole` case seeding a role notebook and
-asserting the 200 body matches `rolePayload`'s `note`/`nextPrompt` plus the two `rejectBadRole`
-400s (missing role, unknown role). In test/gui-client-drawer.test.ts add a case opening a loop,
-serving `/api/role`, and asserting the drawer renders the notebook text, then switching roles
-and asserting the refetch shows the second loop's note (not the first's).
-
-**Acceptance criteria.**
-- `GET /api/role?role=<known id>` answers 200 with `rolePayload(root, id)` (`note` and
-  `nextPrompt` included); a missing or unknown id answers the same 400 JSON `rejectBadRole` gives
-  `/api/transcript`, and `rolePayload` is never called for it.
-- Opening a loop whose notebook file is non-empty renders a **Notebook** section containing that
-  text; a loop with no notebook (or an empty one) shows `No notebook yet.`
-- The **Next tick prompt** section renders `nextPrompt` verbatim; a director with an empty inbox
-  shows the nothing-to-run note instead.
-- Switching the open drawer from one loop to another shows the new loop's notebook and prompt,
-  not the previous loop's cached text.
-- `npm run test` green.
-
 ## Done
 
 ### Mark why a backlog entry is held in `tumwater backlog` (planned 2026-10-09 by plan; done 2026-10-09 by feature)
@@ -451,6 +387,75 @@ render, and the CLI `--json` holds).
 - `backlogHolds` marks a **Refused**, **Needs review**, or **Needs replan** body line and a
   blocked heading, and leaves an eligible entry null.
 - `npm run test` green.
+
+### Inspect a loop's notebook and next prompt in the dashboard drawer (planned 2026-10-09 by plan; done 2026-10-09 by feature)
+
+**Goal:** the browser dashboard's loop drawer gains a read-only **Notebook** section (what the
+loop remembers between fresh sessions) and a collapsible **Next tick prompt** section (exactly
+what its next tick will read). The operator can diagnose a quiet, stuck, or oddly-behaving loop
+from the page they are already watching, without dropping to the terminal for
+`tumwater role <id>`.
+
+**Context.** `rolePayload` (src/roles/role-view.ts) already collects both: `note` is the loop's
+notebook (`roleNotesPath`, capped at 4 KB) and `nextPrompt` is the next tick's assembled prompt
+through the preview seam; `renderRoleMarkdown` (src/roles/role-render.ts) renders them for the
+CLI. Neither reaches the dashboard: there is no `/api/role` route in src/gui/gui-server.ts's
+route table, and src/ui/gui/gui-client-drawer.ts shows state, controls, current work, last
+result, metrics, recent ticks, live transcript and the unlanded change, but no notebook and no
+next prompt. This is an observability gap only — no new collection, scheduling, or state.
+
+**Approach.**
+1. Add `handleRole(q: URLSearchParams, res: http.ServerResponse, root: string): void` to
+   src/gui/gui-endpoints.ts, beside `handleTranscript`: read `role` from the pre-parsed query,
+   validate with `rejectBadRole(root, res, role)` (missing → `role required (valid ids: …)`,
+   unknown → `unknown role …`, same shared wording and typo hint), then
+   `sendJson(res, 200, rolePayload(root, role as string))`. Return the payload as fields; the
+   drawer renders `note`/`nextPrompt` itself, and `renderRoleMarkdown` stays the CLI's renderer.
+2. Register `"GET /api/role": (_req, res, target) => handleRole(target.searchParams, res, root)`
+   in src/gui/gui-server.ts's route table (beside `GET /api/tick`).
+3. In src/ui/gui/gui-client-drawer.ts add a cached view (`drawerRole`, keyed by role, with
+   `loading`/`ok`/`error` states) fetched from `/api/role?role=` once when a loop opens and
+   cleared by `closeDrawer`; `openLoop` and switching roles refetch. Add a `drawerRoleSection()`
+   helper that renders `<h3>Notebook</h3>` with the note in a `<pre>` (escaped through `esc`), a
+   muted `No notebook yet.` placeholder when `note` is null, and a `<details><summary>Next tick
+   prompt</summary><pre>…</pre></details>` whose body is a muted `Nothing to run (empty inbox).`
+   when `nextPrompt` is null. Paint it into its own `<div id='drawerrole'>` panel (added to
+   `showDrawer`'s body and the `lastPaint`-clear lists), not the `paintPanel("drawermeta", …)`
+   chain: the 1 s poll rewrites `drawermeta` whenever its countdown or tick-age text changes,
+   and an innerHTML rewrite would collapse an opened `<details>`. `renderLoopDrawer` paints
+   `drawerrole` in both the live and missing-role branches, so it renders for a role the fleet
+   no longer has too. The panel's string is stable while its payload is unchanged, so
+   `paintPanel` skips it and the disclosure stays open across polls.
+4. docs/how-it-works.md "Operator notes": extend the dashboard paragraph's "Clicking a loop
+   opens its details" clause to name the notebook and next-tick prompt.
+
+**Files touched.**
+- src/gui/gui-endpoints.ts (`handleRole`)
+- src/gui/gui-server.ts (route table)
+- src/ui/gui/gui-client-drawer.ts (fetch, cache, `drawerRoleSection`, render)
+- docs/how-it-works.md (Operator notes clause)
+- test/gui-endpoints.test.ts, test/gui-client-drawer.test.ts
+
+Tests: in test/gui-endpoints.test.ts add a `handleRole` case seeding a role notebook and
+asserting the 200 body matches `rolePayload`'s `note`/`nextPrompt` plus the two `rejectBadRole`
+400s (missing role, unknown role). In test/gui-client-drawer.test.ts add a case opening a loop,
+serving `/api/role`, and asserting the drawer renders the notebook text, then switching roles
+and asserting the refetch shows the second loop's note (not the first's).
+
+**Acceptance criteria.**
+- `GET /api/role?role=<known id>` answers 200 with `rolePayload(root, id)` (`note` and
+  `nextPrompt` included); a missing or unknown id answers the same 400 JSON `rejectBadRole` gives
+  `/api/transcript`, and `rolePayload` is never called for it.
+- Opening a loop whose notebook file is non-empty renders a **Notebook** section containing that
+  text; a loop with no notebook (or an empty one) shows `No notebook yet.`
+- The **Next tick prompt** section renders `nextPrompt` verbatim; a director with an empty inbox
+  shows the nothing-to-run note instead.
+- Switching the open drawer from one loop to another shows the new loop's notebook and prompt,
+  not the previous loop's cached text.
+- A status poll that rewrites `drawermeta` (its tick-age text changes) does not repaint the
+  `drawerrole` panel, so an opened **Next tick prompt** disclosure is not collapsed.
+- `npm run test` green.
+
 
 ### Notify the operator when a loop posts a question (planned 2026-10-09 by plan; done 2026-10-09 by feature)
 

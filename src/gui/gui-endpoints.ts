@@ -21,6 +21,7 @@ import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history/history-data.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
+import { rolePayload } from "../roles/role-view.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -160,6 +161,18 @@ export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: s
     return;
   }
   sendJson(res, 200, { ...detail, text: renderTickDetail(detail) });
+}
+/** Handle GET /api/role?role=<id>: one loop's inspection payload — rolePayload's object,
+ * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next tick
+ * prompt sections render what the CLI shows without re-implementing the assembly. The role
+ * is a target here, so it validates through rejectBadRole exactly like /api/transcript and
+ * /api/tick (unknown/missing → the shared 400 naming the valid ids and correcting typos);
+ * rolePayload is only reached with an id rejectBadRole accepted, so its own unknown-role
+ * throw never fires. Reads files directly, so it works whether or not the fleet is running. */
+export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const role = q.get("role");
+  if (rejectBadRole(root, res, role)) return;
+  sendJson(res, 200, rolePayload(root, role as string));
 }
 /** Handle GET /api/config: the Settings view's resolved values for exactly
  * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses

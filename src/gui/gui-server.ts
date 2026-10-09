@@ -25,6 +25,7 @@ import {
   handleReport,
   handleHistory,
   handleTick,
+  handleRole,
   handleTranscript,
 } from "./gui-endpoints.js";
 import {
@@ -189,6 +190,7 @@ export function startGui(
     "GET /api/history": (_req, res, target) => handleHistory(target.searchParams, res, root),
     "GET /api/transcript": (_req, res, target) => handleTranscript(target.searchParams, res, root),
     "GET /api/tick": (_req, res, target) => handleTick(target.searchParams, res, root),
+    "GET /api/role": (_req, res, target) => handleRole(target.searchParams, res, root),
     "GET /api/diff": (_req, res, target) => handleDiff(target.searchParams, res, root),
     "GET /api/backlog": (_req, res, target) => handleBacklog(target.searchParams, res, root),
     "GET /api/config": (_req, res) => handleConfig(res, root),
