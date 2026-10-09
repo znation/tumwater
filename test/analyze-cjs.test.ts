@@ -80,6 +80,11 @@ const TS = [
   "  return inner();",
   "}",
   "",
+  // An arrow passed to a non-test call: fnName's fallback names it `<arrow in callee()>`.
+  "export function mapped(xs: number[]): number[] {",
+  "  return xs.map((x) => x + 1);",
+  "}",
+  "",
   "export async function dynamic(): Promise<void> {",
   '  await import("dyn");',
   "}",
@@ -164,7 +169,7 @@ test("analyze.cjs derives file classes, function complexity, markers and imports
   assert.equal(sample.classes, 1);
   assert.equal(sample.interfaces, 1);
   assert.equal(sample.typeAliases, 1);
-  assert.equal(sample.exportsN, 12);
+  assert.equal(sample.exportsN, 13);
 
   const fn = new Map<string, Rec>((data.functions as Rec[]).map((f) => [f.name as string, f]));
   const expect = (name: string, e: Rec): void => {
@@ -184,6 +189,9 @@ test("analyze.cjs derives file classes, function complexity, markers and imports
   expect("nullish", { cc: 2, cog: 1, depth: 0, params: 1, nestedIn: 0, async: false });
   expect("outer", { cc: 1, cog: 0, depth: 0, params: 0, nestedIn: 0, async: false });
   expect("inner", { cc: 1, cog: 0, depth: 0, params: 0, nestedIn: 1, async: false });
+  expect("mapped", { cc: 1, cog: 0, depth: 0, params: 1, nestedIn: 0, async: false });
+  // fnName's non-test-call fallback: an arrow argument is named after its callee, not dropped.
+  expect("<arrow in xs.map()>", { cc: 1, cog: 0, depth: 0, params: 1, nestedIn: 1, async: false });
   expect("dynamic", { cc: 1, cog: 0, depth: 0, params: 0, nestedIn: 0, async: true });
   expect("escapes", { cc: 2, cog: 1, depth: 0, params: 1, nestedIn: 0, async: false });
   expect('test("covers a title")', { cc: 1, cog: 0, depth: 0, params: 0, nestedIn: 0, async: false });
