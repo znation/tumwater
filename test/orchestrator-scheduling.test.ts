@@ -243,6 +243,38 @@ test("a single feature runner is not assigned a claim", async () => {
   assert.equal(feature.state.claim, undefined);
 });
 
+test("a busy unclaimed base holds the group so a new instance cannot take its entry", async () => {
+  const root = tmpdir("tumwater-scheduling-busy-base-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  // The base took alpha while it was the only runner (single-runner bases record no claim) and
+  // is mid-tick when the live reload raises `instances` and spawns feature-2. The group must
+  // hold assignment until the base settles rather than hand alpha to the sibling.
+  feature.state.running = true;
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.claim, undefined, "the added instance is not assigned the base's in-flight entry");
+  assert.equal(reasons.has(feature2), false, "and it starts no tick while the group holds");
+});
+
+test("a base with an outstanding revision and no claim also holds the group", async () => {
+  const root = tmpdir("tumwater-scheduling-busy-revision-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  // The base's change is out of the landing queue for a revision (state.revision) and it never
+  // recorded a claim: the same unclaimed-mid-entry shape, caught while the base is idle.
+  feature.state.revision = { sha: "deadbeef", round: 1, at: T0 };
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.claim, undefined, "the revision holds the group too");
+});
+
 test("the reviewer's provider being held blocks every role through scheduling, and only while it stands", async () => {
   const root = tmpdir("tumwater-scheduling-review-");
   const runners = [fakeRunner("feature", defaultConfig()), fakeRunner("dry", defaultConfig())];

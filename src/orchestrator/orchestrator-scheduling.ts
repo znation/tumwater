@@ -12,6 +12,7 @@ import { deferTickReason, isEligible, type DeferReason } from "../scheduling/sch
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
+import { hasOutstandingWork } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -134,7 +135,7 @@ export async function pollRunnerReasons(
   // release runs before assignment so a freed key counts as free below.
   const claimGroups = new Map<
     string,
-    { eligible: EligibleEntry[]; eligibleKeys: Set<string>; held: Set<string> }
+    { eligible: EligibleEntry[]; eligibleKeys: Set<string>; held: Set<string>; hold: boolean }
   >();
   const baseCounts = new Map<string, number>();
   for (const runner of runners) {
@@ -147,7 +148,19 @@ export async function pollRunnerReasons(
     const eligible = eligibleEntries(root, base);
     const eligibleKeys = new Set(eligible.map((e) => e.key));
     const listed = listedKeys(root, base);
+    // A group whose runner is mid-entry with no recorded claim (it took the entry while it was
+    // the only runner, before a live reload raised `instances`) cannot be told WHICH entry that
+    // is from state alone. Assigning a free entry to a sibling could then hand it the same
+    // work: hold the whole group's assignment until that runner settles (lands, drops or goes
+    // idle), at which point its own staging may have recorded a claim. A busy runner that DOES
+    // hold a claim is fine — `held` excludes its key and siblings take other entries.
+    let hold = false;
     for (const r of groupRunners) {
+      const busy =
+        r.state.running ||
+        queuedLandingRoles.has(r.role) ||
+        hasOutstandingWork(r.state);
+      if (r.state.claim === undefined && busy) hold = true;
       const released = claimReleaseReason(r, {
         listedKeys: listed,
         eligibleKeys,
@@ -175,6 +188,7 @@ export async function pollRunnerReasons(
       eligible,
       eligibleKeys,
       held: heldKeys(groupRunners, eligibleKeys, listed),
+      hold,
     });
   }
   // The fleet gates' block predicate (the director exempt — an explicit human prompt
@@ -359,6 +373,10 @@ export async function pollRunnerReasons(
       if (runner.state.claim) {
         // keeps its claim
       } else if (reason !== "inbox" && reason !== "resume") {
+        // The group holds an unclaimed mid-entry sibling: assign nothing this poll, or a
+        // sibling could be handed that same entry (the reported `feature-2`/`bugfix-2`
+        // duplication). It resolves the moment the sibling settles.
+        if (claimGroup.hold) continue;
         const free = claimGroup.eligible.filter((e) => !claimGroup.held.has(e.key));
         const pick = assignNext(free);
         if (pick) {
