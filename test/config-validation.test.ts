@@ -99,6 +99,23 @@ test("selector strings that parse to an empty provider or model half are rejecte
   );
   // A thinking suffix does not hide an empty half.
   assert.match(validationError({ model: "p/:low" }), /model "p\/:low" parses to an empty model half/);
+  // A tier-map entry is a selector too — config-views' topTierSelector parses it with
+  // parseModelSelector — so its empty halves are checked like any other selector string.
+  assert.match(
+    validationError({ model: { default: "p/" } }),
+    /model\.default "p\/" parses to an empty model half/,
+  );
+  assert.match(
+    validationError({ model: { small: "/id" } }),
+    /model\.small "\/id" parses to an empty provider half/,
+  );
+  // The `fallback` map's entries are pure selectors (fallbackSelectorFields), so the same
+  // check applies; a "pause" entry names no model and stays valid.
+  assert.match(
+    validationError({ fallback: { default: "p/" } }),
+    /fallback\.default "p\/" parses to an empty model half/,
+  );
+  assert.doesNotThrow(() => validateConfig({ fallback: { default: "pause" } }));
 });
 
 test("model-triple fields reject empty strings but instructions may be empty", () => {

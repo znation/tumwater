@@ -156,6 +156,13 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // or model half is reported separately (checkSelectorHalves).
   checkModelTriple(r, "", "tier-map");
   checkSelectorHalves(r, "", "model", r.provider, problems);
+  // A map's entries are selector strings too, resolved by config-views' topTierSelector with
+  // parseModelSelector; the keyed check above sees only the object, so each entry runs the
+  // same empty-half check (the map form cannot coexist with a legacy provider, so it parses
+  // as a pure selector).
+  if (isJsonObject(r.model))
+    for (const [tier, sel] of Object.entries(r.model))
+      checkSelectorValue(`model.${tier}`, sel, undefined, problems);
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
   checkString(r, "", "baseBranch", false);
@@ -302,11 +309,16 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     const f = r.fallback;
     if (isJsonObject(f)) {
       checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
-      for (const [tier, v] of Object.entries(f))
+      for (const [tier, v] of Object.entries(f)) {
         if (!isNonBlankString(v))
           problems.push(
             `fallback.${tier} must be a non-empty selector string or "pause" (got ${show(v)})`,
           );
+        else if (v !== "pause")
+          // An entry is a pure selector (config-views' fallbackSelectorFields parses it with
+          // no legacy provider in scope); "pause" names no model and stays valid.
+          checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
+      }
     } else if (!isNonBlankString(f)) {
       problems.push(`fallback must be a selector string or a map by tier (got ${show(f)})`);
     } else if (f === "pause") {
@@ -341,17 +353,30 @@ function checkSelectorHalves(
   legacyProvider: unknown,
   problems: string[],
 ): void {
-  const v = obj[key];
+  checkSelectorValue(`${prefix}${key}`, obj[key], legacyProvider, problems);
+}
+
+/** Report one selector string that parses to an empty provider or model half. `name` is the
+ * config path the message names — `model`, a map entry's `model.small`, a section's
+ * `roles.feature.model`. Split out of checkSelectorHalves so the map forms, which enumerate
+ * their entries instead of looking one key up on an object, run the identical check: a
+ * selector's empty half is the same silent-ignore class wherever the string lives. */
+function checkSelectorValue(
+  name: string,
+  v: unknown,
+  legacyProvider: unknown,
+  problems: string[],
+): void {
   if (!isNonBlankString(v)) return;
   const legacy = isNonBlankString(legacyProvider) ? legacyProvider : undefined;
   const sel = parseModelSelector(v, legacy);
   if (sel.provider !== undefined && sel.provider.trim() === "")
     problems.push(
-      `${prefix}${key} ${show(v)} parses to an empty provider half — pi would silently run its default model`,
+      `${name} ${show(v)} parses to an empty provider half — pi would silently run its default model`,
     );
   if (sel.model.trim() === "")
     problems.push(
-      `${prefix}${key} ${show(v)} parses to an empty model half — pi would silently run its default model`,
+      `${name} ${show(v)} parses to an empty model half — pi would silently run its default model`,
     );
 }
 
