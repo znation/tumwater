@@ -38,6 +38,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Agent backends, part 3/7: the claude adapter — invocation, isolation, stream translation, sessions (planned 2026-10-09 by operator; requires parts 1/7 and 2/7 landed)
 
+**Needs review 2026-10-09 by feature: too large for one run**
+
 Design: plans/agent-backends.md ("Findings", "Canonical event stream", "The claude invocation").
 
 Adds the adapter and registers it. It is not yet selectable from tumwater.json (part 4/7);
