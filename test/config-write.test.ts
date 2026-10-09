@@ -407,13 +407,15 @@ test("setConfigKey merges one dotted map entry, preserving the other roles' entr
   const untouched = fs.readFileSync(file, "utf8");
   r = setConfigKey(dir, "quietHoursPerRole.clean", "25:00-07:00");
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /quietHours times must be 24-hour/);
+  // The error names the key the operator set, not the fleet-wide `quietHours`.
+  if (!r.ok) assert.match(r.error, /quietHoursPerRole\.clean times must be 24-hour/);
   assert.equal(fs.readFileSync(file, "utf8"), untouched, "a rejected dotted value changes nothing");
 
-  // A non-numeric dollar cap fails with checkDailyBudgetUsd's message, before the write.
+  // A non-numeric dollar cap fails with checkDailyBudgetUsd's message, before the write —
+  // named for the dotted key set, not the fleet-wide `maxDailyCostUsd`.
   r = setConfigKey(dir, "maxDailyCostUsdPerRole.feature", '"lots"');
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /number of 0 or more/);
+  if (!r.ok) assert.match(r.error, /maxDailyCostUsdPerRole\.feature must be a number of 0 or more/);
   assert.equal(fs.readFileSync(file, "utf8"), untouched);
 });
 

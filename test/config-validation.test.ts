@@ -779,15 +779,15 @@ test("validateConfig accepts a well-formed quietHoursPerRole map and rejects bad
     validationError({ ...defaultConfig(), quietHoursPerRole: { qa: 7 } }),
     /quietHoursPerRole\.qa must be a "HH:MM-HH:MM" string like "23:00-07:00" \(an empty string means off\) \(got 7\)/,
   );
-  // A malformed window passes the parser's message through, prefixed with key and id.
+  // A malformed window passes the parser's message through, named with key and id.
   assert.match(
     validationError({ ...defaultConfig(), quietHoursPerRole: { qa: "25:00-07:00" } }),
-    /quietHoursPerRole\.qa: quietHours times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59/,
+    /quietHoursPerRole\.qa times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59/,
   );
   // A zero-length window is malformed the same way.
   assert.match(
     validationError({ ...defaultConfig(), quietHoursPerRole: { qa: "23:00-23:00" } }),
-    /quietHoursPerRole\.qa: quietHours start and end must differ/,
+    /quietHoursPerRole\.qa start and end must differ/,
   );
 });
 

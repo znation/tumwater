@@ -30,20 +30,23 @@ type ParsedQuietHours =
   | { ok: false; error: string };
 
 /** Parse one `quietHours` value: `"HH:MM-HH:MM"` in local time, 24-hour clock, a wrapping
- * window (`start > end`) is the overnight case the format exists for. */
-export function parseQuietHours(value: unknown): ParsedQuietHours {
+ * window (`start > end`) is the overnight case the format exists for. `key` is the config key
+ * the value came from, named verbatim in every error; it defaults to the fleet-wide
+ * `quietHours`, and the per-role map passes `quietHoursPerRole.<id>` so a rejected entry names
+ * the key the operator actually set rather than a different one. */
+export function parseQuietHours(value: unknown, key = "quietHours"): ParsedQuietHours {
   if (value === undefined || value === null) return { ok: true, window: null };
   if (typeof value !== "string")
     return {
       ok: false,
-      error: `quietHours must be a string like "23:00-07:00"${gotSuffix(value)}`,
+      error: `${key} must be a string like "23:00-07:00"${gotSuffix(value)}`,
     };
   if (value.trim() === "") return { ok: true, window: null }; // empty means off
   const parts = value.split("-");
   if (parts.length !== 2)
     return {
       ok: false,
-      error: `quietHours must be "HH:MM-HH:MM" with exactly one dash, e.g. "23:00-07:00"${gotSuffix(value)}`,
+      error: `${key} must be "HH:MM-HH:MM" with exactly one dash, e.g. "23:00-07:00"${gotSuffix(value)}`,
     };
   const ends: number[] = [];
   for (const part of parts) {
@@ -52,14 +55,14 @@ export function parseQuietHours(value: unknown): ParsedQuietHours {
     if (!m)
       return {
         ok: false,
-        error: `quietHours times must be 24-hour "HH:MM", e.g. "23:00"${gotSuffix(trimmed)}`,
+        error: `${key} times must be 24-hour "HH:MM", e.g. "23:00"${gotSuffix(trimmed)}`,
       };
     const hours = Number(m[1]);
     const minutes = Number(m[2]);
     if (hours > 23 || minutes > 59)
       return {
         ok: false,
-        error: `quietHours times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59${gotSuffix(trimmed)}`,
+        error: `${key} times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59${gotSuffix(trimmed)}`,
       };
     ends.push(hours * 60 + minutes);
   }
@@ -68,7 +71,7 @@ export function parseQuietHours(value: unknown): ParsedQuietHours {
   if (startMin === endMin)
     return {
       ok: false,
-      error: `quietHours start and end must differ — a zero-length window means nothing schedulable${gotSuffix(value)}`,
+      error: `${key} start and end must differ — a zero-length window means nothing schedulable${gotSuffix(value)}`,
     };
   return { ok: true, window: { startMin, endMin } };
 }

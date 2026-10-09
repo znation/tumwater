@@ -30,24 +30,28 @@ import { parseQuietHours } from "../scheduling/quiet-hours.js";
  * try/catch plumbing. A value past Number.MAX_SAFE_INTEGER is rejected too: it stays
  * finite ("9"×25 → 1e24), so only this screen stands between a one-zero typo in the
  * browser's budget editor and an effectively uncapped budget (BUGS.md 2026-10-02, the
- * same rule the TUI's parseBudgetInput applies). */
-export function checkDailyBudgetUsd(value: unknown): string | null {
+ * same rule the TUI's parseBudgetInput applies). `key` names the config key in the error,
+ * defaulting to the fleet-wide `maxDailyCostUsd`; the per-role map passes
+ * `maxDailyCostUsdPerRole.<id>` so a rejected entry names the key actually set. */
+export function checkDailyBudgetUsd(value: unknown, key = "maxDailyCostUsd"): string | null {
   if (
     typeof value !== "number" ||
     !Number.isFinite(value) ||
     value < 0 ||
     value > Number.MAX_SAFE_INTEGER
   )
-    return `maxDailyCostUsd must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}, 0 disables (got ${show(value)})`;
+    return `${key} must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}, 0 disables (got ${show(value)})`;
   return null;
 }
 
 /** One definition of "a valid quietHours window" (src/scheduling/quiet-hours.ts owns the format):
  * "HH:MM-HH:MM" in local time, wrapping permitted, empty means off. parseQuietHours's
  * message is the one wording every surface (validateConfig, `config set`, the TUI/GUI
- * editors) shows, so they cannot drift apart on what a valid window is. */
-export function checkQuietHours(value: unknown): string | null {
-  const parsed = parseQuietHours(value);
+ * editors) shows, so they cannot drift apart on what a valid window is. `key` names the
+ * config key in the error, defaulting to the fleet-wide `quietHours`; the per-role map passes
+ * `quietHoursPerRole.<id>` so a rejected entry names the key actually set. */
+export function checkQuietHours(value: unknown, key = "quietHours"): string | null {
+  const parsed = parseQuietHours(value, key);
   return parsed.ok ? null : parsed.error;
 }
 
@@ -235,8 +239,11 @@ export function setConfigKey(
     const fieldError = parsed.kind === "role" ? unknownRoleFieldError(parsed.id, parsed.field) : null;
     if (fieldError) return { ok: false, error: fieldError };
     if (parsed.kind === "map") {
+      // Name the key the operator actually typed (`maxDailyCostUsdPerRole.qa`), not the
+      // fleet-wide field the shared validator's message would otherwise default to.
+      const label = `${parsed.map}.${parsed.role}`;
       const validator = parsed.map === "maxDailyCostUsdPerRole" ? checkDailyBudgetUsd : checkQuietHours;
-      const problem = validator(value);
+      const problem = validator(value, label);
       if (problem) return { ok: false, error: problem };
     }
     if (parsed.kind === "tier" && (typeof value !== "string" || value === "")) {

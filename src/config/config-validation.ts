@@ -479,8 +479,8 @@ function checkSelectorHalves(
       return;
     }
     if (value.trim() === "") return; // empty = off for that role
-    const parsed = parseQuietHours(value);
-    if (!parsed.ok) problems.push(`quietHoursPerRole.${id}: ${parsed.error}`);
+    const parsed = parseQuietHours(value, `quietHoursPerRole.${id}`);
+    if (!parsed.ok) problems.push(parsed.error);
   });
 
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
