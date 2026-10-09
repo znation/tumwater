@@ -147,14 +147,18 @@ export function squash(s: string, max: number): string {
 /** Text capped for injection into a prompt: past `max` characters it is cut and given a visible
  * `…[<label> truncated at <max> chars]` note naming what was capped and how much survived, so
  * the loss is never silent. The single home of that marker format — the PRINCIPLES.md cap
- * (principles.ts's readPrinciples) and the initial-prompt backstop (brief.ts's extractPrompt) both
- * render through it, so the two defensive caps cannot drift apart in wording. A plain slice at
- * `max` (not truncate's ellipsis-and-trim cut): the marker carries the ellipsis, and the cut
- * boundary must stay a stable, predictable prefix of the original text. */
+ * (principles.ts's readPrinciples), the initial-prompt backstop (brief.ts's extractPrompt), and
+ * the role-notebook read (tick-prompt.ts) all render through it, so the defensive caps cannot
+ * drift apart in wording. A plain slice at `max` (not truncate's ellipsis-and-trim cut): the
+ * marker carries the ellipsis, and the cut boundary must stay a stable, predictable prefix of
+ * the original text. A cut that would split a surrogate pair (an astral character such as
+ * emoji) backs off one code unit first, so the kept prefix never ends on a lone high surrogate
+ * that terminals render as garbage — truncate's rule, applied to this bounded-prefix cut. The
+ * marker names `max`, the budget the text overran, not the one unit less actually kept. */
 export function truncateWithNote(text: string, max: number, label: string): string {
-  return text.length > max
-    ? `${text.slice(0, max)}\n…[${label} truncated at ${max} chars]`
-    : text;
+  if (text.length <= max) return text;
+  const cut = cutSplitsSurrogatePair(text, max) ? max - 1 : max;
+  return `${text.slice(0, cut)}\n…[${label} truncated at ${max} chars]`;
 }
 
 /** The one definition of a valid plain-decimal integer across every input surface (CLI flags

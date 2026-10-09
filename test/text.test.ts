@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate } from "../src/text/text.js";
+import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -96,6 +96,27 @@ test("truncate with a non-positive max fits nothing and returns the empty string
   assert.equal(truncate("a much longer string than the budget", 0), "");
   assert.equal(truncate("abc", -1), "");
   assert.equal(truncate("", 0), "");
+});
+
+test("truncateWithNote passes short text through and appends its marker past the cap", () => {
+  assert.equal(truncateWithNote("hello", 5, "PRINCIPLES.md"), "hello"); // exactly at the cap: no cut
+  assert.equal(truncateWithNote("hello", 9, "PRINCIPLES.md"), "hello");
+  const out = truncateWithNote("hello world", 5, "PRINCIPLES.md");
+  assert.equal(out, "hello\n…[PRINCIPLES.md truncated at 5 chars]");
+  // The marker names the budget, and the kept prefix is exactly the first `max` characters.
+  assert.ok(out.startsWith("hello\n"));
+});
+
+test("truncateWithNote never splits a surrogate pair at the cut boundary", () => {
+  // The write cap is byte-counted but this read backstop cuts code units; a cut landing
+  // between an astral character's high and low surrogate would leave a lone high surrogate
+  // that terminals render as garbage. It backs off one unit, keeping the prefix stable.
+  const s = "ab🎉cd"; // 🎉 occupies code units 2..3
+  assert.match(truncateWithNote(s, 3, "initial prompt"), /^ab\n…\[initial prompt truncated at 3 chars\]$/);
+  for (let max = 0; max <= s.length + 2; max++) {
+    const out = truncateWithNote(s, max, "x");
+    assert.ok(!hasLoneSurrogate(out), `max ${max}: lone surrogate in ${JSON.stringify(out)}`);
+  }
 });
 
 // --- parsePositiveInt / parseNonNegativeInt (the shared numeric core) ---
