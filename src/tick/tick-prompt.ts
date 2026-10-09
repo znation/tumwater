@@ -15,6 +15,8 @@ import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
+import { ROLE_NOTES_MAX_BYTES } from "../pi-extension/role-notes.js";
+import { truncateWithNote } from "../text/text.js";
 import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
@@ -33,9 +35,19 @@ export interface TickPromptInput {
 /** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
  * step — or undefined when it is missing or unreadable (an empty or whitespace-only note is
  * left for buildTickPrompt to omit). The degradation is deliberate: a torn or absent
- * runtime-state file must never fail a tick. */
+ * runtime-state file must never fail a tick.
+ *
+ * The note is bounded on read as well as on write: the role_notes tool rejects text over
+ * ROLE_NOTES_MAX_BYTES, but the file lives in hand-editable runtime state, so an oversized
+ * note (an old build, a manual edit) would otherwise ride into every one of this role's
+ * prefill-heavy tick prompts uncapped. The same defensive backstop readPrinciples and the
+ * initial-prompt reader apply to their hand-editable files. A UTF-8 character is never
+ * fewer than one byte, so a note the tool accepted (≤ 4096 bytes) is always ≤ 4096 chars
+ * and never trips this bound; only an over-cap file is cut, with truncateWithNote's visible
+ * marker naming the loss. */
 function readRoleNote(root: string, role: string): string | undefined {
-  return readTextOrNull(roleNotesPath(root, role)) ?? undefined;
+  const text = readTextOrNull(roleNotesPath(root, role));
+  return text === null ? undefined : truncateWithNote(text, ROLE_NOTES_MAX_BYTES, "role notebook");
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"

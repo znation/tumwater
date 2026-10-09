@@ -9,6 +9,7 @@ import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, read
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/pi-extension/role-notes.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { applyLandingOutcome } from "../src/tick/tick-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -142,6 +143,29 @@ test("a role tick prompt reads the note from roleNotesPath, and omits the block 
   assert.ok(without);
   assert.ok(!without.prompt.includes("<role-notes>"), "a missing note file means no block");
   assert.match(without.prompt, /call role_notes with/, "the write instruction is still present");
+});
+
+// The notebook is bounded on read too: the tool caps writes at ROLE_NOTES_MAX_BYTES, but the
+// file is hand-editable runtime state, so an over-long one must not ride into every prefill.
+// A note at the cap (a byte is never fewer than a character) is untouched.
+const NOTE_TRUNCATION_MARKER = `…[role notebook truncated at ${ROLE_NOTES_MAX_BYTES} chars]`;
+test("an over-long role note is truncated into the prompt with a visible marker", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "coverage");
+  fs.mkdirSync(path.dirname(notes), { recursive: true });
+
+  fs.writeFileSync(notes, "x".repeat(ROLE_NOTES_MAX_BYTES));
+  const atCap = promptFor(dir, "coverage");
+  assert.ok(atCap);
+  assert.ok(!atCap.prompt.includes(NOTE_TRUNCATION_MARKER), "a note at the cap is untouched");
+
+  const tail = "the-tail-past-the-cap";
+  fs.writeFileSync(notes, "x".repeat(ROLE_NOTES_MAX_BYTES + 100) + tail);
+  const overCap = promptFor(dir, "coverage");
+  assert.ok(overCap);
+  assert.match(overCap.prompt, /<role-notes>\n/);
+  assert.ok(overCap.prompt.includes(NOTE_TRUNCATION_MARKER), "the truncation is visible in the prompt");
+  assert.ok(!overCap.prompt.includes(tail), "text past the bound is not injected");
 });
 
 test("a director prompt carries the same <backlog-index> block", () => {
