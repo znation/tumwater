@@ -87,7 +87,7 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 
 ## Layout
 
-- `src/loop/loop.ts`: the tick lifecycle. `src/loop/loop-pi.ts` holds its pi-run plumbing.
+- `src/loop/loop.ts`: the runner class and its lifecycle/public surface. `src/loop/loop-pi.ts` holds its pi-run plumbing, `loop-tick.ts` the tick pipeline phases, `loop-recovery.ts` the abort/pin/recovery phases, and `loop-fallback.ts` the model-fallback fold.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts` holds its launch pass
   (admitting due runners to their ticks).
 - `src/pi/pi.ts`: the pi subprocess integration, beside its plumbing (`pi-args.ts`,

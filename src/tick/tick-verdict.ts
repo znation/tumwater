@@ -1,9 +1,9 @@
-/** The UNFULFILLED-VERDICT half of a finished pi run's classification (see loop.ts's
- * handlePiResult for the seam): everything that decides a run left nothing landable — abort,
+/** The UNFULFILLED-VERDICT half of a finished pi run's classification (see loop-tick.ts's
+ * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
- * with the staging handoff (src/tick/tick-stage.ts) staying on the runner. Returns null when the
- * run IS fulfillable, which loop.ts answers with stageTickLanding. Split out of loop.ts so the
- * runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
+ * with the staging handoff (src/tick/tick-stage.ts) staying in the tick pipeline. Returns null when
+ * the run IS fulfillable, which the pipeline answers with stageTickLanding. Split out of loop.ts so
+ * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
 import type { LoopState } from "../loop/loop-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
