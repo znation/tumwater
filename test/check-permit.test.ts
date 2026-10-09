@@ -10,20 +10,26 @@ import { flushImmediate, sleep } from "./helpers/wait.js";
 // rejected run hand its permit back) before the next one starts — a leaked permit would
 // park every later acquire in this file.
 
-test("withCheckPermit bounds concurrency to the configured cap", async () => {
-  const cfg = { maxConcurrentChecks: 2 };
+// Drive `n` checks through withCheckPermit at once and report the peak number that ran
+// together. The sleep holds each check in flight long enough to overlap its siblings.
+async function peakConcurrency(config: Parameters<typeof withCheckPermit>[0], n: number): Promise<number> {
   let running = 0;
   let peak = 0;
-  const tasks = Array.from({ length: 6 }, () =>
-    withCheckPermit(cfg, CHECK_TIER.other, async () => {
-      running += 1;
-      peak = Math.max(peak, running);
-      await sleep(15);
-      running -= 1;
-    }),
+  await Promise.all(
+    Array.from({ length: n }, () =>
+      withCheckPermit(config, CHECK_TIER.other, async () => {
+        running += 1;
+        peak = Math.max(peak, running);
+        await sleep(15);
+        running -= 1;
+      }),
+    ),
   );
-  await Promise.all(tasks);
-  assert.equal(peak, 2);
+  return peak;
+}
+
+test("withCheckPermit bounds concurrency to the configured cap", async () => {
+  assert.equal(await peakConcurrency({ maxConcurrentChecks: 2 }, 6), 2);
 });
 
 test("withCheckPermit calls its wait hooks only when the permit is not free", async () => {
@@ -49,38 +55,16 @@ test("withCheckPermit calls its wait hooks only when the permit is not free", as
 test("a valid config raises the cap for the next checks", async () => {
   // The default cap is 2; three concurrent checks can only all run if the config's
   // maxConcurrentChecks was applied to the shared semaphore at acquire time.
-  const cfg = { maxConcurrentChecks: 3 };
-  let running = 0;
-  let peak = 0;
-  const tasks = Array.from({ length: 3 }, () =>
-    withCheckPermit(cfg, CHECK_TIER.other, async () => {
-      running += 1;
-      peak = Math.max(peak, running);
-      await sleep(15);
-      running -= 1;
-    }),
-  );
-  await Promise.all(tasks);
-  assert.equal(peak, 3);
+  assert.equal(await peakConcurrency({ maxConcurrentChecks: 3 }, 3), 3);
 });
 
 test("an invalid or missing config falls back to the default cap", async () => {
   // Raise the shared cap to 3 first so the fallback (default 2) is actually observable:
   // without the fallback these three checks would all run at once.
   await withCheckPermit({ maxConcurrentChecks: 3 }, CHECK_TIER.other, async () => {});
-  let running = 0;
-  let peak = 0;
-  const run = () =>
-    withCheckPermit(undefined as never, CHECK_TIER.other, async () => {
-      running += 1;
-      peak = Math.max(peak, running);
-      await sleep(15);
-      running -= 1;
-    });
   // Missing, sub-one, and non-integer caps must all take the default, never a value the
   // semaphore could not grant under.
-  await Promise.all([run(), run(), run()]);
-  assert.equal(peak, 2);
+  assert.equal(await peakConcurrency(undefined, 3), 2);
 
   await Promise.all([
     withCheckPermit({ maxConcurrentChecks: 0 }, CHECK_TIER.other, () => sleep(15)),
