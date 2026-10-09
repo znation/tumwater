@@ -18,9 +18,9 @@ import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-stat
 import { resumeRole } from "../fleet/fleet-state.js";
 import { git } from "../git/git-run.js";
 
-/** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus
- * the per-role landing ref and paused-state marker that outlive it. The safety rails and the
- * `--force` override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
+/** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus the
+ * per-role landing ref and paused-state marker that outlive it. The safety rails and the `--force`
+ * override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
 
 /** What retire sees today for one role — the collect half, exported so a read-only surface can
  * report the same state the removal would act on. */

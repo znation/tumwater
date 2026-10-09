@@ -10,10 +10,10 @@
 
 /** The claim-discipline rules every authoring run carries, stated just before the reply contract
  * they govern. Written against the budgeted model's review record (GLM-5.3-Flash, 2026-09-25..
- * 10-01: 191 of ~1,100 reviewed changes rejected): the leading cause was not wrong code but a
- * false or unchecked claim — "the untested X module" when tests already imported it, a moved block
- * called "byte-identical" that was not, "all references updated" with one left, a suite count
- * off by one, a VERIFIED command that does not exist on the tree — and the next was an edit made
+ * 10-01: 191 of ~1,100 reviewed changes rejected): the leading cause was not wrong code but a false
+ * or unchecked claim — "the untested X module" when tests already imported it, a moved block
+ * called "byte-identical" that was not, "all references updated" with one left, a suite count off
+ * by one, a VERIFIED command that does not exist on the tree — and the next was an edit made
  * after the last green run, which the gate's build check then failed. Each rule names the check
  * that makes its claim true, and none presumes a reviewer or a check exists: a doc-only diff skips
  * the review gate (review.exemptPaths), and a project may declare no check — so the rules name
@@ -161,22 +161,21 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
   const normalized = unbracket(bare(unbold(raw)));
   for (const candidate of [raw, unwrapped, normalized]) {
     if (candidate === "" || candidate === "none" || candidate === "n/a") return true;
-    // The appended-explanation family: after the token, any character that cannot begin a
-    // reason word — the ASCII hyphen and en/em dashes, an opening parenthesis, a quote
-    // (straight or typographic, either direction), or sentence punctuation (`;`, `:`, `,`,
-    // `.`, `!`, `?`, `…`) — starts a note that rides the token rather than continuing it (`none -
-    // no entry refused`, `none (no entry refused this run)`, `None; nothing to refuse.`,
-    // `None. Nothing worth doing.`, `none "nothing to do"`, `none “nothing to do”`). The
-    // hyphen stays in the class beside the en/em dashes: `none - …` is the same
-    // appended-note dress as `none — …` and dropping it would regress `n/a - …` replies to
-    // genuine refusals. The alternation also carries the whole-reason absence statements a
-    // loop writes instead of `none` (`nothing to do`, `nothing to refuse`, `nothing refused`,
-    // `no refusal` — same negating intent, BUGS.md 2026-09-28). Anchored right after the
-    // token, so a reason that continues with a word (`none of the attempted fixes work`,
-    // `nothing to do with the review`, `no refusal of my own`) stays a refusal: punctuation
-    // is formatting, a letter is the reason itself. Accepted tradeoff, same as the dash dress
-    // already carried: a real objection that opens a quoted clause right after the token
-    // (`none "of these work"`) now negates.
+    // The appended-explanation family: after the token, any character that cannot begin a reason
+    // word — the ASCII hyphen and en/em dashes, an opening parenthesis, a quote (straight or
+    // typographic, either direction), or sentence punctuation (`;`, `:`, `,`, `.`, `!`, `?`, `…`)
+    // — starts a note that rides the token rather than continuing it (`none - no entry refused`,
+    // `none (no entry refused this run)`, `None; nothing to refuse.`, `None. Nothing worth doing.`,
+    // `none "nothing to do"`, `none “nothing to do”`). The hyphen stays in the class beside the
+    // en/em dashes: `none - …` is the same appended-note dress as `none — …` and dropping it
+    // would regress `n/a - …` replies to genuine refusals. The alternation also carries the
+    // whole-reason absence statements a loop writes instead of `none` (`nothing to do`, `nothing to
+    // refuse`, `nothing refused`, `no refusal` — same negating intent, BUGS.md 2026-09-28).
+    // Anchored right after the token, so a reason that continues with a word (`none of the
+    // attempted fixes work`, `nothing to do with the review`, `no refusal of my own`) stays a
+    // refusal: punctuation is formatting, a letter is the reason itself. Accepted tradeoff, same as
+    // the dash dress already carried: a real objection that opens a quoted clause right after the
+    // token (`none "of these work"`) now negates.
     if (/^(none|n\/a|nothing to do|nothing to refuse|nothing refused|no refusal)\b([ \t]*[—–\-;:,.!?…('"‘’“”].*)?$/.test(candidate)) return true;
   }
   return false;

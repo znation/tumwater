@@ -1,7 +1,7 @@
-/** The dashboard HTTP server: routing, the shared-token gate, the static page, /api/status,
- * and the self-reload watch. Every /api endpoint's handler lives in gui/gui-endpoints.ts (the GET
- * data endpoints) and gui/gui-endpoint-commands.ts (the POST operator endpoints) — this
- * module owns the socket, not the data. The `tumwater gui` CLI entry (cmdGui) lives in gui/gui-command.ts,
+/** The dashboard HTTP server: routing, the shared-token gate, the static page, /api/status, and the
+ * self-reload watch. Every /api endpoint's handler lives in gui/gui-endpoints.ts (the GET data
+ * endpoints) and gui/gui-endpoint-commands.ts (the POST operator endpoints) — this module owns
+ * the socket, not the data. The `tumwater gui` CLI entry (cmdGui) lives in gui/gui-command.ts,
  * which imports startGui from here, so the server and the command that boots it stay adjacent. */
 import crypto from "node:crypto";
 import http from "node:http";

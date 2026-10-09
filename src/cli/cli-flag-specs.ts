@@ -310,8 +310,8 @@ export const GUI_FLAG_SPECS: FlagSpec[] = [
   { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
 ];
 
-/** Fail when any argument was not consumed by this command's known flags — a misspelled flag (e.g.
- * `--rol` instead of `--role`) would otherwise be silently ignored and the command runs with
+/** Fail when any argument was not consumed by this command's known flags — a misspelled flag
+ * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs with
  * default behavior, which is worse than an error: `reset-counters --rol x` zeroed every loop
  * instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim one
  * token; valued flags claim two — and a valued flag left without its value fails right here, with

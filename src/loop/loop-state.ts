@@ -33,9 +33,9 @@ export interface LoopState {
    * multiplier 1. */
   recentOutcomes?: string;
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
-   * renders. A `queued` tick never writes it (tick-apply.ts's applyTickOutcome): its change is still
-   * in flight, which the state column already shows, so the pair keeps the prior outcome until
-   * the landing resolves and applyLandingOutcome records the landing's own. */
+   * renders. A `queued` tick never writes it (tick-apply.ts's applyTickOutcome): its change is
+   * still in flight, which the state column already shows, so the pair keeps the prior outcome
+   * until the landing resolves and applyLandingOutcome records the landing's own. */
   lastResult?: TickResult;
   lastSummary?: string;
   /** The summary a `queued` tick reported for the change it pinned (the text its tick_end
@@ -180,8 +180,9 @@ export interface LoopState {
    * re-queues. Cleared when the pin lands or is rejected. */
   landingReviewError?: { sha: string; selector?: string; message: string };
   /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
-   * in-lock check went red on the rebased tree. At landing-check-failures.ts's LANDING_CHECK_FAILURE_LIMIT the
-   * red is attributed through main's own verdict instead of re-queued as merge_blocked again. */
+   * in-lock check went red on the rebased tree. At landing-check-failures.ts's
+   * LANDING_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
+   * re-queued as merge_blocked again. */
   landingCheckFailures?: { patchId: string; count: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
    * window (loop.ts resets it at tick start), not a lifetime total. */

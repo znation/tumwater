@@ -7,21 +7,21 @@ import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { worktreePath } from "../paths.js";
 
-/** Prompt construction for the role loops' pi runs (tick and director). The reply contract
- * those runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the
+/** Prompt construction for the role loops' pi runs (tick and director). The reply contract those
+ * runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the
  * SUMMARY/WHY/RISK/VERIFIED block format, the three endings, and the claims rules — lives in
  * reply-contract.ts; this module weaves it into each prompt. The follow-up prompts that pick a
  * session back up — the resume bridge, the missing-summary recovery, and the fresh-tick cut-off
  * note — live in prompt-followup.ts. The landing gate's pi runs (conflict resolution, build fix,
- * review) build their prompts in gate-prompts.ts; assembling a reply into the tick's commit
- * message lives in git/commit-message.ts.
+ * review) build their prompts in gate-prompts.ts; assembling a reply into the tick's commit message
+ * lives in git/commit-message.ts.
  *
  * The prose is tuned for the fleet's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
  * MoE behind a ~1M window) and the budget fallback's local Qwen3.8-27B (~127k window). Both follow
  * short grouped rules with concrete numbers and literal commands far better than long dense
- * paragraphs, over-read when told merely to "work economically", make unchecked claims the
- * reviewer then rejects (the primary's leading rejection cause), and need to be told how a reply
- * must end — so the rules are grouped with one rule per bullet, budgets are numeric, role tasks are
+ * paragraphs, over-read when told merely to "work economically", make unchecked claims the reviewer
+ * then rejects (the primary's leading rejection cause), and need to be told how a reply must end
+ * — so the rules are grouped with one rule per bullet, budgets are numeric, role tasks are
  * numbered steps, claims carry the check that proves them, the three possible endings are a
  * mutually exclusive list, and that closing contract comes last, where a model attends to it most.
  * Nothing here is model-conditional. The PRINCIPLES.md reader the principles block is fed from
@@ -227,7 +227,8 @@ interface TickPromptInput {
   initialPrompt: string;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
   principles?: string;
-  /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when unreadable. */
+  /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when
+   * unreadable. */
   digest?: string;
   /** Rendered flow-coverage block (see tick/qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;

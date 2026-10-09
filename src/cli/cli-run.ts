@@ -1,8 +1,8 @@
 /** The fleet-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
  * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every
  * other command it dispatches already delegates to a module (operator/operator-commands.ts,
- * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were the
- * only implementations living in the dispatcher itself. */
+ * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were
+ * the only implementations living in the dispatcher itself. */
 import { increment } from "../collections.js";
 import { loopIds } from "../roles/loop-ids.js";
 import { fail, say } from "./cli-output.js";

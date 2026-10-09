@@ -102,7 +102,8 @@ export function worktreeUseLockPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "worktree-use.lock");
 }
 
-/** The orchestrator's own info file (its pid, for liveness checks — fleet/orchestrator-info.ts). */
+/** The orchestrator's own info file (its pid, for liveness checks —
+ * fleet/orchestrator-info.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }

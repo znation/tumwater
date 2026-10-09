@@ -1,26 +1,27 @@
 /**
- * Bundled pi extension: tells the model how full its context window is, at a few fixed
- * thresholds, by appending one short note to the tool result that crosses each one. Loaded on
- * every pi run via `-e <this file>` from src/pi/pi-args.ts, after bounded-output and context-shake.
+ * Bundled pi extension: tells the model how full its context window is, at a few fixed thresholds,
+ * by appending one short note to the tool result that crosses each one. Loaded on every pi run via
+ * `-e <this file>` from src/pi/pi-args.ts, after bounded-output and context-shake.
  *
  * Why: a run cannot see its own context usage. pi (1.0.0) does compact mid-run, but only once the
- * projected context passes contextWindow − reserveTokens (16,384 by default — ~87% of the budget
- * fallback's ~127k window), and that compaction replaces the run's earlier reads with a lossy
- * summary; past it, a run that keeps reading hits the window and lands nothing. context-shake
+ * projected context passes contextWindow − reserveTokens (16,384 by default — ~87% of the
+ * budget fallback's ~127k window), and that compaction replaces the run's earlier reads with a
+ * lossy summary; past it, a run that keeps reading hits the window and lands nothing. context-shake
  * reclaims the oldest bulky tool results first, so the notes now sit above that reclaim line: the
  * 70% note names the crossing, context-shake elides what it can in the same turn_end, and at 85%
- * the note is the stop-reading backstop for a run whose remaining results were not reclaimable.
- * The failure mode the numbers exist for is the fallback's local model (Qwen3.8-27B): its longest
- * ticks peaked at 96–110k tokens (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the
+ * the note is the stop-reading backstop for a run whose remaining results were not reclaimable. The
+ * failure mode the numbers exist for is the fallback's local model (Qwen3.8-27B): its longest ticks
+ * peaked at 96–110k tokens (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the
  * prompt's reading budget could only say "your window is finite". On a large-window model the
  * thresholds are rarely reached, so the extension costs nothing there.
  *
  * The threshold logic is a pure, exported function (`contextNote`) so it is unit-testable without
- * pi; the default export is a thin adapter over pi's `tool_result` event and `ctx.getContextUsage()`
- * (pi docs, extensions.md "Context and session changes"). One note per threshold per process: a
- * resumed session (--continue) starts a fresh process and re-warns at most once, at the highest
- * threshold it has already passed. The token counts render through format.ts's compactTokens, the
- * harness's one token format (text.ts imports nothing, so pi can load it beside this file).
+ * pi; the default export is a thin adapter over pi's `tool_result` event and
+ * `ctx.getContextUsage()` (pi docs, extensions.md "Context and session changes"). One note per
+ * threshold per process: a resumed session (--continue) starts a fresh process and re-warns at most
+ * once, at the highest threshold it has already passed. The token counts render through format.ts's
+ * compactTokens, the harness's one token format (text.ts imports nothing, so pi can load it beside
+ * this file).
  */
 
 import { nonNegativeNumber } from "../files/json-object.js";

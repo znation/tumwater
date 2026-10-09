@@ -98,10 +98,10 @@ function grepHaystack(row: TickRow): string {
  * two observing views' wordings each name the command that printed them. */
 export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
 
-/** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]`: print the last
- * N completed ticks, newest first — or, with `--since`, the ticks of a bounded past window over
- * the same record, the same shape `logs --since` and `report --since` speak. Read-only: stdout
- * only, no state file created — a missing or empty event log prints `no ticks yet` and exits 0. */
+/** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]`: print the last N
+ * completed ticks, newest first — or, with `--since`, the ticks of a bounded past window over the
+ * same record, the same shape `logs --since` and `report --since` speak. Read-only: stdout only, no
+ * state file created — a missing or empty event log prints `no ticks yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
   // `tick_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so

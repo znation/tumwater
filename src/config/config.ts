@@ -27,12 +27,13 @@ export function parseJsonConfig(
   }
 }
 
-/** Build the default TumwaterConfig: every role enabled except the opt-in telemetry (steward on
- * its slow ~6 h tick, qa and telemetry on ~2 h, readme on 30 min, plan and organize on 1 h), with defaults for concurrency,
- * timeouts, log size, retention, thrash detection, idle backoff, self-redeploy, and review
- * settings. The return type is the resolved view (config-views.ts): a freshly defaulted config
- * has no model map to resolve — only a loaded file can carry one — so every call site that
- * hands a default into a pi run (pi.ts, tests) satisfies ResolvedModelConfig directly. */
+/** Build the default TumwaterConfig: every role enabled except the opt-in telemetry (steward on its
+ * slow ~6 h tick, qa and telemetry on ~2 h, readme on 30 min, plan and organize on 1 h), with
+ * defaults for concurrency, timeouts, log size, retention, thrash detection, idle backoff,
+ * self-redeploy, and review settings. The return type is the resolved view (config-views.ts): a
+ * freshly defaulted config has no model map to resolve — only a loaded file can carry one — so
+ * every call site that hands a default into a pi run (pi.ts, tests) satisfies ResolvedModelConfig
+ * directly. */
 export function defaultConfig(): ResolvedModelConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };

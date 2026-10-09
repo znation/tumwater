@@ -896,14 +896,14 @@ export class LoopRunner {
     return this.handlePiResult(pi, userPrompt, revisionRound, wt, flow, piStartedAt, cfg);
   }
 
-  /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so
-   * each half reads on its own screen — the setup above ends at the pi return. The verdict
-   * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change)
-   * lives in resolveTickVerdict (src/tick/tick-verdict.ts), and the fulfillable path — staging —
+  /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so each
+   * half reads on its own screen — the setup above ends at the pi return. The verdict
+   * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change) lives
+   * in resolveTickVerdict (src/tick/tick-verdict.ts), and the fulfillable path — staging —
    * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
-   * loops) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick
-   * holds (undefined when it is not a revision); `flow` is the qa observer's FLOW line
-   * (null for every other role). */
+   * loops) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick holds
+   * (undefined when it is not a revision); `flow` is the qa observer's FLOW line (null for every
+   * other role). */
   private async handlePiResult(
     pi: PiRunResult,
     userPrompt: string | null,

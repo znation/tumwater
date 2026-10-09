@@ -27,7 +27,8 @@ export interface ModelFallbackState {
   /** Epoch ms at or after which the next tick runs on the primary as a probe; 0 while the
    * role is still on its primary. */
   probeAt: number;
-  /** The current probe cooldown; each failed probe doubles it up to MODEL_FALLBACK_MAX_COOLDOWN_MS. */
+  /** The current probe cooldown; each failed probe doubles it up to
+   * MODEL_FALLBACK_MAX_COOLDOWN_MS. */
   cooldownMs: number;
   /** The provider-class failure that tripped the episode, for the started event and the
    * surfaces that render why a loop is off-model. */

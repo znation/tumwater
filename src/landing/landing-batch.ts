@@ -203,8 +203,8 @@ export async function landVetted(
     return results;
   }
 
-  // ── Assemble the stack in the shared `_merge` checkout: ONE check over the whole tree, and on a
-  // red one, the largest passing prefix
+  // ── Assemble the stack in the shared `_merge` checkout: ONE check over the whole tree, and
+  // on a red one, the largest passing prefix
   // The shared `_merge` checkout hosts every assembly and the attribution's baseline check:
   // the drain is serial, so one checkout is enough, and no vet runs for a role while its
   // change is being merged (plans/worktree-pool.md, part 2c).

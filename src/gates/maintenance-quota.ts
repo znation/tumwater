@@ -5,9 +5,9 @@
  * a loop yet.
  *
  * The window counts `merged` events by `commitTier` (src/roles/roles.ts): feature/bugfix/director
- * are the work count, the code-maintenance roles plus readme the maintenance count, and every
- * other role (plan, steward, observers, custom) is neither. The count is an instant-shaped
- * trailing window — `ts >= now − 24 h` — not a local-day bucket, so it cannot reuse the report's
+ * are the work count, the code-maintenance roles plus readme the maintenance count, and every other
+ * role (plan, steward, observers, custom) is neither. The count is an instant-shaped trailing
+ * window — `ts >= now − 24 h` — not a local-day bucket, so it cannot reuse the report's
  * day-keyed fold cache (src/report/report-data.ts): instead the counter folds only the bytes the
  * append-only live log gained since the previous poll (`readCompleteLines`) and keeps the parsed
  * merged records in memory, re-reading the window whole only on the first call or after rotation.

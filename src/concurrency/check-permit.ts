@@ -6,18 +6,17 @@ import { Semaphore } from "./semaphore.js";
 
 /** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks,
  * PLANS.md "Land-queue speed 2b"): every full suite the harness runs — runScopedBuildCheck's
- * gate/landing/batch scopes and main-baseline.ts's checkMainBaseline, which runs the suite
- * directly — takes a permit here first, so a burst of landings cannot stack suites on the host
- * beside the authors' own test runs (the suite has load-sensitive tests). Split out of
- * build/build-check.ts — which keeps the deterministic execution and classification (detect → spawn
- * → classify) — because permit accounting is scheduling policy, not check semantics: it
- * changes when the concurrency or fairness policy changes, not when the check's execution
- * does. Separate from the orchestrator's maxConcurrent semaphore: a role tick holds one of
- * those while it waits here, but a check permit is held only around the check process itself
- * — never across a pi run, the merge lock, or another check — so no permit holder waits on
- * anything a waiter holds. Sized at each acquire from the caller's live config (checkCap), so
- * a tumwater.json edit applies to the next check; Semaphore.setCapacity never preempts a
- * running check on a shrink. */
+ * gate/landing/batch scopes and main-baseline.ts's checkMainBaseline, which runs the suite directly
+ * — takes a permit here first, so a burst of landings cannot stack suites on the host beside the
+ * authors' own test runs (the suite has load-sensitive tests). Split out of build/build-check.ts
+ * — which keeps the deterministic execution and classification (detect → spawn → classify)
+ * — because permit accounting is scheduling policy, not check semantics: it changes when the
+ * concurrency or fairness policy changes, not when the check's execution does. Separate from the
+ * orchestrator's maxConcurrent semaphore: a role tick holds one of those while it waits here, but a
+ * check permit is held only around the check process itself — never across a pi run, the merge
+ * lock, or another check — so no permit holder waits on anything a waiter holds. Sized at each
+ * acquire from the caller's live config (checkCap), so a tumwater.json edit applies to the next
+ * check; Semaphore.setCapacity never preempts a running check on a shrink. */
 const checkPermits = new Semaphore(defaultConfig().maxConcurrentChecks);
 
 /** Set while the current async context holds a check permit: a nested withCheckPermit runs

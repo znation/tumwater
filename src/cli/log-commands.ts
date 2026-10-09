@@ -18,8 +18,8 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * operator/operator-commands.ts these write nothing but stdout — they only read the event log and
  * each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
  * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering
- * layer they drive — here the event formatter and the transcript renderer — while src/ui/ itself
- * stays off src/ module boundaries it does not own. */
+ * layer they drive — here the event formatter and the transcript renderer — while src/ui/
+ * itself stays off src/ module boundaries it does not own. */
 
 /** Print one event as the feed line: formatEvent's rendered line, or — in `--json` mode — the
  * raw HarnessEvent serialized exactly as stored in the log. The one home of the
