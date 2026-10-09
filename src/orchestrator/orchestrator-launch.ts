@@ -18,7 +18,7 @@ import {
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
 import type { FleetGateStates } from "../gates/gate-polls.js";
-import { logEvent, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
@@ -119,7 +119,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     }
     const reason = reasons.get(runner);
     if (reason && reason !== "scheduled" && reason !== "startup") {
-      logEvent(root, { loop: runner.role, type: "wake", reason });
+      logEventBestEffort(root, { loop: runner.role, type: "wake", reason });
     }
     runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
     // The director never queues behind role loops: a user prompt starts immediately,

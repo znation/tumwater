@@ -13,7 +13,7 @@ import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
   CLAIM_IDLE_MAX_MS,
@@ -149,9 +149,9 @@ export async function pollRunnerReasons(
       const title = r.state.claim?.title ?? "";
       r.state.claim = undefined;
       const reason: ClaimReleaseReason = released;
-      logEvent(root, { loop: r.role, type: "claim", action: "released", title, reason });
+      logEventBestEffort(root, { loop: r.role, type: "claim", action: "released", title, reason });
       if (reason === "stale") {
-        warnEvent(
+        warnEventBestEffort(
           root,
           r.role,
           `released a stale claim on "${title}" after ${Math.round(CLAIM_IDLE_MAX_MS / 3_600_000)}h idle`,
@@ -280,7 +280,8 @@ export async function pollRunnerReasons(
       );
       const deferredNow = deferral !== null;
       if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
-        if (deferral) logEvent(root, { loop: runner.role, type: "tick_deferred", reason: deferral });
+        if (deferral)
+          logEventBestEffort(root, { loop: runner.role, type: "tick_deferred", reason: deferral });
         deferredDue.set(runner.role, deferredNow);
       }
       if (deferredNow) {
@@ -313,7 +314,7 @@ export async function pollRunnerReasons(
             source: "assigned",
           };
           claimGroup.held.add(pick.key);
-          logEvent(root, {
+          logEventBestEffort(root, {
             loop: runner.role,
             type: "claim",
             action: "assigned",

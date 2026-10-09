@@ -10,6 +10,8 @@ import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
+import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
+import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
@@ -269,4 +271,95 @@ test("the reviewer's provider being held blocks every role through scheduling, a
   const openCtx = schedulingCtx(root, runners, roleProviders);
   const reasonsOpen = await pollRunnerReasons(openCtx);
   assert.equal(reasonsOpen.size, 2, "both roles tick again once the review hold lifts");
+});
+
+/** Put a directory where the append-only events log belongs: every logEvent under `root`
+ * throws EISDIR, while every other file under the real root still writes normally. The
+ * scheduling pass runs inside the orchestrator's catch-less poll loop, so an unwritable
+ * feed must not end the fleet: each converted event site has to survive the throw and
+ * still perform the bookkeeping the event reports. */
+function unwritableEvents(root: string): void {
+  const file = eventsLogPath(root);
+  fs.rmSync(file, { recursive: true, force: true });
+  fs.mkdirSync(file, { recursive: true });
+}
+
+test("a claim assignment survives an unwritable events feed", async () => {
+  const root = tmpdir("tumwater-scheduling-best-effort-assign-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  unwritableEvents(root);
+  // Before the fix this poll rejected with EISDIR at the assignment's logEvent; the claim
+  // must still be taken so the instance's work is not silently skipped.
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(reasons.has(feature), true);
+  assert.equal(feature.state.claim?.key, "alpha");
+  assert.equal(feature2.state.claim?.key, "beta");
+});
+
+test("a claim release survives an unwritable events feed", async () => {
+  const root = tmpdir("tumwater-scheduling-best-effort-release-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.claim?.key, "beta");
+  // Lower the instance count; the surplus instance's claim release logs an event.
+  config.roles.feature = { enabled: true, instances: 1 };
+  unwritableEvents(root);
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.claim, undefined, "the release happened despite the unwritable feed");
+});
+
+test("a stale-claim warning survives an unwritable events feed", async () => {
+  const root = tmpdir("tumwater-scheduling-best-effort-stale-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.claim = {
+    file: "PLANS.md",
+    key: "alpha",
+    title: "Alpha",
+    at: T0,
+    source: "assigned",
+  };
+  feature2.state.claim = {
+    file: "PLANS.md",
+    key: "beta",
+    title: "Beta",
+    at: T0 - CLAIM_IDLE_MAX_MS - 1,
+    source: "assigned",
+  };
+  unwritableEvents(root);
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature.state.claim?.key, "alpha", "the live claim is kept");
+  // The stale claim was released (and may be re-assigned in the same poll): either way the
+  // poll completed instead of rejecting on the warning's logEvent.
+  assert.notEqual(feature2.state.claim?.at, T0 - CLAIM_IDLE_MAX_MS - 1);
+});
+
+test("a tick_deferred event survives an unwritable events feed", async () => {
+  const root = tmpdir("tumwater-scheduling-best-effort-deferred-");
+  const runner = fakeRunner("clean", defaultConfig());
+  runner.state.lastResult = "no_change";
+  runner.state.lastMainHead = "abc";
+  runner.state.ticks = 1;
+  unwritableEvents(root);
+  const c = schedulingCtx(root, [runner], new Map([["clean", undefined]]));
+  c.workBacklogOpen = true;
+  const reasons = await pollRunnerReasons(c);
+  assert.equal(reasons.has(runner), false, "the maintenance tick is still deferred");
+  assert.equal(c.deferredDue.get("clean"), true, "the deferral edge is still remembered");
 });

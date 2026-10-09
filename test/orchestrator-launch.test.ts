@@ -26,6 +26,7 @@ import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, t
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { readEvents } from "../src/events/event-read.js";
+import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
@@ -305,4 +306,20 @@ test("a warning whose event write throws is reported to stderr, not left as an u
     /boom during finalize/,
     "the rejection is still reported, to stderr, when the event log is unwritable",
   );
+});
+
+test("a wake event that cannot be logged still starts the due tick", async () => {
+  // The launch pass runs inside the orchestrator's catch-less poll loop: a wake for an
+  // inbox/resume/main-moved run must not end the fleet when events.jsonl is unwritable.
+  const root = tmpdir("launch-best-effort-wake-");
+  const file = eventsLogPath(root);
+  fs.rmSync(file, { recursive: true, force: true });
+  fs.mkdirSync(file, { recursive: true });
+  const runner = fakeRunner("clean");
+  const c = ctx({ root, reasons: new Map([[runner, "main moved"]]) });
+  // Before the fix this threw EISDIR before the reservation; the tick must still run.
+  launchDueTicks(c);
+  assert.equal(runner.state.running, true, "the reservation is taken despite the unwritable feed");
+  await settle(c);
+  assert.equal(c.roleInFlight.size, 0, "the tick ran to completion");
 });
