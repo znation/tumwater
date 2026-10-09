@@ -9,7 +9,7 @@
  * rather than failing. The wake of the loop that should act stays in cli.ts beside the
  * other command bodies. */
 import path from "node:path";
-import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
+import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
@@ -83,15 +83,9 @@ function appendEntryLocked(
     writeTextAtomic(file, grown.endsWith("\n") ? grown : `${grown}\n`);
     return;
   }
-  let sectionEnd = lines.length;
-  const fencedEnd = fenceTracker();
-  for (let i = sectionIdx + 1; i < lines.length; i++) {
-    if (fencedEnd.inside(lines[i] ?? "")) continue;
-    if ((lines[i] ?? "").startsWith("## ")) {
-      sectionEnd = i;
-      break;
-    }
-  }
+  // The section's end is the next real `## ` boundary after its heading — the same
+  // fence-aware boundary walk the readers use, through backlog-md.ts's nextSectionHeading.
+  const sectionEnd = nextSectionHeading(lines, sectionIdx + 1, fenceTracker());
   // The section's content between its heading and its end: real entries, with any
   // `_None yet._` skeleton placeholder dropped (fence-aware — a quoted placeholder line is
   // quoted content, not the marker) and the edge blanks trimmed.

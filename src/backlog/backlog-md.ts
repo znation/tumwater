@@ -108,7 +108,8 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
  * caller's `fenced` tracker — or `lines.length` when none follows. The section-end boundary
  * rule as an index, for readers that must cut or splice at the boundary rather than collect
  * its content (question-commands.ts cuts the Open section at its end and inserts a moved
- * block before Answered's next `## `). Shares fencedHeadingTitle's guard with sectionLines, so
+ * block before Answered's next `## `; backlog-write.ts cuts the section a filed entry is
+ * appended to). Shares fencedHeadingTitle's guard with sectionLines, so
  * a boundary found here is the same boundary sectionLines would stop at. */
 export function nextSectionHeading(
   lines: readonly string[],
