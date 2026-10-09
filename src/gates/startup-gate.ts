@@ -19,16 +19,15 @@ import { findAgentBinary, piMissingMessage, resolveAgentBin } from "../pi/pi-bin
  * the self-redeploy (src/redeploy/redeployer.ts) asks it before it holds the fleet and again right
  * before its swap, and the supervisor (src/process/supervisor.ts) asks it to name why a generation
  * died. On 2026-09-22 only the first existed: a redeploy swapped onto a build whose child found
- * tumwater.json missing, exited "not initialized", and the supervisor exited with it — 4 h 44 m of
- * a dead fleet and no event (BUGS.md
- * 2026-09-23). The operator-facing wording lives in readiness.ts, shared with doctor's per-check
- * report.
+ * tumwater.json missing, exited "not initialized", and the supervisor exited with it — 4 h 44 m
+ * of a dead fleet and no event (BUGS.md 2026-09-23). The operator-facing wording lives in
+ * readiness.ts, shared with doctor's per-check report.
  *
  * The one startup check deliberately outside the gate is cmdRun's "an orchestrator is already
  * running": to a redeploy asking on behalf of its successor, the live orchestrator is itself —
- * gone by the time the successor boots. The gate is the ASKER's build's rule, so a redeploy
- * checks what the running build knows of startup; a precondition the new build adds is
- * invisible to it until that build runs. */
+ * gone by the time the successor boots. The gate is the ASKER's build's rule, so a redeploy checks
+ * what the running build knows of startup; a precondition the new build adds is invisible to it
+ * until that build runs. */
 
 /** The repo-level preconditions every repo-bound command shares (requireReadyRepo in
  * cli/cli-query-commands.ts): git

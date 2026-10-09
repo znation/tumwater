@@ -40,28 +40,27 @@ import { logEventBestEffort } from "../events/events.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
-/** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
- * budget gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the
- * fleet-wide failure hold, and the two observational storm alarms. Each gate's reads,
- * edge-triggered events, and cross-poll bookkeeping live in its own module
- * (src/gates/budget-gates.ts, src/gates/pause-gates.ts, src/gates/streak-gate.ts,
- * src/gates/role-cap-gates.ts, src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the
- * fleet-health trio in src/fleet/fleet-polls.ts); this owns the wiring half — one poll advances
- * every gate's state in place. Split out of orchestrator.ts so the
- * poll loop reads as phases (reload → requests → gates → redeploy → landings → schedule →
- * start) and the gate family's wiring sits in one place, the same split fleet/fleet-polls.ts made
- * for the fleet-health trio. Dependency direction: orchestrator → gate-polls → the gate
- * modules. */
+/** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost budget
+ * gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the fleet-wide
+ * failure hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
+ * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts,
+ * src/gates/pause-gates.ts, src/gates/streak-gate.ts, src/gates/role-cap-gates.ts,
+ * src/scheduling/quiet-hours.ts, src/gates/disk-gate.ts, and the fleet-health trio in
+ * src/fleet/fleet-polls.ts); this owns the wiring half — one poll advances every gate's state in
+ * place. Split out of orchestrator.ts so the poll loop reads as phases (reload → requests →
+ * gates → redeploy → landings → schedule → start) and the gate family's wiring sits in one
+ * place, the same split fleet/fleet-polls.ts made for the fleet-health trio. Dependency direction:
+ * orchestrator → gate-polls → the gate modules. */
 
-/** The gate family's cross-poll memory, constructed once per orchestrator run and mutated
- * in place by each poll. In memory only — a restart re-trusts the fallback, re-opens the
- * hold, and can re-log at most one event per gate. Two members are also mutated from
- * outside this module: the budget gate's breaker collects the start pass's tick evidence
- * and its probe (src/budget/fallback-breaker.ts), and `fleetHold` is the holds-per-provider map —
- * the holds' LATEST verdicts, read at permit time by the start pass's closures — read it
- * from `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's
- * docs below). Key presence is not "held": providers whose hold re-opened stay in the map
- * for their relapse memory, so every consumer goes through fleet/fleet-hold.ts's heldProviders(). */
+/** The gate family's cross-poll memory, constructed once per orchestrator run and mutated in place
+ * by each poll. In memory only — a restart re-trusts the fallback, re-opens the hold, and can
+ * re-log at most one event per gate. Two members are also mutated from outside this module: the
+ * budget gate's breaker collects the start pass's tick evidence and its probe
+ * (src/budget/fallback-breaker.ts), and `fleetHold` is the holds-per-provider map — the holds'
+ * LATEST verdicts, read at permit time by the start pass's closures — read it from
+ * `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's docs below). Key
+ * presence is not "held": providers whose hold re-opened stay in the map for their relapse memory,
+ * so every consumer goes through fleet/fleet-hold.ts's heldProviders(). */
 export interface FleetGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;

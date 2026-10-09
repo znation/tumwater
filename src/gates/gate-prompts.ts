@@ -105,27 +105,26 @@ interface PriorReviewPrompt {
   interdiff: string;
 }
 
-/** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees
- * only the diff and project context — never the author's session — and replies with exactly
- * one VERDICT line plus numbered reasons (see parseVerdict in
- * src/review/review-verdict.ts). `verifiedByHarness` names the project's own check the gate's
- * deterministic pre-check already ran green on this
- * exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a green suite
- * cannot show instead of re-running it. The no-re-run instruction is its own line in the rules
- * list, not a clause in the context paragraph: stated there, reviewers read past it and re-ran
- * the suite in scratch copies under /tmp while holding the landing slot (BUGS.md 2026-09-23). It
- * appears only when a verified result exists: after a timed-out, killed, or skipped pre-check no
- * green run stands behind the tree, and a reviewer running the suite itself is doing its job.
- * `baseRev` is the frozen revision the diff is measured against (changeBaseRev's merge-base,
- * resolved when the gate builds the diff): the prompt names it and tells the reviewer to compare
- * against it, never `main`, because other loops land on main while the review runs (BUGS.md
- * 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins the
- * date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must contain
- * the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt test derives
- * the accepted forms from it. `priorReview` is present only when this landing is a revision of a
- * previously rejected change (plans/revise-rejected.md part 2/2): it names the round and shows
- * the prior objections plus the interdiff so the re-review checks each one first. Omitted, the
- * prompt is unchanged from a fresh change's. */
+/** The prompt for the adversarial pre-merge review gate: a fresh-session pi run that sees only the
+ * diff and project context — never the author's session — and replies with exactly one VERDICT
+ * line plus numbered reasons (see parseVerdict in src/review/review-verdict.ts).
+ * `verifiedByHarness` names the project's own check the gate's deterministic pre-check already ran
+ * green on this exact tree (e.g. "`npm run test` passed"), so the reviewer spends its run on what a
+ * green suite cannot show instead of re-running it. The no-re-run instruction is its own line in
+ * the rules list, not a clause in the context paragraph: stated there, reviewers read past it and
+ * re-ran the suite in scratch copies under /tmp while holding the landing slot (BUGS.md
+ * 2026-09-23). It appears only when a verified result exists: after a timed-out, killed, or skipped
+ * pre-check no green run stands behind the tree, and a reviewer running the suite itself is doing
+ * its job. `baseRev` is the frozen revision the diff is measured against (changeBaseRev's
+ * merge-base, resolved when the gate builds the diff): the prompt names it and tells the reviewer
+ * to compare against it, never `main`, because other loops land on main while the review runs
+ * (BUGS.md 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins
+ * the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must
+ * contain the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt
+ * test derives the accepted forms from it. `priorReview` is present only when this landing is a
+ * revision of a previously rejected change (plans/revise-rejected.md part 2/2): it names the round
+ * and shows the prior objections plus the interdiff so the re-review checks each one first.
+ * Omitted, the prompt is unchanged from a fresh change's. */
 export function buildReviewPrompt(
   diff: string,
   summary?: string,

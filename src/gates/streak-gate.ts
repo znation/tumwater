@@ -1,36 +1,34 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
- * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the
- * fleet-wide storm alarms (src/fleet/error-storm.ts, src/fleet/failure-spread.ts), but both only talk —
- * the role keeps ticking on the error ladder's 600 s max backoff forever, burning a model
- * slot and spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed
- * ticks this gate pauses the role through the same per-role pause marker the operator's
- * `tumwater pause --role <id>` writes (src/fleet/fleet-state.ts's pauseRole — the marker, lock, and
- * idempotence come free), so the scheduler's existing pausedRolesSet skip blocks new ticks
- * with zero scheduler changes. The director is NOT exempt: a failing director cannot process
- * prompts anyway, and one uniform rule needs no carve-out. `tumwater resume --role <id>` (or
- * the dashboard's per-row toggle) lifts it, as today.
+ * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the fleet-wide
+ * storm alarms (src/fleet/error-storm.ts, src/fleet/failure-spread.ts), but both only talk — the
+ * role keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and
+ * spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
+ * pauses the role through the same per-role pause marker the operator's `tumwater pause --role
+ * <id>` writes (src/fleet/fleet-state.ts's pauseRole — the marker, lock, and idempotence come
+ * free), so the scheduler's existing pausedRolesSet skip blocks new ticks with zero scheduler
+ * changes. The director is NOT exempt: a failing director cannot process prompts anyway, and one
+ * uniform rule needs no carve-out. `tumwater resume --role <id>` (or the dashboard's per-row
+ * toggle) lifts it, as today.
  *
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure trip bookkeeping lives
- * here so it is unit-testable without a fleet, and the module owns the only event emission —
- * the orchestrator's poll owns only the wiring.
+ * here so it is unit-testable without a fleet, and the module owns the only event emission — the
+ * orchestrator's poll owns only the wiring.
  *
- * Ack bookkeeping. The marker itself is the ack carrier: every poll, each role present in
- * the paused set has its streak recorded in the in-memory `acked` map, so after the operator
- * resumes a breaker-paused role, re-tripping requires ERROR_STREAK_BREAKER *more* consecutive
- * failures, not one — the same grace an operator-paused failing role gets (its streak is
- * acked while the pause stands, so resuming it does not instantly re-trip on the pre-pause
- * streak), and the same durability a harness restart mid-pause gets (the in-memory state is
- * lost, but the standing marker freezes the ack on the first poll after the restart). If the
- * operator had already resumed before a restart, a still-live streak at or past the breaker
- * re-trips once — the cause is durable, and one event is the honest report. A streak that
- * resets to 0 through the role's own success clears the ack: the next episode trips on its
- * own fresh ERROR_STREAK_BREAKER failures.
+ * Ack bookkeeping. The marker itself is the ack carrier: every poll, each role present in the
+ * paused set has its streak recorded in the in-memory `acked` map, so after the operator resumes a
+ * breaker-paused role, re-tripping requires ERROR_STREAK_BREAKER *more* consecutive failures, not
+ * one — the same grace an operator-paused failing role gets (its streak is acked while the pause
+ * stands, so resuming it does not instantly re-trip on the pre-pause streak), and the same
+ * durability a harness restart mid-pause gets (the in-memory state is lost, but the standing marker
+ * freezes the ack on the first poll after the restart). If the operator had already resumed before
+ * a restart, a still-live streak at or past the breaker re-trips once — the cause is durable, and
+ * one event is the honest report. A streak that resets to 0 through the role's own success clears
+ * the ack: the next episode trips on its own fresh ERROR_STREAK_BREAKER failures.
  *
- * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing tick
- * after tick" alert (src/ui/fleet-alerts.ts) reads consecutiveErrors regardless of pause, so
- * it keeps listing a breaker-paused role until the streak clears; the loop cell's paused
- * badge explains why it is not ticking, and the role_streak_paused event tells the operator
- * why. */
+ * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing tick after
+ * tick" alert (src/ui/fleet-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
+ * listing a breaker-paused role until the streak clears; the loop cell's paused badge explains why
+ * it is not ticking, and the role_streak_paused event tells the operator why. */
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
 import type { LoopState } from "../loop/loop-state.js";
