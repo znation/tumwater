@@ -49,19 +49,47 @@ function withSlotsLock<T>(root: string, fn: () => T): T {
  * fields directly — one malformed element once threw `Cannot read properties of null`
  * straight into `tumwater diff` and the dashboard's /api/diff. Dropping only the unreadable
  * entries follows readJsonFile's no-data policy for the file as a whole: the good slots stay,
- * the reader and the operator view degrade instead of crashing. Object entries with a `dir`
- * are kept verbatim, so an update's read-modify-write still round-trips fields it does not
- * know. */
+ * the reader and the operator view degrade instead of crashing. Each readable entry's known
+ * fields are defaulted by readSlotRecord (a `lease` that is not a complete claim reads as no
+ * lease, and pinnedFor/lastRole/lastReleasedAt as null), while any field it does not know
+ * rides along so an update's read-modify-write still round-trips it. */
 export function readSlotsState(root: string): SlotsState {
   const state = readJsonFile<SlotsState>(slotsStatePath(root));
   if (state === null || !Array.isArray(state.slots)) return { slots: [] };
-  return { slots: state.slots.filter(isSlotRecord) };
+  return {
+    slots: state.slots.map(readSlotRecord).filter((slot): slot is SlotRecord => slot !== null),
+  };
 }
 
-/** True when a persisted entry is a plain object naming a `dir` string — the minimum a slot
- * record must carry to be read by roleWorktreeDir, slotForDir, or retire. */
-function isSlotRecord(slot: unknown): slot is SlotRecord {
-  return isJsonObject(slot) && typeof slot.dir === "string";
+/** True when a persisted `lease` is a complete claim: role string, purpose, since, and owner
+ * pid. Anything less cannot name a live owner, so it reads as no lease and the pool frees the
+ * slot — without this, clearDeadLeases read `.pid` off an undefined lease and threw
+ * `Cannot read properties of undefined` straight into the pool's claim. */
+function isSlotLease(value: unknown): value is SlotLease {
+  return (
+    isJsonObject(value) &&
+    typeof value.role === "string" &&
+    (value.purpose === "tick" || value.purpose === "vet") &&
+    typeof value.since === "number" &&
+    typeof value.pid === "number"
+  );
+}
+
+/** Coerce one persisted entry into a SlotRecord, defaulting the known fields a hand edit or an
+ * older writer may omit. Each field is the value or its empty form, so a record missing
+ * `pinnedFor` is not frozen as permanently pinned (chooseSlot treats `!== null` as pinned).
+ * Unknown fields ride along via the spread — the same read-the-usable-part policy the `dir`
+ * check applies. */
+function readSlotRecord(slot: unknown): SlotRecord | null {
+  if (!isJsonObject(slot) || typeof slot.dir !== "string") return null;
+  return {
+    ...slot,
+    dir: slot.dir,
+    lease: isSlotLease(slot.lease) ? slot.lease : null,
+    pinnedFor: typeof slot.pinnedFor === "string" ? slot.pinnedFor : null,
+    lastRole: typeof slot.lastRole === "string" ? slot.lastRole : null,
+    lastReleasedAt: typeof slot.lastReleasedAt === "number" ? slot.lastReleasedAt : null,
+  };
 }
 
 function writeSlotsStateUnlocked(root: string, state: SlotsState): void {

@@ -13,7 +13,7 @@ import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-st
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
-import { eventsLogPath, slotWorktreePath } from "../src/paths.js";
+import { eventsLogPath, slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
 
 function sleep(ms: number): Promise<void> {
@@ -142,6 +142,20 @@ test("a lease held by another pid is cleared and its slot reused", async () => {
   const rec = readSlotsState(root).slots.find((slot) => slot.dir === dir);
   assert.equal(rec?.lease?.role, "feature");
   assert.equal(rec?.lease?.pid, process.pid);
+  lease.release();
+});
+
+test("a slot record missing its known fields is usable instead of crashing the claim", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const dir = slotWorktreePath(root, 1);
+  // A hand edit or an older writer: only `dir` is present. readSlotsState kept it verbatim, so
+  // clearDeadLeases read `.pid` off the undefined lease and threw straight into the claim;
+  // defaulting the known fields lets the pool lease the slot instead.
+  mkdirSync(join(root, ".tumwater", "state"), { recursive: true });
+  writeFileSync(slotsStatePath(root), JSON.stringify({ slots: [{ dir }] }));
+  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  assert.equal(lease.dir, dir, "the under-specified slot was not leased");
   lease.release();
 });
 
