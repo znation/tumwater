@@ -84,6 +84,45 @@ tests drive it through `runAgent` with `config.agent = "claude"`.
    test/fixtures/claude-events.ts holds the builders. Strip `TUMWATER_CLAUDE_BIN`, `CLAUDECODE`
    and `CLAUDE_CODE_*` in test/test-runner.ts.
 
+**Interactions (resume, handoff, revision, conflict hand-back).** Added 2026-10-09 by operator.
+Agent backends 2/7 took three review rounds because its plan left out how a handoff combines
+with the revise-rejected and conflict hand-back paths. This part makes handoffs routine: every
+`resumeMissing` becomes one. Each case below needs a fake-claude test in
+test/loop-interrupted.test.ts. When this entry is split, the sub-part that owns sessions carries
+this section whole.
+- **Resume.**
+  - In `planTickStart` (src/tick/tick-resume.ts), the newest author line for this agent is
+    resumable only when `hasResumableSession(dir)` finds a pi session file in the tumwater
+    session dir.
+  - A claude transcript lives under `~/.claude/projects/<slug>/` instead, so that check becomes
+    per-backend: the transcript for the line's `id` must exist.
+  - The line's `cwd` must also equal the leased worktree, because claude's resume is
+    cwd-scoped. `sessionResumable` already takes `cwd`. A pinned slot normally gives the same
+    cwd; a different cwd is a handoff, never a `--resume`.
+- **`resumeMissing` → handoff.** The retry in `runWithTransientRetry` (src/loop/loop-pi.ts) must
+  behave exactly like tick-resume's handoff:
+  - keep the worktree;
+  - skip both re-applies, the conflict hand-back and the revision (the `!resuming && !handoff`
+    guards in src/loop/loop-tick.ts);
+  - send the fresh-session notes below.
+  Route it through the same plan rather than a second copy of the rules.
+- **Fresh-session notes.** A handoff starts a fresh session, so every note the interrupted run
+  had in its context must be re-sent.
+  - The revision note already is (the `if (handoff)` branch in loop-tick.ts's revision block).
+  - **The conflict hand-back note is not.** A handoff over a hand-back that was already applied
+    (`conflictHandback.applied`, markers in the worktree, including a revision that re-applied
+    with conflicts) appends no `buildConflictHandbackNote`. The fresh run meets the markers
+    with no explanation.
+  - Fix it in this part, with a test: an interrupted tick with an applied hand-back plus a
+    handoff produces a prompt that contains the hand-back note, and the markers are intact.
+- **Same-session retries and follow-ups.** These continue the run that just finished. For
+  claude that is `--resume <that run's ledger id>`, never "the newest session":
+  - the transient retry (`continueSession: true` in loop-pi.ts);
+  - the SUMMARY follow-up (`requestFollowUp`, prompt-followup.ts);
+  - the review follow-ups (review-followup.ts).
+- **Interrupted review.** Unchanged: `phase === "review"` blocks both resume and handoff
+  (`resumeBlocked`). Add one claude case proving it.
+
 **Files touched.**
 - src/agent/claude/{claude-args,claude-env,claude-stream,claude-backend}.ts (new)
 - src/agent/agent-backend.ts
@@ -160,6 +199,24 @@ Makes claude selectable.
    - docs/backends.md: a claude section.
    - `Built on pi` → `Built on pi; also runs on Claude Code`.
 
+**Interactions (resume and handoff under routing).** Added 2026-10-09 by operator.
+Routing lets a seam's agent change between an interrupted tick and the next one, through a
+config edit or the budget fallback moving a claude seam to a pi fallback or back.
+`planTickStart` compares the newest author line's `agent` with the tick's `cfg.agent`
+(loop-tick.ts passes it), so that change is a handoff, not a resume. Test, on fake-claude and
+fake-pi:
+- **Fallback flip.** An interrupted claude author tick, with the fallback active on the next
+  tick, runs a fresh pi session in the unreset worktree. Its prompt carries the handoff bridge,
+  the revision note when a revision was in flight, and the hand-back note when one was applied.
+- **Config flip mid-revision.** Changing `agent` from pi to claude while a revision is
+  interrupted does the same. It does not re-cherry-pick the rejected diff.
+- **Mixed seams.** A conflict resolver routed to a different agent than the author writes its
+  line in the author's session dir. The author's next resume is then a handoff even though the
+  author's own agent did not change. This is intended; pin it with a test.
+- **Selectors.** `cfg.agent` must come from the same resolved view the run uses (`configForRole`
+  plus the fallback view). If the resume check reads a different view than the spawn, a fallback
+  tick will `--continue` the wrong backend's session.
+
 **Files touched.**
 - src/config/config-schema.ts, config-validation.ts, config-field-checks.ts, config-write.ts,
   config-views.ts, model-selector.ts, config-editable-keys.ts, config-example.ts
@@ -215,6 +272,16 @@ Design: plans/agent-backends.md ("What the pi extensions did, per backend").
    prompt-followup.ts become functions of the dialect. pi's text stays byte-identical.
 3. **AGENTS.md.** When the worktree has `AGENTS.md` and no `CLAUDE.md`, claude runs get
    `--append-system-prompt-file AGENTS.md`.
+
+**Interactions (resume and handoff prompts).** Added 2026-10-09 by operator.
+- **Prompt texts.** The resume and handoff texts become dialect functions alongside
+  `ROLE_NOTES_INSTRUCTION`, wherever they name a tool or the notes file:
+  - `buildResumePrompt` and `buildHandoffPrompt` (src/tick/tick-resume.ts);
+  - `buildRevisionNote` and `buildConflictHandbackNote`.
+  A pi→claude handoff renders in claude's dialect, and a claude→pi handoff in pi's.
+- **Per-run flags.** claude does not keep flags across `--resume`, so every claude invocation
+  that writes notes must pass `--mcp-config` again, including resumes, transient retries and
+  SUMMARY follow-ups. Test it with a resumed claude tick on fake-claude.
 
 **Files touched.**
 - src/agent/mcp/role-notes-server.ts, src/agent/role-notes-write.ts (new)
@@ -283,6 +350,17 @@ instead of the daily spend. API-key runs keep today's spending rules.
    - `tumwater report` shows notional spend on its own line, outside the total.
 6. **Docs.** README: billing detection, the window display, and overage counting as real spend.
 
+**Interactions (resume across a usage-window hold).** Added 2026-10-09 by operator.
+- **Hold mid-run.** A subscription claude run cut off by a `rejected` window keeps its
+  worktree. After `resetsAt`, the run resumes with `--resume <same id>`; it is not a handoff,
+  because the agent did not change and 6/7 never moves subscription seams to the fallback.
+- **Resume state.** Confirm the run's outcome sets `resumePending`. A rate-limit end that
+  currently routes to a fresh tick would reset the worktree and lose the edits.
+- **Test.** An interrupted fake-claude author tick, a hold, then a reset produces one resume with
+  the same session id, with edits intact.
+- **Overage and API billing.** When overage or API billing does move a seam to its fallback, the
+  4/7 handoff rules apply unchanged.
+
 **Files touched.**
 - src/agent/claude/claude-account.ts (new), src/agent/claude/claude-backend.ts
 - src/agent/run-agent.ts
@@ -338,6 +416,19 @@ Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress
    - a SIGTERM mid-tool, then a resume;
    - an unknown-model run, which must classify as `configError`;
    - a check that the observed `billing` matches `claude auth status`.
+
+**Interactions (`budgetCapped` handback).** Added 2026-10-09 by operator.
+- **Setting up the handoff.** `planTickStart` only considers a handoff when
+  `state.resumePending` is set, so the `budgetCapped` path must set it, with a new
+  `resumeCause` (e.g. `"budget"`, named in the bridge prompt). Otherwise the next tick runs as a
+  fresh tick and resets the worktree, losing the edits.
+- **Notes and guards.** That handoff gets everything a 3/7 handoff gets:
+  - the revision note and the conflict hand-back note;
+  - no re-apply of either;
+  - the leased slot pinned for the resume.
+- **Claims.** With parallel instances, the claim stays with the same loop id.
+- **Test.** A `budgetCapped` claude revision tick with an applied hand-back is followed by a pi
+  fallback tick with both notes and an intact worktree.
 
 **Files touched.**
 - src/agent/claude/claude-args.ts
