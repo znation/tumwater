@@ -35,7 +35,7 @@ export type RedeployEvent = HarnessEventInput;
  * witness checks call that sink from inside checkMainBaseline's run hook, whose throw would
  * reject the whole check and make the redeployer treat a green main as a check that could not
  * run. The state change the event describes has already applied, so the failed write is
- * swallowed here but still made loud on stderr, the fallback warnTickRejected uses when the feed
+ * swallowed here but still made loud on stderr, the fallback warnEventBestEffort uses when the feed
  * cannot take a warning. */
 export function bestEffortLog(log: (event: RedeployEvent) => void): (event: RedeployEvent) => void {
   return (event) => {

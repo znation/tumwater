@@ -18,7 +18,7 @@ import {
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
 import type { FleetGateStates } from "../gates/gate-polls.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEvent, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
@@ -79,23 +79,6 @@ interface LaunchContext {
   /** The start gate a waiter meets at permit time: the restart hold plus the failure hold
    * for role ticks (the director is exempt, as at scheduling). */
   startHeld: (role: string) => boolean;
-}
-
-/** Report a rejected tick task without letting the report itself reject. warnEvent writes the
- * events log, and an unwritable or full disk makes that write throw; thrown from the
- * promise's rejection handler (see launchDueTicks), the reporting error would itself become
- * the detached chain's rejection — unhandled, so it would end the fleet, the exact outcome
- * the warning exists to prevent. Falls back to stderr so the failure is still loud when the
- * event log cannot take it; that fallback must keep working when the log cannot. */
-function warnTickRejected(root: string, role: string, err: unknown): void {
-  const message = `tick task rejected: ${errorMessage(err)}`;
-  try {
-    warnEvent(root, role, message);
-  } catch (logErr) {
-    process.stderr.write(
-      `tumwater: ${role}: ${message} (warning log unwritable: ${errorMessage(logErr)})\n`,
-    );
-  }
 }
 
 /** Launch one due runner's tick: reserve it, park it in the semaphore, and start it under
@@ -240,14 +223,14 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
     // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
     // off a bare `void task.finally(...)` would leave the derived promise's rejection
-    // unhandled and take the whole fleet down. Surface it as a warning (warnTickRejected,
+    // unhandled and take the whole fleet down. Surface it as a warning (warnEventBestEffort,
     // which keeps a failed warning write from becoming that unhandled rejection) and hand the
     // reservation back so the role can schedule again, exactly as the unstarted path above
     // does; the drain's allSettled is otherwise silent about the failure.
     void task
       .catch((err) => {
         runner.state.running = false;
-        warnTickRejected(root, runner.role, err);
+        warnEventBestEffort(root, runner.role, `tick task rejected: ${errorMessage(err)}`);
       })
       .finally(() => {
         bucket.delete(task);

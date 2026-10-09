@@ -159,12 +159,18 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
 }
 
 /** warnEvent's twin of logEventBestEffort: the "something is off but the loop continues"
- * warning must not be the thing that ends the loop it warns about. */
+ * warning must not be the thing that ends the loop it warns about. The fallback keeps the
+ * warning's own text on stderr — when the feed is the failure, this line is the only place the
+ * caller's message (a spawn failure, a rejected tick) survives to be read. The single home of
+ * the try-warn → message-bearing-stderr-fallback shape, so the notify hook and the launch pass
+ * do not each carry a copy of it. */
 export function warnEventBestEffort(root: string, loop: string, message: string): void {
   try {
     warnEvent(root, loop, message);
   } catch (err) {
-    process.stderr.write(`tumwater: ${loop}: could not log warning event: ${errorMessage(err)}\n`);
+    process.stderr.write(
+      `tumwater: ${loop}: ${message} (warning log unwritable: ${errorMessage(err)})\n`,
+    );
   }
 }
 
