@@ -1,6 +1,6 @@
-import { writeTextAtomic } from "../files/files.js";
+import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { logEvent } from "../events/events.js";
-import { promptPreview, queuedFileAtPosition, readQueueText } from "./inbox.js";
+import { promptPreview, queuedFileAtPosition } from "./inbox.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
@@ -52,7 +52,7 @@ export function editRolePrompt(root: string, role: string, position: number, new
   const lengthProblem = promptLengthProblem(text, role);
   if (lengthProblem) throw new Error(lengthProblem); // Before any read or write, like submitRolePrompt.
   const file = queuedFileAtPosition(root, role, position);
-  const oldFileText = readQueueText(file);
+  const oldFileText = readTextIfExists(file);
   if (oldFileText === null) return { status: "gone" }; // Dequeued or cancelled mid-listing.
   // The marker is plumbing: the edit replaces only the content beneath it. notBeforeMs
   // reads the writer's exact marker shape, so content that merely resembles a marker is

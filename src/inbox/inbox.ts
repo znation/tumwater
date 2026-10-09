@@ -1,12 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, writeTextAtomic } from "../files/files.js";
+import { ensureParentDir, readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { errorMessage, truncate } from "../text/text.js";
-import { errCode } from "../errno.js";
 import { warnEvent } from "../events/events.js";
 import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
 
@@ -141,23 +140,7 @@ const promptCache = new Map<string, StatKeyedValue<string>>();
  * both the listing passes and the deliverability filters (inboxSize, queuedRolePromptCount,
  * dequeueRolePrompt) go through, so an unchanged file costs one stat wherever it is touched. */
 function cachedPromptText(file: string): string | null {
-  return cachedByStat(promptCache, file, file, () => readQueueText(file), (t) => t);
-}
-
-/** Read one queue file, tolerating only its disappearance (a concurrent dequeue or cancel —
- * null, like readTextOrNull) and rethrowing any other error: a permission failure is not a
- * race, and reporting it as "empty queue" would make a loop skip its tick while the prompt
- * stays queued — the same ENOENT discrimination cancelPrompt's and dequeuePrompt's take
- * already pin (test/inbox.test.ts). The single home of that read for the queue paths that
- * need the current content: the listing/deliverability cache above, takeQueuedFile's
- * pop-then-remove, and inbox-edit.ts's rewrite (which maps null to its "gone" outcome). */
-export function readQueueText(file: string): string | null {
-  try {
-    return fs.readFileSync(file, "utf8");
-  } catch (err) {
-    if (errCode(err) === "ENOENT") return null;
-    throw err;
-  }
+  return cachedByStat(promptCache, file, file, () => readTextIfExists(file), (t) => t);
 }
 
 /** One queued prompt paired with the queue-file basename that addresses it: the file name is
@@ -245,7 +228,7 @@ export function queuedRolePromptCount(root: string, role: string): number {
  * instead of popping oldest-first, so the prompt recorded at requeue time is the one reclaimed,
  * whatever else was enqueued or cancelled meanwhile — so the race policy lives once. */
 export function takeQueuedFile(root: string, role: string, file: string): string | null {
-  const text = readQueueText(file);
+  const text = readTextIfExists(file);
   if (text === null) return null; // Cancelled mid-listing.
   if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
   removeSameStemSiblings(root, role, file);

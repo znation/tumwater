@@ -49,10 +49,12 @@ export function readTextOrNull(file: string): string | null {
   }
 }
 
-/** Read a text file whole, or null only when it does not exist (ENOENT) — the read half of a
- * read-modify-write that must never mistake an unreadable file for an absent one. A permission
- * or I/O failure (EACCES, EISDIR, EMFILE) is rethrown so the writer fails loudly, instead of
- * seeding a fresh scaffold over the existing file and destroying its contents. Unlike
+/** Read a text file whole, or null only when it does not exist (ENOENT) — for the paths that
+ * must never mistake an unreadable file for an absent one. A permission or I/O failure (EACCES,
+ * EISDIR, EMFILE) is rethrown so the caller fails loudly instead of treating the file as gone:
+ * the backlog scaffold read-modify-write (backlog-write.ts) would otherwise overwrite an
+ * existing file, and the prompt-queue readers (inbox.ts's listing cache and takeQueuedFile,
+ * inbox-edit.ts's rewrite) would misreport an unreadable prompt as an empty queue. Unlike
  * readTextOrNull, whose missing-and-unreadable policy serves the render paths that must never
  * throw. */
 export function readTextIfExists(file: string): string | null {
