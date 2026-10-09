@@ -5,6 +5,7 @@ import { test } from "node:test";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { realGitFromXcrun } from "../src/git/xcrun-git.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { readJson } from "./helpers/json-read.js";
@@ -14,7 +15,6 @@ import {
   nodeSupportsTestCoverageExclude,
   noNameMatchReason,
   orderByDuration,
-  probeRealGit,
   parseFilter,
   selectTestFiles,
   splitCoverageArgv,
@@ -299,7 +299,7 @@ test(
       fs.chmodSync(fake, 0o755);
       process.env.PATH = `${bin}${path.delimiter}/usr/bin${path.delimiter}/bin`;
       const started = Date.now();
-      const real = probeRealGit(300);
+      const real = realGitFromXcrun(300);
       const elapsed = Date.now() - started;
       assert.equal(real, null, "an unanswered probe leaves PATH alone");
       assert.ok(elapsed < 1_500, `probe took ${elapsed}ms; it was not bounded`);

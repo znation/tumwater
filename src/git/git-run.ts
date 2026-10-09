@@ -3,10 +3,9 @@
  * refs, branches, diffs) live in git.ts and its siblings — this module knows git's argv,
  * not the repository's shape. */
 
-import { spawn, spawnSync, type PromiseWithChild } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
+import { spawn, type PromiseWithChild } from "node:child_process";
 import { findOnPath } from "../files/files.js";
+import { realGitFromXcrun } from "./xcrun-git.js";
 import { EXEC_MAX_BUFFER, releaseChildHandles, signalTree } from "../process/process.js";
 import { KILL_GRACE_MS, armGroupDeadline } from "../process/process-group.js";
 import { errorMessage } from "../text/text.js";
@@ -72,19 +71,14 @@ const GIT_RESOLVE_TIMEOUT_MS = 10_000;
  * probe, which must keep spawning PATH's stub — its "broken" verdict exists to catch exactly the
  * stub's exit-69-on-invalid-license failure, which the real binary would never surface. `timeoutMs`
  * bounds the xcrun probe (see GIT_RESOLVE_TIMEOUT_MS); it is a parameter so the suite can drive it
- * down against a fake wedged xcrun, and production callers keep the default. */
+ * down against a fake wedged xcrun, and production callers keep the default. The probe itself —
+ * the SIGKILL-bounded spawnSync and the "different, existing absolute binary" rule — is
+ * xcrun-git.ts's `realGitFromXcrun`, shared with the test runner's suite environment. */
 export function resolvedGitBin(timeoutMs: number = GIT_RESOLVE_TIMEOUT_MS): string {
   if (resolvedGit !== undefined) return resolvedGit ?? "git";
   let bin: string | null = null;
   if (process.platform === "darwin" && findOnPath("git") === "/usr/bin/git") {
-    const found = spawnSync("xcrun", ["--find", "git"], {
-      encoding: "utf8",
-      timeout: timeoutMs,
-      // SIGKILL: the bound must hold even for a probe that traps SIGTERM.
-      killSignal: "SIGKILL",
-    });
-    const real = found.status === 0 ? found.stdout.trim() : "";
-    if (real && path.isAbsolute(real) && real !== "/usr/bin/git" && fs.existsSync(real)) bin = real;
+    bin = realGitFromXcrun(timeoutMs);
   }
   resolvedGit = bin;
   return bin ?? "git";
