@@ -590,14 +590,11 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
   }
 });
 
-test("gui /api/history serves tickRows' JSON with role filtering and n clamped, not errored", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "history api test");
-  // Seed interleaved tick_start/tick_end/unrelated events (the same shape the history CLI
-  // tests seed): one tick with a paired start (durations come from the pair), one without
-  // (a skipped tick's end rides no start — no fabricated duration), and a merged event that
-  // tickRows must ignore.
-  const events: HarnessEvent[] = [
+// The interleaved event seed /api/history and /api/tick both read: one tick with a paired
+// start (its duration comes from the pair), one end-only skipped tick (no start, so no
+// fabricated duration), and a merged event that tickRows must ignore.
+function historySeedEvents(): HarnessEvent[] {
+  return [
     { ts: 1_000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent,
     { ts: 46_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
     { ts: 47_000, loop: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
@@ -606,6 +603,12 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
     { ts: 50_000, loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
     { ts: 96_000, loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
   ];
+}
+
+test("gui /api/history serves tickRows' JSON with role filtering and n clamped, not errored", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history api test");
+  const events = historySeedEvents();
   writeEvents(repo, events);
 
   const { server, base } = await startLocalGui(repo);
@@ -649,15 +652,7 @@ test("gui /api/tick serves one tick's detail over the live route, 404 when the s
   const repo = makeRepo();
   await initProject(repo, "tick api test");
   // The same seed the /api/history test uses: clean#9 is paired, feature#2 is end-only.
-  const events: HarnessEvent[] = [
-    { ts: 1_000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent,
-    { ts: 46_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
-    { ts: 47_000, loop: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
-    { ts: 48_000, loop: "clean", type: "tick_end", tick: 7, result: "no_change" } as HarnessEvent,
-    { ts: 49_000, loop: "feature", type: "tick_end", tick: 2, result: "skipped" } as HarnessEvent,
-    { ts: 50_000, loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
-    { ts: 96_000, loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
-  ];
+  const events = historySeedEvents();
   writeEvents(repo, events);
 
   const { server, base } = await startLocalGui(repo);
