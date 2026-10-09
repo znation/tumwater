@@ -276,12 +276,13 @@ test("tumwater report --since prints the window totals and validates its flags",
   assert.ok(!ok.out.includes("999"), "the 8h-old event is outside the 6h window");
   assert.match(ok.out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
 
-  for (const rival of [["--days", "3"], ["--failures"]]) {
-    const r = await runCli(root, "report", "--since", "6h", ...rival);
-    assert.notEqual(r.code, 0, `--since with ${rival[0]} fails`);
-    assert.match(r.out, new RegExp(`report --since cannot be combined with ${rival[0]}`), "the failure names the rival");
-    assert.match(r.out, /--since/, "the failure names both flags");
-  }
+  // --days is the one remaining rival shape; --failures --since dispatches the windowed
+  // digest (covered in test/failure-render.test.ts), so it is no longer a failure.
+  const rival = ["--days", "3"];
+  const r = await runCli(root, "report", "--since", "6h", ...rival);
+  assert.notEqual(r.code, 0, `--since with ${rival[0]} fails`);
+  assert.match(r.out, new RegExp(`report --since cannot be combined with ${rival[0]}`), "the failure names the rival");
+  assert.match(r.out, /--since/, "the failure names both flags");
 
   const over = await runCli(root, "report", "--since", "8d");
   assert.notEqual(over.code, 0);

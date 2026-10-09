@@ -8,7 +8,8 @@ import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-da
 import type { SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { dayKey, dayLabel, formatTime, monthDay, reportWindow } from "../text/datetime.js";
+import { dayKey, dayLabel, formatTime, formatTimestamp, monthDay, reportWindow } from "../text/datetime.js";
+import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 
@@ -127,12 +128,22 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   const lines: string[] = [];
   lines.push("# tumwater failure digest");
   lines.push("");
+  // The since shape prints the same sections as the day shape but labels its window as an
+  // instant span (the wording renderSinceReportMarkdown uses); the day shape keeps its
+  // day-window line. The empty branch follows the same split so neither claims the other's unit.
   lines.push(
-    `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
+    data.sinceMs !== undefined
+      ? `window: last ${durationLabel(data.sinceMs)} (since ${formatTimestamp(new Date(data.fromIso!).getTime())}) · ${data.ticks} ticks`
+      : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
   );
   if (data.emptyLog) lines.push("no events retained");
-  else if (!data.hasEvents) lines.push(`no events in the last ${dayLabel(data.days)}`);
-  else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
+  else if (!data.hasEvents) {
+    lines.push(
+      data.sinceMs !== undefined
+        ? `no events in the last ${durationLabel(data.sinceMs)}`
+        : `no events in the last ${dayLabel(data.days)}`,
+    );
+  } else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
 
   // The causal frame before the counts: what the fleet DID in the window, so the reader can ask
   // whether the harness's response was right. Omitted entirely when the window held none. When
@@ -229,7 +240,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   }
 
   lines.push("");
-  lines.push(`## Deltas vs the preceding ${dayLabel(data.days)}`);
+  lines.push(
+    `## Deltas vs the preceding ${data.sinceMs !== undefined ? durationLabel(data.sinceMs) : dayLabel(data.days)}`,
+  );
   if (data.deltas.length === 0) {
     lines.push("_no ticks in either window_");
   } else {

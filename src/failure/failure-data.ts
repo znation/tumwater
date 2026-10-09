@@ -9,11 +9,11 @@
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
 import type { TickResult } from "../tick/tick-outcome.js";
-import { readWindowEvents } from "../events/event-window.js";
+import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
-import { dayAt, dayWindow, formatDate } from "../text/datetime.js";
+import { dayAt, dayKey, dayWindow, formatDate, humanSeconds } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, getOrCreate, rankByCount } from "../collections.js";
@@ -93,8 +93,10 @@ export interface FailureReportData {
   days: number;
   from: string; // current window start, local day key
   to: string; // today
+  sinceMs?: number; // trailing-window length; set only by collectFailureReportSince
+  fromIso?: string; // cutoff instant as ISO; set only by collectFailureReportSince
   ticks: number; // tick_end events in the current window
-  hasEvents: boolean; // any event at all in the read (2× window)
+  hasEvents: boolean; // any event in either window (a day-key read can reach past them)
   emptyLog: boolean; // the retained log holds no parseable events reaching the window
   partial: boolean; // the read window (both halves) starts before the retained log does
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
@@ -195,6 +197,50 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     else if (day >= priorFrom) prior.push(ev);
   }
 
+  return assembleFailureReport(current, prior, events, coversFullWindow, { days, from, to });
+}
+
+/** Collect the digest over the trailing `sinceMs` window ending now, partitioning the read into
+ * the window and the equal-length window immediately before it (the same current/prior split
+ * the day collector builds, so the Deltas table compares like with like). The read starts at the
+ * prior half's own day key, exactly as the day collector reads 2× its window; the cutoff instant
+ * for coverage is the prior half's start, which a day key alone cannot prove. */
+export function collectFailureReportSince(root: string, sinceMs: number): FailureReportData {
+  if (sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
+    throw new Error(
+      `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`,
+    );
+  const now = Date.now();
+  const cutoff = now - sinceMs;
+  const priorFrom = cutoff - sinceMs;
+  const raw = readWindowEvents(root, dayKey(priorFrom));
+  const current: HarnessEvent[] = [];
+  const prior: HarnessEvent[] = [];
+  for (const ev of raw.events) {
+    if (typeof ev.ts !== "number") continue;
+    if (ev.ts >= cutoff && ev.ts <= now) current.push(ev);
+    else if (ev.ts >= priorFrom && ev.ts < cutoff) prior.push(ev);
+  }
+  return assembleFailureReport(current, prior, raw.events, eventWindowCovers(raw, priorFrom), {
+    days: Math.ceil(sinceMs / 86_400_000),
+    from: dayKey(cutoff),
+    to: dayKey(now),
+    sinceMs,
+    fromIso: new Date(cutoff).toISOString(),
+  });
+}
+
+/** Assemble the digest's sections from the two event partitions, the full read, and the
+ * coverage proof. One body shared by the day collector above and the trailing-window collector:
+ * both shapes print the same sections and differ only in their labels, so the fold must not
+ * exist twice. `window` carries the labels the render branches on. */
+function assembleFailureReport(
+  current: HarnessEvent[],
+  prior: HarnessEvent[],
+  allEvents: HarnessEvent[],
+  coversFullWindow: boolean,
+  window: { days: number; from: string; to: string; sinceMs?: number; fromIso?: string },
+): FailureReportData {
   const tickEvents = current.filter((ev) => ev.type === "tick_end");
 
   // Outcome table: one row per role, counts per result that occurred.
@@ -217,7 +263,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
 
   // Time and spend: the same ticks priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
-  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(tickEvents, events);
+  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(tickEvents, allEvents);
 
   // Prompt-token telemetry: per role, the median prompt tokens a tick sent and how much of
   // the prompt budget went out before the first edit. Only ticks carrying the field count, so
@@ -325,8 +371,13 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     .sort((a, b) => a.ts - b.ts);
   const stateChanges: StateChange[] = allStateChanges.slice(-STATE_CHANGE_TOP);
 
-  const hasEvents = events.length > 0;
-  const oldestEventDate = hasEvents ? eventDayKey(events[0]!) : null;
+  // Judged on the two partitions, not the whole read: the since collector reads from priorFrom's
+  // local day key, which can reach events earlier that day but before priorFrom — outside both
+  // windows. Counting those as "events" would suppress the empty-window line with a window that
+  // in fact held none. The day collector's read is exactly current ∪ prior (whole local days), so
+  // this changes nothing there.
+  const hasEvents = current.length > 0 || prior.length > 0;
+  const oldestEventDate = hasEvents ? eventDayKey(allEvents[0]!) : null;
   // Complete only when the reader proves the whole read window (priorFrom..to) is covered:
   // coversFullWindow fires when the oldest retained line predates priorFrom, so both the delta
   // baseline and the current window reach their starts. Every retained event's day is >= priorFrom
@@ -337,9 +388,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   const windowComplete = coversFullWindow;
 
   return {
-    days,
-    from,
-    to,
+    ...window,
     ticks: tickEvents.length,
     hasEvents,
     emptyLog: !hasEvents && !coversFullWindow,

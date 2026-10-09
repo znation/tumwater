@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
-import { collectFailureReport } from "../src/failure/failure-data.js";
-import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
+import { collectFailureReport, collectFailureReportSince } from "../src/failure/failure-data.js";
+import { atLocalTs as at, ago, dayKey, HOUR } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
@@ -631,6 +631,102 @@ test("report --failures --json prints the digest's collected data", async () => 
   assert.equal(parsed.ticks, 1);
   assert.ok(Array.isArray(parsed.timeSpend) && parsed.timeSpend.length === 1, "the time-and-spend table rides the JSON");
   assert.ok(Array.isArray(parsed.lossCauses) && parsed.lossCauses.length === 1, "the loss ranking rides the JSON");
+});
+
+test("collectFailureReportSince counts only the trailing window and compares the equal prior window", () => {
+  const root = tmpdir();
+  // Append-only, chronological: seed oldest first, like every log the harness writes.
+  writeEvents(root, [
+    { ts: ago(8 * HOUR), loop: "feature", type: "tick_end", result: "error", error: "prior failure" },
+    { ts: ago(1 * HOUR), loop: "feature", type: "tick_end", result: "error", error: "recent failure" },
+  ]);
+  const data = collectFailureReportSince(root, 6 * HOUR);
+  assert.equal(data.sinceMs, 6 * HOUR);
+  assert.equal(data.ticks, 1, "only the 1h-old tick is inside the window");
+  assert.equal(data.errors.total, 1, "the current window clusters only its own errors");
+  // The 8h-old event falls in the prior window [12h, 6h), so it is the prior side of the deltas.
+  const feature = data.deltas.find((d) => d.role === "feature");
+  assert.deepEqual(
+    { prevTicks: feature?.prevTicks, ticks: feature?.ticks, prevErrors: feature?.prevErrors, errors: feature?.errors },
+    { prevTicks: 1, ticks: 1, prevErrors: 1, errors: 1 },
+    "the 8h-old event is the preceding equal window's side",
+  );
+
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^# tumwater failure digest$/m);
+  assert.match(md, /window: last 6h \(since /);
+  assert.match(md, /## Deltas vs the preceding 6h/);
+  assert.match(md, /recent failure/);
+
+  // The guard throws for callers that bypass the CLI's parseSinceFlag, as collectReportSince does.
+  assert.throws(() => collectFailureReportSince(root, 8 * 24 * HOUR), /sinceMs must be between/);
+});
+
+test("an empty since window renders no events in the last <duration>", () => {
+  const root = tmpdir();
+  const md = renderFailureMarkdown(collectFailureReportSince(root, 6 * HOUR));
+  assert.match(md, /window: last 6h \(since /);
+  assert.match(md, /no events in the last 6h/);
+});
+
+test("an empty since window ignores earlier same-day events outside both windows", () => {
+  const root = tmpdir();
+  // Just before the prior half's start, but on that start's own local day, so the day-keyed
+  // read (readWindowEvents) reaches it while it lies in neither the current window nor the equal
+  // prior window. It must not count as "the window held events" and suppress the empty line.
+  writeEvents(root, [
+    { ts: ago(12 * HOUR + 60_000), loop: "feature", type: "tick_end", result: "changed" },
+  ]);
+  const data = collectFailureReportSince(root, 6 * HOUR);
+  assert.equal(data.ticks, 0);
+  assert.equal(data.hasEvents, false, "the out-of-window event is not a window event");
+  assert.equal(data.partial, false);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^window: last 6h \(since /m);
+  assert.match(md, /^no events in the last 6h$/m);
+  assert.ok(!md.includes("no events retained"));
+});
+
+test("tumwater report --failures --since prints the windowed digest and validates its flags", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: ago(1 * HOUR), loop: "feature", type: "tick_end", result: "error", error: "recent failure" },
+  ]);
+  const ok = await runCli(root, "report", "--failures", "--since", "6h");
+  assert.equal(ok.code, 0);
+  assert.match(ok.out, /^# tumwater failure digest$/m);
+  assert.match(ok.out, /window: last 6h \(since /);
+  assert.match(ok.out, /recent failure/);
+
+  const json = await runCli(root, "report", "--failures", "--since", "6h", "--json");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out) as {
+    sinceMs: number;
+    fromIso: string;
+    outcomes: unknown[];
+    deltas: unknown[];
+    lossCauses: unknown[];
+    errors: { clusters: unknown[] };
+  };
+  assert.equal(parsed.sinceMs, 6 * HOUR);
+  assert.notEqual(Date.parse(parsed.fromIso), NaN, "fromIso is an ISO instant");
+  assert.ok(Array.isArray(parsed.outcomes) && Array.isArray(parsed.deltas), "the outcome and delta sections ride the JSON");
+  assert.ok(Array.isArray(parsed.lossCauses) && Array.isArray(parsed.errors.clusters), "the loss and error sections ride the JSON");
+
+  // --days stays a rival shape; --failures is dispatchable (covered above).
+  const rival = await runCli(root, "report", "--since", "6h", "--days", "3");
+  assert.notEqual(rival.code, 0);
+  assert.match(rival.out, /report --since cannot be combined with --days/);
+
+  const over = await runCli(root, "report", "--failures", "--since", "8d");
+  assert.notEqual(over.code, 0);
+  assert.match(over.out, /capped at 7d/);
+
+  for (const bad of ["abc", ""]) {
+    const r = await runCli(root, "report", "--failures", "--since", bad);
+    assert.notEqual(r.code, 0, `--since ${bad} fails`);
+    assert.match(r.out, /report --since needs a duration like 45s, 90m, 1h30m, or 2d/);
+  }
 });
 
 test("the loss-cause ranking's top-5 cut discloses its remainder, like every other capped section", () => {

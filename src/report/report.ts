@@ -3,7 +3,7 @@
  * live in the pure-render modules they pair with: src/report/report-render.ts and
  * src/failure/failure-render.ts. */
 import { collectReport, collectReportSince } from "./report-data.js";
-import { collectFailureReport } from "../failure/failure-data.js";
+import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
 import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
@@ -18,10 +18,18 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   // trailing window vs a series over whole days), not a modifier of either.
   const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
   if (ms !== null) {
+    // --days is still a rival shape: it counts whole local days, while --since totals a trailing
+    // window. --failures is not a rival anymore — the digest has a windowed-since collector that
+    // reuses the day digest's own sections, so `report --failures --since <d>` dispatches it
+    // through the existing --json / render choice.
     if (args.includes("--days"))
       failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
-    if (args.includes("--failures"))
-      failRivalShapes("report --since", "--failures", "the failure digest has no windowed-since mode");
+    if (args.includes("--failures")) {
+      const digest = collectFailureReportSince(root, ms);
+      if (args.includes("--json")) sayJson(digest);
+      else say(renderFailureMarkdown(digest));
+      return;
+    }
     // --json swaps the renderer for the collector's own payload, exactly as status --json
     // does: bounds and cap checks above are shared, only the printing differs.
     const since = collectReportSince(root, ms);
