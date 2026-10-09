@@ -149,10 +149,10 @@ export interface CheckConfig {
  * src/baseline/main-baseline.ts's checkMainBaseline and mainIsGreen, src/doctor/doctor-checks.ts's
  * checkBuildCheck, and src/concurrency/check-permit.ts's withCheckPermit): the declared check plus
  * the cap that sizes the process-wide check permit. Every field is optional because every caller
- * differs — most hand a full TumwaterConfig, doctor hands a possibly-torn one, and the tests hand a
- * bare `{ check }` — and each field is guarded again at its point of use. One declaration, so a new
- * check setting is added here once and read by every consumer instead of being appended to some of
- * the seven hand-copied literals the inline form invited. */
+ * differs — most hand a full TumwaterConfig, doctor hands a possibly-torn one, and the tests
+ * hand a bare `{ check }` — and each field is guarded again at its point of use. One declaration,
+ * so a new check setting is added here once and read by every consumer instead of being appended
+ * to some of the seven hand-copied literals the inline form invited. */
 export interface CheckConfigSlice {
   /** The declared check (see CheckConfig). */
   check?: CheckConfig;

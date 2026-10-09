@@ -31,8 +31,8 @@ export function parseJsonConfig(
  * telemetry on ~2 h, readme on 30 min, plan and organize on 1 h), with defaults for concurrency,
  * timeouts, log size, retention, thrash detection, idle backoff, self-redeploy, and review
  * settings. The return type is the resolved view (config-views.ts): a freshly defaulted config
- * has no model map to resolve — only a loaded file can carry one — so every call site that hands
- * a default into a pi run (pi.ts, tests) satisfies ResolvedModelConfig directly. */
+ * has no model map to resolve — only a loaded file can carry one — so every call site that
+ * hands a default into a pi run (pi.ts, tests) satisfies ResolvedModelConfig directly. */
 export function defaultConfig(): ResolvedModelConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };
@@ -106,8 +106,8 @@ export function defaultConfig(): ResolvedModelConfig {
     thrashTurns: 40,
     thrashMinutes: 30,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
-    // A self-hosting fleet redeploys itself onto a green main (src/redeploy/redeploy.ts): the alternative
-    // — a process that never reloads its own code — ran ten days stale in dogfood.
+    // A self-hosting fleet redeploys itself onto a green main (src/redeploy/redeploy.ts): the
+    // alternative — a process that never reloads its own code — ran ten days stale in dogfood.
     autoRestart: true,
     // Config changes no longer ride the commit path (plans/portability.md §3/7): the director
     // writes a request file the harness applies to the live config before any commit, so no

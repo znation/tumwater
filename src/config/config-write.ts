@@ -70,7 +70,8 @@ const PER_KEY_VALIDATORS: Record<string, (value: unknown) => string | null> = {
  * is worse than a write that reports an error. */
 const CONFIG_LOCK_TIMEOUT_MS = 10_000;
 function withConfigLock<T>(root: string, fn: () => T): T {
-  // withStateLock creates the state dir the lock sits in (a CLI write may run before any state file).
+  // withStateLock creates the state dir the lock sits in (a CLI write may run before any state
+  // file).
   return withStateLock(configLockPath(root), fn, CONFIG_LOCK_TIMEOUT_MS);
 }
 
@@ -378,9 +379,9 @@ export function applyConfigRequest(
     // whole-file overwrite (see writeConfigMutation).
     withConfigLock(root, () => {
       const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
-      // Strip roles.<id> entries for custom loops this request removes (see docstring). Structurally
-      // valid names only; anything else stays for validateConfig to reject — never dereference a
-      // request entry before validation.
+      // Strip roles.<id> entries for custom loops this request removes (see docstring).
+      // Structurally valid names only; anything else stays for validateConfig to reject — never
+      // dereference a request entry before validation.
       const requestedNames = new Set<string>();
       for (const entry of loops) {
         if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);

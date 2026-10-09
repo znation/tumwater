@@ -209,18 +209,18 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
 
   checkBoolean(r, "", "autoRestart");
 
-  // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and otherwise
-  // must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable wording,
-  // so validateConfig and `config set` cannot drift apart on what a valid window is.
+  // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and
+  // otherwise must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable
+  // wording, so validateConfig and `config set` cannot drift apart on what a valid window is.
   if ("quietHours" in r) {
     const parsed = parseQuietHours(r.quietHours);
     if (!parsed.ok) problems.push(parsed.error);
   }
 
-  // The operator notify hook (src/events/notify.ts): absent or empty string means off, otherwise the
-  // value is the shell command the orchestrator runs on notable events — so it must be a
-  // string when present, and an empty string stays valid (it is how `config set notify ""`
-  // clears the hook).
+  // The operator notify hook (src/events/notify.ts): absent or empty string means off,
+  // otherwise the value is the shell command the orchestrator runs on notable events — so it
+  // must be a string when present, and an empty string stays valid (it is how `config set
+  // notify ""` clears the hook).
   if ("notify" in r && typeof r.notify !== "string") {
     problems.push(
       `notify must be a string (the shell command to run on notable events, empty string disables; got ${show(r.notify)})`,
@@ -467,10 +467,10 @@ function checkSelectorHalves(
     );
   });
 
-  // Per-role quiet hours (src/scheduling/quiet-hours.ts): the same known-role gate as the caps — a
-  // typo'd role id would silently no-op the window. Each value must parse as a quiet-hours
-  // window (an empty string means off for that role, the same disablement the fleet-wide
-  // key takes), and the message names the key and the offending id/value verbatim.
+  // Per-role quiet hours (src/scheduling/quiet-hours.ts): the same known-role gate as the
+  // caps — a typo'd role id would silently no-op the window. Each value must parse as a
+  // quiet-hours window (an empty string means off for that role, the same disablement the
+  // fleet-wide key takes), and the message names the key and the offending id/value verbatim.
   checkPerRoleMap(r, "quietHoursPerRole", '"HH:MM-HH:MM" windows', customNames, problems, (id, value) => {
     if (typeof value !== "string") {
       problems.push(

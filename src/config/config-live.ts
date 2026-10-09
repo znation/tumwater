@@ -16,7 +16,8 @@ import type { Semaphore } from "../concurrency/semaphore.js";
  * enabled role), and the semaphore's live-resized concurrency cap. */
 interface LiveConfigReload {
   /** Poll the config file once, applying any reload and its side effects; returns the live
-   * config — the last successful reload's (last-known-good while the file is broken or missing). */
+   * config — the last successful reload's (last-known-good while the file is broken or
+   * missing). */
   poll(): TumwaterConfig;
 }
 
