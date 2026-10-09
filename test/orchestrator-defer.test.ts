@@ -1,4 +1,5 @@
-/** Unit-tier coverage for the orchestrator's backlog-aware deferral (src/orchestrator/orchestrator.ts's
+/** Unit-tier coverage for the orchestrator's backlog-aware deferral
+ * (src/orchestrator/orchestrator.ts's
  * scheduling pass) — the contracts the gating `npm test` never pinned: the deferral block and
  * its once-mode settle ran only in the e2e tier, so `npm test` (the declared check) reported
  * the block uncovered even though the behavior was verified. The rules live here:

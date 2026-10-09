@@ -19,7 +19,8 @@ import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
-/** The persisted-state file's own tests (src/loop/loop-state.ts): fresh defaults, the tolerant load,
+/** The persisted-state file's own tests (src/loop/loop-state.ts): fresh defaults, the tolerant
+ * load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
  * fleet/orchestrator-info.ts but whose shape is pinned beside the state convention it mirrors. The
  * tick-apply.ts scheduling policy's tests live in tick-apply.test.ts. */

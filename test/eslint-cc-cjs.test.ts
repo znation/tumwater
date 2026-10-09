@@ -1,4 +1,5 @@
-/** docs/code-metrics/eslint-cc.cjs — the script that summarizes the ESLint `complexity` report and
+/** docs/code-metrics/eslint-cc.cjs — the script that summarizes the ESLint `complexity` report
+ * and
  * prints "eslint classic complexity: ..." for comparison against analyze.cjs's own McCabe counts.
  * It had no test (grep for its name across test/ found nothing), yet every figure it prints is
  * arithmetic over the report: one wrong filter or percentile silently misreports the comparison.

@@ -4,7 +4,8 @@ import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { oneLine } from "./helpers/oracles.js";
 
-// The resume bridge (src/prompt/prompt-followup.ts buildResumePrompt): the prompt sent into the SAME pi
+// The resume bridge (src/prompt/prompt-followup.ts buildResumePrompt): the prompt sent into the
+// SAME pi
 // session as an interrupted run, which already carries the original prompt and work — so it
 // only bridges the gap. Its contract matters: without the restated sentinel/SUMMARY rules the
 // harness could not parse a resumed tick's end. One home for every cause's bridge, extracted

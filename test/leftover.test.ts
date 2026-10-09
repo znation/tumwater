@@ -13,11 +13,13 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
-// Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit a
+// Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit
+// a
 // previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
 // when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
-// landing runs here. The loop e2e tests (test/loop-leftover-recovery.test.ts) drive the queued entry through
+// landing runs here. The loop e2e tests (test/loop-leftover-recovery.test.ts) drive the queued
+// entry through
 // the landing slot end-to-end.
 
 const ROLE = "improve";

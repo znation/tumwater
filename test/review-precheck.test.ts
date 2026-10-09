@@ -308,7 +308,8 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     assert.equal(await aheadOfMain(wt, "main"), 1);
     const events = readEvents(root);
     assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
-    // The change's check ran twice; main's once, in the attribution worktree, priced as a baseline run.
+    // The change's check ran twice; main's once, in the attribution worktree, priced as a baseline
+    // run.
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:failed"]);
     const warnings = warningMessagesOf(events);
     assert.ok(
@@ -553,7 +554,8 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
 });
 
 // The gate hands its green pre-check verdict to the landing path via GateResult.verifiedHead:
-// src/landing/landing-merge.ts seeds the red-main baseline with the SHA that actually becomes main (the
+// src/landing/landing-merge.ts seeds the red-main baseline with the SHA that actually becomes main
+// (the
 // rebased head, which may differ from this one — landing-merge.test.ts covers the seeding and the
 // post-rebase re-verify). A skipped pre-check makes no fresh observation: verifiedHead stays
 // absent even when the model approves (asserted in the timeout test above).

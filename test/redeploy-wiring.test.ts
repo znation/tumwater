@@ -12,7 +12,8 @@ import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
 
 /** The production WIRING half of the self-redeploy tests, mirroring the src split
- * (src/redeploy/redeployer.ts / src/redeploy/redeploy.ts): redeployDeps's real mainGreen/buildRed — the mirror
+ * (src/redeploy/redeployer.ts / src/redeploy/redeploy.ts): redeployDeps's real mainGreen/buildRed
+ * — the mirror
  * worktree, the live config read, the baseline build_check events, the witness-worktree
  * cold-cache recovery — and createRedeployer's composition from the running build's own stamp.
  * The state-machine half (the Redeployer driven with scripted deps) lives in

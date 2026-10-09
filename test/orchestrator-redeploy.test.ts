@@ -1,4 +1,5 @@
-/** Unit-tier coverage for the orchestrator's self-redeploy wiring (src/orchestrator/orchestrator.ts's
+/** Unit-tier coverage for the orchestrator's self-redeploy wiring
+ * (src/orchestrator/orchestrator.ts's
  * `if (redeploy)` block): the policy's verdict gates the fleet — a `hold` starts no new ticks
  * and its lift resumes them, a `restart` ends the run with restart: true — and the policy's
  * status() is published into orchestrator.json, at startup and again whenever it changes. The
@@ -34,7 +35,8 @@ interface ScriptedStep {
 
 /** A Redeployer stand-in that answers each poll with its script's next step and publishes the
  * current step's build status. While `ready` returns false every poll answers "none" without
- * advancing the script, so a step can wait on fleet state instead of a poll count. Cast through unknown: Redeployer is a class with private state,
+ * advancing the script, so a step can wait on fleet state instead of a poll count. Cast through
+ * unknown: Redeployer is a class with private state,
  * and the orchestrator touches only poll/status/forceRestart plus the build sha it logs at
  * startup. Also returns how many polls ran, so a hold-length assertion cannot pass by accident
  * of a stalled run. */

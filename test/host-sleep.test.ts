@@ -16,7 +16,8 @@ async function withPlatform<T>(platform: string, run: () => Promise<T>): Promise
   }
 }
 
-// Unit coverage for the measured host sleep (src/build/host-sleep.ts): the two measurement paths —
+// Unit coverage for the measured host sleep (src/build/host-sleep.ts): the two measurement paths
+// —
 // Linux's boottime-vs-monotonic divergence and macOS's sleep-start→wake span — driven by
 // synthetic samples, because no test can suspend the host. The regression these pin is
 // BUGS.md 2026-09-30: a sleep inside a check's run must leave a measured trace, not only the

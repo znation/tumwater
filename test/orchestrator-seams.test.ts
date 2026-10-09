@@ -28,9 +28,11 @@ import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 
-// The orchestrator's exported unit-test seams (src/orchestrator/orchestrator.ts): the permit-holding
+// The orchestrator's exported unit-test seams (src/orchestrator/orchestrator.ts): the
+// permit-holding
 // wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the
-// abort-wakeable poll sleep, and the restart hand-off's bounded landing wait. Both are small enough to pin without a fleet — the live orchestrator loop around
+// abort-wakeable poll sleep, and the restart hand-off's bounded landing wait. Both are small enough
+// to pin without a fleet — the live orchestrator loop around
 // them is the e2e tier's job — but each carries a documented edge case that could plausibly
 // break (an already-aborted signal that addEventListener alone would never fire; an aborted
 // tick whose duration must not drag the window down), and none of that was under any unit

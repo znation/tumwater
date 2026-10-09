@@ -20,7 +20,8 @@ import {
 } from "../src/process/supervisor.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The respawn loop behind `tumwater run` (src/process/supervisor.ts), driven with a scripted child so
+// The respawn loop behind `tumwater run` (src/process/supervisor.ts), driven with a scripted child
+// so
 // the policy is pinned without spawning processes: respawn on the restart code, exit with any
 // other code, honor a stop request, and refuse to spin on a crash-looping build.
 
@@ -203,7 +204,8 @@ function withArgv1(value: string | undefined, fn: () => Promise<void>): Promise<
   });
 }
 
-/** Resolves to `p`'s value, or rejects after `ms` so a hung child fails the test instead of hanging it. */
+/** Resolves to `p`'s value, or rejects after `ms` so a hung child fails the test instead of hanging
+ * it. */
 async function within<T>(p: Promise<T>, ms: number): Promise<T> {
   let timer: NodeJS.Timeout;
   try {

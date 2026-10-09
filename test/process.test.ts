@@ -26,7 +26,8 @@ import { pathReplace } from "./fakes/fake-commands.js";
 import { errnoError } from "./helpers/fs-faults.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
-// holder's merge lock must be breakable) and fleet/orchestrator-info.ts's orchestrator-alive status. Its
+// holder's merge lock must be breakable) and fleet/orchestrator-info.ts's orchestrator-alive
+// status. Its
 // contract is "any error reads as not alive" — the EPERM case matters most, because a live
 // foreign pid mistaken for one of ours would make tryBreakStale never break that lock, and
 // every merge would time out forever (the orphaned-lock bug class in BUGS.md).
@@ -90,7 +91,8 @@ test("pidAlive reads a non-positive or fractional pid as NOT alive", () => {
   assert.equal(pidAlive(1.5), false);
 });
 
-// The process-table reader behind doctor's orphan check (checkOrphans in src/doctor/doctor.ts, where
+// The process-table reader behind doctor's orphan check (checkOrphans in src/doctor/doctor.ts,
+// where
 // the matching is pinned against a fake table). Here: the two parsers over fixed BSD/procps
 // and lsof output, and one smoke of the real probe against this test process itself — no
 // orphan is ever spawned.

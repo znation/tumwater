@@ -1,7 +1,8 @@
 /** Third slice of the loop e2e suite (after loop.test.ts and loop-2.test.ts) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process (and its own PATH, which fakePi's
- * global PATH swap requires). The slices are balanced by measured per-test duration; keep them roughly
+ * global PATH swap requires). The slices are balanced by measured per-test duration; keep them
+ * roughly
  * equal when moving tests between the files. The suite's leftover/pin-recovery topic lives in
  * loop-leftover-recovery.test.ts (extracted 2026-09-29), the transient-retry regressions in
  * loop-transient-retry.test.ts (2026-09-30); what remains here is the rejection ride-along and

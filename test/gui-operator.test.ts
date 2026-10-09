@@ -276,7 +276,8 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
   });
 });
 
-// POST /api/pause — the dashboard header's pause/resume toggle: the same shared fleet/fleet-state.ts
+// POST /api/pause — the dashboard header's pause/resume toggle: the same shared
+// fleet/fleet-state.ts
 // writers the CLI uses, so the GUI and `tumwater pause`/`resume` cannot drift.
 
 test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {

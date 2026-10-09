@@ -114,7 +114,8 @@ test("a thrown green check is a 'could not run': drop, warn once, retry — no l
     /green check of bbbbbbbb could not run: baseline check blew up/,
   );
   assert.equal(r.status().restartBlocked, undefined, "no latched block");
-  // The next poll re-checks the same head instead of waiting for main to move — a retry, not a latch.
+  // The next poll re-checks the same head instead of waiting for main to move — a retry, not a
+  // latch.
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold");
   assert.equal(checks, 2, "the green check re-ran");
   await settle();
@@ -148,7 +149,8 @@ test("a green check that fails once and then recovers still reaches the swap: th
 
 test("a thrown compile is a rejection, not a verdict: its error text rides the warning, nothing is latched", async () => {
   // The production deps.compile wraps the mirror worktree checkout around compileStaged
-  // (src/redeploy/redeploy.ts), so an environment failure there — a git lock, a full disk — surfaces as
+  // (src/redeploy/redeploy.ts), so an environment failure there — a git lock, a full disk —
+  // surfaces as
   // a REJECTED promise, not the rejected flag a spawn failure inside tsc's own run produces.
   // Same class, different shape: it says nothing about the tree, so it must be retried, not
   // latched, or the fleet stays pinned on the stale build after the environment recovers

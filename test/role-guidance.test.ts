@@ -19,7 +19,8 @@ import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Contract for src/roles/role-guidance.ts's shared prompt constants (plans/repair-traces.md and
 // friends): the decomposition, validation-gap, needs-review, plan-sizing, and search guidance
-// each live in one exported constant that prompt.ts and role-catalog.ts embed verbatim, so a reworded
+// each live in one exported constant that prompt.ts and role-catalog.ts embed verbatim, so a
+// reworded
 // copy or a dropped clause fails here instead of drifting silently into every role's find text.
 
 test("guidance is a single shared constant, not drifting copies", () => {
@@ -70,7 +71,8 @@ test("the bugfix prompt requires the validation-gap trace line for every fixed e
 
 test("the documented gap tally counts the verbatim line and the compressed suffix as one vocabulary", () => {
   // The query is the whole aggregation surface, so it must count both the `**Validation gap:**`
-  // line bugfix writes and the `gap: <tag>` suffix the steward leaves after compression — else the
+  // line bugfix writes and the `gap: <tag>` suffix the steward leaves after compression — else
+  // the
   // newest entries are invisible to the only recorded query. Run it for real on both forms.
   const query =
     "grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c";
@@ -108,7 +110,8 @@ test("the backlog-free roles carry the shared search guidance with a role-specif
     assert.ok(role.find.includes(searchGuidance(id)), `${id} embeds searchGuidance(${id})`);
     assert.ok(role.find.includes(`--grep="tumwater(${id})"`), `${id} names its own commit subjects`);
   }
-  // The guidance itself: cheap signals, a shortlist cap, a whole-file size cap, a decision deadline.
+  // The guidance itself: cheap signals, a shortlist cap, a whole-file size cap, a decision
+  // deadline.
   const g = oneLine(searchGuidance("clean"));
   assert.match(g, /do not read the codebase file by file/);
   assert.match(g, /`git log --stat -15`/);

@@ -1,11 +1,14 @@
 /** docs/code-metrics/coverage-runs.cjs — the multi-run average behind run.sh's coverage-runs.txt.
- * It had no test (grep for its name across test/ found only run.sh), yet it is what the docs report:
+ * It had no test (grep for its name across test/ found only run.sh), yet it is what the docs
+ * report:
  * it joins metrics.json (category per file, executable-line flags), blame.json (line author), every
  * coverage-ts-<k>.json (coverage.cjs output) and every coverage-run-<k>.txt (node's table and the
- * test tally), attributes each executable line/branch/function to its author, averages over the runs
+ * test tally), attributes each executable line/branch/function to its author, averages over the
+ * runs
  * whose suite passed, and reports the per-run line envelope and the files whose coverage flips.
  *
- * It is a CommonJS argv script outside dist/, so the tests build a data dir under temp and run it as
+ * It is a CommonJS argv script outside dist/, so the tests build a data dir under temp and run it
+ * as
  * a subprocess — the .cjs specifier never enters tsc. */
 
 import test from "node:test";

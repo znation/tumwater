@@ -155,7 +155,8 @@ test("dequeuing and cancelling a prompt remove its same-stem image files", () =>
   const saved = savePromptImages(root, "qa", file, [png(), { name: "b.png", dataBase64: PNG.toString("base64") }]);
   assert.ok("paths" in saved);
   const dir = roleInboxDir(root, "qa");
-  // A sibling prompt's file that merely shares a stem prefix is never touched ("123-1" vs "123-12").
+  // A sibling prompt's file that merely shares a stem prefix is never touched ("123-1" vs
+  // "123-12").
   const neighbor = path.join(dir, `${path.basename(file, ".md")}2.md`);
   fs.writeFileSync(neighbor, "next prompt");
   assert.ok(fs.existsSync(saved.paths[0]!));

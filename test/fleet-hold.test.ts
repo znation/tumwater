@@ -114,7 +114,8 @@ test("two roles on the same backend kind storm even while others fail differentl
 test("a held fleet stays held until its deadline, then re-opens by itself", () => {
   const held = trip(FLEET_OPEN, T0);
   const until = held.until!;
-  // Mid-hold, even fresh failures from new roles change nothing: the hold is already answering them.
+  // Mid-hold, even fresh failures from new roles change nothing: the hold is already answering
+  // them.
   const mid = fleetHold(held, [obs("perf", until - 1), obs("steward", until - 1)], until - 1);
   assert.equal(mid, held);
   const reopened = fleetHold(held, [obs("perf", until - 1), obs("steward", until - 1)], until);

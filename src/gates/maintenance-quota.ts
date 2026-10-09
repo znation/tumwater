@@ -39,7 +39,8 @@ const MAINTENANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** The allowance verdict for one poll. `allowance` is what the window permits, `used` is the
  * landed maintenance count plus the maintenance loops in flight, and `held` is true while used
  * has reached the allowance. Additive over the counts, so six concurrent permits cannot push
- * `used` past the line without the caller counting the in-flight loops (pollMaintenanceQuotaGate). */
+ * `used` past the line without the caller counting the in-flight loops
+ * (pollMaintenanceQuotaGate). */
 export interface MaintenanceQuotaVerdict {
   allowance: number;
   used: number;

@@ -1,6 +1,7 @@
 /** Shared fixtures for the status UI tests (status-render.test.ts, status-model.test.ts):
  * the snapshot/table geometry builders, pi-log writers, and time stamps both suites assemble
- * their StatusSnapshots and logs from, plus the header-line extractor the badge suites read. Split out of status-render.test.ts when the status-model
+ * their StatusSnapshots and logs from, plus the header-line extractor the badge suites read. Split
+ * out of status-render.test.ts when the status-model
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
 import path from "node:path";

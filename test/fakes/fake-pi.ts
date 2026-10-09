@@ -5,7 +5,8 @@ import { pathPrepend, writeScript } from "./fake-commands.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
 import path from "node:path";
 
-// --- The fake pi shim (fakePi/fakePiIdle/recordingFakePi/piRunResult), split out of the old util.ts grab-bag ---
+// --- The fake pi shim (fakePi/fakePiIdle/recordingFakePi/piRunResult), split out of the old
+// util.ts grab-bag ---
 // Every helper here installs or models a fake `pi` executable: tests run offline against these
 // shims on PATH, never a real model (see PRINCIPLES.md). The generic install machinery they
 // sit on — writeScript/pathPrepend, the fake-command-on-PATH technique — lives in

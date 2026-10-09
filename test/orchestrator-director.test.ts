@@ -1,4 +1,5 @@
-/** Unit-tier coverage for the live orchestrator's scheduling pass (src/orchestrator/orchestrator.ts) — the
+/** Unit-tier coverage for the live orchestrator's scheduling pass
+ * (src/orchestrator/orchestrator.ts) — the
  * director's two exemptions and the merge-queue interlock, contracts the gating `npm test`
  * never pinned (the same approach orchestrator-defer.test.ts takes: the block ran only in the
  * e2e tier, so the unit suite reported it uncovered even though the behavior was verified):

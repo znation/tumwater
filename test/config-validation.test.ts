@@ -9,9 +9,11 @@ import { allRoleIds } from "../src/roles/roles.js";
 import { validationError } from "./fixtures/config-fixtures.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
-// Tests for src/config/config-validation.ts — validateConfig — plus the load and save paths that
+// Tests for src/config/config-validation.ts — validateConfig — plus the load and save paths
+// that
 // enforce it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's
-// refuse-to-persist). The rest of src/config/config.ts's surface (defaults, per-role views, the read
+// refuse-to-persist). The rest of src/config/config.ts's surface (defaults, per-role views, the
+// read
 // cache, customLoops, the example template) stays in test/config.test.ts.
 
 test("show renders the offending value honestly and compactly", () => {

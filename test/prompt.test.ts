@@ -288,14 +288,18 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 // the harness's RESPONSE to it is wrong, never merely because the failure happened) and the
 // dedup check; these assertions pin that contract.
 
-// Prompt contract for the readme role (PLANS.md "Bound README's status section — state, not log"):
+// Prompt contract for the readme role (PLANS.md "Bound README's status section — state, not
+// log"):
 // the status section is a state-only snapshot rewritten wholesale on each sync, never appended to,
 // so it stays small by construction and cannot drift back into per-tick landing narrative. Every
 // loop reads README.md first, so an unbounded log there would cost every tick's prefill forever;
-// these assertions pin the contract in the find text. Same whitespace-collapsed matching as above —
-// the prose is hard-wrapped and formatting ticks reflow it, so assertions match content, not layout.
+// these assertions pin the contract in the find text. Same whitespace-collapsed matching as above
+// —
+// the prose is hard-wrapped and formatting ticks reflow it, so assertions match content, not
+// layout.
 
-// Context-ceiling handling (src/prompt/prompt.ts): half of all autonomous-era ticks ended cut off at
+// Context-ceiling handling (src/prompt/prompt.ts): half of all autonomous-era ticks ended cut off
+// at
 // the window, almost all of it tool output from reading wholesale. The budget rule rides on
 // every run; the resume bridge names the real cause; a fresh tick after cut-offs carries a note.
 
@@ -538,7 +542,8 @@ test("buildTickPrompt renders a per-role user request as a labeled block", () =>
 });
 
 // Claim discipline (2026-10-01): the budgeted model's review record showed false or unchecked
-// claims — "untested", "byte-identical", "all references updated", suite counts — as the leading
+// claims — "untested", "byte-identical", "all references updated", suite counts — as the
+// leading
 // rejection cause, and edits made after the last green run as the next. Every authoring prompt
 // carries the rules, right before the reply contract they govern.
 test("every authoring prompt carries the claim-discipline rules ahead of the reply contract", () => {

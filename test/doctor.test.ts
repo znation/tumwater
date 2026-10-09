@@ -12,7 +12,8 @@ import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 
-// Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order, header,
+// Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order,
+// header,
 // verdict counting, and corrupt-config resilience, renderDoctor's rendering, and the `tumwater
 // doctor` CLI contract pinned through main() (no readiness gate, --json payload, exit codes).
 // The individual checks' ok/fail/warn branches are unit-covered in test/doctor-checks.test.ts

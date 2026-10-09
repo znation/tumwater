@@ -16,7 +16,8 @@ import {
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
-/** Unit coverage for src/backlog/backlog-structure.ts — the stranded-plan detector (plans, part 3/4):
+/** Unit coverage for src/backlog/backlog-structure.ts — the stranded-plan detector (plans, part
+ * 3/4):
  * a `### ` heading with plan dates filed under the wrong `## ` section of PLANS.md is invisible
  * to every section-scoped reader, so the detector re-reads the whole document fence-aware and
  * reports the misplaced headings with the section each sits in. */

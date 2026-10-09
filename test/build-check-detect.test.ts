@@ -189,7 +189,8 @@ test("detectBuildCheck returns the NEAREST qualifying ancestor when several qual
 });
 
 // --- detectBuildCheck semantics: preference, first-qualifying-directory-wins, and failure modes.
-// These are documented in src/build/build-check.ts but were untested; the first-qualifier rule is the
+// These are documented in src/build/build-check.ts but were untested; the first-qualifier rule is
+// the
 // load-bearing one — skipping past a scriptless installed project to an unrelated ancestor would
 // run THAT project's build script against this worktree (or nothing of this project at all).
 
@@ -238,7 +239,8 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
   const root = path.join(base, "project");
   fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
 
-  // Unparseable JSON at the qualifying directory: no check, and detection never throws into the gate.
+  // Unparseable JSON at the qualifying directory: no check, and detection never throws into the
+  // gate.
   writeMalformedJson(path.join(root, "package.json"));
   assert.equal(detectBuildCheck(root), null);
 
@@ -249,7 +251,8 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
     assert.equal(detectBuildCheck(root), null, `non-object package.json ${raw} must not throw`);
   }
 
-  // A scripts object with neither a usable test, typecheck, nor build (empty string / non-string) is no check.
+  // A scripts object with neither a usable test, typecheck, nor build (empty string / non-string)
+  // is no check.
   fs.writeFileSync(
     path.join(root, "package.json"),
     projManifest({ test: "", build: "", typecheck: null }),

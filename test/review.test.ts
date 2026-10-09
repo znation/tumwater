@@ -621,7 +621,8 @@ test("a stalled tool call during review warns in the event feed while the watchd
       config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
       config.toolCallStallSeconds = 2; // ...but the warning lands first
       const state = freshLoopState(ROLE);
-      // On logical time (watchdogClock, test/helpers/wait.ts): once the reviewer has named its call,
+      // On logical time (watchdogClock, test/helpers/wait.ts): once the reviewer has named its
+      // call,
       // move the watchdog past the stall threshold and then the quiet window.
       const clock = watchdogClock(t);
       const review = reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
@@ -658,7 +659,8 @@ test("a stalled tool call during the verdict follow-up warns in the event feed t
       const config = defaultConfig();
       config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
       config.toolCallStallSeconds = 2; // ...but the warning lands first
-      // On logical time (watchdogClock, test/helpers/wait.ts): once the follow-up has named its call,
+      // On logical time (watchdogClock, test/helpers/wait.ts): once the follow-up has named its
+      // call,
       // move the watchdog past the stall threshold and then the quiet window.
       const clock = watchdogClock(t);
       const review = reviewGate(root, wt, { config });

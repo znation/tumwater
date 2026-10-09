@@ -27,7 +27,8 @@ test("a successor that could not boot is refused before any hold, once per reaso
   assert.equal(r.status(t).restartPending, undefined);
   assert.equal(r.status(t).restartBlocked, `the new build could not start: ${NOT_INITIALIZED_MESSAGE}`);
 
-  // Main moving mid-refusal adds nothing (the gate is head-independent); a different reason is news.
+  // Main moving mid-refusal adds nothing (the gate is head-independent); a different reason is
+  // news.
   assert.equal(await r.poll(HEAD_C, IDLE, true, (t += 10)), "none");
   assert.deepEqual(types(), ["build_stale", "restart_refused"]);
   problem = "pi not found on PATH";

@@ -9,7 +9,8 @@ import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { eventsLogPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects, exercised
+// The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects,
+// exercised
 // against temp projects: swapDist's dist replacement and restore-on-failure invariants, and
 // compileStaged's real tsc runs (stamping, toolchain discovery, spawn failures, timeouts). The
 // redeployer's state machine itself stays in test/redeployer.test.ts, driven by scripted effects.

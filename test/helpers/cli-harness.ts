@@ -127,7 +127,8 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
   };
 }
 
-/** Wait for the child's exit code; null on timeout so a hung command fails the test instead of hanging it. */
+/** Wait for the child's exit code; null on timeout so a hung command fails the test instead of
+ * hanging it. */
 export function exitCode(child: ChildProcess, ms = 15_000): Promise<number | null> {
   return new Promise((resolve) => {
     const t = setTimeout(() => resolve(null), ms);

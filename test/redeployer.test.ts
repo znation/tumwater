@@ -136,7 +136,8 @@ test("a director tick in flight holds past the drain window without a cap; the s
     "hold",
     "the director extends the hold without a cap",
   );
-  // The prompt finishes; one role tick is still running but its window is long gone — it lands now.
+  // The prompt finishes; one role tick is still running but its window is long gone — it lands
+  // now.
   assert.equal(
     await r.poll(HEAD_B, { roleInFlight: 1, directorInFlight: 0 }, true, (now += 10)),
     "restart",

@@ -15,7 +15,8 @@ import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { harnessWarnings } from "./fixtures/log-fixtures.js";
 
-// launchservicesd's Mach-port check (src/doctor/doctor-launch-services.ts) and running-fleet warning
+// launchservicesd's Mach-port check (src/doctor/doctor-launch-services.ts) and running-fleet
+// warning
 // (src/process/launch-services.ts, BUGS.md 2026-09-28): both driven by a fake probe — no test
 // reads the real Mac's daemon (process.test.ts pins the real probe).
 

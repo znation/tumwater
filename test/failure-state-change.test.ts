@@ -18,7 +18,8 @@ function ev(fields: Record<string, unknown>): HarnessEvent {
 }
 
 test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP caps the section", () => {
-  // The set is the contract src/failure/failure-data.ts filters the window against: every event type the
+  // The set is the contract src/failure/failure-data.ts filters the window against: every event
+  // type the
   // digest replays as a Fleet state change, and nothing else.
   for (const t of [
     "budget_paused",

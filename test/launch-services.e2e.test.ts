@@ -1,4 +1,5 @@
-/** The orchestrator's launchservicesd watch wiring (src/process/launch-services.ts, BUGS.md 2026-09-28): a
+/** The orchestrator's launchservicesd watch wiring (src/process/launch-services.ts, BUGS.md
+ * 2026-09-28): a
  * daemon fleet steps the watch from its poll — sampling at once, then at most once per interval
  * however many polls run — and warns through the event feed; a once round never samples. A fake
  * probe stands in for the Mac's daemon. Like the rest of the orchestrator e2e tier this runs via

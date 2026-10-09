@@ -1,4 +1,5 @@
-/** Unit-tier coverage for the once round's exit contract (src/orchestrator/orchestrator.ts's once-mode
+/** Unit-tier coverage for the once round's exit contract (src/orchestrator/orchestrator.ts's
+ * once-mode
  * return). The gating `npm test` never runs the e2e tier, so the shape `run --once`'s summary
  * reads — the restart flag, the per-role settle-reasons map, and the per-role ticks-run map —
  * was pinned only by orchestrator-once.e2e.test.ts. This file pins the idle-fleet round

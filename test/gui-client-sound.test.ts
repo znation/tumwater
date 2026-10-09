@@ -1,6 +1,7 @@
 /** The dashboard's sound layer (src/ui/gui/gui-client-sound.ts, wired through gui-client-model.ts's
  * needs-you helpers, gui-client-fleet.ts's cue diff, and gui-client-operator.ts's toggle): the
- * regions run against a stubbed AudioContext, the pattern test/helpers/gui-client-scope.ts serves. The
+ * regions run against a stubbed AudioContext, the pattern test/helpers/gui-client-scope.ts serves.
+ * The
  * script's AudioContext binding lives in its own closure, so the stub records its instances in
  * a list the assertions read back. */
 import test from "node:test";

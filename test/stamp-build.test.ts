@@ -2,7 +2,8 @@
  * of a removed or renamed source, so the script removes every dist .js whose source is gone —
  * and must count a .tsx as a source. Checking .ts alone pruned each .tsx's output right after
  * tsc emitted it, and the incremental build never re-emitted it (2026-10-01: the ink
- * renderer's src/ui/tui/tui.tsx lost dist/src/ui/tui/tui.js, so the CLI could not start). It also keeps
+ * renderer's src/ui/tui/tui.tsx lost dist/src/ui/tui/tui.js, so the CLI could not start). It also
+ * keeps
  * dist/test/.durations.json, whose only "source" is the runner's ledger — pruning it reset the
  * longest-first file order on every run. */
 

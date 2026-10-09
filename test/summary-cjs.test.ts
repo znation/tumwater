@@ -5,7 +5,8 @@
  * silently misreports the docs.
  *
  * It is a CommonJS argv script outside dist/ (reads a metrics.json path and logs to stdout), so the
- * tests write a synthetic metrics.json to a temp dir and run it as a subprocess — the .cjs specifier
+ * tests write a synthetic metrics.json to a temp dir and run it as a subprocess — the .cjs
+ * specifier
  * never enters tsc. The synthetic file carries known counts so the assertions pin the arithmetic
  * rather than just "it ran". */
 
@@ -39,7 +40,8 @@ function run(data: string): { status: number | null; stdout: string; stderr: str
 }
 
 /** One checkout as classify/analyze would emit it: a.ts and b.ts share every token, c.ts and
- * d.test.ts do not; the imports make a→b→a one runtime cycle, add a→c, a type-only duplicate edge,
+ * d.test.ts do not; the imports make a→b→a one runtime cycle, add a→c, a type-only duplicate
+ * edge,
  * an unresolvable relative spec and two external specifiers. Each src file carries 11 code lines,
  * so the duplicated a/b pair is 22 of the 33 src code lines. */
 function seedFull(): string {

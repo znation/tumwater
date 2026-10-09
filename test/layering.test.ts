@@ -1,7 +1,8 @@
 /** Enforces DEVELOPMENT.md's Layout rule for src/ui/: "Imported only by each other and the
  * CLI command layer that drives it (cli.ts and the src/ command bodies)." Presentation depends
  * on core, never the reverse — a core module that needs a ui-resident formatter (the
- * src/failure/failure-render.ts and event-format.ts placements) must pull the formatter down to src/
+ * src/failure/failure-render.ts and event-format.ts placements) must pull the formatter down to
+ * src/
  * instead of reaching up into ui/. Without this check the rule lives only in prose and a
  * forbidden edge lands silently, as test-green as the rest of the suite. */
 import test from "node:test";
@@ -12,7 +13,8 @@ import { fileURLToPath } from "node:url";
 
 /** The command-layer modules DEVELOPMENT.md's rule lets drive src/ui/ (beside the cli.ts
  * dispatcher): the read-only command bodies (cli/cli-query-commands.ts, log-commands.ts) and the
- * `tumwater gui` HTTP server layer (gui/gui-server.ts, gui/gui-endpoints.ts) that gui/gui-command.ts
+ * `tumwater gui` HTTP server layer (gui/gui-server.ts, gui/gui-endpoints.ts) that
+ * gui/gui-command.ts
  * delegates to. Anything else importing src/ui/ is a layering bug. */
 const COMMAND_LAYER = new Set([
   "cli/cli-query-commands.ts",

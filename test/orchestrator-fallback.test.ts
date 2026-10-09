@@ -1,4 +1,5 @@
-/** Unit-tier coverage for the orchestrator's fallback-breaker wiring (src/orchestrator/orchestrator.ts's
+/** Unit-tier coverage for the orchestrator's fallback-breaker wiring
+ * (src/orchestrator/orchestrator.ts's
  * tick bookkeeping): a role tick that runs while the budget gate has engaged the free
  * fallback folds its outcome into the breaker (recordFallbackTick), and the demotion that
  * follows failureLimit consecutive failures reaches the observers — the budget_paused event

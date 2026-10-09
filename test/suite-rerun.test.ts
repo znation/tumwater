@@ -5,7 +5,8 @@ import { runsFullSuite, suiteRerunWarning, type ToolCallStart } from "../src/rev
 // Pins the reviewer suite-rerun tripwire (BUGS.md 2026-09-23): the review gate warns when a
 // reviewer told the harness's pre-check passed re-runs the full suite anyway. The flagged
 // command lines below are the shapes reviewers actually ran (from the retained review sessions);
-// the unflagged ones are what the prompt allows — one specific test file for a concrete reason —
+// the unflagged ones are what the prompt allows — one specific test file for a concrete reason
+// —
 // or commands that merely name the runner without running it.
 
 const bash = (command: string): ToolCallStart => ({ toolName: "bash", args: { command } });

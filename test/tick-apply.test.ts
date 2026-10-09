@@ -21,7 +21,8 @@ import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
 import { todayStamp } from "../src/budget/budget.js";
 
 /** The per-loop scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
- * src/scheduling/backoff.ts for the clock): what a finished tick or landing does to the loop's state and
+ * src/scheduling/backoff.ts for the clock): what a finished tick or landing does to the loop's
+ * state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
  * streaks — and the review-verdict record. Moved out of
  * loop-state.test.ts when the policy split out of loop-state.ts, whose own tests (load/save,
@@ -277,7 +278,8 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
     assert.equal(n.lastResult, result);
     assert.equal(n.commits, 0, `${result} lands nothing on main`);
     assert.equal(n.phase, undefined);
-    // Nothing landed, so the approval stands: a re-land whose rebase leaves the patch alone reuses it.
+    // Nothing landed, so the approval stands: a re-land whose rebase leaves the patch alone reuses
+    // it.
     assert.equal(n.lastApprovedPatchId, "p1", `${result} keeps the patch-id approval`);
   }
 

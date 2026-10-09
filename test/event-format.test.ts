@@ -248,7 +248,8 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
 });
 
 // The questions-outbox feature emits question_posted alongside merged (emission is pinned in
-// test/landing-merge.test.ts and test/loop.test.ts); this pins what operators actually read in logs,
+// test/landing-merge.test.ts and test/loop.test.ts); this pins what operators actually read in
+// logs,
 // the TUI activity pane, and the GUI feed: the new Open heading verbatim on a plain line —
 // routine operation, not a warning.
 test("formatEvent renders question_posted with the posted heading and no warning prefix", () => {
@@ -364,7 +365,8 @@ test("formatEvent renders tick_aborted plainly under the role's loop", () => {
   assert.ok(!line.includes("warning"), `a user-initiated abort is routine, not a warning: ${line}`);
 });
 
-// Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its last
+// Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its
+// last
 // tick did nothing and no work has landed since. Routine state, not a warning — but the line
 // must name the loop and its cause, since it is the only signal that a role is being deferred.
 test("formatEvent renders tick_deferred with the clause that deferred it", () => {
@@ -419,7 +421,8 @@ test("formatEvent renders a user_aborted tick_end with its result verbatim", () 
 });
 
 test("formatEvent renders the self-redeploy events and the build stamp on orchestrator_start", () => {
-  // Build provenance (src/build/build-info.ts, src/redeploy/redeploy.ts): a stale build is the one fact about
+  // Build provenance (src/build/build-info.ts, src/redeploy/redeploy.ts): a stale build is the one
+  // fact about
   // the fleet nothing inside it can otherwise see, so its events must name both commits.
   const start = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 7, build: "abcdef1234567890" } as never);
   assert.match(start, /orchestrator started \(pid 7, build abcdef12\)/);

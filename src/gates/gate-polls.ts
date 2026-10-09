@@ -308,7 +308,8 @@ export function pollFleetGates(
   const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
 
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): code-maintenance landings in a
-  // rolling 24 h window are capped at `maintenancePerWorkLanding × work + MAINTENANCE_DAILY_FLOOR`.
+  // rolling 24 h window are capped at `maintenancePerWorkLanding × work +
+  // MAINTENANCE_DAILY_FLOOR`.
   // The gate counts the window, adds the maintenance loops already in flight (running a tick or
   // holding a queued landing, so six concurrent permits cannot overshoot), and logs the one
   // hold/resume event per transition. Enabled only: a disabled loop runs no tick to count. The

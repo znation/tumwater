@@ -66,7 +66,8 @@ test("firstReason returns the first string reason and falls back when there is n
 });
 
 // backendKindPhrase is the one home of a backend hold's kind wording, shared by the event
-// feed (event-format.ts) and the failure digest (src/failure/failure-state-change.ts). The timeout arm
+// feed (event-format.ts) and the failure digest (src/failure/failure-state-change.ts). The timeout
+// arm
 // and the unknown-kind fallback are the arms the renderer tests' chosen kinds never
 // exercise: a "Request timed out" storm must render its own phrase (not a connection's),
 // and an unreadable kind (a hand-edited or future kind value) must degrade to the generic

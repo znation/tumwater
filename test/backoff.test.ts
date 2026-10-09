@@ -1,4 +1,5 @@
-/** backoff (src/scheduling/backoff.ts): the loop's CLOCK policy — pure functions, no I/O, so every
+/** backoff (src/scheduling/backoff.ts): the loop's CLOCK policy — pure functions, no I/O, so
+ * every
  * rule here is tested directly: the wake levers (clearBackoff, restoreMidTickWake), the
  * yield-scaled clock (pushYieldOutcome's ring, yieldMultiplier's ladder), and the backoff
  * ladders (nextBackoffSeconds, scheduleBackoff, ERROR_BACKOFF's minutes-not-hours cap). */

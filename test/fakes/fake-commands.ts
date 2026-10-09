@@ -1,4 +1,5 @@
-// --- The fake-command machinery (writeScript/pathPrepend), split out of the old util.ts grab-bag ---
+// --- The fake-command machinery (writeScript/pathPrepend), split out of the old util.ts grab-bag
+// ---
 // Every fake command a test installs — fake git, fake npm, fake pi, fake build tools — is a
 // symlink to one committed shim whose script body lives beside it, and tests point PATH at a
 // directory holding the fakes they need. This module is that generic install machinery; the

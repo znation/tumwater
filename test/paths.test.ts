@@ -130,7 +130,8 @@ test("no two roles share a worktree, state file, log, session dir, or abort mark
 test("one-shot markers and per-role state never collide with each other or long-lived files", () => {
   const shared = [resetRequestPath(ROOT), pausedPath(ROOT), eventsLogPath(ROOT), inboxDir(ROOT), mergeLockDir(ROOT)];
   for (const id of allRoleIds()) shared.push(abortRequestPath(ROOT, id), statePath(ROOT, id));
-  // A role named "orchestrator" would collide with the orchestrator's own state file — pin that it cannot.
+  // A role named "orchestrator" would collide with the orchestrator's own state file — pin that
+  // it cannot.
   shared.push(orchestratorStatePath(ROOT));
   assert.equal(new Set(shared).size, shared.length);
 });

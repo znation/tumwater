@@ -479,7 +479,8 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     await waitFor(() => loadLoopState(repo, "clean").ticks > 1, "an enabled role to tick again");
     assert.equal(loadLoopState(repo, "docs-auditor").ticks, removedTicks, "removed loop stops ticking");
 
-    // Re-adding the same name revives its persisted state — counters survive, like re-enabling a built-in.
+    // Re-adding the same name revives its persisted state — counters survive, like re-enabling a
+    // built-in.
     cfg = fastConfig(["clean"]);
     cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);

@@ -13,7 +13,8 @@ import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./fixtures/loop-fixtures.js";
 
-// Unit coverage for attributeRedCheck (src/landing/landing-check-failures.ts): the gate's final attribution
+// Unit coverage for attributeRedCheck (src/landing/landing-check-failures.ts): the gate's final
+// attribution
 // step, shared by a batch bisect's last move and a single landing's in-lock check at the
 // failure limit. The red change's verdict is not the test's subject — main's OWN verdict at
 // its current tip is (the land-queue 1/3 rule): main green → the change broke the check and

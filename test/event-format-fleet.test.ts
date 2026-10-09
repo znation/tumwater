@@ -1,8 +1,10 @@
-/** The fleet-control family of formatEvent tests (src/events/event-format.ts): the events the harness
+/** The fleet-control family of formatEvent tests (src/events/event-format.ts): the events the
+ * harness
  * emits as it manages the fleet — the daily-cost budget's transitions (and its per-role cap
  * siblings), the live config changes (maxConcurrent, sessionRetentionDays, edited keys), the
  * operator and breaker pause/resume events, and the fleet-wide 429/backend holds with their
- * kinds. These tests live only here — event-format.test.ts holds no copies of them. They share one rendering
+ * kinds. These tests live only here — event-format.test.ts holds no copies of them. They share
+ * one rendering
  * contract — a routine state change renders plainly, never with the warning prefix — so they
  * are tested together, apart from the tick/merge/review event lines in event-format.test.ts. */
 import test from "node:test";
@@ -125,7 +127,8 @@ test("formatEvent renders the budget transition events plainly with spend and ca
 });
 
 // The live concurrency-cap change event (PLANS.md, Live maxConcurrent): a routine state
-// change like counters_reset — a plain line carrying from → to in that order, no warning prefix.
+// change like counters_reset — a plain line carrying from → to in that order, no warning
+// prefix.
 test("formatEvent renders the maxConcurrent change event plainly with from and to", () => {
   const line = formatEvent({
     ts: 0,
@@ -143,7 +146,8 @@ test("formatEvent renders the maxConcurrent change event plainly with from and t
 });
 
 // The live session-retention change event (PLANS.md, Live sessionRetentionDays): a routine
-// state change like max_concurrent_changed — a plain line carrying from → to, no warning prefix.
+// state change like max_concurrent_changed — a plain line carrying from → to, no warning
+// prefix.
 test("formatEvent renders the retention change event plainly with from and to", () => {
   const line = formatEvent({
     ts: 0,
@@ -178,7 +182,8 @@ test("formatEvent renders the config change event plainly with the edited keys",
   const empty = formatEvent({ ts: 0, loop: "harness", type: "config_changed", keys: [] } as never);
   assert.match(empty, /config changed$/);
 });
-// Operator-intent gate (src/orchestrator/orchestrator.ts): `tumwater pause`/`resume` log these once per
+// Operator-intent gate (src/orchestrator/orchestrator.ts): `tumwater pause`/`resume` log these once
+// per
 // transition. Both are routine state changes an operator reads at a glance; the paused line
 // states the scope and the director exemption, the resumed line says role ticks are back.
 test("formatEvent renders the fleet pause and resume events plainly", () => {

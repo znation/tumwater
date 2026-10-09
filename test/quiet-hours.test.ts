@@ -1,4 +1,5 @@
-/** parseQuietHours / inQuietHours / pollQuietHoursGate (src/scheduling/quiet-hours.ts): the config value's
+/** parseQuietHours / inQuietHours / pollQuietHoursGate (src/scheduling/quiet-hours.ts): the config
+ * value's
  * one parse, the local-time membership decision, and the edge-triggered quiet/awake events the
  * orchestrator's poll loop depends on. The gate's live wiring — role ticks blocked, the
  * director exempt, a live edit ending the window — is pinned at the orchestrator e2e tier in

@@ -27,7 +27,8 @@ const CFG = defaultConfig();
 
 // --- checkMainBaseline: the red-main gate's one-shot, fleet-shared verification of main's own
 // suite (PLANS.md "Red-main baseline check"). Unlike build-check.test.ts's plain-directory
-// fixtures — enough for detection and execution in isolation — these need a REAL git repo with a worktree
+// fixtures — enough for detection and execution in isolation — these need a REAL git repo with
+// a worktree
 // at the real location (.tumwater/worktrees/<role>): the helper keys its verdict by the
 // worktree's HEAD, which must be pristine main.
 
@@ -218,7 +219,8 @@ test("a red is provisional: the next worktree re-runs it unasked, and a pass pro
   assert.equal(runsOf(counter), 2);
 });
 
-// --- noteGreenBaseline: the landing path (src/landing/landing-merge.ts) seeds this cache with the post-rebase
+// --- noteGreenBaseline: the landing path (src/landing/landing-merge.ts) seeds this cache with the
+// post-rebase
 // head after a green check, so a merged tree is never re-verified by checkMainBaseline.
 
 test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {

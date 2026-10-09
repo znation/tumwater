@@ -19,7 +19,8 @@ import { typoSuffix } from "../src/text/suggest.js";
  * reject whatever commit is being gated instead of the code under test (BUGS.md 2026-09-21);
  * they run via `npm run test:e2e` (and in CI) instead. With one or more name filters it runs
  * only the test files whose source-style name contains a filter as a plain substring (`npm test
- * merge` → landing-merge.test.ts), so iterating on one module gets a few-second feedback loop instead
+ * merge` → landing-merge.test.ts), so iterating on one module gets a few-second feedback loop
+ * instead
  * of the full suite — filters match e2e files too, so `npm test orchestrator` or
  * `npm run test:e2e` deliberately brings the tier back. A filter may carry a `#name` part
  * (`npm test 'loop#resume'`), which additionally filters the individual tests inside the selected
@@ -63,11 +64,13 @@ export function timedOutFailure(r: { status: number | null; signal: NodeJS.Signa
 /** What selectTestFiles decided: which compiled files to run (and their source-style names for
  * messages), or why nothing could be selected. */
 interface TestFileSelection {
-  /** Basenames with the .js swapped for .ts — what a developer sees in test/ and types as a filter. */
+  /** Basenames with the .js swapped for .ts — what a developer sees in test/ and types as a
+   * filter. */
   names: string[];
   /** Absolute paths of the compiled files to hand to node --test, sorted by name. */
   files: string[];
-  /** Set when nothing could be selected (no dist/test dir, no *.test.js in it, or no filter match). */
+  /** Set when nothing could be selected (no dist/test dir, no *.test.js in it, or no filter
+   * match). */
   error?: string;
   /** The `#name` parts of the filters, escaped and ORed into one node --test
    * --test-name-pattern (regex) value; undefined when no filter carried one. */

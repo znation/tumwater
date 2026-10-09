@@ -1,13 +1,16 @@
 /** docs/code-metrics/coverage.cjs — the source-map pass behind docs/code-metrics.md's per-TS-line
  * coverage. It had no test (grep for its name across test/ found only comments in coverage-table.ts
- * describing the ported merge semantics; nothing drove the script itself), yet run.sh feeds it every
+ * describing the ported merge semantics; nothing drove the script itself), yet run.sh feeds it
+ * every
  * raw V8 dump and its output is what the code-metrics docs report. The parts unique to this script
- * are the source-map decode (decodeMappings + the generated→TS line mapping) and the cross-process
+ * are the source-map decode (decodeMappings + the generated→TS line mapping) and the
+ * cross-process
  * "innermost range in ANY process" merge: the fixture runs two processes whose covered function
  * bodies are complementary (so the union matches neither process alone) and keeps a nested block
  * hot-outer/zero-inner in both (so an outermost-range regression would flip a zero line to one).
  *
- * It is a CommonJS script read from argv, outside dist/, so the tests build a tiny checkout/mapdist/
+ * It is a CommonJS script read from argv, outside dist/, so the tests build a tiny
+ * checkout/mapdist/
  * v8-dir triple in temp dirs and run it as a subprocess — the .cjs specifier never enters tsc. */
 
 import test from "node:test";

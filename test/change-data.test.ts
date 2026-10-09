@@ -10,7 +10,8 @@ import { slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { commitIn, headSha, makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 
-// `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests reach
+// `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests
+// reach
 // it through child-process CLI runs, whose coverage node --test never sees, and the collector
 // edges they do not exercise at all — a configured base branch that does not exist, a branch
 // that is fully merged while the worktree stays dirty, and a commit with an empty subject —

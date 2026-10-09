@@ -172,7 +172,8 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
 // Questions outbox (plans/questions-outbox.md): a merged diff that adds an entry under
 // QUESTIONS.md's ## Open emits one question_posted per new heading alongside the merged event,
 // so `tumwater logs` shows what the fleet is asking for. The emission lives in tryMerge
-// (src/landing/landing-merge.ts), which captures the Open list before the rebase and diffs it after the ff.
+// (src/landing/landing-merge.ts), which captures the Open list before the rebase and diffs it after
+// the ff.
 
 test("a tick that posts a question merges it and emits question_posted with the merged event", async () => {
   const repo = await initializedRepo();
@@ -199,7 +200,8 @@ test("a tick that posts a question merges it and emits question_posted with the 
     const questionsMd = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
     assert.match(questionsMd, /## Open\n\n### Q1: which database?/);
 
-    // …and the event log carries both events: merged plus one question_posted naming the new heading.
+    // …and the event log carries both events: merged plus one question_posted naming the new
+    // heading.
     const events = readEvents(repo);
     const merged = events.filter((e) => e.type === "merged");
     assert.equal(merged.length, 1);

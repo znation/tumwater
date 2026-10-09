@@ -240,7 +240,8 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
 });
 
 // Context-ceiling memory across ticks (src/prompt/prompt-followup.ts buildCutOffNote /
-// buildResumePrompt's cut-off cause): a cut-off resume must be told what actually happened, and a fresh tick after
+// buildResumePrompt's cut-off cause): a cut-off resume must be told what actually happened, and a
+// fresh tick after
 // the loop gave up resuming must be told its last attempts were too big for the window.
 test("a cut-off resume is bridged as a cut-off, and the fresh tick after the limit carries the note", async () => {
   const repo = await initializedRepo();
@@ -387,8 +388,10 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
   });
   fs.rmSync(blockedRef, { recursive: true, force: true });
 
-  // Unblock done (the first tick's withPi block ended); tick 2's leftover recovery adopts the unpinned commit and puts it on
-  // the land queue — the tick ends there, like a fresh changed tick — and the landing slot lands
+  // Unblock done (the first tick's withPi block ended); tick 2's leftover recovery adopts the
+  // unpinned commit and puts it on
+  // the land queue — the tick ends there, like a fresh changed tick — and the landing slot
+  // lands
   // it through the same gate, with the approve.
   const script2 = [
     APPROVE_PI,

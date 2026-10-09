@@ -19,7 +19,8 @@ import path from "node:path";
 import { commitIn, mainSha, makeRepo } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
-// The dashboards' auto-reload (src/redeploy/self-reload.ts): decide staleness from the process's own
+// The dashboards' auto-reload (src/redeploy/self-reload.ts): decide staleness from the process's
+// own
 // startup stamp versus the on-disk stamp, then re-exec the same command once. All seams are
 // injected so these tests launch no process, run no git, and touch no dist.
 
@@ -121,7 +122,8 @@ test("watchReloadSupervisor fires once the supervisor the mark names is gone, an
   const stopChild = watchReloadSupervisor(() => fired.push("child"), { env, ppid: () => ppid, intervalMs: 5 });
   // Started after its supervisor already died: the mark's pid, not the first read, decides.
   const stopLate = watchReloadSupervisor(() => fired.push("late"), { env, ppid: () => 1, intervalMs: 5 });
-  // An older supervisor's "1" names no pid: the first read stands, and an unchanged parent never fires.
+  // An older supervisor's "1" names no pid: the first read stands, and an unchanged parent never
+  // fires.
   const stopLegacy = watchReloadSupervisor(() => fired.push("legacy"), {
     env: { [DASHBOARD_CHILD_ENV]: "1" },
     ppid: () => 500,

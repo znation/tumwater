@@ -364,7 +364,8 @@ test("buildReviewPrompt names the harness's green pre-check when given, and omit
 
 // BUGS.md 2026-09-23: reviewers told "Do not spend your run re-running it" in the context
 // paragraph re-ran the suite in scratch copies under /tmp anyway. The rule is now its own line in
-// the rules list — naming the scratch-copy route as a re-run and allowing one specific test — and
+// the rules list — naming the scratch-copy route as a re-run and allowing one specific test —
+// and
 // it exists only behind a verified pre-check: with no green run (timed out, killed, skipped, no
 // declared check) a reviewer running the suite itself is doing its job.
 test("the review prompt's no-re-run rule is one rules-list line, present only behind a verified pre-check", () => {
@@ -383,7 +384,8 @@ test("the review prompt's no-re-run rule is one rules-list line, present only be
   assert.match(flat, /Running one specific test file for a concrete reason you can name is fine\./);
   // It qualifies the scratch-copy allowance, so it follows it directly.
   assert.match(flat, /directory is fine when you need to run something\. - Do not re-run the check named above/);
-  // Stated once: the old in-paragraph sentence is gone, and no other "re-run" instruction repeats it.
+  // Stated once: the old in-paragraph sentence is gone, and no other "re-run" instruction repeats
+  // it.
   const flatAll = oneLine(withCheck);
   assert.doesNotMatch(flatAll, /Do not spend your run re-running it/);
   assert.equal([...flatAll.matchAll(/Do not re-run/g)].length, 1);

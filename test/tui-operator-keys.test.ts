@@ -18,7 +18,8 @@ import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 // PLANS.md "TUI per-loop controls": Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is
 // on screen, through the same marker-writing cores the CLI's --role flags call, so the two
 // surfaces cannot drift on marker format, idempotence, or wording (rolePauseMessage and
-// roleResumeMessage in src/operator/operator-intent.ts are the shared single writer of the wording).
+// roleResumeMessage in src/operator/operator-intent.ts are the shared single writer of the
+// wording).
 test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wording", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {

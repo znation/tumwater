@@ -436,7 +436,8 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   assert.equal(noHead.level, "ok");
   assert.match(noHead.detail, /^dist\/ from [0-9a-f]{8}$/);
 
-  // Two commits later, one touching src/: stale — a warning (the fleet runs, just old code), never a fail.
+  // Two commits later, one touching src/: stale — a warning (the fleet runs, just old code),
+  // never a fail.
   fs.writeFileSync(path.join(repo, "README.md"), "docs\n");
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-q", "-m", "docs");

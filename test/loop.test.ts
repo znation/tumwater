@@ -1,4 +1,5 @@
-/** First slice of the loop e2e suite (loop-2…5.test.ts and loop-red-main.test.ts are the others) —
+/** First slice of the loop e2e suite (loop-2…5.test.ts and loop-red-main.test.ts are the others)
+ * —
  * split so node --test runs the slices in parallel processes: top-level tests within one file
  * run sequentially, while each test FILE gets its own process (and its own PATH, which
  * fakePi's global PATH swap requires). The slices are balanced by measured per-test duration

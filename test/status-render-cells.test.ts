@@ -2,7 +2,8 @@
  * (lastTickCell), the today column, the last-result cell, and the next-run column (nextRunCell).
  * The remaining renderStatus surface stays in status-render.test.ts; the status-model suite
  * (loopPhase, workingDetail) lives in status-model.test.ts, the header badges' in
- * status-header.test.ts, and the fixtures these assemble snapshots from are in status-fixtures.ts. */
+ * status-header.test.ts, and the fixtures these assemble snapshots from are in
+ * status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";

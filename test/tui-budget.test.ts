@@ -148,7 +148,8 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
     assert.equal(tui.lines().at(-1), "daily cap $ 30", "still in edit mode with the value kept");
     assert.match(fs.readFileSync(cfgPath, "utf8"), /not valid json/, "the broken file is not overwritten");
 
-    // Once the file is valid again the same draft saves — staying open was a retry, not a dead end.
+    // Once the file is valid again the same draft saves — staying open was a retry, not a dead
+    // end.
     fs.writeFileSync(cfgPath, original);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget set to \$30/);

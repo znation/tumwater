@@ -436,7 +436,8 @@ test("a queued per-role prompt is dequeued into that role's prompt only", () => 
 });
 
 // A deferred prompt (`tumwater prompt --at <duration>`) delivers once its not-before time has
-// passed; the marker line is plumbing (src/inbox/prompt-not-before.ts) and must never reach the loop — the same
+// passed; the marker line is plumbing (src/inbox/prompt-not-before.ts) and must never reach the
+// loop — the same
 // strip every display surface applies (stripNotBeforeMarker).
 test("a delivered deferred prompt rides without its not-before marker line", () => {
   const dir = root();
@@ -459,7 +460,8 @@ test("a delivered deferred director prompt rides without its not-before marker l
   assert.ok(!result.prompt.includes("tumwater:not-before"), "the marker is plumbing, not content");
 });
 
-// The clean role's stranded-plan block (src/backlog/backlog-structure.ts, plans part 3/4): the repair
+// The clean role's stranded-plan block (src/backlog/backlog-structure.ts, plans part 3/4): the
+// repair
 // evidence rides in the tick prompt only when the primary checkout's PLANS.md is stranded.
 
 const STRANDED_PLANS = `# Plans

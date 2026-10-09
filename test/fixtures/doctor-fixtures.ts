@@ -13,7 +13,8 @@ import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
  * deterministic PATH for the binary checks, a ready repo, and a fake process table so the
  * orphan and report checks never read the host's real state. */
 
-/** A bin dir holding executable files with the given names — a deterministic PATH for the binary checks. */
+/** A bin dir holding executable files with the given names — a deterministic PATH for the binary
+ * checks. */
 export function fakeBins(...names: string[]): string {
   const dir = tmpdir("doctor-bins-");
   for (const name of names) {

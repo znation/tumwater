@@ -236,7 +236,8 @@ test("readTranscriptTail returns null when rotation removes the file between sta
 // scan arms on a qualifying agent_start and keeps walking older lines for at most one more run:
 // a marker becomes the boundary (the window carries the label), while an older agent_start or
 // EOF means the run was unlabeled and the window stops at the arming agent_start exactly as
-// before. The oracle is always a full re-read — tail ≡ formatTranscript(whole file).slice(-limit).
+// before. The oracle is always a full re-read — tail ≡ formatTranscript(whole
+// file).slice(-limit).
 
 test("readTranscriptTail scans the opened inode when rotation recreates the path smaller between stat and open", () => {
   const root = tmpdir();
@@ -316,7 +317,8 @@ test("readTranscriptTail matches a full re-read with interleaved labels at every
 
 test("readTranscriptTail matches a full re-read with a stale marker, mislabel included", () => {
   // A failed reviewer spawn leaves a marker whose own agent_start never came: the next run's
-  // separator picks it up. The invariant is tail ≡ full re-read — not "labels are always correct".
+  // separator picks it up. The invariant is tail ≡ full re-read — not "labels are always
+  // correct".
   // Run 3's marker is stale — its reviewer died before emitting anything.
   const { file } = writeTurnLog(5, { reviewMarkerAt: (i) => i === 3 });
 

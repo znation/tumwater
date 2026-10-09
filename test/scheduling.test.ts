@@ -11,7 +11,8 @@ import { clearBackoff } from "../src/scheduling/backoff.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
-/** Unit tests for the pure tick-scheduling policy in src/scheduling/scheduling.ts — eligibility, fair
+/** Unit tests for the pure tick-scheduling policy in src/scheduling/scheduling.ts — eligibility,
+ * fair
  * order, and work-landed/deferral. Moved out of
  * orchestrator.e2e.test.ts, which now covers only the orchestrator runtime, so the policy module
  * has the module-named test file the rest of src/ follows and its pure tests run in their own

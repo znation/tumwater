@@ -308,7 +308,8 @@ test("the readme prompt forbids per-tick landing narrative; landings belong in P
   // Listed under "Keep these out of the status section" — the heading states the ban once.
   assert.match(find, /Keep these out of the status section: .* - Per-tick landing narrative: landings are recorded/);
   assert.match(find, /landings are recorded by their owning loops in PLANS\.md\/BUGS\.md and git log/);
-  // Deleting stale narrative is part of the update — the one-off collapse at 1f70a95 must not read as loss.
+  // Deleting stale narrative is part of the update — the one-off collapse at 1f70a95 must not
+  // read as loss.
   assert.match(find, /stale narrative found in the section is deleted as part of updating it/);
 });
 test("the readme prompt carries the ~1KB drift guard", () => {
