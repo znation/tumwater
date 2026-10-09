@@ -12,6 +12,7 @@ import { fail } from "./cli-output.js";
 import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { typoSuffix } from "../text/suggest.js";
+import { gotSuffix } from "../text/text.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
@@ -338,7 +339,7 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
       // An equals-form token names a real flag; refuse it with its own message before the
       // generic "unknown argument" misreports `--role=feature` as a misspelling.
       rejectEqualsForm(arg, specs);
-      if (specs.length === 0) fail(`tumwater ${command} takes no arguments`);
+      if (specs.length === 0) fail(`tumwater ${command} takes no arguments${gotSuffix(arg)}`);
       failUnknownArgument(command, arg, specs);
     }
     if (seen.has(spec)) fail(`${spec.names[0]} may only be given once`);

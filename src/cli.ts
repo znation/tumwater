@@ -39,7 +39,7 @@ import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
 import { cmdReport } from "./report/report.js";
 
 import { didYouMean } from "./text/suggest.js";
-import { errorMessage } from "./text/text.js";
+import { errorMessage, gotSuffix } from "./text/text.js";
 import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
       // `help <command>` prints that command's usage stanza(s), parsed from the same text the
       // full listing prints, so a topic cannot drift from it; a bare `help` (or an unknown
       // topic) points back at the full list rather than pretending the token was answered.
-      if (args.length > 1) fail("help takes at most one command name");
+      if (args.length > 1) fail(`help takes at most one command name${gotSuffix(args[1])}`);
       if (args.length === 1) {
         const name = args[0] ?? "";
         const topic = helpTopic(name);

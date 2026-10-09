@@ -358,7 +358,7 @@ test("tui rejects unknown arguments before anything launches", async () => {
   await initProject(repo, "cli tui unknown flag");
   const r = await cli(repo, "tui", "--json");
   assert.equal(r.code, 1);
-  assert.equal(r.stderr, "tumwater: tumwater tui takes no arguments\n");
+  assert.equal(r.stderr, 'tumwater: tumwater tui takes no arguments (got "--json")\n');
 });
 
 test("tui gates on a ready repo before the ink import", async () => {
