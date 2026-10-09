@@ -533,6 +533,51 @@ and a loop test for `budgetCapped` → handoff.
 - `npm run test` green.
 
 
+### Notify the operator when a loop posts a question (planned 2026-10-09 by plan)
+
+Design: this is the missing push half of the questions outbox. Loops ask the operator to decide
+by merging an entry into QUESTIONS.md `## Open`; `tumwater questions`, the TUI/GUI backlog and the
+fleet-alerts panel are all pull surfaces, and the `notify` hook — the one push channel — does not
+fire for that event. The hook's own contract (src/events/notify.ts, config-schema.ts) already
+covers "the states where only a human can act"; a posted question is exactly that state, so this
+is an allowlist gap, not a new mechanism.
+
+The event already exists and is already in scope for the notifier: `logNewQuestions`
+(src/landing/landing-questions.ts) logs one `question_posted` per new Open heading through
+`logEventBestEffort`, which calls `logEvent` and so reaches `newNotifier`'s `subscribeEvents`
+listener in the orchestrator process.
+
+**Approach.**
+1. Append `"question_posted"` to `NOTIFY_EVENT_TYPES` in src/events/notify.ts.
+2. Update that module's doc: "All seven allowlisted types" becomes eight, and its source list
+   gains `landing-questions.ts` (the landing pipeline beside `landing-slot.ts`).
+3. Update src/config/config-schema.ts's `notify` field doc and README.md's `notify` parenthetical
+   to name a posted question among the paged events.
+
+**Files touched.**
+- src/events/notify.ts (allowlist entry, module doc)
+- src/config/config-schema.ts (`notify` field doc)
+- README.md (`notify` parenthetical)
+- test/notify.test.ts
+
+Tests: update the pinned literal array in `NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned
+to the planned allowlist and gap`; add a spawn case mirroring `an allowlisted event spawns the
+notify command once with the three env vars set` with a `question_posted` event (`{ loop: "feature",
+question: "…" }`), asserting `TUMWATER_EVENT_TYPE=question_posted`, the posting role, and
+`TUMWATER_EVENT_MESSAGE` equal to `formatEvent(event)`.
+
+**Acceptance criteria.**
+- A `question_posted` event logged in-process spawns the notify command once, with
+  `TUMWATER_EVENT_TYPE=question_posted`, `TUMWATER_EVENT_LOOP` the posting role, and
+  `TUMWATER_EVENT_MESSAGE` the rendered `question posted: <heading>` line.
+- `NOTIFY_EVENT_TYPES` contains `question_posted`, and the pinned test asserts the updated
+  literal array including it.
+- A non-allowlisted event still spawns nothing (the existing negative test is unchanged and green).
+- The `notify` docs in src/events/notify.ts, src/config/config-schema.ts and README.md name a
+  posted question.
+- `npm run test` green.
+
+
 ## Done
 
 ### Retract a config value: `tumwater config unset <key>` (planned 2026-10-09 by plan; done 2026-10-09 by feature)
