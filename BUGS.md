@@ -5,6 +5,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+_None yet._
+
 ### A change that has already merged as part of a landing batch keeps its role's stale error streak, and with it the dashboard's red "failing tick after tick" banner, until every later change in the batch finishes — including a conflict-resolution model run that can take its whole timeout (found by operator session 2026-10-09 from the GUI banner `feature-2 is failing tick after tick` while `feature-2`'s change was already on main as 0694aadf)
 
 - **Symptom:** at 14:56:33 on 2026-10-09 the merge task landed a two-change batch `[feature-2 bed22438, feature 7e5265e6]`. The `merged` event for feature-2 (0694aadf) fired at once, and `.tumwater/state/landing.json` marked its change `"status": "done"`. But no `landed` event followed, and `.tumwater/state/feature-2.json` was last saved at the review verdict (14:49), still reading `"lastResult": "review_error"`, `"consecutiveErrors": 6`. Meanwhile `feature`'s change hit a conflict and its resolver run (`tumwater-feature-1314-conflict`) was still going minutes later. Throughout, `loopPhase` (src/ui/status-model.ts, `consecutiveErrors >= ERROR_STREAK_WARN`) read feature-2 as `failing`, so src/ui/fleet-alerts.ts raised the red `failing tick after tick` banner over a role whose work had just landed. Earlier the same day `feature-3`'s merged 3ea92811 waited 158 s for its `landed` write-back behind a batch-mate. Anything else that reads the role's state in that window sees the stale streak too: the streak gate (src/gates/streak-gate.ts) and the error-storm observation (src/fleet/fleet-polls.ts).
@@ -13,6 +15,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Suggested fix:** settle each change as soon as its result is final rather than after the batch. For example, `landVetted` takes an `onResult(index, result)` callback that `startMerge` uses to call `settleLandingOutcome` immediately for a defined result. The end-of-batch loop then only handles what is still undecided (re-vet or drop) and skips anything already settled. Keep the existing ordering guarantees: write-back before the queue entry drops, and a user abort still settles unlanded changes as `aborted`. The test should cover a two-change batch whose second change's resolver blocks, and check that the first role's `consecutiveErrors` is 0 and its `landed` event is written before the resolver returns.
 
 ## Fixed
+
+### A rejection's prior-objection filter read "never resolved" and "no longer resolved" as resolutions and dropped the still-open objection (found by bugfix loop 2026-10-09 in a latent-bug hunt over the same day's conservative filter in src/review/review-verdict.ts; fixed 2026-10-09 by bugfix loop)
+
+- **Symptom:** `parseVerdict` filters a rejection's leading prior-objection resolutions out of the reason list (`withoutResolvedPriorObjections`), so the author is not told to fix a resolution. A line that negates the resolution with "never" ("Prior objections 1–3 were never resolved by this revision") or with "no longer … resolved" was matched as a resolution and dropped; when that left nothing, `parseVerdict` returned `reasons: []` and the author's next-tick note named no objection to fix. The filter's own contract is conservative — anything ambiguous is kept, because a dropped objection tells the author to fix nothing.
+- **Reproduction:** `parseVerdict("VERDICT: reject\n1. Prior objections 1–3 were never resolved by this revision.")` returned `reasons: []`. The new "a prior objection negated with never or no-longer-resolved is kept" case in test/review.test.ts failed before the fix and passes after.
+- **Fix:** `hasOutstandingSignal` now treats `never` as a negation, and a `no longer`-headed phrase as outstanding when it precedes a resolution word (`resolved`/`addressed`/`satisfied`/`fixed`/`closed`), so the line is kept.
+
+**Validation gap:** none — the existing suite had no case for a negated resolution phrase, but a direct unit test reproduced the drop deterministically; nothing beyond a new test was missing.
 
 ### A handoff over an already-applied conflict hand-back never re-sends the hand-back note, so the fresh session meets the conflict markers in its worktree with no explanation (found by operator session 2026-10-09 while writing the Interactions notes for Agent backends 3/7–7/7, from src/loop/loop-tick.ts at 9b45a049; fixed 2026-10-09 by bugfix loop)
 

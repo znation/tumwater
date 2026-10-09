@@ -124,18 +124,21 @@ function isResolvedPriorObjection(reason: string): boolean {
 }
 
 /** Whether a resolution-shaped line also carries an outstanding or newly stated objection: a
- * negation ("not resolved", "not yet fully resolved"), a contrast that introduces another
- * item ("but", "however", "except", "though", "yet"), or an action/defect word
- * ("requires", "fails", "missing"). A bare "outstanding" is a signal too, unless it is
- * negated ("objection 6 is outstanding" keeps the line; "none is an outstanding rejection"
- * does not). */
+ * negation ("not resolved", "not yet fully resolved", "never resolved"), a contrast that
+ * introduces another item ("but", "however", "except", "though", "yet"), or an
+ * action/defect word ("requires", "fails", "missing"). A bare "outstanding" is a signal
+ * too, unless it is negated ("objection 6 is outstanding" keeps the line; "none is an
+ * outstanding rejection" does not). */
 function hasOutstandingSignal(text: string): boolean {
   if (
-    /\bunresolved\b|\bnot\b|\bcannot\b|\bstill\b|\bremains?\b|\bpending\b|\bbut\b|\bhowever\b|\bexcept\b|\bthough\b|\balthough\b|\byet\b|\brequires?\b|\bneeds?\b|\bshould\b|\bmust\b|\bfails?\b|\bmissing\b|\bincorrect\b|\bbroken\b|\bwrong\b|\bbugs?\b|\berror\b/.test(
+    /\bunresolved\b|\bnot\b|\bnever\b|\bcannot\b|\bstill\b|\bremains?\b|\bpending\b|\bbut\b|\bhowever\b|\bexcept\b|\bthough\b|\balthough\b|\byet\b|\brequires?\b|\bneeds?\b|\bshould\b|\bmust\b|\bfails?\b|\bmissing\b|\bincorrect\b|\bbroken\b|\bwrong\b|\bbugs?\b|\berror\b/.test(
       text,
     )
   ) {
     return true;
   }
+  // "no longer" heads the resolution list, but "no longer resolved" is its own negation: the
+  // objection is open again. Keep the line rather than read the first phrase alone.
+  if (/\bno longer\b[^.;]*\b(?:resolved|addressed|satisfied|fixed|closed)\b/.test(text)) return true;
   return /\boutstanding\b/.test(text) && !/\b(?:none|no|nothing|never)\b[^.;]*\boutstanding\b/.test(text);
 }

@@ -156,6 +156,16 @@ test("an unresolved prior objection phrased with an intervening adverb is kept",
   assert.deepEqual(v?.reasons, ["Prior objection 2 is not yet fully resolved — the helper drops errors."]);
 });
 
+// A resolution phrase negated by "never" or "no longer … resolved" reports the objection still
+// open; the filter must keep it rather than tell the author to fix nothing (latent-bug hunt
+// 2026-10-09).
+test("a prior objection negated with never or no-longer-resolved is kept", () => {
+  const never = "Prior objections 1–3 were never resolved by this revision.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${never}`)?.reasons, [never]);
+  const noLonger = "Prior objection 2 is no longer resolved by this revision.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${noLonger}`)?.reasons, [noLonger]);
+});
+
 // A single line that reports some prior objections resolved and another still open is not a
 // resolution; dropping it whole would hide the open one the author must fix (review 2026-10-09).
 test("a line mixing a resolution with an open objection is kept whole", () => {
