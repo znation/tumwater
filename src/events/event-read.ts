@@ -31,9 +31,15 @@ export function parseEventLine(line: string): HarnessEvent | null {
 
 /** The local calendar-day key ("YYYY-MM-DD") of an event's `ts`, or null when it carries no
  * numeric timestamp. The one day-bucketing rule the windowed reader (event-window.ts) and the
- * usage/failure reports all apply, so they agree on what counts as one day. */
+ * usage/failure reports all apply, so they agree on what counts as one day. A `ts` that is
+ * present but not finite is as unusable as an absent one and reads null too (the same
+ * finiteness check eventTick/eventUsage/tickStartMap/tickSpanMs apply): bare
+ * `typeof Infinity === "number"` let a JSON `1e999` through to dayKey, whose
+ * `new Date(Infinity)` rendered the bucket key "NaN-NaN-NaN" and filed the event under a day
+ * no window can name. */
 export function eventDayKey(ev: HarnessEvent): string | null {
-  return typeof ev.ts === "number" ? dayKey(ev.ts) : null;
+  const ts = finiteNumber(ev.ts, null);
+  return ts === null ? null : dayKey(ts);
 }
 
 /** The loop id an event is filed under, or "?" when absent or empty — the guard the usage

@@ -48,6 +48,11 @@ test("eventDayKey buckets by ts and answers null when ts is not a number", () =>
   assert.equal(eventDayKey(ev({ ts })), dayKeyOracle(ts));
   assert.equal(eventDayKey({ ts: "not a number" } as unknown as HarnessEvent), null);
   assert.equal(eventDayKey({} as HarnessEvent), null);
+  // A ts present but not finite is unusable too — JSON `1e999` parses to Infinity, and
+  // `typeof Infinity === "number"` let it through to dayKey's `new Date(Infinity)`, whose
+  // bucket key was "NaN-NaN-NaN".
+  assert.equal(eventDayKey(ev({ ts: Number.POSITIVE_INFINITY })), null);
+  assert.equal(eventDayKey(ev({ ts: Number.NaN })), null);
 });
 
 test("tickStartMap pairs only tick_start events by loop#tick", () => {
