@@ -15,6 +15,7 @@ import {
 } from "../src/pi-extension/role-notes.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv, withEnv } from "./helpers/env.js";
+import { withThrowingFs } from "./helpers/fs-faults.js";
 
 /** The subset of pi's registered tool shape the tests drive. */
 interface RegisteredTool {
@@ -70,7 +71,7 @@ test("writeRoleNote removes its temp file when the write cannot complete", () =>
   );
 });
 
-test("writeRoleNote rethrows the original failure when the temp cleanup itself fails", (t) => {
+test("writeRoleNote rethrows the original failure when the temp cleanup itself fails", () => {
   // The best-effort rmSync can itself fail (a vanished or unremovable temp). That must not mask
   // the write/rename failure the caller needs, so the original error — with its errno code —
   // propagates instead of the cleanup error.
@@ -86,10 +87,7 @@ test("writeRoleNote rethrows the original failure when the temp cleanup itself f
   }
   assert.ok(original?.code, "precondition: the rename onto a directory fails with an errno code");
 
-  t.mock.method(fs, "rmSync", (() => {
-    throw new Error("cleanup unavailable");
-  }) as typeof fs.rmSync);
-  try {
+  withThrowingFs("rmSync", new Error("cleanup unavailable"), () => {
     assert.throws(
       () => writeRoleNote(notes, "cannot land"),
       (err: unknown) => {
@@ -100,9 +98,7 @@ test("writeRoleNote rethrows the original failure when the temp cleanup itself f
       },
       "a failing temp cleanup must not mask the write failure",
     );
-  } finally {
-    t.mock.restoreAll();
-  }
+  });
 });
 
 test("the extension registers no tool when TUMWATER_NOTES_PATH is unset", () => {

@@ -1,4 +1,4 @@
-import test, { type TestContext } from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,7 +10,7 @@ import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { errnoError } from "./helpers/fs-faults.js";
+import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 
 /** src/inbox/inbox-edit.ts's own tests: the edit half of the prompt queues — rewriting one queued
@@ -116,36 +116,25 @@ test("editRolePrompt measures and stores one text, so padding cannot smuggle an 
   assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["x".repeat(DIRECTOR_PROMPT_MAX_CHARS)]);
 });
 
-test("editRolePrompt returns gone when the file disappears between listing and reading", (t: TestContext) => {
+test("editRolePrompt returns gone when the file disappears between listing and reading", () => {
   const root = tmpdir();
   enqueuePrompt(root, "raced");
 
   // The director dequeued it concurrently: readFileSync hits ENOENT before any write is
   // even attempted — the race the edit shares with takeCancelledPrompt.
-  const enoent = errnoError("ENOENT");
-  t.mock.method(fs, "readFileSync", (() => {
-    throw enoent;
-  }) as typeof fs.readFileSync);
-  try {
+  withThrowingFs("readFileSync", errnoError("ENOENT"), () => {
     assert.deepEqual(editRolePrompt(root, DIRECTOR_ROLE, 1, "new"), { status: "gone" }); // no throw
-  } finally {
-    t.mock.restoreAll();
-  }
+  });
   // A prompt the director just dequeued ran — it was not edited, so no event is logged.
   assert.equal(eventsOfType(root, "prompt_edited").length, 0);
 });
 
-function mockRead(t: TestContext, err: NodeJS.ErrnoException): void {
-  t.mock.method(fs, "readFileSync", (() => {
-    throw err;
-  }) as typeof fs.readFileSync);
-}
-
-test("editRolePrompt rethrows EACCES (a permission failure is not a race)", (t: TestContext) => {
+test("editRolePrompt rethrows EACCES (a permission failure is not a race)", () => {
   const root = tmpdir();
   enqueuePrompt(root, "locked");
-  mockRead(t, errnoError("EACCES"));
-  assert.throws(() => editRolePrompt(root, DIRECTOR_ROLE, 1, "new"), /EACCES|permission/);
+  withThrowingFs("readFileSync", errnoError("EACCES"), () => {
+    assert.throws(() => editRolePrompt(root, DIRECTOR_ROLE, 1, "new"), /EACCES|permission/);
+  });
 });
 
 test("editListedPrompt resolves the --list numbering like cancel: one hit, ambiguity, miss", () => {

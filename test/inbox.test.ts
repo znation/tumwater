@@ -19,7 +19,7 @@ import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { errCode } from "../src/errno.js";
-import { errnoError } from "./helpers/fs-faults.js";
+import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
 
 /** Freeze the wall clock for the not-before tests and hand back the ticking handle: the
  * deliverability filters read Date.now(), so node:test's mock Date both pins the stamp math
@@ -109,44 +109,32 @@ test("cancelPrompt errors on out-of-range positions without touching any file", 
   assert.deepEqual(queuedPrompts(dir), ["alpha"], "nothing touched on failure");
 });
 
-test("cancelPrompt returns gone when the file disappears between listing and removal", (t) => {
+test("cancelPrompt returns gone when the file disappears between listing and removal", () => {
   const dir = tmpdir();
   enqueuePrompt(dir, "raced");
 
   // The director dequeued it concurrently: rmSync hits ENOENT after our read succeeded.
-  const enoent = errnoError("ENOENT");
-  t.mock.method(fs, "rmSync", (() => {
-    throw enoent;
-  }) as typeof fs.rmSync);
-  try {
+  withThrowingFs("rmSync", errnoError("ENOENT"), () => {
     assert.deepEqual(cancelPrompt(dir, 1), { status: "gone" }); // no throw
-  } finally {
-    t.mock.restoreAll();
-  }
+  });
   // A prompt the director just dequeued ran — it was not cancelled, so no event is logged.
   assert.equal(eventsOfType(dir, "prompt_cancelled").length, 0);
 });
 
-test("cancelPrompt returns gone when the file disappears between listing and reading", (t) => {
+test("cancelPrompt returns gone when the file disappears between listing and reading", () => {
   const dir = tmpdir();
   enqueuePrompt(dir, "raced");
 
   // The director dequeued it concurrently: readFileSync hits ENOENT before any removal is
   // even attempted — the earlier half of the same race the rmSync test above covers.
-  const enoent = errnoError("ENOENT");
-  t.mock.method(fs, "readFileSync", (() => {
-    throw enoent;
-  }) as typeof fs.readFileSync);
-  try {
+  withThrowingFs("readFileSync", errnoError("ENOENT"), () => {
     assert.deepEqual(cancelPrompt(dir, 1), { status: "gone" }); // no throw
-  } finally {
-    t.mock.restoreAll();
-  }
+  });
   // A prompt the director just dequeued ran — it was not cancelled, so no event is logged.
   assert.equal(eventsOfType(dir, "prompt_cancelled").length, 0);
 });
 
-test("cancelPrompt rethrows non-ENOENT errors instead of reporting them as gone", (t) => {
+test("cancelPrompt rethrows non-ENOENT errors instead of reporting them as gone", () => {
   const dir = tmpdir();
   enqueuePrompt(dir, "locked");
   const eacces = errnoError("EACCES");
@@ -154,65 +142,48 @@ test("cancelPrompt rethrows non-ENOENT errors instead of reporting them as gone"
   // A permission failure is not a race with the director. Reporting it as "gone" would exit
   // clean and tell the user their prompt was taken when nothing happened — both catch blocks
   // must discriminate on ENOENT specifically.
-  t.mock.method(fs, "readFileSync", (() => {
-    throw eacces;
-  }) as typeof fs.readFileSync);
-  assert.throws(
-    () => cancelPrompt(dir, 1),
-    (err: unknown) => errCode(err) === "EACCES",
-  );
-  t.mock.restoreAll();
-
-  t.mock.method(fs, "rmSync", (() => {
-    throw eacces;
-  }) as typeof fs.rmSync);
-  assert.throws(
-    () => cancelPrompt(dir, 1),
-    (err: unknown) => errCode(err) === "EACCES",
-  );
-  t.mock.restoreAll();
+  withThrowingFs("readFileSync", eacces, () => {
+    assert.throws(
+      () => cancelPrompt(dir, 1),
+      (err: unknown) => errCode(err) === "EACCES",
+    );
+  });
+  withThrowingFs("rmSync", eacces, () => {
+    assert.throws(
+      () => cancelPrompt(dir, 1),
+      (err: unknown) => errCode(err) === "EACCES",
+    );
+  });
 
   // The prompt is still queued and nothing was logged.
   assert.deepEqual(queuedPrompts(dir), ["locked"]);
   assert.equal(eventsOfType(dir, "prompt_cancelled").length, 0);
 });
 
-test("dequeuePrompt returns null when the file disappears between listing and reading", (t) => {
+test("dequeuePrompt returns null when the file disappears between listing and reading", () => {
   const dir = tmpdir();
   enqueuePrompt(dir, "raced");
 
   // A concurrent `tumwater prompt --cancel` removed it after the directory was listed:
   // readFileSync hits ENOENT before any removal is even attempted. The director must see an
   // empty inbox (skip its tick) instead of failing with a raw ENOENT.
-  const enoent = errnoError("ENOENT");
-  t.mock.method(fs, "readFileSync", (() => {
-    throw enoent;
-  }) as typeof fs.readFileSync);
-  try {
+  withThrowingFs("readFileSync", errnoError("ENOENT"), () => {
     assert.equal(dequeuePrompt(dir), null); // no throw
-  } finally {
-    t.mock.restoreAll();
-  }
+  });
 });
 
-test("dequeuePrompt returns null when the file disappears between reading and removal", (t) => {
+test("dequeuePrompt returns null when the file disappears between reading and removal", () => {
   const dir = tmpdir();
   enqueuePrompt(dir, "raced");
 
   // The cancel won after our read: rmSync hits ENOENT. The prompt was cancelled, so it must
   // not be executed — null (skip), never the text we already read.
-  const enoent = errnoError("ENOENT");
-  t.mock.method(fs, "rmSync", (() => {
-    throw enoent;
-  }) as typeof fs.rmSync);
-  try {
+  withThrowingFs("rmSync", errnoError("ENOENT"), () => {
     assert.equal(dequeuePrompt(dir), null); // no throw, and the read text is not returned
-  } finally {
-    t.mock.restoreAll();
-  }
+  });
 });
 
-test("dequeuePrompt rethrows non-ENOENT errors instead of reporting them as an empty queue", (t) => {
+test("dequeuePrompt rethrows non-ENOENT errors instead of reporting them as an empty queue", () => {
   const dir = tmpdir();
   enqueuePrompt(dir, "locked");
   const eacces = errnoError("EACCES");
@@ -220,23 +191,18 @@ test("dequeuePrompt rethrows non-ENOENT errors instead of reporting them as an e
   // A permission failure is not a race with a cancel. Returning null would make the director
   // skip its tick while the prompt stays queued — both catch blocks must discriminate on
   // ENOENT specifically, like cancelPrompt's.
-  t.mock.method(fs, "readFileSync", (() => {
-    throw eacces;
-  }) as typeof fs.readFileSync);
-  assert.throws(
-    () => dequeuePrompt(dir),
-    (err: unknown) => errCode(err) === "EACCES",
-  );
-  t.mock.restoreAll();
-
-  t.mock.method(fs, "rmSync", (() => {
-    throw eacces;
-  }) as typeof fs.rmSync);
-  assert.throws(
-    () => dequeuePrompt(dir),
-    (err: unknown) => errCode(err) === "EACCES",
-  );
-  t.mock.restoreAll();
+  withThrowingFs("readFileSync", eacces, () => {
+    assert.throws(
+      () => dequeuePrompt(dir),
+      (err: unknown) => errCode(err) === "EACCES",
+    );
+  });
+  withThrowingFs("rmSync", eacces, () => {
+    assert.throws(
+      () => dequeuePrompt(dir),
+      (err: unknown) => errCode(err) === "EACCES",
+    );
+  });
 
   // The prompt is still queued.
   assert.deepEqual(queuedPrompts(dir), ["locked"]);

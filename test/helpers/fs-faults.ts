@@ -34,6 +34,22 @@ export function patchFsMethod(name: string, wrapper: (orig: FsCall) => FsCall): 
   };
 }
 
+/** Replace fs entry point `name` with a stub that always throws `err` for the duration of
+ * `body`, restoring it afterwards — the body-scoped twin of `patchFsMethod` for the common
+ * fault-injection case where the call under test only needs "this fs call fails now". Nested
+ * uses restore in LIFO order. `body` runs synchronously — the restore happens when it
+ * returns — so an async body that must read under the fault keeps its own patch scaffold. */
+export function withThrowingFs<T>(name: string, err: unknown, body: () => T): T {
+  const undo = patchFsMethod(name, () => (() => {
+    throw err;
+  }) as FsCall);
+  try {
+    return body();
+  } finally {
+    undo();
+  }
+}
+
 /** Wrap fs.openSync so the first open of `file` unlinks it instead — simulating a log
  * rotation rename landing between a reader's stat and its open (the race tail readers must
  * survive as "no data", not an ENOENT throw). Returns an undo function. */
