@@ -22,7 +22,7 @@ import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
-import { commitIn, headSha, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
@@ -39,11 +39,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
  * The default `message` is the suite's rejected-work vocabulary. */
 function commitOffMain(file: string, content: string, message = "the rejected work"): { root: string; sha: string } {
   const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(root, file), content);
-  commitIn(root, message);
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, file), content), message);
   return { root, sha };
 }
 
@@ -432,12 +428,11 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
   const repo = await initializedRepo();
   // A rejected change edits seed.txt; main then moves the same line, so the clean re-apply
   // conflicts and the fallback must leave the markers for the author.
-  sh(repo, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(repo, "seed.txt"), "rejected version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "the rejected work");
-  const sha = headSha(repo);
-  sh(repo, "git", "checkout", "main");
+  const sha = pinOffMain(
+    repo,
+    (d) => fs.writeFileSync(path.join(d, "seed.txt"), "rejected version\n"),
+    "the rejected work",
+  );
   fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
   sh(repo, "git", "commit", "-am", "main moved the same line");
   await setRef(repo, rejectedRefName("improve"), sha);

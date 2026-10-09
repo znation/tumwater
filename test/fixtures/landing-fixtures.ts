@@ -22,7 +22,7 @@ import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { LandingEntry } from "../../src/landing/landing-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { headSha, sh, tmpdir } from "./repo-fixtures.js";
+import { pinOffMain, tmpdir } from "./repo-fixtures.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
 /** Shared fixtures for the landing-drain tests — landing-drain.test.ts and
@@ -38,14 +38,12 @@ export const APPROVE = (reply = "the work looks right") => reviewerPi(`VERDICT: 
 /** One pinned commit NOT contained in main, standing alone on main's tip — the queue shape
  * a changed tick leaves behind. Detach first: the commit must not land on main itself. */
 export function pinnedCommit(root: string, role: string): string {
-  sh(root, "git", "checkout", "--detach");
-  sh(root, "git", "reset", "--hard", "main");
-  fs.appendFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", `work by ${role}`);
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
-  return sha;
+  return pinOffMain(
+    root,
+    (d) => fs.appendFileSync(path.join(d, `${role}.txt`), `work by ${role}\n`),
+    `work by ${role}`,
+    { reset: true },
+  );
 }
 
 export function entry(role: string, sha: string, enqueuedAt = Date.now()): LandingEntry {

@@ -25,7 +25,7 @@ import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead, landingRefExists } from "./fixtures/orchestrator-fixtures.js";
-import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { assertClean, headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Simulate an interrupted tick's leftover — the crash state every test in this file starts
  * from: detach, commit work main does not contain, return to main, and pin the commit with the
@@ -38,12 +38,7 @@ async function pinLeftover(
   message: string,
   role = "improve",
 ): Promise<string> {
-  sh(repo, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(repo, file), content);
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", message);
-  const sha = headSha(repo);
-  sh(repo, "git", "checkout", "main");
+  const sha = pinOffMain(repo, (d) => fs.writeFileSync(path.join(d, file), content), message);
   await setRef(repo, landingRefName(role), sha);
   return sha;
 }

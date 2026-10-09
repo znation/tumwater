@@ -184,6 +184,25 @@ export function commitIn(dir: string, msg: string): void {
   sh(dir, "git", "commit", "-m", msg);
 }
 
+/** Commit one change on a detached HEAD and hand the repo back on main, returning the new
+ * commit's sha — the "a tick's leftover, pinned off main" shape the tests build.
+ * `change` writes the off-main edit (a file write or append in the common case); `reset`
+ * drops any prior detached commit first so each pin stands alone on main's tip. */
+export function pinOffMain(
+  dir: string,
+  change: (dir: string) => void,
+  message: string,
+  opts: { reset?: boolean } = {},
+): string {
+  sh(dir, "git", "checkout", "--detach");
+  if (opts.reset) sh(dir, "git", "reset", "--hard", "main");
+  change(dir);
+  commitIn(dir, message);
+  const sha = headSha(dir);
+  sh(dir, "git", "checkout", "main");
+  return sha;
+}
+
 /** Give a repo a committed package.json carrying `version` — the base the release-script
  * tests stand on, since scripts/release.mjs reads the version from it. */
 export function seedPackage(root: string, version: string): void {

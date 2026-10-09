@@ -35,7 +35,7 @@ import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
@@ -366,12 +366,11 @@ test("a foreign changes shape or a null record degrades instead of crashing a la
 test("a queued landing's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
   const root = makeRepo();
   // A pinned change ahead of main, exactly what a tick leaves behind for the pipeline.
-  sh(root, "git", "checkout", "--detach");
-  fs.appendFileSync(path.join(root, "seed.txt"), "the work\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "the work");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const sha = pinOffMain(
+    root,
+    (d) => fs.appendFileSync(path.join(d, "seed.txt"), "the work\n"),
+    "the work",
+  );
   await setRef(root, landingRefName("improve"), sha);
   const entry: LandingEntry = { role: "improve", sha, tick: 3, summary: "the work", enqueuedAt: Date.now() };
   enqueueLanding(root, entry);

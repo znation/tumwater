@@ -13,7 +13,7 @@ import type { TickResult } from "../../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import type { LoopState } from "../../src/loop/loop-state.js";
 import { projManifest, writeScript } from "../fakes/fake-commands.js";
-import { headSha, mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo, pinOffMain, sh } from "./repo-fixtures.js";
 import { piRunResult } from "../fakes/fake-pi.js";
 import { runPi } from "../../src/pi/pi.js";
 import { assistantLine, leasedRoleShell } from "./pi-events.js";
@@ -72,12 +72,11 @@ export function makeCtx(
  * reset left it. */
 export async function pinnedFixture(): Promise<{ root: string; sha: string; wt: string }> {
   const root = makeRepo();
-  sh(root, "git", "checkout", "--detach");
-  fs.appendFileSync(path.join(root, "seed.txt"), "the work\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "the work");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
+  const sha = pinOffMain(
+    root,
+    (d) => fs.appendFileSync(path.join(d, "seed.txt"), "the work\n"),
+    "the work",
+  );
   await setRef(root, REF, sha);
   const wt = await ensureWorktree(root, ROLE, "main"); // the role worktree: clean at main
   return { root, sha, wt };
@@ -136,21 +135,22 @@ async function batchPinnedFixture(
     sh(root, "git", "add", "-A");
     sh(root, "git", "commit", "-m", "seed the fixture");
   }
-  sh(root, "git", "checkout", "--detach");
   const shas: Record<string, string> = {};
   for (const role of roles) {
     // Each pin stands alone on main (independent branches, not a stack): the batch's
     // cherry-pick and the fallback's rebase then actually rewrite the second change.
-    sh(root, "git", "reset", "--hard", "main");
-    if (edit) edit(root, role);
-    else fs.appendFileSync(path.join(root, `${role}.txt`), `work by ${role}\n`);
-    sh(root, "git", "add", "-A");
-    sh(root, "git", "commit", "-m", `work by ${role}`);
-    const sha = headSha(root);
+    const sha = pinOffMain(
+      root,
+      (d) => {
+        if (edit) edit(d, role);
+        else fs.appendFileSync(path.join(d, `${role}.txt`), `work by ${role}\n`);
+      },
+      `work by ${role}`,
+      { reset: true },
+    );
     shas[role] = sha;
     await setRef(root, landingRefName(role), sha);
   }
-  sh(root, "git", "checkout", "main");
   return { root, shas };
 }
 

@@ -35,7 +35,7 @@ import {
 } from "./fixtures/orchestrator-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
-import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
@@ -454,18 +454,17 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
   } catch {
     // Not tracked — the gitignore line above still keeps future `add -A`s from swallowing it.
   }
-  sh(repo, "git", "checkout", "--detach");
   for (const role of roles) {
     // Each pin stands alone on main: the two queued landings are independent changes.
-    sh(repo, "git", "reset", "--hard", "main");
-    fs.writeFileSync(path.join(repo, `${role}.txt`), `${role}\n`);
-    sh(repo, "git", "add", "-A");
-    sh(repo, "git", "commit", "-m", `${role} work`);
-    const sha = headSha(repo);
+    const sha = pinOffMain(
+      repo,
+      (d) => fs.writeFileSync(path.join(d, `${role}.txt`), `${role}\n`),
+      `${role} work`,
+      { reset: true },
+    );
     await setRef(repo, landingRefName(role), sha);
     enqueueLanding(repo, { role, sha, tick: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
-  sh(repo, "git", "checkout", "main");
 }
 
 test("an abort for one queued role stops only that role's vet and discards its pin; the other vet runs on", async () => {
