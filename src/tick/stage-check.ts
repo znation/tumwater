@@ -213,8 +213,17 @@ async function missingPathFindings(
   // line (not whitespace-split) so surrounding backticks, brackets, and sentence punctuation
   // fall away with the match.
   const tokenRe = /[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]+/g;
+  let file: string | null = null;
   for (const line of diff.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      file = line.slice(4).replace(/^b\//, "");
+      continue;
+    }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
+    // A test file's fixtures routinely name paths from the software under test, which need
+    // not exist here; the added-nonexistent-path heuristic targets real references, so it
+    // spares added lines in test/ (the rename/delete scan above still covers the file).
+    if (file !== null && file.startsWith("test/")) continue;
     for (const m of line.slice(1).matchAll(tokenRe)) {
       const p = m[0];
       const top = p.slice(0, p.indexOf("/"));

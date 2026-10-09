@@ -232,6 +232,50 @@ test("an added line naming a nonexistent path yields a finding", async () => {
   assert.match(findings[0]!, /src\/x\/src\/x\/a\.ts/);
 });
 
+test("an added line in a test file naming a nonexistent path yields no finding", async () => {
+  // Built from segments so this test source holds no literal path token for the stage check to
+  // flag; the scratch worktree file the check reads still receives the real path.
+  const keep = ["src", "keep.ts"].join("/");
+  const testFile = ["test", "existing.test.ts"].join("/");
+  const absent = ["src", "x", "src", "x", "a.ts"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    [testFile]: "export const x = 1;\n",
+  });
+  // Test fixtures routinely name paths from the software under test, which need not exist
+  // here; the added-nonexistent-path heuristic is for real references, so it spares test/.
+  fs.writeFileSync(
+    path.join(wt, "test", "existing.test.ts"),
+    `export const x = 1;\nconst f = "${absent}";\n`,
+  );
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT), []);
+});
+
+test("an added line outside test/ naming a nonexistent path still yields a finding", async () => {
+  const keep = ["src", "keep.ts"].join("/");
+  const testFile = ["test", "existing.test.ts"].join("/");
+  const absent = ["src", "x", "src", "x", "a.ts"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    [testFile]: "export const x = 1;\n",
+  });
+  fs.writeFileSync(
+    path.join(wt, "src", "notes.ts"),
+    `export const note = "${absent}";\n`,
+  );
+  fs.writeFileSync(
+    path.join(wt, "test", "existing.test.ts"),
+    `export const x = 1;\nconst f = "${absent}";\n`,
+  );
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT);
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /added lines name paths that do not exist in the tree/);
+  assert.ok(findings[0]!.includes(absent));
+});
+
 test("a renamed-away path named as moved-from is not a nonexistent path", async () => {
   const { wt } = await repoWith({
     "src/a.ts": "export const a = 1;\n",
