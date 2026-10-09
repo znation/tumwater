@@ -18,6 +18,7 @@ import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
+import { eventsLogPath } from "../src/paths.js";
 
 // A tree's install kept in step with its lockfile (src/build/dep-install.ts, BUGS.md 2026-10-01): a
 // worktree has no node_modules of its own, so a change that adds a dependency failed its gate
@@ -229,4 +230,19 @@ test("syncRootInstall warns when the root install fails, and stays silent with n
   await syncRootInstall(root, "feature", fakeInstaller("fail"));
   assert.equal(eventsOfType(root, "dep_install")[0]?.status, "failed");
   assert.ok(warningMessages(root).some((m) => /root install did not pick up main's dependencies \(ink\)/.test(m)));
+});
+
+test("syncRootInstall resolves when the events feed is unwritable, leaving the post-ff landing un-rejected", async () => {
+  const root = tmpdir("dep-install-broken-feed-");
+  writeLock(root, { ink: "7.1.1" });
+  // A directory at the feed path makes every append throw EISDIR. The install itself still
+  // succeeds, and the dep_install pricing that follows is observability: the landing that
+  // awaits this after its fast-forward must not be turned into a failure by it.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  const install = fakeInstaller();
+
+  await syncRootInstall(root, "feature", install);
+
+  assert.deepEqual(install.calls, [root], "the awaited root install still ran");
+  assert.deepEqual(installDrift(root), [], "the root install was still re-synced");
 });

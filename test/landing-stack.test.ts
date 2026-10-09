@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ffStackToMain } from "../src/landing/landing-stack.js";
+import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { headSha, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
@@ -72,6 +73,23 @@ test("ffStackToMain returns merge_blocked when main diverged under the stack, wi
   );
   assert.equal(mainSha(root), mainAfter, "main is untouched");
   assert.equal(eventsOfType(root, "merged").length, 0, "no events on a blocked ff");
+});
+
+test("ffStackToMain whose events feed is unwritable still fast-forwards and reports changed", async () => {
+  const { root, shaA, shaB } = await stackFixture();
+  // The merged/question events are the only appends after the fast-forward. Replace the feed
+  // with a directory so every append throws EISDIR and prove the landed stack is not turned
+  // into a failure (or left with syncRootInstall skipped) by a broken observability sink.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  assert.equal(
+    await ffStackToMain(root, "main", [
+      { role: "alpha", sha: shaA, summary: "A" },
+      { role: "beta", sha: shaB, summary: "B" },
+    ]),
+    "changed",
+  );
+  assert.equal(mainSha(root), shaB, "main fast-forwarded to the stacked tip");
 });
 
 test("ffStackToMain emits question_posted for questions the stack adds, not pre-existing ones", async () => {

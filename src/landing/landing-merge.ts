@@ -1,5 +1,5 @@
 import { openQuestions } from "../backlog/backlog.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEvent } from "../events/events.js";
 import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
 import { aheadOfMainFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./landing-diff.js";
@@ -159,7 +159,10 @@ async function tryMerge(
     // landing, which under concurrency is the common case (review runs outside this lock).
     if (!(await ffMainTo(ctx.root, await headOf(wt, "HEAD"), ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
-    logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
+    // Best-effort: main has already fast-forwarded, so an unwritable events feed must not turn
+    // a completed landing into a rejected one and skip syncRootInstall below — the same
+    // no-torn-feed policy as the orchestrator's other post-effect logging.
+    logEventBestEffort(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
     logNewQuestions(ctx.root, before, ctx.role);
     // Still under the lock: a landing that moved main's lockfile re-syncs the root install
     // every worktree resolves through before the next landing's check runs (BUGS.md 2026-10-01).

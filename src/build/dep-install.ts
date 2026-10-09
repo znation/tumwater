@@ -3,7 +3,7 @@ import { resolveFromNodeModules } from "./build-check-detect.js";
 import { readJsonFile } from "../files/json-files.js";
 import { EXEC_MAX_BUFFER } from "../process/process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 
 /** Keeping a tree's install in step with its lockfile (BUGS.md 2026-10-01). node_modules is
  * gitignored, so a tumwater worktree has none of its own: its toolchain and every import
@@ -121,7 +121,10 @@ export async function syncRootInstall(
 ): Promise<void> {
   const r = await syncInstall(root, install);
   if (!r) return;
-  logEvent(root, {
+  // Best-effort: the root install already ran and the ff that prompted it already moved main,
+  // so an unwritable feed must not reject the landing that awaited this (landing-merge.ts's
+  // tryMerge, landing-stack.ts's ffStackToMain).
+  logEventBestEffort(root, {
     loop: role,
     type: "dep_install",
     packages: r.packages,
@@ -130,7 +133,7 @@ export async function syncRootInstall(
     ...(r.detail ? { error: r.detail } : {}),
   });
   if (!r.ok)
-    warnEvent(
+    warnEventBestEffort(
       root,
       role,
       `the root install did not pick up main's dependencies (${r.packages.join(", ")})${r.detail ? `: ${r.detail}` : ""}; checks install into their own trees until a later landing re-syncs it`,

@@ -7,7 +7,7 @@ import { diffLineMultiset } from "../src/landing/landing-diff.js";
 import { mergeToMain, type MergeContext } from "../src/landing/landing-merge.js";
 import { defaultConfig } from "../src/config/config.js";
 import { checkMainBaseline } from "../src/baseline/main-baseline.js";
-import { branchName, mergeWorktreePath } from "../src/paths.js";
+import { branchName, eventsLogPath, mergeWorktreePath } from "../src/paths.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -870,4 +870,21 @@ test("a code conflict beside an insert-only PLANS.md conflict sends only the cod
   assert.match(calls[0]!.prompt, /code\.txt/, "the prompt names the unresolved code file");
   assert.doesNotMatch(calls[0]!.prompt, /- PLANS\.md/, "the settled backlog file is not listed as conflicted");
   assert.equal(fs.readFileSync(path.join(root, "code.txt"), "utf8"), "resolved\n");
+});
+
+test("a merge whose events feed is unwritable still lands and reports changed", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
+  commitIn(wt, "branch work");
+  // The post-fast-forward `merged` event is the only append on this path (the fixture declares
+  // no build check, so no check event runs). Replace the feed with a directory so every append
+  // throws EISDIR: a completed merge must still resolve "changed" rather than reject after
+  // main already moved.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "changed");
+  assert.equal(mainSha(root), headSha(wt), "the fast-forward happened despite the broken feed");
 });

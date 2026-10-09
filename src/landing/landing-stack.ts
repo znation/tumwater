@@ -14,7 +14,7 @@ import { useWorktree } from "../git/worktree-use.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { ffMainTo } from "./landing-git.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
@@ -239,8 +239,15 @@ export async function ffStackToMain(
   return withLock(mergeLockDir(root), async () => {
     const before = openQuestions(root);
     if (!(await ffMainTo(root, tip.sha, mainBranch))) return "merge_blocked";
+    // Best-effort like tryMerge's merged events: the stack is already fast-forwarded, so an
+    // unwritable feed must not flip a landed batch to a failure and skip syncRootInstall below.
     for (const entry of landed) {
-      logEvent(root, { loop: entry.role, type: "merged", commit: entry.sha, summary: entry.summary });
+      logEventBestEffort(root, {
+        loop: entry.role,
+        type: "merged",
+        commit: entry.sha,
+        summary: entry.summary,
+      });
     }
     logNewQuestions(root, before, landed[0]!.role);
     await syncRootInstall(root, tip.role); // As tryMerge: re-sync the root install under the lock.
