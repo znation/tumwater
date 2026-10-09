@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  backlogHolds,
   eligibleEntries,
   entryHold,
   entryKey,
+  holdMark,
   requiredParts,
   seriesPart,
   type EligibleEntry,
@@ -147,6 +149,52 @@ test("eligibleEntries drops held entries, keeps file order, and attaches the ind
     { key: "prereq, part 1/2: base", title: "Prereq, part 1/2: base (planned 2026-10-01)", start: 3, end: 4 },
     { key: "ready", title: "Ready (planned 2026-10-03)", start: 7, end: 8 },
   ]);
+});
+
+test("holdMark renders each hold as its bracket tag and the empty string when eligible", () => {
+  assert.equal(holdMark(null), "");
+  assert.equal(holdMark("refused"), " [refused]");
+  assert.equal(holdMark("needs-review"), " [needs review]");
+  assert.equal(holdMark("needs-replan"), " [needs replan]");
+  assert.equal(holdMark({ blockedBy: ["Prereq 1/2", "Disk floor 2/4"] }), " [blocked: requires Prereq 1/2, Disk floor 2/4]");
+});
+
+test("backlogHolds marks plans and bugs parallel to the payload, leaving an eligible entry null", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Base, part 1/2: x (planned 2026-10-01)",
+      "body",
+      "### Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed)",
+      "body",
+      "### Needs a look (planned 2026-10-03)",
+      "**Needs review 2026-10-07 by feature: too large for one run**",
+      "### Ready (planned 2026-10-04)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "# Bugs",
+      "## Open",
+      "### Refused one (reported 2026-10-02)",
+      "**Refused 2026-10-07 by bugfix: not reproducible**",
+      "### Real (reported 2026-10-02)",
+      "Repro.",
+      "## Fixed",
+      "_None._",
+    ].join("\n"),
+  );
+  assert.deepEqual(backlogHolds(dir), {
+    plans: [null, { blockedBy: ["Base 1/2"] }, "needs-review", null],
+    bugs: ["refused", null],
+  });
 });
 
 test("eligibleEntries reads BUGS.md's Open section for bugfix and drops a refused bug", () => {

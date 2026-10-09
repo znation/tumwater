@@ -14,6 +14,7 @@ import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
+import { backlogHolds } from "../backlog/backlog-eligibility.js";
 import { renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
@@ -99,11 +100,17 @@ export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // command prints three empty sections in any directory (report's rationale, not config's).
   rejectUnknownArgs("backlog", args, [JSON_FLAG]);
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
-  // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern):
-  // a pretty-printed JSON document in every exit-0 case, never prose. The payload is a
-  // thunk, so whichever branch runs reads the three entry files exactly once — the
-  // Markdown renderer consumes the same arrays the JSON document prints.
-  sayJsonOrRender(args, () => backlogPayload(root), renderBacklogMarkdown);
+  // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern),
+  // plus `holds.plans`/`holds.bugs` parallel to the entry arrays so a skipped entry's
+  // reason is data, not inference: a pretty-printed JSON document in every exit-0 case,
+  // never prose. The payload is a thunk, so whichever branch runs reads the three entry
+  // files through their stat caches once — the Markdown renderer consumes the same arrays
+  // the JSON document prints.
+  sayJsonOrRender(
+    args,
+    () => ({ ...backlogPayload(root), holds: backlogHolds(root) }),
+    renderBacklogMarkdown,
+  );
 }
 
 /** `tumwater questions`: list open questions, or answer one with `answer <n> <decision>`. */

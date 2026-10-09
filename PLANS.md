@@ -393,7 +393,9 @@ and asserting the refetch shows the second loop's note (not the first's).
   not the previous loop's cached text.
 - `npm run test` green.
 
-### Mark why a backlog entry is held in `tumwater backlog` (planned 2026-10-09 by plan)
+## Done
+
+### Mark why a backlog entry is held in `tumwater backlog` (planned 2026-10-09 by plan; done 2026-10-09 by feature)
 
 **Goal.** `tumwater backlog` and its `--json` show the same eligibility hold the loop prompts'
 `<backlog-index>` already carries, so an operator can see why a planned feature or open bug is
@@ -449,9 +451,6 @@ render, and the CLI `--json` holds).
 - `backlogHolds` marks a **Refused**, **Needs review**, or **Needs replan** body line and a
   blocked heading, and leaves an eligible entry null.
 - `npm run test` green.
-
-
-## Done
 
 ### Notify the operator when a loop posts a question (planned 2026-10-09 by plan; done 2026-10-09 by feature)
 

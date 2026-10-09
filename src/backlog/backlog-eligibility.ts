@@ -130,6 +130,30 @@ export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[])
     : { blockedBy: blocked.map((ref) => `${ref.series} ${ref.part}/${ref.of}`) };
 }
 
+/** The index mark for an entry's eligibility hold (entryHold): empty when eligible, a
+ * bracketed tag for the note holds, and the named prerequisites for a blocked plan so the
+ * reader sees why. Shared by the prompt's backlog index and `tumwater backlog`, so both
+ * surfaces word a hold identically. */
+export function holdMark(hold: EntryHold): string {
+  if (hold === null) return "";
+  if (hold === "refused") return " [refused]";
+  if (hold === "needs-review") return " [needs review]";
+  if (hold === "needs-replan") return " [needs replan]";
+  return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
+}
+
+/** Why each entry the operator's `tumwater backlog` surfaces list is held, as two arrays
+ * parallel to backlogPayload's `plans` and `bugs`: the same entryHold decision the prompt's
+ * backlog index carries, so a hold is observable rather than inferred. The planned entries
+ * are read once and reused as the prerequisite set. Questions carry no holds. */
+export function backlogHolds(root: string): { plans: EntryHold[]; bugs: EntryHold[] } {
+  const planned = plannedPlanEntries(root);
+  return {
+    plans: planned.map((entry) => entryHold(entry, planned)),
+    bugs: openBugEntries(root).map((entry) => entryHold(entry, planned)),
+  };
+}
+
 /** The entries a `role` loop may take now, in file order: PLANS.md's `## Planned` entries for
  * feature, BUGS.md's `## Open` entries for bugfix, minus every entry entryHold holds, each with
  * its stamp-free key, verbatim title and 1-based line range. Reads the primary checkout through

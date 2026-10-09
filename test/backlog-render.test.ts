@@ -152,8 +152,93 @@ test("tumwater backlog --json prints the three entry arrays the Markdown view re
   // a JSON document in every exit-0 case, never prose.
   const bare = await runCli(tmpdir(), "backlog", "--json");
   assert.equal(bare.code, 0);
-  assert.deepEqual(JSON.parse(bare.out), { plans: [], bugs: [], questions: [] });
+  assert.deepEqual(JSON.parse(bare.out), {
+    plans: [],
+    bugs: [],
+    questions: [],
+    holds: { plans: [], bugs: [] },
+  });
   assert.match(bare.out, /\n  "plans": \[\]/);
+});
+
+test("renderBacklogMarkdown appends holds to headings; no holds leaves the document unchanged", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
+  const payload = backlogPayload(root);
+  const held = renderBacklogMarkdown({
+    ...payload,
+    holds: { plans: [{ blockedBy: ["Prereq 1/2"] }, "needs-review"], bugs: ["refused"] },
+  });
+  assert.match(held, /^### Show open bugs in the TUI \(planned 2026-09-25\) \[blocked: requires Prereq 1\/2\]$/m);
+  assert.match(held, /^### Timestamp of last result \(planned 2026-09-24\) \[needs review\]$/m);
+  assert.match(held, /^### Logs rotate too often \(reported 2026-09-25\) \[refused\]$/m);
+  // The payload alone (no holds) renders the same document as a view whose holds are absent.
+  const plain = renderBacklogMarkdown(payload);
+  assert.equal(plain, renderBacklogMarkdown({ ...payload }));
+  assert.match(plain, /^### Show open bugs in the TUI \(planned 2026-09-25\)$/m);
+  assert.ok(!plain.includes("[blocked"), "a no-holds render carries no hold marks");
+});
+
+test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Prereq, part 1/2: base (planned 2026-10-01)",
+      "body",
+      "### Later, part 2/2: x (planned 2026-10-02; requires Prereq 1/2 landed)",
+      "body",
+      "### Refused plan (planned 2026-10-03)",
+      "**Refused 2026-10-07 by feature: no**",
+      "### Ready (planned 2026-10-04)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    [
+      "# Bugs",
+      "## Open",
+      "### Refused bug (reported 2026-10-02)",
+      "**Refused 2026-10-07 by bugfix: no**",
+      "### Real bug (reported 2026-10-02)",
+      "repro",
+      "## Fixed",
+      "_None._",
+    ].join("\n"),
+  );
+  const human = await runCli(root, "backlog");
+  assert.equal(human.code, 0);
+  assert.match(human.out, /^### Prereq, part 1\/2: base \(planned 2026-10-01\)$/m);
+  assert.match(
+    human.out,
+    /^### Later, part 2\/2: x \(planned 2026-10-02; requires Prereq 1\/2 landed\) \[blocked: requires Prereq 1\/2\]$/m,
+  );
+  assert.match(human.out, /^### Refused plan \(planned 2026-10-03\) \[refused\]$/m);
+  assert.match(human.out, /^### Refused bug \(reported 2026-10-02\) \[refused\]$/m);
+  assert.match(human.out, /^### Ready \(planned 2026-10-04\)$/m);
+  assert.match(human.out, /^### Real bug \(reported 2026-10-02\)$/m);
+
+  const asJson = await runCli(root, "backlog", "--json");
+  assert.equal(asJson.code, 0);
+  const payload = JSON.parse(asJson.out) as {
+    plans: Array<{ title: string }>;
+    bugs: Array<{ title: string }>;
+    holds: { plans: unknown[]; bugs: unknown[] };
+  };
+  assert.deepEqual(payload.holds.plans, [null, { blockedBy: ["Prereq 1/2"] }, "refused", null]);
+  assert.deepEqual(payload.holds.bugs, ["refused", null]);
+  // Holds are parallel to the entry arrays, which keep their fields untouched.
+  assert.equal(payload.holds.plans.length, payload.plans.length);
+  assert.equal(payload.holds.bugs.length, payload.bugs.length);
+  assert.equal(payload.plans.length, 4);
+  assert.equal(payload.bugs.length, 2);
+  assert.deepEqual(Object.keys(payload.plans[0]!), ["title", "body"]);
 });
 
 test("tumwater help lists the backlog command", async () => {

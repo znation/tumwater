@@ -5,7 +5,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { BACKLOG_FILES, fenceTracker, headingMetadata, parseEntryDetails, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
-import { entryHold, type EntryHold } from "./backlog-eligibility.js";
+import { entryHold, holdMark } from "./backlog-eligibility.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -317,17 +317,6 @@ const INDEX_TITLE_MAX = 160;
  * other trimmed labels and never splits a surrogate pair. */
 function indexTitle(heading: string): string {
   return truncate(collapseWhitespace(stripEntryStamp(heading)), INDEX_TITLE_MAX);
-}
-
-/** The index mark for an entry's eligibility hold (backlog-eligibility.ts's entryHold): empty
- * when eligible, a bracketed tag for the note holds, and the named prerequisites for a blocked
- * plan so the reading loop sees why. */
-function holdMark(hold: EntryHold): string {
-  if (hold === null) return "";
-  if (hold === "refused") return " [refused]";
-  if (hold === "needs-review") return " [needs review]";
-  if (hold === "needs-replan") return " [needs replan]";
-  return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 
 /** The files and sections the actionable index covers, in the order loops read them: PLANS.md's
