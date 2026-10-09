@@ -32,11 +32,14 @@ function usagePhrase(e: HarnessEvent): string {
 
 /** ` (in 57s)` / ` (in 12m)` for events that carry a durationMs; "" when absent (events written
  * by builds that predate the field render as before). Seconds under two minutes, minutes above.
- * The null check is explicit because Number(null) is 0, which would otherwise read as "(in 0s)";
- * an absent field (undefined) is already rejected by the non-finite test. */
+ * The value is read through finiteNumber (the same corrupt-field rule this file's gigabytes
+ * and minutes apply), so an absent OR non-number durationMs — a hand-edited line's quoted
+ * `"4200"` included — reads as no duration instead of coercing to a fabricated `(in 4s)`
+ * that the event never recorded. Number(null) is 0 and Number("4200") is 4200, so both would
+ * otherwise pass a bare finite test. */
 function elapsed(ms: unknown): string {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n < 0 || ms === null) return "";
+  const n = finiteNumber(ms, null);
+  if (n === null || n < 0) return "";
   return ` (in ${shortSpanPhrase(n)})`;
 }
 

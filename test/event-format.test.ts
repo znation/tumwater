@@ -770,6 +770,30 @@ test("formatEvent renders dep_install with packages, status, duration, and an op
   );
 });
 
+test("formatEvent reads a torn non-number durationMs as absent, like minutes", () => {
+  // A hand-edited event can quote the number; a bare Number("4200") would coerce it and
+  // render a duration the event never recorded. The shared finiteNumber rule keeps it absent.
+  const quoted = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "dep_install",
+    packages: ["ink"],
+    status: "passed",
+    durationMs: "4200",
+  } as never);
+  assert.doesNotMatch(quoted, /\(in \d/, `a quoted duration must read absent: ${quoted}`);
+  // The same event with a real number still renders its duration.
+  const real = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "dep_install",
+    packages: ["ink"],
+    status: "passed",
+    durationMs: 4_200,
+  } as never);
+  assert.match(real, /\(in 4s\)$/);
+});
+
 test("formatEvent renders model_changed with the new selector, or pi's default", () => {
   const changed = formatEvent({
     ts: 0,
