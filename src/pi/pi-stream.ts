@@ -134,14 +134,16 @@ const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
  * feedLine sees — the same shapes as the rate-limit regex's various renderings: pi renders the
  * provider's status and message variously (fetch-level "Connection error.", OpenAI-style
  * "Request timed out" and 5xx status texts, oMLX's model-server "Failed to load model",
- * undici's bare stream-cut "terminated").
+ * undici's bare stream-cut "terminated", and a provider pausing itself fleet-wide with a
+ * 503 whose body carries prose rather than any status phrase — "Provider '<name>' is
+ * currently failing for model '<id>' and has been paused by the provider").
  * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
  * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
  * and never counts as a backend failure. Composed so the stream-severed spelling lives in
  * STREAM_SEVERED alone. Only matchBackendFailure and PiStreamParser.feedLine match it;
  * backendKind below classifies which phrase matched. */
 const TRANSIENT_BACKEND = new RegExp(
-  `connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|failed to load model|${STREAM_SEVERED.source}`,
+  `connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider|failed to load model|${STREAM_SEVERED.source}`,
   "i",
 );
 
@@ -151,7 +153,7 @@ const TRANSIENT_BACKEND = new RegExp(
 export function backendKind(text: string): BackendFailureKind {
   if (/connection error|connection refused|connection reset|econn(refused|reset)/i.test(text)) return "connection";
   if (/request timed out/i.test(text)) return "timeout";
-  if (/internal server error|bad gateway|service unavailable|gateway timeout/i.test(text)) return "server";
+  if (/internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider/i.test(text)) return "server";
   if (STREAM_SEVERED.test(text)) return "stream-severed";
   return "model-load";
 }

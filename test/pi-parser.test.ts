@@ -557,6 +557,10 @@ test("parser classifies backend-failure error texts into the five kinds", () => 
     ["502 Bad Gateway", "server"],
     ["503 Service Unavailable", "server"],
     ["504 Gateway Timeout", "server"],
+    // The provider pausing itself fleet-wide: a 503 whose body carries prose rather than
+    // a status phrase — the 2026-10-08 digest's #2 loss cause, unclassified before this
+    // (BUGS.md 2026-10-08).
+    ["503 \"Provider 'deepinfra' is currently failing for model 'deepseek-ai/DeepSeek-V4.1-Flash' and has been paused by the provider\"", "server"],
     ["Failed to load model: llama-3-70b", "model-load"],
     // undici's bare word when it cuts the HTTP stream — the 2026-09-30 digest's #2 loss
     // cause, silent before this classification (BUGS.md 2026-09-30). With prefix and

@@ -896,6 +896,12 @@ test("runPi classifies a request timeout on stderr as the timeout backend kind",
   const connection = await runFakePi(`echo 'Connection error.' >&2\nexit 1`);
   assert.equal(connection.transientBackend, true);
   assert.equal(connection.backendKind, "connection");
+  // A provider pausing itself fleet-wide surfaces the same prose on stderr as in an event.
+  const paused = await runFakePi(
+    `printf '%s\\n' "503 Provider 'deepinfra' is currently failing for model 'deepseek-ai/DeepSeek-V4.1-Flash' and has been paused by the provider" >&2\nexit 1`,
+  );
+  assert.equal(paused.transientBackend, true);
+  assert.equal(paused.backendKind, "server");
 });
 
 // pi's stderr warning when a requested model id has no exact definition: pi clones the
