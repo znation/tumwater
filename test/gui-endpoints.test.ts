@@ -341,6 +341,12 @@ test("handleConfigSet refuses a key outside the curated set, naming it", async (
   const curated = await serveConfigSet(root, { key: "customLoops", value: [] });
   assert.equal(curated.captured.status, 400);
   assert.match((curated.data as { error: string }).error, /customLoops/);
+  // A body with no key at all names no value — the shared gotSuffix convention appends
+  // nothing for an absent field rather than echoing back a literal `null` it never carried.
+  const missing = await serveConfigSet(root, { value: "gpt-5" });
+  assert.equal(missing.captured.status, 400);
+  assert.match((missing.data as { error: string }).error, /key must be one of/);
+  assert.doesNotMatch((missing.data as { error: string }).error, /got null/);
 });
 
 test("handleConfigSet refuses a bad value through setConfigKey's validator, naming the key", async () => {

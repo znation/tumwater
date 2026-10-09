@@ -195,7 +195,11 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
   if (!body) return;
   const key = body.key;
   if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    sendJson(res, 400, { error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${gotSuffix(key ?? null)}` });
+    // An absent key reads as no value (the gotSuffix convention: append only a value the request
+    // actually carried), so a missing field is not echoed back as a literal `null` it never sent.
+    sendJson(res, 400, {
+      error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`,
+    });
     return;
   }
   if (body.value === undefined) {
