@@ -523,6 +523,7 @@ async function tickWithWorktreePhase(
     const intent = await handbackIntent(wt, ctx.mainBranch, hb.sha, conflicted);
     prompt += `\n\n${buildConflictHandbackNote(hb.reason, conflicted, intent)}`;
   }
+
   const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.ticks}`, resuming, cfg);
   // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
   // post-run handlers spend any more pi runs: only this run is evidence about the primary.
