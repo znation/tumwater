@@ -159,3 +159,58 @@ test("compare.cjs builds repo/author/core metrics and the OSS spread, and prints
   assert.match(r.stdout, /decision points by kind, per 1000 production code lines:/);
   assert.match(r.stdout, / {2}Tumwater {2,}\?\?:500\.0/);
 });
+
+/** dupLineSets is the one compare.cjs algorithm the fixture above never reaches: every token array
+ * there is empty or shorter than the 50-token window, so dupProd/dupTest came out 0 without the
+ * sliding-window loop running once. This fixture drives each branch: a duplicated window at least
+ * minLines tall (counted), a unique window (skipped as a lone occurrence), and a duplicated window
+ * whose tokens all sit on one line (repeated on a line, not real duplication, so skipped). */
+test("compare.cjs counts duplicated line windows and ignores same-line repeats", () => {
+  const repos = fs.readFileSync(REPOS_TSV, "utf8").split("\n")
+    .filter((l) => l && !l.startsWith("#")).map((l) => l.split("\t")[0]);
+
+  const data = tmpdir("compare-cjs-dup-");
+  fs.mkdirSync(path.join(data, "oss"), { recursive: true });
+  repos.forEach((r, i) => fs.writeFileSync(path.join(data, "oss", `${r}.json`), JSON.stringify(ossMetrics(i + 1))));
+
+  // 50 identical tokens spread over five source lines: the minimum dupLineSets keeps.
+  const block = (text: string): Tok[] =>
+    Array.from({ length: 50 }, (_, i) => [0, text, Math.min(Math.floor(i / 10), 4)] as Tok);
+  // The same 50 tokens, all on line 0: a repeated window too short to count.
+  const flat = (text: string): Tok[] => Array.from({ length: 50 }, () => [0, text, 0] as Tok);
+
+  const prod = (name: string, tokens: Tok[]): unknown => ({
+    file: name, cat: "src", lang: "ts", lines: 5, code: 5, comment: 0, blank: 0, words: 0,
+    cls: "ccccc", tokens, markers: {},
+  });
+  const spec = (name: string, tokens: Tok[]): unknown => ({
+    file: name, cat: "test:spec", lang: "ts", lines: 3, code: 3, comment: 0, blank: 0, words: 0,
+    cls: "ccc", tokens, markers: {},
+  });
+
+  const A = key("src", "a.ts"), B = key("src", "b.ts"), C = key("src", "c.ts");
+  const D = key("src", "d.ts"), E = key("src", "e.ts");
+  const T1 = key("test", "a.test.ts"), T2 = key("test", "b.test.ts");
+  const metrics = {
+    files: [
+      prod(A, block("x")), prod(B, block("x")),
+      prod(C, Array.from({ length: 50 }, (_, i) => [0, `u${i}`, 0] as Tok)),
+      prod(D, flat("s")), prod(E, flat("s")),
+      spec(T1, block("x")), spec(T2, block("x")),
+    ],
+    functions: [] as unknown[],
+  };
+  fs.writeFileSync(path.join(data, "metrics.json"), JSON.stringify(metrics));
+  fs.writeFileSync(path.join(data, "blame.json"), JSON.stringify({ files: {} }));
+
+  const r = run(data);
+  assert.equal(r.status, 0, r.stderr);
+  const m = JSON.parse(fs.readFileSync(path.join(data, "compare.json"), "utf8")).metrics["tumwater repo"];
+
+  // Five production files x five code lines = 25; A and B each contribute the five shared lines.
+  assert.equal(m.prodSLOC, 25);
+  assert.equal(m.dupProd, 10 / 25);
+  // Two test files x three code lines = 6; T1 and T2 each contribute the five shared lines.
+  assert.equal(m.testSLOC, 6);
+  assert.equal(m.dupTest, 10 / 6);
+});
