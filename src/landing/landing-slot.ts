@@ -276,9 +276,9 @@ export function writeLandingOutcome(
       ),
     );
   }
-  // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's bookkeeping:
-  // the slot picked the entry up (land_queued, logged at enqueue) and finished with or
-  // without landing.
+  // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's
+  // bookkeeping: the slot picked the entry up (land_queued, logged at enqueue) and finished
+  // with or without landing.
   logEvent(root, {
     loop: entry.role,
     type: result === "changed" ? "landed" : "land_failed",

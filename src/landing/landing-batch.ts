@@ -105,49 +105,48 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
 }
 
 /** Land changes whose own vet already approved them — the merge slot's whole task
- * (landing-drain.ts, land-queue speed 2c), over every vetted entry up to landBatchMax. `vetted`
- * is in queue order, each request at the head its vet approved (the synced pin its landing ref
- * names); none is gated again, so no model review runs here (an adversarial review of a stack
- * would blur which change a criticism applies to, so each change was reviewed alone). The flow:
+ * (landing-drain.ts, land-queue speed 2c), over every vetted entry up to landBatchMax. `vetted` is
+ * in queue order, each request at the head its vet approved (the synced pin its landing ref names);
+ * none is gated again, so no model review runs here (an adversarial review of a stack would blur
+ * which change a criticism applies to, so each change was reviewed alone). The flow:
  *
  * One change — land it through landApprovedChange: git + ff, plus an in-lock scope-`landing`
  * re-check whenever main moved since its vet (and a seeded baseline when it did not and its vet's
  * pre-check ran green on exactly that head).
  *
- * Two or more — assemble the stack in the shared `_merge` checkout, checked out detached at main's
- * CURRENT tip, then cherry-pick each change's full range from that tip to its head to land, in
- * queue order — `base..sha`, every commit ahead of main (normally one), capturing each
+ * Two or more — assemble the stack in the shared `_merge` checkout, checked out detached at
+ * main's CURRENT tip, then cherry-pick each change's full range from that tip to its head to land,
+ * in queue order — `base..sha`, every commit ahead of main (normally one), capturing each
  * post-pick tip — and run ONE scope-`batch` runScopedBuildCheck over the combined tree: the
  * expensive, deterministic half the stack shares. null (no declared check) → land directly;
  * "failed" (a red tree or a timeout remapped to a reject — the tree is unverified) → bisect;
  * "skipped" (no npm / broken toolchain — the helper already warned) → proceed, never
- * fail-closed; "passed" → green. Green: under the merge lock, ffStackToMain ff's main through
- * the stack in ONE fast-forward, emits one `merged` event per change, and — only when the check
+ * fail-closed; "passed" → green. Green: under the merge lock, ffStackToMain ff's main through the
+ * stack in ONE fast-forward, emits one `merged` event per change, and — only when the check
  * PASSED on exactly that tip — seeds noteGreenBaseline with the stacked tip. ff failure (main
- * moved while the check ran: the window is the whole check, and main still has writers outside
- * the land queue) → RE-STACK: assemble the same changes afresh on main's new tip and go round
- * again, up to BATCH_RESTACK_ATTEMPTS times, stopping before any attempt on an abort. A
- * re-stacked tree that differs from the last tree a check ran on only in review-exempt paths
- * goes straight to the ff; any other re-stack pays one more check. Only a race lost on every
- * attempt leaves each change not yet landed its ref with "merge_blocked", nothing seeded, for
- * leftover recovery.
+ * moved while the check ran: the window is the whole check, and main still has writers outside the
+ * land queue) → RE-STACK: assemble the same changes afresh on main's new tip and go round again,
+ * up to BATCH_RESTACK_ATTEMPTS times, stopping before any attempt on an abort. A re-stacked tree
+ * that differs from the last tree a check ran on only in review-exempt paths goes straight to the
+ * ff; any other re-stack pays one more check. Only a race lost on every attempt leaves each change
+ * not yet landed its ref with "merge_blocked", nothing seeded, for leftover recovery.
  *
  * Red → LAND THE LARGEST PASSING PREFIX (PLANS.md land-queue 3d): bisect in queue order, each
- * step the same assemble → check → ff (landStack) over a prefix of the changes not yet landed —
- * the first half of the ones the last red check ran over — so every prefix that lands, lands on
- * its own green check with nothing rewritten before its ff. A green prefix lands and the rest of
- * the red run is bisected next; a red one is halved. The one change a red check ran over alone
- * is attributed through main's own baseline (landing-check-failures.ts's attributeRedCheck): main
- * green → rejected with the check's reasons, no pi run; main red → "main_red", pin kept. Its red
- * is the second one observed with it in the tree, so a single flaky run never rejects a change.
+ * step the same assemble → check → ff (landStack) over a prefix of the changes not yet landed
+ * — the first half of the ones the last red check ran over — so every prefix that lands, lands
+ * on its own green check with nothing rewritten before its ff. A green prefix lands and the rest of
+ * the red run is bisected next; a red one is halved. The one change a red check ran over alone is
+ * attributed through main's own baseline (landing-check-failures.ts's attributeRedCheck): main
+ * green → rejected with the check's reasons, no pi run; main red → "main_red", pin kept. Its
+ * red is the second one observed with it in the tree, so a single flaky run never rejects a change.
  * The changes after it stay unattempted for the next merge. A stack of N with one broken change
  * costs about log2(N) + 1 extra checks, never a second model review.
  *
  * Un-assemblable (a cherry-pick conflict, on the first stack or any prefix) → ABANDON the changes
- * not yet landed to one-at-a-time, in queue order, stopping at the first non-terminal outcome,
- * each through landApprovedChange — no second gate and no model run but mergeToMain's conflict
- * resolver. main is never left red: the only bytes this path ff's are a checked tip or
- * per-change landings re-verified in-lock whenever they differ from what their vet judged.
+ * not yet landed to one-at-a-time, in queue order, stopping at the first non-terminal outcome, each
+ * through landApprovedChange — no second gate and no model run but mergeToMain's conflict
+ * resolver. main is never left red: the only bytes this path ff's are a checked tip or per-change
+ * landings re-verified in-lock whenever they differ from what their vet judged.
  *
  * An abort is observed between steps, not only by the pi runs it kills: before each
  * assembly-and-check attempt and before each one-change or fallback landing, so a stopping merge
@@ -156,12 +155,12 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
  *
  * Returns one result per request in order; `undefined` means unattempted (behind a bisect's
  * attributed change, or a fallback early stop) — entry and ref kept for the next merge. On an
- * abort every request without a result reads "aborted" (refs kept). `wiringFor` must return
- * the same wiring for a role on every call (its usage accumulator is the landing's). Never
- * throws for a failed landing — per-change landApprovedChange failures degrade to "error", and
- * so does a throw from any bisect step after the first stack attempt, on the change at the front
- * of that step (a prefix may already be on main, and a throw would lose its "changed"); only the
- * first stack attempt's git plumbing propagates, and the merge slot then keeps every entry. */
+ * abort every request without a result reads "aborted" (refs kept). `wiringFor` must return the
+ * same wiring for a role on every call (its usage accumulator is the landing's). Never throws for a
+ * failed landing — per-change landApprovedChange failures degrade to "error", and so does a throw
+ * from any bisect step after the first stack attempt, on the change at the front of that step (a
+ * prefix may already be on main, and a throw would lose its "changed"); only the first stack
+ * attempt's git plumbing propagates, and the merge slot then keeps every entry. */
 export async function landVetted(
   ctx: BatchContext,
   vetted: LandRequest[],

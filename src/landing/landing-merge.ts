@@ -32,24 +32,24 @@ import { resolverConfig } from "../config/config-views.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { RunsPi } from "../loop/loop-pi.js";
 
-/** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
- * tree with the project's declared check when main moved under it, fast-forward, and —
- * when the rebase conflicts — one pi-driven resolution attempt before giving up. The landing is
+/** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased tree
+ * with the project's declared check when main moved under it, fast-forward, and — when the rebase
+ * conflicts — one pi-driven resolution attempt before giving up. The landing is
  * worktree-parameterized: whatever `wt` holds at its HEAD after the rebase is what lands — a role
- * branch (whose ref tracks its own tip through the rebase) or a detached lander worktree pinned
- * at a bare sha (which does not move when git rebase rewrites it, so fast-forwarding to the
- * original pin would fail whenever main moved between commit and landing). Split out of loop.ts —
- * which keeps the tick lifecycle around it — because this is a self-contained concern with its own
- * flow (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
+ * branch (whose ref tracks its own tip through the rebase) or a detached lander worktree pinned at
+ * a bare sha (which does not move when git rebase rewrites it, so fast-forwarding to the original
+ * pin would fail whenever main moved between commit and landing). Split out of loop.ts — which
+ * keeps the tick lifecycle around it — because this is a self-contained concern with its own flow
+ * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
  * borrows from the loop are identity (root/mainBranch), `role` for events and session naming only,
  * the current tick number for session naming, and the loop's shared pi wiring so a
  * conflict-resolution run folds into the same tick counters as an authoring run. */
 
-/** What mergeToMain needs from its owning loop: identity (root, main branch), the role for
- * events and session naming only — the landing code never re-derives it into a branch — plus the
- * tick number that names the conflict-resolution session, and the loop's shared pi runner (role
- * config, session dir, raw log, transient-timeout retry) with usage folded into the tick counters
- * — every pi run of a tick lands there exactly once. */
+/** What mergeToMain needs from its owning loop: identity (root, main branch), the role for events
+ * and session naming only — the landing code never re-derives it into a branch — plus the tick
+ * number that names the conflict-resolution session, and the loop's shared pi runner (role config,
+ * session dir, raw log, transient-timeout retry) with usage folded into the tick counters — every
+ * pi run of a tick lands there exactly once. */
 export interface MergeContext extends RunsPi {
   root: string;
   role: string;
