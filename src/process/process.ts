@@ -138,24 +138,24 @@ export function childEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 
 // ── LaunchServices check-ins (macOS) ──────────────────────────────────────────────────────
 
-/** The NODE_OPTIONS entry that keeps a Node process from checking in with LaunchServices. On
- * macOS, assigning `process.title` runs libuv's uv_set_process_title, which registers the
- * process as an application (`_LSApplicationCheckIn`) so Activity Monitor and Force Quit can
- * show the title. launchservicesd keeps a Mach port for every process that ever checked in and
- * never releases it when the process exits (one port per process, measured on macOS 27.0 and
- * seen in 26.6.2's logs), and the kernel kills the daemon near 268K ports — which wedged the GUI session of
- * the Mac running the fleet on 2026-09-25 (BUGS.md 2026-09-28). npm sets its title on every run
- * and pi at startup; one `npm test` leaked ~140 ports through the npm processes of its
- * build-check tests alone.
+/** The NODE_OPTIONS entry that keeps a Node process from checking in with LaunchServices. On macOS,
+ * assigning `process.title` runs libuv's uv_set_process_title, which registers the process as an
+ * application (`_LSApplicationCheckIn`) so Activity Monitor and Force Quit can show the title.
+ * launchservicesd keeps a Mach port for every process that ever checked in and never releases it
+ * when the process exits (one port per process, measured on macOS 27.0 and seen in 26.6.2's logs),
+ * and the kernel kills the daemon near 268K ports — which wedged the GUI session of the Mac
+ * running the fleet on 2026-09-25 (BUGS.md 2026-09-28). npm sets its title on every run and pi at
+ * startup; one `npm test` leaked ~140 ports through the npm processes of its build-check tests
+ * alone.
  *
  * The preload swaps the property for a plain getter/setter before any program code runs, so an
- * assignment only stores the string: nothing registers, and ps shows the real argv instead of
- * the title. It has to be an ACCESSOR — `process.title` is a V8 native data property, and
- * redefining it with a `value` descriptor goes through the native setter, checking the process
- * in by itself. It is inline (a data: URL with no spaces or double quotes, which NODE_OPTIONS
- * would split on or strip) rather than a file, so no rebuild or swap of dist/ can leave the
- * flag naming a missing module — that would fail every Node process started under it. Node
- * accepts `--import` in NODE_OPTIONS from 18.18; tumwater itself needs 20.3. */
+ * assignment only stores the string: nothing registers, and ps shows the real argv instead of the
+ * title. It has to be an ACCESSOR — `process.title` is a V8 native data property, and redefining
+ * it with a `value` descriptor goes through the native setter, checking the process in by itself.
+ * It is inline (a data: URL with no spaces or double quotes, which NODE_OPTIONS would split on or
+ * strip) rather than a file, so no rebuild or swap of dist/ can leave the flag naming a missing
+ * module — that would fail every Node process started under it. Node accepts `--import` in
+ * NODE_OPTIONS from 18.18; tumwater itself needs 20.3. */
 export const NO_LAUNCH_SERVICES_CHECK_IN =
   "--import=data:text/javascript,(t=>Object.defineProperty(process,'title',{get:()=>t,set:v=>{t=String(v)},enumerable:true,configurable:true}))(process.title)";
 

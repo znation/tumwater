@@ -3,15 +3,15 @@ import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { childEnv, runOnAbort } from "./process.js";
 
-/** The respawn loop behind `tumwater run`. The command runs as two processes: this supervisor
- * (the one the operator started, holding the terminal) and a child that actually runs the
- * orchestrator. When the child rebuilt dist/ onto a newer main (src/redeploy/redeployer.ts) it exits
+/** The respawn loop behind `tumwater run`. The command runs as two processes: this supervisor (the
+ * one the operator started, holding the terminal) and a child that actually runs the orchestrator.
+ * When the child rebuilt dist/ onto a newer main (src/redeploy/redeployer.ts) it exits
  * RESTART_EXIT_CODE and the supervisor respawns it — the same script path, now holding the new
  * code — so a self-hosting fleet picks up its own changes without anyone at the keyboard. Any
  * other exit ends the supervisor with the child's code — and when nobody asked for it, the fleet
  * is down with nobody at the keyboard either, so that exit is recorded first (onFleetDown). Ctrl+C
- * reaches both processes from the terminal (same foreground group), so the supervisor forwards
- * only SIGTERM, which a plain `kill` delivers to it alone. */
+ * reaches both processes from the terminal (same foreground group), so the supervisor forwards only
+ * SIGTERM, which a plain `kill` delivers to it alone. */
 
 /** Marks the child: `tumwater run` with this set runs the orchestrator instead of supervising. */
 export const SUPERVISED_ENV = "TUMWATER_SUPERVISED";
@@ -87,13 +87,13 @@ interface SuperviseOptions {
   onRespawn?(generation: number): void;
   /** Called when the crash-loop guard trips. */
   onCrashLoop?(): void;
-  /** Called — and awaited — right before the supervisor gives up on a fleet the operator did not
-   * stop: a generation exited with a failure (not a restart request, not a clean exit, and not
-   * while stopping) or the crash-loop guard tripped. Production logs a `supervisor_exit` event:
-   * on 2026-09-22 a respawned generation exited "not initialized" and events.jsonl simply ended
-   * at the previous generation's orchestrator_stop, 4 h 44 m of dead fleet with no trace
-   * (BUGS.md 2026-09-23). A hook that throws is ignored — the trace is best-effort, and the exit
-   * code must stay the child's. */
+  /** Called — and awaited — right before the supervisor gives up on a fleet the operator did
+   * not stop: a generation exited with a failure (not a restart request, not a clean exit, and not
+   * while stopping) or the crash-loop guard tripped. Production logs a `supervisor_exit` event: on
+   * 2026-09-22 a respawned generation exited "not initialized" and events.jsonl simply ended at the
+   * previous generation's orchestrator_stop, 4 h 44 m of dead fleet with no trace (BUGS.md
+   * 2026-09-23). A hook that throws is ignored — the trace is best-effort, and the exit code must
+   * stay the child's. */
   onFleetDown?(down: FleetDown): Promise<void> | void;
   now?(): number;
 }

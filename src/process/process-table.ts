@@ -47,8 +47,8 @@ export interface ProcessProbe {
    * because the orphan check's argv/cwd evidence stands on its own and a dead environment
    * reader must not turn doctor red on its own. */
   runMarkers(pids: number[]): Promise<Map<number, string[]>>;
-  /** How many Mach ports macOS's launchservicesd holds (see src/process/launch-services.ts). Null off
-   * macOS, and when the count cannot be read; never rejects. */
+  /** How many Mach ports macOS's launchservicesd holds (see src/process/launch-services.ts). Null
+   * off macOS, and when the count cannot be read; never rejects. */
   launchServicesPorts(): Promise<number | null>;
 }
 
