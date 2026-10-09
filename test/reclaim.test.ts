@@ -20,7 +20,7 @@ import { beginWorktreeUse } from "../src/git/worktree-use.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { worktreeUsePath, worktreesDir } from "../src/paths.js";
+import { eventsLogPath, worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 
@@ -157,6 +157,27 @@ test("reclaimPass returns null and logs nothing when there is nothing to clean",
   const result = await reclaimPass(root, "pressure", { reclaimGB: 40, candidates: [] });
   assert.equal(result, null);
   assert.deepEqual(typesAt(root), []);
+});
+
+test("reclaimPass still returns its result when the events feed is unwritable", async () => {
+  // The event is a report of work already done: a failed append must not turn a successful
+  // cleanup into a thrown error (the manual CLI reports failure after deleting outputs) or
+  // make ReclaimController drop the pass's lastReclaim. Put a directory where events.jsonl
+  // belongs so every append throws EISDIR while the rest of the root still writes.
+  const root = makeRepo();
+  const wt = worktreeAt(root, "feature");
+  seedWorktree(wt);
+  const events = eventsLogPath(root);
+  fs.rmSync(events, { recursive: true, force: true });
+  fs.mkdirSync(events, { recursive: true });
+  const result = await reclaimPass(root, "pressure", {
+    reclaimGB: 40,
+    sample: () => 5_000_000_000,
+    candidates: [{ dir: wt, name: "feature", lastUsedAt: 0, resumePending: false }],
+  });
+  assert.ok(result, "the pass result survives an unwritable event feed");
+  assert.deepEqual(result.worktrees, ["feature"]);
+  assert.equal(fs.existsSync(path.join(wt, "build")), false, "the worktree was still cleaned");
 });
 
 test("reclaimWorktree reports false when a worktree has nothing ignored to clean", async () => {

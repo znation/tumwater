@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gate.js";
 import {
@@ -203,7 +203,7 @@ export async function reclaimPass(
     freeGB: freeBytes / BYTES_PER_GB,
     durationMs: Date.now() - startedAt,
   };
-  logEvent(root, {
+  logEventBestEffort(root, {
     loop: "harness",
     type: "disk_reclaim",
     mode,
