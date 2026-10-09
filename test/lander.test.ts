@@ -197,9 +197,7 @@ test("a conflicting landing gets one resolution run and then lands", async () =>
   try {
     const { root, sha } = await pinnedFixture();
     // Advance main with a conflicting edit after the pin — the common concurrent case.
-    fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-    sh(root, "git", "add", "-A");
-    sh(root, "git", "commit", "-m", "conflicting main edit");
+    advanceMain(root, "seed.txt", "main\n");
 
     const state = freshLoopState(ROLE);
     const { ctx, calls } = makeCtx(root, state, (wt) => {
@@ -241,9 +239,7 @@ test("a resolution the re-review rejects deletes the pin and lands nothing", asy
   );
   try {
     const { root, sha } = await pinnedFixture();
-    fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-    sh(root, "git", "add", "-A");
-    sh(root, "git", "commit", "-m", "conflicting main edit");
+    advanceMain(root, "seed.txt", "main\n");
 
     const state = freshLoopState(ROLE);
     const { ctx, calls } = makeCtx(root, state, (wt) => {
@@ -293,9 +289,7 @@ test("a re-review with no parseable verdict keeps the pin for a retry", async ()
   );
   try {
     const { root, sha } = await pinnedFixture();
-    fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
-    sh(root, "git", "add", "-A");
-    sh(root, "git", "commit", "-m", "conflicting main edit");
+    advanceMain(root, "seed.txt", "main\n");
 
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state, (wt) => {
