@@ -13,7 +13,7 @@ import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";
+import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -66,20 +66,9 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
 
 test("handleReport degrades a bad days value to the default and clamps the range", async () => {
   const root = tmpdir();
-  // windowDays's documented rule: the default (14) on any non-plain-digit spelling — hex,
-  // scientific, signed — and a clamp into [1, REPORT_MAX_DAYS] for real counts. A URL typo
-  // must degrade to the default window, never error.
-  const cases: [string, number][] = [
-    ["", REPORT_DEFAULT_DAYS],
-    ["?days=abc", REPORT_DEFAULT_DAYS],
-    ["?days=1e3", REPORT_DEFAULT_DAYS], // raw parseInt would read this as 1
-    ["?days=0x10", REPORT_DEFAULT_DAYS],
-    ["?days=-5", REPORT_DEFAULT_DAYS],
-    ["?days=0", 1],
-    ["?days=1", 1],
-    [`?days=${REPORT_MAX_DAYS + 1}`, REPORT_MAX_DAYS],
-  ];
-  for (const [query, expectedDays] of cases) {
+  // windowDays's documented rule, shared as WINDOW_DAY_CASES: a URL typo degrades to the
+  // default window, never an error.
+  for (const [query, expectedDays] of WINDOW_DAY_CASES) {
     const { captured, data } = await serveReport(root, query);
     const report = data as { days: number; series: unknown[] };
     assert.equal(captured.status, 200, query);

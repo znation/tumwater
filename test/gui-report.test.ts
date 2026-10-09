@@ -15,6 +15,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
+import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -60,23 +61,9 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
   assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
 
-  // days: missing or non-decimal → default 14; out-of-range clamped to 1..90 — never an
-  // error. Non-decimal follows the shared plain-digit rule (text.parseNonNegativeInt):
-  // hex/scientific/signed/padded spellings are not counts, so they get the default instead
-  // of a coerced value (raw Number.parseInt read "1e3" as 1 and "0x10" as 0).
-  const cases: Array<[string, number]> = [
-    ["days=14", 14],
-    ["days=", 14],
-    ["days=abc", 14],
-    ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
-    ["days=1e3", 14], // scientific spelling likewise
-    ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
-    ["days=%207", 14], // whitespace-padded spelling is not a count
-    ["days=0", 1],
-    ["days=91", 90],
-    ["days=900", 90],
-  ];
-  for (const [q, expected] of cases) {
+  // days follows windowDays's rule via WINDOW_DAY_CASES: missing or non-decimal → default,
+  // out-of-range clamped — never an error.
+  for (const [q, expected] of WINDOW_DAY_CASES) {
     const r = await fetch(base + "/api/report?" + q);
     assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
     const dd = (await r.json()) as { days: number; series: unknown[] };
@@ -107,21 +94,9 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
   assert.match(d.markdown, /^# tumwater failure digest/, "the tab renders the digest's heading first");
 
-  // days follows /api/report's exact rule: missing/non-decimal → 14; out-of-range clamped to
-  // 1..90 — never an error. Compare each against the digest rendered for the clamped count.
-  const cases: Array<[string, number]> = [
-    ["days=14", 14],
-    ["days=", 14],
-    ["days=abc", 14],
-    ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
-    ["days=1e3", 14], // scientific spelling likewise
-    ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
-    ["days=%207", 14], // whitespace-padded spelling is not a count
-    ["days=0", 1],
-    ["days=91", 90],
-    ["days=900", 90],
-  ];
-  for (const [q, expected] of cases) {
+  // days follows the same windowDays rule as /api/report (WINDOW_DAY_CASES): compare each
+  // against the digest rendered for the clamped count.
+  for (const [q, expected] of WINDOW_DAY_CASES) {
     const r = await fetch(base + "/api/failures?" + q);
     assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
     const dd = (await r.json()) as { markdown: string };

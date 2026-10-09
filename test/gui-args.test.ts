@@ -8,7 +8,7 @@ import {
   requirePausedFlag,
 } from "../src/gui/gui-args.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";
+import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakeRes } from "./fakes/fake-res.js";
@@ -128,13 +128,9 @@ test("intQuery parses plain decimals and rejects malformed spellings with the ki
 });
 
 test("windowDays degrades a missing or non-decimal window to the default, clamping the range", () => {
-  assert.equal(windowDays(new URLSearchParams("")), REPORT_DEFAULT_DAYS);
-  assert.equal(windowDays(new URLSearchParams("days=abc")), REPORT_DEFAULT_DAYS);
-  assert.equal(windowDays(new URLSearchParams("days=1e3")), REPORT_DEFAULT_DAYS);
-  assert.equal(windowDays(new URLSearchParams("days=-5")), REPORT_DEFAULT_DAYS);
-  assert.equal(windowDays(new URLSearchParams("days=0")), 1);
-  assert.equal(windowDays(new URLSearchParams("days=3")), 3);
-  assert.equal(windowDays(new URLSearchParams(`days=${REPORT_MAX_DAYS + 500}`)), REPORT_MAX_DAYS);
+  for (const [query, expected] of WINDOW_DAY_CASES) {
+    assert.equal(windowDays(new URLSearchParams(query)), expected, query);
+  }
 });
 
 test("requirePromptText returns the text for a valid body, untrimmed", () => {
