@@ -19,7 +19,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { shortSha } from "../src/text/format.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
@@ -310,7 +310,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
     // The change's check ran twice; main's once, in the attribution worktree, priced as a baseline run.
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:failed"]);
-    const warnings = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = warningMessagesOf(events);
     assert.ok(
       warnings.some((m) => m.startsWith(`main ${shortSha(movedMainSha)} is red (build: error TS2345: boom)`)),
       `the fleet-wide red-main warning fires; got: ${JSON.stringify(warnings)}`,
@@ -376,7 +376,7 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
     assert.equal(result.verifiedHead, head, "the re-run's green verdict verifies the tree");
     const events = readEvents(root);
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:passed"], "both attempts are priced");
-    const flaky = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+    const flaky = warningMessagesOf(events);
     assert.deepEqual(flaky, [
       "gate check failed then passed on retry — flaky: AssertionError [ERR_ASSERTION]: startup latency is not a hung tool call",
     ]);
@@ -427,7 +427,7 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
     const events = readEvents(root);
     assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main was never consulted");
-    const warnings = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+    const warnings = warningMessagesOf(events);
     assert.ok(
       warnings.includes(`known-flaky failure, landing kept: ${flakyHeadline}`),
       `the known flake is named; got: ${JSON.stringify(warnings)}`,
@@ -702,10 +702,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
   const reviewerScript = (prompts: string) =>
     `printf '%s\n' "$@" >> "${prompts}"\n${toolCalls}\n${reviewerStub()}`;
   const rerunWarnings = (root: string) =>
-    readEvents(root)
-      .filter((e) => e.type === "warning")
-      .map((e) => String(e.message))
-      .filter((m) => m.startsWith("reviewer re-ran the suite"));
+    warningMessages(root).filter((m) => m.startsWith("reviewer re-ran the suite"));
 
   const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
   const greenPrompts = path.join(tmpdir(), "prompts.log");
@@ -766,7 +763,7 @@ test("a reviewer that re-runs the suite even after the no-re-run nudge fails the
       const runs = readPromptRuns(prompts);
       assert.equal(runs.length, 2);
       assert.match(runs[1]!, /Do not re-run it/, "the nudge names the exact tool call");
-      const warnings = readEvents(green.root).filter((e) => e.type === "warning").map((e) => String(e.message));
+      const warnings = warningMessages(green.root);
       assert.equal(
         warnings.filter((m) => m.startsWith("reviewer re-ran the suite")).length,
         2,
@@ -836,7 +833,7 @@ test("a pre-check that sleeps and fails on every attempt keeps the commit and re
   assert.equal(state.lastReview, undefined, "no rejection recorded against the author");
   assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
   assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:failed", "gate:failed"], "each attempt is priced");
-  const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+  const warnings = warningMessages(root);
   assert.ok(
     warnings.some((m) => m.includes("gate check ran while the host slept 119s mid-run; the tree is unverified")),
     `the warning names the sleep; got: ${JSON.stringify(warnings)}`,
@@ -868,7 +865,7 @@ test("a slept pre-check failure that passes its re-run verifies the tree and nam
       assert.equal(result.decision, "approved", "the clean re-run's pass verifies the tree");
       assert.equal(result.verifiedHead, head, "verified like a first-time pass");
       assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:passed"]);
-      const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+      const warnings = warningMessages(root);
       assert.deepEqual(warnings, [
         "gate check ran while the host slept 119s mid-run; then passed on retry",
       ]);

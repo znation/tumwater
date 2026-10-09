@@ -13,7 +13,7 @@ import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { readEvents } from "../src/events/event-read.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
-import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { advanceMain } from "./fixtures/lander-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { assertWorktreeSettled, commitIn, gitOnlyBinDir, headSha, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -574,7 +574,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
     events.some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "skipped"),
     "the skipped re-check is priced in the feed",
   );
-  const warnings = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+  const warnings = warningMessagesOf(events);
   assert.ok(
     warnings.includes("no npm on PATH; skipping landing build check"),
     `the operator sees why the check did not run: ${JSON.stringify(warnings)}`,
