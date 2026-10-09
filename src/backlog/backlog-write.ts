@@ -9,8 +9,8 @@
  * rather than failing. The wake of the loop that should act stays in cli.ts beside the
  * other command bodies. */
 import path from "node:path";
-import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
-import { actionableEntryRanges } from "./backlog-structure.js";
+import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading } from "./backlog-md.js";
+import { actionableEntryRanges, stripEntryStamp } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
@@ -166,6 +166,65 @@ function removeEntryLocked(
   return { file: fileName, title: entry.title };
 }
 
+/** The section-edit entry point, the appendEntry/removeEntry analogue: the same
+ * cross-process lock, so an edit and a landing's working-tree fast-forward cannot each clobber
+ * the other's read-modify-write. */
+function editEntry(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+  title: string,
+  body: string,
+): { file: string; title: string } {
+  return withStateLock(primaryWorktreeLockPath(root), () =>
+    editEntryLocked(root, fileName, sectionTitle, n, title, body),
+  );
+}
+
+/** Replace the `n`th entry (1-based, as `tumwater backlog` lists it) of `<root>/<fileName>`'s
+ * `## <sectionTitle>` section with `### <title><stamp>` plus `body`, in place: the entry keeps
+ * its position and its original trailing stamp parenthetical. The ranges come from
+ * actionableEntryRanges (backlog-structure.ts), whose fence-aware walk means a `## `/`### `
+ * line quoted inside an entry's code fence is body text, so the spliced range covers exactly
+ * the heading and body without mistaking a quoted line for the boundary. The stamp is the
+ * trailing suffix of the JOINED heading metadata (headingMetadata folds a wrapped heading onto
+ * one line), sliced off the stamp-stripped text (stripEntryStamp) — empty when the heading
+ * carries no `(planned …)`/`(reported …)` parenthetical. An out-of-range position fails,
+ * writing nothing. The rebuilt entry keeps the append/remove blank-line shape: one blank line
+ * before whatever followed, and none at EOF. */
+function editEntryLocked(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+  title: string,
+  body: string,
+): { file: string; title: string } {
+  const file = path.join(root, fileName);
+  // An absent file is an empty section, never a seed: edit rewrites, it never writes scaffolding.
+  const md = readTextIfExists(file) ?? "";
+  const entries = actionableEntryRanges(md, sectionTitle);
+  const entry = entries[n - 1];
+  if (entry === undefined) {
+    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${entries.length} in ${fileName})`);
+  }
+  const lines = md.split("\n");
+  const metaText = headingMetadata(lines, entry.start - 1).text;
+  const stamp = metaText.slice(stripEntryStamp(metaText).length);
+  // rest starts at the line after the range's last line: for a well-formed section that is the
+  // next `## `/`### ` heading, since the range already carried the separating blank line.
+  const rest = lines.slice(entry.end);
+  const rebuilt = [`### ${title}${stamp}`, ...(body === "" ? [] : ["", body])];
+  // One blank line before whatever follows, unless the entry is the file's last content (then
+  // rest is empty or only the phantom line the trailing newline splits off, and the file keeps
+  // its existing trailing-newline shape).
+  if (rest.some((line) => line.trim() !== "")) rebuilt.push("");
+  lines.splice(entry.start - 1, entry.end - entry.start + 1, ...rebuilt);
+  writeTextAtomic(file, lines.join("\n"));
+  return { file: fileName, title };
+}
+
 /** The result one file command returns: the file written, the entry's title (verbatim
  * heading text, the same string the backlog readers list), and the stamp it carried — the
  * {file, title, stamp} payload `--json` prints. */
@@ -290,6 +349,34 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
   return removeEntry(root, "PLANS.md", "Planned", n);
 }
 
+/** `tumwater bug --edit <n> "<symptom>"`: replace the nth BUGS.md `## Open` entry's heading
+ * text with the new symptom, keeping its position and its original `(reported by …)` stamp.
+ * The symptom folds to one line (collapseWhitespace, the fileBug rule), so it can never grow
+ * a phantom section; an empty one fails with the usage line and writes nothing. A bug has no
+ * body, so the rebuilt entry is its heading alone. */
+export function editBug(root: string, n: number, rawText: string, usage: string): { file: string; title: string } {
+  const symptom = collapseWhitespace(rawText);
+  if (symptom === "") fail(`bug needs a symptom: ${usage}`);
+  return editEntry(root, "BUGS.md", "Open", n, symptom, "");
+}
+
+/** `tumwater plan --edit <n> "<title>" [body...]`: replace the nth PLANS.md `## Planned`
+ * entry's heading and body, keeping its position and its original `(planned …)`/`(reported …)`
+ * stamp. Both title and body fold to one line (collapseWhitespace), so neither can grow a
+ * phantom section; an empty title fails with the usage line and writes nothing. */
+export function editPlan(
+  root: string,
+  n: number,
+  rawTitle: string,
+  rawBody: string,
+  usage: string,
+): { file: string; title: string } {
+  const title = collapseWhitespace(rawTitle);
+  if (title === "") fail(`plan needs a title: ${usage}`);
+  const body = collapseWhitespace(rawBody);
+  return editEntry(root, "PLANS.md", "Planned", n, title, body);
+}
+
 /** The shared shell of the `bug --cancel` and `plan --cancel` CLI cases, mirroring
  * fileAndAnnounce's flag handling: `--cancel <n>` is the one valued flag, `--json` the one
  * boolean (at most once), `--help`/`-h` tolerated; any positional or other flag is refused
@@ -335,6 +422,54 @@ export async function cancelAndAnnounce(
   const removed = cancel(position);
   if (json) sayJson({ file: removed.file, title: removed.title });
   else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
+}
+
+/** The shared shell of the `bug --edit` and `plan --edit` CLI cases, mirroring
+ * fileAndAnnounce's prose classification and cancelAndAnnounce's flag handling: `--edit <n>` is
+ * the one valued flag, `--json` the one boolean (at most once), `--help`/`-h` ride into the new
+ * text, and any other flag-shaped token is refused through rejectUnknownArgs. Unlike cancel,
+ * what remains after the flags is the new text the callback folds to one line (so a `## `/`### `
+ * line quoted in it can never grow a phantom section). After requireReadyRepo it prints
+ * `edited <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
+ * fileAndAnnounce there is no wake: an edit adds no work for a loop to pick up. */
+export async function editAndAnnounce(
+  root: string,
+  args: string[],
+  command: string,
+  edit: (n: number, positionals: string[]) => { file: string; title: string },
+): Promise<void> {
+  let position: number | null = null;
+  let json = false;
+  const positionals: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? "";
+    if (arg === "--json") {
+      if (json) fail("--json may only be given once");
+      json = true;
+      continue;
+    }
+    if (arg === "--edit") {
+      if (position !== null) fail("--edit may only be given once");
+      const raw = args[i + 1];
+      if (raw === undefined) fail(`--edit needs a position number (e.g. \`--edit 2\`)`);
+      const n = parsePositiveInt(raw);
+      if (n === null) fail(`--edit needs a positive integer${gotSuffix(raw)}`);
+      position = n;
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      positionals.push(arg);
+      continue;
+    }
+    if (arg.startsWith("-")) rejectUnknownArgs(command, [arg], [JSON_FLAG]);
+    else positionals.push(arg as string);
+  }
+  if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
+  await requireReadyRepo(root);
+  const edited = edit(position, positionals);
+  if (json) sayJson({ file: edited.file, title: edited.title });
+  else say(`edited ${command} in ${edited.file}: ${edited.title}`);
 }
 
 /** One confirmation for both file commands, prose or `--json`: the JSON branch prints the

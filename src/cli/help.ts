@@ -116,6 +116,10 @@ Usage:
   tumwater bug --cancel <n> [--json]
                                    Remove the Nth entry in BUGS.md ## Open (as \`tumwater
                                    backlog\` lists it); no wake; --json prints {file, title}
+  tumwater bug --edit <n> "<symptom>" [--json]
+                                   Replace the Nth entry's text in BUGS.md ## Open in place,
+                                   keeping its position and original filing stamp; no wake;
+                                   --json prints {file, title}
   tumwater plan "<title>" [body...] [--json]
                                    File a plan request into PLANS.md ## Planned as the operator
                                    (stamped with today's date; the feature loop fleshes the stub
@@ -124,6 +128,10 @@ Usage:
   tumwater plan --cancel <n> [--json]
                                    Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
                                    backlog\` lists it); no wake; --json prints {file, title}
+  tumwater plan --edit <n> "<title>" [body...] [--json]
+                                   Replace the Nth entry's heading and body in PLANS.md ##
+                                   Planned in place, keeping its position and original stamp;
+                                   no wake; --json prints {file, title}
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
@@ -249,8 +257,8 @@ export function helpTopic(command: string, help: string = HELP): string | null {
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
   init: ["--branch", "--template", "--file"],
-  bug: ["--cancel"],
-  plan: ["--cancel"],
+  bug: ["--cancel", "--edit"],
+  plan: ["--cancel", "--edit"],
 };
 
 /** The `--help`/`-h` request cli.ts answers before dispatch: the topic text for `command`
