@@ -15,6 +15,7 @@ import path from "node:path";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
+import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { recordDailyCost } from "../src/budget/budget.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -174,11 +175,7 @@ test("pollFleetGates: a budget reopen hands fallback ticks back even when the fe
     },
   } as unknown as LoopRunner;
 
-  const config = defaultConfig();
-  config.provider = "paid";
-  config.model = "gpt-x";
-  config.fallbackModel = { provider: "free", model: "qwen-free" };
-  config.maxDailyCostUsd = 10;
+  const config = paidFallbackConfig(10);
   const states = newFleetGateStates(config);
   const ctx = {
     root,

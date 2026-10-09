@@ -24,6 +24,7 @@ import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
+import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 
@@ -113,11 +114,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
     fakeRunner(DIRECTOR_ROLE, directorState, { provider: "free", model: "qwen-free" }, handbacks),
   ];
 
-  const config = defaultConfig();
-  config.provider = "paid";
-  config.model = "gpt-x";
-  config.fallbackModel = { provider: "free", model: "qwen-free" };
-  config.maxDailyCostUsd = 10;
+  const config = paidFallbackConfig(10);
 
   const states = newFleetGateStates(config);
   const ctx = {
@@ -166,10 +163,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
 test("pollFleetGates: a fallback episode's failures key the hold on the fallback provider", () => {
   const root = tmpdir("gate-polls-fallback-hold-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
-  const config = defaultConfig();
-  config.provider = "paid";
-  config.model = "gpt-x";
-  config.fallbackModel = { provider: "free", model: "qwen-free" };
+  const config = paidFallbackConfig();
   const now = Date.now();
   const episode = (): ModelFallbackState => ({
     failures: 0,

@@ -2,21 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";import { BUDGET_WARNING_FRACTION, recordDailyCost } from "../src/budget/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
-import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
+import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 /** A fleet at a paid top-level model, a free fallback configured, one role pinned to the
  * paid model, and a reviewer override — everything the fallback view must strip. */
 function configWith(capUsd: number): TumwaterConfig {
-  const cfg = defaultConfig();
-  cfg.provider = "paid";
-  cfg.model = "gpt-x";
-  cfg.fallbackModel = { provider: "free", model: "qwen-free" };
-  cfg.maxDailyCostUsd = capUsd;
+  const cfg = paidFallbackConfig(capUsd);
   cfg.roles.feature = { ...cfg.roles.feature, provider: "paid", model: "gpt-x", enabled: true };
   cfg.review = { ...cfg.review, provider: "paid", model: "gpt-x" };
   return cfg;
