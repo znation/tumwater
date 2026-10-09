@@ -91,11 +91,11 @@ async function assembleStack(
  * the gate's own doc-only test (isExemptDiff over config.review.exemptPaths). A re-stack whose
  * new commits from main were doc-only rebuilds the checked tree with nothing but doc bytes
  * changed, and a doc-only delta cannot break the build: the reasoning verifyLanding
- * (src/landing/landing-merge.ts) applies when it skips its in-lock re-check for a moved doc-only landing. Its
- * false-fix cross-check has no counterpart here — the delta is commits main already landed
- * through their own gate, not a claim this batch makes. --no-renames so a rename out of a
- * code path lists the deleted source, not only its exempt destination. An unreadable diff is
- * not exempt: the caller runs the check. */
+ * (src/landing/landing-merge.ts) applies when it skips its in-lock re-check for a moved
+ * doc-only landing. Its false-fix cross-check has no counterpart here — the delta is
+ * commits main already landed through their own gate, not a claim this batch makes.
+ * --no-renames so a rename out of a code path lists the deleted source, not only its exempt
+ * destination. An unreadable diff is not exempt: the caller runs the check. */
 async function exemptTreeDelta(
   root: string,
   from: string,

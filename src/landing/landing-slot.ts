@@ -156,9 +156,9 @@ export function setLandingChangeStatus(root: string, role: string, status: Landi
 
 /** Add one change's record as its vet starts: each change is its own task, so records come and
  * go one at a time. The new record starts `landing` at `rebasing` with its own `startedAt` (a
- * vet opens with its checkout and rebase onto main). Every other record is kept only while its role is in
- * `live` — the roles the pipeline holds right now — so a record a crashed generation left behind
- * never rides along. Never throws (rewriteMarker). */
+ * vet opens with its checkout and rebase onto main). Every other record is kept only while its
+ * role is in `live` — the roles the pipeline holds right now — so a record a crashed generation
+ * left behind never rides along. Never throws (rewriteMarker). */
 export function addLandingChange(root: string, entry: LandingEntry, live: ReadonlySet<string>): void {
   const marker = readLandingMarker(root);
   const kept = marker ? landingChanges(marker).filter((c) => c.role !== entry.role && live.has(c.role)) : [];

@@ -63,8 +63,8 @@ export interface MergeContext extends RunsPi {
   /** The current tick number (names the conflict-resolution pi session). */
   tick: number;
   /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
-   * that is the change's own (landing-check-failures.ts counts it toward LANDING_CHECK_FAILURE_LIMIT); a failed
-   * fast-forward or a false fix never calls it. */
+   * that is the change's own (landing-check-failures.ts counts it toward
+   * LANDING_CHECK_FAILURE_LIMIT); a failed fast-forward or a false fix never calls it. */
   onLandingCheckRed?(check: BuildCheck, outcome: BuildCheckOutcome): void;
   /** Told when verifyLanding blocks the landing for a reason that is not a red check — the
    * exempt arm's fix-claim or backlog-structure cross-checks (a conflict resolution's tree can
@@ -331,8 +331,8 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
   const check = detectBuildCheck(wt, ctx.config) ?? undefined;
   // Show both sides' intent: the change's own commit message and the main commits that touched
-  // a conflicted file since the merge-base (PLANS.md, Robust conflict landing part 1/2). The markers
-  // alone never said why either side made the edit.
+  // a conflicted file since the merge-base (PLANS.md, Robust conflict landing part 1/2). The
+  // markers alone never said why either side made the edit.
   const since = await changeBaseRev(wt, ctx.mainBranch, preMergeHead);
   const change = (await commitMessage(wt, preMergeHead)) ?? "";
   const { commits, omitted } = await mainCommitsTouching(wt, since, ctx.mainBranch, remaining);
