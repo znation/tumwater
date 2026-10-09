@@ -160,15 +160,15 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     }
     return { result: "error" };
   }
-  // A revision tick that declares nothing-to-do drops the rejected change (the revise-rejected
-  // plan in PLANS.md):
-  // the author judged the objections show the change should not exist, so reset the re-applied diff
-  // away, delete the rejected ref, and end no_change without staging anything. Guarded on the
-  // tick's own revisionRound, not state.revision: a dirty user-request tick that happens to leave
-  // a pending revision untouched must not drop it. Checked before the clean-worktree branch
-  // because the re-applied diff can leave the worktree clean — an empty cherry-pick range, or the
-  // author reverting the edits while deciding — and the author's NOTHING_TO_DO must end the change
-  // anyway, or every later tick re-applies the same rejected diff.
+  // A revision tick that declares nothing-to-do drops the rejected change (the revise-rejected plan
+  // in PLANS.md): the author judged the objections show the change should not exist, so reset the
+  // re-applied diff away, delete the rejected ref, and end no_change without staging anything.
+  // Guarded on the tick's own revisionRound, not state.revision: a dirty user-request tick that
+  // happens to leave a pending revision untouched must not drop it. Checked before the
+  // clean-worktree branch because the re-applied diff can leave the worktree clean — an empty
+  // cherry-pick range, or the author reverting the edits while deciding — and the author's
+  // NOTHING_TO_DO must end the change anyway, or every later tick re-applies the same rejected
+  // diff.
   if (ctx.revisionRound !== undefined && s.revision && pi.nothingToDo) {
     const { sha } = s.revision;
     s.revision = undefined;

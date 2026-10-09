@@ -6,14 +6,14 @@ import { landingStatePath } from "../paths.js";
 import { runOnAbort } from "../process/process.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
-/** The orchestrator's tick-timing and scheduling seams (src/orchestrator/orchestrator.ts keeps the
- * poll loop itself — the control flow that calls these). Each is exported as a unit-test seam
- * (test/orchestrator-seams.test.ts): timing a semaphore-gated tick, an abort-interruptible sleep,
- * and the restart hand-off's bounded wait on the in-flight landing. Split out of orchestrator.ts —
- * which had grown into both the poll loop and the timing helpers it schedules with — so the loop
- * reads as control flow over these named steps. The fleet-health polls (the fleet hold, the
- * error-storm warning, the failure-spread alarm) are their own family in
- * src/fleet/fleet-polls.ts. */
+/** The orchestrator's tick-timing and scheduling seams (src/orchestrator/orchestrator.ts
+ * keeps the poll loop itself — the control flow that calls these). Each is exported as a
+ * unit-test seam (test/orchestrator-seams.test.ts): timing a semaphore-gated tick, an
+ * abort-interruptible sleep, and the restart hand-off's bounded wait on the in-flight landing.
+ * Split out of orchestrator.ts — which had grown into both the poll loop and the timing helpers
+ * it schedules with — so the loop reads as control flow over these named steps. The fleet-health
+ * polls (the fleet hold, the error-storm warning, the failure-spread alarm) are their own family
+ * in src/fleet/fleet-polls.ts. */
 
 /** How many completed role-tick samples the p75 needs before it is trusted as the drain window.
  * Below this the orchestrator reports no p75 and poll keeps the cold-start constant. */
@@ -38,11 +38,11 @@ export function p75TickDurationMs(durations: readonly number[]): number | null {
  * part is model work — its reviewer run (and, until 2026-09-24, a gate build-fix run: the
  * 2026-09-23 one held the slot for 4 h 35 m and that day's hand-off sat through 97 minutes of it).
  * Its deterministic part is bounded: at most one build check (BUILD_CHECK_TIMEOUT_MS) plus git
- * steps. So a check's bound plus a minute lets a landing already past its model runs — in its last
- * check and fast-forward — land, and gives an aborted landing's current step (a check, which no
- * abort reaches) time to end, so the hand-off does not leave a check running in a lander worktree
- * the next generation is about to reset. Not the drain's window: that is the p75 of whole role
- * ticks (over an hour on this fleet) — the very lag this bounds. */
+ * steps. So a check's bound plus a minute lets a landing already past its model runs — in its
+ * last check and fast-forward — land, and gives an aborted landing's current step (a check, which
+ * no abort reaches) time to end, so the hand-off does not leave a check running in a lander
+ * worktree the next generation is about to reset. Not the drain's window: that is the p75 of whole
+ * role ticks (over an hour on this fleet) — the very lag this bounds. */
 export const HANDOFF_LANDING_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
 
 /** Run one role tick under the concurrency semaphore and return how long the tick itself ran,
@@ -136,8 +136,8 @@ type HandoffLandingOutcome = "finished" | "aborted" | "abandoned";
  * stop at its next step boundary (landing-core.ts, landing-batch.ts, and landing-stack.ts check the
  * signal before every gate, every approved landing, and each of a stack's check attempts), and a
  * warning names what was still awaited. An aborted landing records `aborted` like any shutdown
- * abort — pins kept, entries dropped, marker removed — for its roles' leftover recovery on the new
- * build. One still running a window after the abort (a step wedged past its own bound) is left
+ * abort — pins kept, entries dropped, marker removed — for its roles' leftover recovery on the
+ * new build. One still running a window after the abort (a step wedged past its own bound) is left
  * behind: its 4/5 marker is cleared here, since this process exits the moment the hand-off returns,
  * and its entries and pins survive exactly as a crash leaves them — the next generation's first
  * drain re-lands them. Exported as a unit-test seam, like runTimedRoleTick. */
