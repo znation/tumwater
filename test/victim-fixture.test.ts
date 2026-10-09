@@ -1,4 +1,4 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -64,9 +64,11 @@ test("a child under exitWithOwnerEnv and the node grandchild it starts both exit
   });
   assert.ok(pids.every(pidAlive), "both idle while their owner lives");
   process.kill(host.pid as number, "SIGKILL");
-  const goneDeadline = Date.now() + 10_000;
-  while (pids.some(pidAlive) && Date.now() < goneDeadline) await sleep(50);
-  assert.deepEqual(pids.filter(pidAlive), [], "the child and its grandchild followed their killed owner out");
+  await waitFor(
+    () => !pids.some(pidAlive),
+    "the child and its grandchild to follow their killed owner out",
+    10_000,
+  );
 });
 
 test("exitWithOwnerEnv appends the preload once and names the owner", () => {

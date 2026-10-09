@@ -1,4 +1,4 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -373,9 +373,7 @@ test("signalTree kills the child's whole process group, grandchild included, via
     assert.equal(signalTree(child, "SIGTERM"), true, "the group kill reached a live process");
     await new Promise<void>((resolve) => child.once("exit", () => resolve()));
     // The grandchild must not outlive its group: a single-PID kill would orphan it.
-    const deadline = Date.now() + 2_000;
-    while (pidAlive(grand) && Date.now() < deadline) await sleep(10);
-    assert.equal(pidAlive(grand), false, "the grandchild died with its group");
+    await waitFor(() => !pidAlive(grand), "the grandchild to die with its group", 2_000);
   } finally {
     try {
       child.kill("SIGKILL");
@@ -477,9 +475,11 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
   } finally {
     t.mock.timers.reset();
   }
-  const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(pid) && Date.now() < goneDeadline) await sleep(50);
-  assert.equal(pidAlive(pid), false, "the SIGKILL leg removed the SIGTERM-trapping survivor");
+  await waitFor(
+    () => !pidAlive(pid),
+    "the SIGKILL leg to remove the SIGTERM-trapping survivor",
+    10_000,
+  );
   try {
     process.kill(pid, "SIGKILL");
   } catch {

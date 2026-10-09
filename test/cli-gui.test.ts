@@ -383,9 +383,7 @@ test("the gui reloads onto a newer build: closes, re-execs, re-binds the same po
     );
     assert.ok(reloadedPid > 0, "the wrapper supervises the reloaded server");
     process.kill(child.pid as number, "SIGKILL");
-    const goneDeadline = Date.now() + 15_000;
-    while (pidAlive(reloadedPid) && Date.now() < goneDeadline) await sleep(100);
-    assert.equal(pidAlive(reloadedPid), false, "the reloaded server exited with its supervisor");
+    await waitFor(() => !pidAlive(reloadedPid), "the reloaded server to exit with its supervisor", 15_000);
     await assert.rejects(fetch(`http://127.0.0.1:${port}/api/status`), "nothing serves the port any more");
   } finally {
     try {

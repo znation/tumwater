@@ -1,4 +1,4 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -64,19 +64,13 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
     assert.equal(result.aborted, true, "the run ends killed by the abort");
     pid = Number(fs.readFileSync(pidFile, "utf8").trim());
     assert.ok(pid > 0, "the grandchild recorded its pid");
-    // The group signal is asynchronous relative to runPi's resolution: poll until the OS
-    // has reaped the grandchild (or the assertion below fails on a leak that never dies).
-    const deadline = Date.now() + 5000;
-    let alive = true;
-    while (alive && Date.now() < deadline) {
-      try {
-        process.kill(pid, 0);
-      } catch {
-        alive = false;
-      }
-      if (alive) await sleep(50);
-    }
-    assert.equal(alive, false, "the tool-call grandchild is gone after the run resolves");
+    // The group signal is asynchronous relative to runPi's resolution: wait until the OS
+    // has reaped the grandchild, or the wait throws on a leak that never dies.
+    await waitFor(
+      () => !pidAlive(pid),
+      "the tool-call grandchild to be gone after the run resolves",
+      5_000,
+    );
   } finally {
     if (pid > 0) {
       try {
@@ -136,17 +130,16 @@ test("a run that exits normally leaves no backgrounded tool-call process behind 
     assert.equal(result.aborted || result.timedOut || result.quietKilled, false);
     const pids = pidFiles.map(readPid);
     assert.ok(pids.every((pid) => pid > 0), "both backgrounded sleeps recorded their pids");
-    // The group signal is asynchronous relative to runPi's resolution: poll until the OS has
-    // reaped both sleeps (the assertion below fails on a leak that never dies).
-    const deadline = Date.now() + 5000;
-    while (seenDead.size < pids.length && Date.now() < deadline) {
-      for (const pid of pids) if (!pidAlive(pid)) seenDead.add(pid);
-      if (seenDead.size < pids.length) await sleep(50);
-    }
-    assert.deepEqual(
-      pids.filter((pid) => !seenDead.has(pid)),
-      [],
-      "every backgrounded sleep is gone after a normal exit",
+    // The group signal is asynchronous relative to runPi's resolution: wait until the OS has
+    // reaped both sleeps, or the wait throws on a leak that never dies. Each pass records the
+    // dead pids, so the finally below never signals a pid that may be recycled.
+    await waitFor(
+      () => {
+        for (const pid of pids) if (!pidAlive(pid)) seenDead.add(pid);
+        return seenDead.size === pids.length;
+      },
+      "every backgrounded sleep to be gone after a normal exit",
+      5_000,
     );
   } finally {
     // Never leak a sleep, whichever assertion failed: SIGKILL every recorded pid not seen dead
@@ -213,12 +206,14 @@ test("the end-of-run sweep reaches a detached tool call's cross-group orphan (re
     assert.equal(result.ok, true, "the run ends normally — no kill path is involved");
     const pid = readPid();
     assert.ok(pid > 0, "the orphan recorded its pid");
-    // The marker sweep is fire-and-forget after pi's exit (one process-table scan): poll
-    // until the marked orphan is gone, or the assertion below fails on a leak.
-    const deadline = Date.now() + 15_000;
-    while (pidAlive(pid) && Date.now() < deadline) await sleep(50);
-    swept = !pidAlive(pid);
-    assert.equal(swept, true, "the detached tool call's orphan is gone after the run resolves");
+    // The marker sweep is fire-and-forget after pi's exit (one process-table scan): wait
+    // until the marked orphan is gone, or the wait throws and the finally leaks nothing.
+    await waitFor(
+      () => !pidAlive(pid),
+      "the detached tool call's orphan to be gone after the run resolves",
+      15_000,
+    );
+    swept = true;
   } finally {
     // Never leak the orphan, whichever assertion failed: SIGKILL it unless the sweep already
     // reaped it (its pid may then be recycled — never signal a swept pid again).

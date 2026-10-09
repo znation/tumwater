@@ -44,7 +44,7 @@ import { branchName } from "../src/paths.js";
 import { pidAlive } from "../src/process/process.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { headSha, mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { sleep } from "./helpers/wait.js";
+import { waitFor } from "./helpers/wait.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -476,9 +476,7 @@ test("runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it"
     grand = Number(fs.readFileSync(pidFile, "utf8").trim());
     assert.ok(Number.isInteger(grand) && grand > 0, `recorded grandchild pid: ${grand}`);
     // The grandchild must not outlive its group: a single-PID teardown would orphan it.
-    const deadline = Date.now() + 2_000;
-    while (pidAlive(grand) && Date.now() < deadline) await sleep(10);
-    assert.equal(pidAlive(grand), false, "the grandchild died with its group");
+    await waitFor(() => grand !== undefined && !pidAlive(grand), "the grandchild to die with its group", 2_000);
   } finally {
     restorePath();
     if (grand !== undefined && pidAlive(grand)) {

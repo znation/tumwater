@@ -1,4 +1,4 @@
-import { sleep } from "./helpers/wait.js";
+import { sleep, waitFor } from "./helpers/wait.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -116,9 +116,7 @@ test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour
   const plainPid = plain.pid as number;
   const signaled = await sweepRunMarker(own);
   assert.ok(signaled >= 1, "the sweep found the marked victim");
-  const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(oursPid) && Date.now() < goneDeadline) await sleep(50);
-  assert.equal(pidAlive(oursPid), false, "the marked victim is gone");
+  await waitFor(() => !pidAlive(oursPid), "the marked victim to be gone", 10_000);
   assert.equal(pidAlive(plainPid), true, "the unmarked neighbour survives the sweep");
 });
 
@@ -170,9 +168,11 @@ test("a fixture victim keeps the enclosing run's mark and exits by itself once i
   assert.ok(marks.includes(outer), "the victim kept the enclosing run's mark, for that run's sweep");
   assert.ok(marks.includes(own), "the victim carries its own mark");
   process.kill(host.pid as number, "SIGKILL");
-  const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(victimPid) && Date.now() < goneDeadline) await sleep(50);
-  assert.equal(pidAlive(victimPid), false, "the victim followed its killed test process out");
+  await waitFor(
+    () => !pidAlive(victimPid),
+    "the victim to follow its killed test process out",
+    10_000,
+  );
 });
 
 test("sweepRunMarker on Linux walks /proc environ and signals only the marked pid", async (t) => {
@@ -225,9 +225,7 @@ test("sweepRunMarker on Linux walks /proc environ and signals only the marked pi
       [`/proc/${victimPid}/environ`, "/proc/999999999/environ"],
       "the scanner's own pid is skipped unread; the vanished pid's read failure is absorbed",
     );
-    const goneDeadline = Date.now() + 10_000;
-    while (pidAlive(victimPid) && Date.now() < goneDeadline) await sleep(50);
-    assert.equal(pidAlive(victimPid), false, "the marked victim is gone");
+    await waitFor(() => !pidAlive(victimPid), "the marked victim to be gone", 10_000);
   } finally {
     if (original) Object.defineProperty(process, "platform", original);
     try {
@@ -265,9 +263,7 @@ test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGT
   } finally {
     t.mock.timers.reset();
   }
-  const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(pid) && Date.now() < goneDeadline) await sleep(50);
-  assert.equal(pidAlive(pid), false, "the SIGKILL leg removed the survivor");
+  await waitFor(() => !pidAlive(pid), "the SIGKILL leg to remove the survivor", 10_000);
   try {
     process.kill(pid, "SIGKILL");
   } catch {
@@ -334,15 +330,19 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   // runs, Node 22 only; the lts gate's loop won the same race). Fake timers cannot deliver
   // a real process exit, so this poll — like the sibling test's — stays on the platform
   // clock, bounded by a deadline.
-  const reapedDeadline = Date.now() + 10_000;
-  while (pidAlive(compliantPid) && Date.now() < reapedDeadline) await sleep(50);
-  assert.equal(pidAlive(compliantPid), false, "the compliant victim died on the SIGTERM leg");
+  await waitFor(
+    () => !pidAlive(compliantPid),
+    "the compliant victim to die on the SIGTERM leg",
+    10_000,
+  );
   t.mock.timers.tick(10_000); // fire the escalation: SIGKILL every victim
   t.mock.timers.reset();
 
-  const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(stubbornPid) && Date.now() < goneDeadline) await sleep(50);
-  assert.equal(pidAlive(stubbornPid), false, "the SIGTERM-proof victim was SIGKILLed by the escalation");
+  await waitFor(
+    () => !pidAlive(stubbornPid),
+    "the SIGTERM-proof victim to be SIGKILLed by the escalation",
+    10_000,
+  );
   assert.equal(pidAlive(compliantPid), false, "the compliant victim stayed down");
 });
 
@@ -369,8 +369,9 @@ test("the orphan helper arms its kill the moment the victim exists, and the hook
   const reap = hooks.at(0);
   assert.ok(reap, "the armed hook exists");
   reap();
-  const goneDeadline = Date.now() + 10_000;
-  while (child.pid && pidAlive(child.pid) && Date.now() < goneDeadline)
-    await sleep(50);
-  assert.ok(!child.pid || !pidAlive(child.pid), "the armed hook killed the victim");
+  await waitFor(
+    () => !child.pid || !pidAlive(child.pid),
+    "the armed hook to kill the victim",
+    10_000,
+  );
 });
