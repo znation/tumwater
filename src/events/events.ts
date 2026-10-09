@@ -69,6 +69,8 @@ export interface HarnessEvent {
     | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/gates/streak-gate.ts); carries role, streak, lastError when one is recorded
     | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd
     | "role_cap_resumed" // the cap was raised/removed or a new local day started; that role ticks again (carries role)
+    | "maintenance_quota_hold" // code-maintenance landings in the rolling 24 h window reached the allowance (plans/work-ratio.md, part 1b/4, src/gates/maintenance-quota.ts); the enabled maintenance loops start no new ticks until it re-opens; carries work, maint, allowance
+    | "maintenance_quota_resumed" // the rolling window re-opened below the allowance; the held maintenance loops tick again; carries work, maint, allowance
     | "bootstrap_complete" // the bootstrap gate's plan target was reached (plans/work-ratio.md, part 2/2); the latch .tumwater/bootstrap-complete.json is written and the held maintenance loops are admitted; carries plansDone, untilPlansDone
     | "quiet_hours_started" // the configured quietHours window began; role loops stop starting new ticks until it ends, director exempt (carries window)
     | "quiet_hours_ended" // the configured quietHours window ended; role loops tick again (carries window)

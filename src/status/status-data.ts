@@ -19,7 +19,7 @@ import {
 import type { ModelTier } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
-import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
+import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
@@ -155,6 +155,14 @@ export interface StatusSnapshot {
    * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
+  /** The maintenance allowance (plans/work-ratio.md, part 1b/4): the rolling-24 h window's
+   * `allowance` and `used` (maintenance landings plus maintenance loops in flight), and the
+   * enabled maintenance loop ids the scheduler holds while `used >= allowance`. Computed by the
+   * same pure verdict the gate folds (maintenance-quota.ts) against this process's own memo of
+   * the event log, so an observer shows the hold the scheduler enforces. Always present, empty
+   * `held` while the gate is open — the `capPaused` shape with the figures the loop cell's
+   * `held: maintenance quota <used>/<allowance>` label renders. Fresh per poll, like capPaused. */
+  maintenanceQuota: { allowance: number; used: number; held: string[] };
   /** The new-project bootstrap (plans/work-ratio.md, part 2/2) while it is active: its progress
    * against `bootstrap.untilPlansDone`. Absent once the latch is written or the config entry
    * removed, so the surfaces render exactly as before in a normal project. */
@@ -449,6 +457,17 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     capPaused: loops
       .filter((l) => l.role !== DIRECTOR_ROLE && roleCapPaused(l, cfg.maxDailyCostUsdPerRole?.[l.role]))
       .map((l) => l.role),
+    // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
+    // gate folds, over the same event log, so the dashboards show the hold the scheduler
+    // enforces. `landings` is the one land-queue snapshot read above, so in-flight maintenance
+    // landings count once here and in landQueue.
+    maintenanceQuota: maintenanceQuotaForPoll(
+      root,
+      cfg.maintenancePerWorkLanding,
+      loops,
+      new Set(landings.map((e) => e.role)),
+      now,
+    ),
     // The new-project bootstrap hold (plans/work-ratio.md, part 2/2): the same read-only
     // verdict the gate computes (bootstrapStatus), so the dashboards and the scheduler agree.
     // The held set is computed with the gate's own predicate over the same loop list.

@@ -16,6 +16,12 @@ import {
   type RoleCapGateState,
 } from "./role-cap-gates.js";
 import {
+  newMaintenanceQuotaGateState,
+  pollMaintenanceQuotaGate,
+  type MaintenanceQuotaGateState,
+  type MaintenanceQuotaVerdict,
+} from "./maintenance-quota.js";
+import {
   newBootstrapGateState,
   pollBootstrapGate,
   type BootstrapGateState,
@@ -40,7 +46,8 @@ import { ERROR_STORM_QUIET, type ErrorStorm } from "../fleet/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../fleet/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
+import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { logEventBestEffort } from "../events/events.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
@@ -71,6 +78,9 @@ export interface FleetGateStates {
   pause: PauseGateState;
   streak: StreakGateState;
   cap: RoleCapGateState;
+  /** The maintenance allowance's rolling-window memo and hold edge (plans/work-ratio.md, part
+   * 1b/4). */
+  quota: MaintenanceQuotaGateState;
   /** The new-project bootstrap hold (plans/work-ratio.md, part 2/2). */
   bootstrap: BootstrapGateState;
   quiet: QuietHoursGateState;
@@ -90,6 +100,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     pause: newPauseGateState(),
     streak: newStreakGateState(),
     cap: newRoleCapGateState(),
+    quota: newMaintenanceQuotaGateState(),
     bootstrap: newBootstrapGateState(),
     quiet: newQuietHoursGateState(),
     disk: newDiskGateState(),
@@ -112,6 +123,12 @@ interface FleetGatePoll {
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
+  /** The maintenance allowance's verdict this poll (plans/work-ratio.md, part 1b/4): `allowance`
+   * is what the rolling window permits, `used` is the landed maintenance count plus the
+   * maintenance loops already in flight, and `held` is `used >= allowance`. The scheduling pass
+   * admits at most the remaining `allowance - used` due maintenance loops, so the headroom is
+   * never overshot within a poll. */
+  maintenanceQuota: MaintenanceQuotaVerdict;
   /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2): every role but
    * plan, feature and director — and bugfix while BUGS.md `## Open` is empty. A held loop
    * starts no new tick unless it has a fresh operator wake or a queued prompt (the scheduling
@@ -290,6 +307,27 @@ export function pollFleetGates(
   // local midnight lifts the verdict by itself.
   const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
 
+  // The maintenance allowance (plans/work-ratio.md, part 1b/4): code-maintenance landings in a
+  // rolling 24 h window are capped at `maintenancePerWorkLanding × work + MAINTENANCE_DAILY_FLOOR`.
+  // The gate counts the window, adds the maintenance loops already in flight (running a tick or
+  // holding a queued landing, so six concurrent permits cannot overshoot), and logs the one
+  // hold/resume event per transition. Enabled only: a disabled loop runs no tick to count. The
+  // scheduling pass spends the returned headroom one due maintenance loop at a time, beside
+  // capPaused, with the fresh-wake/queued-prompt override the need-based deferral honors.
+  const queuedLandingRoles = new Set(queuedLandingFiles(root).map((q) => q.entry.role));
+  const maintenanceQuota = pollMaintenanceQuotaGate(
+    root,
+    states.quota,
+    runners.map((r) => ({
+      role: r.role,
+      enabled: loopEnabled(r.config, r.role),
+      running: r.state.running === true,
+      hasQueuedLanding: queuedLandingRoles.has(r.role),
+    })),
+    liveConfig.maintenancePerWorkLanding,
+    now,
+  );
+
   // New-project bootstrap (src/gates/bootstrap-gates.ts, plans/work-ratio.md part 2/2): a fresh
   // project's maintenance loops start no new ticks until `bootstrap.untilPlansDone` plans are
   // Done. The gate owns the latch write and the one `bootstrap_complete` event; the scheduling
@@ -416,6 +454,7 @@ export function pollFleetGates(
     userPaused,
     pausedRoles: pausedRolesNow,
     capPaused,
+    maintenanceQuota,
     bootstrapHeld,
     bootstrapActive,
     budgetPausedRoles,

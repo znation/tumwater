@@ -33,6 +33,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "cap paused") return { key: "cap", label: "Cap paused", tone: "amber", live: false, detail: "its own daily cap is spent" };
     if (p === "disk hold") return { key: "disk", label: "Disk hold", tone: "amber", live: false, detail: "free space is below the floor" };
     if (p === "held: bootstrap") return { key: "bootstrap", label: "Bootstrap hold", tone: "amber", live: false, detail: "waiting for enough plans to be done" };
+    if (p.startsWith("held: maintenance quota")) return { key: "quota", label: "Maintenance hold", tone: "amber", live: false, detail: after(24) };
     if (p.startsWith("sleeping")) return { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
     if (p === "queued") return { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — waiting for a free slot" };
     if (p === "waiting for prompts") return { key: "waiting", label: "Waiting", tone: "gray", live: false, detail: "runs when you send it a prompt" };

@@ -74,8 +74,9 @@ with its own branch and state; default 1), the daily spend cap
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
 cap starts no new ticks until the next local day or a live edit), a
 `maintenancePerWorkLanding` ratio (default 2; a rolling 24 h allowance of that many
-code-maintenance landings per feature/bugfix/director landing, plus a floor of 12 — counted now,
-with the scheduler holding maintenance loops past it once the follow-up part lands), a nightly `quietHours` window
+code-maintenance landings per feature/bugfix/director landing, plus a floor of 12 — when the
+window reaches it the scheduler holds the enabled maintenance loops until it rolls under, and a
+fresh `tumwater wake <role>` or a queued prompt for one admits a single tick anyway), a nightly `quietHours` window
 (e.g. `"23:00-07:00"` local time) during
 which role loops start no new ticks (the director is exempt), with optional per-role windows
 `quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the

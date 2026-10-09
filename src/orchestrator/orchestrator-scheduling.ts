@@ -9,7 +9,8 @@ import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
-import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
+import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
+import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
@@ -38,6 +39,11 @@ interface SchedulingPassCtx {
   capPaused: ReadonlySet<string>;
   /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2). */
   bootstrapHeld: ReadonlySet<string>;
+  /** The maintenance allowance's verdict this poll (plans/work-ratio.md, part 1b/4): `allowance`
+   * is what the rolling window permits and `used` is the landed maintenance count plus the
+   * maintenance loops already in flight. The pass admits at most the remaining
+   * `allowance - used` due maintenance loops, so the headroom is never overshot within a poll. */
+  maintenanceQuota: MaintenanceQuotaVerdict;
   /** Whether bootstrap is active this poll: plan runs on the global min-tick gap when so. */
   bootstrapActive: boolean;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now. */
@@ -96,6 +102,7 @@ export async function pollRunnerReasons(
     quietNow,
     pausedRoles: pausedRolesSet,
     capPaused,
+    maintenanceQuota,
     bootstrapHeld,
     bootstrapActive,
     budgetPausedRoles,
@@ -189,15 +196,29 @@ export async function pollRunnerReasons(
   const operatorPauseBlocks = (role: string): boolean =>
     (userPaused || quietNow || roleQuietHeld.has(role) || budgetHolds(role)) &&
     role !== DIRECTOR_ROLE;
+  // Fresh operator demand: a queued prompt or a wake newer than the loop's last tick end. The
+  // same override the need-based deferral honors (an explicit "try again now" is not idle
+  // maintenance); shared by the bootstrap and maintenance-allowance holds so the two cannot
+  // drift on what counts as demand.
+  const hasDemand = (runner: LoopRunner): boolean =>
+    inboxSize(root, runner.role) > 0 ||
+    (runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastTickEndedAt ?? 0));
   // The new-project bootstrap hold (part 2/2): held unless the loop has a fresh operator wake
-  // or a queued prompt — the same demand override the need-based deferral honors (an explicit
-  // "try again now" is not idle maintenance). The director is never in the held set.
+  // or a queued prompt.
   const bootstrapHeldNow = (runner: LoopRunner): boolean =>
-    bootstrapHeld.has(runner.role) &&
-    !(
-      inboxSize(root, runner.role) > 0 ||
-      (runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastTickEndedAt ?? 0))
-    );
+    bootstrapHeld.has(runner.role) && !hasDemand(runner);
+  // The maintenance allowance's fleet-level hold (part 1b/4): `used` has reached `allowance`,
+  // so no maintenance loop starts unless it carries demand (`tumwater wake <maintenance-role>`
+  // runs exactly one tick). The per-poll admission headroom is spent separately, after each
+  // loop's due check, where the pass knows what actually ticks; the verdict alone cannot.
+  const maintenanceQuotaOverLine = (runner: LoopRunner): boolean =>
+    commitTier(baseRoleOf(runner.role)) === "maintenance" &&
+    maintenanceQuota.used >= maintenanceQuota.allowance &&
+    !hasDemand(runner);
+  // The one-poll admission budget: each due maintenance loop this pass admits spends one of
+  // the remaining `allowance - used` slots, reset every pass, so two due maintenance loops
+  // cannot start in the same poll and overshoot the allowance.
+  let maintenanceQuotaAdmitted = 0;
   for (const runner of runners) {
     // Once mode: a paused role runs no tick this round and must be reported as skipped,
     // so it settles here — before the gates that would otherwise skip it silently (a
@@ -210,6 +231,7 @@ export async function pollRunnerReasons(
       (pausedRolesSet.has(runner.role) ||
         pausedRolesSet.has(baseRoleOf(runner.role)) ||
         capPaused.has(runner.role) ||
+        maintenanceQuotaOverLine(runner) ||
         bootstrapHeldNow(runner) ||
         operatorPauseBlocks(runner.role))
     ) {
@@ -233,6 +255,10 @@ export async function pollRunnerReasons(
     // stop is about spend, and probing it adds noise, not signal. The lift is a live
     // config edit or local midnight — no marker exists for `resume --role` to touch.
     if (capPaused.has(runner.role)) continue;
+    // The maintenance allowance (plans/work-ratio.md, part 1b/4): no new maintenance tick while
+    // the rolling 24 h window is over its line. A fresh operator wake or a queued prompt admits
+    // one anyway (maintenanceQuotaOverLine), the same demand override the bootstrap hold honors.
+    if (maintenanceQuotaOverLine(runner)) continue;
     // The new-project bootstrap (part 2/2): no new maintenance ticks until the plan target is
     // met; a fresh wake or queued prompt admits one anyway (bootstrapHeldNow).
     if (bootstrapHeldNow(runner)) continue;
@@ -312,6 +338,16 @@ export async function pollRunnerReasons(
       }
     } else if (deferredDue.get(runner.role)) {
       deferredDue.set(runner.role, false); // an inbox/resume run ends the episode
+    }
+    // The allowance's in-flight admission (plans/work-ratio.md, part 1b/4): `used` counts the
+    // maintenance loops already in flight, so a due maintenance tick admitted here spends one
+    // of the remaining `allowance - used` slots. This must sit after the due check — the pure
+    // verdict cannot know which loops will be eligible this poll, so the reservation lives in
+    // the pass that does; without it two due maintenance loops start in the same poll. Demand
+    // spends no slot: it is an explicit operator request, not idle maintenance.
+    if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !hasDemand(runner)) {
+      if (maintenanceQuotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) continue;
+      maintenanceQuotaAdmitted++;
     }
     // Parallel work instances (part 4/7): a multi-runner base role's claim assignment, after
     // every gate has admitted this runner. A runner that already holds a claim proceeds — its

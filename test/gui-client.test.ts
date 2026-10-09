@@ -71,6 +71,13 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     ["Bootstrap hold", "amber", false],
     "held: bootstrap reads like a hold",
   );
+  // The maintenance allowance's hold reads like the other held states, carrying its figures.
+  const quota = model.phaseInfo("held: maintenance quota 32/32");
+  assert.deepEqual(
+    [quota.label, quota.tone, quota.live, quota.detail],
+    ["Maintenance hold", "amber", false, "32/32"],
+    "held: maintenance quota reads like a hold",
+  );
   // An unknown label still renders — as itself, neutrally.
   assert.deepEqual([model.phaseInfo("molting").key, model.phaseInfo("molting").label, model.phaseInfo("molting").tone], ["other", "molting", "gray"]);
 });

@@ -8,6 +8,12 @@ import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/
 import { freshLoopState, loadLoopState, type LoopState } from "../loop/loop-state.js";
 import { eventsLogPath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import {
+  countMaintenanceWindow,
+  maintenanceQuota,
+  newMaintenanceWindowCounter,
+} from "../gates/maintenance-quota.js";
+import { commitTier } from "../roles/roles.js";
 
 /** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * three inputs that cost real reads — main's newest merge-scope build check (a stat-cached
@@ -229,4 +235,41 @@ export function loopStateForPoll(root: string, role: string): LoopState {
       (state) => ({ ...state }), // A copy: callers may treat the result as their own.
     ) ?? freshLoopState(role)
   );
+}
+
+// Per-root maintenance-window memos (plans/work-ratio.md, part 1b/4): the gate's own
+// instant-shaped counter, so a status reader shows the same allowance verdict the scheduler
+// enforces without re-folding the whole window each second. The counter folds only appended
+// bytes between polls, exactly like the orchestrator's. Keyed by root; in-memory only, so a
+// first poll or a restart seeds from a full windowed read.
+const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWindowCounter>>();
+
+/** The maintenance allowance verdict as an observer sees it for this poll (status-data's
+ * `maintenanceQuota` field): the rolling-window counts over the same event log the gate reads,
+ * plus the enabled maintenance loops currently in flight (running a tick or holding a queued
+ * landing, so the `used` figure matches the gate's). `held` names the enabled maintenance loop
+ * ids the scheduler holds while `used >= allowance`. Pure read — unlike the gate it logs nothing
+ * and keeps no hold edge, so it can run in the TUI/GUI process every second. */
+export function maintenanceQuotaForPoll(
+  root: string,
+  perWorkLanding: number,
+  loops: readonly { role: string; running?: boolean }[],
+  queuedLandingRoles: ReadonlySet<string>,
+  now: number,
+): { allowance: number; used: number; held: string[] } {
+  let counter = maintenanceCounters.get(root);
+  if (!counter) {
+    counter = newMaintenanceWindowCounter();
+    maintenanceCounters.set(root, counter);
+  }
+  const { work, maint } = countMaintenanceWindow(root, counter, now);
+  const maintenanceRoles: string[] = [];
+  let inFlight = 0;
+  for (const loop of loops) {
+    if (commitTier(loop.role) !== "maintenance") continue;
+    maintenanceRoles.push(loop.role);
+    if (loop.running || queuedLandingRoles.has(loop.role)) inFlight++;
+  }
+  const verdict = maintenanceQuota({ work, maint, inFlight, perWorkLanding });
+  return { allowance: verdict.allowance, used: verdict.used, held: verdict.held ? maintenanceRoles : [] };
 }

@@ -5,8 +5,11 @@ import {
   MAINTENANCE_DAILY_FLOOR,
   countMaintenanceWindow,
   maintenanceQuota,
+  newMaintenanceQuotaGateState,
   newMaintenanceWindowCounter,
+  pollMaintenanceQuotaGate,
 } from "../src/gates/maintenance-quota.js";
+import { readEvents } from "../src/events/event-read.js";
 import { eventsLogPath } from "../src/paths.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -174,4 +177,67 @@ test("a torn partial merged line is not counted until it completes, then counted
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 0 });
   fs.appendFileSync(eventsLogPath(root), full.slice(split) + "\n");
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
+});
+
+test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold per transition", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    ...Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "feature", type: "merged", commit: `f${i}` })),
+    ...Array.from({ length: 32 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })),
+  ]);
+  const state = newMaintenanceQuotaGateState();
+  const observers = [
+    { role: "clean", enabled: true, running: false, hasQueuedLanding: false },
+    { role: "dry", enabled: true, running: false, hasQueuedLanding: false },
+    { role: "readme", enabled: true, running: false, hasQueuedLanding: false },
+    { role: "feature", enabled: true, running: false, hasQueuedLanding: false },
+    { role: "plan", enabled: true, running: false, hasQueuedLanding: false },
+    { role: "clean-2", enabled: false, running: false, hasQueuedLanding: false },
+  ];
+  // allowance = 2 * 10 + 12 = 32, maint = 32, inFlight = 0 -> held at the boundary. The
+  // disabled clean-2 and the work/neither feature and plan do not move `used`.
+  assert.deepEqual(pollMaintenanceQuotaGate(root, state, observers, 2, now), {
+    allowance: 32,
+    used: 32,
+    held: true,
+  });
+  // Still held on the next poll: the verdict did not change, so no second event.
+  pollMaintenanceQuotaGate(root, state, observers, 2, now);
+  assert.deepEqual(
+    readEvents(root, 200).filter((e) => e.type === "maintenance_quota_hold").length,
+    1,
+  );
+  // 25 h later every merge has aged out of the rolling window: the gate re-opens with the
+  // floor allowance, logs one resume, and holds nobody.
+  const later = now + 25 * HOUR;
+  assert.deepEqual(pollMaintenanceQuotaGate(root, state, observers, 2, later), {
+    allowance: 12,
+    used: 0,
+    held: false,
+  });
+  assert.deepEqual(
+    readEvents(root, 200).filter((e) => e.type === "maintenance_quota_resumed").length,
+    1,
+  );
+});
+
+test("a running tick and a queued landing both count as in flight toward the used figure", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  // allowance = 0 * work + 12; 10 landed + 2 in flight = 12 -> held at the boundary.
+  writeEvents(
+    root,
+    Array.from({ length: 10 }, (_, i) => ({ ts: now - HOUR, loop: "clean", type: "merged", commit: `c${i}` })),
+  );
+  const state = newMaintenanceQuotaGateState();
+  const observers = [
+    { role: "clean", enabled: true, running: true, hasQueuedLanding: false },
+    { role: "dry", enabled: true, running: false, hasQueuedLanding: true },
+  ];
+  assert.deepEqual(pollMaintenanceQuotaGate(root, state, observers, 0, now), {
+    allowance: 12,
+    used: 12,
+    held: true,
+  });
 });

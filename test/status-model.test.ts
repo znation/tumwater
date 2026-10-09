@@ -708,6 +708,7 @@ test("loopPhase reads held: bootstrap for idle role loops while bootstrap holds"
     "held: bootstrap",
   );
   assert.equal(loopRank("held: bootstrap"), 3, "the hold ranks with the other paused states");
+  assert.equal(loopRank("held: maintenance quota 32/32"), 3, "the allowance hold ranks as paused too");
   const running = freshLoopState("clean");
   running.running = true;
   assert.equal(

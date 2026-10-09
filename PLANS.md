@@ -44,58 +44,6 @@ pin the absent display.
 - **No dead helper.** `grep -rn slotSuffix src test` returns nothing.
 - `npm run test` green.
 
-### Work ratio, part 1b/4: the scheduler holds maintenance loops past their allowance (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4; requires part 1a/4 landed)
-
-Design: plans/work-ratio.md ("Maintenance follows work").
-
-**Approach.**
-1. **Gate.**
-   - Add `newMaintenanceQuotaGateState()` and `pollMaintenanceQuotaGate(...)` to
-     src/gates/maintenance-quota.ts, modeled on src/gates/role-cap-gates.ts. The poll returns the
-     set of held loop ids: every enabled loop whose `commitTier` is `"maintenance"` while 1a's
-     verdict says held, and none otherwise.
-   - `inFlight` is the number of maintenance-tier loops currently running a tick or holding a
-     queued landing. Six concurrent permits cannot overshoot the allowance.
-   - Register the gate in `FleetGateStates` / `pollFleetGates` (src/gates/gate-polls.ts).
-   - Check it in `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) right after
-     `capPaused`.
-2. **Override.** A fresh operator wake (`wokenAt` newer than the last tick end) or a queued
-   prompt for that loop admits one tick anyway. This is the same demand override
-   `deferTickReason` honors.
-3. **Events.**
-   - Log `maintenance_quota_hold` {work, maint, allowance} when the gate goes from open to held.
-   - Log `maintenance_quota_resumed` when it re-opens. Both are fleet-level, logged once per
-     transition and not per loop.
-   - Add both to src/events/events.ts and src/events/event-format.ts.
-4. **Status.**
-   - Held loops show `held: maintenance quota <used>/<allowance>` wherever `capPaused` shows
-     today: src/status/status-data.ts and its TUI/GUI renderers.
-   - Add a `maintenanceQuota` field to the status payload, the same shape as `capPaused`.
-   - Update README.md's config reference: the setting now holds loops.
-
-**Files touched.**
-- src/gates/maintenance-quota.ts
-- src/gates/gate-polls.ts
-- src/orchestrator/orchestrator-scheduling.ts, orchestrator.ts
-- src/events/events.ts, event-format.ts
-- src/status/status-data.ts and its renderers
-- README.md
-
-Tests:
-- cases in test/maintenance-quota.test.ts
-- cases in test/orchestrator-scheduling.test.ts
-
-**Acceptance criteria.**
-- **Held.** With 10 work merges and 32 maintenance merges in the last 24 h, clean, dry and
-  readme are held. feature, bugfix, plan, steward, qa and telemetry tick normally.
-- **Window.** When a maintenance merge ages past 24 h, the gate re-opens with one
-  `maintenance_quota_resumed` event.
-- **In-flight.** With an allowance of 1 more than `maint`, two due maintenance loops start at
-  most one tick between them.
-- **Override.** `tumwater wake clean` while held runs exactly one clean tick.
-- **Live.** `tumwater config set maintenancePerWorkLanding 100` lifts the hold on the next poll.
-- `npm run test` green.
-
 ### Split the LoopRunner tick pipeline out of src/loop/loop.ts (planned 2026-10-08 by organize)
 
 Design principle: a file with too many responsibilities should be divided along the seams it already
@@ -612,6 +560,83 @@ and a loop test for `budgetCapped` → handoff.
 
 
 ## Done
+
+### Work ratio, part 1b/4: the scheduler holds maintenance loops past their allowance (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4; requires part 1a/4 landed; done 2026-10-09 by feature)
+
+Design: plans/work-ratio.md ("Maintenance follows work").
+
+**As landed.** `pollMaintenanceQuotaGate(root, state, observers, perWorkLanding, now)` and
+`newMaintenanceQuotaGateState()` live in src/gates/maintenance-quota.ts; the observation type is
+module-private (gate-polls passes structurally compatible objects). The gate state holds 1a's
+`MaintenanceWindowCounter` and the previous held verdict; it counts the enabled maintenance loops
+in flight (running or holding a queued landing), logs one fleet-level
+`maintenance_quota_hold`/`_resumed` per transition, and returns the pure verdict
+`{ allowance, used, held }`. `FleetGateStates` gained `quota`, and `pollFleetGates` builds the
+observations from the runner list (enabled, running, and the `queuedLandingFiles(root)` roles) and
+returns the verdict as `maintenanceQuota`. `pollRunnerReasons` folds the fleet-level over-line
+verdict in right after `capPaused` through a shared `hasDemand(runner)` override (queued prompt or
+a wake newer than the last tick end) that the bootstrap hold now reuses; because one verdict
+cannot know which loops will be due, the pass also spends the remaining `allowance - used`
+headroom one due maintenance loop at a time at the admission site, so two due maintenance loops
+cannot start in the same poll (the 2026-10-09 review's in-flight objection). Status:
+`status-data.ts` adds a `maintenanceQuota: { allowance, used, held }` field computed through a
+per-root counter in `status-polls.ts` (same pure verdict, no event writes), `status-payload.ts`
+carries it raw, and `status-model.ts`'s `loopPhase` gains the
+`held: maintenance quota <used>/<allowance>` label ranked with the other paused states; the GUI's
+`gui-client-model.ts` phaseInfo renders it as an amber "Maintenance hold" pill.
+`countMaintenanceWindow` now guards a non-regular-file (or briefly unreadable) log with a no-fold
+fallback, so the every-second observers and the orchestrator's poll loop cannot be ended by an
+unreadable event feed. README's config reference is present-tense. Tests: the two gate cases in
+test/maintenance-quota.test.ts and the quota/wake and headroom-race cases in
+test/orchestrator-scheduling.test.ts.
+
+**Approach.**
+1. **Gate.**
+   - Add `newMaintenanceQuotaGateState()` and `pollMaintenanceQuotaGate(...)` to
+     src/gates/maintenance-quota.ts, modeled on src/gates/role-cap-gates.ts. The poll returns the
+     1a verdict (allowance, used, held) for the scheduler, which holds the enabled maintenance
+     loops while `used >= allowance` and spends the remaining headroom one due loop per poll.
+   - `inFlight` is the number of maintenance-tier loops currently running a tick or holding a
+     queued landing. Six concurrent permits cannot overshoot the allowance.
+   - Register the gate in `FleetGateStates` / `pollFleetGates` (src/gates/gate-polls.ts).
+   - Check it in `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) right after
+     `capPaused`.
+2. **Override.** A fresh operator wake (`wokenAt` newer than the last tick end) or a queued
+   prompt for that loop admits one tick anyway. This is the same demand override
+   `deferTickReason` honors.
+3. **Events.**
+   - Log `maintenance_quota_hold` {work, maint, allowance} when the gate goes from open to held.
+   - Log `maintenance_quota_resumed` when it re-opens. Both are fleet-level, logged once per
+     transition and not per loop.
+   - Add both to src/events/events.ts and src/events/event-format.ts.
+4. **Status.**
+   - Held loops show `held: maintenance quota <used>/<allowance>` wherever `capPaused` shows
+     today: src/status/status-data.ts and its TUI/GUI renderers.
+   - Add a `maintenanceQuota` field to the status payload, the same shape as `capPaused`.
+   - Update README.md's config reference: the setting now holds loops.
+
+**Files touched.**
+- src/gates/maintenance-quota.ts
+- src/gates/gate-polls.ts
+- src/orchestrator/orchestrator-scheduling.ts, orchestrator.ts
+- src/events/events.ts, event-format.ts
+- src/status/status-data.ts and its renderers
+- README.md
+
+Tests:
+- cases in test/maintenance-quota.test.ts
+- cases in test/orchestrator-scheduling.test.ts
+
+**Acceptance criteria.**
+- **Held.** With 10 work merges and 32 maintenance merges in the last 24 h, clean, dry and
+  readme are held. feature, bugfix, plan, steward, qa and telemetry tick normally.
+- **Window.** When a maintenance merge ages past 24 h, the gate re-opens with one
+  `maintenance_quota_resumed` event.
+- **In-flight.** With an allowance of 1 more than `maint`, two due maintenance loops start at
+  most one tick between them.
+- **Override.** `tumwater wake clean` while held runs exactly one clean tick.
+- **Live.** `tumwater config set maintenancePerWorkLanding 100` lifts the hold on the next poll.
+- `npm run test` green.
 
 ### Work ratio, part 1a/4: the maintenance allowance — window counts, the verdict and the `maintenancePerWorkLanding` setting (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4, which feature passed over as too big; done 2026-10-08 by feature)
 

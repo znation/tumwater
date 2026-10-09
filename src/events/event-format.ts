@@ -281,6 +281,13 @@ export function eventMessage(e: HarnessEvent): string {
       return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and ticks again`;
+    case "maintenance_quota_hold":
+      // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
+      // keeping maintenance landings in proportion to work. Names the window's counts so the
+      // operator can see why the hygiene loops stopped and what would re-open them.
+      return `maintenance quota reached — ${textOr(e.maint)} maintenance landings against an allowance of ${textOr(e.allowance)} in the last 24h (${textOr(e.work)} work); the maintenance loops are held until the window rolls over`;
+    case "maintenance_quota_resumed":
+      return `maintenance quota re-opened — ${textOr(e.maint)} maintenance landings against an allowance of ${textOr(e.allowance)} in the last 24h; the maintenance loops tick again`;
     case "bootstrap_complete":
       // Routine state change, like counters_reset — no warning prefix: the fleet just finished
       // its bootstrap and the maintenance loops are admitted.

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
+import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { pollFleetHold } from "../src/fleet/fleet-polls.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";
@@ -13,6 +14,8 @@ import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
+import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
 // holds the roles whose tick model is on P while roles on a healthy provider Q keep ticking,
@@ -51,6 +54,7 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     quietNow: false,
     pausedRoles: new Set<string>(),
     capPaused: new Set<string>(),
+    maintenanceQuota: { allowance: Number.POSITIVE_INFINITY, used: 0, held: false },
     bootstrapHeld: new Set<string>(),
     bootstrapActive: false,
     budgetPausedRoles: new Set<string>(),
@@ -373,4 +377,88 @@ test("the bootstrap hold blocks maintenance through scheduling but admits plan a
   assert.equal(reasons.has(runners[2]!), false, "a bootstrap-held maintenance loop starts no tick");
   assert.equal(reasons.has(runners[0]!), true, "plan keeps ticking during bootstrap");
   assert.equal(reasons.has(runners[1]!), true, "feature keeps ticking during bootstrap");
+});
+
+test("the maintenance quota holds a maintenance loop; a fresh wake admits one tick anyway", async () => {
+  const root = tmpdir("tumwater-scheduling-quota-");
+  const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("feature", defaultConfig())];
+  const ctx = schedulingCtx(
+    root,
+    runners,
+    new Map([
+      ["clean", undefined],
+      ["feature", undefined],
+    ]),
+  );
+  ctx.maintenanceQuota = { allowance: 12, used: 12, held: true };
+  const held = await pollRunnerReasons(ctx);
+  assert.equal(held.has(runners[0]!), false, "a quota-held maintenance loop starts no tick");
+  assert.equal(held.has(runners[1]!), true, "work loops are unaffected by the maintenance allowance");
+
+  // A fresh operator wake is demand, not idle maintenance: it outranks the hold exactly as it
+  // does the bootstrap and need-based deferrals, so `tumwater wake clean` runs one tick.
+  const clean = runners[0]!;
+  clean.state.wokenAt = T0 + 5_000;
+  clean.state.lastTickEndedAt = T0 + 1_000;
+  const woken = await pollRunnerReasons(ctx);
+  assert.equal(woken.has(clean), true, "a fresh wake admits one tick while the quota holds");
+});
+
+test("the allowance's in-flight headroom starts at most one of two due maintenance loops per poll", async () => {
+  const root = tmpdir("tumwater-scheduling-quota-race-");
+  const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("dry", defaultConfig())];
+  const now = T0 + 10_000;
+  // No work landings, so the floor allowance is 12; 11 maintenance landings leave exactly one
+  // open slot in the rolling window.
+  writeEvents(
+    root,
+    Array.from({ length: 11 }, (_, i) => ({
+      ts: now - HOUR,
+      loop: "clean",
+      type: "merged",
+      commit: `c${i}`,
+    })),
+  );
+  const gate = pollMaintenanceQuotaGate(
+    root,
+    newMaintenanceQuotaGateState(),
+    runners.map((r) => ({ role: r.role, enabled: true, running: false, hasQueuedLanding: false })),
+    0,
+    now,
+  );
+  assert.deepEqual(gate, { allowance: 12, used: 11, held: false }, "one slot is open");
+
+  // First poll: both maintenance loops are due, but only one may take the open slot. The gate's
+  // verdict is computed once, so the reservation has to be spent in the scheduling pass itself —
+  // without it both loops would be admitted and the window would overshoot by one.
+  const first = schedulingCtx(
+    root,
+    runners,
+    new Map([
+      ["clean", undefined],
+      ["dry", undefined],
+    ]),
+  );
+  first.maintenanceQuota = gate;
+  const firstReasons = await pollRunnerReasons(first);
+  assert.equal(firstReasons.has(runners[0]!), true, "the first due loop takes the open slot");
+  assert.equal(firstReasons.has(runners[1]!), false, "the second waits its turn");
+
+  // The first tick ends without landing (so the landed count, and the allowance, are unchanged).
+  // Its backoff now makes it not due; the second takes the slot on the next poll — one tick,
+  // not two, between the two starts.
+  runners[0]!.state.lastTickEndedAt = now;
+  runners[0]!.state.nextRunAt = now + HOUR;
+  const second = schedulingCtx(
+    root,
+    runners,
+    new Map([
+      ["clean", undefined],
+      ["dry", undefined],
+    ]),
+  );
+  second.maintenanceQuota = gate;
+  const secondReasons = await pollRunnerReasons(second);
+  assert.equal(secondReasons.has(runners[0]!), false, "the first loop is back in its gap");
+  assert.equal(secondReasons.has(runners[1]!), true, "the second loop starts one tick later");
 });

@@ -75,6 +75,10 @@ export function snapshotWith(
   // progress badge (plans/work-ratio.md, part 2/2).
   bootstrapHeld: string[] = [],
   bootstrap?: StatusSnapshot["bootstrap"],
+  // The maintenance allowance defaults to an open gate with no window data — existing tables
+  // stay byte-identical; a test passes figures and held roles to exercise the
+  // `held: maintenance quota <used>/<allowance>` cell (plans/work-ratio.md, part 1b/4).
+  maintenanceQuota: StatusSnapshot["maintenanceQuota"] = { allowance: 0, used: 0, held: [] },
 ): StatusSnapshot {
   return {
     running: false,
@@ -97,6 +101,7 @@ export function snapshotWith(
     pausedRoles,
     capPaused,
     bootstrapHeld,
+    maintenanceQuota,
     ...(bootstrap ? { bootstrap } : {}),
     budgetPausedRoles,
     roleQuietPaused,

@@ -128,6 +128,7 @@ export function loopPhase(
   quietHold?: string,
   diskHeld = false,
   bootstrapHeld = false,
+  maintenanceQuotaHold?: string,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -191,6 +192,10 @@ export function loopPhase(
   // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle loop is held until enough
   // plans are Done. The literal label names the reason, like the gates above.
   if (bootstrapHeld) return "held: bootstrap";
+  // The maintenance allowance's own hold (plans/work-ratio.md, part 1b/4): the label carries the
+  // figures so the operator sees how far over the window is; the string is preformatted by the
+  // snapshot's holder, like roleQuietPaused's window.
+  if (maintenanceQuotaHold) return maintenanceQuotaHold;
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
@@ -294,6 +299,11 @@ export function loopRowCells(
     // The new-project bootstrap's verdict (status/status-data.ts bootstrapHeld): an idle loop
     // it holds reads `held: bootstrap` — the fleet gate's own wording.
     snap.bootstrapHeld.includes(s.role),
+    // The maintenance allowance's verdict (status/status-data.ts maintenanceQuota): an idle loop
+    // it holds reads `held: maintenance quota <used>/<allowance>` — the fleet gate's figures.
+    snap.maintenanceQuota.held.includes(s.role)
+      ? `held: maintenance quota ${snap.maintenanceQuota.used}/${snap.maintenanceQuota.allowance}`
+      : undefined,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -338,6 +348,7 @@ export const LOOP_RANK_RULES: ReadonlyArray<{
   { rank: 1, prefixes: ["vetted", "awaiting slot"] },
   { rank: 2, phases: ["failing", "main red"] },
   { rank: 3, phases: ["paused", "budget paused", "cap paused", "disk hold", "held: bootstrap"] },
+  { rank: 3, prefixes: ["held: maintenance quota"] },
 ];
 
 export function loopRank(phase: string): number {

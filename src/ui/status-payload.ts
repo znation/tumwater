@@ -181,6 +181,11 @@ export function statusPayload(root: string, now = Date.now()): object {
     // loop in this set reads `cap paused` — the loopPhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.
     capPaused: snap.capPaused,
+    // The maintenance allowance's held roles and figures (plans/work-ratio.md, part 1b/4):
+    // machine-readable for `status --json` beside capPaused; the loop cell's own
+    // `held: maintenance quota <used>/<allowance>` label is built from `held` plus the figures
+    // through loopPhase.
+    maintenanceQuota: snap.maintenanceQuota,
     // The new-project bootstrap (plans/work-ratio.md, part 2/2): the raw progress and held set
     // are machine-readable for `status --json` beside capPaused, and the preformatted badge
     // drives the TUI/status header and the GUI sidebar — the badges.ts one-home rule.

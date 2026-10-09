@@ -1,8 +1,8 @@
-/** Work ratio 1a/4 (plans/work-ratio.md, "Maintenance follows work"): the arithmetic and the
- * setting behind the maintenance allowance — code-maintenance landings in a rolling 24 h window
- * are capped at `maintenancePerWorkLanding × work landings + MAINTENANCE_DAILY_FLOOR`. This part
- * computes the verdict; Work ratio 1b/4 puts it in front of the scheduler, so nothing here holds
- * a loop yet.
+/** Work ratio 1a/4 and 1b/4 (plans/work-ratio.md, "Maintenance follows work"): the arithmetic,
+ * the setting, and the gate behind the maintenance allowance — code-maintenance landings in a
+ * rolling 24 h window are capped at `maintenancePerWorkLanding × work landings +
+ * MAINTENANCE_DAILY_FLOOR`, and `pollMaintenanceQuotaGate` puts that verdict in front of the
+ * scheduler so the enabled maintenance loops stop starting new ticks past it.
  *
  * The window counts `merged` events by `commitTier` (src/roles/roles.ts): feature/bugfix/director
  * are the work count, the code-maintenance roles plus readme the maintenance count, and every other
@@ -14,7 +14,8 @@
  * Both readers share `parseEventLine`, so there is no second line parser.
  *
  * The verdict is pure and lives here beside the count so the scheduler and every status reader
- * share one definition; the gate that consumes the returned set lands in 1b/4. */
+ * share one definition; `pollMaintenanceQuotaGate` is the one writer (the edge-triggered events)
+ * and the one reader the scheduler holds from. */
 
 import { statOrNull } from "../files/files.js";
 import { readCompleteLines } from "../files/tail.js";
@@ -24,6 +25,8 @@ import { eventRole, parseEventLine } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
 import { dayKey } from "../text/datetime.js";
 import { commitTier } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { logEventBestEffort } from "../events/events.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** The fixed test-independent part of the allowance: a project whose backlog is empty still gets
@@ -36,8 +39,8 @@ const MAINTENANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** The allowance verdict for one poll. `allowance` is what the window permits, `used` is the
  * landed maintenance count plus the maintenance loops in flight, and `held` is true while used
  * has reached the allowance. Additive over the counts, so six concurrent permits cannot push
- * `used` past the line without the caller counting the in-flight loops (Work ratio 1b/4). */
-interface MaintenanceQuotaVerdict {
+ * `used` past the line without the caller counting the in-flight loops (pollMaintenanceQuotaGate). */
+export interface MaintenanceQuotaVerdict {
   allowance: number;
   used: number;
   held: boolean;
@@ -130,6 +133,76 @@ function seed(
   counter.ino = stat?.ino ?? 0;
 }
 
+/** One enabled loop as the quota gate reads it: whether a maintenance-tier tick is in flight
+ * (running a tick or holding a queued landing). Only the two in-flight facts matter; the tier
+ * is derived from the role here, so the caller passes every runner unchanged. */
+interface MaintenanceQuotaObservation {
+  role: string;
+  enabled: boolean;
+  running: boolean;
+  hasQueuedLanding: boolean;
+}
+
+/** The gate's cross-poll memory: the same instant-shaped window memo as `countMaintenanceWindow`
+ * uses (in memory only, so a restart seeds from scratch), plus the hold verdict of the previous
+ * poll — the whole memory needed for the one-event-per-transition contract. */
+export interface MaintenanceQuotaGateState {
+  counter: MaintenanceWindowCounter;
+  prevHeld: boolean;
+}
+
+/** A fresh gate state: nothing folded yet, and the gate starts open (the window is counted on
+ * the first poll, which logs a `maintenance_quota_hold` only if it is already over the line). */
+export function newMaintenanceQuotaGateState(): MaintenanceQuotaGateState {
+  return { counter: newMaintenanceWindowCounter(), prevHeld: false };
+}
+
+/** Step the gate by one orchestrator poll: count the rolling window, add the maintenance loops
+ * in flight, and put 1a's verdict in front of the scheduler. Returns the verdict — `allowance`,
+ * `used` (landed maintenance plus the loops already in flight), and `held` (`used >= allowance`)
+ * — for the scheduling pass's per-poll admission: it spends the remaining `allowance - used`
+ * headroom one due maintenance loop at a time, so two due loops cannot start in the same poll.
+ * Logs exactly one fleet-level `maintenance_quota_hold` when the gate goes from open to held and
+ * one `maintenance_quota_resumed` when it re-opens — never one per loop. The director is never
+ * maintenance-tier, so no exemption is needed. */
+export function pollMaintenanceQuotaGate(
+  root: string,
+  state: MaintenanceQuotaGateState,
+  observers: readonly MaintenanceQuotaObservation[],
+  perWorkLanding: number,
+  now: number,
+): MaintenanceQuotaVerdict {
+  const { work, maint } = countMaintenanceWindow(root, state.counter, now);
+  let inFlight = 0;
+  for (const o of observers) {
+    if (!o.enabled) continue;
+    if (commitTier(baseRoleOf(o.role)) !== "maintenance") continue;
+    if (o.running || o.hasQueuedLanding) inFlight++;
+  }
+  const verdict = maintenanceQuota({ work, maint, inFlight, perWorkLanding });
+  if (verdict.held !== state.prevHeld) {
+    if (verdict.held) {
+      logEventBestEffort(root, {
+        loop: "harness",
+        type: "maintenance_quota_hold",
+        work,
+        maint,
+        allowance: verdict.allowance,
+      });
+    } else {
+      logEventBestEffort(root, {
+        loop: "harness",
+        type: "maintenance_quota_resumed",
+        work,
+        maint,
+        allowance: verdict.allowance,
+      });
+    }
+    state.prevHeld = verdict.held;
+  }
+  return verdict;
+}
+
 /** Count `merged` landings by tier over the rolling 24 h ending `now`, folding only the live
  * log's appended bytes since the previous call through `counter`. Returns `{ work, maint }`;
  * records that have aged out of the window are dropped from the memo so it stays bounded. */
@@ -139,22 +212,40 @@ export function countMaintenanceWindow(
   now: number,
 ): { work: number; maint: number } {
   const cutoff = now - MAINTENANCE_WINDOW_MS;
+  // The log is read through a regular-file guard so a path that is missing or not a regular file
+  // (a directory left in its place, a vanished symlink) folds nothing this poll rather than
+  // throwing. Both the orchestrator's poll loop and the every-second status observers call this,
+  // and a best-effort gateway read must never end either. A readable file can still fail
+  // mid-poll (replaced between the stat and the read), so the folding itself is guarded too.
   const stat = statOrNull(eventsLogPath(root));
-  const size = stat?.size ?? 0;
-  const mtimeMs = stat?.mtimeMs ?? 0;
-  const dev = stat?.dev ?? 0;
-  const ino = stat?.ino ?? 0;
+  const readable = stat?.isFile() ? stat : null;
+  const size = readable?.size ?? 0;
+  const mtimeMs = readable?.mtimeMs ?? 0;
+  const dev = readable?.dev ?? 0;
+  const ino = readable?.ino ?? 0;
   const unchanged =
     size === counter.offset && mtimeMs === counter.mtimeMs && dev === counter.dev && ino === counter.ino;
-  if (!counter.seeded || (!unchanged && !(size > counter.offset && dev === counter.dev && ino === counter.ino))) {
-    seed(counter, root, cutoff, stat);
-  } else if (!unchanged) {
-    const { lines, end } = readCompleteLines(eventsLogPath(root), counter.offset, size);
-    if (end > counter.offset) {
-      for (const line of lines) foldLine(counter.records, line);
-      counter.offset = end;
+  if (readable) {
+    try {
+      if (!counter.seeded || (!unchanged && !(size > counter.offset && dev === counter.dev && ino === counter.ino))) {
+        seed(counter, root, cutoff, readable);
+      } else if (!unchanged) {
+        const { lines, end } = readCompleteLines(eventsLogPath(root), counter.offset, size);
+        if (end > counter.offset) {
+          for (const line of lines) foldLine(counter.records, line);
+          counter.offset = end;
+        }
+        counter.mtimeMs = mtimeMs;
+      }
+    } catch {
+      // Unreadable this poll: the memo's existing records still count; retry next poll.
     }
-    counter.mtimeMs = mtimeMs;
+  } else if (stat === null && !counter.seeded) {
+    // The log does not exist yet: seed an empty memo — the same state a first read of an empty
+    // window yields — so the first count is remembered and a log that appears later seeds
+    // normally. A path that exists but is not a regular file (a directory, a dangling symlink)
+    // is left unfolded by the guard above rather than risk a throw.
+    seed(counter, root, cutoff, null);
   }
   let work = 0;
   let maint = 0;
