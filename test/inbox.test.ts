@@ -12,7 +12,7 @@ import path from "node:path";import {
   queuedRolePromptEntries,
   queuedRolePrompts,
 } from "../src/inbox/inbox.js";
-import { cancelPrompt, cancelRolePrompt } from "../src/inbox/inbox-cancel.js";
+import { cancelPrompt, cancelRolePrompt, queueFileNameProblem } from "../src/inbox/inbox-cancel.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -107,6 +107,23 @@ test("cancelPrompt errors on out-of-range positions without touching any file", 
     assert.throws(() => cancelPrompt(dir, pos), /no prompt at position/);
   }
   assert.deepEqual(queuedPrompts(dir), ["alpha"], "nothing touched on failure");
+});
+
+test("queueFileNameProblem echoes the rejected name and names the accepted shape", () => {
+  // Nothing sent: there is no value to echo, so the shared required-field wording alone.
+  assert.equal(queueFileNameProblem(undefined), "file required");
+  assert.equal(queueFileNameProblem(""), "file required");
+  // A path or a name that is not a queued prompt's .md file echoes what arrived, through the
+  // same got-value suffix every sibling validator uses, so an HTTP caller can see the input
+  // the endpoint rejected rather than a bare rule.
+  const pathProblem = queueFileNameProblem("../escape.md");
+  assert.match(pathProblem!, /plain queue-file basename/);
+  assert.ok(pathProblem!.includes('(got "../escape.md")'), pathProblem!);
+  const extProblem = queueFileNameProblem("not-a-prompt.txt");
+  assert.match(extProblem!, /queued prompt's \.md file/);
+  assert.ok(extProblem!.includes('(got "not-a-prompt.txt")'), extProblem!);
+  // A plain .md basename passes.
+  assert.equal(queueFileNameProblem("1234567890123-0-1.md"), null);
 });
 
 test("cancelPrompt returns gone when the file disappears between listing and removal", () => {

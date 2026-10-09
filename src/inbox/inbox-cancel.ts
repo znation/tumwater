@@ -2,6 +2,7 @@ import path from "node:path";
 import { logEvent } from "../events/events.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { gotSuffix } from "../text/text.js";
 import { promptPreview, queuedFileAtPosition, queuedFiles, takeQueuedFile } from "./inbox.js";
 
 /** The cancel half of the prompt queues: removing a queued prompt by per-loop position
@@ -119,13 +120,16 @@ export function cancelListedPrompt(root: string, scope: string[], position: numb
  * non-`.md` name cannot be a queued prompt at all (enqueueRolePrompt writes nothing else).
  * Returns null when the name is safe to join onto roleInboxDir, else the reason the
  * /api/prompt-cancel endpoint sends as its 400. cancelQueuedFile re-checks it, so a caller
- * that skips the guard fails closed. */
+ * that skips the guard fails closed. The two detailed refusals echo the rejected name
+ * through the shared got-value suffix (text/text.ts's gotSuffix), like every sibling
+ * validator, so a dashboard or script sees what the endpoint saw; the required-field refusal
+ * carries no suffix, matching the other surfaces' "<name> required" wording. */
 export function queueFileNameProblem(name: unknown): string | null {
   if (typeof name !== "string" || name === "") return "file required";
   if (name.includes("/") || name.includes("\\") || name.includes("\0") || name === "..") {
-    return "file must be a plain queue-file basename";
+    return `file must be a plain queue-file basename${gotSuffix(name)} — send just the name, not a path`;
   }
-  if (!name.endsWith(".md")) return "file must name a queued prompt's .md file";
+  if (!name.endsWith(".md")) return `file must name a queued prompt's .md file${gotSuffix(name)}`;
   return null;
 }
 
