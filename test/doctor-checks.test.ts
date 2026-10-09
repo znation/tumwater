@@ -22,6 +22,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { backdate } from "./helpers/backdate.js";
+import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
 
 // Unit coverage for the pre-flight environment and repo checks
@@ -86,16 +87,12 @@ test("checkAgentBinary resolves the default pi from the given PATH and fails wit
 // environment entirely must hit the same empty-PATH fail as an explicitly empty one, not
 // read `undefined` as a search path.
 test("checkGitBinary and checkAgentBinary treat an unset PATH as empty", () => {
-  const hadPath = process.env.PATH;
-  delete process.env.PATH;
-  try {
+  withEnv("PATH", undefined, () => {
     assert.deepEqual(checkGitBinary(), { level: "fail", detail: GIT_MISSING_MESSAGE });
     const agent = checkAgentBinary(readyRepo());
     assert.equal(agent.level, "fail");
     assert.match(agent.detail, /install it/);
-  } finally {
-    if (hadPath !== undefined) process.env.PATH = hadPath;
-  }
+  });
 });
 
 // plans/portability.md §5/7: a configured agent binary must be reported with its source, so

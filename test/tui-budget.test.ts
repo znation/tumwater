@@ -3,6 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readJson } from "./helpers/json-read.js";
+import { setEnv } from "./helpers/env.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
@@ -84,8 +85,7 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
   cfg.provider = "lm-studio";
   cfg.model = "qwen3.8-27b";
   saveConfig(repo, cfg);
-  const oldHome = process.env.HOME;
-  process.env.HOME = home; // must be set before the first render so Ctrl+B reads the free flag
+  const restoreHome = setEnv("HOME", home); // must be set before the first render so Ctrl+B reads the free flag
   try {
     await withTui(repo, async (tui) => {
       // A draft prompt — the notice must leave it byte-for-byte intact.
@@ -96,8 +96,7 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
       assert.match(tui.lastFrame(), /Ctrl\+B daily cap/, "the footer hint is unchanged");
     });
   } finally {
-    if (oldHome === undefined) delete process.env.HOME;
-    else process.env.HOME = oldHome;
+    restoreHome();
   }
 });
 

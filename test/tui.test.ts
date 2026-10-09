@@ -17,6 +17,7 @@ import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, startTui, withTui } from "./fixtures/tui-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
+import { setEnv } from "./helpers/env.js";
 
 test("runTui renders the fleet table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();
@@ -73,9 +74,8 @@ test("runTui skips the terminal write when a re-render composes an identical fra
 // process exercises both settings back to back.
 test("runTui honors NO_COLOR: no escapes at all in the frame, layout unchanged", async () => {
   const repo = await makeTuiRepo();
-  const origNoColor = process.env.NO_COLOR;
+  const restoreNoColor = setEnv("NO_COLOR", "1");
   try {
-    process.env.NO_COLOR = "1";
     const plain = startTui(repo);
     try {
       const frame = plain.rawFrame();
@@ -102,8 +102,7 @@ test("runTui honors NO_COLOR: no escapes at all in the frame, layout unchanged",
       chalk.level = savedLevel;
     }
   } finally {
-    if (origNoColor === undefined) delete process.env.NO_COLOR;
-    else process.env.NO_COLOR = origNoColor;
+    restoreNoColor();
   }
 });
 

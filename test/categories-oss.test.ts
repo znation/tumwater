@@ -11,6 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { withEnv } from "./helpers/env.js";
 
 const CATEGORIES = fileURLToPath(new URL("../../docs/code-metrics/categories-oss.cjs", import.meta.url));
 
@@ -20,26 +21,12 @@ const categoryPromise: Promise<Category> = import(pathToFileURL(CATEGORIES).href
   (mod) => (mod as { default: Category }).default,
 );
 
-/** Run `fn` with process.env.REPO set to `repo` (undefined deletes it), restoring the prior value
- * afterwards. categories-oss reads the variable at call time, not import time. */
-function withRepo<T>(repo: string | undefined, fn: () => T): T {
-  const saved = process.env.REPO;
-  if (repo === undefined) delete process.env.REPO;
-  else process.env.REPO = repo;
-  try {
-    return fn();
-  } finally {
-    if (saved === undefined) delete process.env.REPO;
-    else process.env.REPO = saved;
-  }
-}
-
 test("rejects a REPO not listed in oss-repos.tsv", async () => {
   const category = await categoryPromise;
-  withRepo(undefined, () => {
+  withEnv("REPO", undefined, () => {
     assert.throws(() => category("src/index.ts"), /REPO=undefined is not in oss-repos\.tsv/);
   });
-  withRepo("definitely-not-a-repo", () => {
+  withEnv("REPO", "definitely-not-a-repo", () => {
     assert.throws(() => category("src/index.ts"), /REPO=definitely-not-a-repo is not in oss-repos\.tsv/);
   });
 });
@@ -104,7 +91,7 @@ test("classifies paths against the repo's production root and the exclusion/test
     ["typedoc", ".circleci/config.ts", null],
   ];
   for (const [repo, file, expected] of cases) {
-    withRepo(repo, () => {
+    withEnv("REPO", repo, () => {
       assert.equal(category(file), expected, `${repo}: ${file}`);
     });
   }

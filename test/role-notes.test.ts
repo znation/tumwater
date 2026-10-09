@@ -14,24 +14,13 @@ import {
   writeRoleNote,
 } from "../src/pi-extension/role-notes.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { setEnv, withEnv } from "./helpers/env.js";
 
 /** The subset of pi's registered tool shape the tests drive. */
 interface RegisteredTool {
   name: string;
   parameters: unknown;
   execute(toolCallId: string, params: { text?: unknown }): Promise<{ content: Array<{ text: string }> }> | { content: Array<{ text: string }> };
-}
-
-function withNotesEnv<T>(value: string | undefined, fn: () => T): T {
-  const prev = process.env.TUMWATER_NOTES_PATH;
-  try {
-    if (value === undefined) delete process.env.TUMWATER_NOTES_PATH;
-    else process.env.TUMWATER_NOTES_PATH = value;
-    return fn();
-  } finally {
-    if (prev === undefined) delete process.env.TUMWATER_NOTES_PATH;
-    else process.env.TUMWATER_NOTES_PATH = prev;
-  }
 }
 
 function registerTool(): RegisteredTool {
@@ -119,7 +108,7 @@ test("writeRoleNote rethrows the original failure when the temp cleanup itself f
 test("the extension registers no tool when TUMWATER_NOTES_PATH is unset", () => {
   const registered: RegisteredTool[] = [];
   const api = { registerTool: (tool: RegisteredTool) => registered.push(tool) };
-  withNotesEnv(undefined, () => {
+  withEnv("TUMWATER_NOTES_PATH", undefined, () => {
     roleNotesExtension(api as unknown as Parameters<typeof roleNotesExtension>[0]);
   });
   assert.equal(registered.length, 0, "no notebook path means the tool never registers");
@@ -128,7 +117,7 @@ test("the extension registers no tool when TUMWATER_NOTES_PATH is unset", () => 
 test("the registered tool names role_notes and carries a text parameter schema", () => {
   const dir = tmpdir();
   const notes = path.join(dir, "notes.md");
-  withNotesEnv(notes, () => {
+  withEnv("TUMWATER_NOTES_PATH", notes, () => {
     const tool = registerTool();
     assert.equal(tool.name, "role_notes");
     assert.equal((tool.parameters as { properties: { text: unknown } }).properties.text !== undefined, true);
@@ -138,8 +127,7 @@ test("the registered tool names role_notes and carries a text parameter schema",
 test("executing role_notes replaces the note and rejects an oversized one without writing", async () => {
   const dir = tmpdir();
   const notes = path.join(dir, "feature.md");
-  const prev = process.env.TUMWATER_NOTES_PATH;
-  process.env.TUMWATER_NOTES_PATH = notes;
+  const restoreNotes = setEnv("TUMWATER_NOTES_PATH", notes);
   try {
     const tool = registerTool();
     const saved = await tool.execute("call-1", { text: "where things live" });
@@ -163,8 +151,7 @@ test("executing role_notes replaces the note and rejects an oversized one withou
     assert.match(cleared.content[0]!.text, /notebook cleared/);
     assert.equal(fs.readFileSync(notes, "utf8"), "");
   } finally {
-    if (prev === undefined) delete process.env.TUMWATER_NOTES_PATH;
-    else process.env.TUMWATER_NOTES_PATH = prev;
+    restoreNotes();
   }
 });
 
@@ -174,8 +161,7 @@ test("executing role_notes without a text argument rejects instead of clearing t
   // rather than coercing to "" and wiping the continuity the notebook exists to keep.
   const dir = tmpdir();
   const notes = path.join(dir, "missing.md");
-  const prev = process.env.TUMWATER_NOTES_PATH;
-  process.env.TUMWATER_NOTES_PATH = notes;
+  const restoreNotes = setEnv("TUMWATER_NOTES_PATH", notes);
   try {
     const tool = registerTool();
     writeRoleNote(notes, "keep me");
@@ -191,7 +177,6 @@ test("executing role_notes without a text argument rejects instead of clearing t
     }
     assert.equal(fs.readFileSync(notes, "utf8"), "keep me", "a missing-text call leaves the note intact");
   } finally {
-    if (prev === undefined) delete process.env.TUMWATER_NOTES_PATH;
-    else process.env.TUMWATER_NOTES_PATH = prev;
+    restoreNotes();
   }
 });

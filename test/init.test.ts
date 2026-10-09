@@ -15,6 +15,7 @@ import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { assertClean, headSha, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
+import { setEnv } from "./helpers/env.js";
 
 test("initProject creates and commits the harness files", async () => {
   const repo = makeRepo();
@@ -478,24 +479,24 @@ test("initProject honors the caller's branch and git's init.defaultBranch prefer
   const global = path.join(dir, "global-gitconfig");
   fs.writeFileSync(global, "[init]\n\tdefaultBranch = trunk\n");
   const bare = tmpdir();
-  process.env.GIT_CONFIG_GLOBAL = global;
+  const restoreGitConfigDefault = setEnv("GIT_CONFIG_GLOBAL", global);
   try {
     const result = await initProject(bare, "On the configured default.");
     assert.equal(result.repoInitialized, true);
     assert.equal(result.branch, "trunk");
     assert.equal(sh(bare, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
   } finally {
-    delete process.env.GIT_CONFIG_GLOBAL;
+    restoreGitConfigDefault();
   }
 
   // And with neither, main — the long-standing default.
   const plain = tmpdir();
-  process.env.GIT_CONFIG_GLOBAL = "/nonexistent-tumwater-test-config";
+  const restoreGitConfigMissing = setEnv("GIT_CONFIG_GLOBAL", "/nonexistent-tumwater-test-config");
   try {
     const result = await initProject(plain, "On main.");
     assert.equal(result.branch, "main");
   } finally {
-    delete process.env.GIT_CONFIG_GLOBAL;
+    restoreGitConfigMissing();
   }
 });
 

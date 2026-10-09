@@ -20,6 +20,14 @@ test("a compiled fake-commands copied outside the checkout refuses to import ins
   fs.mkdirSync(relocatedDir, { recursive: true });
   const relocated = path.join(relocatedDir, "fake-commands.js");
   fs.copyFileSync(compiled, relocated);
+  // fake-commands imports the env helper; copy that dependency too so the child reaches the
+  // SCRIPT_SHIM guard this test pins rather than dying on a missing import.
+  const helperDir = path.join(relocatedDir, "..", "helpers");
+  fs.mkdirSync(helperDir, { recursive: true });
+  fs.copyFileSync(
+    fileURLToPath(new URL("./helpers/env.js", import.meta.url)),
+    path.join(helperDir, "env.js"),
+  );
 
   const child = spawnSync(
     process.execPath,

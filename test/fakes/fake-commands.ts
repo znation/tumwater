@@ -9,6 +9,7 @@
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
+import { setEnv } from "../helpers/env.js";
 
 /** The suite's one committed executable (test/fixtures/script-shim): every fake command a
  * test installs through writeScript is a symlink to it. Resolved from the source tree, which
@@ -77,11 +78,5 @@ export function pathPrepend(dir: string): () => void {
  * undefined-PATH edge (restore by deleting, two sites once hand-rolled differently from the
  * rest) cannot drift per site. Returns a restore function for the caller's finally. */
 export function pathReplace(value: string | undefined): () => void {
-  const oldPath = process.env.PATH;
-  if (value === undefined) delete process.env.PATH;
-  else process.env.PATH = value;
-  return () => {
-    if (oldPath === undefined) delete process.env.PATH;
-    else process.env.PATH = oldPath;
-  };
+  return setEnv("PATH", value);
 }
