@@ -11,6 +11,19 @@ import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
 
+/** Run `withLock` on an already-prepared lock and report whether its critical section ran. */
+async function ranWithLock(lock: string, timeoutMs = 5000): Promise<boolean> {
+  let ran = false;
+  await withLock(
+    lock,
+    async () => {
+      ran = true;
+    },
+    timeoutMs,
+  );
+  return ran;
+}
+
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");
   fs.mkdirSync(dir);
@@ -115,15 +128,7 @@ test("withLock steals a lock held by a dead pid", async () => {
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), "999999999");
-  let ran = false;
-  await withLock(
-    lock,
-    async () => {
-      ran = true;
-    },
-    5000,
-  );
-  assert.ok(ran);
+  assert.ok(await ranWithLock(lock));
 });
 
 test("withLock steals an old lock even when its pid is still alive", async () => {
@@ -133,15 +138,7 @@ test("withLock steals an old lock even when its pid is still alive", async () =>
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); // alive on purpose
   backdate(lock, 11 * 60 * 1000);
-  let ran = false;
-  await withLock(
-    lock,
-    async () => {
-      ran = true;
-    },
-    5000,
-  );
-  assert.ok(ran, "stale-by-age lock is stolen despite a live pid");
+  assert.ok(await ranWithLock(lock), "stale-by-age lock is stolen despite a live pid");
 });
 
 test("withLock breaks an orphaned lock whose holder died before writing its pid", async () => {
@@ -151,15 +148,7 @@ test("withLock breaks an orphaned lock whose holder died before writing its pid"
   const lock = path.join(tmpdir(), "orphan.lock");
   fs.mkdirSync(lock);
   backdate(lock, 6 * 1000);
-  let ran = false;
-  await withLock(
-    lock,
-    async () => {
-      ran = true;
-    },
-    5000,
-  );
-  assert.ok(ran, "orphaned lock past the grace is stolen");
+  assert.ok(await ranWithLock(lock), "orphaned lock past the grace is stolen");
 });
 
 test("withLock does not break a fresh lock that has no pid file yet", async () => {
@@ -252,13 +241,7 @@ test("withLock retries an acquire that loses the publish race", async () => {
   });
   let ran = false;
   try {
-    await withLock(
-      lock,
-      async () => {
-        ran = true;
-      },
-      5000,
-    );
+    ran = await ranWithLock(lock);
   } finally {
     restoreRename();
   }
