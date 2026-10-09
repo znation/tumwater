@@ -63,13 +63,20 @@ export function readSamples(runDir: string): number[] {
 }
 
 /** A config where only the given roles tick quickly (no min gap, 1s backoff) so several
- * ticks land within a few poll cycles. */
+ * ticks land within a few poll cycles. The per-role clocks are zeroed too: defaultConfig
+ * seeds slow built-in clocks (organize/plan 3600s, readme 1800s, …) that a role entry
+ * inherits through overlayDefaults even when the test rewrites `roles.<id>` wholesale, and
+ * configForRole prefers the per-role value — leaving them would put a `fastConfig(["organize"])`
+ * fleet on a 1 h tick clock (2026-10-06 CI regression). */
 export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   const c = defaultConfig();
   if (model) c.model = model;
   c.minTickIntervalSeconds = 0;
   c.idleBackoff = { initialSeconds: 1, factor: 1, maxSeconds: 1 };
-  for (const id of Object.keys(c.roles)) c.roles[id]!.enabled = roles.includes(id);
+  for (const id of Object.keys(c.roles)) {
+    c.roles[id]!.enabled = roles.includes(id);
+    c.roles[id]!.minTickIntervalSeconds = 0;
+  }
   return c;
 }
 

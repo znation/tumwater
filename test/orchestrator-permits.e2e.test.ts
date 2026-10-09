@@ -51,22 +51,28 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
       `f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
       `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
+      `printf '%s\\n' "$n role=${"$"}{role:-?} verdict=$(printf '%s' "$*" | grep -c VERDICT)" >> "${runDir}/who.log"`,
+      // Role and run kind from the real markers, not the cwd: non-director runs happen in
+      // pooled `_slot-<n>` checkouts (worktree-pool), so `case $PWD in *clean*)` can no
+      // longer see the role. The role comes from the slot lease; the reviewer's run carries
+      // the gate's VERDICT prompt, a tick's does not. A `vet` flag routes the branch so
+      // `rm -f "$f"` still cleans the reviewer's own file (clearing `f` would leak it and
+      // fake a sample-2 overlap on the next run's count).
       leasedRoleShell(),
-      `if [ "$role" = clean ]; then`,
+      `vet=0`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) vet=1; break;; esac; done`,
+      `if [ "$vet" = 1 ]; then`,
       `  sleep 3`,
       `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
       `else`,
-      `  case "$PWD" in`,
-      `  *clean*)`,
+      `  if [ "$role" = clean ]; then`,
       `    echo change >> clean-change.txt`,
       `    sleep 1`,
       `    printf '%s\\n' '${assistantLine("clean work\nSUMMARY: add clean change")}'`,
-      `    ;;`,
-      `  *)`,
+      `  else`,
       `    sleep 1.5`,
       `    printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `    ;;`,
-      `  esac`,
+      `  fi`,
       `fi`,
       `rm -f "$f"`,
     ].join("\n"),
@@ -106,11 +112,13 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
   // on the every-wake schedule the jump-ahead assertion depends on.
   seedOpenBug(repo);
   const runDir = tmpdir();
-  // Records each role's START (cwd is the role's worktree) so the wake order after clean's
-  // first release is observable; ~2s holds keep bugfix due while clean is still in flight.
+  // Records each run's role (from the slot lease, not the cwd — non-director runs happen in
+  // pooled `_slot-<n>` checkouts) and holds ~2s, so the wake order after clean's first
+  // release is observable while bugfix stays due.
   const restore = fakePi(
     [
-      `printf '%s\\n' "$(basename "$PWD")" >> "${runDir}/order.log"`,
+      leasedRoleShell(),
+      `printf '%s\\n' "$role" >> "${runDir}/order.log"`,
       `sleep 2`,
       `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
@@ -148,9 +156,13 @@ test("the director's tick starts immediately while every maxConcurrent slot is b
       `f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
       `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-      `printf '%s\\n' "$(basename "$PWD")" >> "${runDir}/order.log"`,
-      `case "$PWD" in`,
-      `*director*) ;;`,
+      // The role from the slot lease, not the cwd (pooled `_slot-<n>` checkouts); the
+      // director keeps its own `<role>` worktree and leases no slot, so its lease probe
+      // reads empty.
+      leasedRoleShell(),
+      `printf '%s\\n' "${"$"}{role:-director}" >> "${runDir}/order.log"`,
+      `case "${"$"}{role:-director}" in`,
+      `director) ;;`,
       `*) sleep 5 ;;`,
       `esac`,
       `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,

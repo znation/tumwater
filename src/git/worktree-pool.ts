@@ -45,6 +45,11 @@ interface LeaseSlotOptions {
   /** Keep the existing checkout when the chosen slot is pinned for `role` instead of resetting
    * it to `ref` (a resume must run in the same cwd its session last used). */
   keep?: boolean;
+  /** The pool budget the LIVE config resolves to (slotCount of the orchestrator's
+   * last-known-good view). When given, acquire never re-reads tumwater.json itself — a
+   * mid-run broken file used to error every lease with a raw load failure before any pi run
+   * (2026-10-08) even though the orchestrator held a good config all along. */
+  slotBudget?: number;
 }
 
 /** The parts of a slot record this module reads and writes — structurally slots-state.ts's
@@ -236,8 +241,13 @@ async function acquire(
   role: string,
   purpose: "tick" | "vet",
   signal?: AbortSignal,
+  slotBudget?: number,
 ): Promise<string> {
-  const count = slotCount(loadConfig(root));
+  // The caller's live budget when given; else liveCount's tolerance — a broken or missing
+  // tumwater.json degrades to the default budget rather than erroring the lease with a raw
+  // load failure (2026-10-08: a mid-run broken config errored every tick via this read even
+  // while the orchestrator held last-known-good).
+  const count = slotBudget ?? liveCount(root);
   const startedAt = Date.now();
   for (;;) {
     if (signal?.aborted) throw abortError();
@@ -439,8 +449,8 @@ export async function leaseSlot(
   root: string,
   options: LeaseSlotOptions,
 ): Promise<SlotLeaseHandle> {
-  const { role, purpose, ref, signal, keep } = options;
-  const dir = await acquire(root, role, purpose, signal);
+  const { role, purpose, ref, signal, keep, slotBudget } = options;
+  const dir = await acquire(root, role, purpose, signal, slotBudget);
   const preserved = keep === true && slotForDir(root, dir)?.pinnedFor === role;
   const useRelease = await beginWorktreeUse(root, dir);
   if (!preserved) {

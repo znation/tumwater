@@ -7,6 +7,7 @@
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
 import { leaseSlot, type SlotLeaseHandle } from "../git/worktree-pool.js";
+import { slotCount } from "../config/config.js";
 import { mergeWorktreePath } from "../paths.js";
 import {
   landApprovedChange,
@@ -73,6 +74,9 @@ export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRo
       purpose: "vet",
       ref: req.sha,
       signal: ctx.signal(),
+      // The live view's pool budget, same rule as the tick path: a broken tumwater.json
+      // must not error the vet before its reviewer runs.
+      slotBudget: slotCount(ctx.config),
     });
   } catch (err) {
     // An abort while waiting for a free slot is the vet never starting — the same terminal

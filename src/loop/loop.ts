@@ -9,6 +9,7 @@ import { branchExists, setRef, deleteRef, commitMessage, changeBaseRev } from ".
 import { git, gitTry } from "../git/git-run.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { leaseSlot } from "../git/worktree-pool.js";
+import { slotCount } from "../config/config.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { branchName, worktreePath } from "../paths.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -670,6 +671,9 @@ export class LoopRunner {
       ref: this.mainBranch,
       keep: plan.resuming,
       signal: this.runSignal(),
+      // The live view's pool budget: this read must not depend on tumwater.json being
+      // readable right now (a broken file must not error the tick before its pi run).
+      slotBudget: slotCount(this.config),
     });
     let outcome: TickOutcome | undefined;
     try {
