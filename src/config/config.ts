@@ -327,12 +327,12 @@ export function knownRoleIds(config: TumwaterConfig): string[] {
 /** Every valid role id a READ-ONLY surface accepts: the catalog plus the user-defined loops,
  * read through loadConfigCached (which never throws), so a transiently broken tumwater.json
  * falls back to the built-in catalog instead of taking the view down or refusing every id.
- * The one home of that fallback rule — parseRoleScope, gui/gui-endpoint-commands'
- * validRoleIds, and
- * prompt-commands.ts's cmdPrompt --list mode all resolve their id set through it, so they
- * cannot drift. (Read-
- * only deliberately: state-changing commands resolve ids through loadConfig and fail loudly,
- * because the operator is owed the config error before a write.) */
+ * The one home of that fallback rule — every read-only role-id consumer resolves through it:
+ * parseRoleScope (cmdLogs/cmdHistory), validRoleIds (the GUI endpoints), cmdDiff's role flag,
+ * cmdTick's positional, cmdPrompt's --list and list-wide --cancel/--edit scope, and
+ * collectFleetChanges' roster — so they cannot drift. (Read-only deliberately: state-changing
+ * commands resolve ids through loadConfig and fail loudly, because the operator is owed the
+ * config error before a write.) */
 export function knownRoleIdsCached(root: string): string[] {
   const { config } = loadConfigCached(root);
   return config ? knownRoleIds(config) : allRoleIds();
