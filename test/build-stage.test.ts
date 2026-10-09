@@ -47,13 +47,20 @@ function tinyTsProject(root: string, body = "export const answer: number = 42;\n
   return headSha(root);
 }
 
-// ── Real effects ───────────────────────────────────────────────────────────────────────────
-
-test("swapDist replaces dist with the staged build, restores on failure, and cleans other stagings", () => {
+/** A fresh temp root with a live `dist/` holding one old build, so a swap has something to
+ * replace and to restore on failure. Returns the two paths the swap tests thread through. */
+function rootWithDist(): { root: string; dist: string } {
   const root = tmpdir();
   const dist = path.join(root, "dist");
   fs.mkdirSync(dist);
   fs.writeFileSync(path.join(dist, "old.js"), "old");
+  return { root, dist };
+}
+
+// ── Real effects ───────────────────────────────────────────────────────────────────────────
+
+test("swapDist replaces dist with the staged build, restores on failure, and cleans other stagings", () => {
+  const { root, dist } = rootWithDist();
   const staged = stagingDir(root, HEAD_B);
   fs.mkdirSync(staged, { recursive: true });
   fs.writeFileSync(path.join(staged, "new.js"), "new");
@@ -86,10 +93,7 @@ test("swapDist puts the old dist back when the staged rename fails after steppin
   // dist being absent; here one exists and the second rename (staged -> dist) fails, so the
   // catch's restore branch (prev -> dist) must run before the error propagates. A rename mock
   // fails exactly that step, the way a cross-device or permissions error would.
-  const root = tmpdir();
-  const dist = path.join(root, "dist");
-  fs.mkdirSync(dist);
-  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  const { root, dist } = rootWithDist();
   const staged = stagingDir(root, HEAD_B);
   fs.mkdirSync(staged, { recursive: true });
   fs.writeFileSync(path.join(staged, "new.js"), "new");
@@ -115,10 +119,7 @@ test("swapDist names the lost dist and its dist.prev backup when even the restor
   // threw the restore's raw error alone, which never says dist/ is now MISSING or that the
   // old build sits at dist.prev — exactly what an operator recovering a wedged self-redeploy
   // needs. The message must carry both errors, the head, and the backup path.
-  const root = tmpdir();
-  const dist = path.join(root, "dist");
-  fs.mkdirSync(dist);
-  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  const { root, dist } = rootWithDist();
   const staged = stagingDir(root, HEAD_B);
   fs.mkdirSync(staged, { recursive: true });
   fs.writeFileSync(path.join(staged, "new.js"), "new");
@@ -156,10 +157,7 @@ test("swapDist retries transient directory races on dist.prev instead of abortin
   // rmSync's walk and its rmdir — Spotlight, .DS_Store) threw and blocked the restart. The
   // fix routes the swap's recursive deletes through removeTree, which passes Node's retry
   // options; this pins that dist.prev specifically is cleared with retries enabled.
-  const root = tmpdir();
-  const dist = path.join(root, "dist");
-  fs.mkdirSync(dist);
-  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  const { root, dist } = rootWithDist();
   fs.mkdirSync(stagingDir(root, HEAD_B), { recursive: true });
   fs.writeFileSync(path.join(stagingDir(root, HEAD_B), "new.js"), "new");
 
@@ -189,10 +187,7 @@ test("swapDist reports a successful swap when its superseded-staging sweep canno
   // as a failed swap — the redeployer would block the restart on it while dist/ already holds
   // the new build, leaving the fleet on the old code under a misleading "swap failed" reason.
   // The failure must still be visible in the event feed rather than swallowed.
-  const root = tmpdir();
-  const dist = path.join(root, "dist");
-  fs.mkdirSync(dist);
-  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  const { root, dist } = rootWithDist();
   fs.mkdirSync(stagingDir(root, HEAD_B), { recursive: true });
   fs.writeFileSync(path.join(stagingDir(root, HEAD_B), "new.js"), "new");
   fs.mkdirSync(stagingDir(root, HEAD_C), { recursive: true }); // a superseded staging the sweep cannot see
