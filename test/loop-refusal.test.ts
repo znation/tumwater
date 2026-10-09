@@ -9,7 +9,7 @@ import path from "node:path";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 // Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a
@@ -27,7 +27,7 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
   // review gate, which handleRefusal deliberately bypasses.
   const counter = path.join(tmpdir(), "pi-calls");
   fs.writeFileSync(counter, "0");
-  const restore = fakePi(
+  await withPi(
     [
       `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'`,
       // Declines the work and leaves a Refused note under the entry in PLANS.md — plus
@@ -37,8 +37,7 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
       `echo bad >> seed.txt`,
       `echo bad > broken.ts`,
     ].join("\n"),
-  );
-  try {
+    async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "refused");
@@ -56,65 +55,56 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
 
     // The note commit merged directly: no reviewer run was burned on an md-only diff.
     assert.equal(fs.readFileSync(counter, "utf8").trim(), "1", "exactly one pi run (the author)");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a bare sentinel over work is not a refusal: the tick runs the normal flow (regression)", async () => {
   // BUGS.md 2026-09-23: the old whole-reply substring scan treated a bare sentinel mention
   // as a refusal and destroyed the work. An anchored line with no reason declares nothing.
   const repo = await initializedRepo();
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\\n' '${assistantLine("TUMWATER_REFUSED")}'`,
       `echo bad > broken.ts`,
     ].join("\n"),
-  );
-  try {
+    async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the work is not discarded as a refusal");
     // The edit survived — committed on the branch, headed for the normal gate, no refusal note.
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a reply ending TUMWATER_REFUSED: none lands its work instead of refusing (regression)", async () => {
   // The exact shape that discarded two tested bugfix ticks (BUGS.md 2026-09-23): an ordinary
   // work-completed reply whose trailing line fills the sentinel in like a report field.
   const repo = await initializedRepo();
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\\n' '${assistantLine("all done\nSUMMARY: shipped the fix\nTUMWATER_REFUSED: none")}'`,
       `echo fixed > src-fix.ts`,
     ].join("\n"),
-  );
-  try {
+    async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "a negated refusal never discards the work");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a refusal contradicted by its own SUMMARY beside work keeps the work behind a warning", async () => {
   // A real reason beside a SUMMARY and non-markdown work is self-contradictory: the work is
   // surfaced behind a warning and the normal flow judges it — not discarded (BUGS.md 2026-09-23).
   const repo = await initializedRepo();
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\\n' '${assistantLine("did the work\nSUMMARY: fixed the leak\nTUMWATER_REFUSED: it would delete user data")}'`,
       `echo bad >> seed.txt`,
     ].join("\n"),
-  );
-  try {
+    async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
@@ -125,7 +115,5 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
       warnings.some((w) => /refusal contradicted by its own reply/.test(w) && w.includes("seed.txt")),
       `warning names the kept work: ${JSON.stringify(warnings)}`,
     );
-  } finally {
-    restore();
-  }
+  });
 });
