@@ -145,3 +145,33 @@ test("records that age past the rolling window are dropped from the memo", () =>
   assert.deepEqual(countMaintenanceWindow(root, counter, now + 2 * HOUR), { work: 0, maint: 0 });
   assert.equal(counter.records.length, 0);
 });
+
+test("a torn trailing merged line is counted once, not again when its newline lands", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]);
+  // A write in flight: the merged event's JSON is fully on disk, its newline is not. The
+  // windowed seed read parses that trailing fragment as an event; a fold resumed from the
+  // last complete line would re-read it once the newline lands and count it twice.
+  fs.appendFileSync(
+    eventsLogPath(root),
+    JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" }),
+  );
+  const counter = newMaintenanceWindowCounter();
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
+  fs.appendFileSync(eventsLogPath(root), "\n");
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
+});
+
+test("a torn partial merged line is not counted until it completes, then counted once", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "feature", type: "merged", commit: "a" }]);
+  const full = JSON.stringify({ ts: now - 1 * HOUR, loop: "clean", type: "merged", commit: "torn" });
+  const split = Math.floor(full.length / 2);
+  fs.appendFileSync(eventsLogPath(root), full.slice(0, split)); // mid-JSON, not an event yet
+  const counter = newMaintenanceWindowCounter();
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 0 });
+  fs.appendFileSync(eventsLogPath(root), full.slice(split) + "\n");
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
+});

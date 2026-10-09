@@ -104,7 +104,9 @@ function foldLine(records: MergedRecord[], line: string): void {
 /** Replace the counter with a full read of the window ending at `cutoff`, keyed on the cutoff's
  * local day (the windowed reader's own day-keyed scan — over-read of earlier hours that day is
  * filtered by the ts check). Used on the first count and whenever the live file's identity says
- * a prior append could not be trusted (rotation, truncation, replacement). */
+ * a prior append could not be trusted (rotation, truncation, replacement). The resume offset is
+ * `window.liveEnd`, which sits past any trailing fragment the windowed read already parsed and
+ * counted, so the next append's fold cannot re-read it. */
 function seed(
   counter: MaintenanceWindowCounter,
   root: string,

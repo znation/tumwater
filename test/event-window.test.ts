@@ -72,6 +72,38 @@ test("a single-chunk log returns in-window events oldest-first and skips bad lin
   assert.equal(coversFullWindow, false);
 });
 
+test("a trailing complete-JSON line without its newline is consumed and moves liveEnd past it", () => {
+  const root = tmpdir();
+  writeEvents(root, [eventLine(tsDaysAgo(2), { tick: 1 })]);
+  // A write in flight: the event's JSON is fully on disk, its newline is not. The scan parses
+  // it, so liveEnd must sit past it or a resumed ingest re-reads it once the newline lands.
+  fs.appendFileSync(eventsLogPath(root), eventLine(tsDaysAgo(1), { tick: 2 }));
+  const window = readWindowEvents(root, dayKey(tsDaysAgo(5)));
+  assert.deepEqual(
+    window.events.map((e) => e.tick),
+    [1, 2],
+  );
+  assert.equal(window.liveEnd, fs.statSync(eventsLogPath(root)).size, "liveEnd consumes the parsed fragment");
+});
+
+test("a trailing torn fragment is left unconsumed, with liveEnd at the last complete line", () => {
+  const root = tmpdir();
+  writeEvents(root, [eventLine(tsDaysAgo(2), { tick: 1 })]);
+  const fragment = eventLine(tsDaysAgo(1), { tick: 2 });
+  const torn = fragment.slice(0, fragment.length - 3); // mid-JSON: cannot parse yet
+  fs.appendFileSync(eventsLogPath(root), torn);
+  const window = readWindowEvents(root, dayKey(tsDaysAgo(5)));
+  assert.deepEqual(
+    window.events.map((e) => e.tick),
+    [1],
+  );
+  assert.equal(
+    window.liveEnd,
+    fs.statSync(eventsLogPath(root)).size - Buffer.byteLength(torn),
+    "a torn fragment must stay past liveEnd for the next read",
+  );
+});
+
 test("a one-line log is dated from its own single line, not discarded as torn", () => {
   const within = tmpdir();
   const recent = tsDaysAgo(1);

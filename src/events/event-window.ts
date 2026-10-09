@@ -49,15 +49,17 @@ interface EventWindow {
    * property of the read's coverage, not a whole-log survey: the scan never reads past the
    * first line older than `fromKey`. */
   coversFullWindow: boolean;
-  /** The live log's byte offset through the scan's last complete line — where an incremental
-   * append read must resume. This is the scan's own end, not a caller's earlier stat: an event
-   * appended between the stat and the read is already folded, and recording the stale size
-   * would fold it again on the next append. */
+  /** The live log's byte offset where an incremental append read must resume: the scan's own
+   * end, past every complete line it read and past a trailing newline-less fragment it parsed as
+   * an event (a write in flight whose newline has not landed). It is not a caller's earlier stat:
+   * an event appended between the stat and the read is already folded, and recording the stale
+   * size would fold it again on the next append. A fragment that did not parse was not consumed
+   * and stays past this offset for the next read. */
   liveEnd: number;
 }
 
-/** One file's scanned window plus the byte offset the scan covered through (its own end, backed
- * up to the last complete line). */
+/** One file's scanned window plus the byte offset the scan consumed through: its own end, past
+ * the last complete line and past a trailing fragment it parsed as an event. */
 interface ScannedFile {
   events: HarnessEvent[];
   coversFullWindow: boolean;
@@ -132,8 +134,9 @@ function scanEventsFile(file: string, fromKey: string): ScannedFile {
     return false;
   });
 
+  const lines = text.split("\n");
   const events: HarnessEvent[] = [];
-  for (const line of text.split("\n")) {
+  for (const line of lines) {
     if (!line) continue;
     const ev = parseEventLine(line); // A torn leading line fails to parse and is skipped.
     if (!ev) continue;
@@ -145,12 +148,20 @@ function scanEventsFile(file: string, fromKey: string): ScannedFile {
   // one-chunk log that is the only line there is: check it here so "the retained log starts
   // before the window" is still detected.
   if (!coversFullWindow) {
-    const first = text.split("\n", 1)[0] ?? "";
+    const first = lines[0] ?? "";
     const ev = parseEventLine(first);
     const day = ev ? eventDayKey(ev) : null;
     coversFullWindow = day !== null && day < fromKey;
   }
-  return { events, coversFullWindow, end: coveredEnd };
+  // The last element is a newline-less trailing fragment (a write in flight). The loop above
+  // consumed it when it parsed as an event, so `end` must sit past it: a resume from the last
+  // complete line would re-parse the same event once its newline lands. A fragment that did not
+  // parse was not consumed, so `end` stays at the last complete line and the next read sees it
+  // whole once it completes.
+  const trailing = lines[lines.length - 1] ?? "";
+  const end =
+    trailing !== "" && parseEventLine(trailing) !== null ? coveredEnd + Buffer.byteLength(trailing) : coveredEnd;
+  return { events, coversFullWindow, end };
 }
 
 /** Events whose local day is on or after `fromKey`, read from the live log and — when the live
