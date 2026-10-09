@@ -20,6 +20,7 @@
  * context-budget does with its threshold notes).
  */
 
+import { nonNegativeNumber } from "../files/json-object.js";
 import { compactTokens } from "../text/format.js";
 import { writeFullOutput } from "./full-output.js";
 import { appendToolResultNote } from "./tool-result-content.js";
@@ -96,9 +97,13 @@ function percentOf(usage: ShakeUsage): number | null {
   if (usage.percent !== null && usage.percent !== undefined && Number.isFinite(usage.percent)) {
     return usage.percent;
   }
-  if (typeof usage.tokens === "number" && typeof usage.contextWindow === "number" && usage.contextWindow > 0) {
-    return (usage.tokens / usage.contextWindow) * 100;
-  }
+  // Both ratio inputs are read through nonNegativeNumber: a NaN/Infinity/negative/string wire
+  // value is as unusable as a missing one, and a NaN ratio would slip past shakePlan's
+  // `percent < SHAKE_PERCENT` guard (every comparison against NaN is false) and plan a pass on
+  // an unknown fill. A non-positive window has no ratio either.
+  const tokens = nonNegativeNumber(usage.tokens, null);
+  const window = nonNegativeNumber(usage.contextWindow, null);
+  if (tokens !== null && window !== null && window > 0) return (tokens / window) * 100;
   return null;
 }
 

@@ -63,6 +63,23 @@ test("contextNote omits the token counts when they are unknown", () => {
   const noWindow = contextNote(60, 55_000, 0, 0);
   assert.match(noWindow!.text, /^\[tumwater: your context window is 60% full\. /);
   assert.ok(!noWindow!.text.includes("55.0k"), "known tokens are held back with the window");
+  // A NaN/Infinity/negative wire number is as unknowable as a missing one: the note must not
+  // render "NaN of 100.0k tokens", an infinite window, or a negative count.
+  const poison: Array<[number, number]> = [
+    [Number.NaN, 100_000],
+    [Number.POSITIVE_INFINITY, 100_000],
+    [-1, 100_000],
+    [55_000, Number.POSITIVE_INFINITY],
+    [55_000, Number.NaN],
+  ];
+  for (const [tokens, window] of poison) {
+    const note = contextNote(60, tokens, window, 0)!;
+    assert.match(note.text, /^\[tumwater: your context window is 60% full\. /, `tokens=${tokens} window=${window}`);
+    assert.ok(
+      !note.text.includes("NaN") && !note.text.includes("Infinity"),
+      `no broken number for tokens=${tokens} window=${window}`,
+    );
+  }
 });
 
 test("the extension appends the note after the tool result's own content, once per threshold", () => {

@@ -23,6 +23,7 @@
  * harness's one token format (text.ts imports nothing, so pi can load it beside this file).
  */
 
+import { nonNegativeNumber } from "../files/json-object.js";
 import { compactTokens } from "../text/format.js";
 import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
@@ -31,7 +32,9 @@ import { readContextUsage } from "./context-usage.js";
 export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];
 
 /** The note for a context usage reading, or null when no threshold above `lastWarned` has been
- * crossed. Returns the threshold it fired for, so the caller can remember it. Pure. */
+ * crossed. Returns the threshold it fired for, so the caller can remember it. An unusable token
+ * count or window (non-finite, negative, or missing) omits the count parenthetical rather than
+ * rendering it. Pure. */
 export function contextNote(
   percent: number | null | undefined,
   tokens: number | null | undefined,
@@ -42,9 +45,15 @@ export function contextNote(
   const crossed = CONTEXT_THRESHOLDS.filter((t) => percent >= t && t > lastWarned);
   const threshold = crossed[crossed.length - 1];
   if (threshold === undefined) return null;
+  // Both wire numbers are guarded like the percent above: pi controls the usage shape at
+  // runtime, so a NaN, negative, or string count/window would otherwise render inside the note
+  // ("NaN of 100.0k tokens"). Either one unusable — or a zero window — drops the parenthetical
+  // rather than printing half a reading.
+  const usedTokens = nonNegativeNumber(tokens, null);
+  const usedWindow = nonNegativeNumber(contextWindow, null);
   const used =
-    tokens !== null && tokens !== undefined && contextWindow > 0
-      ? ` (${compactTokens(tokens)} of ${compactTokens(contextWindow)} tokens)`
+    usedTokens !== null && usedWindow !== null && usedWindow > 0
+      ? ` (${compactTokens(usedTokens)} of ${compactTokens(usedWindow)} tokens)`
       : "";
   const advice =
     threshold >= 85

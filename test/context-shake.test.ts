@@ -187,6 +187,17 @@ test("percentOf ignores a non-finite percent and uses the token ratio instead", 
   assert.equal(shakePlan(messages, { percent: -Infinity, tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
 });
 
+test("percentOf reads a non-finite token count or window as unknowable, not as a fill", () => {
+  // Without a percent, a NaN/Infinity token count must not become a NaN ratio: every
+  // comparison against NaN is false, so shakePlan would fall through its `percent <
+  // SHAKE_PERCENT` guard and plan a pass on an unknown fill. An infinite window is no better.
+  const messages = [bash("a"), ...protectedFillers()];
+  assert.equal(shakePlan(messages, { tokens: NaN, contextWindow: 100_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: Infinity, contextWindow: 100_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: Infinity }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: NaN }).edits.length, 0);
+});
+
 test("shakePlan skips a bulky result with no session entry to edit", () => {
   const messages = [bash("a", 60_000, { entryId: undefined }), ...protectedFillers()];
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
