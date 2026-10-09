@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concurrency/lock.js";
 import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
-import { errnoError } from "./helpers/fs-faults.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
 
@@ -242,15 +242,14 @@ test("withLock retries an acquire that loses the publish race", async () => {
   // EEXIST/ENOTEMPTY. Waiting is the fix — the holder may finish and release — so the acquire
   // must retry instead of surfacing the rename error to the caller.
   const lock = path.join(tmpdir(), "race-publish.lock");
-  const origRename = fs.renameSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).renameSync = (a: unknown, b: unknown) => {
+  const restoreRename = patchFsMethod("renameSync", (orig) => (a, b) => {
     if (!hit && String(b) === lock) {
       hit = true;
       throw errnoError("EEXIST", "simulated publish race");
     }
-    return (origRename as (x: unknown, y: unknown) => void)(a, b);
-  };
+    return orig(a, b);
+  });
   let ran = false;
   try {
     await withLock(
@@ -261,7 +260,7 @@ test("withLock retries an acquire that loses the publish race", async () => {
       5000,
     );
   } finally {
-    (fs as Record<string, unknown>).renameSync = origRename;
+    restoreRename();
   }
   assert.ok(hit, "the simulated publish race fired");
   assert.ok(ran, "the acquire retried after losing the publish race and entered the section");
@@ -306,15 +305,14 @@ test("withLock reports a missing lock parent and survives a temp that vanishes m
   const lock = path.join(root, "race.lock");
   const vanished = `${lock}.acquiring-999999993`;
   fs.mkdirSync(vanished);
-  const origStat = fs.statSync.bind(fs);
-  (fs as Record<string, unknown>).statSync = (p: unknown, ...rest: unknown[]) => {
+  const restoreStat = patchFsMethod("statSync", (orig) => (p, ...rest) => {
     if (p === vanished) throw errnoError("ENOENT", "simulated sweep race");
-    return (origStat as (x: unknown, ...r: unknown[]) => unknown)(p, ...rest);
-  };
+    return orig(p, ...rest);
+  });
   try {
     assert.equal(withSyncLock(lock, () => "acquired"), "acquired");
   } finally {
-    (fs as Record<string, unknown>).statSync = origStat;
+    restoreStat();
   }
 });
 
@@ -325,15 +323,14 @@ test("withLock removes its own temp dir when the pid write fails", async () => {
   // acquire must rethrow AND take its own temp dir with it — a remnant the dead holder owns
   // would be swept only after the 10-minute stale timeout, and if it had been published, an
   // orphan lock dir would wedge every future acquirer until that same timeout.
-  const orig = fs.writeFileSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).writeFileSync = (p: unknown, ...rest: unknown[]) => {
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (p, ...rest) => {
     if (!hit && String(p).startsWith(lock) && String(p).endsWith("/pid")) {
       hit = true;
       throw errnoError("EACCES", "simulated pid write failure");
     }
-    return (orig as (p: unknown, ...r: unknown[]) => void)(p, ...rest);
-  };
+    return orig(p, ...rest);
+  });
   let ran = false;
   try {
     await assert.rejects(
@@ -347,7 +344,7 @@ test("withLock removes its own temp dir when the pid write fails", async () => {
       /simulated pid write failure/,
     );
   } finally {
-    (fs as Record<string, unknown>).writeFileSync = orig;
+    restoreWrite();
   }
   assert.ok(hit, "the pid write was attempted once");
   assert.ok(!ran, "never entered the critical section");

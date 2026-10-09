@@ -15,6 +15,7 @@ import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // A minimal PNG-shaped payload — the harness never opens the images, so only the bytes'
 // round-trip through base64 matters here.
@@ -86,21 +87,20 @@ test("savePromptImages removes the image whose own write throws after a partial 
   const dir = roleInboxDir(root, "qa");
   const stem = path.basename(queueFile, ".md");
   const target = path.join(dir, `${stem}.png`);
-  const original = fs.writeFileSync;
   // The failing image is the one whose write never returns, so it is not yet in the written
   // list: leave a truncated file behind (as ENOSPC does) and throw. The pre-fix catch cleans
   // only earlier writes, so this partial file would survive in the inbox dir forever.
-  (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = ((file, data, ...rest) => {
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {
     if (String(file) === target) {
-      original(target, PNG.subarray(0, 4));
+      orig(target, PNG.subarray(0, 4));
       throw Object.assign(new Error("ENOSPC: no space left on device, write"), { code: "ENOSPC" });
     }
-    return original(file, data, ...rest);
-  }) as typeof fs.writeFileSync;
+    return orig(file, data, ...rest);
+  });
   try {
     assert.throws(() => savePromptImages(root, "qa", queueFile, [png()]), /ENOSPC/);
   } finally {
-    fs.writeFileSync = original;
+    restoreWrite();
   }
   assert.ok(!fs.existsSync(target), "the half-written image is removed again");
 });

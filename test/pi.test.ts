@@ -18,6 +18,7 @@ import { fakePi, logFlagsTo, readRunLines } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 import { runPiFixture, runFakePi, runPiVerified } from "./helpers/pi-run-harness.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 
@@ -753,7 +754,6 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
   const dir = tmpdir();
   const file = path.join(dir, "raw.jsonl");
   const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
-  const realCreateWriteStream = fs.createWriteStream;
   // One fresh fake per stream open, so a runPiVerified retry cannot append to the previous
   // attempt's buffered writes.
   const makeStalled = () => {
@@ -772,7 +772,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
       },
     });
   };
-  (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => makeStalled();
+  const restoreStream = patchFsMethod("createWriteStream", () => () => makeStalled());
   try {
     await runPiVerified(runPiFixture(dir, { rawLogFile: file }));
     const content = fs.readFileSync(file, "utf8");
@@ -783,7 +783,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
     );
   } finally {
     restore();
-    (fs as unknown as { createWriteStream: unknown }).createWriteStream = realCreateWriteStream;
+    restoreStream();
   }
 });
 
@@ -792,7 +792,6 @@ test("a broken raw log degrades to a lost log, never a stuck tick", async () => 
   // still settle with the run's real result rather than hang the loop.
   const dir = tmpdir();
   const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
-  const realCreateWriteStream = fs.createWriteStream;
   const brokenEvents = new EventEmitter();
   const broken = Object.assign(brokenEvents, {
     write: (_data: string) => true,
@@ -800,7 +799,7 @@ test("a broken raw log degrades to a lost log, never a stuck tick", async () => 
       setImmediate(() => brokenEvents.emit("error", new Error("ENOSPC: no space left on device")));
     },
   });
-  (fs as unknown as { createWriteStream: unknown }).createWriteStream = () => broken;
+  const restoreStream = patchFsMethod("createWriteStream", () => () => broken);
   try {
     const result = await Promise.race([
       runPi(runPiFixture(dir)),
@@ -812,7 +811,7 @@ test("a broken raw log degrades to a lost log, never a stuck tick", async () => 
     assert.equal(result.finalText, "done");
   } finally {
     restore();
-    (fs as unknown as { createWriteStream: unknown }).createWriteStream = realCreateWriteStream;
+    restoreStream();
   }
 });
 

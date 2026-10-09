@@ -10,6 +10,7 @@ import {
   readBuildInfo,
   stampBuild,
 } from "../src/build/build-info.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
@@ -55,14 +56,13 @@ test("a stamp write interrupted before its atomic swap leaves the previous stamp
   ensureParentDir(buildInfoPath(dist));
   fs.writeFileSync(buildInfoPath(dist), JSON.stringify(previous));
   // The swap fails (a crash, EIO, ENOSPC): the target must not have been touched yet.
-  const renameSync = fs.renameSync;
-  fs.renameSync = () => {
+  const restoreRename = patchFsMethod("renameSync", () => () => {
     throw new Error("injected: the atomic swap failed");
-  };
+  });
   try {
     await assert.rejects(stampBuild(tmpdir(), dist, "f".repeat(40)), /injected/);
   } finally {
-    fs.renameSync = renameSync;
+    restoreRename();
   }
   assert.deepEqual(readBuildInfo(dist), previous, "the old stamp survives a failed write");
   assert.deepEqual(

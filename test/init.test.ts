@@ -14,6 +14,7 @@ import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { assertClean, headSha, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 test("initProject creates and commits the harness files", async () => {
   const repo = makeRepo();
@@ -41,27 +42,22 @@ test("initProject leaves no half-written file when a seeded write dies mid-way",
   const repo = makeRepo();
   const readme = path.join(repo, "README.md");
   const tmp = `${readme}.tmp-${process.pid}`;
-  const real = fs.writeFileSync.bind(fs);
   let injected = false;
   // Inject the fault at the file-write boundary: a process killed after a partial write. The
   // old direct writeFileSync tore README.md itself; the atomic writer means the only torn file
   // is the temp one, which the failure path removes and a re-run never mistakes for complete.
-  (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = ((
-    file: fs.PathOrFileDescriptor,
-    data: string | NodeJS.ArrayBufferView,
-    ...rest: unknown[]
-  ) => {
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {
     if (!injected && typeof data === "string" && data.includes(PROMPT_START)) {
       injected = true;
-      real(file as never, data.slice(0, 40) as never, ...(rest as []));
+      orig(file, data.slice(0, 40), ...rest);
       throw new Error("killed mid-write");
     }
-    return real(file as never, data as never, ...(rest as []));
-  }) as typeof fs.writeFileSync;
+    return orig(file, data, ...rest);
+  });
   try {
     await assert.rejects(initProject(repo, "Build a todo CLI."), /killed mid-write/);
   } finally {
-    (fs as { writeFileSync: typeof fs.writeFileSync }).writeFileSync = real as typeof fs.writeFileSync;
+    restoreWrite();
   }
   assert.equal(injected, true);
   assert.equal(fs.existsSync(readme), false);

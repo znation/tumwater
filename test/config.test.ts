@@ -21,7 +21,7 @@ import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { backdate } from "./helpers/backdate.js";
 import { validationError } from "./fixtures/config-fixtures.js";
-import { withCountedReads } from "./helpers/fs-faults.js";
+import { patchFsMethod, withCountedReads } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // The longest tick a hosted model legitimately took and still landed work (BUGS.md 2026-09-29:
@@ -317,18 +317,17 @@ test("a tumwater.json deleted between the cache's stat and its read is an error,
   const dir = tmpdir();
   const file = path.join(dir, "tumwater.json");
   fs.writeFileSync(file, JSON.stringify({ model: "sonnet" }));
-  const originalStatSync = fs.statSync.bind(fs);
+  const restoreStat = patchFsMethod("statSync", (orig) => (...args) => {
+    const st = orig(...args) as fs.Stats;
+    if (args[0] === file) fs.rmSync(file); // Vanishes right after the stat saw it.
+    return st;
+  });
   try {
-    (fs as unknown as { statSync: unknown }).statSync = (...args: unknown[]) => {
-      const st = (originalStatSync as (...a: unknown[]) => fs.Stats)(...args);
-      if (args[0] === file) fs.rmSync(file); // Vanishes right after the stat saw it.
-      return st;
-    };
     const raced = loadConfigCached(dir);
     assert.equal(raced.config, undefined, "no defaults config for a file that was just there");
     assert.match(raced.error ?? "", /ENOENT/);
   } finally {
-    (fs as unknown as { statSync: unknown }).statSync = originalStatSync;
+    restoreStat();
   }
   assert.deepEqual(loadConfigCached(dir), { missing: true }, "the next poll sees it missing");
 });

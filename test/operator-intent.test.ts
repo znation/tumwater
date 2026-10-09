@@ -20,6 +20,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { writeMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 /** src/operator/operator-intent.ts's own tests: the marker-writing cores are shared by the CLI, the
  * dashboard's POST routes, and the TUI, so their confirmations and on-disk effects are pinned
@@ -55,16 +56,15 @@ function stateOf(root: string, role: string): Record<string, unknown> {
 test("operator request markers are written atomically (tmp+rename, never a torn write)", () => {
   const root = deadRoot();
   const wakeFile = wakeRequestPath(root);
-  const realRename = fs.renameSync;
   const renamed: string[] = [];
-  (fs as unknown as { renameSync: unknown }).renameSync = (from: string, to: string) => {
-    renamed.push(to);
-    return realRename.call(fs, from, to);
-  };
+  const restoreRename = patchFsMethod("renameSync", (orig) => (from, to) => {
+    renamed.push(to as string);
+    return orig(from, to);
+  });
   try {
     requestWake(root, ["fix"], 60_000);
   } finally {
-    (fs as unknown as { renameSync: unknown }).renameSync = realRename;
+    restoreRename();
   }
   assert.ok(renamed.includes(wakeFile), `expected the wake marker ${wakeFile} to land via rename`);
   // The rename is the last step, so the marker's final content is intact and no tmp remnant

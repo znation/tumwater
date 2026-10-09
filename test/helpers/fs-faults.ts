@@ -20,11 +20,12 @@ type FsCall = (...args: unknown[]) => unknown;
 
 /** Swap fs entry point `name` for `wrapper` for the duration of one test phase. `wrapper`
  * receives the bound original so it can inspect or rewrite arguments and fall through, and
- * the returned undo restores it. The one home of the capture/swap/restore contract the fault
- * helpers below are built from — each sets its own one-shot `hit` flag and side effect inside
- * its wrapper. `withCountedReads`, which scopes its patch to a `body` callback and returns a
- * count, deliberately keeps its own try/finally scaffold. */
-function patchFsMethod(name: string, wrapper: (orig: FsCall) => FsCall): () => void {
+ * the returned undo restores it. The one home of the capture/swap/restore contract: the fault
+ * helpers below build on it, and the tests that inject a one-off failure import it directly
+ * and call the returned undo from their own try/finally (a body-scoped scaffold is theirs, not
+ * this helper's). `withCountedReads`, which scopes its patch to a `body` callback and returns
+ * a count, deliberately keeps its own try/finally scaffold. */
+export function patchFsMethod(name: string, wrapper: (orig: FsCall) => FsCall): () => void {
   const holder = fs as unknown as Record<string, FsCall>;
   const orig = holder[name]!.bind(fs) as FsCall;
   holder[name] = wrapper(orig);

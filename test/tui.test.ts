@@ -16,6 +16,7 @@ import { flushImmediate, waitFor } from "./helpers/wait.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, startTui, withTui } from "./fixtures/tui-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 test("runTui renders the fleet table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();
@@ -239,13 +240,12 @@ test("a failed prompt submit keeps the text and flashes the error instead of los
   // form already keeps the text and flashes the error on failure; the TUI must match.
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
-  const origWriteFileSync = fs.writeFileSync;
-  fs.writeFileSync = ((file: fs.PathOrFileDescriptor, ...rest: unknown[]) => {
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, ...rest) => {
     if (String(file).includes(`${path.sep}inbox${path.sep}`)) {
       throw new Error("ENOSPC: no space left on device, write");
     }
-    return (origWriteFileSync as (...a: unknown[]) => unknown)(file, ...rest);
-  }) as unknown as typeof fs.writeFileSync;
+    return orig(file, ...rest);
+  });
   try {
     for (const ch of "fix the bug") tui.key(ch, ch);
     tui.key(undefined, "return");
@@ -258,7 +258,7 @@ test("a failed prompt submit keeps the text and flashes the error instead of los
     const inbox = path.join(repo, ".tumwater", "inbox");
     assert.equal(fs.readdirSync(inbox).filter((f) => f.endsWith(".md")).length, 0);
   } finally {
-    fs.writeFileSync = origWriteFileSync;
+    restoreWrite();
     await tui.quit();
   }
 });

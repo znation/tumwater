@@ -6,6 +6,7 @@ import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/land
 import { loadConfig } from "../src/config/config.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { assertClean, commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 /** landing-git.ts's config write-back across a landing that untracks tumwater.json, split out
  * of landing-merge.test.ts (whose mergeToMain clusters stay there): these tests exercise
@@ -95,23 +96,18 @@ test("a crash mid write-back leaves the live config absent, never torn", () => {
   // Inject the fault: the write dies after emitting half the bytes (an interrupted write —
   // SIGKILL, the OOM killer, a full disk). The live config path must never hold that prefix;
   // the tmp the atomic writer uses may, and is cleaned up on the rethrow.
-  const realWrite = fs.writeFileSync;
-  (fs as unknown as { writeFileSync: unknown }).writeFileSync = (
-    file: unknown,
-    data: unknown,
-    ...rest: unknown[]
-  ) => {
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {
     if (typeof file === "string" && file.startsWith(cfg)) {
       const text = typeof data === "string" ? data : String(data);
-      (realWrite as (...a: unknown[]) => void).call(fs, file, text.slice(0, Math.ceil(text.length / 2)), ...rest);
+      orig(file, text.slice(0, Math.ceil(text.length / 2)), ...rest);
       throw new Error("simulated interrupted write");
     }
-    return (realWrite as (...a: unknown[]) => void).call(fs, file, data, ...rest);
-  };
+    return orig(file, data, ...rest);
+  });
   try {
     assert.throws(() => restoreConfigBytes(root, saved), /simulated interrupted write/);
   } finally {
-    (fs as unknown as { writeFileSync: unknown }).writeFileSync = realWrite;
+    restoreWrite();
   }
   assert.ok(!fs.existsSync(cfg), "the torn prefix did not survive at the live config path");
   assert.deepEqual(

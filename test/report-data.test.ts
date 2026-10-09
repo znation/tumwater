@@ -14,6 +14,7 @@ import { eventsLogPath } from "../src/paths.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way (dayKey).
@@ -166,23 +167,22 @@ test("collectReport does not double-count an event appended between the cache's 
   // will append from, then the event lands, then readWindowEvents scans the grown file and
   // folds the new event. The offset must come from the scan itself, or the next report reads
   // from the stale offset and folds the appended event a second time.
-  const realStatSync = fs.statSync;
   let appended = false;
-  fs.statSync = ((p: fs.PathLike, ...args: unknown[]) => {
-    const st = (realStatSync as (...a: unknown[]) => fs.Stats)(p, ...args);
+  const restoreStat = patchFsMethod("statSync", (orig) => (p, ...args) => {
+    const st = orig(p, ...args) as fs.Stats;
     if (!appended && String(p) === log) {
       appended = true;
       fs.appendFileSync(log, second + "\n");
     }
     return st;
-  }) as typeof fs.statSync;
+  });
   try {
     const raced = collectReport(root, 7);
     assert.equal(raced.totals.tokensOut, 150, "the racing read folds both events once");
     const after = collectReport(root, 7);
     assert.equal(after.totals.tokensOut, 150, "a repeat report must not fold the appended event again");
   } finally {
-    fs.statSync = realStatSync;
+    restoreStat();
   }
 });
 
