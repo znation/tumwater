@@ -6,6 +6,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### A trailing window for the failure digest: `tumwater report --failures --since <duration>` (planned 2026-10-09 by plan)
+
+`tumwater report --since <duration>` totals the fleet's usage over a trailing window (`collectReportSince`) and the failure digest (`collectFailureReport`) aggregates over whole local days, but the two shapes refuse each other: `cmdReport` fails `report --since <d> --failures` with "the failure digest has no windowed-since mode". An operator triaging an incident that just happened cannot ask "what failed in the last 30 minutes"; the narrowest digest is `--days 1`, whose Deltas compare today against all of yesterday rather than the equal period immediately before the incident. This adds the missing window, reusing the day digest's own sections.
+
+**Approach.**
+1. **Share the digest assembly.** In src/failure/failure-data.ts split `collectFailureReport` after its current/prior partition into an internal `assembleFailureReport(current, prior, allEvents, coversFullWindow, window)`, which returns the existing `FailureReportData`; the day collector keeps its `dayWindow`/`dayAt` read and partitioning and calls it unchanged. `FailureReportData` gains optional `sinceMs?: number` and `fromIso?: string` beside the existing `days`/`from`/`to` (still set, so the type and every existing consumer stay put).
+2. **The since collector.** Add `collectFailureReportSince(root, sinceMs)`:
+   - guard `sinceMs` against `REPORT_SINCE_MAX_MS` exactly as `collectReportSince` does (throwing, for callers that bypass the CLI's `parseSinceFlag`);
+   - `const now = Date.now(); const cutoff = now - sinceMs;` then one `readWindowEvents(root, dayKey(cutoff - sinceMs))` spanning both halves, as the day collector's 2× read does;
+   - partition by `ev.ts` (skipping a non-number, as `collectReportSince` does): `current` is `[cutoff, now]`, `prior` is `[cutoff - sinceMs, cutoff)`;
+   - `coversFullWindow = eventWindowCovers(raw, cutoff - sinceMs)` (the shared proof now that the window is an instant, not a day);
+   - assemble with `sinceMs`, `fromIso: new Date(cutoff).toISOString()`, and `days: Math.ceil(sinceMs / 86_400_000)` (used only as a fallback label; the since render reads `sinceMs`).
+3. **Render.** In src/failure/failure-render.ts's `renderFailureMarkdown`, branch the first line: with `data.sinceMs !== undefined` print `` `window: last ${durationLabel(data.sinceMs)} (since ${formatTimestamp(new Date(data.fromIso!).getTime())}) · ${data.ticks} ticks` `` — the wording `renderSinceReportMarkdown` already uses — and the empty branch prints `no events in the last ${durationLabel(data.sinceMs)}`; without it, today's `reportWindow(...)`/`dayLabel` lines stand. `partial` and `no events retained` stay shared.
+4. **CLI.** In src/report/report.ts's `cmdReport`, the `parseSinceFlag` branch drops the `--failures` rival check (keep the `--days` one) and, when `args` includes `--failures`, dispatches `collectFailureReportSince(root, ms)` through the existing `--json` / `renderFailureMarkdown` choice and returns; the plain since path is untouched.
+5. **Help and README.** src/cli/help.ts's `report --since` stanza drops "or --failures" from its rival list and gains a `report --failures --since <duration>` line; the `report --failures` stanza gains `[--since <duration>]`. README.md's `tumwater report --since` and `tumwater report --failures` table rows follow.
+
+**Files touched.**
+- src/failure/failure-data.ts (assembly split, optional fields, `collectFailureReportSince`)
+- src/failure/failure-render.ts (the since window/empty lines)
+- src/report/report.ts (the `--failures --since` dispatch)
+- src/cli/help.ts, README.md
+- test/failure-render.test.ts, test/report.test.ts
+
+**Acceptance criteria.**
+- `tumwater report --failures --since 6h` prints `# tumwater failure digest` and a `window: last 6h (since …)` first line; a `tick_end` 1 h old is counted and one 8 h old is not, and the 8 h one shows as the prior side of the Deltas table (the preceding equal window is `[12h, 6h)`).
+- `report --failures --since 6h --json` prints the collector's payload with `sinceMs` 21 600 000 and `fromIso` set; the digest's sections (`outcomes`, `deltas`, `lossCauses`, `errors`) are present as in the day shape.
+- An empty since window renders `no events in the last 6h`; the day shape's `reportWindow`/`no events in the last N days`/`partial:` lines are unchanged.
+- `report --since 6h --days 3` still exits non-zero naming `--days`; `report --since 6h --failures` exits zero (the rival loop in test/report.test.ts loses its `--failures` arm); `report --failures --days 2` is unchanged; an over-cap or unparseable `--since` still fails as before.
+- `npm run test` green.
+
 ### Agent backends, part 3/7: the claude adapter — invocation, isolation, stream translation, sessions (planned 2026-10-09 by operator; requires parts 1/7 and 2/7 landed)
 
 **Needs review 2026-10-09 by feature: too large for one run**
