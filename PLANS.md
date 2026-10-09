@@ -6,47 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 1/7: the `AgentBackend` seam, with pi as its only adapter (planned 2026-10-09 by operator)
-
-Design: plans/agent-backends.md ("The seam", "Canonical event stream").
-
-A pure refactor: no behavior change and no claude code yet. Every later part plugs into this seam.
-
-**Approach.**
-1. **Module.** Add src/agent/agent-backend.ts with the `AgentBackend` interface and a registry
-   keyed by id. Only `pi` is registered.
-2. **Neutral runner.** Move from src/pi/pi.ts into `runAgent` in src/agent/run-agent.ts:
-   - the spawn, the `tumwater_run` marker, the watchdog wiring, abort, the group kill and the
-     marker sweep, stderr capture, and result assembly;
-   - the runner calls the backend's `invocation()` for argv, stdin and env, and pipes stdout
-     through its `translator()` before `PiStreamParser` and the raw log;
-   - `runPi` stays as a thin alias, so call sites and fakes are untouched.
-3. **pi adapter.** Lives in src/pi/pi-backend.ts:
-   - `invocation` = today's `piArgs` (with the `-e` extensions) plus prompt-as-last-argv;
-   - an identity translator;
-   - `classifyExit` = today's stderr rules (`TRANSIENT_PI_CRASH`, `MODEL_FALLBACK_CLONE`,
-     backend and config matching);
-   - pricing = pi-models.ts; doctor checks = today's pi checks.
-4. **Stdin.** The runner supports `stdin` delivery. When `invocation()` returns `stdin`, stdio[0]
-   is a pipe that is written and ended; otherwise `"ignore"`, as today.
-5. **Marker.** `ResolvedModelConfig` gains `agent?: string`, defaulting to `"pi"` in the view
-   builders. The `tumwater_run` marker gains `agent`.
-
-**Files touched.**
-- src/agent/agent-backend.ts, src/agent/run-agent.ts (new)
-- src/pi/pi.ts, src/pi/pi-backend.ts (new), src/pi/pi-args.ts
-- src/config/config-views.ts
-- src/ui/progress-data.ts (accept the marker's new field)
-
-Tests: test/agent-backend.test.ts (registry, stdin delivery via a fake that echoes stdin). The
-existing pi, pi-process, pi-args and loop-pi tests pass unchanged.
-
-**Acceptance criteria.**
-- Every existing test passes without edits, apart from marker-shape assertions that gain
-  `agent: "pi"`.
-- The pi argv is byte-identical for the default, `agentBin`-wrapper and `piArgs` configs.
-- `npm run test` green.
-
 ### Agent backends, part 2/7: a session ledger and the `handoff` resume (planned 2026-10-09 by operator; requires part 1/7 landed)
 
 Design: plans/agent-backends.md ("Sessions").
@@ -412,6 +371,54 @@ and a loop test for `budgetCapped` → handoff.
 
 
 ## Done
+
+### Agent backends, part 1/7: the `AgentBackend` seam, with pi as its only adapter (planned 2026-10-09 by operator; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("The seam", "Canonical event stream").
+
+A pure refactor: no behavior change and no claude code yet. Every later part plugs into this seam.
+
+**Approach.**
+1. **Module.** Add src/agent/agent-backend.ts with the `AgentBackend` interface and a registry
+   keyed by id. Only `pi` is registered.
+2. **Neutral runner.** Move from src/pi/pi.ts into `runAgent` in src/agent/run-agent.ts:
+   - the spawn, the `tumwater_run` marker, the watchdog wiring, abort, the group kill and the
+     marker sweep, stderr capture, and result assembly;
+   - the runner calls the backend's `invocation()` for argv, stdin and env, and pipes stdout
+     through its `translator()` before `PiStreamParser` and the raw log;
+   - `runPi` stays as a thin alias, so call sites and fakes are untouched.
+3. **pi adapter.** Lives in src/pi/pi-backend.ts:
+   - `invocation` = today's `piArgs` (with the `-e` extensions) plus prompt-as-last-argv;
+   - an identity translator;
+   - `classifyExit` = today's stderr rules (`TRANSIENT_PI_CRASH`, `MODEL_FALLBACK_CLONE`,
+     backend and config matching);
+   - pricing = pi-models.ts; doctor checks = today's pi checks.
+4. **Stdin.** The runner supports `stdin` delivery. When `invocation()` returns `stdin`, stdio[0]
+   is a pipe that is written and ended; otherwise `"ignore"`, as today.
+5. **Marker.** `ResolvedModelConfig` gains `agent?: string`, defaulting to `"pi"` in the view
+   builders. The `tumwater_run` marker gains `agent`.
+
+**Files touched.**
+- src/agent/agent-backend.ts, src/agent/run-agent.ts (new)
+- src/pi/pi.ts, src/pi/pi-backend.ts (new), src/pi/pi-args.ts
+- src/config/config-views.ts
+- src/ui/progress-data.ts (accept the marker's new field)
+
+Tests: test/agent-backend.test.ts (registry, stdin delivery via a fake that echoes stdin). The
+existing pi, pi-process, pi-args and loop-pi tests pass unchanged.
+
+**Acceptance criteria.**
+- Every existing test passes without edits, apart from marker-shape assertions that gain
+  `agent: "pi"`.
+- The pi argv is byte-identical for the default, `agentBin`-wrapper and `piArgs` configs.
+- `npm run test` green.
+
+**Landed 2026-10-09 by feature.** The interface carries the fields this part uses — id, label,
+defaultBin, binEnv, resolveBin, invocation, translator, matchStderrWarning and classifyExit —
+plus the id-keyed registry; the later parts add the unused adapter fields (sessions, pricing,
+doctorChecks, dialect, defaultModels) as they gain consumers. The `agent` default lives at the
+runner's dispatch seam (`config.agent ?? "pi"`) rather than in every view builder, so part 4/7
+can introduce the config selector without first churning the view constructors.
 
 ### Split the LoopRunner tick pipeline out of src/loop/loop.ts (planned 2026-10-08 by organize; done 2026-10-09 by feature)
 

@@ -13,8 +13,10 @@ import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fall
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
- * the seam's tier), so consumers of a role/reviewer/fallback view never see a map. */
-export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & { model?: string };
+ * the seam's tier), so consumers of a role/reviewer/fallback view never see a map. `agent`
+ * names the agent backend (plans/agent-backends.md); it is absent until part 4/7 adds the
+ * selector, and the runner defaults an absent value to `"pi"`. */
+export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & { model?: string; agent?: string };
 
 /** True when `s` names one of the three tiers — the form `roles.<id>.model` /
  * `review.model` may take to point at that tier of the top-level `model` map. */

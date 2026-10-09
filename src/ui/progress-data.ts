@@ -179,6 +179,9 @@ interface ProgressEvent {
   /** tumwater_run events only: the harness's run kind ("author" | "gate") — the primary demux
    * key for logs written since part 1/5 of the worktree pool. */
   kind?: string;
+  /** tumwater_run events only: the agent backend that ran this run (plans/agent-backends.md).
+   * Not a demux key — kind and cwd keep that role — but carried here as the marker's vocabulary. */
+  agent?: string;
   /** tumwater_run events only: the harness's label for the run ("review"). */
   label?: string;
   toolCallId?: string;

@@ -124,11 +124,11 @@ test("runRolePi demuxes as author and runLandingPi as gate (marker kind, not cwd
     // respectively, since after worktree-pool parts 2/5 and 4/5 the cwd can no longer tell.
     await loopPi.runRolePi(root, "resolve the conflict", "tumwater-feature-1-conflict");
     const roleLines = fs.readFileSync(piLogPath(root, "feature"), "utf8").split("\n");
-    assert.equal(roleLines[0], JSON.stringify({ type: "tumwater_run", kind: "author" }));
+    assert.equal(roleLines[0], JSON.stringify({ type: "tumwater_run", kind: "author", agent: "pi" }));
     await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-1-conflict");
     const all = fs.readFileSync(piLogPath(root, "feature"), "utf8").split("\n");
     assert.ok(
-      all.includes(JSON.stringify({ type: "tumwater_run", kind: "gate" })),
+      all.includes(JSON.stringify({ type: "tumwater_run", kind: "gate", agent: "pi" })),
       "runLandingPi's run writes a gate marker",
     );
   } finally {

@@ -114,8 +114,13 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/loop/loop.ts`: the runner class and its lifecycle/public surface. `src/loop/loop-pi.ts` holds its pi-run plumbing, `loop-tick.ts` the tick pipeline phases, `loop-recovery.ts` the abort/pin/recovery phases, and `loop-fallback.ts` the model-fallback fold.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts` holds its launch pass
   (admitting due runners to their ticks).
-- `src/pi/pi.ts`: the pi subprocess integration, beside its plumbing (`pi-args.ts`,
-  `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`, `pi-watchdogs.ts`).
+- `src/agent/`: the backend-neutral agent runner (`run-agent.ts` — the spawn, the
+  `tumwater_run` marker, watchdogs, abort, group kill and marker sweep, stderr capture, and
+  result assembly) and the `AgentBackend` seam with its id-keyed registry (`agent-backend.ts`).
+- `src/pi/pi.ts`: the pi facade (`runPi` alias, `hasResumableSession`, the stderr-match
+  constants) over the backend-neutral runner, beside its adapter (`pi-backend.ts`) and plumbing
+  (`pi-args.ts`, `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`,
+  `pi-watchdogs.ts`).
 - `src/config/config.ts`: the config core (load, defaults, per-role views) beside its
   plumbing (`config-schema.ts`, `config-validation.ts`, `config-write.ts`, `config-live.ts`,
   `config-views.ts`, `config-example.ts`, `config-editable-keys.ts`, `config-field-checks.ts`),

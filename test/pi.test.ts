@@ -666,7 +666,7 @@ test("a labeled run writes exactly one kind+label marker line as the raw log's f
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(
       content,
-      `{"type":"tumwater_run","kind":"gate","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
+      `{"type":"tumwater_run","kind":"gate","agent":"pi","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
       "the marker precedes every pi output line and appears exactly once",
     );
   });
@@ -679,7 +679,7 @@ test("an unlabeled run writes one kind-only marker and no label", async () => {
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(
       content,
-      `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
+      `{"type":"tumwater_run","kind":"author","agent":"pi"}\n${assistantLine("done", { tokens: 5 })}\n`,
       "the author run's marker carries only its kind",
     );
   });
@@ -693,7 +693,7 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
   await withPi("exit 1", async () => {
     await runPi(runPiFixture(dir, { kind: "gate", label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
-    assert.equal(content, `{"type":"tumwater_run","kind":"gate","label":"review"}\n`);
+    assert.equal(content, `{"type":"tumwater_run","kind":"gate","agent":"pi","label":"review"}\n`);
   });
 });
 
@@ -731,7 +731,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
       const content = fs.readFileSync(file, "utf8");
       assert.equal(
         content,
-        `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
+        `{"type":"tumwater_run","kind":"author","agent":"pi"}\n${assistantLine("done", { tokens: 5 })}\n`,
         "the raw log is complete on the turn runPi resolves — nothing may still be in flight",
       );
     } finally {
