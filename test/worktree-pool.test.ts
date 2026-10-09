@@ -32,6 +32,17 @@ async function waitFor<T>(fn: () => T | undefined, ms = 3000): Promise<T> {
   }
 }
 
+/** Start a `clean` lease that must wait for a busy pool to free a slot, capturing its eventual
+ * handle. `claimed` stays `undefined` until a release lets the wait resolve, so the waiter tests
+ * can assert it is still waiting and then `waitFor(claimed)` once a slot frees. */
+function waitingLease(root: string): { claimed: () => SlotLeaseHandle | undefined } {
+  let handle: SlotLeaseHandle | undefined;
+  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
+    handle = h;
+  });
+  return { claimed: () => handle };
+}
+
 test("slotCount defaults to maxConcurrent + 1 and honors an explicit worktreeSlots", () => {
   assert.equal(slotCount({ maxConcurrent: 3 }), 4);
   assert.equal(slotCount({ maxConcurrent: 3, worktreeSlots: 2 }), 2);
@@ -49,15 +60,12 @@ test("two concurrent leases take different slots and a third waits for a release
   assert.match(b.dir, /_slot-\d+$/);
 
   // No slot is free: the third lease must stay unresolved until one is released.
-  let third: SlotLeaseHandle | undefined;
-  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
-    third = h;
-  });
+  const third = waitingLease(root);
   await sleep(20);
-  assert.equal(third, undefined, "a third lease resolved with no free slot");
+  assert.equal(third.claimed(), undefined, "a third lease resolved with no free slot");
 
   a.release();
-  const acquired = await waitFor(() => third);
+  const acquired = await waitFor(third.claimed);
   assert.equal(acquired.dir, a.dir, "the waiter took the slot that was just freed");
   acquired.release();
   b.release();
@@ -509,15 +517,12 @@ test("a lease that waited 30 s or more logs one slot_wait naming the pool", asyn
   const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
 
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-  let waited: SlotLeaseHandle | undefined;
-  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
-    waited = h;
-  });
+  const waited = waitingLease(root);
   await sleep(20);
-  assert.equal(waited, undefined, "the second lease claimed a slot with none free");
+  assert.equal(waited.claimed(), undefined, "the second lease claimed a slot with none free");
   t.mock.timers.tick(31_000);
   held.release();
-  const got = await waitFor(() => waited);
+  const got = await waitFor(waited.claimed);
   t.mock.timers.reset();
 
   const events = readEvents(root).filter((e) => e.type === "slot_wait");
@@ -536,14 +541,11 @@ test("a lease that waited under 30 s logs no slot_wait", async (t) => {
   const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
 
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-  let waited: SlotLeaseHandle | undefined;
-  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
-    waited = h;
-  });
+  const waited = waitingLease(root);
   await sleep(20);
   t.mock.timers.tick(1_000);
   held.release();
-  const got = await waitFor(() => waited);
+  const got = await waitFor(waited.claimed);
   t.mock.timers.reset();
 
   assert.equal(
