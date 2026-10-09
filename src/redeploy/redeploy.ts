@@ -42,9 +42,9 @@ export function redeployDeps(
 ): RedeployDeps {
   const dist = distDir();
   // The green and witness checks call this sink from checkMainBaseline's run hook; a `logEvent`
-  // throw there (ENOSPC, EACCES, the path replaced by a directory) would reject the whole check,
-  // so the redeployer would read a green main as a check that could not run and re-run the suite
-  // every poll instead of redeploying. Wrap once here: the event is best-effort, the verdict is not.
+  // throw there (ENOSPC, EACCES, the path replaced by a directory) would reject the whole check, so
+  // the redeployer would read a green main as a check that could not run and re-run the suite every
+  // poll instead of redeploying. Wrap once here: the event is best-effort, the verdict is not.
   const safeLog = bestEffortLog(log);
   // The mirror worktree — main checked out detached at the pending head — serves both the green
   // check and the compile; it is (re)pointed at each head before use.

@@ -33,8 +33,8 @@ import type { CompileResult } from "../build/build-stage.js";
  * 2026-09-23). Every tick a restart interrupts resumes on the new build through the same resume
  * machinery a Ctrl+C uses, so a restart loses no work. */
 
-/** The exit code a supervised `tumwater run` child uses to say "rebuilt; respawn me" — EX_TEMPFAIL,
- * distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
+/** The exit code a supervised `tumwater run` child uses to say "rebuilt; respawn me" —
+ * EX_TEMPFAIL, distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
 export const RESTART_EXIT_CODE = 75;
 
 /** The COLD-START drain window: how long a pending restart waits for in-flight ROLE ticks before

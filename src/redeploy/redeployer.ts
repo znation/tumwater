@@ -135,12 +135,12 @@ export class Redeployer {
   private buildRed: Tracked<boolean | null> | null = null;
   private buildRedSha: string | null = null;
   /** Pre-warm during a cooldown (BUGS.md 2026-09-30): the head whose restart the cooldown defers
-   * still gets its green check and staged compile — once per SHA — so the lapse reaches the swap
-   * directly instead of paying green-check + compile + drain from zero while the fleet sits on a
-   * build it already knows is stale. The check and compile are the same side-effect-free effects
-   * the episode itself runs (mirror worktree, staging dir under .tumwater/build); what the
-   * episode adopts is decided by the adopt helpers, not by the pre-warm. The probes themselves
-   * live in src/redeploy/redeploy-probes.ts; see there. */
+   * still gets its green check and staged compile — once per SHA — so the lapse reaches the
+   * swap directly instead of paying green-check + compile + drain from zero while the fleet sits on
+   * a build it already knows is stale. The check and compile are the same side-effect-free effects
+   * the episode itself runs (mirror worktree, staging dir under .tumwater/build); what the episode
+   * adopts is decided by the adopt helpers, not by the pre-warm. The probes themselves live in
+   * src/redeploy/redeploy-probes.ts; see there. */
   private readonly probes: PrewarmProbes;
   /** The event sink, guarded so a failed write cannot throw out of `poll` or `forceRestart`
    * (see bestEffortLog). */

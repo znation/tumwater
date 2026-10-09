@@ -2,8 +2,8 @@ import type { CompileResult } from "../build/build-stage.js";
 import type { RedeployDeps } from "./redeploy-policy.js";
 import { errorMessage } from "../text/text.js";
 
-/** Background-task tracking shared by the self-redeploy layer (src/redeploy/redeployer.ts,
- * this module): a probe the poll consults without awaiting — settled flag plus result or error. */
+/** Background-task tracking shared by the self-redeploy layer (src/redeploy/redeployer.ts, this
+ * module): a probe the poll consults without awaiting — settled flag plus result or error. */
 
 export interface Tracked<T> {
   done: boolean;
