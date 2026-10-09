@@ -140,13 +140,19 @@ test("an unwritable event feed cannot reject the green check it reports on", asy
   // redeployer read a green main as "could not run" and re-ran the suite every poll instead of
   // redeploying. The verdict must not depend on a best-effort event write.
   const root = makeRepo();
+  // A manifest byte-identical to the previous test's would give this commit the SAME sha
+  // (git ids hash tree+author+committer+timestamp+message, and two fixtures committed
+  // inside the same second under the suite's fixed identity collide — CI hit exactly
+  // that: the prior test's cached green answered this consult without running, so no
+  // onRun fired and the stderr assertion saw nothing). A distinct name keeps the sha
+  // unique so this consult always runs for real.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    projManifest({ test: "node -e 'process.exit(0)'" }),
+    JSON.stringify({ name: "unwritable-feed-probe", version: "1.0.0", scripts: { test: "node -e 'process.exit(0)'" } }),
   );
   fs.mkdirSync(path.join(root, "node_modules"));
   sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-q", "-m", "project");
+  sh(root, "git", "commit", "-q", "-m", "unwritable feed probe");
   const head = headSha(root);
 
   const errWrites: string[] = [];
