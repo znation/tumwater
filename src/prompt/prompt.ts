@@ -242,6 +242,11 @@ interface TickPromptInput {
    * never reaches buildTickPrompt, so it never carries either. */
   notes?: string;
   extraInstructions?: string;
+  /** The plan charter's stop target, rendered right after the charter's task text. The catalog
+   * text is config-free, so the concrete eligible-plan count (`planBacklogTarget`) is supplied
+   * here by the caller that holds the config; a role payload's `nextPrompt` therefore shows the
+   * resolved number, never a placeholder. Omitted: every role but plan. */
+  planTargetNote?: string;
   /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`,
    * PLANS.md "Per-role prompts 1/2"), rendered as a labeled block near the top of the task text.
    * The loop still owns find-something-to-do: the request steers, the role's rules and the
@@ -279,7 +284,7 @@ deadlines from it; never infer the date from the repo.`,
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, check, briefFile, today, userRequest } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, planTargetNote, check, briefFile, today, userRequest } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt, today),
@@ -297,6 +302,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (backlogIndex) parts.push(backlogIndex);
   if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes));
   parts.push(`Your task this run:\n${role.find.trim()}`);
+  if (planTargetNote) parts.push(planTargetNote.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(ROLE_NOTES_INSTRUCTION);
   parts.push(commonRules(check, briefFile, role.scope).trim());

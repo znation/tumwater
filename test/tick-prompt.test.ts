@@ -511,6 +511,19 @@ test("an instance loop id runs its base role's charter and instructions", () => 
   assert.match(result.prompt, /Prefer the smallest diff\./);
 });
 
+test("the plan charter's stop target scales with feature.instances", () => {
+  const dir = root();
+  const config = defaultConfig();
+  const atDefault = promptFor(dir, "plan", { config });
+  assert.ok(atDefault);
+  assert.match(atDefault.prompt, /2 or more eligible plans/);
+  assert.doesNotMatch(atDefault.prompt, /\{\{/);
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
+  const scaled = promptFor(dir, "plan", { config });
+  assert.ok(scaled);
+  assert.match(scaled.prompt, /4 or more eligible plans/);
+});
+
 test("a director preview peeks its inbox and an empty inbox still assembles to null", () => {
   const dir = root();
   enqueuePrompt(dir, "add a changelog");

@@ -419,40 +419,6 @@ pool, event-format, status and doctor tests.
 - **Doctor.** It warns on a 25 h-old pin and on a leftover `_land-feature` directory.
 - `npm run test` green.
 
----
-
-### Parallel work instances, part 5c/7: the plan charter's target scales with `feature.instances` (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7 and 2/7 landed)
-
-Design: plans/parallel-work-instances.md ("…keeping the plan loop ahead").
-
-Context: the plan loop's charter (the `plan` role's `find` string in src/roles/role-catalog.ts,
-step 1) stops it once PLANS.md holds "two or more plans without a Needs-review or Needs-replan
-note", so one feature runner can drain the queue. With `feature.instances: N` the fleet can
-work N plans at once, so the queue must hold N+1 eligible ones before the plan loop stops.
-
-**Approach.**
-1. **Target function.** Add `planBacklogTarget(config) = configuredInstances(config,
-   "feature") + 1` beside the claim helpers (src/scheduling/claims.ts already imports from
-   loop-ids and is a natural home, or a small sibling module).
-2. **Charter placeholder.** In the `plan` role's `find` text (src/roles/role-catalog.ts),
-   "two or more plans" becomes `{{planTarget}} or more eligible plans`, with a clause that only
-   entries which are neither blocked, refused nor needs-review count (the eligibility
-   definition part 2/7 established in src/backlog/backlog-eligibility.ts), and that when
-   `instances > 1` the planner prefers a plan independent of the waiting series.
-3. **Substitution.** `assembleTickPrompt` (src/tick/tick-prompt.ts) replaces `{{planTarget}}`
-   with `planBacklogTarget(config)` when it builds the plan role's prompt, following the
-   existing placeholder style in that file.
-
-**Files touched.** src/roles/role-catalog.ts, src/tick/tick-prompt.ts, the helper (src/scheduling/claims.ts
-or a small sibling). Tests: a tick-prompt case.
-
-**Acceptance criteria.**
-- The assembled plan-role prompt from `feature.instances: 3` contains "4 or more eligible
-  plans" and no literal `{{planTarget}}`; at the default it contains "2 or more".
-- The prompt text says to count only eligible entries (no blocked/refused/needs-review) and to
-  prefer an independent series when instances > 1.
-- `npm run test` green.
-
 ### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; split 2026-10-08 by plan; requires part 5b/7 landed)
 
 Design: plans/parallel-work-instances.md ("Observability").
@@ -525,6 +491,42 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 5c/7: the plan charter's target scales with `feature.instances` (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7 and 2/7 landed; done 2026-10-08 by feature)
+
+Design: plans/parallel-work-instances.md ("…keeping the plan loop ahead").
+
+Context: the plan loop's charter (the `plan` role's `find` string in src/roles/role-catalog.ts,
+step 1) stops it once PLANS.md holds "two or more plans without a Needs-review or Needs-replan
+note", so one feature runner can drain the queue. With `feature.instances: N` the fleet can
+work N plans at once, so the queue must hold N+1 eligible ones before the plan loop stops.
+
+**Approach (as landed).**
+1. **Target function.** `planBacklogTarget(config) = configuredInstances(config, "feature") + 1`
+   lives beside the claim helpers (src/scheduling/claims.ts), which already imports from
+   loop-ids.
+2. **Charter text.** The `plan` role's `find` (src/roles/role-catalog.ts) says to stop when
+   `## Planned` "already holds one more eligible plan than there are feature instances (one
+   waiting per instance, plus one for the next planner tick)", counting only entries that are
+   not blocked, refused, needs-review or needs-replan,
+   and preferring a plan independent of the waiting series when more than one instance runs.
+   The catalog stays config-free — no placeholder.
+3. **Stop-target note.** `assembleTickPrompt` (src/tick/tick-prompt.ts) builds a
+   `planTargetNote` from `planBacklogTarget(config)` for the plan base role only, and
+   `buildTickPrompt` (src/prompt/prompt.ts) renders it right after the charter text; a role
+   payload's `nextPrompt` therefore shows the resolved number.
+
+**Files touched.** src/roles/role-catalog.ts, src/prompt/prompt.ts, src/tick/tick-prompt.ts,
+src/scheduling/claims.ts. Tests: test/tick-prompt.test.ts, test/prompt-roles.test.ts,
+test/role-view.test.ts.
+
+**Acceptance criteria.**
+- The assembled plan-role prompt from `feature.instances: 3` contains "4 or more eligible
+  plans"; at the default it contains "2 or more". The prompt carries no unresolved
+  placeholder.
+- The prompt text says to count only eligible entries (no blocked/refused/needs-review) and to
+  prefer an independent series when instances > 1.
+- `npm run test` green.
 
 ### Parallel work instances, part 5b/7: instance runners spawn at startup and on live reload, gated by claims (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7, 3/7, 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed; done 2026-10-08 by feature)
 

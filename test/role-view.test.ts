@@ -273,6 +273,14 @@ test("modelTier resolves the seam tier: the catalog's assignment, then a tier-na
   assert.equal(overridden.provider, "prov-a");
 });
 
+test("the plan payload resolves the stop target without leaking a template", () => {
+  const dir = root();
+  const p = rolePayload(dir, "plan", NO_MODELS);
+  assert.ok(p.find);
+  assert.ok(!p.find.includes("{{"), "the find text carries no unresolved placeholder");
+  assert.match(p.nextPrompt ?? "", /2 or more eligible plans/);
+});
+
 // Model failure fallback, part 2/2: the inspector names the off-model pair, the episode's
 // start, and the failure that tripped it, and says nothing while the role runs its primary.
 test("an active model-fallback episode is reported with its pair and reason", () => {

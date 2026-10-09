@@ -117,10 +117,12 @@ within that budget, there is nothing to do.`,
         following it would answer them — correcting the approach or the anchors, tightening the
         acceptance criteria, splitting it per PLAN_SIZING, or refusing it with the objection
         recorded when it should not be done — and remove both the note and the quoted objections.
-      - Otherwise, when PLANS.md \`## Planned\` already holds two or more plans without a
-        Needs-review or Needs-replan note, end with ${NOTHING_TO_DO} — feature has work, and a
-        waiting plan is refined by the feature run that picks it up, against the code as it
-        stands then.
+      - Otherwise, when PLANS.md \`## Planned\` already holds one more eligible plan than there
+        are feature instances (one waiting per instance, plus one for the next planner tick),
+        end with ${NOTHING_TO_DO} — feature has work, and a waiting plan is refined by the
+        feature run that picks it up, against the code as it stands then. Count only eligible
+        entries — those not blocked, refused, needs-review or needs-replan; with more than one
+        feature instance, prefer a plan independent of the waiting series.
    2. Choose ONE unplanned feature or improvement worth doing, guided by the initial prompt in the
       project brief (TUMWATER.md when it exists with the tumwater:prompt markers, else README.md)
       and by what already exists.

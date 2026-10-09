@@ -409,7 +409,10 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /split it into independently landable sub-plans that cross-reference each other/);
   assert.match(find, /then remove the note/);
   assert.ok(!/refining the weakest/.test(find), "the refine-the-weakest clause is gone");
-  assert.match(find, /two or more plans without a Needs-review or Needs-replan note, end with/);
+  assert.match(find, /holds one more eligible plan than there are feature instances/);
+  assert.match(find, /not blocked, refused, needs-review or needs-replan/);
+  assert.match(find, /prefer a plan independent of the waiting series/);
+  assert.ok(!find.includes("{{"), "the plan charter carries no unresolved placeholder");
   assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
   assert.match(find, /refined by the feature run that picks it up/);
 });

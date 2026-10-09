@@ -7,17 +7,27 @@
  * resume, revision and leftover recovery. */
 
 import path from "node:path";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { type EligibleEntry, entryKey } from "../backlog/backlog-eligibility.js";
 import { actionableEntryRanges } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
-import { baseRoleOf } from "../roles/loop-ids.js";
+import { baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
 
 /** How long a claim may sit while its runner is idle before the poll releases it as stale. A
  * day is far past any tick, so the release only catches a claim whose runner stopped taking
  * work — an abandoned entry must return to the free pool for another instance. */
 export const CLAIM_IDLE_MAX_MS = 24 * 60 * 60 * 1000;
+
+/** The number of eligible plans PLANS.md's `## Planned` should hold before the plan loop stops
+ * for lack of work: one waiting plan per configured feature instance, plus one, so every
+ * runner has something to take and the next planner tick still has headroom. At the default
+ * one feature instance this is 2 — the "two or more plans" threshold the plan charter has
+ * always used (plans/parallel-work-instances.md "…keeping the plan loop ahead", part 5c/7). */
+export function planBacklogTarget(config: TumwaterConfig): number {
+  return configuredInstances(config, "feature") + 1;
+}
 
 /** The runner fields the claim policies read (structural stand-in for LoopRunner, so claims.ts
  * stays free of the runner's lifecycle). */

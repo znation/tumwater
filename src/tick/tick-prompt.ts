@@ -2,6 +2,8 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
+import { planBacklogTarget } from "../scheduling/claims.js";
+import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../inbox/prompt-not-before.js";
 import { readBrief } from "../brief.js";
@@ -141,6 +143,15 @@ export function assembleTickPrompt(
     // instruction in buildTickPrompt is present either way. The director branch above never
     // reads this path, so it carries no notebook.
     const notes = readRoleNote(root, role);
+    // The plan charter's stop threshold is derived from config (plans/parallel-work-
+    // instances.md "…keeping the plan loop ahead", part 5c/7). The catalog text stays a
+    // config-free description of the rule; this note supplies the concrete eligible-plan count
+    // so the plan loop stops only once every configured feature instance has a plan waiting.
+    const planTargetNote =
+      base === "plan"
+        ? `This tick's stop target: when PLANS.md \`## Planned\` already holds ` +
+          `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}.`
+        : undefined;
     prompt = buildTickPrompt({
       role: resolved,
       initialPrompt,
@@ -150,6 +161,7 @@ export function assembleTickPrompt(
       backlogStructure,
       backlogIndex,
       notes,
+      planTargetNote,
       extraInstructions: config.roles[base]?.instructions,
       check,
       briefFile: brief,
