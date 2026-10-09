@@ -10,7 +10,7 @@ import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf, instanceIndex } from "../roles/loop-ids.js";
+import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { logEvent, warnEvent } from "../events/events.js";
@@ -134,14 +134,16 @@ export async function pollRunnerReasons(
     const eligible = eligibleEntries(root, base);
     const eligibleKeys = new Set(eligible.map((e) => e.key));
     const listed = listedKeys(root, base);
-    const enabled = groupRunners[0]!.config.roles[base]?.enabled === true;
     for (const r of groupRunners) {
       const released = claimReleaseReason(r, {
         listedKeys: listed,
         eligibleKeys,
         now,
         hasQueuedLanding: queuedLandingRoles.has(r.role),
-        enabled,
+        // Per instance, not per base role: a lowered `instances` leaves the surplus runner in
+        // place with `loopEnabled` false, and its idle claim must be released so a sibling can
+        // take the entry instead of the key staying held until the 24h stale sweep.
+        enabled: loopEnabled(r.config, r.role),
       });
       if (released === null) continue;
       const title = r.state.claim?.title ?? "";

@@ -217,6 +217,28 @@ test("a claimed entry that lands releases the claim on the next poll", async () 
   assert.equal(feature.state.claim, undefined);
 });
 
+test("lowering feature.instances releases a surplus instance's claim instead of holding it", async () => {
+  const root = tmpdir("tumwater-scheduling-lowered-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.claim?.key, "beta", "instance 2 starts holding the second entry");
+  // Live reload lowers the instance count but leaves feature-2's runner in place; `loopEnabled`
+  // skips its future ticks. Its claim must be released as `disabled`, freeing beta for a sibling
+  // instead of locking it until the 24h stale sweep.
+  config.roles.feature = { enabled: true, instances: 1 };
+  const reasons = await pollRunnerReasons(
+    schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
+  );
+  assert.equal(feature2.state.claim, undefined, "the surplus instance's claim is released");
+  assert.equal(reasons.has(feature2), false, "the surplus instance starts no tick");
+  assert.equal(feature.state.claim?.key, "alpha", "the surviving instance keeps its own claim");
+});
+
 test("a single feature runner is not assigned a claim", async () => {
   const root = tmpdir("tumwater-scheduling-single-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
