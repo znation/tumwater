@@ -204,24 +204,22 @@ test("a rejection of the last allowed revision exhausts it and deletes the rejec
   }
 });
 
-test("stageTickLanding carries the revision round onto the entry and clears state.revision", async () => {
-  const { root, wt } = await initializedWorktree("improve");
-  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  const state = {
-    ...freshLoopState("improve"),
-    ticks: 5,
-    revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
-  };
-  const ctx = {
+/** The `stageTickLanding` context the two staging tests share: the loop wiring every tick
+ * supplies, with `overrides` layered on for per-test state, prompt, and reply text. */
+function stageCtx(
+  root: string,
+  wt: string,
+  overrides: Partial<Parameters<typeof stageTickLanding>[0]> = {},
+): Parameters<typeof stageTickLanding>[0] {
+  return {
     root,
     role: "improve",
-    state,
+    state: freshLoopState("improve"),
     config: defaultConfig(),
     tickTurns: 4,
     userPrompt: null,
-    revisionRound: 1,
     wt,
-    finalText: "SUMMARY: revise the change\nWHY: the objection\n",
+    finalText: "",
     piStartedAt: Date.now(),
     flow: null,
     warn: () => {},
@@ -230,7 +228,23 @@ test("stageTickLanding carries the revision round onto the entry and clears stat
     requestStageFix: async () => null,
     pinAndReset: async () => true,
     finishAbortedTick: async () => ({ result: "aborted" as const }),
+    ...overrides,
   };
+}
+
+test("stageTickLanding carries the revision round onto the entry and clears state.revision", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  const state = {
+    ...freshLoopState("improve"),
+    ticks: 5,
+    revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
+  };
+  const ctx = stageCtx(root, wt, {
+    state,
+    revisionRound: 1,
+    finalText: "SUMMARY: revise the change\nWHY: the objection\n",
+  });
 
   const outcome = await stageTickLanding(ctx);
 
@@ -244,24 +258,11 @@ test("a user-request tick that leaves a pending revision stages no round and kee
   fs.writeFileSync(path.join(wt, "user-change.ts"), "export const userChange = true;\n");
   const revision = { sha: "a".repeat(40), round: 1, at: Date.now() };
   const state = { ...freshLoopState("improve"), ticks: 5, revision };
-  const ctx = {
-    root,
-    role: "improve",
+  const ctx = stageCtx(root, wt, {
     state,
-    config: defaultConfig(),
-    tickTurns: 4,
     userPrompt: "please do the user thing",
-    wt,
     finalText: "SUMMARY: do the user thing\nWHY: asked\n",
-    piStartedAt: Date.now(),
-    flow: null,
-    warn: () => {},
-    requestSummary: async () => null,
-    stageCheck: async () => [],
-    requestStageFix: async () => null,
-    pinAndReset: async () => true,
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
-  };
+  });
 
   const outcome = await stageTickLanding(ctx);
 
