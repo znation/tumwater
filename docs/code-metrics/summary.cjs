@@ -148,4 +148,4 @@ console.log("\n== Tests ==");
 const testFns = M.functions.filter((f) => f.cat === "test:spec" && /^test\(/.test(f.name));
 console.log(`test() cases (as arrow callbacks): ${testFns.length}; median test-body lines ${q(testFns.map((f) => f.codeLines), 0.5)} mean ${fmt(sum(testFns, "codeLines") / testFns.length, 1)}`);
 const testCode = sum(M.files.filter((f) => f.cat.startsWith("test")), "code");
-console.log(`test:src code ratio ${fmt(testCode / srcCode, 2)} (test ${testCode} / src ${srcCode}); spec-only ${fmt(sum(cats["test:spec"], "code") / srcCode, 2)}`);
+console.log(`test:src code ratio ${fmt(testCode / srcCode, 2)} (test ${testCode} / src ${srcCode}); spec-only ${fmt(sum(cats["test:spec"] ?? [], "code") / srcCode, 2)}`);

@@ -152,3 +152,16 @@ test("summary.cjs reports a metrics set with no functions or imports without cra
   assert.match(r.stdout, /test\(\) cases \(as arrow callbacks\): 0; median test-body lines NaN mean -/);
   assert.match(r.stdout, /test:src code ratio - \(test 0 \/ src 0\); spec-only -/);
 });
+
+test("summary.cjs reports a checkout with no test files instead of crashing", () => {
+  // A metrics set with no `test:spec` category has no `cats["test:spec"]` entry at all, so the
+  // spec-only ratio must read as zero rather than throw on `.reduce` of undefined — the shape a
+  // docs-only or freshly bootstrapped checkout produces. Only src files reach the report here.
+  const data = tmpdir("summary-notests-");
+  const src = { file: key("src", "only.ts"), cat: "src", lang: "ts", lines: 12, code: 10, comment: 1, blank: 1, words: 0, cls: "c".repeat(10) + "mb", tokens: [], markers: {} };
+  fs.writeFileSync(path.join(data, "metrics.json"), JSON.stringify({ files: [src], functions: [], imports: [] }));
+  const r = run(data);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /test\(\) cases \(as arrow callbacks\): 0; median test-body lines NaN mean -/);
+  assert.match(r.stdout, /test:src code ratio 0\.00 \(test 0 \/ src 10\); spec-only 0\.00/);
+});
