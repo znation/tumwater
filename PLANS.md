@@ -6,6 +6,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Cancel an operator-filed backlog entry: `tumwater plan --cancel <n>` and `tumwater bug --cancel <n>` (planned 2026-10-09 by plan)
+
+`tumwater plan` and `tumwater bug` are the operator's two filing commands (src/backlog/backlog-write.ts's `filePlan` / `fileBug`), but nothing retracts a mis-filed or obsolete entry: the operator is told to hand-edit PLANS.md or BUGS.md. Every other operator-authored lifecycle has a retract path (`prompt --cancel`, `questions answer`); the backlog is the one without one. This adds a cancel mode to both commands, scoped to the section each already writes.
+
+**Approach.**
+1. **Removal under the existing lock.** In src/backlog/backlog-write.ts add `removeEntryLocked(root, fileName, sectionTitle, n)` beside `appendEntryLocked`:
+   - run the whole read-modify-write under `withStateLock(primaryWorktreeLockPath(root), …)`, exactly as `appendEntry` does, so a cancel and a landing's working-tree fast-forward cannot clobber each other;
+   - locate the section's entries with `actionableEntryRanges(md, sectionTitle)` (src/backlog/backlog-structure.ts), whose ranges are 1-based and fence-aware — a `## ` or `### ` line quoted inside an entry's code fence is body text, never a boundary;
+   - fail, writing nothing, when `n` is not in `1..entries.length`, naming the section and its count (e.g. `tumwater: no open bug at position 3 (2 in BUGS.md)`);
+   - slice the entry's lines out (`start - 1` through `end - 1`, 0-based) and `writeTextAtomic` the result. For a well-formed file the surrounding blank line is the separator, so the join keeps exactly one blank line before the next heading; the tests pin first, middle, last and only-entry removals.
+2. **Two thin callers.** `cancelPlan(root, n, usage)` and `cancelBug(root, n, usage)` return `{ file, title }`, where the title is the removed range's `### ` heading verbatim — the same string the backlog readers list. A section holding only the `_None yet._` placeholder (or nothing) has no entries and takes the range failure.
+3. **CLI shell.** Add `cancelAndAnnounce(root, args, command, cancel)` to the same module, mirroring `fileAndAnnounce`'s flag handling: `--cancel <n>` is the one valued flag, `--json` the one boolean, and `--help`/`-h` is tolerated; any positional or other flag is rejected through `rejectUnknownArgs`. The position parses through the plain-decimal rule every position flag shares (`parsePositiveInt`, src/text/text.ts), not `Number()`. After `requireReadyRepo`, it prints `cancelled <command> in <file>: <title>` or the `--json` payload `{ file, title }`. No wake: removing work must not wake a loop.
+4. **Dispatch.** src/cli.ts's `bug` and `plan` cases call `cancelAndAnnounce` when `args` includes `--cancel`, else the existing `fileAndAnnounce`.
+5. **Help.** src/cli/help.ts's `bug` and `plan` stanzas gain the `--cancel <n>` form, wording it as "the Nth entry in <FILE> ## <Section>, as `tumwater backlog` lists it".
+
+**Files touched.**
+- src/backlog/backlog-write.ts (removal, callers, CLI shell)
+- src/cli.ts (two dispatch branches)
+- src/cli/help.ts (two stanzas)
+- test/backlog-write.test.ts
+
+**Acceptance criteria.**
+- Cancelling a middle entry removes exactly that heading and its body; every other entry, both `## ` headings, and the bytes around them are unchanged apart from one blank line at the join.
+- Cancelling the first entry and the last entry both work; cancelling a section's only entry leaves the `## ` heading and no `### ` entry.
+- An entry whose body quotes a `## ` or `### ` line inside a code fence is removed whole; the quoted line is not mistaken for the section boundary and the entry after it survives.
+- An out-of-range or non-decimal position fails, exits non-zero, and leaves the file byte-identical.
+- `tumwater plan --cancel 1` removes only from PLANS.md `## Planned`; `tumwater bug --cancel 1` removes only from BUGS.md `## Open`.
+- `--json` prints `{ file, title }` as data; the prose form names the file and the removed title.
+- `npm run test` green.
+
 ### Agent backends, part 2/7: a session ledger and the `handoff` resume (planned 2026-10-09 by operator; requires part 1/7 landed)
 
 Design: plans/agent-backends.md ("Sessions").
