@@ -27,13 +27,15 @@ function makeCtx(root: string, wt: string): LeftoverContext {
 }
 
 /** A repo with one commit NOT contained in main, pinned by the landing ref — the leftover to
- * salvage. The commit sits on a throwaway branch so it stays reachable after leaving it. */
-async function pinnedFixture(): Promise<{ root: string; sha: string }> {
+ * salvage. The commit sits on a throwaway branch so it stays reachable after leaving it.
+ * `message` is the commit subject/body; `commitArgs` carries extra git-commit flags an
+ * unreadable-subject case needs. */
+async function pinnedFixture(message = "stranded work", commitArgs: string[] = []): Promise<{ root: string; sha: string }> {
   const root = makeRepo();
   sh(root, "git", "checkout", "-b", "stray");
   fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
   sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "-m", "stranded work");
+  sh(root, "git", "commit", ...commitArgs, "-m", message);
   const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, landingRefName(ROLE), sha);
@@ -141,15 +143,7 @@ test("a role whose landing is already queued is not enqueued twice", async () =>
 // body), so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are
 // already durable in the commit message the harness stamped; recovery reads them back.
 test("recovery reads the pinned commit's body and high-friction flag back out of its message", async () => {
-  const root = makeRepo();
-  sh(root, "git", "checkout", "-b", "stray");
-  fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
-  sh(root, "git", "add", "-A");
-  sh(
-    root,
-    "git",
-    "commit",
-    "-m",
+  const { root, sha } = await pinnedFixture(
     [
       "tumwater(improve): slow but worthwhile",
       "",
@@ -160,9 +154,6 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
       commitTrailer("improve", 5, 44, 20_000, 4.2),
     ].join("\n"),
   );
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
-  await setRef(root, landingRefName(ROLE), sha);
   const wt = await ensureWorktree(root, ROLE, "main");
 
   assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
@@ -267,20 +258,8 @@ test("deleteRef is idempotent (terminal-outcome cleanup can run twice)", async (
 // commit, so recoveredMetadata returns {} — recovery must still work and fall back to the bare
 // provenance label instead of leaking "undefined" into the queue entry or the failure digest.
 
-async function pinnedEmptyMessageFixture(): Promise<{ root: string; sha: string }> {
-  const root = makeRepo();
-  sh(root, "git", "checkout", "-b", "stray");
-  fs.appendFileSync(path.join(root, "seed.txt"), "leftover change\n");
-  sh(root, "git", "add", "-A");
-  sh(root, "git", "commit", "--allow-empty-message", "-m", "");
-  const sha = headSha(root);
-  sh(root, "git", "checkout", "main");
-  await setRef(root, landingRefName(ROLE), sha);
-  return { root, sha };
-}
-
 test("a pinned commit with no readable subject is queued under the bare provenance label", async () => {
-  const { root, sha } = await pinnedEmptyMessageFixture();
+  const { root, sha } = await pinnedFixture("", ["--allow-empty-message"]);
   const wt = await ensureWorktree(root, ROLE, "main");
 
   assert.equal((await recoverLeftover(makeCtx(root, wt)))?.kind, "enqueued");
@@ -292,7 +271,7 @@ test("a pinned commit with no readable subject is queued under the bare provenan
 });
 
 test("a handed-back commit with no readable subject falls back to the bare sha label", async () => {
-  const { root, sha } = await pinnedEmptyMessageFixture();
+  const { root, sha } = await pinnedFixture("", ["--allow-empty-message"]);
   const wt = await ensureWorktree(root, ROLE, "main");
 
   const atCap = { ...makeCtx(root, wt), mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT } };
