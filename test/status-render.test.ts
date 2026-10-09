@@ -568,6 +568,16 @@ test("the loop name cell appends a lone selector when no tier map is declared", 
   assert.doesNotMatch(text, /plan \(/);
 });
 
+// The pooled worktree slot no longer rides the status state cell (PLANS.md "Stop showing leased
+// worktree slots in the TUI and GUI"): the payload keeps slot/slotPinned, but the dashboards
+// stop rendering them.
+test("the state cell hides the pooled worktree slot and its pin", () => {
+  const snap = snapshotWith([{ role: "clean", slot: "_slot-3", slotPinned: true } as never]);
+  const row = rowOf(renderStatus(tmpdir(), snap), "clean");
+  assert.doesNotMatch(row, /_slot-3/);
+  assert.doesNotMatch(row, /\(pinned\)/);
+});
+
 // The disk floor (plans/disk-floor.md, part 4/4): a published hold reads in the header badge
 // AND in each idle loop's state cell, so the rendered table explains the stopped fleet
 // itself.

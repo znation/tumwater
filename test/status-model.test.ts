@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { backdate } from "./helpers/backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
-import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, slotSuffix, sortLoopsByState } from "../src/ui/status-model.js";
+import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
@@ -719,12 +719,6 @@ test("loopPhase reads held: bootstrap for idle role loops while bootstrap holds"
     loopPhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
     "stopped",
   );
-});
-
-test("slotSuffix names the pooled slot and marks a pin; empty without one", () => {
-  assert.equal(slotSuffix({}), "");
-  assert.equal(slotSuffix({ slot: "_slot-3" }), " · _slot-3");
-  assert.equal(slotSuffix({ slot: "_slot-3", slotPinned: true }), " · _slot-3 (pinned)");
 });
 
 // Parallel work instances, part 6/7: the idle/landing work text — the claim's title, the

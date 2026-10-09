@@ -53,14 +53,6 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
   merging: "merging",
 };
 
-/** The status cell's pooled-slot suffix: the `.tumwater/worktrees/_slot-<n>` basename a loop's
- * running tick or vet holds, or the slot it is pinned to for a pending resume ("(pinned)").
- * Empty when the loop has no slot, so a pre-pool row renders unchanged. Shared by the terminal
- * state cell (status-render.ts) and derived from the same status payload the GUI reads. */
-export function slotSuffix(s: { slot?: string; slotPinned?: boolean }): string {
-  return s.slot ? ` · ${s.slot}${s.slotPinned ? " (pinned)" : ""}` : "";
-}
-
 /** The work text a row shows in place of live progress while it is idle or landing
  * (plans/parallel-work-instances.md "Observability", part 6/7): the claim's heading when the
  * instance holds one, otherwise — for an idle extra instance that was skipped for want of a

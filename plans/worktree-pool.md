@@ -246,8 +246,10 @@ resumable.
 
 - **`slot_wait` event.** Logged when a lease waited 30 s or more. It carries `role`,
   `purpose`, `waitedMs`, `slots` and `pinned`, and it is the signal to raise `worktreeSlots`.
-- **Status and GUI.** `tumwater status` and the GUI's role rows show which slot each running
-  tick or vet holds, and any pins.
+- **Status and GUI.** The status payload carries the pooled slot a role leases (a running
+  tick or vet) or is pinned to (`StatusLoop.slot`/`slotPinned`). The TUI row's state cell and
+  the GUI's per-row loop name leave that slot and pin out of the rendered text (this supersedes
+  the display half of this bullet, 2026-10-09).
 - **Doctor.** `tumwater doctor` gets `checkWorktreePool`, which reports slots, pins and
   leftover legacy checkouts. It warns on a legacy `<role>` or `_land-*` directory that is
   still present, and on a pin older than 24 h, which usually means a paused role holding a

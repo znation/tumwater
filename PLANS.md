@@ -6,44 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Stop showing leased worktree slots in the TUI and GUI (planned 2026-10-09 by operator; supersedes the display half of "Worktree pool, part 5/5")
-
-Design: plans/worktree-pool.md ("Observability").
-
-**Goal.** The `tumwater status`/TUI loop row and the browser dashboard's loop row stop naming
-the pooled worktree slot (`_slot-<n>`) and its pin. Everything else the pool's observability
-part added stays: the `slot_wait` event, the doctor's `checkWorktreePool`, the pool docs, and the
-`slot`/`slotPinned` fields on the status payload (`status --json`, `/api/status`) — only the two
-dashboards' rendering changes.
-
-**Approach.**
-1. **TUI/status.** In src/ui/status-render.ts drop `slotSuffix` from the state cell —
-   `const state = stateCell(root, s, phase, live) + slotSuffix(s);` becomes
-   `const state = stateCell(root, s, phase, live);` — and remove `slotSuffix` from the import at
-   the top of the file. In src/ui/status-model.ts delete the now-unused `slotSuffix` function
-   and the doc comment above it.
-2. **GUI.** In src/ui/gui/gui-client-loops.ts delete the `l.slot` tag term from the
-   `loop-name` cell (the `(l.slot ? "<span class='tag' title='...'>" + esc(l.slot) + "</span>" : "")`
-   expression), leaving the other tags in place.
-3. **Payload unchanged.** Leave `slot`/`slotPinned` on `StatusLoop`
-   (src/status/status-data.ts), in `statusPayload` (src/ui/status-payload.ts), and in their
-   test/status-payload.test.ts case untouched; only the dashboards stop rendering them.
-
-**Files touched.** src/ui/status-render.ts, src/ui/status-model.ts,
-src/ui/gui/gui-client-loops.ts. Tests: test/status-model.test.ts (remove the `slotSuffix`
-case), plus a case in test/status-render.test.ts and one in test/gui-client-loops.test.ts that
-pin the absent display.
-
-**Acceptance criteria.**
-- **TUI.** A snapshot row carrying `slot: "_slot-3", slotPinned: true` renders a state cell that
-  contains neither `_slot-3` nor `(pinned)`.
-- **GUI.** `loopCells` output for that row contains no `Leased worktree slot` and no
-  `Pinned worktree slot` tag.
-- **Payload.** `statusPayload` still carries `slot: "_slot-3", slotPinned: true` for that row
-  (the existing test/status-payload.test.ts case unchanged).
-- **No dead helper.** `grep -rn slotSuffix src test` returns nothing.
-- `npm run test` green.
-
 ### Split the LoopRunner tick pipeline out of src/loop/loop.ts (planned 2026-10-08 by organize)
 
 Design principle: a file with too many responsibilities should be divided along the seams it already
@@ -561,6 +523,44 @@ and a loop test for `budgetCapped` → handoff.
 
 ## Done
 
+### Stop showing leased worktree slots in the TUI and GUI (planned 2026-10-09 by operator; supersedes the display half of "Worktree pool, part 5/5"; done 2026-10-09 by feature)
+
+Design: plans/worktree-pool.md ("Observability").
+
+**Goal.** The `tumwater status`/TUI loop row and the browser dashboard's loop row stop naming
+the pooled worktree slot (`_slot-<n>`) and its pin. Everything else the pool's observability
+part added stays: the `slot_wait` event, the doctor's `checkWorktreePool`, the pool docs, and the
+`slot`/`slotPinned` fields on the status payload (`status --json`, `/api/status`) — only the two
+dashboards' rendering changes.
+
+**Approach.**
+1. **TUI/status.** In src/ui/status-render.ts drop `slotSuffix` from the state cell —
+   `const state = stateCell(root, s, phase, live) + slotSuffix(s);` becomes
+   `const state = stateCell(root, s, phase, live);` — and remove `slotSuffix` from the import at
+   the top of the file. In src/ui/status-model.ts delete the now-unused `slotSuffix` function
+   and the doc comment above it.
+2. **GUI.** In src/ui/gui/gui-client-loops.ts delete the `l.slot` tag term from the
+   `loop-name` cell (the `(l.slot ? "<span class='tag' title='...'>" + esc(l.slot) + "</span>" : "")`
+   expression), leaving the other tags in place.
+3. **Payload unchanged.** Leave `slot`/`slotPinned` on `StatusLoop`
+   (src/status/status-data.ts), in `statusPayload` (src/ui/status-payload.ts), and in their
+   test/status-payload.test.ts case untouched; only the dashboards stop rendering them.
+
+**Files touched.** src/ui/status-render.ts, src/ui/status-model.ts,
+src/ui/gui/gui-client-loops.ts. Tests: test/status-model.test.ts (remove the `slotSuffix`
+case), plus a case in test/status-render.test.ts and one in test/gui-client-loops.test.ts that
+pin the absent display.
+
+**Acceptance criteria.**
+- **TUI.** A snapshot row carrying `slot: "_slot-3", slotPinned: true` renders a state cell that
+  contains neither `_slot-3` nor `(pinned)`.
+- **GUI.** `loopCells` output for that row contains no `Leased worktree slot` and no
+  `Pinned worktree slot` tag.
+- **Payload.** `statusPayload` still carries `slot: "_slot-3", slotPinned: true` for that row
+  (the existing test/status-payload.test.ts case unchanged).
+- **No dead helper.** `grep -rn slotSuffix src test` returns nothing.
+- `npm run test` green.
+
 ### Work ratio, part 1b/4: the scheduler holds maintenance loops past their allowance (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4; requires part 1a/4 landed; done 2026-10-09 by feature)
 
 Design: plans/work-ratio.md ("Maintenance follows work").
@@ -833,7 +833,7 @@ on the status payload for the GUI tag.
 
 **Superseded 2026-10-09 by operator:** the TUI and GUI are to stop showing the slot on a loop
 row
-(see "Stop showing leased worktree slots in the TUI and GUI" under Planned); the payload fields
+(see "Stop showing leased worktree slots in the TUI and GUI" under Done); the payload fields
 remain for `status --json`/`/api/status` scripts.
 
 **Acceptance criteria.**

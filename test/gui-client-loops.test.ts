@@ -148,6 +148,16 @@ test("a loop row tags an active model-fallback episode", () => {
   assert.doesNotMatch(cells({ role: "clean", phase: "sleeping" }), /fallback<\/span>/);
 });
 
+// PLANS.md "Stop showing leased worktree slots in the TUI and GUI": the payload keeps
+// slot/slotPinned, but a loop row renders no leased/pinned worktree tag.
+test("a row hides the pooled worktree slot and its pin", () => {
+  const name = loopCells({ role: "clean", phase: "sleeping", slot: "_slot-3", slotPinned: true,
+    todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
+  assert.doesNotMatch(name, /_slot-3/);
+  assert.doesNotMatch(name, /Leased worktree slot/);
+  assert.doesNotMatch(name, /Pinned worktree slot/);
+});
+
 // Parallel work instances, part 6/7: an idle instance's activity names the entry it claimed,
 // and a skipped extra instance with none says why.
 test("an idle instance's activity shows its claimed entry, or the no-unclaimed note", () => {

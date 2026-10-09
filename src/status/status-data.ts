@@ -303,7 +303,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   // One slots.json read per poll serves every row: the pooled slot a role leases (a running
-  // tick or vet) or is pinned to, for the state cell and the GUI's per-row slot tag.
+  // tick or vet) or is pinned to.
   const slots = readSlotsState(root).slots;
   const loops = roles.map((r) => {
     const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
