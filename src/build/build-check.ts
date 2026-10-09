@@ -18,9 +18,11 @@ import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
  * unverified remapping, and the skip warning — is a separate concern and lives in
  * build-check-scoped.ts. Reading the runner's summary counts — parseTestCounts/TestCounts — is pure
  * parsing with its own importers and lives in build-check-counts.ts. runScopedBuildCheck
- * (build-check-scoped.ts) is the shared detect → run → build_check event → skip-warning sequence of
- * the gate's pre-check (review.ts, via review-precheck.ts) and the landing path's in-lock re-check
- * (landing-merge.ts). The red-main baseline gate (main-red.ts) reuses this same detection and
+ * (build-check-scoped.ts) is the shared detect → run → build_check event → skip-warning
+ * sequence of the gate's pre-check (review.ts, via review-precheck.ts), the landing path's
+ * in-lock re-check (landing-merge.ts), and the stacked path's coalesced scope-"batch"
+ * check (landing-stack.ts). The red-main baseline gate (main-red.ts) reuses this same
+ * detection and
  * execution from main-baseline.ts to verify main itself once per SHA before an authoring run is
  * spent on top of it. The detached process-group runner runBuildCheck uses (runScriptGroup) is this
  * module's only runtime concern in process-group.ts — its run record (BuildCheckRun, below) stays
