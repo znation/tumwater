@@ -398,6 +398,11 @@ export function eventMessage(e: HarnessEvent): string {
       return e.action === "released"
         ? `released "${textOr(e.title)}" (${textOr(e.reason, "?")})`
         : `assigned "${textOr(e.title)}"`;
+    case "permit_reserve":
+      // Priority headroom (part 7/7): a reserve appearing or vanishing is the scheduler working
+      // as designed; it names the permits withheld for the work tier so an operator can see why
+      // maintenance concurrency dipped.
+      return `${finiteNumber(e.reserve, 0)} permit(s) reserved for work loops that have work to take`;
     case "warning":
       return `warning: ${textOr(e.message)}`;
     default:

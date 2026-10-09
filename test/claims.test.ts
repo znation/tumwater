@@ -13,6 +13,7 @@ import {
   listedKeys,
   movedOutEntries,
   stagedMovedEntries,
+  workReserveCount,
   type ClaimRunner,
 } from "../src/scheduling/claims.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
@@ -155,4 +156,47 @@ test("buildAssignmentNote names the entry, its range and the alternatives", () =
   const staged = buildAssignmentNote({ file: "BUGS.md", title: "Bug X", source: "staged" });
   assert.match(staged, /Your change moved ONE backlog entry/);
   assert.match(staged, /"Bug X" \(BUGS\.md\)/);
+});
+
+test("workReserveCount withholds permits only while a claim role is idle with work", () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
+  const idle = runner("feature", state());
+  const opts = { maxConcurrent: 6, enabled: new Set(["feature"]), queuedLandingRoles: new Set<string>() };
+  // One idle feature with two eligible entries: min(floor(6/3), 1) = 1.
+  assert.equal(workReserveCount(repo, [idle], opts), 1);
+  // Floor(cap/3) bounds the count.
+  assert.equal(workReserveCount(repo, [idle], { ...opts, maxConcurrent: 3 }), 1);
+  // A running or landing work loop has nothing to reserve for.
+  assert.equal(
+    workReserveCount(repo, [runner("feature", state(undefined, { running: true }))], opts),
+    0,
+  );
+  assert.equal(
+    workReserveCount(repo, [idle], { ...opts, queuedLandingRoles: new Set(["feature"]) }),
+    0,
+  );
+  // A disabled loop reserves nothing.
+  assert.equal(workReserveCount(repo, [idle], { ...opts, enabled: new Set() }), 0);
+});
+
+test("workReserveCount caps at a third of maxConcurrent and counts claim holders", () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
+  const opts = {
+    maxConcurrent: 6,
+    enabled: new Set(["feature", "feature-2"]),
+    queuedLandingRoles: new Set<string>(),
+  };
+  // Two idle instances and two eligible entries: both reserve, capped at floor(6/3) = 2.
+  assert.equal(workReserveCount(repo, [runner("feature", state()), runner("feature-2", state())], opts), 2);
+  // One eligible entry, held by one instance: the holder counts, the sibling with no free
+  // entry does not.
+  const oneEntry = PLANNED.replace(/### Plan B[\s\S]*?\n\nBody B\.\n\n/, "");
+  const repo2 = makeRepo();
+  fs.writeFileSync(path.join(repo2, "PLANS.md"), oneEntry);
+  assert.equal(
+    workReserveCount(repo2, [runner("feature", state()), runner("feature-2", state({ ...claimA }))], opts),
+    1,
+  );
 });

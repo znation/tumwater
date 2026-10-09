@@ -268,3 +268,53 @@ test("tier ordering never starves a higher tier: once no lower-tier waiter is pa
     "higher tier drains FIFO once unblocked",
   );
 });
+
+test("a reserve keeps a permit free for a work acquirer while maintenance sits at its cap", async () => {
+  const sem = new Semaphore(6);
+  for (let i = 0; i < 4; i++) await sem.acquire(1); // four maintenance permit holders
+  sem.setReserve(2);
+  let maintenanceGranted = false;
+  void sem.acquire(1).then(() => {
+    maintenanceGranted = true;
+  });
+  await flushImmediate();
+  assert.equal(maintenanceGranted, false, "the fifth maintenance acquirer is held by the reserve");
+  assert.equal(sem.waiting, 1);
+  // The work tier ignores the reserve and takes the permit at once, no queue wait.
+  let workGranted = false;
+  void sem.acquire(0).then(() => {
+    workGranted = true;
+  });
+  await flushImmediate();
+  assert.equal(workGranted, true, "a work acquirer takes the reserved permit at once");
+  assert.equal(sem.waiting, 1, "the parked maintenance waiter is still waiting");
+});
+
+test("lowering the reserve admits a parked maintenance waiter", async () => {
+  const sem = new Semaphore(2);
+  await sem.acquire(1);
+  sem.setReserve(1);
+  let granted = false;
+  void sem.acquire(1).then(() => {
+    granted = true;
+  });
+  await flushImmediate();
+  assert.equal(granted, false, "the reserve withholds the second permit");
+  sem.setReserve(0);
+  await flushImmediate();
+  assert.equal(granted, true, "the freed reserve admits the parked maintenance waiter");
+});
+
+test("the landing and merge tiers ignore the reserve", async () => {
+  const sem = new Semaphore(2);
+  await sem.acquire(1);
+  await sem.acquire(1); // capacity full
+  sem.setReserve(1);
+  sem.release(); // one permit free, but a reserve of 1 would withhold it from tier >= 1
+  let vetGranted = false;
+  void sem.acquire(-1).then(() => {
+    vetGranted = true;
+  });
+  await flushImmediate();
+  assert.equal(vetGranted, true, "a negative-tier (vet/merge) acquirer is never held by the reserve");
+});

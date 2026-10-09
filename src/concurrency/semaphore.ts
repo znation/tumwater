@@ -9,6 +9,10 @@ export class Semaphore {
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
    * represent that state — it would over-admit new work after a shrink. */
   private inUse = 0;
+  /** Permits withheld from tier ≥ 1 acquirers so a work loop that has work to take can claim
+   * one without waiting for a maintenance tick to release (plans/parallel-work-instances.md
+   * "Priority headroom", part 7/7). Tiers ≤ 0 (work, LANDING_TIER, MERGE_TIER) ignore it. */
+  private reserve = 0;
 
   constructor(private capacity: number) {}
 
@@ -36,7 +40,7 @@ export class Semaphore {
    * polls), keeping stable FIFO within a tier. In-flight holders are never preempted — they
    * run to completion and their release is what hands out the permit. */
   async acquire(tier: number): Promise<void> {
-    if (this.inUse < this.capacity) {
+    if (this.inUse < this.capacity - this.reserveFor(tier)) {
       this.inUse += 1;
       return;
     }
@@ -57,12 +61,22 @@ export class Semaphore {
    * loops it to fill new headroom. It never admits past the cap, so a shrink wakes nothing
    * until releases drain in-use under it. */
   private grantNextWaiter(): boolean {
-    if (this.inUse >= this.capacity) return false;
-    const next = this.waiters.shift();
+    // Peek before admitting: a tier ≥ 1 waiter at the head is the highest-priority one (the
+    // queue is tier-ascending), so when the reserve withholds a permit from it, it withholds
+    // one from every waiter behind it too.
+    const next = this.waiters[0];
     if (!next) return false;
+    if (this.inUse >= this.capacity - this.reserveFor(next.tier)) return false;
+    this.waiters.shift();
     this.inUse += 1;
     next.resolve();
     return true;
+  }
+
+  /** The permits withheld from `tier`: `reserve` for tier ≥ 1 (maintenance), 0 for every tier
+   * that ships work or lands a change (work, LANDING_TIER, MERGE_TIER). */
+  private reserveFor(tier: number): number {
+    return tier >= 1 ? this.reserve : 0;
   }
 
   /** Release a held permit. The finishing work gives back its permit first, and a queued waiter
@@ -82,6 +96,16 @@ export class Semaphore {
     this.capacity = n;
     while (this.grantNextWaiter()) {
       // One permit per woken waiter, up to the new headroom.
+    }
+  }
+
+  /** Live-resize the permits withheld from tier ≥ 1 acquirers. Lowering it re-runs the hand-off
+   * so a parked maintenance waiter can take a permit the reserve had held; raising it never
+   * preempts an in-flight holder — it only withholds future grants. */
+  setReserve(n: number): void {
+    this.reserve = Math.max(0, n);
+    while (this.grantNextWaiter()) {
+      // One permit per woken waiter, up to the headroom the new reserve leaves.
     }
   }
 }

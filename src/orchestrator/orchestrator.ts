@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
-import { loopIds } from "../roles/loop-ids.js";
+import { loopEnabled, loopIds } from "../roles/loop-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
@@ -47,6 +47,7 @@ import {
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../fleet/reclaim.js";
 import { heldProviders } from "../fleet/fleet-hold.js";
+import { workReserveCount } from "../scheduling/claims.js";
 
 const POLL_MS = 2000;
 
@@ -287,6 +288,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     }
   };
   const warn = (message: string): void => emit({ loop: "harness", type: "warning", message });
+
+  // The maintenance permits withheld for work loops that have work to take (part 7/7), carried
+  // across polls so the event logs only the crossings into and out of a reserved state.
+  let lastReserve = 0;
 
   try {
     while (!signal.aborted) {
@@ -535,6 +540,21 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           (role !== DIRECTOR_ROLE &&
             (reviewHeldNow() || fleetHeldNow().has(roleProviders.get(role)))),
       });
+
+      // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
+      // from maintenance while a work loop has work to take, so a due work tick never waits out
+      // a whole maintenance tick. Sized after the launch pass, so a runner launched this poll
+      // already reads as running and reserves nothing for itself.
+      const reserve = workReserveCount(root, runners, {
+        maxConcurrent: liveConfig.maxConcurrent,
+        enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
+        queuedLandingRoles: new Set(queuedLandingFiles(root).map((q) => q.entry.role)),
+      });
+      semaphore.setReserve(reserve);
+      if ((lastReserve === 0) !== (reserve === 0)) {
+        emit({ loop: "harness", type: "permit_reserve", reserve });
+      }
+      lastReserve = reserve;
 
       // Once mode's exit: every enabled role settled, no tick in flight, and the land queue
       // empty with no landing in flight for one full poll cycle — then fire the internal

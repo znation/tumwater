@@ -9,11 +9,11 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
-import { type EligibleEntry, entryKey } from "../backlog/backlog-eligibility.js";
+import { type EligibleEntry, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
 import { actionableEntryRanges } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
-import { baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
 
 /** How long a claim may sit while its runner is idle before the poll releases it as stale. A
  * day is far past any tick, so the release only catches a claim whose runner stopped taking
@@ -143,4 +143,57 @@ export async function stagedMovedEntries(
   if (head === null) return [];
   const base = await fileContentAt(wt, await changeBaseRev(wt, mainBranch), file);
   return movedOutEntries(base, head, section).map((e) => ({ file, ...e }));
+}
+
+/** How many permits to withhold from tier ≥ 1 acquirers this poll so a work loop that has work
+ * to take can claim one without waiting out a maintenance tick (plans/parallel-work-instances.md
+ * "Priority headroom", part 7/7). Only the claim-taking roles (feature, bugfix) count: an idle
+ * one — not running, with no queued landing — counts when it either holds an eligible claim or
+ * its base role still has an unclaimed eligible entry. Returns min(floor(maxConcurrent / 3),
+ * the count), so an entirely busy work tier reserves nothing. */
+export function workReserveCount(
+  root: string,
+  runners: readonly ClaimRunner[],
+  opts: {
+    maxConcurrent: number;
+    /** The loop ids the live config enables (loopEnabled). */
+    enabled: ReadonlySet<string>;
+    /** The loop ids with a queued or in-flight landing. */
+    queuedLandingRoles: ReadonlySet<string>;
+  },
+): number {
+  // Eligible keys per claim-taking base, read once.
+  const eligibleByBase = new Map<string, Set<string>>();
+  const eligibleFor = (base: string): Set<string> => {
+    let keys = eligibleByBase.get(base);
+    if (keys === undefined) {
+      keys = new Set(eligibleEntries(root, base).map((e) => e.key));
+      eligibleByBase.set(base, keys);
+    }
+    return keys;
+  };
+  // The keys held by a claim that is still eligible: an ineligible claim holds nothing for the
+  // size below, exactly as heldKeys excludes it in the scheduling pass.
+  const heldByBase = new Map<string, Set<string>>();
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (!INSTANCE_ROLES.has(base)) continue;
+    const key = r.state.claim?.key;
+    if (key === undefined || !eligibleFor(base).has(key)) continue;
+    const held = heldByBase.get(base) ?? new Set<string>();
+    held.add(key);
+    heldByBase.set(base, held);
+  }
+  let count = 0;
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (!INSTANCE_ROLES.has(base)) continue;
+    if (!opts.enabled.has(r.role)) continue;
+    if (r.state.running || opts.queuedLandingRoles.has(r.role)) continue;
+    const eligible = eligibleFor(base);
+    const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
+    const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));
+    if (holdsClaim || hasFreeEntry) count += 1;
+  }
+  return Math.min(Math.floor(opts.maxConcurrent / 3), count);
 }

@@ -82,40 +82,6 @@ class as a thin delegate to the phase function:
   or a pre-move path.
 - `npm run test` green.
 
-### Parallel work instances, part 7/7: keep permit headroom for work loops that have work to take (planned 2026-10-07 by operator; requires part 5b/7 landed)
-
-Design: plans/parallel-work-instances.md ("Priority headroom").
-
-Context: the semaphore (src/concurrency/semaphore.ts) orders *waiters* by tier, but it never
-preempts. With several work instances, maintenance ticks can take every free permit in the gap
-before a work instance becomes due. The work tick then waits a full maintenance tick. Holding a
-small reserve only while work is actually waiting keeps that latency off the work tier without
-idling permits when every work loop is busy. Before implementing, check `parkedSince` on work
-rows since 5/7 landed: if work loops never park, refuse this entry as unneeded.
-
-**Approach.**
-1. **Reserve.** `Semaphore.setReserve(n)`. A tier ≥ 1 acquirer or waiter is granted only while
-   `inUse < capacity − n`, in both `acquire`'s fast path and `grantNextWaiter`. Tiers ≤ 0
-   (work, `LANDING_TIER`, `MERGE_TIER`) are unaffected.
-2. **Sizing.** Each poll, the orchestrator (src/orchestrator/orchestrator.ts) sets
-   `n = min(floor(maxConcurrent / 3), count of work-tier loops that are loopEnabled, not
-   running, have no queued landing, and either hold a claim or have an unclaimed eligible
-   entry)`. The counting helper sits in src/scheduling/claims.ts. When `n` changes, call
-   `setReserve`, which re-runs `grantNextWaiter` so a lowered reserve admits waiters.
-3. **Event.** Log a `permit_reserve` event when `n` changes from 0 or to 0.
-
-**Files touched.** src/concurrency/semaphore.ts, src/orchestrator/orchestrator.ts,
-src/scheduling/claims.ts, src/events/events.ts, src/events/event-format.ts. Tests: cases in
-test/semaphore.test.ts and an orchestrator scheduling test.
-
-**Acceptance criteria.**
-- **Reserve held.** With `maxConcurrent: 6`, reserve 2 and four maintenance ticks running, a
-  fifth maintenance acquirer parks, and a work acquirer is granted at once.
-- **Reserve zero.** When every work loop is running or landing, maintenance can fill all six
-  permits.
-- **Vets.** A vet at `LANDING_TIER` is never held by the reserve.
-- `npm run test` green.
-
 ### Agent backends, part 1/7: the `AgentBackend` seam, with pi as its only adapter (planned 2026-10-09 by operator)
 
 Design: plans/agent-backends.md ("The seam", "Canonical event stream").
@@ -522,6 +488,42 @@ and a loop test for `budgetCapped` → handoff.
 
 
 ## Done
+
+### Parallel work instances, part 7/7: keep permit headroom for work loops that have work to take (planned 2026-10-07 by operator; requires part 5b/7 landed; done 2026-10-09 by feature)
+
+Design: plans/parallel-work-instances.md ("Priority headroom").
+
+Context: the semaphore (src/concurrency/semaphore.ts) orders *waiters* by tier, but it never
+preempts. With several work instances, maintenance ticks can take every free permit in the gap
+before a work instance becomes due. The work tick then waits a full maintenance tick. Holding a
+small reserve only while work is actually waiting keeps that latency off the work tier without
+idling permits when every work loop is busy.
+
+**Approach.**
+1. **Reserve.** `Semaphore.setReserve(n)`. A tier ≥ 1 acquirer or waiter is granted only while
+   `inUse < capacity − n`, in both `acquire`'s fast path and `grantNextWaiter`. Tiers ≤ 0
+   (work, `LANDING_TIER`, `MERGE_TIER`) are unaffected.
+2. **Sizing.** Each poll, after the launch pass, the orchestrator
+   (src/orchestrator/orchestrator.ts) sets
+   `n = min(floor(maxConcurrent / 3), count of claim-taking work loops (feature, bugfix) that
+   are loopEnabled, not running, have no queued landing, and either hold a claim or have an
+   unclaimed eligible entry)`. The counting helper is `workReserveCount` in
+   src/scheduling/claims.ts. When `n` changes, `setReserve` re-runs `grantNextWaiter` so a
+   lowered reserve admits waiters.
+3. **Event.** A `permit_reserve` event is logged when `n` crosses into or out of the reserved
+   state (0 → positive, or positive → 0).
+
+**Files touched.** src/concurrency/semaphore.ts, src/orchestrator/orchestrator.ts,
+src/scheduling/claims.ts, src/events/events.ts, src/events/event-format.ts. Tests: reserve cases
+in test/semaphore.test.ts, and `workReserveCount` cases in test/claims.test.ts.
+
+**Acceptance criteria.**
+- **Reserve held.** With `maxConcurrent: 6`, reserve 2 and four maintenance ticks running, a
+  fifth maintenance acquirer parks, and a work acquirer is granted at once.
+- **Reserve zero.** When every work loop is running or landing, maintenance can fill all six
+  permits.
+- **Vets.** A vet at `LANDING_TIER` is never held by the reserve.
+- `npm run test` green.
 
 ### Stop showing leased worktree slots in the TUI and GUI (planned 2026-10-09 by operator; supersedes the display half of "Worktree pool, part 5/5"; done 2026-10-09 by feature)
 
