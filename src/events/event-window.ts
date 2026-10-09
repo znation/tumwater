@@ -87,17 +87,17 @@ function oldestCompleteLine(parts: Buffer[]): string | null {
   return null; // No complete line yet.
 }
 
-/** True when a windowed read provably covers a request whose cutoff instant is `cutoff`: either
- * the day-keyed scan saw a complete line older than the window's first day (coversFullWindow),
- * or the window's oldest retained event predates the cutoff — the same-day case a day key
- * cannot decide — or the read returned no events at all, which proves coverage vacuously (with
- * no retained events nothing can have rotated away). Callers that must distinguish the empty-log
- * case do their own emptiness check before asking. Shared by the `logs --since` view and the
- * `report --since` collector so the coverage proof — and its reasoning about rotation — lives in
- * exactly one place beside the coversFullWindow semantics it builds on.
+/** True when a windowed read provably covers a request whose cutoff instant is `cutoff`: either the
+ * day-keyed scan saw a complete line older than the window's first day (coversFullWindow), or the
+ * window's oldest retained event predates the cutoff — the same-day case a day key cannot decide
+ * — or the read returned no events at all, which proves coverage vacuously (with no retained
+ * events nothing can have rotated away). Callers that must distinguish the empty-log case do their
+ * own emptiness check before asking. Shared by the `logs --since` view and the `report --since`
+ * collector so the coverage proof — and its reasoning about rotation — lives in exactly one
+ * place beside the coversFullWindow semantics it builds on.
  *
- * The failure digest's variant works at day-key granularity (its windows are whole local days,
- * not instants), so it keeps its own comparison rather than forcing a timestamp through here. */
+ * The failure digest's variant works at day-key granularity (its windows are whole local days, not
+ * instants), so it keeps its own comparison rather than forcing a timestamp through here. */
 export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
   const oldest = w.events[0];
   return (

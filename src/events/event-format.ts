@@ -12,9 +12,9 @@ import { fallbackTierEntries } from "../budget/budget.js";
  * landed): the usage numbers arrive via eventUsage (the loose-typing coercion every usage consumer
  * shares), rendered through the shared token/money formats (compactTokens, usd) in one place.
  * Either part is omitted when zero or absent, so skipped ticks and zero-usage landings render
- * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator the
- * budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase; table-cell
- * contexts (history's usage column) use the bare text. */
+ * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator
+ * the budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase;
+ * table-cell contexts (history's usage column) use the bare text. */
 export function usageText(e: HarnessEvent): string {
   const { tokens, costUsd } = eventUsage(e);
   return (
@@ -209,12 +209,12 @@ export function eventMessage(e: HarnessEvent): string {
       return `conflict hand-back ${textOr(e.action)} ${shortSha(e.sha)}${why}${where}`;
     }
     case "build_check":
-      // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
-      // review gate, the red-main baseline check of main itself, or the merge lock's
-      // post-rebase re-check of the tree about to land). script carries the npm script name
-      // for an npm check but the FULL configured command otherwise (checkScriptName in
-      // build/build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
-      // for both kinds ("npm test" would misrender a cargo or make-based project's check).
+      // The deterministic check's cost, per run: scope names which gate paid (the pre-merge review
+      // gate, the red-main baseline check of main itself, or the merge lock's post-rebase re-check
+      // of the tree about to land). script carries the npm script name for an npm check but the
+      // FULL configured command otherwise (checkScriptName in build/build-check.ts), so no "npm"
+      // prefix is asserted here — the bare name reads correctly for both kinds ("npm test" would
+      // misrender a cargo or make-based project's check).
       return `build check (${textOr(e.scope)}): ${textOr(e.script)} ${outcomeText(e)}${elapsed(e.durationMs)}`;
     case "dep_install": {
       // The root checkout's install catching up with a landed lockfile change — routine on
@@ -343,8 +343,9 @@ export function eventMessage(e: HarnessEvent): string {
       // The return counterpart: names the pair ticks resume on and how long the episode ran.
       return `model fallback ended — back on ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} after ${minutes(e.durationMs)}m`;
     case "build_stale":
-      // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the code
-      // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
+      // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the
+      // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
+      // it.
       return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${plural(finiteNumber(e.aheadCommits, 0), "commit")} ahead in src/`;
     case "restart_pending":
       return `restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`;
