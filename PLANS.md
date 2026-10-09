@@ -6,6 +6,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Cover failure-caused loop pauses and model fallbacks in the failure digest's Fleet state changes (planned 2026-10-09 by plan)
+
+The failure digest's Fleet state changes section replays `STATE_CHANGE_TYPES` (src/failure/failure-state-change.ts) — the harness's own self-decisions that explain a stalled or failing loop. It already carries fleet pauses, operator per-role pauses, budget and rate-limit holds, live-config edits, redeploys and orchestrator lifecycle, but not the gate transitions added since `plans/telemetry-role.md` was written: `role_streak_paused` (the error-streak breaker auto-paused a role after consecutive failed ticks), `role_cap_paused`/`role_cap_resumed` (the role reached its own daily spend cap), and `model_fallback_started`/`model_fallback_ended` (the role tripped off its primary onto its fallback after provider-class failures). Each is the reason a loop stopped starting ticks or changed models, so today the digest can show the failed ticks and the error cluster without ever showing that the harness paused the role or moved it off-model. The event feed renders all five (`formatEvent` in src/events/event-format.ts); the digest alone drops them. BUGS.md's 2026-09-30 breaker-trip entry already reads as though the digest carried `role_streak_paused`; it does not.
+
+**Approach.**
+1. **The set.** Add the five event types to `STATE_CHANGE_TYPES` in src/failure/failure-state-change.ts: `role_streak_paused`, `role_cap_paused`, `role_cap_resumed`, `model_fallback_started`, `model_fallback_ended`. Collection needs no other change — failure-data.ts already filters the window against this one set (`current.filter((ev) => STATE_CHANGE_TYPES.has(ev.type))`).
+2. **The wording.** Add one `describeStateChange` case per type, each bounded by the section's existing `field(...)` slicing and the closing `truncateExample(text, STATE_CHANGE_MAX)` pass, reusing the shared phrase helpers already imported (or importable) in the file:
+   - `role_streak_paused` → `role <role> paused — <streak> ticks failed in a row` (an absent `streak` renders `?`, matching the feed's `textOr` fallback).
+   - `role_cap_paused` → `role <role> paused — <budgetPhrase(spentUsd, capUsd)> of its daily cap spent`.
+   - `role_cap_resumed` → `role <role> resumed — under its daily cap again`.
+   - `model_fallback_started` → `model fallback — <provider>/<model> engaged (<reason>)`, with `provider`/`model` falling back to `pi default` and `reason` to `backend failure` — the feed's own fallbacks.
+   - `model_fallback_ended` → `model fallback ended — back on <provider>/<model> after <shortSpanPhrase(finiteNumber(durationMs, 0))>`.
+   Every role/provider/model/reason goes through `field(...)`; `budgetPhrase`, `shortSpanPhrase` and `finiteNumber` are already exported (src/text/phrases.ts) and `finiteNumber` is already imported here.
+3. **The design doc.** Update `plans/telemetry-role.md`'s numbered section 2 (Fleet state changes) to name the five types beside the transitions it already lists, so the doc matches the set.
+
+**Files touched.**
+- src/failure/failure-state-change.ts (the set and five cases)
+- test/failure-state-change.test.ts (the expected-type list and one pinned fixture per case)
+- plans/telemetry-role.md (section 2's list)
+
+**Acceptance criteria.**
+- `STATE_CHANGE_TYPES.has(t)` is true for each of the five types, and the test's expected-type loop names them; `tick_end` stays absent.
+- `describeStateChange` returns exactly the strings above for a representative event of each type (a `role_streak_paused` with `{role: "docs", streak: 10}`, a `role_cap_paused` with `{role: "feature", spentUsd: 1.5, capUsd: 1.5}`, a `role_cap_resumed`, a `model_fallback_started` with `{provider, model, reason}`, a `model_fallback_ended` with `{provider, model, durationMs: 300000}`), and a payload with the free fields missing still renders its fallback (`?`, `pi default`, `0s`) without throwing — these types no longer reach the `default:` arm.
+- The digest's own section surfaces them: a `collectFailureReport`/`renderFailureMarkdown` fixture whose events.jsonl holds one `role_streak_paused` and one `model_fallback_started` lists both under `## Fleet state changes` in chronological order, each with its bounded line (the time/role cells the render adds are unchanged).
+- Every existing `describeStateChange` case and every existing failure-digest test is unchanged; `npm run test` is green.
+
 ### Agent backends, part 3a/7: the claude stream translator and canonical vocabulary (planned 2026-10-09 by plan; split from part 3/7; requires parts 1/7 and 2/7 landed)
 
 Design: plans/agent-backends.md ("Canonical event stream").
