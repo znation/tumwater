@@ -226,6 +226,14 @@ export function piLogPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "log", `${role}.pi.jsonl`);
 }
 
+/** A role's backend-native stdout log (.tumwater/log/<role>.<agent>.native.jsonl), written
+ * beside the canonical raw log and kept for debugging only: no reader folds it, and the agent
+ * is in the name because one role's runs may switch backends and the two dialects must not
+ * mix. Written and rotated like the raw log (src/agent/run-agent.ts). */
+export function nativeLogPath(root: string, role: string, agent: string): string {
+  return path.join(tumwaterDir(root), "log", `${role}.${agent}.native.jsonl`);
+}
+
 /** Root of the full-output files the bundled pi extension writes for oversized tool
  * results (.tumwater/log/tool-output/<toolCallId>.log). Pruned by the same sessionRetentionDays
  * window as sessions (orchestrator.ts's two retention passes): a pointer to a tool result is

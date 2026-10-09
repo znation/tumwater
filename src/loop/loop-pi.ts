@@ -7,7 +7,7 @@ import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { buildStageFixPrompt } from "../gates/gate-prompts.js";
-import { piLogPath, roleNotesPath, sessionDir } from "../paths.js";
+import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 
@@ -80,20 +80,23 @@ export class LoopPi {
     config?: ResolvedModelConfig,
     notesPath?: string,
   ): PiRunOptions {
+    // A caller-supplied config (the landing conflict resolver's strong-tier one,
+    // plans/model-tiers.md part 4/8) replaces the role's own for that one run; the role's
+    // config is the default for every other caller. Resolved once here so the native-log path
+    // names the same agent the run actually uses.
+    const resolved = config ?? configForRole(this.host.config(), this.host.role);
     return {
       cwd: wt,
       prompt,
       // Every run names its kind explicitly; the marker it writes is the dashboards' demux
       // key, so parts 2/5 and 4/5 may put author and gate runs in the same worktree.
       kind,
-      // A caller-supplied config (the landing conflict resolver's strong-tier one,
-      // plans/model-tiers.md part 4/8) replaces the role's own for that one run; the role's
-      // config is the default for every other caller.
-      config: config ?? configForRole(this.host.config(), this.host.role),
+      config: resolved,
       sessionDir: sessionDir(this.host.root, this.host.role),
       sessionName,
       continueSession: resume,
       rawLogFile: piLogPath(this.host.root, this.host.role),
+      nativeLogFile: nativeLogPath(this.host.root, this.host.role, resolved.agent ?? "pi"),
       signal: this.host.runSignal(),
       // Only runAuthoringPi passes this; a landing, review, or conflict-resolution run has no
       // notebook, and neither does the director (see runAuthoringPi).
@@ -103,6 +106,9 @@ export class LoopPi {
       // a hung command was invisible until the kill. The dashboards derive their own flag from
       // the raw log, so only the harness event needs wiring here.
       onToolCallStalled: (message) => this.host.warn(message),
+      // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
+      // as their own warning events, once per run.
+      onAgentWarning: (warning) => this.host.warn(`agent_unknown_event: ${warning}`),
     };
   }
 

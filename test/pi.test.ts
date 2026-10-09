@@ -707,8 +707,9 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
   const dir = tmpdir();
   const file = path.join(dir, "raw.jsonl");
   // One fresh fake per stream open, so a runPiVerified retry cannot append to the previous
-  // attempt's buffered writes.
-  const makeStalled = () => {
+  // attempt's buffered writes. The target path comes from the createWriteStream call so the
+  // native log (a second stream) lands in its own file, not the raw log being asserted.
+  const makeStalled = (target: string) => {
     let pending = "";
     return Object.assign(new EventEmitter(), {
       write: (data: string) => {
@@ -718,14 +719,17 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
       end: (cb?: () => void) => {
         // The threadpool "completes" the queued writes one macrotask after end().
         setImmediate(() => {
-          fs.appendFileSync(file, pending);
+          fs.appendFileSync(target, pending);
           cb?.();
         });
       },
     });
   };
   await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
-    const restoreStream = patchFsMethod("createWriteStream", () => () => makeStalled());
+    const restoreStream = patchFsMethod(
+      "createWriteStream",
+      () => (target: unknown) => makeStalled(String(target)),
+    );
     try {
       await runPiVerified(runPiFixture(dir, { rawLogFile: file }));
       const content = fs.readFileSync(file, "utf8");

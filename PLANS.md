@@ -6,44 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 3c2/7: the claude native log and translator warnings (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed)
-
-Design: plans/agent-backends.md ("Canonical event stream": the native stream is kept for
-debugging only); part 3a/7's `ClaudeStreamTranslator.warnings()` already collects the unmapped
-native types and a result-less run's `cost_unknown`.
-
-**Goal:** a claude run's raw stdout is kept beside the canonical log for debugging, and the
-native shapes the translator could not map are visible in the event feed.
-
-**Approach.**
-1. **Path.** `src/paths.ts`: add `nativeLogPath(root, role, agent)` =
-   `.tumwater/log/<role>.<agent>.native.jsonl`, beside `piLogPath`, documented as debug-only.
-   Add `nativeLogFile: string` to `PiRunOptions` (src/agent/run-agent.ts) and pass it at the
-   three `rawLogFile` construction sites: `loopPiOpts` in src/loop/loop-pi.ts, src/review/review.ts,
-   src/review/review-followup.ts (each already computes `piLogPath(root, role)`).
-2. **Write.** In `run-agent.ts`, open the native log like the raw log (`ensureParentDir` +
-   `rotateIfLarge`); in `feedCanonical` write each complete native `line` to it before
-   `translator.translate`. A broken native log is non-fatal exactly as `rawLogBroken` is.
-3. **Warnings.** Add optional `warnings?(): string[]` to `StreamTranslator`
-   (src/agent/agent-backend.ts); `ClaudeStreamTranslator` already has it. Add
-   `onAgentWarning?: (warning: string) => void` to `PiRunOptions`; after the run, `run-agent.ts`
-   forwards each `translator.warnings?.() ?? []` entry once. Wire it in `loopPiOpts` as
-   `(w) => this.host.warn(`agent_unknown_event: ${w}`)`.
-4. **Tests.** Extend `claude-run.test.ts`.
-
-**Files touched:** `src/paths.ts`, `src/agent/run-agent.ts`, `src/agent/agent-backend.ts`,
-`src/loop/loop-pi.ts`, `src/review/review.ts`, `src/review/review-followup.ts`,
-`claude-run.test.ts`.
-
-**Acceptance criteria:**
-- A fake-claude run writes its raw native lines to `.tumwater/log/<role>.claude.native.jsonl`
-  and canonical lines to the raw log; a run with no native output writes none.
-- The native file rotates under `logMaxBytes` the way the raw log does.
-- A run with an unmapped native type and a result-less run each produce exactly one
-  `agent_unknown_event` warning naming the type / `cost_unknown`; a fully-mapped run produces
-  none.
-- The project's check passes.
-
 ### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c3/7 landed)
 
 Design: plans/agent-backends.md ("Sessions").
@@ -533,6 +495,50 @@ as having no session (which would reset the worktree and lose the interrupted ru
 - A claude `requestFollowUp` and a claude review follow-up pass `--resume <recorded id>`; a pi
   session dir still uses pi's `--continue` exactly as today.
 - A ledger line whose cwd differs from the requested cwd is not resumable.
+- The project's check passes.
+
+### Agent backends, part 3c2/7: the claude native log and translator warnings (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("Canonical event stream": the native stream is kept for
+debugging only); part 3a/7's `ClaudeStreamTranslator.warnings()` already collects the unmapped
+native types and a result-less run's `cost_unknown`.
+
+**Goal:** a claude run's raw stdout is kept beside the canonical log for debugging, and the
+native shapes the translator could not map are visible in the event feed.
+
+**Approach.**
+1. **Path.** `src/paths.ts`: add `nativeLogPath(root, role, agent)` =
+   `.tumwater/log/<role>.<agent>.native.jsonl`, beside `piLogPath`, documented as debug-only.
+   Add `nativeLogFile: string` to `PiRunOptions` (src/agent/run-agent.ts) and pass it at the
+   three `rawLogFile` construction sites: `loopPiOpts` in src/loop/loop-pi.ts, src/review/review.ts,
+   src/review/review-followup.ts (each already computes `piLogPath(root, role)`, so the native
+   path names the same agent the run actually uses).
+2. **Write.** In `run-agent.ts`, open the native log like the raw log (`ensureParentDir` +
+   `rotateIfLarge`); in `feedCanonical` write each complete native `line` to it before
+   `translator.translate`. A broken native log is non-fatal exactly as `rawLogBroken` is.
+3. **Warnings.** Add optional `warnings?(): string[]` to `StreamTranslator`
+   (src/agent/agent-backend.ts); `ClaudeStreamTranslator` already has it. Add
+   `onAgentWarning?: (warning: string) => void` to `PiRunOptions`; after the run, `run-agent.ts`
+   forwards each `translator.warnings?.() ?? []` entry once. Wire it in `loopPiOpts` as
+   `(w) => this.host.warn(`agent_unknown_event: ${w}`)`.
+4. **Tests.** Extended `claude-run.test.ts` (native-log content, empty-native and result-less
+   runs, rotation, and the warning callbacks) and added a loop-pi test that a claude run lands
+   its native log at the role.agent path and surfaces `agent_unknown_event: …` through the host.
+
+**Files touched:** `src/paths.ts`, `src/agent/run-agent.ts`, `src/agent/agent-backend.ts`,
+`src/loop/loop-pi.ts`, `src/review/review.ts`, `src/review/review-followup.ts`,
+`test/claude-run.test.ts`, `test/loop-pi.test.ts`, `test/pi.test.ts` (its stalled-stream raw-log
+flush test now keys the injected stream by path, since a run opens two logs),
+`src/agent/claude/claude-stream.ts` (warning comment), plus the test fixtures that construct
+`PiRunOptions`.
+
+**Acceptance criteria:**
+- A fake-claude run writes its raw native lines to `.tumwater/log/<role>.claude.native.jsonl`
+  and canonical lines to the raw log; a run with no native output writes none.
+- The native file rotates under `logMaxBytes` the way the raw log does.
+- A run with an unmapped native type and a result-less run each produce exactly one
+  `agent_unknown_event` warning naming the type / `cost_unknown`; a fully-mapped run produces
+  none.
 - The project's check passes.
 
 ### Agent backends, part 3c1/7: the claude backend adapter and PATH fake (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7, which feature judged too large for one run; requires parts 3a/7 and 3b/7 landed; done 2026-10-09 by feature)

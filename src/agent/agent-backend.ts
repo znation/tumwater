@@ -58,6 +58,11 @@ export interface AgentInvocation {
  * the identity. Stateful per run (the claude translator batches streaming assistant events). */
 export interface StreamTranslator {
   translate(line: string): string[];
+  /** Native shapes this run could not map — plus any per-run degradation like a result-less
+   * run's `cost_unknown` — each once and in first-seen order. The runner forwards each as an
+   * `agent_unknown_event` warning after the run. Optional: a translator whose native stream IS
+   * canonical (pi's identity) reports none, and a fully-mapped run reports an empty list. */
+  warnings?(): string[];
 }
 
 /** What the runner knows at exit that a backend's `classifyExit` may need. `killed` is true

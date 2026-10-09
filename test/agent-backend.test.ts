@@ -44,6 +44,7 @@ test("a backend that returns stdin gets its prompt written to the child and echo
     sessionDir: path.join(dir, "sessions"),
     sessionName: "t",
     rawLogFile,
+    nativeLogFile: path.join(dir, "native.jsonl"),
     kind: "author",
   });
   const content = fs.readFileSync(rawLogFile, "utf8");

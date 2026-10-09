@@ -7,7 +7,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { warnEventBestEffort } from "../events/events.js";
-import { piLogPath } from "../paths.js";
+import { nativeLogPath, piLogPath } from "../paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../gates/gate-prompts.js";
 import type { ToolCallStart } from "./suite-rerun.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
@@ -53,6 +53,7 @@ async function runFollowupTurn(
     continueSession: true,
     sessionName: opts.sessionName,
     rawLogFile: piLogPath(ctx.root, ctx.role),
+    nativeLogFile: nativeLogPath(ctx.root, ctx.role, cfg.agent ?? "pi"),
     label: opts.label,
     signal: ctx.signal,
     onToolCallStalled: (message) => warnEventBestEffort(ctx.root, ctx.role, message),

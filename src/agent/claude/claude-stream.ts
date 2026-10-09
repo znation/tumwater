@@ -11,9 +11,9 @@
  * Pure translation: no spawn, no backend registration, no config. The factory keeps per-run
  * state (the pending split-block assistant message, the unmapped native types seen, whether a
  * `run_cost` arrived), so call it once per run. Unmapped native types are recorded once each
- * on `warnings()` — deliberately not on the `StreamTranslator` seam (part 3c turns each into an
- * `agent_unknown_event` warning). `cost_unknown` is recorded the same way when a run produced
- * no authoritative `run_cost`. */
+ * on the seam's optional `warnings()` — src/agent/run-agent.ts forwards each as an
+ * `agent_unknown_event` warning after the run. `cost_unknown` is recorded the same way when a
+ * run produced no authoritative `run_cost`. */
 
 import { isJsonObject, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind, TumwaterKind } from "../../pi/pi-stream.js";
@@ -21,8 +21,8 @@ import type { StreamTranslator } from "../agent-backend.js";
 
 type Json = Record<string, unknown>;
 
-/** The claude translator, with the concrete-translator warning log the seam deliberately
- * omits (part 3c consumes it). */
+/** The claude translator, narrowed to the concrete return type whose `warnings()` the seam
+ * now also declares optional (part 3c consumes it). */
 export interface ClaudeStreamTranslator extends StreamTranslator {
   /** Native event types this run did not map, plus `cost_unknown`, each once and in first-seen
    * order. Empty on a fully-mapped run. */

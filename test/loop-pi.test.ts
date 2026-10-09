@@ -3,13 +3,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopPi } from "../src/loop/loop-pi.js";
-import { piLogPath, roleNotesPath, sessionDir } from "../src/paths.js";
+import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
+import { fakeClaudeReplay } from "./fakes/fake-claude.js";
+import { claudeResult, claudeUnknown } from "./fixtures/claude-events.js";
+import { setEnv } from "./helpers/env.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { resolverConfig } from "../src/config/config-views.js";
 import { recordSession } from "../src/agent/session-ledger.js";
@@ -210,6 +213,7 @@ test("conflict, landing, and review runs carry no notebook", async () => {
       sessionDir: sessionDir(root, "feature"),
       sessionName: "tumwater-review-feature-1",
       rawLogFile: path.join(root, "log.jsonl"),
+      nativeLogFile: path.join(root, "native.jsonl"),
       label: "review",
     });
     // One empty env line per run: the variable exists in neither child's environment.
@@ -410,6 +414,7 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
       sessionDir: sessionDir(root, "feature"),
       sessionName: "tumwater-review-feature-1",
       rawLogFile: path.join(root, "log.jsonl"),
+      nativeLogFile: path.join(root, "native.jsonl"),
       label: "review",
     });
     assert.equal(result.ok, true, "the retry succeeds");
@@ -788,5 +793,32 @@ test("requestStageFix resumes the tick's session with the findings and folds its
     assert.match(recorded, /closing block again/, "the run asks for the closing block again");
   } finally {
     restore();
+  }
+});
+
+test("a claude run keeps its native log and surfaces unmapped-event warnings", async () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([
+    claudeUnknown("mystery_event"),
+    claudeResult({ totalCostUsd: 0.01 }),
+  ]);
+  try {
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    const { loopPi, warns } = makeHost(root, config);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-1-author");
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.ok(
+      warns.includes("agent_unknown_event: mystery_event"),
+      `the unmapped type reaches the event feed: ${warns.join("; ")}`,
+    );
+    const native = fs.readFileSync(nativeLogPath(root, "feature", "claude"), "utf8");
+    assert.match(native, /"type":"mystery_event"/, "the native log lands at the role.agent path");
+    assert.match(native, /"type":"result"/);
+  } finally {
+    fake.restore();
+    restoreHome();
   }
 });

@@ -7,7 +7,7 @@ import { changeBaseRev, headOf, patchId } from "../git/git.js";
 import { aheadOfMainDiff, aheadOfMainFiles, revisionInterdiff } from "../git/git-diff.js";
 import type { PriorReview } from "../landing/landing-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { piLogPath } from "../paths.js";
+import { nativeLogPath, piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";
 import { readPrinciples } from "../prompt/principles.js";
@@ -368,6 +368,7 @@ export async function reviewAheadOfMain(
     ...(resuming ? { continueSession: true } : {}),
     sessionName: `tumwater-review-${role}-${ctx.tick}`,
     rawLogFile: piLogPath(root, role),
+    nativeLogFile: nativeLogPath(root, role, reviewCfg.agent ?? "pi"),
     // Label this run in the shared transcript (src/ui/transcript.ts renders it as
     // `── review @ <ts> ──`) so an operator can tell reviewer runs from author ticks.
     label: "review",

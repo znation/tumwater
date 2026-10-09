@@ -77,6 +77,10 @@ export interface PiRunOptions {
   continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;
+  /** The backend's native stdout lines (before translation) are appended here for debugging
+   * (nativeLogPath). Written and rotated like rawLogFile; a broken native log is non-fatal
+   * exactly as a broken raw log is. */
+  nativeLogFile: string;
   signal?: AbortSignal;
   /** Which kind of run this is: the tick's own authoring run ("author") or the review/landing
    * gate's run ("gate"). Required, so every call site names it and the dashboards demultiplex
@@ -93,6 +97,10 @@ export interface PiRunOptions {
    * while the quiet watchdog still counts down (the dashboards derive their own flag from the
    * raw log, so only the event needs wiring). */
   onToolCallStalled?: (message: string) => void;
+  /** Called once per translator warning after the run ends — a native event type the backend
+   * could not map, and a result-less run's `cost_unknown` — so the caller can surface each in
+   * the event feed. A fully-mapped run reports none. */
+  onAgentWarning?: (warning: string) => void;
   /** Called once per tool call as it starts, with pi's tool name and raw args (see
    * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
    * full-suite re-run the harness's green pre-check made redundant. */
@@ -121,6 +129,16 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     let rawLogBroken = false;
     rawLog.on("error", () => {
       rawLogBroken = true;
+    });
+    // The backend-native stdout, kept beside the canonical raw log for debugging: every
+    // complete native line is written before it is translated, so the two logs line up. A
+    // broken native log degrades to a lost debug log, never a stuck or failed tick.
+    ensureParentDir(opts.nativeLogFile);
+    rotateIfLarge(opts.nativeLogFile, opts.config.logMaxBytes);
+    const nativeLog = fs.createWriteStream(opts.nativeLogFile, { flags: "a" });
+    let nativeLogBroken = false;
+    nativeLog.on("error", () => {
+      nativeLogBroken = true;
     });
     // The marker precedes this run's first event in file order — written to the same stream
     // stdout lines flow through, before spawn, so ordering is exact by construction; on a
@@ -246,6 +264,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         if (nl < 0) break;
         const line = nativeTail.slice(start, nl);
         start = nl + 1;
+        if (!nativeLogBroken) nativeLog.write(line + "\n");
         for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
       }
       if (start > 0) nativeTail = nativeTail.slice(start);
@@ -270,12 +289,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       settled = true;
       wd.stop();
       opts.signal?.removeEventListener("abort", onAbort);
-      // Resolve only once the raw log has flushed: writes complete on libuv's threadpool, so
-      // resolving before 'finish' can leave the tail of <role>.pi.jsonl unwritten — a tick
-      // that dies right after runAgent settles (an abort during a restart drain, a supervisor
-      // swap) loses its last lines, and under load readers see an empty or marker-only file.
-      // end()'s callback fires on 'finish'; if the stream errors instead it never does, so
-      // settle from 'error' too — a broken raw log degrades to a lost log, never a stuck tick.
+      // Surface the translator's per-run warnings once, after all native lines were fed.
+      for (const warning of translator.warnings?.() ?? []) opts.onAgentWarning?.(warning);
+      // Resolve only once the logs have flushed: writes complete on libuv's threadpool, so
+      // resolving before 'finish' can leave the tail of <role>.pi.jsonl (or the native log)
+      // unwritten — a tick that dies right after runAgent settles (an abort during a restart
+      // drain, a supervisor swap) loses its last lines. end()'s callback fires on 'finish';
+      // if a stream errors instead it never does, so settle from 'error' too — a broken log
+      // degrades to a lost log, never a stuck tick.
       let resolved = false;
       const settle = () => {
         if (!resolved) {
@@ -283,9 +304,22 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
           resolve(result);
         }
       };
+      let pending = 0;
+      const flushed = () => {
+        pending -= 1;
+        if (pending === 0) settle();
+      };
       rawLog.on("error", settle);
-      if (rawLogBroken) settle();
-      else rawLog.end(settle);
+      if (!rawLogBroken) {
+        pending += 1;
+        rawLog.end(flushed);
+      }
+      nativeLog.on("error", settle);
+      if (!nativeLogBroken) {
+        pending += 1;
+        nativeLog.end(flushed);
+      }
+      if (pending === 0) settle();
     };
 
     // Every PiRunResult is built here from what the parser has seen plus how the run ended,

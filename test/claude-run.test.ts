@@ -21,6 +21,7 @@ import {
   claudeInit,
   claudeResult,
   claudeText,
+  claudeUnknown,
 } from "./fixtures/claude-events.js";
 
 /** A run against `dir` with claude selected and a concrete model resolved — the shape every
@@ -35,6 +36,7 @@ function claudeRun(dir: string, over: Partial<PiRunOptions> = {}): PiRunOptions 
     sessionDir: path.join(dir, "sessions"),
     sessionName: "t",
     rawLogFile: path.join(dir, "raw.jsonl"),
+    nativeLogFile: path.join(dir, "native.jsonl"),
     kind: "author",
     ...over,
   };
@@ -263,4 +265,91 @@ test("claude resolves its binary from TUMWATER_CLAUDE_BIN and names it in the so
 test("the claude project slug turns every non-alphanumeric into a dash, as the fake assumes", () => {
   assert.equal(claudeProjectSlug("/work/a b"), "-work-a-b");
   assert.equal(claudeProjectSlug("/var/folders/x__y/T/z"), "-var-folders-x--y-T-z");
+});
+
+test("a claude run writes native lines beside the canonical raw log and warns once per unknown type", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const warnings: string[] = [];
+  const fake = fakeClaudeReplay([
+    claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "s1" }),
+    claudeUnknown("mystery_event"),
+    claudeAssistant({ id: "m1", blocks: [claudeText("done")], usage: { input: 10, output: 5 } }),
+    claudeResult({ totalCostUsd: 0.02 }),
+  ]);
+  try {
+    const run = claudeRun(dir, { onAgentWarning: (w) => warnings.push(w) });
+    const result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+
+    const native = fs.readFileSync(run.nativeLogFile, "utf8");
+    assert.match(native, /"type":"system"/, "the native log keeps the raw claude line");
+    assert.match(native, /"type":"mystery_event"/, "the native log keeps even an unmapped type");
+    assert.match(native, /"type":"result"/);
+    const raw = fs.readFileSync(run.rawLogFile, "utf8");
+    assert.match(raw, /"type":"message_end"/, "the canonical log holds the translated line");
+    assert.doesNotMatch(raw, /mystery_event/, "the canonical log drops the unmapped native line");
+
+    assert.deepEqual(warnings, ["mystery_event"], "the unmapped type warns exactly once");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a claude run with no native output writes no native lines and warns about nothing", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const warnings: string[] = [];
+  const fake = fakeClaudeReplay([]);
+  try {
+    const run = claudeRun(dir, { onAgentWarning: (w) => warnings.push(w) });
+    const result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(fs.readFileSync(run.nativeLogFile, "utf8"), "", "no native output writes no lines");
+    assert.deepEqual(warnings, [], "a run with no activity warns about nothing");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a result-less claude run warns cost_unknown exactly once", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const warnings: string[] = [];
+  const fake = fakeClaudeReplay([
+    claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "s1" }),
+    claudeAssistant({ id: "m1", blocks: [claudeText("partial")], usage: { input: 10, output: 5 } }),
+  ]);
+  try {
+    await runAgent(claudeRun(dir, { onAgentWarning: (w) => warnings.push(w) }));
+    assert.deepEqual(warnings, ["cost_unknown"], "a run with activity but no result cost warns once");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("the native log rotates under logMaxBytes like the raw log", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
+  try {
+    const run = claudeRun(dir, {
+      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", logMaxBytes: 16 },
+    });
+    fs.mkdirSync(path.dirname(run.nativeLogFile), { recursive: true });
+    fs.writeFileSync(run.nativeLogFile, "x".repeat(100) + "\n");
+    await runAgent(run);
+    assert.equal(
+      fs.readFileSync(run.nativeLogFile + ".1", "utf8"),
+      "x".repeat(100) + "\n",
+      "the grown generation moves to .1",
+    );
+    assert.match(fs.readFileSync(run.nativeLogFile, "utf8"), /"type":"result"/, "the fresh log holds only this run");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
 });
