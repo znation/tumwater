@@ -51,7 +51,8 @@ export interface OrchestratorInfo {
   fallbackDemotions?: Record<string, FallbackDemotion>;
   /** The daily cost budget gate's own figures from the most recent poll
    * (src/gates/budget-gates.ts): today's spend summed over the runners' LIVE in-memory states —
-   * charged run-by-run as each pi run folds, not only at the tick-end save — against the cap it was
+   * charged run-by-run as each pi run folds, not only at the tick-end save — against the
+   * cap it was
    * evaluated under. Published whenever it changes so observers (src/status/status-data.ts) can
    * show what the scheduler
    * is actually enforcing; a stopped fleet removes this file at exit, so the absence of a
@@ -69,7 +70,8 @@ export interface OrchestratorInfo {
  * from what it already carries, and report whether it changed. This is the shared rule for the
  * fields observers cannot recompute (build, budget, fallback demotions, disk): an unchanged
  * poll leaves the file untouched, while a changed one stages the value so the caller can write
- * once after several fields. The comparison uses JSON serialization, matching writeOrchestratorInfo's
+ * once after several fields. The comparison uses JSON serialization, matching
+ * writeOrchestratorInfo's
  * own output, so a value equal to the stored one is never treated as a change. */
 export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
   info: OrchestratorInfo,

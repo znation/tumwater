@@ -164,7 +164,8 @@ export function pausedRoles(root: string): string[] {
  * (the CLI's pause/resume --role and the dashboard's per-row toggle are separate processes),
  * and writeJsonAtomic's last-writer-wins policy — correct for overwrite-style state — silently
  * drops one caller's pause when two whole-set writes race. These writers therefore serialize
- * through withStateLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge path uses,
+ * through withStateLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge
+ * path uses,
  * so the crash-recovery rules (dead pid, no-pid grace, age) and the ownership-checked release are
  * the tested ones rather than a second hand-rolled lockfile protocol. A lock that cannot be
  * acquired within PAUSED_ROLES_LOCK_TIMEOUT_MS throws rather than writing unlocked — a pause
@@ -175,7 +176,8 @@ const PAUSED_ROLES_LOCK_TIMEOUT_MS = 10_000;
 
 /** Run `fn` while holding the exclusive cross-process lock on the paused-roles marker. */
 function withPausedRolesLock<T>(root: string, fn: () => T): T {
-  // withStateLock creates the state dir the lock sits in (pause/resume may run before any marker write).
+  // withStateLock creates the state dir the lock sits in (pause/resume may run
+  // before any marker write).
   return withStateLock(pausedRolesLockPath(root), fn, PAUSED_ROLES_LOCK_TIMEOUT_MS);
 }
 

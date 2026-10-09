@@ -8,7 +8,8 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 
 /** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
- * alarms (src/fleet/fleet-hold.ts, src/fleet/error-storm.ts, src/fleet/failure-spread.ts): each poll gathers
+ * alarms (src/fleet/fleet-hold.ts, src/fleet/error-storm.ts,
+ * src/fleet/failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
  * per episode crossing, so the alarm modules stay unit-testable without a fleet and these
  * own the only event emission. Split out of tick-timing.ts — which had grown from the
