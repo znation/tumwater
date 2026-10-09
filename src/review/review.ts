@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { saveLoopState, type LoopState } from "../loop/loop-state.js";
+import { REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
@@ -11,7 +11,9 @@ import { piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";
 import { readPrinciples } from "../prompt/principles.js";
-import { buildReviewPrompt } from "../gates/gate-prompts.js";
+import { buildReviewPrompt, buildReviewResumePrompt } from "../gates/gate-prompts.js";
+import { hasResumableSession } from "../pi/pi.js";
+import { sessionResumable } from "../agent/session-ledger.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
@@ -56,9 +58,10 @@ export interface ReviewContext {
   config: TumwaterConfig;
   /** Current tick number, for the unique per-run session name. */
   tick: number;
-  /** The per-run directory this review and its follow-up turns use (reviewRunSessionDir in
-   * paths.ts). Unique per review of one change, so continuing the run — a verdict/nudge
-   * follow-up now, a resumed timed-out review later — reaches exactly this run's session. */
+  /** This review's own per-run directory (reviewRunSessionDir in paths.ts). Unique per
+   * review of one change, so continuing the run — a verdict/nudge follow-up now, a resumed
+   * timed-out review later — reaches exactly this run's session. A resumed attempt uses the
+   * marker's directory instead, and its follow-up turns follow whichever one the run used. */
   sessionDir: string;
   signal?: AbortSignal;
   /** Cap for the deterministic build pre-check run; defaults to BUILD_CHECK_TIMEOUT_MS.
@@ -163,7 +166,10 @@ export async function reviewAheadOfMain(
   highFriction?: boolean,
 ): Promise<GateResult> {
   const { root, role, wt, mainBranch, config } = ctx;
-  if (!config.review.enabled) return { decision: "exempt" };
+  if (!config.review.enabled) {
+    state.reviewResume = undefined;
+    return { decision: "exempt" };
+  }
 
   const head = await headOf(wt, "HEAD");
 
@@ -174,6 +180,7 @@ export async function reviewAheadOfMain(
   // Callers attach `run` when a pi run was consumed.
   const reject = async (reasons: string[], durationMs?: number): Promise<GateResult> => {
     recordReview(state, "reject", reasons, head);
+    state.reviewResume = undefined;
     state.unreviewFailures = 0;
     await resetWorktreeToMain(wt, mainBranch);
     logEventBestEffort(root, {
@@ -187,7 +194,10 @@ export async function reviewAheadOfMain(
   };
 
   // Already reviewed this exact HEAD (e.g. a merge_blocked retry): do not burn another run.
-  if (state.lastApprovedHead === head) return { decision: "approved" };
+  if (state.lastApprovedHead === head) {
+    state.reviewResume = undefined;
+    return { decision: "approved" };
+  }
 
   const files = await aheadOfMainFiles(wt, mainBranch);
   // A change handed back to its author with the conflict markers left in place (PLANS.md
@@ -210,6 +220,7 @@ export async function reviewAheadOfMain(
     // on the wrong side of a heading (PLANS.md 2026-09-25, 52cbadd1).
     const structure = await backlogStructureReason(wt, mainBranch, files);
     if (structure) return reject([structure]);
+    state.reviewResume = undefined;
     return { decision: "exempt" };
   }
 
@@ -230,7 +241,10 @@ export async function reviewAheadOfMain(
   // The pre-check sets the landing cell's stage (a no-op outside a queued landing) —
   // "build-check" while it runs, "reviewing" when the reviewer run starts below.
   const pre = await gateBuildPrecheck(ctx, state, head, reject);
-  if (pre.resolved) return pre.resolved;
+  if (pre.resolved) {
+    state.reviewResume = undefined;
+    return pre.resolved;
+  }
   const { verifiedHead, verifiedByHarness } = pre;
 
   // A review judges a diff, not a sha: a head carrying exactly the patch this role's last
@@ -238,8 +252,10 @@ export async function reviewAheadOfMain(
   // instead of paying a second reviewer run. Only the model review is reused — the pre-check
   // above has just run on this tree (a failure rejected it there), and its verifiedHead rides
   // on the result as for any approval.
+  const reviewedPatchId = (await patchId(wt, mainBranch, head)) ?? undefined;
   if (state.lastApprovedPatchId !== undefined) {
-    if ((await patchId(wt, mainBranch, head)) === state.lastApprovedPatchId) {
+    if (reviewedPatchId === state.lastApprovedPatchId) {
+      state.reviewResume = undefined;
       state.lastApprovedHead = head;
       return { decision: "approved", verifiedHead };
     }
@@ -249,11 +265,43 @@ export async function reviewAheadOfMain(
   // same config the run below gets, so the event names what the reviewer actually runs on —
   // the budget fallback included. Omitted when no model is configured (pi's own default).
   const reviewCfg = reviewRunConfig(config);
+  // A progressing timeout left this run's session for the next attempt (LoopState.reviewResume):
+  // resume it only while the patch is unchanged (the same diff), the resume budget lasts, and
+  // the directory still holds a gate session to `--continue`. Otherwise the stale marker is
+  // cleared and this attempt reviews the change from scratch.
+  const priorResume = state.reviewResume;
+  const resuming =
+    priorResume !== undefined &&
+    priorResume.patchId === reviewedPatchId &&
+    priorResume.attempts < REVIEW_RESUME_LIMIT &&
+    sessionResumable(
+      priorResume.sessionDir,
+      { kind: "gate", agent: reviewCfg.agent ?? "pi" },
+      hasResumableSession(priorResume.sessionDir),
+    );
+  if (resuming) {
+    // Count the resume before the run: a crash must not let the same session be resumed
+    // forever without ever spending the budget.
+    priorResume.attempts += 1;
+    saveLoopState(root, state);
+  } else {
+    state.reviewResume = undefined;
+  }
+  // The directory this run actually uses: a resumed attempt continues the timed-out run's
+  // session, a fresh one its own. Both the run and its follow-up turns must target this dir —
+  // a follow-up that used ctx.sessionDir while the review resumed another dir would
+  // `--continue` a session that never held this review.
+  const reviewSessionDir = resuming ? state.reviewResume!.sessionDir : ctx.sessionDir;
+  // The follow-up turns (verdict recovery, no-re-run nudge) continue the just-finished review,
+  // so they must read the same directory. A fresh run's dir is already ctx's, so only a resume
+  // needs the override.
+  const followupCtx = reviewSessionDir === ctx.sessionDir ? ctx : { ...ctx, sessionDir: reviewSessionDir };
   logEventBestEffort(root, {
     loop: role,
     type: "review_start",
     head,
     ...(ctx.revisionRound !== undefined ? { revision: ctx.revisionRound } : {}),
+    ...(resuming ? { resumed: true } : {}),
     ...modelSelectorField(reviewCfg),
   });
   // Persist the phase BEFORE the run so a dashboard mid-review shows "reviewing" and a crash
@@ -295,17 +343,19 @@ export async function reviewAheadOfMain(
   const pi = await ctx.runGatePi({
     cwd: wt,
     kind: "gate",
-    prompt: buildReviewPrompt(
-      diff,
-      summary,
-      commitBody,
-      readPrinciples(root),
-      highFriction,
-      verifiedByHarness,
-      base,
-      undefined,
-      priorReview,
-    ),
+    prompt: resuming
+      ? buildReviewResumePrompt(base, state.reviewResume!.patchId)
+      : buildReviewPrompt(
+          diff,
+          summary,
+          commitBody,
+          readPrinciples(root),
+          highFriction,
+          verifiedByHarness,
+          base,
+          undefined,
+          priorReview,
+        ),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
     // path below — commit kept, no strike — and re-lands through the author's next tick
@@ -316,7 +366,8 @@ export async function reviewAheadOfMain(
     // of whichever review wrote last. A fresh review carries no --continue — the reviewer
     // must not inherit the author's context — and old files are collected by the age-based
     // prune at orchestrator start.
-    sessionDir: ctx.sessionDir,
+    sessionDir: reviewSessionDir,
+    ...(resuming ? { continueSession: true } : {}),
     sessionName: `tumwater-review-${role}-${ctx.tick}`,
     rawLogFile: piLogPath(root, role),
     // Label this run in the shared transcript (src/ui/transcript.ts renders it as
@@ -341,8 +392,11 @@ export async function reviewAheadOfMain(
   if (rerun) warnEventBestEffort(root, role, rerun);
 
   if (pi.aborted) {
-    // Shutdown mid-review: fail closed without bookkeeping — the commit stays on the branch
-    // and the resumed/following tick re-reviews it via the combined ahead-of-main diff.
+    // Shutdown mid-review: fail closed — the commit stays on the branch and the
+    // resumed/following tick re-reviews it via the combined ahead-of-main diff. Any resume
+    // marker from an earlier attempt is dropped: an abort says nothing about the diff, and the
+    // next attempt starts clean rather than inheriting a half-counted session.
+    state.reviewResume = undefined;
     return withRuns({ decision: "failed", aborted: true }, pi, null, null);
   }
 
@@ -354,7 +408,7 @@ export async function reviewAheadOfMain(
   let nudgeRepeat: string | null = null;
   if (rerun && pi.ok) {
     const nudgeCalls: ToolCallStart[] = [];
-    nudge = await requestNoRerun(ctx, rerun, nudgeCalls);
+    nudge = await requestNoRerun(followupCtx, rerun, nudgeCalls);
     if (nudge?.aborted) {
       return withRuns({ decision: "failed", aborted: true }, pi, null, nudge);
     }
@@ -388,7 +442,7 @@ export async function reviewAheadOfMain(
   // verdict-recovery turn on top.
   let followUp: PiRunResult | null = null;
   if (!verdict && pi.ok && !nudge) {
-    followUp = await requestVerdict(ctx);
+    followUp = await requestVerdict(followupCtx);
     if (followUp?.aborted) return withRuns({ decision: "failed", aborted: true }, pi, followUp, nudge);
     const recovered = followUp ? parseVerdict(followUp.verdictText ?? "") : null;
     if (recovered) {
@@ -403,6 +457,7 @@ export async function reviewAheadOfMain(
   if (nudgeRepeat) {
     const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the landing re-reviews it under the normal path.`;
     logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    state.reviewResume = undefined;
     recordReview(state, "failed", [message], head);
     return withRuns({ decision: "failed", detail: message }, pi, followUp, nudge);
   }
@@ -414,16 +469,35 @@ export async function reviewAheadOfMain(
     // reviewer judged nothing — about the world, never about the diff — so the strike-free
     // branch below must see it, and its error names the failure.
     const nudgeError = nudge && !nudge.ok ? nudge.errorMessage : undefined;
-    // runPi's progressing-timeout text promises what authoring ticks do — resume the session
-    // and worktree. The reviewer deliberately runs a fresh session every time (no --continue)
-    // and its commit simply stays on the branch (BUGS.md 2026-09-20), so the recorded failure
-    // must say what actually happens: the next attempt reviews the same diff from scratch
-    // (BUGS.md 2026-09-30). A string rewrite of runPi's exact suffix, so any other cause —
-    // and the plain no-progress timeout, which promises nothing — passes through untouched.
+    // A progressing timeout of the REVIEW run itself (never a follow-up or nudge turn, both of
+    // which run only after pi ok) leaves the session for the next attempt while the patch is
+    // identifiable and the resume budget lasts. That is what makes the recorded failure honest:
+    // while a resume remains the next attempt continues this review, and once the budget is
+    // spent or the failure cannot resume, it reviews the change from scratch (BUGS.md
+    // 2026-09-30). A string rewrite of runPi's exact suffix, so any other cause — and the plain
+    // no-progress timeout, which promises nothing — passes through untouched.
+    const resumeAttempts = resuming ? state.reviewResume?.attempts ?? 0 : 0;
+    const resumeRemains =
+      !pi.ok &&
+      !pi.aborted &&
+      pi.timedOutProgressing &&
+      reviewedPatchId !== undefined &&
+      resumeAttempts < REVIEW_RESUME_LIMIT &&
+      // The promise must be one the next attempt can keep: only a dir that still holds a gate
+      // session to `--continue` earns the marker (and the "continues this review" wording).
+      // Without this a backend that leaves no session file would record a resume the next
+      // attempt silently declines, reviewing from scratch anyway.
+      sessionResumable(
+        reviewSessionDir,
+        { kind: "gate", agent: reviewCfg.agent ?? "pi" },
+        hasResumableSession(reviewSessionDir),
+      );
     const reviewTimeoutRewrite = (message: string): string =>
       message.replace(
         " — session and worktree edits preserved for resume",
-        " — the commit is kept; the next attempt reviews it from scratch",
+        resumeRemains
+          ? " — the commit is kept; the next attempt continues this review"
+          : " — the commit is kept; the next attempt reviews it from scratch",
       );
     const message = reviewTimeoutRewrite(
       followUpError ??
@@ -445,6 +519,19 @@ export async function reviewAheadOfMain(
     // each one's death is the backend failing after the reviewer had already judged nothing —
     // evidence about the world, never about the diff.
     if (!pi.ok || (followUp && !followUp.ok) || (nudge && !nudge.ok)) {
+      if (resumeRemains) {
+        // Record the session this run used (the resumed directory, or this fresh run's own),
+        // so the next attempt `--continue`s exactly it.
+        state.reviewResume = {
+          patchId: reviewedPatchId!,
+          sessionDir: reviewSessionDir,
+          attempts: resumeAttempts,
+          at: Date.now(),
+        };
+        saveLoopState(root, state);
+      } else {
+        state.reviewResume = undefined;
+      }
       recordReview(state, "failed", [message], head);
       const configError = pi.configError || Boolean(followUp?.configError) || Boolean(nudge?.configError);
       return withRuns(
@@ -458,6 +545,7 @@ export async function reviewAheadOfMain(
     // *before* overwriting lastReview with this failure.
     const prev = state.lastReview;
     const sameHead = prev?.verdict === "failed" && prev.head === head;
+    state.reviewResume = undefined;
     state.unreviewFailures = (sameHead ? (state.unreviewFailures ?? 0) : 0) + 1;
     recordReview(state, "failed", [message], head);
     let discarded = false;
@@ -479,7 +567,8 @@ export async function reviewAheadOfMain(
   // made while reading around — its only output channel is the verdict. The patch-id keys the
   // approval to the diff it judged; unreadable, it clears any older one (no reuse at all).
   state.lastApprovedHead = head;
-  state.lastApprovedPatchId = (await patchId(wt, mainBranch, head)) ?? undefined;
+  state.lastApprovedPatchId = reviewedPatchId;
+  state.reviewResume = undefined;
   recordReview(state, "approve", verdict.reasons, head);
   state.unreviewFailures = 0;
   await git(wt, "reset", "--hard", "HEAD");

@@ -248,6 +248,25 @@ ${TEST_RUNNER_RULE}
   return parts.join("\n\n");
 }
 
+/** The prompt for the next attempt at a review whose previous run hit its time budget while
+ * still making progress (LoopState.reviewResume): that run continues the timed-out reviewer's
+ * own session (`--continue`), so the diff and everything the reviewer already read are in
+ * context. This prompt carries no diff — re-sending it would defeat the resume — and names the
+ * frozen comparison base and the unchanged patch-id so the reviewer knows the change it was
+ * judging has not moved. `baseRev` is changeBaseRev's frozen revision (see buildReviewPrompt);
+ * `patchId` is git/git.ts's patchId for the change. It closes with the same VERDICT_ENDING
+ * contract as the full review prompt, so the accepted forms cannot drift. */
+export function buildReviewResumePrompt(baseRev: string, patchId: string): string {
+  return `${dateLine()}
+
+You are resuming an adversarial review of a tumwater change: the previous attempt hit its time budget while still making progress, and this run continues that same reviewer session. Everything you already read — the diff and the files you checked — is in your context; do not re-read it.
+
+The change is unchanged since that attempt (patch-id ${patchId}) and is still measured against ${shortSha(baseRev)}. Other loops land on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`.
+
+Finish the checks you had not completed, then end your reply with exactly one line in this form:
+  ${VERDICT_ENDING.replace(/\n/g, "\n  ")}`;
+}
+
 /** The one-turn follow-up sent into the REVIEWER's own session (--continue) when its run
  * completed but the reply carried no parseable VERDICT line — the review-gate sibling of
  * prompt-followup.ts's buildSummaryRequestPrompt. The session already holds the full review, so one

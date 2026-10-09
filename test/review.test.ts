@@ -5,12 +5,12 @@ import path from "node:path";
 import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
 import { buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
-import { aheadOfMain } from "../src/git/git.js";
+import { aheadOfMain, patchId } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, REVIEW_RESUME_LIMIT } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { eventsLogPath, piLogPath } from "../src/paths.js";
+import { eventsLogPath, piLogPath, reviewRunSessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
@@ -647,15 +647,40 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
   });
 });
 
-test("a progressing timeout says the next attempt reviews from scratch, not 'preserved for resume'", async () => {
+test("a progressing timeout says the next attempt continues this review, not 'preserved for resume'", async () => {
   // runPi's progressing-timeout text is written for authoring ticks, which do resume their
-  // session and worktree (BUGS.md 2026-09-29). The reviewer deliberately runs a fresh session
-  // every time (no --continue), so the failure the gate records must say what actually happens
-  // to a timed-out review: the commit is kept and the next attempt re-reviews it from scratch
-  // (BUGS.md 2026-09-30) — not that the session was preserved for a resume that never comes.
+  // session and worktree (BUGS.md 2026-09-29). The reviewer's commit stays on the branch and
+  // the gate leaves the session for the next attempt to continue (LoopState.reviewResume), so
+  // the recorded failure names that — not the raw "preserved for resume" whose resume the
+  // gate could not honor before (BUGS.md 2026-09-30). The session file must exist for the
+  // promise to be one the next attempt can keep (TOUCH_SESSION).
   const { root, wt } = await gateFixture();
   // One structured event (progress) then stall: the review deadline fires on a run still
   // making progress, so runPi emits its progressing-timeout text.
+  await withPi(`${TOUCH_SESSION}\nprintf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`, async () => {
+      const config = defaultConfig();
+      config.review.timeoutSeconds = 2;
+      const state = freshLoopState(ROLE);
+      const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+      assert.equal(result.decision, "failed");
+      assert.match(
+        result.detail ?? "",
+        /timed out after 2s while still making progress — the commit is kept; the next attempt continues this review/,
+      );
+      assert.doesNotMatch(result.detail ?? "", /preserved for resume/);
+      const failed = eventsOfType(root, "review_failed");
+      assert.equal(failed.length, 1);
+      assert.doesNotMatch(String(failed[0]?.message), /preserved for resume/);
+      assert.equal(state.reviewResume?.attempts, 0);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
+  });
+});
+
+test("a progressing timeout with no session to resume records a from-scratch re-review and leaves no marker", async () => {
+  // The next attempt only resumes when the directory still holds a gate session. A backend
+  // that leaves no session file must not record a marker the next review silently declines, so
+  // the recorded failure says it re-reviews from scratch — the promise and the behavior agree.
+  const { root, wt } = await gateFixture();
   await withPi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`, async () => {
       const config = defaultConfig();
       config.review.timeoutSeconds = 2;
@@ -664,13 +689,177 @@ test("a progressing timeout says the next attempt reviews from scratch, not 'pre
       assert.equal(result.decision, "failed");
       assert.match(
         result.detail ?? "",
-        /timed out after 2s while still making progress — the commit is kept; the next attempt reviews it from scratch/,
+        /the commit is kept; the next attempt reviews it from scratch/,
       );
-      assert.doesNotMatch(result.detail ?? "", /preserved for resume/);
-      const failed = eventsOfType(root, "review_failed");
-      assert.equal(failed.length, 1);
-      assert.doesNotMatch(String(failed[0]?.message), /preserved for resume/);
-      assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
+      assert.doesNotMatch(result.detail ?? "", /continues this review/);
+      assert.equal(state.reviewResume, undefined);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit still kept for the next tick
+  });
+});
+
+test("a progressing timeout leaves a resume marker and the next review continues its session", async () => {
+  const { root, wt, head } = await gateFixture();
+  const flags = path.join(tmpdir(), "review-resume-flags");
+  const calls: Array<{ sessionDir: string; continueSession?: boolean; prompt: string }> = [];
+  // The first run (no --continue) makes progress then stalls into a progressing timeout; the
+  // second run (--continue) approves, proving the timed-out session was continued.
+  await withPi(
+    [
+      TOUCH_SESSION,
+      logFlagsTo(flags),
+      `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
+      `  printf '%s\\n' '${assistantLine("VERDICT: approve\\n1. resumed and finished")}'`,
+      `  exit 0`,
+      `fi; done`,
+      `printf '%s\\n' '${assistantLine("reading the diff…")}'`,
+      `exec sleep 60`,
+    ].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      config.review.timeoutSeconds = 2;
+      const state = freshLoopState(ROLE);
+      const firstCtx = gateCtx(root, wt, 1);
+      const first = await reviewAheadOfMain({ ...firstCtx, config }, state);
+      assert.equal(first.decision, "failed");
+      assert.match(first.detail ?? "", /the next attempt continues this review/);
+      assert.equal(state.reviewResume?.patchId, await patchId(wt, "main", head));
+      assert.equal(state.reviewResume?.sessionDir, firstCtx.sessionDir);
+      assert.equal(state.reviewResume?.attempts, 0);
+
+      const second = await reviewAheadOfMain(
+        {
+          ...gateCtx(root, wt, 2),
+          config,
+          runGatePi: async (opts) => {
+            calls.push({ sessionDir: opts.sessionDir, continueSession: opts.continueSession, prompt: opts.prompt });
+            return firstCtx.runGatePi(opts);
+          },
+        },
+        state,
+      );
+      assert.equal(second.decision, "approved");
+      assert.equal(state.reviewResume, undefined);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]!.continueSession, true);
+      assert.equal(calls[0]!.sessionDir, firstCtx.sessionDir);
+      assert.ok(!calls[0]!.prompt.includes("<diff>"), "the resume prompt carries no diff");
+      assert.match(calls[0]!.prompt, /resuming an adversarial review/);
+      const starts = eventsOfType(root, "review_start");
+      assert.equal(starts[0]?.resumed, undefined);
+      assert.equal(starts[1]?.resumed, true);
+      const lines = fs.readFileSync(flags, "utf8").trim().split("\n");
+      assert.equal(lines.length, 2);
+      assert.match(lines[0]!, /^run: -n/);
+      assert.match(lines[1]!, /^run: --continue$/);
+    },
+  );
+});
+
+test("a resumed review's verdict follow-up continues the resumed session's directory", async () => {
+  // The review run resumed another attempt's directory; its verdict-recovery turn must
+  // `--continue` that same directory, not this tick's fresh ctx.sessionDir. Otherwise the
+  // follow-up would reach a directory that never held this review and lose its context.
+  const { root, wt, head } = await gateFixture();
+  const resumeDir = reviewRunSessionDir(root, ROLE, "resumed-run");
+  fs.mkdirSync(resumeDir, { recursive: true });
+  fs.writeFileSync(path.join(resumeDir, "s.jsonl"), "");
+  const counter = path.join(tmpdir(), "resume-followup-count");
+  fs.writeFileSync(counter, "0");
+  const calls: Array<{ sessionDir: string; continueSession?: boolean }> = [];
+  // First --continue (the resumed review) replies without a VERDICT; the second (the
+  // recovery turn) supplies it, so the test observes both runs' directories.
+  await withPi(
+    [
+      TOUCH_SESSION,
+      `n=$(cat ${counter}); n=$((n+1)); printf '%s' "$n" > ${counter}`,
+      `if [ "$n" = "1" ]; then printf '%s\\n' '${assistantLine("no verdict on the resume yet")}'; exit 0; fi`,
+      `printf '%s\\n' '${assistantLine("VERDICT: approve\\n1. recovered")}'`,
+    ].join("\n"),
+    async () => {
+      const state = freshLoopState(ROLE);
+      state.reviewResume = {
+        patchId: (await patchId(wt, "main", head)) ?? "",
+        sessionDir: resumeDir,
+        attempts: 0,
+        at: 1,
+      };
+      const ctx = gateCtx(root, wt, 1);
+      const result = await reviewAheadOfMain(
+        {
+          ...ctx,
+          runGatePi: async (opts) => {
+            calls.push({ sessionDir: opts.sessionDir, continueSession: opts.continueSession });
+            return ctx.runGatePi(opts);
+          },
+        },
+        state,
+      );
+      assert.equal(result.decision, "approved");
+      assert.equal(calls.length, 2);
+      assert.equal(calls[0]!.continueSession, true);
+      assert.equal(calls[0]!.sessionDir, resumeDir);
+      assert.equal(calls[1]!.continueSession, true);
+      assert.equal(calls[1]!.sessionDir, resumeDir, "the follow-up continues the resumed dir, not the fresh tick dir");
+    },
+  );
+});
+
+test("a resume marker for a different patch reviews fresh and clears", async () => {
+  const { root, wt } = await gateFixture();
+  const calls: Array<{ continueSession?: boolean; prompt: string }> = [];
+  await withPi(`printf '%s\\n' '${assistantLine("VERDICT: approve")}'`, async () => {
+      const state = freshLoopState(ROLE);
+      const staleDir = reviewRunSessionDir(root, ROLE, "old-run");
+      fs.mkdirSync(staleDir, { recursive: true });
+      fs.writeFileSync(path.join(staleDir, "s.jsonl"), "");
+      state.reviewResume = { patchId: "a-different-patch", sessionDir: staleDir, attempts: 0, at: 1 };
+      const result = await reviewAheadOfMain(
+        {
+          ...gateCtx(root, wt, 1),
+          runGatePi: async (opts) => {
+            calls.push({ continueSession: opts.continueSession, prompt: opts.prompt });
+            return gateCtx(root, wt).runGatePi(opts);
+          },
+        },
+        state,
+      );
+      assert.equal(result.decision, "approved");
+      assert.equal(state.reviewResume, undefined);
+      assert.equal(calls.length, 1);
+      assert.ok(!calls[0]!.continueSession, "a changed patch never resumes the old session");
+      assert.ok(calls[0]!.prompt.includes("<diff>"), "the full diff prompt is used");
+  });
+});
+
+test("after REVIEW_RESUME_LIMIT resumes the next review starts from scratch", async () => {
+  const { root, wt, head } = await gateFixture();
+  const calls: Array<{ continueSession?: boolean; prompt: string }> = [];
+  await withPi(`printf '%s\\n' '${assistantLine("VERDICT: approve")}'`, async () => {
+      const state = freshLoopState(ROLE);
+      const spentDir = reviewRunSessionDir(root, ROLE, "spent-run");
+      fs.mkdirSync(spentDir, { recursive: true });
+      fs.writeFileSync(path.join(spentDir, "s.jsonl"), "");
+      state.reviewResume = {
+        patchId: (await patchId(wt, "main", head)) ?? "",
+        sessionDir: spentDir,
+        attempts: REVIEW_RESUME_LIMIT,
+        at: 1,
+      };
+      const result = await reviewAheadOfMain(
+        {
+          ...gateCtx(root, wt, 1),
+          runGatePi: async (opts) => {
+            calls.push({ continueSession: opts.continueSession, prompt: opts.prompt });
+            return gateCtx(root, wt).runGatePi(opts);
+          },
+        },
+        state,
+      );
+      assert.equal(result.decision, "approved");
+      assert.equal(state.reviewResume, undefined);
+      assert.equal(calls.length, 1);
+      assert.ok(!calls[0]!.continueSession, "no --continue once the budget is spent");
+      assert.ok(calls[0]!.prompt.includes("<diff>"), "the full diff prompt is used");
   });
 });
 

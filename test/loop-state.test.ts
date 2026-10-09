@@ -299,6 +299,37 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
   assert.equal(s.claim?.key, "k");
 });
 
+test("loadLoopState heals and validates the reviewResume marker", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "resume");
+  ensureParentDir(file);
+  // The two strings key the marker to a session to resume; without both it names nothing, so a
+  // malformed marker is dropped rather than left to throw in sessionResumable.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      role: "resume",
+      reviewResume: { patchId: 7, sessionDir: ["x"], attempts: 1, at: 2 },
+    }),
+  );
+  assert.equal(loadLoopState(dir, "resume").reviewResume, undefined);
+
+  // A well-formed marker keeps its patch-id and session dir, and its numeric fields heal like
+  // every other persisted count/stamp.
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      role: "resume",
+      reviewResume: { patchId: "p", sessionDir: "d", attempts: "2", at: null },
+    }),
+  );
+  const s = loadLoopState(dir, "resume");
+  assert.equal(s.reviewResume?.patchId, "p");
+  assert.equal(s.reviewResume?.sessionDir, "d");
+  assert.equal(s.reviewResume?.attempts, 0);
+  assert.equal(s.reviewResume?.at, 0);
+});
+
 test("loadLoopState recovers from torn or non-object JSON", () => {
   const dir = tmpdir();
   const file = statePath(dir, "dry");

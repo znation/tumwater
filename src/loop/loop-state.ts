@@ -12,6 +12,12 @@ import { statePath } from "../paths.js";
  * helpers are src/files/files.ts and the JSON convention
  * itself is src/files/json-files.ts. */
 
+/** How many times a progressing-timeout review may be resumed before the next attempt
+ * reviews the change from scratch (LoopState.reviewResume). The budget bounds a reviewer that
+ * keeps timing out mid-progress, so a wedged review converges to a fresh run instead of
+ * resuming the same session forever. */
+export const REVIEW_RESUME_LIMIT = 2;
+
 /** Persisted per-loop state in .tumwater/state/<role>.json. */
 export interface LoopState {
   role: string;
@@ -136,6 +142,13 @@ export interface LoopState {
    * changes or a review succeeds). Past the limit the leftover is discarded with a warning,
    * so a misconfigured reviewer cannot wedge a loop re-reviewing one commit forever. */
   unreviewFailures?: number;
+  /** The reviewer session a progressing-timeout review left for the next attempt: the
+   * patch-id it was judging (only the same diff may resume), the per-run session directory to
+   * `--continue` in, how many resumes have already been attempted, and when the marker was
+   * written. Set when a review run hits its time budget while still making progress; cleared
+   * by any verdict, any other failure, a discard, or a landing. Absent for a loop with no
+   * timed-out review, so existing state files read unchanged. */
+  reviewResume?: { patchId: string; sessionDir: string; attempts: number; at: number };
   /** Consecutive landings of the SAME pinned sha that ended `merge_conflict` — each one a failed
    * conflict-resolution run. Keyed by sha: a pin that rebased cleanly onto a moved main is a new
    * attempt and starts fresh. At MERGE_CONFLICT_LIMIT leftover recovery stops re-queuing: it
@@ -291,6 +304,16 @@ export function loadLoopState(root: string, role: string): LoopState {
   if (s.consecutiveErrors !== undefined) s.consecutiveErrors = healNumber(s.consecutiveErrors, 0);
   if (s.unreviewFailures !== undefined) s.unreviewFailures = healNumber(s.unreviewFailures, 0);
   if (s.parkedSince !== undefined) s.parkedSince = healNumber(s.parkedSince, 0);
+  if (s.reviewResume !== undefined) {
+    const r = healRecord(s.reviewResume, (v) => {
+      v.attempts = healNumber(v.attempts, 0);
+      v.at = healNumber(v.at, 0);
+    });
+    // A marker without the two strings it keys on names no session to resume, so a malformed
+    // one is dropped here rather than left to throw in sessionResumable.
+    s.reviewResume =
+      r && typeof r.patchId === "string" && typeof r.sessionDir === "string" ? r : undefined;
+  }
   // The nested scheduling records carry the same numeric class — epoch-ms stamps, recovery
   // counts, and the fallback episode's clock — and are read by comparison or arithmetic
   // (`ctx.now - claim.at > CLAIM_IDLE_MAX_MS`, `prior.count + 1`, `cooldownMs * 2`), so a
