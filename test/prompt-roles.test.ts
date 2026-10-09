@@ -460,6 +460,13 @@ test("organize, dry, and clean each end with a whole-tree sweep for what they ch
   assert.match(oneLine(roleById("dry")!.find), /grep for the original expression once more across the source and the tests: every remaining copy is either converted or named in your WHY/);
   assert.match(oneLine(roleById("clean")!.find), /A rename or deletion is complete only when a grep for the old name over the source, the tests, and the markdown docs finds nothing stale/);
 });
+test("clean sweeps one kind of drift across the tree, not one site", () => {
+  const find = oneLine(roleById("clean")!.find);
+  assert.ok(!find.includes("clean that one thing"), "the one-site rule is gone");
+  assert.match(find, /pick ONE kind of uncleanliness .* and sweep every instance of that kind across the tree/);
+  assert.match(find, /One theme applied everywhere it holds is one focused change, not one site per tick/);
+  assert.match(find, /Keep the diff under about 300 changed lines/);
+});
 test("the coverage role checks every importing test before calling anything untested", () => {
   const find = oneLine(roleById("coverage")!.find);
   assert.match(find, /every test that imports it, not just the one named after it: `grep -rln '<module name>' test\/`/);

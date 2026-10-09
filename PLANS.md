@@ -119,53 +119,6 @@ Tests:
 - **Live.** `tumwater config set maintenancePerWorkLanding 100` lifts the hold on the next poll.
 - `npm run test` green.
 
-### Work ratio, part 2/4: a clean tick sweeps one kind of drift across the tree instead of one site (planned 2026-10-08 by operator; trimmed 2026-10-08 by operator — the PRINCIPLES.md amendment it needed landed separately, since feature may not edit that file)
-
-Design: plans/work-ratio.md ("Batch hygiene").
-
-Context. On 10-07 clean's 118 commits averaged 1.1 files and about 15 changed lines. Five
-separate ticks fixed the same stale `_land-<role>` comments left by Worktree pool 2d/5
-(814074e2, 808f4b85, 888f9d73, 5913a6a1, 6ce40875). Each one cost a tick, a review, a build
-check and a landing.
-
-dry's charter already updates every call site of one repetition. clean's says "find ONE piece
-… clean that one thing", so this entry changes clean.
-
-The principle is already in place: PRINCIPLES.md's "one focused change per tick" bullet, and
-its starter-template copy in src/init/init-templates.ts, now say a focused change is one theme
-applied everywhere it holds, not one site. This entry changes no PRINCIPLES.md text.
-
-**Approach.**
-1. **Charter.**
-   - Rewrite clean's `find` text in src/roles/role-catalog.ts (the "Otherwise, find ONE piece of
-     unclean code" paragraph). The new rule: pick ONE *kind* of uncleanliness, grep for every
-     instance of it across the source, tests and markdown, and fix them all in this tick.
-   - Examples of a kind:
-     - comments that still name a removed mechanism;
-     - over-100-column doc lines in one directory;
-     - doc comments citing a renamed helper.
-   - Keep the diff under about 300 changed lines. When a kind has more instances than that,
-     clean one directory or subsystem completely and say in the WHY what remains.
-   - Keep the `<backlog-structure>` repair paragraph as is.
-2. **Review.**
-   - The review prompt must not reject a clean sweep for touching many files, as long as every
-     hunk is the same kind of fix.
-   - Check src/review's prompt text for a size or scope objection that would fire, and adjust
-     it only if one exists.
-
-**Files touched.**
-- src/roles/role-catalog.ts
-- review prompt text, only if needed
-- tests that pin charter text
-
-**Acceptance criteria.**
-- clean's charter names a kind-wide sweep with the ~300-line ceiling. The phrase "clean that
-  one thing" is gone.
-- `npm run test` green.
-- Follow-up check, a day after landing: clean's average changed lines per commit rises and its
-  commits per day fall (`git log --grep '^tumwater(clean)' --shortstat`). Record the numbers
-  in plans/work-ratio.md.
-
 ### Split the LoopRunner tick pipeline out of src/loop/loop.ts (planned 2026-10-08 by organize)
 
 Design principle: a file with too many responsibilities should be divided along the seams it already
@@ -278,6 +231,61 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Work ratio, part 2/4: a clean tick sweeps one kind of drift across the tree instead of one site (planned 2026-10-08 by operator; trimmed 2026-10-08 by operator — the PRINCIPLES.md amendment it needed landed separately, since feature may not edit that file; done 2026-10-08 by feature)
+
+Design: plans/work-ratio.md ("Batch hygiene").
+
+Context. On 10-07 clean's 118 commits averaged 1.1 files and about 15 changed lines. Five
+separate ticks fixed the same stale `_land-<role>` comments left by Worktree pool 2d/5
+(814074e2, 808f4b85, 888f9d73, 5913a6a1, 6ce40875). Each one cost a tick, a review, a build
+check and a landing.
+
+dry's charter already updates every call site of one repetition. clean's says "find ONE piece
+… clean that one thing", so this entry changes clean.
+
+The principle is already in place: PRINCIPLES.md's "one focused change per tick" bullet, and
+its starter-template copy in src/init/init-templates.ts, now say a focused change is one theme
+applied everywhere it holds, not one site. This entry changes no PRINCIPLES.md text.
+
+**Approach.**
+1. **Charter.**
+   - Rewrite clean's `find` text in src/roles/role-catalog.ts (the "Otherwise, find ONE piece of
+     unclean code" paragraph). The new rule: pick ONE *kind* of uncleanliness, grep for every
+     instance of it across the source, tests and markdown, and fix them all in this tick.
+   - Examples of a kind:
+     - comments that still name a removed mechanism;
+     - over-100-column doc lines in one directory;
+     - doc comments citing a renamed helper.
+   - Keep the diff under about 300 changed lines. When a kind has more instances than that,
+     clean one directory or subsystem completely and say in the WHY what remains.
+   - Keep the `<backlog-structure>` repair paragraph as is.
+2. **Review.**
+   - The review prompt must not reject a clean sweep for touching many files, as long as every
+     hunk is the same kind of fix.
+   - Check src/review's prompt text for a size or scope objection that would fire, and adjust
+     it only if one exists.
+
+**Files touched.**
+- src/roles/role-catalog.ts
+- review prompt text, only if needed
+- tests that pin charter text
+
+**Acceptance criteria.**
+- clean's charter names a kind-wide sweep with the ~300-line ceiling. The phrase "clean that
+  one thing" is gone.
+- `npm run test` green.
+- Follow-up check, a day after landing: clean's average changed lines per commit rises and its
+  commits per day fall (`git log --grep '^tumwater(clean)' --shortstat`). Record the numbers
+  in plans/work-ratio.md.
+
+**As landed:** clean's `find` now says to pick ONE kind of uncleanliness and sweep every
+instance across the source, tests and markdown, names three kinds, and caps the diff at about
+300 changed lines (one directory or subsystem when a kind exceeds it). `buildReviewPrompt`
+(src/gates/gate-prompts.ts) was checked and has no size- or file-count objection — it only
+rejects a change the summary and WHY do not claim — so no review text changed. A case in
+test/prompt-roles.test.ts pins the kind-wide rule, the ceiling, and that the old phrase is gone.
+The follow-up measurement is pending a day of clean landings.
 
 ### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; split 2026-10-08 by plan; requires part 5b/7 landed; done 2026-10-08 by feature)
 

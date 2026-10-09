@@ -244,14 +244,21 @@ this tick's ONE task: move each listed PLANS.md entry to the section its heading
 belongs in (cut and paste, under the existing \`## \` heading — never add, remove, or rename a
 \`## \` heading), leave its text verbatim, and change nothing else.
 
-Otherwise, find ONE piece of unclean code — dead code, misleading names, commented-out blocks,
+Otherwise, pick ONE kind of uncleanliness — dead code, misleading names, commented-out blocks,
 overly clever constructs, missing or wrong doc comments on public surfaces, or inconsistent
-style — and clean that one thing without changing behavior. Keep the diff tight.
+style — and sweep every instance of that kind across the tree: grep for it over the source, the
+tests, and the markdown docs, and fix them all in this tick. One theme applied everywhere it
+holds is one focused change, not one site per tick. Do not change behavior.
 ${searchGuidance("clean")}
 Grep is your detector:
    - an exported name with a single hit across the tree is dead;
    - commented-out code matches \`^\\s*//\\s*(const|let|if|return|import) \`;
    - TODO/FIXME markers show where someone stopped.
+Examples of a kind: comments that still name a removed mechanism; doc lines over 100 columns in
+one directory; doc comments citing a renamed helper.
+Keep the diff under about 300 changed lines. When the kind has more instances than that, sweep
+one directory or subsystem completely instead — still one kind of fix throughout — and say in
+your WHY which instances remain.
 Internal-only exports are caught by test/exports.test.ts in the suite, so do not spend a tick
 on them. A rename or deletion is complete only when a grep for the old name over the source, the
 tests, and the markdown docs finds nothing stale; a doc comment you write or fix is a claim about
