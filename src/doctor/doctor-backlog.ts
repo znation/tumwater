@@ -58,8 +58,9 @@ function readDocChecked(p: string, file: string, missingDetail: string): { doc: 
   return read;
 }
 
-/** Fix claims — the standalone half of the landing gate's false-fix check (src/verdict/fix-claim.ts):
- * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix
+/** Fix claims — the standalone half of the landing gate's false-fix check
+ * (src/verdict/fix-claim.ts): that gate fires only when an md-only diff moves a BUGS.md entry
+ * to Fixed, so a phantom fix
  * that reached main any other way (landed before the gate existed, or through a path it never
  * sees) was visible only to a human reading raw history. This re-verifies the newest Fixed
  * records against the tree at `root` — the primary checkout IS main's tree — with the gate's
@@ -130,8 +131,8 @@ export function checkStrandedPlans(root: string): CheckOutcome {
  * nothing repairs it on its own. Reads the tree at `root` — the primary checkout IS main's tree
  * — like checkFixClaims. A warn, never a fail: existing damage is operator signal, not a broken
  * environment, and a landing that adds another copy of the heading trips the gate's same
- * rule (a) — src/backlog/backlog-structure.ts fires only when a count EXCEEDS the merge-base's, so an
- * edit that leaves an existing duplicate alone passes and the duplicate itself needs a
+ * rule (a) — src/backlog/backlog-structure.ts fires only when a count EXCEEDS the merge-base's,
+ * so an edit that leaves an existing duplicate alone passes and the duplicate itself needs a
  * deliberate removal edit. */
 export function checkBacklogHeadings(root: string): CheckOutcome {
   const duplicates: string[] = [];
