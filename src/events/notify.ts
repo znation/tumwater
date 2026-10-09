@@ -10,9 +10,10 @@ import { childEnv } from "../process/process.js";
  * push channel beside the pull-based dashboards and `tumwater logs`.
  *
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
- * only sees events THIS process logs. All seven allowlisted types are logged by the
+ * only sees events THIS process logs. All eight allowlisted types are logged by the
  * orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
- * role-cap-gates.ts and disk-gate.ts, landing-slot.ts, src/redeploy/redeployer.ts), so nothing
+ * role-cap-gates.ts and disk-gate.ts, landing-slot.ts, landing-questions.ts,
+ * src/redeploy/redeployer.ts), so nothing
  * notable is missed; events appended by
  * operator CLI commands go straight to the file and are out of scope by design.
  *
@@ -28,6 +29,7 @@ export const NOTIFY_EVENT_TYPES = [
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
   "land_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
+  "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it
 ] as const;
 
 type NotifyEventType = (typeof NOTIFY_EVENT_TYPES)[number];

@@ -50,6 +50,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "disk_low",
       "land_failed",
       "restart_blocked",
+      "question_posted",
     ],
   );
   assert.ok(
@@ -75,6 +76,24 @@ test("an allowlisted event spawns the notify command once with the three env var
     // without a second event to suppress.
     await sleep(300);
     assert.equal(recordedLines(out).length, 1);
+  } finally {
+    notifier.dispose();
+  }
+});
+
+test("a posted question spawns the notify command once with the posting role and rendered line", async () => {
+  const root = tmpdir();
+  const out = path.join(root, "notify-out.txt");
+  const notifier = newNotifier(root);
+  notifier.update({ notify: recorderCommand(out) });
+  try {
+    const event = logEvent(root, { loop: "feature", type: "question_posted", question: "Which storage?" });
+    await waitFor(() => recordedLines(out).length === 1, "one recorded line");
+    const line = parseLine(recordedLines(out)[0] ?? "");
+    assert.equal(line.type, "question_posted");
+    assert.equal(line.loop, "feature");
+    assert.equal(line.message, formatEvent(event));
+    assert.ok(line.message.includes("question posted: Which storage?"), `unexpected message: ${line.message}`);
   } finally {
     notifier.dispose();
   }
