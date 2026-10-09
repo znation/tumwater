@@ -139,14 +139,14 @@ export function fallbackEvidence(result: TickResult): "served" | "failed" | "non
   }
 }
 
-/** Fold one finished role tick that ran on the fallback into the breaker. `ranOn` is the breaker
- * as the tick started under it — evidence about a subject that is no longer engaged is dropped —
+/** Fold one finished role tick that ran on the fallback into the breaker. `ranOn` is the breaker as
+ * the tick started under it — evidence about a subject that is no longer engaged is dropped —
  * and `probe` says whether the orchestrator admitted it as the half-open probe. A served tick
  * closes the breaker from any state (the backend demonstrably works). A failed probe re-opens it
  * with the cool-down doubled up to maxCooldownMs; a failed tick while closed counts toward
- * failureLimit and trips the breaker at it; a failed straggler that started before the trip
- * leaves the running cool-down alone. A probe with no evidence frees the probe slot, so the next
- * due role probes instead. */
+ * failureLimit and trips the breaker at it; a failed straggler that started before the trip leaves
+ * the running cool-down alone. A probe with no evidence frees the probe slot, so the next due role
+ * probes instead. */
 export function recordFallbackTick(
   b: FallbackBreaker,
   ranOn: FallbackBreaker,
@@ -178,10 +178,10 @@ export interface FallbackDemotion {
 }
 
 /** What orchestrator.json publishes while the breaker holds the fallback demoted
- * (fleet/orchestrator-info.ts's OrchestratorInfo.fallbackDemoted). Observers need it because the price
- * check alone would advertise the demoted pair as a working fallback — status/status-data.ts nulls
- * the snapshot's `fallback` from it and `tumwater doctor` names it. Undefined while the fallback is
- * trusted or not engaged. */
+ * (fleet/orchestrator-info.ts's OrchestratorInfo.fallbackDemoted). Observers need it because the
+ * price check alone would advertise the demoted pair as a working fallback —
+ * status/status-data.ts nulls the snapshot's `fallback` from it and `tumwater doctor` names it.
+ * Undefined while the fallback is trusted or not engaged. */
 export function fallbackDemotion(b: FallbackBreaker): FallbackDemotion | undefined {
   return b.pair !== null && b.probeAt !== null
     ? { pair: b.pair, failures: b.failures, probeAt: b.probeAt }
