@@ -39,7 +39,7 @@ export const SHAKE_MIN_CHARS = 2_000;
 /** A pass that would reclaim fewer than this many estimated tokens is not worth the edit. */
 export const SHAKE_MIN_RECLAIM_TOKENS = 10_000;
 
-/** The fixed prefix of every elision pointer, used to recognise a result that was already
+/** The fixed prefix of every elision pointer, used to recognize a result that was already
  * elided (and must never be elided again). */
 export const ELIDED_PREFIX = "[elided by tumwater:";
 

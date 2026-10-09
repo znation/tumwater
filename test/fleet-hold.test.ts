@@ -54,7 +54,7 @@ test("429s further apart than the storm window do not add up", () => {
   assert.notEqual(fleetHold(FLEET_OPEN, [stale, obs("bugfix", edge)], edge).until, null);
 });
 
-test("the hold honours the largest Retry-After seen, measured from its own 429, and caps it", () => {
+test("the hold honors the largest Retry-After seen, measured from its own 429, and caps it", () => {
   // bugfix was told 300 s at T0; coverage 30 s at T0+10s. The furthest deadline wins.
   const now = T0 + 10_000;
   const held = fleetHold(FLEET_OPEN, [obs("bugfix", T0, "rate-limit", 300), obs("coverage", now, "rate-limit", 30)], now);

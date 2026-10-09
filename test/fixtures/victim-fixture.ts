@@ -71,7 +71,7 @@ export function spawnVictim(
 /** spawnVictim carrying `marker` as a run mark. The mark is APPENDED to any inherited one
  * (runMarkerEnv, the way runPi stamps pi), never put in its place: a suite run inside a pi
  * run hands every child that run's mark, and the run's exit sweep reaps whatever still
- * carries it — on 2026-10-04 that sweep reaped the unmarked neighbour, which inherited the
+ * carries it — on 2026-10-04 that sweep reaped the unmarked neighbor, which inherited the
  * mark, and missed the victim whose mark had been replaced. */
 export function spawnMarkedVictim(t: TestContext, marker: string, file: string, script: string): ChildProcess {
   return spawnVictim(t, file, script, runMarkerEnv(process.env, marker));

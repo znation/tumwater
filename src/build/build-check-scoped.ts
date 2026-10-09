@@ -48,7 +48,7 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
  * at a merge scope is remapped to a deterministic "failed" — the tree is unverified, so it
  * must not land. A check killed by a signal the harness did not send is retried once at any
  * scope — the first run's death says nothing about the tree (it is another run's `pkill`), so
- * one verdict from a clean attempt is owed before the skip is honoured; a timeout whose deadline
+ * one verdict from a clean attempt is owed before the skip is honored; a timeout whose deadline
  * demonstrably fired late (the harness's own host-sleep evidence) earns that same one retry at
  * any scope, and a failed run the host slept through does too; each attempt is priced
  * as its own build_check event, carrying when the check itself ran (buildCheckRunFields).

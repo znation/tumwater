@@ -416,14 +416,14 @@ export function pollFleetGates(
   // 429s, or a connection, timeout, 5xx, or model-load backend failure — role loops on THAT
   // provider start no new ticks, and the land queue starts no new vet, whose reviewer run
   // has no retry and would spend a review strike on the storm — until the hold re-opens at
-  // its own deadline (Retry-After honoured on the rate-limit kind, doubling on a relapse,
+  // its own deadline (Retry-After honored on the rate-limit kind, doubling on a relapse,
   // capped). Roles on a healthy provider keep ticking; a hold on the reviewer's provider
   // (with the review gate on) still blocks everything, since nothing could land — the
   // orchestrator's scheduling and start passes derive that verdict from this map. The
   // director's ticks are exempt, as under the budget gate and the operator pause: an
   // explicit human prompt outranks an autonomous gate, one director run is not the
   // concurrency that sustains a storm, its 429 runs keep the per-run transient retry
-  // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfil
+  // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfill
   // goes back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like
   // both siblings, and a role tick already parked in the semaphore meets the same hold at
   // its permit (the start gate) and hands its reservation back instead of starting

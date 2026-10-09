@@ -235,7 +235,7 @@ test("backlogStructureReason passes an unchanged BUGS.md with sections this repo
   assert.equal(await backlogStructureReason(wt, "main", ["BUGS.md"]), undefined);
 });
 
-// ── doubleBlockFixedEntries — a headingless Fixed record cannot hide in its neighbour ─────
+// ── doubleBlockFixedEntries — a headingless Fixed record cannot hide in its neighbor ─────
 // (BUGS.md 2026-10-08) parseEntryDetails opens an entry only at a `### ` line, so a record
 // that lost its heading is absorbed into the entry above it; the false-fix guard then reads
 // the merged body as one record and no section reader lists the hidden one.

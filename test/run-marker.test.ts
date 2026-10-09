@@ -87,7 +87,7 @@ test("procEnvironCarriesMarker reads NUL-separated environ entries", () => {
   );
 });
 
-test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour", async (t) => {
+test("sweepRunMarker signals the marked orphan and spares the unmarked neighbor", async (t) => {
   // Real spawns: the sweep's victim-finding is a live process-table scan, so the unit keeps
   // to the real shape — a detached node orphan carrying the mark in its environment, and an
   // unmarked sibling beside it. Node, not sleep: macOS ps -E hides platform binaries'
@@ -117,13 +117,13 @@ test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour
   const signaled = await sweepRunMarker(own);
   assert.ok(signaled >= 1, "the sweep found the marked victim");
   await waitFor(() => !pidAlive(oursPid), "the marked victim to be gone", 10_000);
-  assert.equal(pidAlive(plainPid), true, "the unmarked neighbour survives the sweep");
+  assert.equal(pidAlive(plainPid), true, "the unmarked neighbor survives the sweep");
 });
 
 test("a fixture victim keeps the enclosing run's mark and exits by itself once its test process dies outright", async (t) => {
   // Regression (2026-10-04): a test process killed mid-test runs no t.after hook and no
   // finally — vitest's worker teardown, a SIGKILL — and the sweep test above leaked its marked
-  // victim at PPID 1 four times that way. The unmarked neighbour did not leak: it inherited
+  // victim at PPID 1 four times that way. The unmarked neighbor did not leak: it inherited
   // the enclosing pi run's mark, and that run's exit sweep reaped it, while the marked victim's
   // mark had REPLACED the inherited one. A stand-in test process (the host, carrying an
   // enclosing run's mark) spawns a victim through the real fixture, with a context whose

@@ -205,7 +205,7 @@ test("a timed-out check whose tree dies on SIGTERM settles right after the deadl
   const wt = tmpdir();
   // On logical time (checkClock): the wall clock moves only the tree's real death, never the
   // check's timers, so a loaded host cannot push the settle toward the grace. Pre-fix-shaped
-  // behaviour (settling only at the SIGKILL) never settles on the clock budget below.
+  // behavior (settling only at the SIGKILL) never settles on the clock budget below.
   const advance = checkClock(t);
   let settled = false;
   const check = runBuildCheck(

@@ -135,7 +135,7 @@ export function duplicateHeadings(md: string): string[] {
  * absorbs it into the entry above (an entry opens only at a `### ` line, so the headingless
  * record becomes body text). A legitimate Fixed body holds exactly one Symptom/Fix pair; a
  * second block is a record merged in from a lost heading, where no section reader lists it and
- * the false-fix guard's symbol check reads it as part of its neighbour. Fenced lines are
+ * the false-fix guard's symbol check reads it as part of its neighbor. Fenced lines are
  * quoted content, never blocks, through backlog-md.ts's shared fenceTracker (an entry may
  * quote a template carrying both markers). */
 export function doubleBlockFixedEntries(md: string): string[] {
@@ -223,7 +223,7 @@ export async function backlogStructureReason(
     // A new headingless record cannot hide in a Fixed entry's body: reject a head whose
     // multi-block entries the base did not carry (an existing one never blocks unrelated
     // edits, matching the heading-set rules above). The Fix paragraph is the guard's unit, so
-    // a merged second block would otherwise sit inside the neighbour it was symbol-checked
+    // a merged second block would otherwise sit inside the neighbor it was symbol-checked
     // against.
     if (file === "BUGS.md") {
       const baseTitles = new Set(doubleBlockFixedEntries(base));

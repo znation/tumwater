@@ -79,7 +79,7 @@ test("applyKey backspace/delete remove a whole astral character, never a lone su
   assert.deepEqual(state, { text: emoji, cursor: 2 });
   state = applyKey(state.text, state.cursor, undefined, key("backspace"));
   assert.deepEqual(state, { text: "", cursor: 0 });
-  // Backspace mid-text removes the whole pair, keeping the neighbours intact.
+  // Backspace mid-text removes the whole pair, keeping the neighbors intact.
   state = applyKey("a\u{1f600}b", 3, undefined, key("backspace"));
   assert.deepEqual(state, { text: "ab", cursor: 1 });
   // Forward-delete at the start of a pair removes BOTH units (cursor stays put).

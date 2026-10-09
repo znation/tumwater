@@ -11,7 +11,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint
- * before re-attempting a rate-limited run. Honouring the hint is the point; capping it is
+ * before re-attempting a rate-limited run. Honoring the hint is the point; capping it is
  * what keeps one generous hint from consuming the tick's own run budget (the retry gets a
  * full fresh run budget, so a wait larger than the cap would spend the tick waiting, not
  * working). */

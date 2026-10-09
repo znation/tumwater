@@ -455,7 +455,7 @@ test("the urgency onset mid-cooldown warns once more with the earlier deadline",
 
 test("an unknown or unsettled running-build verdict never triggers the urgent window", async () => {
   // Cold cache, skip, or error: anything short of a settled red keeps the full 12 h cooldown —
-  // the carve-out is fail-safe in the direction of the old behaviour.
+  // the carve-out is fail-safe in the direction of the old behavior.
   const f = fakeDeps();
   const { r } = harness(f.deps);
   const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);

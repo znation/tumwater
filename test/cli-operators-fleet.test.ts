@@ -234,7 +234,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   await initProject(repo, "cli stop live");
 
   // A real, killable child process standing in for the orchestrator: a node eval with no
-  // SIGTERM handler, so the default behaviour applies and it dies with signal SIGTERM —
+  // SIGTERM handler, so the default behavior applies and it dies with signal SIGTERM —
   // letting the test assert the actual signal it dies from. Reaped in the finally: a failed
   // assertion that left it alive kept this file's process up forever (its event loop held by
   // the child), hanging the whole suite until the runner's ceiling (2026-10-01, a feature

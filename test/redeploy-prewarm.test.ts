@@ -13,7 +13,7 @@ import {
   settle,
 } from "./fixtures/redeploy-fixtures.js";
 
-// The cooldown/prewarm behaviour (src/redeploy/redeployer.ts's poll, with the probe tracking it
+// The cooldown/prewarm behavior (src/redeploy/redeployer.ts's poll, with the probe tracking it
 // owns in src/redeploy/redeploy-probes.ts; the RESTART_COOLDOWN_MS knob it defers with lives in
 // src/redeploy/redeploy-policy.ts): after a completed restart the fleet defers a
 // second episode until the deadline lapses, and while it defers, the pending head's green check
