@@ -6,6 +6,68 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Retract a config value: `tumwater config unset <key>` (planned 2026-10-09 by plan)
+
+**Goal:** an operator can remove one value from `tumwater.json` — a top-level key, one
+`maxDailyCostUsdPerRole`/`quietHoursPerRole` entry, one `model.<tier>` entry, or one
+`roles.<id>.<field>` — so it reverts to its default or disappears from its map/section. Today
+`tumwater config set` only writes: a role override such as `roles.qa.model` or a per-role cap has
+no CLI to remove it, so it can only be retracted by hand-editing the file, which bypasses
+`writeConfigMutation`'s process lock, `validateConfig`, and atomic write.
+
+**Approach:**
+
+- `src/config/config-write.ts`: add `unsetConfigKey(root, key): { ok: true; oldValue: unknown } |
+  { ok: false; error: string }` beside `setConfigKey`, sharing `parseConfigKey`,
+  `unknownConfigKeyError`, and `unknownRoleFieldError` so a typo reads the same whichever verb
+  named it. On `kind: "top"` delete `cfg[key]`; on `kind: "map"` delete the named `[role]`
+  entry; on `kind: "tier"` delete the named entry of `modelTierMap(record.model)`; on
+  `kind: "role"` delete the named field of the role entry. Drop the containing key/section when
+  it empties (an emptied map, the last field of a `roles.<id>` entry, an emptied `model` map) so
+  the file never keeps an empty object; a key that does not hold the named entry is a no-op
+  success. Run the merged candidate through the existing `writeConfigMutation` unchanged, so the
+  lock, `validateConfig`, and `writeJsonAtomic` still own truth — a candidate validation rejects
+  leaves the file byte-identical. Capture `oldValue` from the pre-mutation object (the value
+  removed, or `undefined` when nothing was set). Legacy `provider`/`fallbackModel` top-level keys
+  unset normally (only `set` refuses to add them).
+- `src/cli/config-commands.ts`: dispatch `sub === "unset"`, running `get`'s existing
+  dotted-key screens first (unknown role id via `knownRoleIds`/`unknownRoleMessage`, unknown role
+  field via `unknownRoleFieldError`), then `unsetConfigKey`; print one confirmation line naming
+  the key (and the removed value when there was one). Extend `CONFIG_USAGE` and the module
+  comment to the `get`/`set`/`unset` shape.
+- `src/cli.ts`: the `config` arity gate accepts `unset` and requires exactly two args (`unset
+  <key>`), like `get`.
+- `src/cli/help.ts` (`HELP`'s config stanza), `README.md` (the Settings paragraph after
+  `tumwater config set`), and `docs/how-it-works.md` (the Configuration mention near line 277)
+  document `unset <key>` as the inverse of `set`.
+
+**Files touched:** `src/config/config-write.ts`, `src/cli/config-commands.ts`, `src/cli.ts`,
+`src/cli/help.ts`, `README.md`, `docs/how-it-works.md`, `test/config-write.test.ts`,
+`test/config-commands.test.ts`.
+
+**Acceptance criteria:**
+
+- `tumwater config unset roles.qa.model` on a config that holds it removes the field and leaves
+  the entry's other fields; when the entry empties, `roles.qa` is gone from `tumwater.json`, and
+  `tumwater config get roles.qa.model` then prints `null`.
+- `tumwater config unset maxDailyCostUsdPerRole.feature` removes that entry and preserves the
+  map's other roles; `tumwater config unset model.strong` removes that tier (a single-selector
+  string `model` is left untouched when the named tier is not one of its resolved entries);
+  `tumwater config unset quietHours` removes the top-level key and `config get quietHours` then
+  reads the default.
+- Unsetting an absent entry (e.g. `maxDailyCostUsdPerRole.clean` with no entry) exits 0 as a
+  no-op and changes nothing.
+- `unset modle`, `unset roles.qqq.model`, and `unset roles.qa.colour` fail with the same
+  unknown-key/unknown-role/unknown-field wording `set` and `get` already use, and write nothing;
+  a candidate `validateConfig` rejects (e.g. unsetting `customLoops` while a custom loop's
+  `roles.<name>` entry remains) leaves `tumwater.json` byte-identical.
+- `tumwater config unset` with no key fails with `CONFIG_USAGE`; `unset <key> extra` fails the
+  `cli.ts` arity gate.
+- `test/config-write.test.ts` covers `unsetConfigKey` (top-level removal, dotted map/tier/role
+  removal preserving siblings, empty-section cleanup, absent no-op, unknown-key rejection,
+  byte-identical file on a validation failure) and `test/config-commands.test.ts` covers the
+  command shell and its wording; the project's check passes.
+
 ### Cover failure-caused loop pauses and model fallbacks in the failure digest's Fleet state changes (planned 2026-10-09 by plan)
 
 The failure digest's Fleet state changes section replays `STATE_CHANGE_TYPES` (src/failure/failure-state-change.ts) — the harness's own self-decisions that explain a stalled or failing loop. It already carries fleet pauses, operator per-role pauses, budget and rate-limit holds, live-config edits, redeploys and orchestrator lifecycle, but not the gate transitions added since `plans/telemetry-role.md` was written: `role_streak_paused` (the error-streak breaker auto-paused a role after consecutive failed ticks), `role_cap_paused`/`role_cap_resumed` (the role reached its own daily spend cap), and `model_fallback_started`/`model_fallback_ended` (the role tripped off its primary onto its fallback after provider-class failures). Each is the reason a loop stopped starting ticks or changed models, so today the digest can show the failed ticks and the error cluster without ever showing that the harness paused the role or moved it off-model. The event feed renders all five (`formatEvent` in src/events/event-format.ts); the digest alone drops them. BUGS.md's 2026-09-30 breaker-trip entry already reads as though the digest carried `role_streak_paused`; it does not.
