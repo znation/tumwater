@@ -320,7 +320,7 @@ test("history rejects unknown flags, prints no ticks yet on an empty log, and ha
 
 // --- --since <duration>: the window-shaped view (the sibling of logs --since / report --since)
 
-/** Seed tick pairs at fixed ages before `now` (the pattern cli-logs-filtering.ts uses for
+/** Seed tick pairs at fixed ages before `now` (the pattern cli-logs-filtering.test.ts uses for
  * --since): one 2-day-old tick_end outside any sane window, then a clean tick (start 50m,
  * end 45m) and a feature tick (start 30m, end 10m) inside a 1h window. */
 function seedWindowedHistory(repo: string, now = Date.now()): void {

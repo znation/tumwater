@@ -327,7 +327,7 @@ test("mainRedGate proceeds unverified when the baseline run spanned a host sleep
 });
 
 // mainTipVerdict's own verdict arms, pinned at the seam the review gate and the landing
-// pipeline's attribution read. attributeRedCheck.test.ts reaches green/red/no-check through
+// pipeline's attribution read. attribute-red-check.test.ts reaches green/red/no-check through
 // the attribution step; these pin the function directly — including the two degradation arms
 // no other test can reach: a skip (npm off PATH) and a main ref that resolves to nothing.
 // The skip-vs-unverified precedence matters: a skipped check is an environmental miss, not
