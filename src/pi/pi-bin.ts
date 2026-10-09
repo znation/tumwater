@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { findOnPath } from "../files/files.js";
+import { envPath, findOnPath } from "../files/files.js";
 
 /** Which agent binary the harness spawns and where that value came from — the resolution
  * precedence TUMWATER_PI_BIN → config.agentBin → "pi" (plans/portability.md §5/7), the
@@ -59,7 +59,7 @@ export function piMissingMessage(resolved: ResolvedAgentBin): string {
  * no PATH mutation — the gate and doctor both default it to the process PATH. */
 export function findAgentBinary(
   resolved: ResolvedAgentBin,
-  pathEnv: string = process.env.PATH ?? "",
+  pathEnv: string = envPath(),
 ): string | null {
   if (resolved.bin.includes("/")) {
     try {

@@ -81,11 +81,18 @@ export function unlinkAllMissingTolerant(files: readonly string[]): void {
   }
 }
 
+/** The PATH a binary lookup searches by default: the process PATH, or the empty string when
+ * it is unset (findOnPath then finds no directories). The one home of the default so every
+ * caller that exposes a `pathEnv` override falls back the same way. */
+export function envPath(): string {
+  return process.env.PATH ?? "";
+}
+
 /** Locate an executable on PATH the same way spawn() would resolve it: a regular file
  * with the execute bit in some PATH directory. Returns its absolute path, or null when
  * missing (or not executable), so callers can fail fast with a clear message instead of
  * letting every tick die with "spawn <name> ENOENT". */
-export function findOnPath(name: string, pathEnv: string = process.env.PATH ?? ""): string | null {
+export function findOnPath(name: string, pathEnv: string = envPath()): string | null {
   for (const dir of pathEnv.split(path.delimiter)) {
     if (!dir) continue;
     const candidate = path.join(dir, name);

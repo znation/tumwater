@@ -1,4 +1,5 @@
 import { loadConfigSafe } from "../config/config.js";
+import { envPath } from "../files/files.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
@@ -41,7 +42,7 @@ import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doct
  * checks, so tests can pin the report without reading the host's process table. */
 export async function runDoctor(
   root: string,
-  pathEnv: string = process.env.PATH ?? "",
+  pathEnv: string = envPath(),
   probe: ProcessProbe = systemProcessProbe,
 ): Promise<DoctorReport> {
   // Loaded once for the checks that read config (repo's baseBranch); a broken file stays

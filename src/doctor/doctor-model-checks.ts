@@ -5,6 +5,7 @@ import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/
 import { cacheReadUnpriced, fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
+import { envPath } from "../files/files.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
 import { formatTime } from "../text/datetime.js";
@@ -105,7 +106,7 @@ const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,
-  pathEnv: string = process.env.PATH ?? "",
+  pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<ProviderAuth> {
   const resolved = resolveAgentBin(config);

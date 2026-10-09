@@ -18,6 +18,7 @@ import {
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
+import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
@@ -63,7 +64,7 @@ test("checkNodeVersion reports this runtime as ok and warns below the declared f
 });
 
 test("checkGitBinary resolves git from the given PATH and fails with the shared message when absent", () => {
-  const ok = checkGitBinary(process.env.PATH ?? "");
+  const ok = checkGitBinary(envPath());
   assert.equal(ok.level, "ok");
   assert.ok(fs.statSync(ok.detail).isFile(), `detail is a resolved file: ${ok.detail}`);
 
@@ -83,9 +84,9 @@ test("checkAgentBinary resolves the default pi from the given PATH and fails wit
   assert.match(missing.detail, /install it/);
 });
 
-// The PATH parameter defaults to `process.env.PATH ?? ""` — a PATH deleted from the
-// environment entirely must hit the same empty-PATH fail as an explicitly empty one, not
-// read `undefined` as a search path.
+// The PATH parameter defaults to `envPath()` (the process PATH, or "") — a PATH deleted
+// from the environment entirely must hit the same empty-PATH fail as an explicitly empty
+// one, not read `undefined` as a search path.
 test("checkGitBinary and checkAgentBinary treat an unset PATH as empty", () => {
   withEnv("PATH", undefined, () => {
     assert.deepEqual(checkGitBinary(), { level: "fail", detail: GIT_MISSING_MESSAGE });
