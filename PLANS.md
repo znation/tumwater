@@ -6,6 +6,166 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Work ratio, part 1a/4: the maintenance allowance — window counts, the verdict and the `maintenancePerWorkLanding` setting (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4, which feature passed over as too big)
+
+Design: plans/work-ratio.md ("Maintenance follows work").
+
+Context. On 10-07 the fleet landed 335 commits for 22 plans and 28 bugs. 271 of those commits
+came from the code-maintenance roles; clean alone landed 118, averaging 8 lines each.
+
+`deferTickReason` (src/scheduling/scheduling.ts) only holds a maintenance role after a
+`no_change` tick, so a role that always finds something never yields. Part 1a builds the
+arithmetic and the setting with no scheduling effect. Part 1b puts it in front of the scheduler.
+
+**Approach.**
+1. **Tier.** Count by `commitTier` (src/roles/roles.ts, added by Work ratio 4/4):
+   - `"work"` (feature, bugfix, director) is the work count;
+   - `"maintenance"` (code-maintenance roles plus readme) is the maintenance count.
+   - Update `commitTier`'s doc comment: it is now the one home of the split that both the report
+     and the quota use, and it no longer predates 1/4.
+   - steward, observers, plan and custom roles are never counted or held.
+2. **Window.**
+   - A new src/gates/maintenance-quota.ts counts `merged` events by tier over the rolling 24 h
+     ending `now`: `{ work, maint }`.
+   - Read them through the existing windowed event reader (src/events/event-window.ts) with an
+     incremental cache, so a poll folds only newly appended lines and does not re-parse the
+     whole log. Reuse report-data's fold cache if it fits; do not write a third log parser.
+3. **Verdict.** Add a pure `maintenanceQuota({ work, maint, inFlight, perWorkLanding })` that
+   returns `{ allowance, used, held }`, where:
+   - `allowance = perWorkLanding × work + MAINTENANCE_DAILY_FLOOR` (an exported constant, 12);
+   - `used = maint + inFlight`;
+   - `held = used >= allowance`.
+4. **Config.**
+   - Add top-level `maintenancePerWorkLanding`: a number ≥ 0, default 2.
+   - Wire it through src/config/config-schema.ts, config.ts, config-field-checks.ts and
+     config-editable-keys.ts, so `tumwater config set` can edit it live.
+   - There is no switch to turn it off. A large value effectively disables it, per PRINCIPLES.md's
+     "opinionated defaults".
+   - Document it in README.md's config reference. Say that part 1b makes it hold loops; until
+     then it is computed but not enforced.
+
+**Files touched.**
+- src/gates/maintenance-quota.ts (new)
+- src/roles/roles.ts (doc comment only)
+- src/config/config-schema.ts, config.ts, config-field-checks.ts, config-editable-keys.ts
+- README.md
+
+Tests:
+- test/maintenance-quota.test.ts (new)
+- config validation cases
+
+**Acceptance criteria.**
+- **Allowance.** `maintenanceQuota({work: 10, maint: 32, inFlight: 0, perWorkLanding: 2})` is
+  `{allowance: 32, used: 32, held: true}`. With `maint: 31` it is not held.
+- **Floor.** With `work: 0`, the allowance is 12.
+- **Window.** In a fixture log with 3 feature, 1 director, 5 clean, 2 readme, 1 steward and
+  2 plan merges inside the last 24 h, plus 4 clean merges older than 24 h, the count is
+  `{work: 4, maint: 7}`.
+- **Incremental.** After appending one clean merge, a second count is `{work: 4, maint: 8}`,
+  and it reads only the appended bytes (assert through the cache, not timing).
+- **Config.** `maintenancePerWorkLanding: -1` and `"2"` fail validation with a field error, and
+  `tumwater config set maintenancePerWorkLanding 3` is accepted.
+- `npm run test` green.
+
+### Work ratio, part 1b/4: the scheduler holds maintenance loops past their allowance (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4; requires part 1a/4 landed)
+
+Design: plans/work-ratio.md ("Maintenance follows work").
+
+**Approach.**
+1. **Gate.**
+   - Add `newMaintenanceQuotaGateState()` and `pollMaintenanceQuotaGate(...)` to
+     src/gates/maintenance-quota.ts, modeled on src/gates/role-cap-gates.ts. The poll returns the
+     set of held loop ids: every enabled loop whose `commitTier` is `"maintenance"` while 1a's
+     verdict says held, and none otherwise.
+   - `inFlight` is the number of maintenance-tier loops currently running a tick or holding a
+     queued landing. Six concurrent permits cannot overshoot the allowance.
+   - Register the gate in `FleetGateStates` / `pollFleetGates` (src/gates/gate-polls.ts).
+   - Check it in `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) right after
+     `capPaused`.
+2. **Override.** A fresh operator wake (`wokenAt` newer than the last tick end) or a queued
+   prompt for that loop admits one tick anyway. This is the same demand override
+   `deferTickReason` honors.
+3. **Events.**
+   - Log `maintenance_quota_hold` {work, maint, allowance} when the gate goes from open to held.
+   - Log `maintenance_quota_resumed` when it re-opens. Both are fleet-level, logged once per
+     transition and not per loop.
+   - Add both to src/events/events.ts and src/events/event-format.ts.
+4. **Status.**
+   - Held loops show `held: maintenance quota <used>/<allowance>` wherever `capPaused` shows
+     today: src/status/status-data.ts and its TUI/GUI renderers.
+   - Add a `maintenanceQuota` field to the status payload, the same shape as `capPaused`.
+   - Update README.md's config reference: the setting now holds loops.
+
+**Files touched.**
+- src/gates/maintenance-quota.ts
+- src/gates/gate-polls.ts
+- src/orchestrator/orchestrator-scheduling.ts, orchestrator.ts
+- src/events/events.ts, event-format.ts
+- src/status/status-data.ts and its renderers
+- README.md
+
+Tests:
+- cases in test/maintenance-quota.test.ts
+- cases in test/orchestrator-scheduling.test.ts
+
+**Acceptance criteria.**
+- **Held.** With 10 work merges and 32 maintenance merges in the last 24 h, clean, dry and
+  readme are held. feature, bugfix, plan, steward, qa and telemetry tick normally.
+- **Window.** When a maintenance merge ages past 24 h, the gate re-opens with one
+  `maintenance_quota_resumed` event.
+- **In-flight.** With an allowance of 1 more than `maint`, two due maintenance loops start at
+  most one tick between them.
+- **Override.** `tumwater wake clean` while held runs exactly one clean tick.
+- **Live.** `tumwater config set maintenancePerWorkLanding 100` lifts the hold on the next poll.
+- `npm run test` green.
+
+### Work ratio, part 2/4: a clean tick sweeps one kind of drift across the tree instead of one site (planned 2026-10-08 by operator; trimmed 2026-10-08 by operator — the PRINCIPLES.md amendment it needed landed separately, since feature may not edit that file)
+
+Design: plans/work-ratio.md ("Batch hygiene").
+
+Context. On 10-07 clean's 118 commits averaged 1.1 files and about 15 changed lines. Five
+separate ticks fixed the same stale `_land-<role>` comments left by Worktree pool 2d/5
+(814074e2, 808f4b85, 888f9d73, 5913a6a1, 6ce40875). Each one cost a tick, a review, a build
+check and a landing.
+
+dry's charter already updates every call site of one repetition. clean's says "find ONE piece
+… clean that one thing", so this entry changes clean.
+
+The principle is already in place: PRINCIPLES.md's "one focused change per tick" bullet, and
+its starter-template copy in src/init/init-templates.ts, now say a focused change is one theme
+applied everywhere it holds, not one site. This entry changes no PRINCIPLES.md text.
+
+**Approach.**
+1. **Charter.**
+   - Rewrite clean's `find` text in src/roles/role-catalog.ts (the "Otherwise, find ONE piece of
+     unclean code" paragraph). The new rule: pick ONE *kind* of uncleanliness, grep for every
+     instance of it across the source, tests and markdown, and fix them all in this tick.
+   - Examples of a kind:
+     - comments that still name a removed mechanism;
+     - over-100-column doc lines in one directory;
+     - doc comments citing a renamed helper.
+   - Keep the diff under about 300 changed lines. When a kind has more instances than that,
+     clean one directory or subsystem completely and say in the WHY what remains.
+   - Keep the `<backlog-structure>` repair paragraph as is.
+2. **Review.**
+   - The review prompt must not reject a clean sweep for touching many files, as long as every
+     hunk is the same kind of fix.
+   - Check src/review's prompt text for a size or scope objection that would fire, and adjust
+     it only if one exists.
+
+**Files touched.**
+- src/roles/role-catalog.ts
+- review prompt text, only if needed
+- tests that pin charter text
+
+**Acceptance criteria.**
+- clean's charter names a kind-wide sweep with the ~300-line ceiling. The phrase "clean that
+  one thing" is gone.
+- `npm run test` green.
+- Follow-up check, a day after landing: clean's average changed lines per commit rises and its
+  commits per day fall (`git log --grep '^tumwater(clean)' --shortstat`). Record the numbers
+  in plans/work-ratio.md.
+
 ### Split the LoopRunner tick pipeline out of src/loop/loop.ts (planned 2026-10-08 by organize)
 
 Design principle: a file with too many responsibilities should be divided along the seams it already
@@ -81,138 +241,6 @@ class as a thin delegate to the phase function:
 - `grep -rn` over `src`, `test`, and the markdown finds no stale reference to a moved method name
   or a pre-move path.
 - `npm run test` green.
-
-### Work ratio, part 1/4: code-maintenance landings are budgeted against work landings (planned 2026-10-08 by operator)
-
-Design: plans/work-ratio.md ("Maintenance follows work").
-
-Context. On 10-07 the fleet landed 335 commits for 22 plans and 28 bugs. 271 of those commits
-came from the code-maintenance roles; clean alone landed 118, averaging 8 lines each.
-
-`deferTickReason` (src/scheduling/scheduling.ts) only holds a maintenance role after a
-`no_change` tick, so a role that always finds something never yields. Tier ordering decides who
-goes first, not how much maintenance runs. This entry caps maintenance volume relative to work
-that actually landed.
-
-**Approach.**
-1. **Roles.** Add `QUOTA_ROLES` in src/roles/roles.ts: `CODE_MAINTENANCE_ROLES` plus `readme`.
-   - steward, the observers (qa, telemetry), plan, director and custom roles are never held.
-   - Match on `baseRoleOf`, so future instances count against their role.
-2. **Allowance.**
-   - Over the rolling 24 h ending now, count `merged` events from the event log.
-     - `work` = merged events whose loop's base role is feature, bugfix or director.
-     - `maint` = merged events whose loop's base role is in `QUOTA_ROLES`.
-   - `allowance = maintenancePerWorkLanding × work + MAINTENANCE_DAILY_FLOOR`, where the floor
-     is the constant 12.
-   - Treat in-flight maintenance as used: running quota-role ticks plus their queued landings.
-     This keeps six concurrent permits from overshooting the allowance.
-   - Read the events through the existing windowed reader (src/events/event-window.ts) with an
-     incremental cache. Do not re-parse the whole log on every poll.
-3. **Gate.**
-   - Add a new src/gates/maintenance-quota-gates.ts, modeled on src/gates/role-cap-gates.ts:
-     - a pure verdict function;
-     - a `newMaintenanceQuotaGateState()`;
-     - a `pollMaintenanceQuotaGate(...)` that returns the set of held loop ids.
-   - Register it in `FleetGateStates` / `pollFleetGates` (src/gates/gate-polls.ts).
-   - Check it in `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) right after
-     `capPaused`.
-   - A fresh operator wake (`wokenAt` newer than the last tick end) or a queued prompt for that
-     loop admits one tick anyway. This is the same demand override the deferral honors.
-4. **Events.**
-   - Log `maintenance_quota_hold` {maint, work, allowance} when the gate goes from open to held.
-   - Log `maintenance_quota_resumed` when it re-opens. These are fleet-level events, emitted
-     once per transition, not per loop.
-   - Add both to src/events/events.ts and src/events/event-format.ts.
-5. **Config.**
-   - Add top-level `maintenancePerWorkLanding`: a number ≥ 0, default 2.
-   - Wire it through src/config/config-schema.ts, config.ts, config-field-checks.ts and
-     config-editable-keys.ts, so it is live-editable with `tumwater config set`.
-   - There is no switch to turn the gate off. A large value effectively disables it, per
-     PRINCIPLES.md's "opinionated defaults".
-6. **Status.**
-   - Held loops show `held: maintenance quota <maint>/<allowance>` wherever `capPaused` is shown
-     today: src/status/status-data.ts and its TUI/GUI renderers.
-   - Add a `maintenanceQuota` field to the status payload, the same shape as `capPaused`.
-
-**Files touched.**
-- src/roles/roles.ts
-- src/gates/maintenance-quota-gates.ts (new)
-- src/gates/gate-polls.ts
-- src/orchestrator/orchestrator-scheduling.ts
-- src/orchestrator/orchestrator.ts
-- src/config/config-schema.ts, config.ts, config-field-checks.ts, config-editable-keys.ts
-- src/events/events.ts, event-format.ts
-- src/status/status-data.ts and its renderers
-- README.md, the config reference
-
-Tests:
-- test/maintenance-quota-gates.test.ts (new)
-- cases in test/orchestrator-scheduling.test.ts
-
-**Acceptance criteria.**
-- **Held.** With 10 work merges and 32 maintenance merges in the last 24 h, the default
-  allowance is 2 × 10 + 12 = 32. clean, dry and readme are held; feature, bugfix, plan,
-  steward, qa and telemetry tick normally.
-- **Window.** A maintenance merge older than 24 h stops counting, and the gate re-opens with a
-  `maintenance_quota_resumed` event.
-- **In-flight.** With an allowance of 1 more than `maint`, two due maintenance loops start at
-  most one tick between them.
-- **Override.** A `tumwater wake clean` while held runs one clean tick.
-- **Floor.** With zero work merges, maintenance still lands up to 12 commits per 24 h.
-- **Config.** `tumwater config set maintenancePerWorkLanding 0` takes effect live, and a
-  negative or non-number value is rejected.
-- `npm run test` green.
-
-### Work ratio, part 2/4: a clean tick sweeps one kind of drift across the tree instead of one site (planned 2026-10-08 by operator)
-
-Design: plans/work-ratio.md ("Batch hygiene").
-
-Context. On 10-07 clean's 118 commits averaged 1.1 files and about 15 changed lines. Five
-separate ticks fixed the same stale `_land-<role>` comments left by Worktree pool 2d/5
-(814074e2, 808f4b85, 888f9d73, 5913a6a1, 6ce40875). Each one cost a tick, a review, a build
-check and a landing.
-
-dry's charter already updates every call site of one repetition. clean's says "find ONE piece
-… clean that one thing", so this entry changes clean.
-
-**Approach.**
-1. **Charter.**
-   - Rewrite clean's `find` text in src/roles/role-catalog.ts (the "Otherwise, find ONE piece of
-     unclean code" paragraph). The new rule: pick ONE *kind* of uncleanliness, grep for every
-     instance of it across the source, tests and markdown, and fix them all in this tick.
-   - Examples of a kind:
-     - comments that still name a removed mechanism;
-     - over-100-column doc lines in one directory;
-     - doc comments citing a renamed helper.
-   - Keep the diff under about 300 changed lines. When a kind has more instances than that,
-     clean one directory or subsystem completely and say in the WHY what remains.
-   - Keep the `<backlog-structure>` repair paragraph as is.
-2. **Principle.**
-   - Amend PRINCIPLES.md's "one focused change per tick" bullet, and its mirror in
-     src/init/init-templates.ts: a focused change is one theme, applied everywhere it holds, not
-     one site.
-   - Keep the two texts identical. If a test pins that they match, update it.
-3. **Review.**
-   - The review prompt must not reject a clean sweep for touching many files, as long as every
-     hunk is the same kind of fix.
-   - Check src/review's prompt text for a size or scope objection that would fire, and adjust
-     it only if one exists.
-
-**Files touched.**
-- src/roles/role-catalog.ts
-- PRINCIPLES.md
-- src/init/init-templates.ts
-- review prompt text, only if needed
-- tests that pin charter or principle text (test/init-templates.test.ts, role-catalog tests)
-
-**Acceptance criteria.**
-- clean's charter names a kind-wide sweep with the ~300-line ceiling. The phrase "clean that
-  one thing" is gone.
-- PRINCIPLES.md and the init template carry the same amended bullet.
-- `npm run test` green.
-- Follow-up check, a day after landing: clean's average changed lines per commit rises and its
-  commits per day fall (`git log --author-date-order --grep '^tumwater(clean)' --shortstat`).
-  Record the numbers in plans/work-ratio.md.
 
 ### Worktree pool, part 5/5: slot waits, slot display, doctor check and docs (planned 2026-10-06 by operator; requires parts 4a/5, 4b/5 and 4c/5 landed)
 

@@ -48,7 +48,7 @@ roles landed 271 commits, about 6.3 for every work landing.
 
 ## Design
 
-1. **Maintenance follows work (Work ratio 1/4).**
+1. **Maintenance follows work (Work ratio 1a/4 and 1b/4, split from 1/4 on 10-08 after feature passed over it as too big).**
    - Code-maintenance landings in a rolling 24 h window are capped at
      `maintenancePerWorkLanding × work landings + 12`. The default for `maintenancePerWorkLanding`
      is 2.
@@ -62,7 +62,9 @@ roles landed 271 commits, about 6.3 for every work landing.
    - A clean tick fixes one *kind* of drift everywhere it occurs, not one site.
    - It stays inside a reviewable size ceiling, so a sweep reviews in the time a small fix
      does.
-   - This is still "one focused change per tick" (PRINCIPLES.md), focused on one theme.
+   - This is still "one focused change per tick" (PRINCIPLES.md), focused on one theme. The
+     operator amended that bullet on 10-08 to say so, because only director and steward may edit
+     PRINCIPLES.md and feature had passed over 2/4 for that reason.
 3. **Keep feature fed (Work ratio 3/4).**
    - The plan loop's "two or more" target counts only entries feature could take now: not
      blocked, not Refused, and not marked Needs-review or Needs-replan.

@@ -13,7 +13,9 @@ what to do, not what to avoid.
   commands and the harness owns commit/rebase/merge.
 - Opinionated defaults over configuration: ship one sensible way of doing things before adding a
   knob.
-- Small, complete, and correct beats big and half-done: one focused change per tick.
+- Small, complete, and correct beats big and half-done: one focused change per tick. Focused
+  means one theme, not one site: a kind of fix applied everywhere it holds is one change, and
+  the same fix landed one site per tick spends a review and a landing on each.
 - Latest instruction wins: a newer user request supersedes older recorded bugs, plans, and docs —
   synthesize it with the existing entries and update them in place so the record reflects current
   intent.
