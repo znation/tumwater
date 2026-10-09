@@ -72,12 +72,16 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number 
  * drill-down's duration (tick-detail-data.ts), so those consumers cannot drift into different
  * notions of a tick's span. A tick_end whose start is not in `events` (log rotation cut it, or
  * the tick was skipped before any start logged) has no entry; callers decide what an unpaired
- * end costs. Lives in the read module, not in a ui module, so core collectors can share it
- * without a core→ui import. */
+ * end costs. A tick_start whose `ts` is not a finite number is as unusable as an absent one and
+ * adds no entry either (the same "a torn or hand-edited line carries no usable timestamp"
+ * policy eventTick/eventUsage apply to their fields), so every value in the map is real epoch
+ * ms and the span below cannot subtract from `undefined`. Lives in the read module, not in a
+ * ui module, so core collectors can share it without a core→ui import. */
 export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
   for (const e of events) {
-    if (e.type === "tick_start") starts.set(`${e.loop}#${e.tick}`, e.ts);
+    const ts = finiteNumber(e.ts, null);
+    if (e.type === "tick_start" && ts !== null) starts.set(`${e.loop}#${e.tick}`, ts);
   }
   return starts;
 }
@@ -85,11 +89,17 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
 /** The start→end span of the `tick_end` event `ev` against `starts` (tickStartMap's pairing):
  * the `${loop}#${tick}` lookup and the clamp to non-negative, in one place beside the map
  * they index, so the key format and the span rule are spelled once. null when the start is
- * missing (rotation cut it); callers decide what an unpaired end costs — the failure digest
- * prices it as 0, history renders it as "—", tick detail omits the duration. */
+ * missing (rotation cut it) or when `ev.ts` is not a finite number (a torn or hand-edited end
+ * line can carry no usable timestamp); callers decide what an unpaired end costs — the failure
+ * digest prices it as 0, history renders it as "—", tick detail omits the duration. The end's
+ * guard is the same finiteness check eventTick/eventUsage apply to their fields: without it,
+ * `Math.max(0, undefined - start)` was NaN, and the failure digest's `tickDurationMs`
+ * (`tickSpanMs(ev, starts) ?? 0`) folded that NaN straight into its agent-hour totals —
+ * `NaN ?? 0` is still NaN. */
 export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
   const startTs = starts.get(`${ev.loop}#${ev.tick}`);
-  return startTs === undefined ? null : Math.max(0, ev.ts - startTs);
+  const endTs = finiteNumber(ev.ts, null);
+  return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }
 
 /** The event-tail size readEvents falls back to when a caller omits `limit` — a working

@@ -32,8 +32,9 @@ export function stringList(value: unknown): string[] {
  * absent, not a number, or not finite (NaN/±Infinity poison arithmetic and comparisons: a
  * NaN costUsd makes every budget-cap comparison false, so the cap never trips) — the one
  * home of the "the field is the number or it is nothing" read. The exact call sites:
- * event-read.ts's eventTick (tick → 0) and eventUsage (tokens, costUsd → 0); event-format.ts's
- * gigabytes (v → 0), minutes (ms → 0), and the build_stale/restart renderers (aheadCommits and
+ * event-read.ts's eventTick (tick → 0), eventUsage (tokens, costUsd → 0), tickStartMap and
+ * tickSpanMs (both ts → null); event-format.ts's gigabytes (v → 0), minutes (ms → 0), and the
+ * build_stale/restart renderers (aheadCommits and
  * abortedTicks → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
  * failure/failure-state-change.ts's build_stale aheadCommits → 0; this file's own

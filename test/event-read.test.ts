@@ -76,3 +76,18 @@ test("tickSpanMs measures start→end, clamps negatives to 0, and reads an unpai
   assert.equal(tickSpanMs(ev({ tick: 2, ts: 900 }), starts), null);
   assert.equal(tickSpanMs(ev({ tick: 1, ts: 600 }), tickStartMap([])), null);
 });
+
+test("tick timestamps that are not finite numbers never yield a NaN span", () => {
+  // A tick_start with no usable ts adds no entry — every value in the map is real epoch ms.
+  const starts = tickStartMap([
+    ev({ type: "tick_start", loop: "feature", tick: 1, ts: undefined }),
+    ev({ type: "tick_start", loop: "feature", tick: 2, ts: Number.NaN }),
+    ev({ type: "tick_start", loop: "feature", tick: 3, ts: 500 }),
+  ]);
+  assert.deepEqual([...starts.entries()], [["feature#3", 500]]);
+  // A corrupt end ts reads as an unpaired span, not `Math.max(0, undefined - start)` → NaN.
+  assert.equal(tickSpanMs(ev({ tick: 3, ts: undefined }), starts), null);
+  assert.equal(tickSpanMs(ev({ tick: 3, ts: Number.NaN }), starts), null);
+  // A finite end still measures against the good start: the guards do not over-reject.
+  assert.equal(tickSpanMs(ev({ tick: 3, ts: 900 }), starts), 400);
+});
