@@ -14,12 +14,12 @@ import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
- * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table.
- * Unlike operator/operator-commands.ts these write nothing but stdout — they only read the event log
- * and each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
- * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering layer they
- * drive — here the event formatter and the transcript renderer — while src/ui/ itself stays
- * off src/ module boundaries it does not own. */
+ * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table. Unlike
+ * operator/operator-commands.ts these write nothing but stdout — they only read the event log and
+ * each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
+ * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering
+ * layer they drive — here the event formatter and the transcript renderer — while src/ui/ itself
+ * stays off src/ module boundaries it does not own. */
 
 /** Print one event as the feed line: formatEvent's rendered line, or — in `--json` mode — the
  * raw HarnessEvent serialized exactly as stored in the log. The one home of the
@@ -193,7 +193,8 @@ async function cmdLogsTranscript(
 
   // Follow from where the initial window stopped, so each turn prints exactly once when its
   // message_end lands (torn trailing lines are held back by followFile). A fresh renderer:
-  // readTranscriptTail's formatTranscript already flushed any pending separator for what was on disk.
+  // readTranscriptTail's formatTranscript already flushed any pending separator for what
+  // was on disk.
   const renderer = createTranscriptRenderer(opts);
   followFile(file, offset, (lines) => {
     for (const line of lines) printEntry(renderer.feed(line));
