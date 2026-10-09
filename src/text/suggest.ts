@@ -31,7 +31,12 @@ function editDistance(a: string, b: string): number {
  * checkKnownKeys/checkKnownRoleId). Capped at `maxDistance`
  * (two edits by default — a typo's distance, not a different word's), so only a near miss
  * gets a hint and the suggestion can never fire as an auto-correction; the caller still
- * prints the full valid list, so a suggestion only annotates it. */
+ * prints the full valid list, so a suggestion only annotates it. A candidate more than one
+ * edit away must also begin with the input's own first character: two edits with a
+ * different initial is a different word, not a typo (`bogus` is two edits from `logs` and
+ * must not suggest), while a one-edit slip of the first letter (`xogs` for `logs`) still
+ * names its word. The filter runs inside the scan, so a disqualified near candidate cannot
+ * suppress a farther one that does share the initial. */
 export function suggestClosest(
   input: string,
   candidates: readonly string[],
@@ -40,7 +45,9 @@ export function suggestClosest(
   const needle = input.toLowerCase();
   let best: { candidate: string; distance: number } | null = null;
   for (const candidate of candidates) {
-    const distance = editDistance(needle, candidate.toLowerCase());
+    const lower = candidate.toLowerCase();
+    const distance = editDistance(needle, lower);
+    if (distance > 1 && distance <= maxDistance && lower[0] !== needle[0]) continue;
     if (best === null || distance < best.distance) best = { candidate, distance };
   }
   return best !== null && best.distance <= maxDistance ? best.candidate : null;

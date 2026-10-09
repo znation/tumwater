@@ -15,6 +15,16 @@ test("suggestClosest names the closest candidate within two edits, case-insensit
   assert.equal(suggestClosest("statis", ["status", "logs"]), "status");
   assert.equal(suggestClosest("frobnicate", ["model", "status"]), null);
   assert.equal(suggestClosest("", ["model"]), null);
+  // Two edits apart with a different first character is a different word, not a typo:
+  // "bogus" must not name "logs" even though the edit distance is two.
+  assert.equal(suggestClosest("bogus", ["logs"]), null);
+  assert.equal(suggestClosest("bogsu", ["logs"]), null);
+  // A one-edit slip of the first character still suggests — the shared initial is required
+  // only beyond one edit.
+  assert.equal(suggestClosest("xogs", ["logs"]), "logs");
+  // A disqualified near candidate cannot suppress a farther one that shares the initial:
+  // bogus→logs (2 edits, no shared initial) is dropped, bogus→bogusly (2 edits, shared) wins.
+  assert.equal(suggestClosest("bogus", ["logs", "bogusly"]), "bogusly");
   // The closest candidate wins even when another is also within the cap:
   // modle→model is 2 edits, modle→modeller 3, so the nearer spelling is named.
   assert.equal(suggestClosest("modle", ["modeller", "model"]), "model");
