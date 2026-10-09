@@ -120,6 +120,64 @@ test("parseVerdict clips long reasons and caps the count at ten", () => {
   assert.equal(parseVerdict(`VERDICT: reject\n${many}`)?.reasons.length, 10);
 });
 
+// A revision re-review is asked to check the prior objections FIRST, so a reviewer may open
+// its numbered reasons with a statement that they are resolved. That is not an objection, yet
+// every reasons[0] consumer would name it as the rejection and the author's note would tell
+// the author to fix it (BUGS.md 2026-10-09).
+test("a leading prior-objection resolution is not recorded as a rejection's first reason", () => {
+  const v = parseVerdict(
+    "VERDICT: reject\n" +
+      "1. Prior objections 1–10 are all resolved — the ten cited lines are now ≤100 bytes, so none is an outstanding rejection on this change.\n" +
+      "2. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n",
+  );
+  assert.equal(v?.verdict, "reject");
+  assert.deepEqual(v?.reasons, ["plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js"]);
+  assert.equal(
+    buildRejectedReviewNote({ reasons: v!.reasons }),
+    "Your previous change was rejected in review:\n" +
+      "1. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n" +
+      "Address the objections or take a different approach.",
+  );
+});
+
+// The filter drops only a resolution; a line that reports a prior objection still open is a
+// real objection and must lead the list.
+test("a prior objection reported unresolved is kept as the first reason", () => {
+  const v = parseVerdict("VERDICT: reject\n1. Prior objection 3 is still unresolved — the helper drops errors.");
+  assert.deepEqual(v?.reasons, ["Prior objection 3 is still unresolved — the helper drops errors."]);
+  const notResolved = parseVerdict("VERDICT: reject\n1. Prior objection 2 is not resolved by this revision.");
+  assert.deepEqual(notResolved?.reasons, ["Prior objection 2 is not resolved by this revision."]);
+});
+
+// A resolution phrase with an adverb between the negation and "resolved" is still an open
+// objection; the filter must not read it as a resolution and delete it (review 2026-10-09).
+test("an unresolved prior objection phrased with an intervening adverb is kept", () => {
+  const v = parseVerdict("VERDICT: reject\n1. Prior objection 2 is not yet fully resolved — the helper drops errors.");
+  assert.deepEqual(v?.reasons, ["Prior objection 2 is not yet fully resolved — the helper drops errors."]);
+});
+
+// A single line that reports some prior objections resolved and another still open is not a
+// resolution; dropping it whole would hide the open one the author must fix (review 2026-10-09).
+test("a line mixing a resolution with an open objection is kept whole", () => {
+  const contrast = "Prior objections 1 and 2 are resolved, but objection 3 requires a bounds check.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${contrast}`)?.reasons, [contrast]);
+  const outstanding = "Prior objections 1 and 2 are resolved; objection 3 is outstanding.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${outstanding}`)?.reasons, [outstanding]);
+});
+
+// When the reasons below the VERDICT line are all resolutions, the filter leaves nothing;
+// the objections may sit above the verdict line, so the whole-text region is tried next
+// rather than returning an empty reason list (review 2026-10-09).
+test("a rejection falls back past a resolution-only post-verdict region to the whole text", () => {
+  const v = parseVerdict(
+    "1. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n" +
+      "VERDICT: reject\n" +
+      "Prior objections 1–10 are all resolved — all ten cited lines are now ≤100 bytes.\n",
+  );
+  assert.equal(v?.verdict, "reject");
+  assert.deepEqual(v?.reasons, ["plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js"]);
+});
+
 // Reply shapes the fleet's reviewers really wrote (BUGS.md 2026-09-23: 11 approvals logged a
 // preamble as their `review_verdict` reason). Reviewers number findings in bold or under
 // headings and open with a colon-terminated lead-in or a bare heading; a bare-marker list

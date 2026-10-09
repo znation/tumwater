@@ -160,7 +160,9 @@ not just whether it is correct.`,
     parts.push(
       `This change is revision ${priorReview.round} of one previously rejected in review. Check each
 of the prior review's numbered objections FIRST — an unresolved one is a rejection on its own —
-then review the whole diff as usual. The prior objections were:\n${list}\nThe interdiff
+then review the whole diff as usual. List only the still-unresolved objections as your numbered
+reasons; state that a prior objection is resolved in prose, never as a numbered reason, so the
+recorded rejection is not read as the resolution itself. The prior objections were:\n${list}\nThe interdiff
 between the rejected version and this revision (what the revision changed, main's own movement
 excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
     );

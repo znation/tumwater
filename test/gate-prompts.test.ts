@@ -277,6 +277,8 @@ test("buildReviewPrompt shows a revision's prior objections and interdiff, and i
   assert.match(flat, /2\. second objection/);
   assert.match(flat, /prior review's numbered objections FIRST/);
   assert.match(flat, /an unresolved one is a rejection on its own/);
+  assert.match(flat, /List only the still-unresolved objections as your numbered reasons/);
+  assert.match(flat, /state that a prior objection is resolved in prose, never as a numbered reason/);
   assert.ok(prior.includes("<interdiff>\ninterdiff-marker\n</interdiff>"));
   assert.equal([...prior.matchAll(/VERDICT:/g)].length, 2, "the verdict contract is untouched");
   // Without a prior review the block is absent entirely, so a fresh change's prompt carries

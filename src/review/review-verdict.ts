@@ -29,12 +29,19 @@ export function parseVerdict(text: string): ReviewVerdict | null {
   // A verdict line is a marker, not a boundary: reasons may sit below the LAST verdict
   // line (the prompt's advertised shape — searched first), anywhere above it, or as prose
   // anywhere in the reply. Each region yields its numbered/bulleted lines, falling back to
-  // its non-empty prose, and the first region with something wins.
+  // its non-empty prose, and the first region whose reasons survive the reject filter wins.
   const after = text.slice(last.end);
   for (const reasons of [reasonsFrom(after), reasonsFrom(textWithoutVerdictLines(text, matches))]) {
-    if (reasons.length > 0) {
-      return { verdict: last.verdict, reasons: reasons.slice(0, MAX_REASONS).map(clipReason) };
-    }
+    if (reasons.length === 0) continue;
+    // A rejection's reasons are what the author is told to fix and what every reasons[0]
+    // surface names, so a leading statement that the prior objections are resolved is
+    // dropped: it is a resolution, not an outstanding objection (see
+    // withoutResolvedPriorObjections). When that leaves nothing, the first region held only
+    // a resolution, so the next region is tried — it may carry the objections stated above
+    // the verdict line. Returning reasons: [] here would hide them.
+    const kept = last.verdict === "reject" ? withoutResolvedPriorObjections(reasons) : reasons;
+    if (kept.length === 0) continue;
+    return { verdict: last.verdict, reasons: kept.slice(0, MAX_REASONS).map(clipReason) };
   }
   return { verdict: last.verdict, reasons: [] };
 }
@@ -88,4 +95,47 @@ function textWithoutVerdictLines(text: string, matches: VerdictMatch[]): string 
     pos = m.end;
   }
   return out + text.slice(pos);
+}
+
+/** Drop leading prior-objection resolution statements from a rejection's reason list. A
+ * revision re-review is asked to check the prior objections FIRST, so a reviewer may open its
+ * numbered reasons with a statement that they are all resolved — e.g. "Prior objections 1–10
+ * are all resolved — …". That resolution is not an objection, yet every reasons[0] consumer
+ * (the gate's detail, a loop's lastError, the digest's rejection clusters, the author's
+ * next-tick note) would name it as the outstanding rejection and tell the author to fix it.
+ * Dropping only from the FRONT keeps a line that reports an objection still open — those are
+ * real objections and stay. */
+function withoutResolvedPriorObjections(reasons: readonly string[]): string[] {
+  let firstKept = 0;
+  while (firstKept < reasons.length && isResolvedPriorObjection(reasons[firstKept] ?? "")) firstKept++;
+  return firstKept === 0 ? [...reasons] : reasons.slice(firstKept);
+}
+
+/** Whether a reason is solely a prior-objection resolution statement. Conservative by design:
+ * a line is dropped only when it names the prior objections, states them resolved, and carries
+ * no sign of an outstanding or newly stated objection (see hasOutstandingSignal). A resolution
+ * left in the list is a redundant reason; a dropped objection is the author being told to fix
+ * nothing, so anything ambiguous is kept. */
+function isResolvedPriorObjection(reason: string): boolean {
+  const text = reason.toLowerCase();
+  if (!/\bprior objections?\b/.test(text)) return false;
+  if (hasOutstandingSignal(text)) return false;
+  return /\bresolved\b|\baddressed\b|\bsatisfied\b|\bfixed\b|\bno longer\b|\bclosed\b/.test(text);
+}
+
+/** Whether a resolution-shaped line also carries an outstanding or newly stated objection: a
+ * negation ("not resolved", "not yet fully resolved"), a contrast that introduces another
+ * item ("but", "however", "except", "though", "yet"), or an action/defect word
+ * ("requires", "fails", "missing"). A bare "outstanding" is a signal too, unless it is
+ * negated ("objection 6 is outstanding" keeps the line; "none is an outstanding rejection"
+ * does not). */
+function hasOutstandingSignal(text: string): boolean {
+  if (
+    /\bunresolved\b|\bnot\b|\bcannot\b|\bstill\b|\bremains?\b|\bpending\b|\bbut\b|\bhowever\b|\bexcept\b|\bthough\b|\balthough\b|\byet\b|\brequires?\b|\bneeds?\b|\bshould\b|\bmust\b|\bfails?\b|\bmissing\b|\bincorrect\b|\bbroken\b|\bwrong\b|\bbugs?\b|\berror\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  return /\boutstanding\b/.test(text) && !/\b(?:none|no|nothing|never)\b[^.;]*\boutstanding\b/.test(text);
 }
