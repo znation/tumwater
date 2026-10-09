@@ -17,7 +17,8 @@ import { type RedeployEvent, Redeployer } from "./redeployer.js";
  * createRedeployer composition the run boot (cli/cli-run.ts) builds. */
 
 /** The production AutoRestartRecord: one JSON file under .tumwater/state/. A missing or torn
- * file reads as "no completed restart yet" — the same no-data policy as every other state reader. */
+ * file reads as "no completed restart yet" — the same no-data policy as every other state
+ * reader. */
 export function autoRestartRecord(root: string): AutoRestartRecord {
   const file = autoRestartStampPath(root);
   const stored = readJsonFile<{ at?: unknown }>(file)?.at;

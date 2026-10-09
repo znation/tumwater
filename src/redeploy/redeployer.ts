@@ -166,7 +166,8 @@ export class Redeployer {
       if (this.pendingHead === this.lastHead) s.restartPending = true;
       else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
       // Inside the post-restart cooldown the fleet deliberately keeps ticking on the stale build
-      // — say so with a deadline, through the same channel as a refused restart (BUGS.md 2026-09-11).
+      // — say so with a deadline, through the same channel as a refused restart
+      // (BUGS.md 2026-09-11).
       // Past it, a startup gate that keeps failing holds the fleet on the stale build just as
       // surely, and says why the same way (BUGS.md 2026-09-23).
       else if (s.stale && this.autoRestartOn) {
