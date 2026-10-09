@@ -49,7 +49,7 @@ export interface HarnessEvent {
     | "counters_reset"
     | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume" // the interrupted tick's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff)
-    | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the landing is a revision (plans/revise-rejected.md part 2/2)
+    | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the landing is a revision (plans/revise-rejected.md part 2/2); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
     | "review_verdict" // approved; carries durationMs of the reviewer run
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"

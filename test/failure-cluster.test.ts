@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   EXAMPLE_MAX,
   TICK_TIMEOUT_KEY,
+  TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY,
   clusterMessages,
   normalizeClusterKey,
   poolTimeoutKey,
@@ -116,6 +117,16 @@ test("poolTimeoutKey pools the progressing-timeout variant into the plain key", 
   );
   assert.notEqual(reviewProgressing, plain);
   assert.equal(poolTimeoutKey(reviewProgressing), TICK_TIMEOUT_KEY);
+  // The resumed review's wording (PLANS.md, review-retry part 3/3) is its own cause: the next
+  // attempt continues the timed-out session rather than re-reviewing from scratch, so it keeps
+  // a row distinct from both the from-scratch review timeout and the plain tick timeout.
+  const reviewResumed = normalizeClusterKey(
+    "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review",
+  );
+  assert.equal(reviewResumed, TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
+  assert.notEqual(reviewResumed, reviewProgressing);
+  assert.notEqual(reviewResumed, plain);
+  assert.equal(poolTimeoutKey(reviewResumed), TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY);
   assert.equal(poolTimeoutKey("some other cause"), "some other cause");
 });
 
@@ -182,6 +193,34 @@ test("clusterMessages pools both tick-timeout shapes into one cluster", () => {
   // The pooled cluster's example is the newest message's verbatim text, whichever shape it
   // took (BUGS.md 2026-09-30).
   assert.match(pooled.example, /^timed out after 900s/);
+});
+
+test("clusterMessages keeps a resumed review's timeout separate from a from-scratch re-review", () => {
+  const { clusters, hiddenClusters } = clusterMessages(
+    [
+      {
+        message:
+          "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review",
+        role: "feature",
+        ts: 1,
+      },
+      {
+        message:
+          "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch",
+        role: "bugfix",
+        ts: 2,
+      },
+    ],
+    10,
+  );
+  assert.equal(hiddenClusters, 0);
+  assert.equal(clusters.length, 2);
+  // The from-scratch wording still clusters where it always did — the pooled plain tick-timeout
+  // row; the resumed wording stands as its own cause.
+  assert.deepEqual(
+    clusters.map((c) => c.key).sort(),
+    [TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, TICK_TIMEOUT_KEY].sort(),
+  );
 });
 
 test("clusterMessages keys a keyPrefix separately from the bare message", () => {

@@ -103,16 +103,32 @@ const TICK_TIMEOUT_PROGRESSING_KEY =
 // attempt re-reviews from scratch. Same cause, same knob (review.timeoutSeconds), one row.
 const TICK_TIMEOUT_PROGRESSING_REVIEW_KEY =
   "timed out after <dur> while still making progress — the commit is kept; the next attempt reviews it from scratch";
+// The review run's wording when a resumable session remains (PLANS.md, review-retry part 3/3):
+// the next attempt continues this review instead of re-reviewing. Continuing the timed-out
+// session is a different cause from a from-scratch re-review, so this wording is its own
+// cluster rather than joining the pooled plain tick-timeout row. Exported for its unit tests
+// (like TICK_TIMEOUT_KEY), so a display or digest test can pin the mapping by name.
+export const TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY =
+  "timed out after <dur> while still making progress — the commit is kept; the next attempt continues this review";
 
-/** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
- * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
- * one knob, not two half-size rows the top-N cut can drop — the same pooling the error-storm
- * reducer applies, src/fleet/error-storm.ts), and every other cause stands as normalizeClusterKey
- * rendered it. */
+/** The known progressing-timeout wordings and the key each pools under. The two review
+ * wordings name one cause on one knob (review.timeoutSeconds): a still-making-progress kill
+ * pools into the plain tick-timeout row (a mixed fleet of plain and progressing kills is one
+ * cause's agent-hours, not two half-size rows the top-N cut can drop — the same pooling the
+ * error-storm reducer applies, src/fleet/error-storm.ts), and a resumed review's wording maps
+ * to itself, because continuing the timed-out session is a different cause from a from-scratch
+ * re-review (PLANS.md, review-retry part 3/3). Enumerated so a future wording edit lands in
+ * this table rather than silently changing which row its timeouts count under. */
+const TIMEOUT_POOL = new Map<string, string>([
+  [TICK_TIMEOUT_PROGRESSING_KEY, TICK_TIMEOUT_KEY],
+  [TICK_TIMEOUT_PROGRESSING_REVIEW_KEY, TICK_TIMEOUT_KEY],
+  [TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY, TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY],
+]);
+
+/** The cluster key a normalized error clusters under: the pooled wordings above map to their
+ * row, and every other cause stands as normalizeClusterKey rendered it. */
 export function poolTimeoutKey(key: string): string {
-  return key === TICK_TIMEOUT_PROGRESSING_KEY || key === TICK_TIMEOUT_PROGRESSING_REVIEW_KEY
-    ? TICK_TIMEOUT_KEY
-    : key;
+  return TIMEOUT_POOL.get(key) ?? key;
 }
 
 /** A live cluster while collecting; `roles` is a set until the final sort. */

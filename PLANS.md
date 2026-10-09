@@ -6,24 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A review retry picks up the timed-out reviewer's session, part 3/3: resumed-review event and failure digest (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 2/3 landed)
-
-Part 2/3 already writes the accurate `review_failed` message itself (its conditional `reviewTimeoutRewrite`); this part makes the event feed and the failure digest read the same way. It is separable because a missing `resumed` render or a digest cluster is a reporting gap, not a behavior change.
-
-**Goal:** a resumed review is legible in the feed, and the failure digest clusters "continues this review" separately from "reviews it from scratch" so the top-loss ranking counts the two honestly.
-
-**Approach.**
-1. `src/events/event-format.ts`: the `review_start` case renders `review resumed <shortSha>` (with ` (revision N)` when `revision` is set) when the event's `resumed` flag is set, else the current `reviewing …` line.
-2. `src/failure/failure-cluster.ts`: add the "the next attempt continues this review" pattern as its own cluster and keep the existing "reviews it from scratch" pattern, so old log lines still cluster where they did.
-3. Tests: `test/event-format.test.ts` for the resumed line (flag set and unset), `test/failure-cluster.test.ts` for the two patterns.
-
-**Files touched:** src/events/event-format.ts, src/failure/failure-cluster.ts, test/event-format.test.ts, test/failure-cluster.test.ts.
-
-**Acceptance criteria:**
-- A `review_start` event with `resumed: true` renders `review resumed <sha>`, adding ` (revision N)` when `revision` is set; without the flag it renders the current `reviewing …` line.
-- The failure digest clusters the two timeout messages under distinct causes, and a line with only the from-scratch wording still clusters where it used to.
-- The project's check passes.
-
 ### Agent backends, part 3c2/7: the claude native log and translator warnings (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed)
 
 Design: plans/agent-backends.md ("Canonical event stream": the native stream is kept for
@@ -616,6 +598,24 @@ new `claude-run.test.ts` under test/, `test/test-runner.ts`.
   carries them; stdin carries the prompt.
 - `classifyExit` maps a nonzero exit with "Not logged in" stderr to `configError` and leaves a
   killed run unclassified.
+- The project's check passes.
+
+### A review retry picks up the timed-out reviewer's session, part 3/3: resumed-review event and failure digest (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 2/3 landed; done 2026-10-09 by feature)
+
+Part 2/3 already writes the accurate `review_failed` message itself (its conditional `reviewTimeoutRewrite`); this part makes the event feed and the failure digest read the same way. It is separable because a missing `resumed` render or a digest cluster is a reporting gap, not a behavior change.
+
+**Goal:** a resumed review is legible in the feed, and the failure digest clusters "continues this review" separately from "reviews it from scratch" so the top-loss ranking counts the two honestly.
+
+**Approach.**
+1. `src/events/event-format.ts`: the `review_start` case renders `review resumed <shortSha>` (with ` (revision N)` when `revision` is set) when the event's `resumed` flag is set, else the current `reviewing …` line.
+2. `src/failure/failure-cluster.ts`: add the "the next attempt continues this review" pattern as its own cluster and keep the existing "reviews it from scratch" pattern, so old log lines still cluster where they did.
+3. Tests: `test/event-format.test.ts` for the resumed line (flag set and unset), `test/failure-cluster.test.ts` for the two patterns.
+
+**Files touched:** src/events/event-format.ts, src/failure/failure-cluster.ts, test/event-format.test.ts, test/failure-cluster.test.ts.
+
+**Acceptance criteria:**
+- A `review_start` event with `resumed: true` renders `review resumed <sha>`, adding ` (revision N)` when `revision` is set; without the flag it renders the current `reviewing …` line.
+- The failure digest clusters the two timeout messages under distinct causes, and a line with only the from-scratch wording still clusters where it used to.
 - The project's check passes.
 
 ### A review retry picks up the timed-out reviewer's session, part 2/3: record and resume a progressing-timeout review session (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 1/3 landed; done 2026-10-09 by feature)

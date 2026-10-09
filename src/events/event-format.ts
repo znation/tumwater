@@ -182,8 +182,14 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change (the user stopped one loop's tick), like counters_reset — no
       // warning prefix. The resulting tick_end line carries the user_aborted outcome.
       return `tick aborted by user`;
-    case "review_start":
-      return `reviewing ${shortSha(e.head)}${e.revision !== undefined ? ` (revision ${textOr(e.revision)})` : ""} before merge${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
+    case "review_start": {
+      // A resumed review continues a timed-out reviewer's session (PLANS.md, review-retry part
+      // 3/3). The verb names that, because a bare "reviewing" line reads as a from-scratch run;
+      // the revision and model suffixes are unchanged and independent of the flag.
+      const revision = e.revision !== undefined ? ` (revision ${textOr(e.revision)})` : "";
+      const model = e.model !== undefined ? ` on ${textOr(e.model)}` : "";
+      return `${e.resumed ? "review resumed" : "reviewing"} ${shortSha(e.head)}${revision} before merge${model}`;
+    }
     case "review_verdict":
       return `review approved ${shortSha(e.head)}${e.reason ? ` — ${textOr(e.reason)}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
