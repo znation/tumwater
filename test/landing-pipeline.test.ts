@@ -55,6 +55,21 @@ import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 // records the observers read. The review gate's pi runs are real subprocesses behind the fake
 // shim, exactly as lander.test.ts drives vetRequest and landVetted directly.
 
+/** The fixture the three busy-merge-slot tests below share: an alpha+beta queue on a real
+ * repo, a landing config whose check is a no-op, the fake approver, and a pipeline whose merge
+ * slot is held busy so both vets stack up before any merge. `restore` must run in the caller's
+ * finally, after its tasks settle. */
+async function busyMergePipeline() {
+  const root = makeRepo();
+  await queueChanges(root, ["alpha", "beta"]);
+  const mainBefore = mainSha(root);
+  const config = { ...defaultConfig(), check: { command: "true" } };
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
+  pipeline.merge = busySlot();
+  return { root, mainBefore, restore, ctx, pipeline };
+}
+
 test("a torn head is dropped with a warning and the healthy entry behind it lands", async () => {
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
@@ -134,13 +149,7 @@ test("a settled landing detaches its shutdown listener: the long-lived stop sign
 });
 
 test("changes vetted while the merge slot is busy merge as one stack: one shared check, one fast-forward", async () => {
-  const root = makeRepo();
-  await queueChanges(root, ["alpha", "beta"]);
-  const mainBefore = mainSha(root);
-  const config = { ...defaultConfig(), check: { command: "true" } };
-  const restore = fakePi(APPROVE());
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
-  pipeline.merge = busySlot();
+  const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 2, "both changes to be vetted");
     pipeline.merge = null; // the busy slot frees
@@ -173,13 +182,7 @@ test("changes vetted while the merge slot is busy merge as one stack: one shared
 });
 
 test("a vetted change whose queue entry is gone is forgotten while its neighbor still lands", async () => {
-  const root = makeRepo();
-  await queueChanges(root, ["alpha", "beta"]);
-  const mainBefore = mainSha(root);
-  const config = { ...defaultConfig(), check: { command: "true" } };
-  const restore = fakePi(APPROVE());
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
-  pipeline.merge = busySlot();
+  const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 2, "both changes to be vetted");
     // beta's queue entry vanishes while beta sits vetted — the only way an entry leaves the
@@ -672,13 +675,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
 // head author's state records the error, and the next poll re-vets from the surviving pins.
 
 test("a plumbing throw in the merge keeps every entry queued and un-vetted, records the error, and recovers on the next poll", async () => {
-  const root = makeRepo();
-  await queueChanges(root, ["alpha", "beta"]);
-  const mainBefore = mainSha(root);
-  const config = { ...defaultConfig(), check: { command: "true" } };
-  const restore = fakePi(APPROVE());
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
-  pipeline.merge = busySlot();
+  const { root, mainBefore, restore, ctx, pipeline } = await busyMergePipeline();
   // The sabotage target, repaired in the finally even when an assert throws first.
   const worktreesHome = path.join(root, ".git", "worktrees");
   try {
