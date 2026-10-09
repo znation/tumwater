@@ -26,6 +26,7 @@ import {
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { dieMidWrite } from "./helpers/fs-faults.js";
 import { projManifest } from "./fakes/fake-commands.js";
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
@@ -544,7 +545,7 @@ test("the completion timestamp survives process restart via its state file", asy
   assert.equal(stored.at, secondSwap, "the file holds the LATEST completion for the next process");
 });
 
-test("a completion write killed mid-flight leaves the previous timestamp intact", (t) => {
+test("a completion write killed mid-flight leaves the previous timestamp intact", () => {
   const root = tmpdir("auto-restart-atomic-");
   const first = 1_000_000;
   autoRestartRecord(root).record(first);
@@ -555,18 +556,14 @@ test("a completion write killed mid-flight leaves the previous timestamp intact"
   // must surface that failure without replacing the good file, or the respawned fleet boots
   // with lastAt null and skips the 12 h cooldown entirely — restarting again on the next stale
   // head instead of holding to the rate limit.
-  const realWriteFileSync = fs.writeFileSync;
-  t.mock.method(fs, "writeFileSync", ((file: fs.PathOrFileDescriptor, data: string | Uint8Array) => {
-    realWriteFileSync(file, typeof data === "string" ? data.slice(0, 10) : data.subarray(0, 10));
-    throw new Error("simulated mid-write failure");
-  }) as typeof fs.writeFileSync);
+  const restore = dieMidWrite();
   try {
     assert.throws(
       () => autoRestartRecord(root).record(2_000_000),
-      /simulated mid-write failure/,
+      /killed mid-write/,
     );
   } finally {
-    t.mock.restoreAll();
+    restore();
   }
   assert.equal(
     (readJson(autoRestartStampPath(root)) as { at: number }).at,

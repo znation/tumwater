@@ -10,6 +10,7 @@ import {
 } from "../src/fleet/orchestrator-info.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { dieMidWrite } from "./helpers/fs-faults.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 /** The orchestrator info file's own tests (src/fleet/orchestrator-info.ts): the tolerant read,
@@ -41,7 +42,7 @@ test("readOrchestratorInfo parses a valid info file", () => {
   assert.deepEqual(readOrchestratorInfo(root), info);
 });
 
-test("writeOrchestratorInfo leaves the previous file intact when a write is killed mid-flight", (t) => {
+test("writeOrchestratorInfo leaves the previous file intact when a write is killed mid-flight", () => {
   const root = tmpdir("orchestrator-info-atomic-");
   const first: OrchestratorInfo = { pid: 1, startedAt: 1, roles: ["docs"] };
   writeOrchestratorInfo(root, first);
@@ -51,18 +52,14 @@ test("writeOrchestratorInfo leaves the previous file intact when a write is kill
   // partial prefix of the JSON, then throws. The atomic seam must surface the failure without
   // replacing the good file, so `tumwater run`'s liveness read still sees the running fleet
   // instead of booting a second one.
-  const realWriteFileSync = fs.writeFileSync;
-  t.mock.method(fs, "writeFileSync", ((file: fs.PathOrFileDescriptor, data: string | Uint8Array) => {
-    realWriteFileSync(file, typeof data === "string" ? data.slice(0, 10) : data.subarray(0, 10));
-    throw new Error("simulated mid-write failure");
-  }) as typeof fs.writeFileSync);
+  const restore = dieMidWrite();
   try {
     assert.throws(
       () => writeOrchestratorInfo(root, { pid: 2, startedAt: 2, roles: ["qa"] }),
-      /simulated mid-write failure/,
+      /killed mid-write/,
     );
   } finally {
-    t.mock.restoreAll();
+    restore();
   }
   assert.deepEqual(readOrchestratorInfo(root), first, "the torn write never replaced the good file");
 });

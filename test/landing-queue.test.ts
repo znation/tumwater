@@ -18,6 +18,7 @@ import {
 } from "../src/landing/landing-queue.js";
 import { landQueueDir } from "../src/paths.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
+import { dieMidWrite } from "./helpers/fs-faults.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 function entry(role: string, sha: string, tick = 1): LandingEntry {
@@ -175,7 +176,7 @@ test("queuedLandingFiles pairs each entry with its file in queue order — the b
   assert.equal(after[0]!.entry.role, "organize", "a drop on the paired file advances the slice");
 });
 
-test("a failed enqueue write never leaves a torn queue entry behind", (t) => {
+test("a failed enqueue write never leaves a torn queue entry behind", () => {
   const repo = makeRepo();
   // Seed one healthy entry so a torn write of the NEXT entry sorts LAST in the queue — the
   // position the drain's head-only repair (staleHeadFile) never reaches, where it would
@@ -184,18 +185,14 @@ test("a failed enqueue write never leaves a torn queue entry behind", (t) => {
   // Model a process killed mid-write: the writer lands a partial prefix of the JSON, then
   // throws — the shape a SIGKILL between write and close leaves, and the one ENOSPC/EIO
   // leaves. The enqueue must surface the failure and leave no file at the entry's path.
-  const realWriteFileSync = fs.writeFileSync;
-  t.mock.method(fs, "writeFileSync", ((file: fs.PathOrFileDescriptor, data: string | Uint8Array) => {
-    realWriteFileSync(file, typeof data === "string" ? data.slice(0, 10) : data.subarray(0, 10));
-    throw new Error("simulated mid-write failure");
-  }) as typeof fs.writeFileSync);
+  const restore = dieMidWrite();
   try {
     assert.throws(
       () => enqueueLanding(repo, entry("organize", "b".repeat(40))),
-      /simulated mid-write failure/,
+      /killed mid-write/,
     );
   } finally {
-    t.mock.restoreAll();
+    restore();
   }
   // The seed is untouched and the partial never became a queue file. A non-head torn entry
   // would be skipped by the content readers (queuedLandings) while the drain's head-only

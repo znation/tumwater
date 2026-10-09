@@ -80,22 +80,33 @@ export function failRenameSyncOn(target: string, message: string): () => void {
   });
 }
 
+/** How many bytes a mid-write death leaves behind when the caller does not name its own. */
+const MID_WRITE_PARTIAL_BYTES = 10;
+
 /** Simulate the process dying partway through a file write: the next fs.writeFileSync writes
  * `partial` to whatever destination the writer chose — a plain writer's target, or a
  * tmp+rename writer's tmp — and throws instead of completing, as if the process was killed
- * after the bytes reached the file and before the call returned. A plain writer leaves the
- * truncated file at its target; a tmp+rename writer leaves the target untouched and cleans up
- * its tmp. Returns an undo function. */
-export function dieMidWrite(partial: string): () => void {
+ * after the bytes reached the file and before the call returned. When `partial` is omitted the
+ * wrapper lands the first `MID_WRITE_PARTIAL_BYTES` of the bytes the caller passed, so the
+ * torn file holds a real prefix of the intended content. A plain writer leaves the truncated
+ * file at its target; a tmp+rename writer leaves the target untouched and cleans up its tmp.
+ * Returns an undo function. */
+export function dieMidWrite(partial?: string): () => void {
   let hit = false;
   return patchFsMethod("writeFileSync", (orig) => (p, ...rest) => {
     if (!hit) {
       hit = true;
-      orig(p, partial);
+      orig(p, partial ?? prefixOf(rest[0]));
       throw new Error("killed mid-write");
     }
     return orig(p, ...rest);
   });
+}
+
+function prefixOf(data: unknown): string | Uint8Array {
+  if (typeof data === "string") return data.slice(0, MID_WRITE_PARTIAL_BYTES);
+  if (data instanceof Uint8Array) return data.subarray(0, MID_WRITE_PARTIAL_BYTES);
+  return "";
 }
 
 /** The readFileSync twin of vanishOnOpen — for readers that stat and then read a small file
