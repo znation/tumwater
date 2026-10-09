@@ -64,16 +64,16 @@ const GIT_RESOLVE_TIMEOUT_MS = 10_000;
  * every exec before running the real binary (the same cost test/test-runner.ts's suiteEnv already
  * keeps out of the suite). Resolving the real binary once and spawning it by absolute path cuts
  * that per-spawn tax from every harness git call without changing what any command does: the same
- * binary ends up executing the same argv. Any other first git — Linux, Homebrew — spawns by name
- * exactly as before, and a machine with no git at all keeps the "git" name so the spawn still fails
- * ENOENT and GIT_MISSING_MESSAGE still applies. Resolution caches the found absolute path (null =
- * spawn by name); it never re-walks. The deliberate exception is build/build-check.ts's toolchain
- * probe, which must keep spawning PATH's stub — its "broken" verdict exists to catch exactly the
- * stub's exit-69-on-invalid-license failure, which the real binary would never surface. `timeoutMs`
- * bounds the xcrun probe (see GIT_RESOLVE_TIMEOUT_MS); it is a parameter so the suite can drive it
- * down against a fake wedged xcrun, and production callers keep the default. The probe itself —
- * the SIGKILL-bounded spawnSync and the "different, existing absolute binary" rule — is
- * xcrun-git.ts's `realGitFromXcrun`, shared with the test runner's suite environment. */
+ * binary ends up executing the same argv. Any other first git — Linux, Homebrew — spawns by
+ * name exactly as before, and a machine with no git at all keeps the "git" name so the spawn still
+ * fails ENOENT and GIT_MISSING_MESSAGE still applies. Resolution caches the found absolute path
+ * (null = spawn by name); it never re-walks. The deliberate exception is build/build-check.ts's
+ * toolchain probe, which must keep spawning PATH's stub — its "broken" verdict exists to catch
+ * exactly the stub's exit-69-on-invalid-license failure, which the real binary would never surface.
+ * `timeoutMs` bounds the xcrun probe (see GIT_RESOLVE_TIMEOUT_MS); it is a parameter so the suite
+ * can drive it down against a fake wedged xcrun, and production callers keep the default. The probe
+ * itself — the SIGKILL-bounded spawnSync and the "different, existing absolute binary" rule —
+ * is xcrun-git.ts's `realGitFromXcrun`, shared with the test runner's suite environment. */
 export function resolvedGitBin(timeoutMs: number = GIT_RESOLVE_TIMEOUT_MS): string {
   if (resolvedGit !== undefined) return resolvedGit ?? "git";
   let bin: string | null = null;

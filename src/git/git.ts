@@ -89,9 +89,9 @@ export async function refSha(root: string, ref: string): Promise<string | null> 
   return gitTry(root, "rev-parse", "--verify", ref);
 }
 
-/** True when `sha` is already contained in `branch` (git merge-base --is-ancestor; equality
- * counts as contained). The leftover-recovery entry condition uses this to tell a stale pin —
- * landed but not yet un-pinned by a crash between the ff and the ref deletion — from real work. */
+/** True when `sha` is already contained in `branch` (git merge-base --is-ancestor; equality counts
+ * as contained). The leftover-recovery entry condition uses this to tell a stale pin — landed but
+ * not yet un-pinned by a crash between the ff and the ref deletion — from real work. */
 export async function isMergedInto(root: string, sha: string, branch: string): Promise<boolean> {
   return (await gitTry(root, "merge-base", "--is-ancestor", sha, branch)) !== null;
 }
@@ -179,8 +179,8 @@ export function resolveGitDir(dir: string): string | undefined {
  * (src/status/status-polls.ts's mainCheckForPoll cannot await inside its per-second snapshot). A
  * `.git` directory (primary checkout) or a `gitdir: <path>` pointer file (a linked worktree — the
  * harness itself can run from one, as its own role worktrees do) both resolve. The HEAD line must
- * be `ref: refs/heads/<branch>`; a bare sha means detached HEAD — the same null the spawn produces,
- * since symbolic-ref fails on it — and anything else is unusual (undefined). */
+ * be `ref: refs/heads/<branch>`; a bare sha means detached HEAD — the same null the spawn
+ * produces, since symbolic-ref fails on it — and anything else is unusual (undefined). */
 export function currentBranchFromHeadFile(dir: string): string | null | undefined {
   const gitdir = resolveGitDir(dir);
   if (gitdir === undefined) return undefined; // No repo here (or .git unreadable) — let the spawn decide.

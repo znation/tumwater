@@ -1,8 +1,8 @@
 /** The persisted slot layout of the worktree pool (plans/worktree-pool.md): which
- * `.tumwater/worktrees/_slot-<n>` checkouts exist, who leases each, and which role each is
- * pinned for. Kept in its own module, apart from the pool's lease machinery, so the readers that
- * run in OTHER processes — `tumwater diff` (and the GUI's `/api/diff`) and `retire` — can resolve
- * a role's checkout from slots.json without importing the orchestrator's pool.
+ * `.tumwater/worktrees/_slot-<n>` checkouts exist, who leases each, and which role each is pinned
+ * for. Kept in its own module, apart from the pool's lease machinery, so the readers that run in
+ * OTHER processes — `tumwater diff` (and the GUI's `/api/diff`) and `retire` — can resolve a
+ * role's checkout from slots.json without importing the orchestrator's pool.
  *
  * Every read-modify-write goes through withStateLock on the lock beside the file, because `retire`
  * writes it from the CLI process while the orchestrator may be leasing from its own. */

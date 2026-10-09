@@ -21,10 +21,11 @@ export function extractSummary(finalText: string): string | null {
   return summary === null ? null : truncate(summary, COMMIT_SUMMARY_MAX);
 }
 
-/** The subject for a changed tick whose reply — and whose follow-up request — carried no SUMMARY
- * line: named from what actually changed, so the log still says what the commit touched instead
- * of only which loop made it. Up to three repo-relative paths (worktree order), then a count;
- * capped like a real summary. Falls back to the bare "<role> tick N" only when nothing is known. */
+/** The subject for a changed tick whose reply — and whose follow-up request — carried no
+ * SUMMARY line: named from what actually changed, so the log still says what the commit touched
+ * instead of only which loop made it. Up to three repo-relative paths (worktree order), then a
+ * count; capped like a real summary. Falls back to the bare "<role> tick N" only when nothing is
+ * known. */
 export function fallbackSummary(files: string[], role: string, tick: number): string {
   if (files.length === 0) return `${role} tick ${tick}`;
   const shown = files.slice(0, 3).join(", ");
@@ -35,11 +36,11 @@ export function fallbackSummary(files: string[], role: string, tick: number): st
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
 const COMMIT_BODY_FIELD_MAX = 200;
 
-/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK contract
- * declared by reply-contract.ts. Each field is optional: a non-compliant reply still commits
- * (subject + trailer). Module-private: every consumer — extractCommitBody, formatCommitBody,
- * buildCommitMessage — lives in this file, and tick-stage.ts works with the extracted values
- * structurally rather than naming the type. */
+/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
+ * contract declared by reply-contract.ts. Each field is optional: a non-compliant reply still
+ * commits (subject + trailer). Module-private: every consumer — extractCommitBody,
+ * formatCommitBody, buildCommitMessage — lives in this file, and tick-stage.ts works with the
+ * extracted values structurally rather than naming the type. */
 interface CommitBody {
   why?: string;
   risk?: string;
@@ -76,7 +77,8 @@ export function mergeCommitBody(base: CommitBody | null, update: CommitBody | nu
   return merged.why || merged.risk || merged.verified ? merged : null;
 }
 
-/** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is empty. */
+/** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is
+ * empty. */
 export function formatCommitBody(body: CommitBody): string {
   return [
     body.why && `WHY: ${body.why}`,
