@@ -5,14 +5,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A no-`--role` `prompt --cancel`/`--edit` miss prints the largest per-loop queue as if it were the total, so `(N queued across all loops)` undercounts what `--list` just showed (found by qa loop 2026-10-08, prompt-flow check of v0.1.1 built fresh from main)
+_None yet._
+
+## Fixed
+
+### A no-`--role` `prompt --cancel`/`--edit` miss prints the largest per-loop queue as if it were the total, so `(N queued across all loops)` undercounts what `--list` just showed (found by qa loop 2026-10-08, prompt-flow check of v0.1.1 built fresh from main; fixed 2026-10-08 by bugfix loop — the miss message now says `(longest queue holds <N>)`, naming the per-loop position count it actually carries)
 
 - **Symptom:** With prompts queued for more than one loop, a list-wide `tumwater prompt --cancel <n>` (or `--edit <n>`) for an out-of-range position reports `tumwater: no prompt at position <n> (<N> queued across all loops)`, but `<N>` is the largest single loop's queue length, not the number of prompts `--list` shows across all loops. Two director prompts plus one feature prompt make `--list` print three numbered entries (director 1–2, feature 1), while `--cancel 99` and `--edit 99 "x"` both fail with `(2 queued across all loops)`.
 - **Reproduce:** offline, no model, in a scratch dir: `git init -q scratch && cd scratch`; `tumwater init "x"`; `tumwater prompt "director one"`; `tumwater prompt "director two"`; `tumwater prompt --role feature "feature one"`; `tumwater prompt --list` prints three numbered entries; `tumwater prompt --cancel 99` exits 1 with `tumwater: no prompt at position 99 (2 queued across all loops)` (`tumwater prompt --edit 99 "x"` prints the same count).
 - **Expected:** the count matches what `--list` just showed (3), or the wording names what it counts (the largest per-loop queue) so it cannot be read as a total; today the phrase `across all loops` claims a total that the number is not.
 - **Suspected cause:** `resolveListedQueue` (src/inbox/inbox-cancel.ts) builds a miss as `queued: Math.max(0, ...scope.map((role) => queuedFiles(root, role).length))` — the largest queue, deliberately, per the `ListedQueueMiss` doc comment and the 2026-09-30 fix that introduced the list-wide resolution — and `sayListedOutcome` (src/inbox/prompt-commands.ts) renders that number into the fixed phrase `queued across all loops`. The resolution semantics are right; only the fixed phrase contradicts the value it prints.
-
-## Fixed
+- **Validation gap:** unclear-invariant — the number and the code's doc comments deliberately disagreed with the rendered phrase, so confirming the defect meant reconstructing that `--list` numbers positions per loop (making the longest queue, not the cross-loop total, the meaningful count for a miss) before the fix could be written.
 
 ### A non-hermetic gating-suite assertion reads the live host's `lsof` output, so a loaded host flakes `systemProcessProbe.cwds takes the lsof success path when every named pid is readable` and the harness latches main red — blocking coverage and security authoring while every other loop's gate keeps failing open against that red (found by telemetry loop 2026-10-08 from the failure digest's top error cluster `6× coverage, security · 10-08 → 10-08 — main e45bd422 is red (test: ✖ systemProcessProbe.cwds takes the lsof success path when every named pid is readable — … (+95 chars)`, the window's #1 error cluster by tick count, riding coverage's `0.8 h · $0.11` and security's `0.5 h · $0.08` error-class cells and the separate `11× … gate check failed on 506ce2a6, but main e45bd422 is red — not this change's failure; landing kept` warning cluster; the test landed in merged commit 994bd640, the same live-host-probe class its sibling `launchServicesPorts` was hermeticized for; fixed 2026-10-08 by bugfix loop — the lsof branch now runs through an injected `readLsofCwds` runner and the real wiring moved to the e2e tier)
 

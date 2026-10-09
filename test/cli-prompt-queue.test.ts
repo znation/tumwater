@@ -106,7 +106,7 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
   // shows, since a no-`--role` cancel addresses every loop's numbered section, not just one.
   let r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no prompt at position 2 \(1 queued across all loops\)/);
+  assert.match(r.stderr, /no prompt at position 2 \(longest queue holds 1\)/);
 
   // Non-numeric or non-positive values are rejected by the parser before any file is touched.
   for (const bad of ["0", "abc", "1.5"]) {

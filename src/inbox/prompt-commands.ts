@@ -97,15 +97,16 @@ function listWideScope(root: string): string[] {
 }
 
 /** The shared tail of the list-wide cancel/edit branches: report an ambiguity (naming the
- * rival loops, with the `--role` escape hatch) or a miss (carrying the queue count across
- * every loop), else render the resolved outcome through sayPromptOutcome. One helper so the
+ * rival loops, with the `--role` escape hatch) or a miss (carrying the length of the longest
+ * queue, the highest position numbering any loop can hold), else render the resolved outcome
+ * through sayPromptOutcome. One helper so the
  * two verbs' handling of the miss shapes cannot drift. */
 function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, position: number): void {
   if (listed.status === "ambiguous") {
     fail(`position ${position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
   }
   if (listed.status === "missing") {
-    fail(`no prompt at position ${position} (${listed.queued} queued across all loops)`);
+    fail(`no prompt at position ${position} (longest queue holds ${listed.queued})`);
   }
   sayPromptOutcome(position, listed.role, listed.outcome, true);
 }

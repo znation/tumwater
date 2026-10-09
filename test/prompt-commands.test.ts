@@ -150,7 +150,24 @@ test("prompt cancel without --role misses cleanly when no loop's queue reaches t
   const root = makeRoot();
   enqueueRolePrompt(root, "clean", "only one");
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "3"]));
-  assert.match(o, /no prompt at position 3 \(1 queued across all loops\)/);
+  assert.match(o, /no prompt at position 3 \(longest queue holds 1\)/);
+});
+
+test("prompt cancel/edit without --role names the longest queue, not the total across loops", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "one");
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "two");
+  enqueueRolePrompt(root, "clean", "only for clean");
+  // --list shows three numbered entries (director 1-2, clean 1), but per-loop numbering
+  // means no position 99 exists; the miss must say the longest queue holds 2, not report the
+  // total 3 as a per-loop position count or claim it is "across all loops".
+  const miss = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "99"]));
+  assert.match(miss, /no prompt at position 99 \(longest queue holds 2\)/);
+  const editMiss = await expectFailAsync(() => cmdPrompt(root, ["--edit", "99", "x"]));
+  assert.match(editMiss, /no prompt at position 99 \(longest queue holds 2\)/);
+  // Neither miss touched a queue.
+  assert.equal(inboxSize(root, DIRECTOR_ROLE), 2);
+  assert.equal(inboxSize(root, "clean"), 1);
 });
 
 test("prompt cancel --role succeeds in scope and fails out of range with the queue count", async () => {
@@ -293,7 +310,7 @@ test("prompt --edit with no --role resolves by the --list numbering: ambiguity a
   assert.deepEqual(queuedRolePrompts(root, "clean"), ["also first"], "an ambiguity edits nothing");
 
   const missing = await expectFailAsync(() => cmdPrompt(root, ["--edit", "5", "edited"]));
-  assert.match(missing, /no prompt at position 5 \(1 queued across all loops\)/);
+  assert.match(missing, /no prompt at position 5 \(longest queue holds 1\)/);
 
   // Cancel clean's entry, so only the director holds position 1: the edit resolves there
   // and its confirmation names the loop, since the caller scoped nothing.
