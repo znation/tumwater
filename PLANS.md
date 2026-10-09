@@ -6,6 +6,86 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Edit an operator-filed backlog entry: `tumwater plan --edit <n>` and `tumwater bug --edit <n>` (planned 2026-10-09 by plan)
+
+`tumwater bug`/`tumwater plan` file entries (`fileAndAnnounce`/`fileBug`/`filePlan` in
+`src/backlog/backlog-write.ts`) and `--cancel <n>` retracts them (`cancelAndAnnounce`/
+`removeEntry`), but nothing rewrites one in place: a mistyped symptom, a stale plan title, or a
+body an operator wants to correct must be fixed by hand-editing BUGS.md/PLANS.md, which bypasses
+`withStateLock(primaryWorktreeLockPath(root))` and can clobber a landing's working-tree
+fast-forward. `tumwater prompt` already has the whole verb set (`--list`/`--cancel`/`--edit`);
+this completes the backlog's.
+
+**Goal:** an operator can replace the nth entry's text in BUGS.md `## Open` or PLANS.md
+`## Planned` in its existing position, keeping the entry's original filing/refinement stamp and
+the cross-process lock, without a wake.
+
+**Approach:**
+
+- `src/backlog/backlog-write.ts`: add `editEntry`/`editEntryLocked` beside
+  `removeEntry`/`removeEntryLocked`, under the same `withStateLock(primaryWorktreeLockPath(root))`
+  guard. Locate the entry with `actionableEntryRanges(md, sectionTitle)` (fence-aware, so a
+  `### ` line quoted inside an entry's code fence is body text) and, for a position outside
+  `1..entries.length`, fail with the existing `sectionNoun` wording — `no <noun> at position <n>
+  (<count> in <file>)` — writing nothing.
+- Preserve the stamp while replacing the whole entry. Read the entry's full heading metadata as
+  `headingMetadata(lines, entry.start - 1).text` (the join that folds a wrapped heading's
+  continuation onto one line) and take its trailing suffix as
+  `metaText.slice(stripEntryStamp(metaText).length)` (`stripEntryStamp`, backlog-structure.ts) —
+  empty when the heading carries no `(planned …)`/`(reported …)` parenthetical. Rebuild the block
+  as `### <newTitle><suffix>` plus the new body and splice it over the entry's `start..end`
+  range, so the original date and the entry's position survive and a formerly wrapped heading is
+  re-collapsed to one line.
+- Match the append/remove blank-line shape: exactly one blank line between the rebuilt entry and
+  whatever follows it, and no extra trailing blank at EOF (the `trimLeadingBlankLines`/
+  `trimTrailingBlankLines` helpers are available).
+- Two thin callers: `editBug(root, n, rawText, usage)` collapses `rawText` through
+  `collapseWhitespace` (the `fileBug` rule), fails `bug needs a symptom: <usage>` when empty, then
+  calls `editEntry(root, "BUGS.md", "Open", n, symptom, "")`; `editPlan(root, n, rawTitle,
+  rawBody, usage)` collapses both, fails `plan needs a title: <usage>` on an empty title, then
+  `editEntry(root, "PLANS.md", "Planned", n, title, body)`. Each returns `{ file, title }` with
+  the new title.
+- Add `editAndAnnounce(root, args, command, edit)` to the same module, mirroring
+  `cancelAndAnnounce`'s peeling: consume `--edit <n>` (parse the position through the shared
+  `parsePositiveInt`, failing `--edit needs a positive integer…`), accept `--json` at most once,
+  refuse a second `--edit`, tolerate `--help`/`-h`, and name any other flag through
+  `rejectUnknownArgs`. Unlike cancel, everything left is the new text (the `fileAndAnnounce` prose
+  classification: `collapseWhitespace` folds it to one line, so a quoted `## `/`### ` line can
+  never grow a phantom section). After `requireReadyRepo`, print `edited <command> in <file>:
+  <title>` or the `--json` payload `{ file, title }`. No wake, like cancel — an edit adds no work
+  for a loop to pick up.
+- `src/cli.ts`: the `bug` and `plan` cases dispatch to `editAndAnnounce` when `args` includes
+  `--edit`, ahead of the `--cancel` and filing branches.
+- `src/cli/help.ts`: a `tumwater bug --edit <n> "<symptom>"` and a `tumwater plan --edit <n>
+  "<title>" [body...]` stanza, and add `--edit` to `FREEFORM_VALUED_FLAGS.bug`/`.plan` so the
+  `--help` interception skips the position value. `README.md`'s bug/plan table cells mention
+  `--edit` beside `--cancel`.
+
+**Files touched:** `src/backlog/backlog-write.ts`, `src/cli.ts`, `src/cli/help.ts`, `README.md`,
+`test/backlog-write.test.ts`.
+
+**Acceptance criteria:**
+
+- `tumwater bug --edit 2 "the corrected symptom"` replaces the 2nd `## Open` entry's heading
+  text, keeps its `(reported by the operator <original date>)` suffix verbatim and its position,
+  and leaves every other entry, both `## ` headings, and the surrounding bytes unchanged.
+- `tumwater plan --edit 1 "A corrected title" corrected body text` replaces that entry's heading
+  (keeping its trailing `(planned …)`/`(reported …)` suffix) and its body; the entry stays first
+  and every other `## Planned` entry is untouched.
+- A formerly wrapped heading is rebuilt on one line with its stamp intact; text quoting a `## `
+  or `### ` line is folded to one line, so no phantom section is created.
+- An out-of-range or non-decimal position fails with the cancel path's `no <noun> at position
+  <n> (<count> in <file>)` / `--edit needs a positive integer…` wording, exits non-zero, and
+  leaves the file byte-identical.
+- `tumwater bug --edit 1 ""` and `tumwater plan --edit 1 ""` fail with `bug needs a symptom: …`
+  / `plan needs a title: …` and write nothing.
+- `--json` prints `{ file, title }` with the new title; the prose form names the file and the new
+  title; no wake prompt is queued (`tumwater prompt --list` for the target loop is unchanged).
+- `test/backlog-write.test.ts` covers the in-process edit (middle/first/last replacement,
+  stamp and position preservation, fenced entry, empty/out-of-range failures, byte-identical file
+  on failure) and the CLI shell (confirmation, `--json`, no wake, help topics); the project's
+  check passes.
+
 ### A review retry picks up the timed-out reviewer's session instead of reviewing from scratch (planned 2026-10-09 by operator)
 
 When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the commit is kept; the next attempt reviews it from scratch". The next attempt then starts over: a fresh session, a fresh prompt, and the same budget. So a change too big to review inside one budget never finishes. On 2026-10-09 feature-2's ~980-line Agent backends 3a/7 revision (bed22438) went through five progressing timeouts (900 s and 1800 s) plus one connection error, about 3 hours of reviewer time and a six-error streak that raised the `failing` banner. The seventh attempt, starting fresh again, finished in 9 minutes. The author side already resumes a progressing timeout's session (`resumePending`). The reviewer should do the same: continue the same reviewer session, which already holds everything it read and concluded, and finish with a verdict.
