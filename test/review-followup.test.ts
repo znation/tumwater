@@ -10,7 +10,7 @@ import path from "node:path";
 
 import { requestNoRerun, requestVerdict } from "../src/review/review-followup.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../src/gates/gate-prompts.js";
-import { piLogPath, reviewSessionDir } from "../src/paths.js";
+import { piLogPath, reviewRunSessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { ToolCallStart } from "../src/review/suite-rerun.js";
@@ -52,6 +52,7 @@ function makeCtx(config: TumwaterConfig = defaultConfig()) {
     mainBranch: "main",
     config,
     tick: 7,
+    sessionDir: reviewRunSessionDir(root, "feature", "7-test"),
     runGatePi,
   };
   return { ctx, root, captured };
@@ -59,7 +60,7 @@ function makeCtx(config: TumwaterConfig = defaultConfig()) {
 
 /** Give the reviewer session dir one session file, as a just-finished review would. */
 function touchSession(root: string): string {
-  const dir = reviewSessionDir(root, "feature");
+  const dir = reviewRunSessionDir(root, "feature", "7-test");
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "session-1.jsonl");
   fs.writeFileSync(file, "");
@@ -68,7 +69,7 @@ function touchSession(root: string): string {
 
 test("requestVerdict returns null when there is no session to continue", async () => {
   const { ctx, root, captured } = makeCtx();
-  assert.equal(hasResumableSession(reviewSessionDir(root, "feature")), false);
+  assert.equal(hasResumableSession(reviewRunSessionDir(root, "feature", "7-test")), false);
   assert.equal(await requestVerdict(ctx), null);
   assert.equal(captured.opts, null); // the gate never ran: the caller counts the strike as before
 });

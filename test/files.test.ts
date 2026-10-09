@@ -49,6 +49,28 @@ test("pruneOldFiles removes only files older than the retention window", () => {
   assert.equal(pruneOldFiles(path.join(dir, "nope"), 7), 0);
 });
 
+test("pruneOldFiles removes an old empty directory and keeps a non-empty or fresh one", () => {
+  // Per-run review dirs (reviewRunSessionDir) hold only files, so once the pass above has
+  // pruned their contents the now-empty directory must go too — otherwise it accumulates.
+  const dir = tmpdir();
+  const review = path.join(dir, "review", "feature");
+  const oldEmpty = path.join(review, "1-old");
+  const freshEmpty = path.join(review, "1-fresh");
+  const oldFull = path.join(review, "1-full");
+  fs.mkdirSync(oldEmpty, { recursive: true });
+  fs.mkdirSync(freshEmpty, { recursive: true });
+  fs.mkdirSync(oldFull, { recursive: true });
+  fs.writeFileSync(path.join(oldFull, "session.jsonl"), "live");
+  backdate(oldEmpty, 10 * 24 * 3600 * 1000);
+  backdate(oldFull, 10 * 24 * 3600 * 1000);
+
+  pruneOldFiles(dir, 7);
+  assert.ok(!fs.existsSync(oldEmpty), "an old empty directory is removed");
+  assert.ok(fs.existsSync(freshEmpty), "a fresh empty directory is left for the next pass");
+  assert.ok(fs.existsSync(oldFull), "a non-empty directory is never removed");
+  assert.ok(fs.existsSync(path.join(oldFull, "session.jsonl")), "its file survives too");
+});
+
 test("findOnPath locates executables like spawn would resolve them", () => {
   const dir = tmpdir();
   const bin = path.join(dir, "pi");

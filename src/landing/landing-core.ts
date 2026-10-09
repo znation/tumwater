@@ -1,5 +1,5 @@
 import { deleteRef, headOf, setRef } from "../git/git.js";
-import { landingRefName, mergeWorktreePath, rejectedRefName } from "../paths.js";
+import { landingRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./landing-merge.js";
@@ -12,6 +12,7 @@ import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { REVISION_LIMIT } from "../loop/revision.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { shortSha } from "../text/format.js";
 import { setLandingStage } from "./landing-slot.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -142,6 +143,9 @@ function reviewContextFor(
     mainBranch: ctx.mainBranch,
     config: ctx.config,
     tick: req.tick,
+    // One directory per review of one change: tick plus the pinned sha, so a re-vet of the
+    // same sha reuses it and the vet and the conflict-resolved re-review agree.
+    sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`),
     signal: ctx.signal(),
     runGatePi: ctx.runGatePi,
     revisionRound: req.revisionRound,

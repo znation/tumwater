@@ -4,6 +4,7 @@ import { defaultConfig } from "../../src/config/config.js";
 import { freshLoopState } from "../../src/loop/loop-state.js";
 import { reviewAheadOfMain } from "../../src/review/review.js";
 import { runPi } from "../../src/pi/pi.js";
+import { reviewRunSessionDir } from "../../src/paths.js";
 import { headOf } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { commitIn, makeRepo } from "./repo-fixtures.js";
@@ -27,6 +28,7 @@ export function gateCtx(root: string, wt: string, tick = 1) {
     mainBranch: "main",
     config: defaultConfig(),
     tick,
+    sessionDir: reviewRunSessionDir(root, ROLE, `${tick}-test`),
     runGatePi: (opts: Parameters<typeof runPi>[0]) => runPi(opts),
   };
 }

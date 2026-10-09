@@ -6,28 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A review retry picks up the timed-out reviewer's session, part 1/3: per-review session directories (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch", which feature judged too large for one run)
-
-When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the next attempt reviews it from scratch", so a change too big for one budget never converges. The fix is to continue the same reviewer session, which already holds everything it read. This part is behavior-neutral on its own and exists so part 2/3 can `--continue` exactly the timed-out run: pi's `continueSession` maps to `--continue` (src/pi/pi-args.ts), which reaches only the newest session in the shared `_review/<role>` directory, so another review in between would be the one continued.
-
-**Goal:** each review run and the follow-ups on its session use their own directory, `reviewRunSessionDir(root, role, runKey)`, so a later attempt can continue precisely that run.
-
-**Approach.**
-1. `src/paths.ts`: add `reviewRunSessionDir(root, role, runKey): string` = `path.join(reviewSessionDir(root, role), runKey)`, documented as the per-run child of the role's review dir. Leave `reviewSessionDir` as the parent, so existing callers and `test/paths.test.ts` are unchanged.
-2. `src/review/review.ts`: add a required `sessionDir: string` to `ReviewContext` (the directory this review run and its follow-ups use). `reviewAheadOfMain` passes `ctx.sessionDir` as `runGatePi`'s `sessionDir` (replacing `reviewSessionDir(root, role)`); drop the "fresh session every time" comment the per-run directory now supersedes.
-3. `src/landing/landing-core.ts`: `reviewContextFor` sets `sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`)`, importing `shortSha` from `../text/format.js`. `req.tick` plus the pinned sha keys one directory per review of one change, so a re-vet of the same sha reuses it and the vet and the conflict-resolved re-review agree.
-4. `src/review/review-followup.ts`: `runFollowupTurn` reads `ctx.sessionDir` instead of computing `reviewSessionDir(ctx.root, ctx.role)`, so `requestVerdict`/`requestNoRerun` continue the run they follow; drop the now-unused import.
-5. `src/files/files.ts`: `pruneOldFiles` recurses but deletes only files, so empty per-run directories would accumulate. In `walk`, after a subdirectory is walked, remove it with `fs.rmdirSync(d)` (try/catch, vanish-tolerant) when it is empty and its own mtime is older than the cutoff; update the doc comment.
-6. Tests: `test/fixtures/gate-fixtures.ts`'s `gateCtx` gains `sessionDir: reviewRunSessionDir(root, ROLE, `${tick}-test`)`; `test/review-followup.test.ts`'s `makeCtx` literal gains the field and `touchSession` writes into the per-run dir; `test/files.test.ts` pins the empty-dir removal.
-
-**Files touched:** src/paths.ts, src/review/review.ts, src/review/review-followup.ts, src/landing/landing-core.ts, src/files/files.ts, test/paths.test.ts, test/review-followup.test.ts, test/fixtures/gate-fixtures.ts, test/files.test.ts.
-
-**Acceptance criteria:**
-- A gate run's pi invocation carries `--session-dir <root>/sessions/_review/<role>/<tick>-<shortsha>`, and a follow-up run carries the same directory.
-- Two reviews of different changes in one role use different directories; re-reviewing the same pinned sha uses the same one.
-- `test/review-followup.test.ts` still passes with its session file in the per-run directory.
-- `pruneOldFiles` removes an empty directory whose mtime is older than the window and leaves a non-empty one; the project's check passes.
-
 ### A review retry picks up the timed-out reviewer's session, part 2/3: record and resume a progressing-timeout review session (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 1/3 landed)
 
 **Goal:** a review that hits its time budget while still making progress leaves a marker, and the next review of the same change continues that reviewer session instead of starting from scratch. Part 3/3 (separate) updates the event feed and failure-digest rendering.
@@ -625,6 +603,28 @@ the cross-process lock, without a wake.
   stamp and position preservation, fenced entry, empty/out-of-range failures, byte-identical file
   on failure) and the CLI shell (confirmation, `--json`, no wake, help topics); the project's
   check passes.
+
+### A review retry picks up the timed-out reviewer's session, part 1/3: per-review session directories (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch", which feature judged too large for one run; done 2026-10-09 by feature)
+
+When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the next attempt reviews it from scratch", so a change too big for one budget never converges. The fix is to continue the same reviewer session, which already holds everything it read. This part is behavior-neutral on its own and exists so part 2/3 can `--continue` exactly the timed-out run: pi's `continueSession` maps to `--continue` (src/pi/pi-args.ts), which reaches only the newest session in the shared `_review/<role>` directory, so another review in between would be the one continued.
+
+**Goal:** each review run and the follow-ups on its session use their own directory, `reviewRunSessionDir(root, role, runKey)`, so a later attempt can continue precisely that run.
+
+**Approach.**
+1. `src/paths.ts`: add `reviewRunSessionDir(root, role, runKey): string` = `path.join(reviewSessionDir(root, role), runKey)`, documented as the per-run child of the role's review dir. Leave `reviewSessionDir` as the parent, so existing callers and `test/paths.test.ts` are unchanged.
+2. `src/review/review.ts`: add a required `sessionDir: string` to `ReviewContext` (the directory this review run and its follow-ups use). `reviewAheadOfMain` passes `ctx.sessionDir` as `runGatePi`'s `sessionDir` (replacing `reviewSessionDir(root, role)`); drop the "fresh session every time" comment the per-run directory now supersedes.
+3. `src/landing/landing-core.ts`: `reviewContextFor` sets `sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`)`, importing `shortSha` from `../text/format.js`. `req.tick` plus the pinned sha keys one directory per review of one change, so a re-vet of the same sha reuses it and the vet and the conflict-resolved re-review agree.
+4. `src/review/review-followup.ts`: `runFollowupTurn` reads `ctx.sessionDir` instead of computing `reviewSessionDir(ctx.root, ctx.role)`, so `requestVerdict`/`requestNoRerun` continue the run they follow; drop the now-unused import.
+5. `src/files/files.ts`: `pruneOldFiles` recurses but deletes only files, so empty per-run directories would accumulate. In `walk`, after a subdirectory is walked, remove it with `fs.rmdirSync(d)` (try/catch, vanish-tolerant) when it is empty and its own mtime is older than the cutoff; update the doc comment.
+6. Tests: `test/fixtures/gate-fixtures.ts`'s `gateCtx` gains `sessionDir: reviewRunSessionDir(root, ROLE, `${tick}-test`)`; `test/review-followup.test.ts`'s `makeCtx` literal gains the field and `touchSession` writes into the per-run dir; `test/files.test.ts` pins the empty-dir removal.
+
+**Files touched:** src/paths.ts, src/review/review.ts, src/review/review-followup.ts, src/landing/landing-core.ts, src/files/files.ts, test/paths.test.ts, test/review-followup.test.ts, test/fixtures/gate-fixtures.ts, test/files.test.ts.
+
+**Acceptance criteria:**
+- A gate run's pi invocation carries `--session-dir <root>/sessions/_review/<role>/<tick>-<shortsha>`, and a follow-up run carries the same directory.
+- Two reviews of different changes in one role use different directories; re-reviewing the same pinned sha uses the same one.
+- `test/review-followup.test.ts` still passes with its session file in the per-run directory.
+- `pruneOldFiles` removes an empty directory whose mtime is older than the window and leaves a non-empty one; the project's check passes.
 
 ### Agent backends, part 3b/7: the claude invocation and isolation environment (planned 2026-10-09 by plan; split from part 3/7; requires part 3a/7 landed; done 2026-10-09 by feature)
 

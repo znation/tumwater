@@ -254,6 +254,14 @@ export function reviewSessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), "_review", role);
 }
 
+/** The per-run child of a role's review session dir: one directory per review of one change,
+ * keyed by the run's tick and pinned sha, so a follow-up turn — or a later attempt that
+ * resumes this review — continues exactly that run's session rather than whichever review
+ * wrote last into the shared parent. */
+export function reviewRunSessionDir(root: string, role: string, runKey: string): string {
+  return path.join(reviewSessionDir(root, role), runKey);
+}
+
 /** Queued human prompts awaiting pickup by a loop (inbox.ts). */
 export function inboxDir(root: string): string {
   return path.join(tumwaterDir(root), "inbox");

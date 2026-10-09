@@ -17,6 +17,7 @@ import {
   qaCoveragePath,
   resetRequestPath,
   reviewSessionDir,
+  reviewRunSessionDir,
   sessionDir,
   slotWorktreePath,
   sessionsRootDir,
@@ -68,6 +69,10 @@ test("pins the full runtime layout", () => {
   assert.equal(sessionsRootDir(ROOT), path.join(S, "sessions"));
   assert.equal(sessionDir(ROOT, "qa"), path.join(S, "sessions", "qa"));
   assert.equal(reviewSessionDir(ROOT, "qa"), path.join(S, "sessions", "_review", "qa"));
+  assert.equal(
+    reviewRunSessionDir(ROOT, "qa", "1-abcd1234"),
+    path.join(S, "sessions", "_review", "qa", "1-abcd1234"),
+  );
   assert.equal(inboxDir(ROOT), path.join(S, "inbox"));
   assert.equal(mergeLockDir(ROOT), path.join(S, "merge.lock"));
   assert.equal(mergeWorktreePath(ROOT), path.join(S, "worktrees", "_merge"));

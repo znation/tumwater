@@ -215,7 +215,12 @@ export function removeTree(dir: string): void {
  * pass between the parent's readdir and this one — is skipped, the same vanish-tolerant policy
  * the per-file stat/delete below applies. This cleanup runs inside the orchestrator's poll loop
  * (RetentionPruner.poll), so a readdir throw escaping here would end the whole fleet; one
- * unreadable session directory must cost at most its own contents' retention pass. */
+ * unreadable session directory must cost at most its own contents' retention pass.
+ *
+ * After a subdirectory is walked, an empty one whose own mtime is past the cutoff is removed:
+ * the per-run review dirs (reviewRunSessionDir) contain only files, so without this they would
+ * outlive their pruned files forever. A non-empty directory and one still in use (fresh mtime)
+ * are left in place. */
 export function pruneOldFiles(dir: string, days: number): number {
   if (!fs.existsSync(dir)) return 0;
   const cutoff = Date.now() - days * 24 * 3600 * 1000;
@@ -231,6 +236,16 @@ export function pruneOldFiles(dir: string, days: number): number {
       const file = path.join(d, entry.name);
       if (entry.isDirectory()) {
         walk(file); // recurse; symlinks to dirs report isDirectory() false and are skipped
+        // Drop the directory itself once the pass has emptied it and its own mtime is past
+        // the cutoff. Vanish-tolerant: a concurrent pass, a refill between the stat and the
+        // readdir, or an unreadable dir just leaves it for the next pass.
+        try {
+          if (fs.statSync(file).mtimeMs < cutoff && fs.readdirSync(file).length === 0) {
+            fs.rmdirSync(file);
+          }
+        } catch {
+          // Vanished, unreadable, or refilled since the check; skip.
+        }
         continue;
       }
       if (!entry.isFile()) continue; // skip symlinks and other special entries

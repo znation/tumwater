@@ -7,7 +7,7 @@ import { changeBaseRev, headOf, patchId } from "../git/git.js";
 import { aheadOfMainDiff, aheadOfMainFiles, revisionInterdiff } from "../git/git-diff.js";
 import type { PriorReview } from "../landing/landing-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { piLogPath, reviewSessionDir } from "../paths.js";
+import { piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";
 import { readPrinciples } from "../prompt/principles.js";
@@ -56,6 +56,10 @@ export interface ReviewContext {
   config: TumwaterConfig;
   /** Current tick number, for the unique per-run session name. */
   tick: number;
+  /** The per-run directory this review and its follow-up turns use (reviewRunSessionDir in
+   * paths.ts). Unique per review of one change, so continuing the run — a verdict/nudge
+   * follow-up now, a resumed timed-out review later — reaches exactly this run's session. */
+  sessionDir: string;
   signal?: AbortSignal;
   /** Cap for the deterministic build pre-check run; defaults to BUILD_CHECK_TIMEOUT_MS.
    * A test seam — production callers leave it unset. */
@@ -307,10 +311,12 @@ export async function reviewAheadOfMain(
     // path below — commit kept, no strike — and re-lands through the author's next tick
     // instead of holding the land queue for a whole authoring tick.
     config: reviewCfg,
-    // Fresh session every time (no --continue): the reviewer must not inherit the author's
-    // context. Unique name per run — a fixed name would let pi resume an old review's
-    // context; old files are cleaned by the age-based prune at orchestrator start.
-    sessionDir: reviewSessionDir(root, role),
+    // This run's own session directory (per-run, keyed by tick and pinned sha): a follow-up
+    // turn, or a later attempt that resumes this review, continues exactly this run instead
+    // of whichever review wrote last. A fresh review carries no --continue — the reviewer
+    // must not inherit the author's context — and old files are collected by the age-based
+    // prune at orchestrator start.
+    sessionDir: ctx.sessionDir,
     sessionName: `tumwater-review-${role}-${ctx.tick}`,
     rawLogFile: piLogPath(root, role),
     // Label this run in the shared transcript (src/ui/transcript.ts renders it as

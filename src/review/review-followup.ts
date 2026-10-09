@@ -8,7 +8,7 @@ import { hasResumableSession } from "../pi/pi.js";
 import { sessionResumable } from "../agent/session-ledger.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { warnEventBestEffort } from "../events/events.js";
-import { piLogPath, reviewSessionDir } from "../paths.js";
+import { piLogPath } from "../paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../gates/gate-prompts.js";
 import type { ToolCallStart } from "./suite-rerun.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
@@ -32,7 +32,7 @@ async function runFollowupTurn(
     onToolCallStart?: (toolName: string, args: unknown) => void;
   },
 ): Promise<PiRunResult | null> {
-  const dir = reviewSessionDir(ctx.root, ctx.role);
+  const dir = ctx.sessionDir;
   const cfg = reviewRunConfig(ctx.config);
   // The verdict/re-run follow-up continues the review session the gate just wrote. The ledger
   // keeps a newer line of another kind from being the session the continue flag actually
