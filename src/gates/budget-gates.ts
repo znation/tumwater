@@ -28,7 +28,7 @@ import {
   type TierFallbackMap,
 } from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { pairFree, readPiProviders } from "../pi/pi-models.js";
 import type { LoopState } from "../loop/loop-state.js";
 
@@ -228,13 +228,13 @@ export function pollBudgetGate(
   // doubles the page on the poll the cap itself is reached.
   const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
   if (warn && !state.warned) {
-    logEvent(root, { loop: "harness", type: "budget_warning", spentUsd, capUsd });
+    logEventBestEffort(root, { loop: "harness", type: "budget_warning", spentUsd, capUsd });
     state.warned = true;
   } else if (!warn) {
     state.warned = false;
   }
   if (gate !== state.prevGate) {
-    logEvent(root, {
+    logEventBestEffort(root, {
       loop: "harness",
       type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
       spentUsd,

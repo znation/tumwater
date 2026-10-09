@@ -36,7 +36,7 @@ import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../fleet/failure-sprea
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
@@ -219,7 +219,7 @@ export function pollFleetGates(
         (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
       );
       if (matching.length > 0) {
-        logEvent(root, {
+        logEventBestEffort(root, {
           loop: "harness",
           type: "budget_handback",
           roles: matching.map((r) => r.role),

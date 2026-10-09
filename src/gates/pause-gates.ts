@@ -5,7 +5,7 @@
  * fleet hold) — the orchestrator owns only the wiring. */
 
 import { isFleetPaused, pausedRoles } from "../fleet/fleet-state.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
  * instead of once per ~2s poll. In memory only: a restart mid-pause logs one event on the
@@ -44,15 +44,17 @@ export function newPauseGateState(): PauseGateState {
 export function pollPauseGates(root: string, state: PauseGateState): PauseGates {
   const userPaused = isFleetPaused(root);
   if (userPaused !== state.prevUserPaused) {
-    logEvent(root, { loop: "harness", type: userPaused ? "fleet_paused" : "fleet_resumed" });
+    logEventBestEffort(root, { loop: "harness", type: userPaused ? "fleet_paused" : "fleet_resumed" });
     state.prevUserPaused = userPaused;
   }
   const pausedRolesNow = pausedRoles(root);
   const pausedRolesSet = new Set(pausedRolesNow);
   for (const r of pausedRolesNow)
-    if (!state.prevPausedRoles.has(r)) logEvent(root, { loop: "harness", type: "role_paused", role: r });
+    if (!state.prevPausedRoles.has(r))
+      logEventBestEffort(root, { loop: "harness", type: "role_paused", role: r });
   for (const r of state.prevPausedRoles)
-    if (!pausedRolesSet.has(r)) logEvent(root, { loop: "harness", type: "role_resumed", role: r });
+    if (!pausedRolesSet.has(r))
+      logEventBestEffort(root, { loop: "harness", type: "role_resumed", role: r });
   state.prevPausedRoles = pausedRolesSet;
   return { userPaused, pausedRoles: pausedRolesSet };
 }

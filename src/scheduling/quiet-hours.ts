@@ -8,7 +8,7 @@
  * operator pause. In-flight ticks finish; the gate sits before eligibility, so a tick due
  * inside the window simply starts at window end. */
 
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { gotSuffix, isNonBlankString } from "../text/text.js";
 
 /** A parsed window: minutes since local midnight for each end. `startMin > endMin` is a
@@ -117,7 +117,7 @@ export function pollQuietHoursGate(
   const inNow = parsed.ok && parsed.window !== null && inQuietHours(parsed.window, now);
   if (inNow !== state.prevIn) {
     state.prevIn = inNow;
-    logEvent(root, {
+    logEventBestEffort(root, {
       loop: "harness",
       type: inNow ? "quiet_hours_started" : "quiet_hours_ended",
       window: typeof quietHours === "string" ? quietHours : undefined,

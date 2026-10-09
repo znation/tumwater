@@ -1,5 +1,5 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
@@ -74,7 +74,7 @@ export function pollFleetHold(
     next.set(provider, pNext);
     const providerFields = provider === undefined ? {} : { provider };
     if (pPrev.until === null && pNext.until !== null) {
-      logEvent(root, {
+      logEventBestEffort(root, {
         loop: "harness",
         type: "rate_limit_hold",
         ...providerFields,
@@ -88,7 +88,7 @@ export function pollFleetHold(
       // the lift must be able to name what actually ended too — "429 hold lifted" after a
       // connection-error hold is the same lie the hold line's kind split removed
       // (BUGS.md 2026-09-29).
-      logEvent(root, {
+      logEventBestEffort(root, {
         loop: "harness",
         type: "rate_limit_resumed",
         ...providerFields,
@@ -122,7 +122,7 @@ export function pollErrorStorm(
   const next = errorStorm(prev, observations);
   if (next.key !== null && next.key !== prev.key) {
     const knob = errorStormKnob(next.key);
-    logEvent(root, {
+    logEventBestEffort(root, {
       loop: "harness",
       type: "warning",
       message:
@@ -157,7 +157,7 @@ export function pollFailureSpread(
   if (next.active && (!prev.active || next.kind !== prev.kind)) {
     const episode = next.recent.filter((o) => o.kind === next.kind);
     const roles = sortedRoles(new Set(episode.map((o) => o.role)));
-    logEvent(root, {
+    logEventBestEffort(root, {
       loop: "harness",
       type: "warning",
       message:

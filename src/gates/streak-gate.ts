@@ -35,7 +35,7 @@
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { pauseRole } from "../fleet/fleet-state.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
  * (src/fleet/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */
@@ -96,7 +96,7 @@ export function pollStreakGate(
     // role paused in between (an operator resume racing the next poll must not re-trip).
     state.acked.set(role, streak);
     if (pauseRole(root, role)) {
-      logEvent(root, {
+      logEventBestEffort(root, {
         loop: "harness",
         type: "role_streak_paused",
         role,

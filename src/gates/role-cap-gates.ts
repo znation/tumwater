@@ -28,7 +28,7 @@
 
 import type { LoopState } from "../loop/loop-state.js";
 import { dailyCost, todayStamp } from "../budget/budget.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 
@@ -99,9 +99,9 @@ export function pollRoleCapGate(
     const over = roleCapPaused({ dayCostUsd: spent, dayStamp: todayStamp(now) }, cap, now);
     const was = state.prev.has(base);
     if (over && !was) {
-      logEvent(root, { loop: "harness", type: "role_cap_paused", role: base, spentUsd: spent, capUsd: cap });
+      logEventBestEffort(root, { loop: "harness", type: "role_cap_paused", role: base, spentUsd: spent, capUsd: cap });
     } else if (!over && was) {
-      logEvent(root, { loop: "harness", type: "role_cap_resumed", role: base });
+      logEventBestEffort(root, { loop: "harness", type: "role_cap_resumed", role: base });
     }
     if (over) {
       overBases.add(base);
