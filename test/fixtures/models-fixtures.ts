@@ -22,6 +22,16 @@ export const MODELS_JSON = JSON.stringify({
   },
 });
 
+/** A models.json whose free provider is `local` (model `local-free`) with a `paid` provider
+ * beside it: the fallback-model tests configure that exact pair, so the pricing gate resolves
+ * it. */
+export const LOCAL_FREE_MODELS_JSON = JSON.stringify({
+  providers: {
+    local: { models: [{ id: "local-free", cost: { input: 0, output: 0 } }] },
+    paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+  },
+});
+
 /** Only priced models: the configured fallback cannot resolve to a free one. */
 export const PAID_ONLY_JSON = JSON.stringify({
   providers: { paid: { models: [PAID_MODEL] } },

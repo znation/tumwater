@@ -20,7 +20,7 @@ import { initProject } from "../src/init/init.js";
 import { mainSha, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { MODELS_JSON } from "./fixtures/models-fixtures.js";
+import { LOCAL_FREE_MODELS_JSON, MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
@@ -402,18 +402,7 @@ test("snapshot marks the budget free when every fleet model is unpriced", async 
 test("snapshot carries the fallback model only when pi prices it at zero", async () => {
   const repo = makeRepo();
   await initProject(repo, "fallback snapshot test");
-  const dir = tmpdir("status-fallback-");
-  fs.mkdirSync(dir, { recursive: true });
-  const modelsFile = path.join(dir, "models.json");
-  fs.writeFileSync(
-    modelsFile,
-    JSON.stringify({
-      providers: {
-        local: { models: [{ id: "local-free", cost: { input: 0, output: 0 } }] },
-        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
-      },
-    }),
-  );
+  const modelsFile = writeModelsFile(tmpdir("status-fallback-"), LOCAL_FREE_MODELS_JSON);
 
   const cfg = loadConfig(repo);
   cfg.provider = "paid";
@@ -948,18 +937,7 @@ test("snapshot carries the running orchestrator's published disk state", async (
 test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json", async () => {
   const repo = makeRepo();
   await initProject(repo, "foreign orchestrator info test");
-  const dir = tmpdir("status-foreign-info-");
-  fs.mkdirSync(dir, { recursive: true });
-  const modelsFile = path.join(dir, "models.json");
-  fs.writeFileSync(
-    modelsFile,
-    JSON.stringify({
-      providers: {
-        local: { models: [{ id: "local-free", cost: { input: 0, output: 0 } }] },
-        paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
-      },
-    }),
-  );
+  const modelsFile = writeModelsFile(tmpdir("status-foreign-info-"), LOCAL_FREE_MODELS_JSON);
   const cfg = loadConfig(repo);
   cfg.provider = "paid";
   cfg.model = "gpt-x";
