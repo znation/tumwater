@@ -214,48 +214,6 @@ no CLI to remove it, so it can only be retracted by hand-editing the file, which
   byte-identical file on a validation failure) and `test/config-commands.test.ts` covers the
   command shell and its wording; the project's check passes.
 
-### Agent backends, part 3b/7: the claude invocation and isolation environment (planned 2026-10-09 by plan; split from part 3/7; requires part 3a/7 landed)
-
-Design: plans/agent-backends.md ("The claude invocation", "Findings", "Risks").
-
-Two pure builders, unit-tested without a spawned process or a registered backend. The session
-decision (which `--session-id`/`--resume` to use) is an input to the argv builder, so this part
-stays ledger-free; part 3c supplies it.
-
-**Approach.**
-1. **Args.** Add a new `claude-args` module under src/agent/claude/: build the design's argv — `-p --output-format
-   stream-json --verbose --model <id> [--effort <level>]`, the session flag passed in by the
-   caller, `--permission-mode bypassPermissions`, `--tools Bash,Read,Edit,Write,Glob,Grep`,
-   `--setting-sources project`, `--strict-mcp-config` (`--mcp-config` when a notes path is
-   present), `--disable-slash-commands`, `--exclude-dynamic-system-prompt-sections`,
-   `--append-system-prompt-file AGENTS.md` only when the worktree has AGENTS.md and no CLAUDE.md,
-   and `[--max-budget-usd <remaining>]` (passed in), then the configured passthrough args. The
-   prompt is returned as `stdin`, never an argv element. `--effort` maps the thinking level
-   (`off`/`minimal` → `low`). A reserved flag repeated in the passthrough is rejected.
-2. **Env.** Add a new `claude-env` module under src/agent/claude/: start from the run-marker/notebook environment
-   (as pi's adapter builds it, src/pi/pi-backend.ts `withNotesPath`), then remove `CLAUDECODE`,
-   every `CLAUDE_CODE_*`/`CLAUDE_AGENT_SDK_*` except the allowlist, `CLAUDE_PID`, `CLAUDE_EFFORT`,
-   and `ANTHROPIC_BASE_URL` when `CLAUDECODE` was set; set
-   `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`,
-   `BASH_DEFAULT_TIMEOUT_MS=600000`, `BASH_MAX_TIMEOUT_MS` = `quietTimeoutSeconds` × 1000 − 60 s,
-   `DISABLE_AUTOUPDATER=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`.
-3. **Preload check.** Verify claude tolerates the macOS `NODE_OPTIONS` `--import=data:` preload.
-   If it does, leave the environment as above; if it chokes, move the preload into the Bash
-   tool's environment via `--settings '{"env":…}'` and record the choice in the module comment.
-
-**Files touched.**
-- `claude-args.ts` and `claude-env.ts` under src/agent/claude/ (new)
-- `claude-args.test.ts` and `claude-env.test.ts` under test/ (new)
-
-**Acceptance criteria.**
-- **Argv.** The built argv matches the design's order and set, carries the passed session id or
-  resume id, and carries no prompt (stdin does); `off`/`minimal` thinking yields `--effort low`.
-- **Env.** The built env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID`/`CLAUDE_PID` and drops
-  `ANTHROPIC_BASE_URL` only when `CLAUDECODE` was set; the allowlisted variables survive;
-  `BASH_MAX_TIMEOUT_MS` is derived from `quietTimeoutSeconds`.
-- The NODE_OPTIONS preload decision is made and recorded.
-- `npm run test` green.
-
 ### Agent backends, part 3c/7: the claude backend, ledger-backed sessions, and PATH fake (planned 2026-10-09 by plan; split from part 3/7; requires parts 3a/7 and 3b/7 landed)
 
 Design: plans/agent-backends.md ("The seam", "Sessions", "Testing").
@@ -665,6 +623,59 @@ and a loop test for `budgetCapped` → handoff.
 
 
 ## Done
+
+### Agent backends, part 3b/7: the claude invocation and isolation environment (planned 2026-10-09 by plan; split from part 3/7; requires part 3a/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("The claude invocation", "Findings", "Risks").
+
+Two pure builders, unit-tested without a spawned process or a registered backend. The session
+decision (which `--session-id`/`--resume` to use) is an input to the argv builder, so this part
+stays ledger-free; part 3c supplies it.
+
+**Approach.**
+1. **Args.** Add a new `claude-args` module under src/agent/claude/: build the design's argv — `-p --output-format
+   stream-json --verbose --model <id> [--effort <level>]`, the session flag passed in by the
+   caller, `--permission-mode bypassPermissions`, `--tools Bash,Read,Edit,Write,Glob,Grep`,
+   `--setting-sources project`, `--strict-mcp-config` (`--mcp-config` when a notes path is
+   present), `--disable-slash-commands`, `--exclude-dynamic-system-prompt-sections`,
+   `--append-system-prompt-file AGENTS.md` only when the worktree has AGENTS.md and no CLAUDE.md,
+   and `[--max-budget-usd <remaining>]` (passed in), then the configured passthrough args. The
+   prompt is returned as `stdin`, never an argv element. `--effort` maps the thinking level
+   (`off`/`minimal` → `low`). A reserved flag repeated in the passthrough is rejected.
+2. **Env.** Add a new `claude-env` module under src/agent/claude/: start from the run-marker/notebook environment
+   (as pi's adapter builds it, src/pi/pi-backend.ts `withNotesPath`), then remove `CLAUDECODE`,
+   every `CLAUDE_CODE_*`/`CLAUDE_AGENT_SDK_*` except the allowlist, `CLAUDE_PID`, `CLAUDE_EFFORT`,
+   and `ANTHROPIC_BASE_URL` when `CLAUDECODE` was set; set
+   `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`,
+   `BASH_DEFAULT_TIMEOUT_MS=600000`, `BASH_MAX_TIMEOUT_MS` = `quietTimeoutSeconds` × 1000 − 60 s,
+   `DISABLE_AUTOUPDATER=1`, `DISABLE_TELEMETRY=1`, `DISABLE_ERROR_REPORTING=1`.
+3. **Preload check.** Verify claude tolerates the macOS `NODE_OPTIONS` `--import=data:` preload.
+   If it does, leave the environment as above; if it chokes, move the preload into the Bash
+   tool's environment via `--settings '{"env":…}'` and record the choice in the module comment.
+
+**Files touched.**
+- `claude-args.ts` and `claude-env.ts` under src/agent/claude/ (new)
+- `claude-args.test.ts` and `claude-env.test.ts` under test/ (new)
+
+**Acceptance criteria.**
+- **Argv.** The built argv matches the design's order and set, carries the passed session id or
+  resume id, and carries no prompt (stdin does); `off`/`minimal` thinking yields `--effort low`.
+- **Env.** The built env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID`/`CLAUDE_PID` and drops
+  `ANTHROPIC_BASE_URL` only when `CLAUDECODE` was set; the allowlisted variables survive;
+  `BASH_MAX_TIMEOUT_MS` is derived from `quietTimeoutSeconds`.
+- The NODE_OPTIONS preload decision is made and recorded.
+- `npm run test` green.
+
+Implementation notes (2026-10-09): the args builder takes the notes MCP config path as an
+option (part 5/7 supplies it); the preload decision — claude 2.1.295 is a native Mach-O binary
+and ignores `NODE_OPTIONS`, so tumwater's preload stays on the environment for the Bash tool's
+`npm` grandchildren — is recorded in claude-args.ts. With `quietTimeoutSeconds` 0 (quiet kill
+disabled) no `BASH_MAX_TIMEOUT_MS` is set, leaving claude's own ceiling; a positive value below
+60 s derives a cap floored at one second so it is never non-positive. The reserved-flag set
+matches the design exactly (`--append-system-prompt-file` and
+`--exclude-dynamic-system-prompt-sections` are emitted by the builder but are not in that
+reserved set, so the builder does not reject them in the passthrough), and the thinking lookup
+uses an own-property test.
 
 ### Agent backends, part 3a/7: the claude stream translator and canonical vocabulary (planned 2026-10-09 by plan; split from part 3/7; requires parts 1/7 and 2/7 landed; done 2026-10-09 by feature)
 
