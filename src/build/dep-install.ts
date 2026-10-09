@@ -4,6 +4,7 @@ import { readJsonFile } from "../files/json-files.js";
 import { EXEC_MAX_BUFFER } from "../process/process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 
 /** Keeping a tree's install in step with its lockfile (BUGS.md 2026-10-01). node_modules is
  * gitignored, so a tumwater worktree has none of its own: its toolchain and every import
@@ -97,7 +98,10 @@ export async function syncInstall(
   const packages = installDrift(dir);
   if (packages.length === 0) return null;
   const startedAt = Date.now();
-  const r = await install(dir, timeoutMs).catch((err: unknown) => ({ ok: false, detail: String(err) }));
+  // The injected runner may throw (the default npmInstall does not): surface it through the
+  // shared coercion, so the warning carries the bare message rather than String(err)'s
+  // "Error: " prefix (text.ts's errorMessage is the one home of that rendering).
+  const r = await install(dir, timeoutMs).catch((err: unknown) => ({ ok: false, detail: errorMessage(err) }));
   const durationMs = Date.now() - startedAt;
   if (!r.ok) return { packages, ok: false, durationMs, detail: r.detail };
   const still = installDrift(dir);

@@ -89,6 +89,17 @@ test("syncInstall reports an install that exited 0 but left a pin unresolved as 
   assert.match(r?.detail ?? "", /still unresolved after install: ink/);
 });
 
+test("syncInstall surfaces a throwing runner's message without an 'Error:' prefix", async () => {
+  const { wt } = buildCheckFixture();
+  writeLock(wt, { ink: "7.1.1" }); // drift, so the install runs
+  const throwing: InstallRunner = async () => {
+    throw new Error("registry unreachable");
+  };
+  const r = await syncInstall(wt, throwing);
+  assert.equal(r?.ok, false);
+  assert.equal(r?.detail, "registry unreachable");
+});
+
 // The reported trap: a worktree whose lockfile adds a package the root install never had. The
 // build tool fails exactly as tsc's TS2307 did unless the package is installed into the tree.
 test("runBuildCheck installs a drifted lockfile into the tree before running the check", async () => {
