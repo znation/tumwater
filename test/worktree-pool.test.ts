@@ -159,6 +159,26 @@ test("a slot record missing its known fields is usable instead of crashing the c
   lease.release();
 });
 
+test("a slot record's non-finite timestamps read as absent, not as a stuck pin", () => {
+  const root = makeRepo();
+  const dir = slotWorktreePath(root, 1);
+  mkdirSync(join(root, ".tumwater", "state"), { recursive: true });
+  // A hand edit's `1e999` parses to Infinity (JSON.stringify cannot write one) and `-1e999`
+  // to -Infinity. A non-finite `pinnedAt` is a pin no clock can date — doctor's filter
+  // would report an `Infinityh`-old pin for -Infinity and never report a +Infinity one — and
+  // a non-finite `lastReleasedAt` makes the slot the most-recently-released forever, so the
+  // prune never retires it. Both must read as the absent form. Written raw because
+  // JSON.stringify turns Infinity into null.
+  writeFileSync(
+    slotsStatePath(root),
+    `{"slots":[{"dir":${JSON.stringify(dir)},"lease":null,"pinnedFor":"feature",` +
+      `"pinnedAt":-1e999,"lastRole":null,"lastReleasedAt":1e999}]}`,
+  );
+  const record = readSlotsState(root).slots[0];
+  assert.equal(record?.pinnedAt, null);
+  assert.equal(record?.lastReleasedAt, null);
+});
+
 test("release removes idle unpinned slots when worktreeSlots shrank", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 3 });

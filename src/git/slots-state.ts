@@ -8,7 +8,7 @@
  * writes it from the CLI process while the orchestrator may be leasing from its own. */
 
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { isJsonObject } from "../files/json-object.js";
+import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { slotsLockPath, slotsStatePath, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "./worktree.js";
@@ -80,9 +80,13 @@ function isSlotLease(value: unknown): value is SlotLease {
 
 /** Coerce one persisted entry into a SlotRecord, defaulting the known fields a hand edit or an
  * older writer may omit. Each field is the value or its empty form, so a record missing
- * `pinnedFor` is not frozen as permanently pinned (chooseSlot treats `!== null` as pinned).
- * Unknown fields ride along via the spread — the same read-the-usable-part policy the `dir`
- * check applies. */
+ * `pinnedFor` is not frozen as permanently pinned (chooseSlot treats `!== null` as pinned),
+ * and each numeric timestamp is read through finiteNumber: a hand edit's `1e999` parses to
+ * Infinity, and a non-finite `pinnedAt` is a pin no clock can date (doctor would render a
+ * `-Infinity` pin as `Infinityh` old, or never notice a `+Infinity` one) while a non-finite
+ * `lastReleasedAt` sorts the slot as released after everything forever, so the prune never
+ * retires it. Unknown fields ride along via the spread — the same read-the-usable-part policy
+ * the `dir` check applies. */
 function readSlotRecord(slot: unknown): SlotRecord | null {
   if (!isJsonObject(slot) || typeof slot.dir !== "string") return null;
   return {
@@ -90,8 +94,10 @@ function readSlotRecord(slot: unknown): SlotRecord | null {
     dir: slot.dir,
     lease: isSlotLease(slot.lease) ? slot.lease : null,
     pinnedFor: typeof slot.pinnedFor === "string" ? slot.pinnedFor : null,
+    // Absent stays absent (an older writer's shape is preserved); present-but-foreign is null.
+    pinnedAt: slot.pinnedAt === undefined ? undefined : finiteNumber(slot.pinnedAt, null),
     lastRole: typeof slot.lastRole === "string" ? slot.lastRole : null,
-    lastReleasedAt: typeof slot.lastReleasedAt === "number" ? slot.lastReleasedAt : null,
+    lastReleasedAt: finiteNumber(slot.lastReleasedAt, null),
   };
 }
 
