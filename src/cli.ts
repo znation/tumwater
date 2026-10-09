@@ -28,7 +28,7 @@ import {
   requireReadyRepo,
 } from "./cli/cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./cli/log-commands.js";
-import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
+import { bugTitleOf, cancelAndAnnounce, cancelBug, cancelPlan, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
 
 import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
 import { repoToplevel } from "./git/git.js";
@@ -203,6 +203,10 @@ async function main(): Promise<void> {
       break;
     case "bug": {
       const usage = 'tumwater bug "<symptom>"';
+      if (args.includes("--cancel")) {
+        await cancelAndAnnounce(root, args, "bug", (n) => cancelBug(root, n));
+        break;
+      }
       await fileAndAnnounce(
         root,
         args,
@@ -217,6 +221,10 @@ async function main(): Promise<void> {
     }
     case "plan": {
       const usage = 'tumwater plan "<title>" [body...]';
+      if (args.includes("--cancel")) {
+        await cancelAndAnnounce(root, args, "plan", (n) => cancelPlan(root, n));
+        break;
+      }
       await fileAndAnnounce(
         root,
         args,

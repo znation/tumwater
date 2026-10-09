@@ -109,11 +109,17 @@ Usage:
                                    File a bug into BUGS.md ## Open as the operator (stamped
                                    with today's date) and wake the bugfix loop; --json prints
                                    the {file, title, stamp} payload as data
+  tumwater bug --cancel <n> [--json]
+                                   Remove the Nth entry in BUGS.md ## Open (as \`tumwater
+                                   backlog\` lists it); no wake; --json prints {file, title}
   tumwater plan "<title>" [body...] [--json]
                                    File a plan request into PLANS.md ## Planned as the operator
                                    (stamped with today's date; the feature loop fleshes the stub
                                    out on pickup) and wake the feature loop; --json prints the
                                    {file, title, stamp} payload as data
+  tumwater plan --cancel <n> [--json]
+                                   Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
+                                   backlog\` lists it); no wake; --json prints {file, title}
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
@@ -233,14 +239,14 @@ export function helpTopic(command: string, help: string = HELP): string | null {
 }
 
 /** The free-form text commands and the flags that take a separate value token, for
- * helpTopicForArgs: bug/plan admit no valued flags, so their prose check never skips a
- * token. The value token of prompt/init's valued flags is plumbing (`prompt --role qa
- * --help` carries no prose), never content. */
+ * helpTopicForArgs: a valued flag's value is plumbing (`prompt --role qa --help`, `bug
+ * --cancel 2 --help`), never prose. bug/plan's only valued flag is `--cancel`; their
+ * text-carrying forms take no valued flags. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
   init: ["--branch", "--template", "--file"],
-  bug: [],
-  plan: [],
+  bug: ["--cancel"],
+  plan: ["--cancel"],
 };
 
 /** The `--help`/`-h` request cli.ts answers before dispatch: the topic text for `command`

@@ -10,10 +10,11 @@
  * other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
+import { actionableEntryRanges } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
+import { collapseWhitespace, gotSuffix, parsePositiveInt, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";
@@ -112,6 +113,57 @@ function appendEntryLocked(
     ...rest,
   ];
   writeTextAtomic(file, out.join("\n"));
+}
+
+/** The noun a cancel failure names the section by: the plan example's `no open bug at
+ * position N`, and the parallel planned-feature wording for PLANS.md. */
+function sectionNoun(sectionTitle: string): string {
+  if (sectionTitle === "Open") return "open bug";
+  if (sectionTitle === "Planned") return "planned feature";
+  return sectionTitle.toLowerCase();
+}
+
+/** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
+ * cancel and a landing's working-tree fast-forward cannot each clobber the other's read-modify-write. */
+function removeEntry(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+): { file: string; title: string } {
+  return withStateLock(primaryWorktreeLockPath(root), () =>
+    removeEntryLocked(root, fileName, sectionTitle, n),
+  );
+}
+
+/** Remove the `n`th entry (1-based, as `tumwater backlog` lists it) from `<root>/<fileName>`'s
+ * `## <sectionTitle>` section. The ranges come from actionableEntryRanges (backlog-structure.ts),
+ * whose walk is fence-aware, so a `## `/`### ` line quoted inside an entry's code fence is body
+ * text: slicing the range removes the heading and its body whole without mistaking a quoted line
+ * for the boundary. An out-of-range position (an empty section, or one holding only the
+ * `_None yet._` placeholder, has no entries) fails, writing nothing. The range carries the blank
+ * line that separated the entry from the next heading, so the join leaves exactly one blank line
+ * between the preceding content and whatever followed. */
+function removeEntryLocked(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+): { file: string; title: string } {
+  const file = path.join(root, fileName);
+  // An absent file is an empty section, never a seed: cancel removes, it never writes scaffolding.
+  const md = readTextIfExists(file) ?? "";
+  const entries = actionableEntryRanges(md, sectionTitle);
+  const entry = entries[n - 1];
+  if (entry === undefined) {
+    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${entries.length} in ${fileName})`);
+  }
+  const lines = md.split("\n");
+  // The range's end is the 1-based line before the next heading (the separating blank line at a
+  // well-formed section); start-1/end-1 are its 0-based bounds, and the length is end-start+1.
+  lines.splice(entry.start - 1, entry.end - entry.start + 1);
+  writeTextAtomic(file, lines.join("\n"));
+  return { file: fileName, title: entry.title };
 }
 
 /** The result one file command returns: the file written, the entry's title (verbatim
@@ -224,6 +276,65 @@ export function filePlan(root: string, rawTitle: string, rawBody: string, usage:
   const heading = `### ${title} (${stamp})`;
   appendEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", heading, body);
   return { file: "PLANS.md", title, stamp };
+}
+
+/** `tumwater bug --cancel <n>`: remove the nth entry from BUGS.md's `## Open`, as
+ * `tumwater backlog` lists it. The returned title is the removed `### ` heading's text. */
+export function cancelBug(root: string, n: number): { file: string; title: string } {
+  return removeEntry(root, "BUGS.md", "Open", n);
+}
+
+/** `tumwater plan --cancel <n>`: remove the nth entry from PLANS.md's `## Planned`, as
+ * `tumwater backlog` lists it. The returned title is the removed `### ` heading's text. */
+export function cancelPlan(root: string, n: number): { file: string; title: string } {
+  return removeEntry(root, "PLANS.md", "Planned", n);
+}
+
+/** The shared shell of the `bug --cancel` and `plan --cancel` CLI cases, mirroring
+ * fileAndAnnounce's flag handling: `--cancel <n>` is the one valued flag, `--json` the one
+ * boolean (at most once), `--help`/`-h` tolerated; any positional or other flag is refused
+ * through rejectUnknownArgs. The position parses through the plain-decimal rule every position
+ * flag shares (parsePositiveInt, text.ts), not Number(). After requireReadyRepo it prints
+ * `cancelled <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
+ * fileAndAnnounce there is no wake: removing work must not wake a loop. */
+export async function cancelAndAnnounce(
+  root: string,
+  args: string[],
+  command: string,
+  cancel: (n: number) => { file: string; title: string },
+): Promise<void> {
+  let position: number | null = null;
+  let json = false;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--json") {
+      if (json) fail("--json may only be given once");
+      json = true;
+      continue;
+    }
+    if (arg === "--cancel") {
+      if (position !== null) fail("--cancel may only be given once");
+      const raw = args[i + 1];
+      if (raw === undefined) fail(`--cancel needs a position number (e.g. \`--cancel 2\`)`);
+      const n = parsePositiveInt(raw);
+      if (n === null) fail(`--cancel needs a positive integer${gotSuffix(raw)}`);
+      position = n;
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg as string);
+  }
+  // rejectUnknownArgs names both a stray positional and an unknown flag, with this command's
+  // (empty) valid-flag list — the vocabulary a cancel invocation accepts is exactly --cancel
+  // and --json, both consumed above.
+  rejectUnknownArgs(command, rest, []);
+  if (position === null) fail(`--cancel needs a position (usage: tumwater ${command} --cancel <n>)`);
+  await requireReadyRepo(root);
+  const removed = cancel(position);
+  if (json) sayJson({ file: removed.file, title: removed.title });
+  else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
 }
 
 /** One confirmation for both file commands, prose or `--json`: the JSON branch prints the
