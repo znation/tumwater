@@ -214,72 +214,6 @@ dry's charter already updates every call site of one repetition. clean's says "f
   commits per day fall (`git log --author-date-order --grep '^tumwater(clean)' --shortstat`).
   Record the numbers in plans/work-ratio.md.
 
-### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; replanned 2026-10-08 by plan after two review rejections; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed)
-
-Design: plans/worktree-pool.md ("Role ticks lease slots", "Legacy role worktrees").
-
-**Context.** Once role ticks lease slots (4b/5), the old `.tumwater/worktrees/<role>`
-directories are dead weight and the Part 5/5 doctor check warns on them. A one-time startup
-migration must retire them without losing a pending resume or leaving a checkout pinned for a
-role that no longer runs. It lands after 4b/5 so it can never remove a slot a tick still uses.
-
-**Timing (corrected).** `runOrchestrator` constructs every `LoopRunner`
-(`src/orchestrator/orchestrator.ts`, `const runners = enabled.map(...)`) before this migration
-runs, and only then starts ticks. The loop constructor (`src/loop/loop.ts`) infers `resumePending`
-from a persisted `running` flag but writes that inference only in memory — it does not save it —
-so at migration time `loadLoopState` still reports the on-disk `running: true`. The migration must
-therefore read both flags, and its comment and the design doc must say it runs after that
-construction but before any tick can call `leaseSlot` — not "before any loop is constructed."
-
-**Approach.**
-1. Add `retireLegacyRoleWorktrees(root, enabled)` to `src/git/worktree-pool.ts` and call it from
-   `runOrchestrator` right after `removeLegacyLandWorktrees`, before the `RetentionPruner`
-   construction and before ticks start. Pass the orchestrator's `enabled` role list. Return early
-   when `.tumwater/worktrees/` does not exist.
-2. Enumerate subdirectories of `.tumwater/worktrees/` (`worktreesDir`); a candidate legacy role
-   dir is one whose basename is not `DIRECTOR_ROLE` and does not start with `_` (`_slot-<n>`,
-   `_merge`, `_gate-main` and `_main` are skipped).
-3. For each candidate, read `loadLoopState(root, role)` and set
-   `resumable = state.resumePending === true || state.running === true`.
-   - **Resumable and `enabled.includes(role)`:**
-     - If the role already owns a slot (`slot.pinnedFor === role`, or
-       `slot.lease?.role === role && slot.lease.purpose === "tick"`), the resume happens there:
-       drop any record for the legacy path, pin that owned slot for the role when it had only a
-       tick lease, and `removeWorktree(root, role)` the legacy dir.
-     - Otherwise register the legacy dir in slots.json as
-       `{ dir, lease: null, pinnedFor: role, lastRole: null, lastReleasedAt: null }`, so the next
-       tick leases it (4a's `keep`) and resumes in place.
-   - **Not resumable, or the role is not in `enabled`:** drop any record for the legacy path and
-     `removeWorktree(root, role)` (src/git/worktree.ts); the branch keeps any commit.
-4. In the same `updateSlotsState` pass, retire pins for roles that no longer run: for every slot
-   whose `pinnedFor` names a role outside `enabled`, clear the pin; when that slot's `dir` is not a
-   canonical `slotWorktreePath(root, n)`, drop the record and add the dir to the removal list
-   (`removeDroppedSlots`). A paused or removed resumable role therefore cannot leak a permanently
-   pinned legacy checkout.
-5. Teach the pool to retire a migrated legacy slot: in `releaseSlot`
-   (src/git/worktree-pool.ts), when a slot's `dir` is not a canonical
-   `slotWorktreePath(root, n)` and it is being unpinned, drop its record and return its dir in
-   the to-remove list, so `leaseSlot` removes the directory once the role is done
-   (`removeDroppedSlots`).
-
-**Files touched.** src/git/worktree-pool.ts, src/orchestrator/orchestrator.ts,
-plans/worktree-pool.md. Tests: startup-migration cases in test/worktree-pool.test.ts and an
-orchestrator test.
-
-**Acceptance criteria.**
-- A clean legacy `.tumwater/worktrees/feature` (role enabled, not resumable) is gone after
-  startup; its branch and commit survive.
-- An enabled role whose persisted state has `resumePending` **or** `running: true` and that owns
-  no slot gets its legacy dir registered as a pinned slot, serves exactly one resume in the same
-  directory, and both the slot record and the directory are gone after the first release that
-  unpins it.
-- An enabled resumable role that already owns a tick-lease slot keeps no legacy record, has its
-  legacy dir removed, and the owned slot is pinned for the role.
-- A resumable-but-disabled role's legacy dir is removed and never pinned; after startup no slot's
-  `pinnedFor` names a role outside `enabled`.
-- The migration leaves `director` and every `_`-prefixed directory untouched.
-- `npm run test` green.
-
 ### Worktree pool, part 5/5: slot waits, slot display, doctor check and docs (planned 2026-10-06 by operator; requires parts 4a/5, 4b/5 and 4c/5 landed)
 
 Design: plans/worktree-pool.md ("Observability").
@@ -383,6 +317,73 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; replanned 2026-10-08 by plan after two review rejections; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed; done 2026-10-08 by feature)
+
+Design: plans/worktree-pool.md ("Role ticks lease slots", "Legacy role worktrees").
+
+**Context.** Once role ticks lease slots (4b/5), the old `.tumwater/worktrees/<role>`
+directories are dead weight and the Part 5/5 doctor check warns on them. A one-time startup
+migration must retire them without losing a pending resume or leaving a checkout pinned for a
+role that no longer runs. It lands after 4b/5 so it can never remove a slot a tick still uses.
+
+**Timing (corrected).** `runOrchestrator` constructs every `LoopRunner`
+(`src/orchestrator/orchestrator.ts`, `const runners = enabled.map(...)`) before this migration
+runs, and only then starts ticks. The loop constructor (`src/loop/loop.ts`) infers `resumePending`
+from a persisted `running` flag but writes that inference only in memory — it does not save it —
+so at migration time `loadLoopState` still reports the on-disk `running: true`. The migration must
+therefore read both flags, and its comment and the design doc must say it runs after that
+construction but before any tick can call `leaseSlot` — not "before any loop is constructed."
+
+**Approach.**
+1. Add `retireLegacyRoleWorktrees(root, configured)` to `src/git/worktree-pool.ts` and call it
+   from `runOrchestrator` right after `removeLegacyLandWorktrees`, before the `RetentionPruner`
+   construction and before ticks start. Pass every configured loop id (`loopIds(config)`), never
+   the run's filtered `enabled`/`--once --role` set, so a scoped run cannot lose another role's
+   pending resume. Return early when `.tumwater/worktrees/` does not exist.
+2. Enumerate subdirectories of `.tumwater/worktrees/` (`worktreesDir`); a candidate legacy role
+   dir is one whose basename is not `DIRECTOR_ROLE` and does not start with `_` (`_slot-<n>`,
+   `_merge`, `_gate-main` and `_main` are skipped).
+3. For each candidate, read `loadLoopState(root, role)` and set
+   `resumable = state.resumePending === true || state.running === true`.
+   - **Resumable and `configured.includes(role)`:**
+     - If the role already owns a slot (`slot.pinnedFor === role`, or
+       `slot.lease?.role === role && slot.lease.purpose === "tick"`), the resume happens there:
+       drop any record for the legacy path, pin that owned slot for the role when it had only a
+       tick lease, and `removeWorktree(root, role)` the legacy dir.
+     - Otherwise register the legacy dir in slots.json as
+       `{ dir, lease: null, pinnedFor: role, lastRole: null, lastReleasedAt: null }`, so the next
+       tick leases it (4a's `keep`) and resumes in place.
+   - **Not resumable, or the role is not configured:** drop any record for the legacy path and
+     `removeWorktree(root, role)` (src/git/worktree.ts); the branch keeps any commit.
+4. In the same `updateSlotsState` pass, retire pins for roles that no longer run: for every slot
+   whose `pinnedFor` names a role outside the configured set, clear the pin; when that slot's `dir` is not a
+   canonical `slotWorktreePath(root, n)`, drop the record and add the dir to the removal list
+   (`removeDroppedSlots`). A paused or removed resumable role therefore cannot leak a permanently
+   pinned legacy checkout.
+5. Teach the pool to retire a migrated legacy slot: in `releaseSlot`
+   (src/git/worktree-pool.ts), when a slot's `dir` is not a canonical
+   `slotWorktreePath(root, n)` and it is being unpinned, drop its record and return its dir in
+   the to-remove list, so `leaseSlot` removes the directory once the role is done
+   (`removeDroppedSlots`).
+
+**Files touched.** src/git/worktree-pool.ts, src/orchestrator/orchestrator.ts,
+plans/worktree-pool.md. Tests: startup-migration cases in test/worktree-pool.test.ts and an
+orchestrator test.
+
+**Acceptance criteria.**
+- A clean legacy `.tumwater/worktrees/feature` (role enabled, not resumable) is gone after
+  startup; its branch and commit survive.
+- An enabled role whose persisted state has `resumePending` **or** `running: true` and that owns
+  no slot gets its legacy dir registered as a pinned slot, serves exactly one resume in the same
+  directory, and both the slot record and the directory are gone after the first release that
+  unpins it.
+- An enabled resumable role that already owns a tick-lease slot keeps no legacy record, has its
+  legacy dir removed, and the owned slot is pinned for the role.
+- A resumable-but-disabled role's legacy dir is removed and never pinned; after startup no slot's
+  `pinnedFor` names a role outside the configured set.
+- The migration leaves `director` and every `_`-prefixed directory untouched.
+- `npm run test` green.
 
 ### New-project bootstrap, part 2/2: while bootstrapping, only plan, feature, director and bugfix-with-open-bugs tick (planned 2026-10-08 by operator; requires part 1/2 landed; done 2026-10-08 by feature)
 

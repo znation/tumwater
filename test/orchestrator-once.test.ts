@@ -16,6 +16,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
+import { slotForDir, writeSlotsState } from "../src/git/slots-state.js";
+import { slotWorktreePath } from "../src/paths.js";
 import { pauseRole } from "../src/fleet/fleet-state.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -49,6 +51,47 @@ test("once: startup removes a legacy _land-<role> checkout left by a pre-pool bu
   try {
     await onceRound(repo);
     assert.equal(fs.existsSync(legacy), false, "startup removed the legacy lander checkout");
+  } finally {
+    restore();
+  }
+});
+
+test("once: startup retires a legacy role worktree now that ticks lease pooled slots", async () => {
+  const repo = await makeFastRepo("once legacy role worktree cleanup", ["clean"]);
+  const legacy = path.join(repo, ".tumwater", "worktrees", "clean");
+  await ensureDetachedWorktree(repo, legacy, "main");
+  assert.ok(fs.existsSync(legacy), "the legacy role checkout is seeded");
+  const restore = fakePiIdle();
+  try {
+    await onceRound(repo);
+    assert.equal(fs.existsSync(legacy), false, "startup retired the legacy role checkout");
+  } finally {
+    restore();
+  }
+});
+
+test("once: a scoped --role run leaves another role's pending resume alone", async () => {
+  // Regression: the migration must see every CONFIGURED loop id (`loopIds`), not the run's
+  // `--once --role` filter. Passing the filter retired `dry`'s resumable legacy checkout and
+  // unpinned `feature`'s canonical slot, losing both resumes on the next full-fleet start.
+  const repo = await makeFastRepo("once scoped migration test", ["clean", "dry", "feature"]);
+  const legacy = path.join(repo, ".tumwater", "worktrees", "dry");
+  await ensureDetachedWorktree(repo, legacy, "main");
+  saveLoopState(repo, { ...freshLoopState("dry"), resumePending: true });
+  const featureSlot = slotWorktreePath(repo, 1);
+  writeSlotsState(repo, {
+    slots: [{ dir: featureSlot, lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: 1 }],
+  });
+  const restore = fakePiIdle();
+  try {
+    await onceRound(repo, "clean");
+    assert.ok(fs.existsSync(legacy), "a scoped run retired another role's legacy checkout");
+    assert.equal(slotForDir(repo, legacy)?.pinnedFor, "dry", "the legacy dir lost its pin");
+    assert.equal(
+      slotForDir(repo, featureSlot)?.pinnedFor,
+      "feature",
+      "a scoped run cleared another role's pin",
+    );
   } finally {
     restore();
   }

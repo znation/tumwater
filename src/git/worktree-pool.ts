@@ -10,9 +10,12 @@
  * distinct free slots and a call with none free registers an in-process waiter. A release wakes
  * the waiters, which re-decide; `signal` aborts a waiter. */
 
+import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
-import { slotWorktreePath } from "../paths.js";
+import { worktreesDir, slotWorktreePath } from "../paths.js";
+import { loadLoopState } from "../loop/loop-state.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
@@ -232,9 +235,18 @@ function liveCount(root: string): number {
   }
 }
 
+/** A slot dir is canonical when it is exactly a `_slot-<n>` checkout under the worktrees dir.
+ * A migrated legacy `<role>` dir is not, which marks it for retirement once its resume finishes
+ * (retireLegacyRoleWorktrees and releaseSlot). */
+function isCanonicalSlotDir(dir: string): boolean {
+  return /^_slot-\d+$/.test(path.basename(dir));
+}
+
 /** Free `dir` in slots.json, record `lastRole`/`lastReleasedAt`, and return the idle unpinned
  * slot dirs to remove because the live slot budget shrank below them (oldest-released first).
- * `pin` keeps the slot pinned for `role`; otherwise a pin this role held is cleared. */
+ * `pin` keeps the slot pinned for `role`; otherwise a pin this role held is cleared. A
+ * non-canonical (migrated legacy) slot is dropped the moment it is unpinned, so the one resume
+ * it was kept for runs in it and the dir is removed on that first release. */
 function releaseSlot(root: string, dir: string, role: string, count: number, pin: boolean): string[] {
   const toRemove: string[] = [];
   updateSlotsState(root, (state) => {
@@ -244,6 +256,10 @@ function releaseSlot(root: string, dir: string, role: string, count: number, pin
       slot.lastRole = role;
       slot.lastReleasedAt = Date.now();
       slot.pinnedFor = pin ? role : slot.pinnedFor === role ? null : slot.pinnedFor;
+      if (!pin && slot.pinnedFor === null && !isCanonicalSlotDir(slot.dir)) {
+        state.slots = state.slots.filter((s) => s !== slot);
+        toRemove.push(slot.dir);
+      }
     }
     for (;;) {
       const idle = state.slots.filter((s) => s.lease === null && s.pinnedFor === null);
@@ -281,6 +297,100 @@ export async function removeDroppedSlots(
   }
 }
 
+/** One-time startup migration (plans/worktree-pool.md "Legacy role worktrees", part 4c/5):
+ * retire the pre-pool `.tumwater/worktrees/<role>` checkouts now that ticks lease pooled slots.
+ * A resumable enabled role keeps its legacy dir as a pinned slot so its pending resume runs in
+ * the same cwd; every other legacy dir is removed (its branch keeps any commit), and pins for
+ * roles outside `configured` are cleared. `configured` is every loop id the config's roles
+ * enable (`loopIds`), never a `--once --role` filter: a scoped run must leave the other roles'
+ * legacy dirs and pins alone, or it silently loses their pending resumes. It runs after
+ * `runOrchestrator` constructs every
+ * `LoopRunner` but before any tick can call `leaseSlot`: the constructor infers `resumePending`
+ * from the on-disk `running` flag only in memory (it does not save it), so `loadLoopState` here
+ * still reports the on-disk flags. *Removing* a dir is best-effort and logged: the slot records
+ * are already updated, so a leaked directory is only a leak the next prune collects. */
+export async function retireLegacyRoleWorktrees(
+  root: string,
+  configured: readonly string[],
+): Promise<void> {
+  const dir = worktreesDir(root);
+  let names: string[] = [];
+  try {
+    names = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          entry.isDirectory() && entry.name !== DIRECTOR_ROLE && !entry.name.startsWith("_"),
+      )
+      .map((entry) => entry.name);
+  } catch {
+    // No worktrees dir yet (a fleet that has not started): nothing to migrate, but the pin
+    // retirement pass below still runs over whatever slots.json holds.
+  }
+  const configuredSet = new Set(configured);
+  const toRemove = new Set<string>();
+  updateSlotsState(root, (state) => {
+    for (const role of names) {
+      const legacyDir = path.join(dir, role);
+      const legacy = loadLoopState(root, role);
+      const resumable = legacy.resumePending === true || legacy.running === true;
+      const ownRecord = state.slots.find((slot) => slot.dir === legacyDir);
+      if (resumable && configuredSet.has(role)) {
+        const owned = state.slots.find(
+          (slot) =>
+            slot.pinnedFor === role ||
+            (slot.lease?.role === role && slot.lease.purpose === "tick"),
+        );
+        if (owned !== undefined) {
+          // The resume happens in the owned slot: drop the legacy record and remove its dir.
+          if (owned.dir !== legacyDir) {
+            state.slots = state.slots.filter((slot) => slot.dir !== legacyDir);
+            toRemove.add(legacyDir);
+          }
+          owned.pinnedFor = role;
+        } else if (ownRecord !== undefined) {
+          // Already migrated (a restart before the resume ran): keep it pinned and inert.
+          ownRecord.lease = null;
+          ownRecord.pinnedFor = role;
+          ownRecord.lastRole = null;
+          ownRecord.lastReleasedAt = null;
+        } else {
+          state.slots.push({
+            dir: legacyDir,
+            lease: null,
+            pinnedFor: role,
+            lastRole: null,
+            lastReleasedAt: null,
+          });
+        }
+      } else {
+        state.slots = state.slots.filter((slot) => slot.dir !== legacyDir);
+        toRemove.add(legacyDir);
+      }
+    }
+    // A paused or removed role must not leak a permanently pinned checkout.
+    for (const slot of [...state.slots]) {
+      if (slot.pinnedFor === null || configuredSet.has(slot.pinnedFor)) continue;
+      slot.pinnedFor = null;
+      if (!isCanonicalSlotDir(slot.dir)) {
+        state.slots = state.slots.filter((s) => s !== slot);
+        toRemove.add(slot.dir);
+      }
+    }
+  });
+  for (const victim of toRemove) {
+    try {
+      await removeWorktreeDir(root, victim);
+    } catch (err) {
+      warnEventBestEffort(
+        root,
+        "harness",
+        `could not remove legacy role worktree ${victim}: ${errorMessage(err)}`,
+      );
+    }
+  }
+}
+
 /** Lease a pooled slot for `role`, prepared at `ref`. Resolves once a slot is held and reset to
  * `ref`; rejects on a `signal` abort while waiting. The returned `release` is idempotent. */
 export async function leaseSlot(
@@ -296,9 +406,12 @@ export async function leaseSlot(
       await ensureDetachedWorktree(root, dir, ref);
     } catch (err) {
       useRelease();
-      // Free the claim without shrinking: the slot may be reused on the next lease.
-      releaseSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false);
+      // Free the claim without shrinking. releaseSlot retires a migrated legacy slot on this
+      // unpinned release, so hand its removal to removeDroppedSlots; a canonical slot survives
+      // for reuse on the next lease.
+      const toRemove = releaseSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false);
       wakeWaiters(root);
+      void removeDroppedSlots(root, toRemove);
       throw err;
     }
   }

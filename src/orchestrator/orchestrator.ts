@@ -16,6 +16,7 @@ import { openBugs, plannedPlans } from "../backlog/backlog.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
+import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
@@ -180,6 +181,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // never lingers on disk. (After the info write and start event above, so startup's published
   // state is on disk synchronously for an in-process test or a second `tumwater run` probe.)
   await removeLegacyLandWorktrees(root);
+  // Legacy role checkouts (`<role>` from a pre-pool build) are retired in the same startup
+  // window, right after the LoopRunners above: a role with a pending resume keeps its dir as a
+  // pinned slot, every other legacy dir goes. Pass every configured loop id, not `enabled` (a
+  // `--once --role` filter): a scoped run must not retire or unpin the other roles, whose
+  // pending resumes the next full-fleet start still owns. See retireLegacyRoleWorktrees.
+  await retireLegacyRoleWorktrees(root, loopIds(config));
 
   // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
   // startup prune, seeding the once-per-day gate so an unchanged fleet prunes at most once

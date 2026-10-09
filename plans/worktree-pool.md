@@ -209,12 +209,20 @@ fresh mtimes, so the tool rebuilds exactly what changed.
 - Disk-floor's reclaim skips pinned slots in idle mode and cleans them last in pressure mode.
   `clean -X` never touches the edits.
 
-**Legacy role worktrees,** handled once at startup:
-- A `.tumwater/worktrees/<role>` whose role has `resumePending` becomes a pinned legacy slot at
-  its existing path, because the resume must keep its cwd. It is removed after that role's
-  next release.
+**Legacy role worktrees,** handled once at startup, after `runOrchestrator` constructs every
+`LoopRunner` but before any tick can lease a slot: the constructor infers `resumePending` from
+the on-disk `running` flag only in memory (never saving it), so `loadLoopState` still reports
+the on-disk flags the migration reads — `resumePending === true || running === true` means
+resumable.
+- The migration receives every configured loop id (`loopIds`), never a run's `--once --role`
+  filter: a scoped run must leave the other roles' legacy dirs and pins alone, or it loses
+  their pending resumes on the next full-fleet start.
+- A `.tumwater/worktrees/<role>` whose role is configured and resumable becomes a pinned legacy
+  slot at its existing path (or the role's already-owned slot is pinned and the legacy dir
+  removed), because the resume must keep its cwd. It is removed after that role's next release.
 - Every other legacy role worktree is removed with `removeWorktree`. Its branch keeps any
-  commit.
+  commit, and a pin for a role outside the configured set is cleared so a paused role cannot
+  leak a permanently pinned checkout.
 
 **Unchanged.** The director keeps `ensureWorktree(root, DIRECTOR_ROLE, main)`.
 

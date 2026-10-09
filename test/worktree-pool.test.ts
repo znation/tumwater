@@ -8,12 +8,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { leaseSlot, removeDroppedSlots, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
+import { leaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { eventsLogPath, slotWorktreePath } from "../src/paths.js";
-import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -351,4 +352,119 @@ test("a failing removal with an unwritable events feed still resolves", async ()
   await removeDroppedSlots(root, ["/slots/a"], async () => {
     throw new Error("EBUSY: resource busy or locked");
   });
+});
+
+// Startup migration (plans/worktree-pool.md "Legacy role worktrees", part 4c/5): the pre-pool
+// `.tumwater/worktrees/<role>` checkouts are retired once ticks lease slots.
+
+test("startup retires a non-resumable legacy role worktree but keeps its branch", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const wt = worktreeAt(root, "feature");
+  writeFileSync(join(wt, "feature.txt"), "work\n");
+  commitIn(wt, "feature work");
+  const sha = headSha(wt);
+
+  await retireLegacyRoleWorktrees(root, ["feature", "bugfix"]);
+  assert.equal(existsSync(wt), false, "the non-resumable legacy checkout survived");
+  assert.equal(sh(root, "git", "rev-parse", "tumwater/feature"), sha, "the branch lost its commit");
+  assert.equal(
+    readSlotsState(root).slots.some((slot) => slot.dir === wt),
+    false,
+    "the removed legacy dir left a slot record",
+  );
+});
+
+test("a resumable enabled role's legacy dir becomes a pinned slot and serves one resume", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const wt = worktreeAt(root, "feature");
+  writeFileSync(join(wt, "resume.txt"), "kept");
+  saveLoopState(root, { ...freshLoopState("feature"), resumePending: true });
+
+  await retireLegacyRoleWorktrees(root, ["feature"]);
+  assert.equal(existsSync(wt), true, "the resumable legacy checkout was removed");
+  const rec = slotForDir(root, wt);
+  assert.equal(rec?.pinnedFor, "feature");
+  assert.equal(rec?.lease, null);
+
+  const lease = await leaseSlot(root, {
+    role: "feature",
+    purpose: "tick",
+    ref: "main",
+    keep: true,
+  });
+  assert.equal(lease.dir, wt, "the resume did not keep its cwd");
+  assert.equal(lease.preserved, true);
+  assert.equal(readFileSync(join(lease.dir, "resume.txt"), "utf8"), "kept");
+  lease.release();
+  await waitFor(() => (existsSync(wt) ? undefined : true));
+  assert.equal(slotForDir(root, wt), undefined, "the retired slot record survived");
+});
+
+test("a resumable role that already owns a tick slot keeps the slot and retires the legacy dir", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 3 });
+  const wt = worktreeAt(root, "feature");
+  saveLoopState(root, { ...freshLoopState("feature"), running: true });
+  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+
+  await retireLegacyRoleWorktrees(root, ["feature"]);
+  assert.equal(existsSync(wt), false, "the legacy checkout survived beside the owned slot");
+  assert.equal(slotForDir(root, held.dir)?.pinnedFor, "feature");
+  held.release();
+});
+
+test("a resumable but disabled role is removed and its pins never leak", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const wt = worktreeAt(root, "feature");
+  saveLoopState(root, { ...freshLoopState("feature"), resumePending: true });
+  const canonical = slotWorktreePath(root, 1);
+  writeSlotsState(root, {
+    slots: [{ dir: canonical, lease: null, pinnedFor: "clean", lastRole: null, lastReleasedAt: 1 }],
+  });
+
+  await retireLegacyRoleWorktrees(root, ["bugfix"]);
+  assert.equal(existsSync(wt), false, "a disabled role's legacy checkout survived");
+  assert.equal(
+    readSlotsState(root).slots.some((slot) => slot.pinnedFor === "feature"),
+    false,
+    "a disabled role's legacy dir stayed pinned",
+  );
+  assert.equal(slotForDir(root, canonical)?.pinnedFor, null, "a removed role's pin leaked");
+});
+
+test("the migration leaves the director and underscore directories untouched", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const worktrees = join(root, ".tumwater", "worktrees");
+  mkdirSync(join(worktrees, "director"), { recursive: true });
+  mkdirSync(join(worktrees, "_merge"), { recursive: true });
+  mkdirSync(join(worktrees, "_land-feature"), { recursive: true });
+
+  await retireLegacyRoleWorktrees(root, []);
+  assert.ok(existsSync(join(worktrees, "director")), "the director checkout was touched");
+  assert.ok(existsSync(join(worktrees, "_merge")), "a `_`-prefixed checkout was touched");
+  assert.ok(existsSync(join(worktrees, "_land-feature")), "a legacy lander checkout was touched");
+});
+
+test("a failed slot reset still removes a migrated legacy dir instead of orphaning it", async () => {
+  // leaseSlot's error path must hand releaseSlot's toRemove to removeDroppedSlots: a
+  // non-canonical (migrated legacy) slot is dropped on the unpinned release, so discarding
+  // that list left the directory on disk with no slot record.
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const wt = worktreeAt(root, "feature");
+  writeSlotsState(root, {
+    slots: [{ dir: wt, lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: null }],
+  });
+
+  await assert.rejects(
+    leaseSlot(root, { role: "feature", purpose: "tick", ref: "no-such-ref" }),
+    "a slot reset to an unknown ref must reject",
+  );
+  await waitFor(() => (existsSync(wt) ? undefined : true));
+  assert.equal(existsSync(wt), false, "the failed lease orphaned the legacy dir");
+  assert.equal(slotForDir(root, wt), undefined, "the retired slot record survived");
 });
