@@ -7,7 +7,7 @@ import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
-import { isActivePhase, loopRowCells, slotSuffix, sortLoopsByState } from "./status-model.js";
+import { idleClaimText, isActivePhase, loopRowCells, slotSuffix, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
@@ -76,7 +76,13 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
   // detail. The landing label rides the same guard: the landing role is not running, so its
   // phase ("landing <elapsed> · <stage>", with the reviewer's live detail while it reviews)
   // is returned without a work-item prefix.
-  if (!s.running || s.parkedSince || s.phase === "review") return phase;
+  if (!s.running || s.parkedSince || s.phase === "review") {
+    // Parallel work instances, part 6/7: an idle or landing instance leads with the entry it
+    // claimed (or, for an idle extra with none, the no-unclaimed note), so the operator can
+    // see WHAT it is parked on without opening its drawer.
+    const idle = idleClaimText(s, phase);
+    return idle ? `${idle} · ${phase}` : phase;
+  }
   const p = tickProgress(root, s, live);
   const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;

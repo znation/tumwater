@@ -1,4 +1,5 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf, instanceIndex } from "../roles/loop-ids.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
@@ -58,6 +59,22 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
  * state cell (status-render.ts) and derived from the same status payload the GUI reads. */
 export function slotSuffix(s: { slot?: string; slotPinned?: boolean }): string {
   return s.slot ? ` · ${s.slot}${s.slotPinned ? " (pinned)" : ""}` : "";
+}
+
+/** The work text a row shows in place of live progress while it is idle or landing
+ * (plans/parallel-work-instances.md "Observability", part 6/7): the claim's heading when the
+ * instance holds one, otherwise — for an idle extra instance that was skipped for want of a
+ * free entry — `idle — no unclaimed <plans|bugs>`. Returns null for a row with neither, so the
+ * state cell keeps its plain phase. An extra instance is skipped without touching its backoff,
+ * so the `queued` phase is the tell that the skip, not a sleep or a gate, left it idle. */
+export function idleClaimText(
+  s: { claim?: LoopState["claim"]; role: string },
+  phase: string,
+): string | null {
+  if (s.claim) return s.claim.title;
+  if (phase === "queued" && instanceIndex(s.role) >= 2)
+    return `idle — no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
+  return null;
 }
 
 /** The loop's state label — the one precedence ladder shared by the status table and both

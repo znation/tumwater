@@ -14,6 +14,7 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
+  checkWorkInstances,
   checkWorktreePool,
 } from "../src/doctor/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
@@ -22,7 +23,8 @@ import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { headSha, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
@@ -561,4 +563,36 @@ test("checkWorktreePool reports the pool, warns on a 25 h pin and on leftover le
   assert.match(leftover.detail, /_land-feature/);
   assert.doesNotMatch(leftover.detail, /director/);
   assert.doesNotMatch(leftover.detail, /_slot-1/);
+});
+
+// Parallel work instances, part 6/7: the work-instance doctor check — ok with no claims,
+// warns on a claim whose entry left the section, on one idle past the release window, and on
+// instances sharing a pool smaller than maxConcurrent.
+test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots", () => {
+  const root = readyRepo();
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claims held" });
+
+  // A listed PLANS.md entry, held for 25 h: stale past CLAIM_IDLE_MAX_MS.
+  writeConfig(root, { roles: { feature: { instances: 2 } } });
+  fs.writeFileSync(path.join(root, "PLANS.md"), twoPlansDoc());
+  const now = Date.now();
+  saveLoopState(root, {
+    ...freshLoopState("feature-2"),
+    claim: { file: "PLANS.md", key: "alpha", title: "Alpha", at: now - 25 * 3_600_000, source: "assigned" },
+  });
+  const stale = checkWorkInstances(root, loadConfig(root), now);
+  assert.equal(stale.level, "warn");
+  assert.match(stale.detail, /"Alpha" \(feature-2\) has been idle 25h/);
+
+  // A claim whose key is no longer listed under ## Planned.
+  saveLoopState(root, {
+    ...freshLoopState("feature-2"),
+    claim: { file: "PLANS.md", key: "gone", title: "Gone", at: now, source: "assigned" },
+  });
+  assert.match(checkWorkInstances(root, loadConfig(root), now).detail, /"Gone" \(feature-2\) names an entry no longer listed/);
+
+  // A multi-instance feature with a pool below maxConcurrent.
+  writeConfig(root, { roles: { feature: { instances: 2 } }, worktreeSlots: 1 });
+  const tiny = checkWorkInstances(root, loadConfig(root), now);
+  assert.match(tiny.detail, /worktreeSlots 1 is below maxConcurrent/);
 });

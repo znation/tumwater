@@ -836,3 +836,14 @@ test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () 
   assert.match(line, /clean vet/);
   assert.match(line, /4 slots, 1 pinned/);
 });
+
+test("formatEvent renders claim assignment and release lines", () => {
+  const assigned = formatEvent({ ts: 0, loop: "feature-2", type: "claim", action: "assigned", key: "plan a", title: "Plan A" } as never);
+  assert.match(assigned, /feature-2\s+assigned "Plan A"/);
+  const released = formatEvent({ ts: 0, loop: "feature-2", type: "claim", action: "released", key: "plan a", title: "Plan A", reason: "left" } as never);
+  assert.match(released, /released "Plan A" \(left\)/);
+  // A torn event: the reason falls back to "?", never the literal "undefined".
+  const torn = formatEvent({ ts: 0, loop: "feature", type: "claim", action: "released", title: "Plan A" } as never);
+  assert.match(torn, /released "Plan A" \(\?\)/);
+  assert.doesNotMatch(torn, /undefined/);
+});

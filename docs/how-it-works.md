@@ -91,6 +91,16 @@ discards a role's in-flight landing.
   pool sit the director's own `.tumwater/worktrees/director`, the merge drain's `_merge`, the
   review gate's `_gate-main`, and the redeploy mirror and witness (`_main`, `_build`). Size the
   disk for about `worktreeSlots` + 3 warm checkouts of the project.
+- **Parallel work instances.** `roles.feature.instances` and `roles.bugfix.instances` (1–8)
+  run that many loop ids — `feature`, `feature-2`, … — each with its own branch and state. The
+  serial scheduler assigns each due instance one eligible backlog entry and holds the claim
+  until the entry lands, the instance gives it up, or it sits idle past 24 h; two instances
+  never work the same entry. An extra instance with no unclaimed eligible entry is skipped
+  without climbing its backoff (the scaling rule), and the plan loop keeps
+  `instances(feature) + 1` eligible plans ahead so every feature instance has something to
+  take. `tumwater status`, the TUI and the dashboard name each instance's claimed entry while
+  it is idle or landing, `tumwater logs` renders the `claim` assigned/released events, and
+  `tumwater doctor`'s `work instances` check warns on a claim whose entry is gone or stale.
 - `maxConcurrent` caps parallel ticks and landing vets together. Landings get slots first, then
   work roles (feature, bugfix, plan), then maintenance roles.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at

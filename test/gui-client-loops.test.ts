@@ -147,3 +147,16 @@ test("a loop row tags an active model-fallback episode", () => {
   // No episode: no fallback tag.
   assert.doesNotMatch(cells({ role: "clean", phase: "sleeping" }), /fallback<\/span>/);
 });
+
+// Parallel work instances, part 6/7: an idle instance's activity names the entry it claimed,
+// and a skipped extra instance with none says why.
+test("an idle instance's activity shows its claimed entry, or the no-unclaimed note", () => {
+  const claimed = row({ role: "feature-2", phase: "queued", claim: "Plan A" });
+  assert.match(claimed.activity, /Plan A/);
+  const skipped = row({ role: "feature-2", phase: "queued", instanceOf: "feature" });
+  assert.match(skipped.activity, /idle — no unclaimed plans/);
+  const bug = row({ role: "bugfix-3", phase: "queued", instanceOf: "bugfix" });
+  assert.match(bug.activity, /idle — no unclaimed bugs/);
+  // A bare role with no claim keeps its ordinary idle rendering.
+  assert.ok(!row({ role: "feature", phase: "queued" }).activity.includes("no unclaimed"));
+});

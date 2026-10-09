@@ -92,6 +92,19 @@ test("status table tags the loops running on a model-fallback episode", () => {
   assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /\(on fallback\)/);
 });
 
+// Parallel work instances, part 6/7: an idle instance's state cell leads with the entry it
+// claimed, and only that row.
+test("status table leads an idle instance row with its claimed entry", () => {
+  const snap = snapshotWith([
+    { role: "feature-2", claim: { file: "PLANS.md", key: "plan a", title: "Plan A", at: 1, source: "assigned" } },
+    { role: "feature" },
+  ]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /Plan A/);
+  assert.equal(text.match(/Plan A/g)?.length, 1, "only the claiming row carries the title");
+  assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /Plan A/);
+});
+
 test("narrow-width clipping still holds when a custom loop is marked", () => {
   const snap = snapshotWith([
     { role: "nightly", custom: true, lastResult: "changed", lastSummary: "x".repeat(120), ticks: 7 },

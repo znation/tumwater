@@ -4,7 +4,7 @@ import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { isCustomRole } from "../config/config.js";
-import { loopIds } from "../roles/loop-ids.js";
+import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import {
   fallbackPair,
   modelFallbackView,
@@ -93,6 +93,10 @@ export interface StatusSnapshot {
      * resume waiting on the same checkout) rather than the slot's live lease. */
     slot?: string;
     slotPinned?: boolean;
+    /** The base role this row is an instance of (`feature-2` → `feature`), present only on an
+     * instance row so a dashboard can group and label parallel work instances
+     * (plans/parallel-work-instances.md "Observability", part 6/7). Absent on the bare role. */
+    instanceOf?: string;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
@@ -315,6 +319,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
       ...(episode !== null ? { fallback: episode } : {}),
       ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),
+      ...(baseRoleOf(r) === r ? {} : { instanceOf: baseRoleOf(r) }),
     };
   });
   // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists

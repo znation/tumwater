@@ -61,6 +61,13 @@ export function statusPayload(root: string, now = Date.now()): object {
       // while the loop's ticks run off-model, so the common row shape is unchanged.
       ...(s.fallback ? { fallback: s.fallback } : {}),
       ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
+      // Parallel work instances (plans/parallel-work-instances.md "Observability", part
+      // 6/7): the backlog entry this instance claimed, shown by the dashboards while it is
+      // idle or landing, and the base role it belongs to (`feature-2` → `feature`). `claim`
+      // is the claimed heading text, not the persisted record; both are absent on a bare,
+      // unclaimed row so the common payload shape is unchanged.
+      ...(s.claim ? { claim: s.claim.title } : {}),
+      ...(s.instanceOf ? { instanceOf: s.instanceOf } : {}),
       phase,
       // In-flight flag derived from the same rendered phase (isActivePhase's
       // permit-holder prefixes: working/reviewing/landing). The running director is excluded

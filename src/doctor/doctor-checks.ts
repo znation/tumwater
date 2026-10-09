@@ -4,6 +4,7 @@ import {
   enabledRoleIds,
   loadConfig,
   loadConfigSafe,
+  slotCount,
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -37,6 +38,9 @@ import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
+import { loadLoopState } from "../loop/loop-state.js";
+import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
+import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
 
 /** The doctor report contract and the environment/repo pre-flight checks, split out of
  * doctor.ts. CheckOutcome is the shared report contract: every sibling check module
@@ -357,6 +361,48 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
     );
   }
   return { level: leftover.length > 0 || stale.length > 0 ? "warn" : "ok", detail: parts.join(" — ") };
+}
+
+/** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7): the
+ * fleet's claims and the two states an operator should act on — a claim whose key is no longer
+ * listed under its role's section (its instance is stuck on an entry that moved), and a claim
+ * idle for more than CLAIM_IDLE_MAX_MS (the scheduler releases these, so seeing one means the
+ * reader's view and the scheduler's disagree). A multi-instance role configured with fewer
+ * pooled slots than maxConcurrent also warns: instances then contend for the same checkouts.
+ * Read-only, like every check; `now` is the claim-age test seam, and an unreadable
+ * tumwater.json (config undefined) skips the walk — checkInit reports the config itself. */
+export function checkWorkInstances(
+  root: string,
+  config?: TumwaterConfig | null,
+  now = Date.now(),
+): CheckOutcome {
+  if (!config) return { level: "ok", detail: "no readable tumwater.json — nothing to verify" };
+  const claims: Array<{ id: string; title: string; key: string; at: number }> = [];
+  for (const id of loopIds(config)) {
+    const claim = loadLoopState(root, id).claim;
+    if (claim) claims.push({ id, title: claim.title, key: claim.key, at: claim.at });
+  }
+  const gone = claims.filter((c) => !listedKeys(root, c.id).has(c.key));
+  const stale = claims.filter((c) => !gone.includes(c) && now - c.at > CLAIM_IDLE_MAX_MS);
+  const multi = Object.entries(config.roles)
+    .filter(([id, role]) => INSTANCE_ROLES.has(id) && (role.instances ?? 1) > 1)
+    .map(([id]) => id);
+  const slots = slotCount(config);
+  const smallPool = multi.length > 0 && slots < config.maxConcurrent;
+  if (gone.length === 0 && stale.length === 0 && !smallPool)
+    return { level: "ok", detail: claims.length > 0 ? `${claims.length} claims held` : "no claims held" };
+  const parts: string[] = [
+    ...gone.map((c) => `claim "${c.title}" (${c.id}) names an entry no longer listed`),
+    ...stale.map(
+      (c) =>
+        `claim "${c.title}" (${c.id}) has been idle ${Math.round((now - c.at) / 3_600_000)}h`,
+    ),
+  ];
+  if (smallPool)
+    parts.push(
+      `${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`,
+    );
+  return { level: "warn", detail: parts.join("; ") };
 }
 
 /** Declared project check — names what the review gate's deterministic pre-check, the

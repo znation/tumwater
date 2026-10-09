@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { backdate } from "./helpers/backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
-import { isActivePhase, loopPhase, loopRank, loopRowCells, slotSuffix, sortLoopsByState } from "../src/ui/status-model.js";
+import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, slotSuffix, sortLoopsByState } from "../src/ui/status-model.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
@@ -724,4 +724,19 @@ test("slotSuffix names the pooled slot and marks a pin; empty without one", () =
   assert.equal(slotSuffix({}), "");
   assert.equal(slotSuffix({ slot: "_slot-3" }), " · _slot-3");
   assert.equal(slotSuffix({ slot: "_slot-3", slotPinned: true }), " · _slot-3 (pinned)");
+});
+
+// Parallel work instances, part 6/7: the idle/landing work text — the claim's title, the
+// no-unclaimed note for a skipped extra instance, and null for everything else.
+test("idleClaimText names the claimed entry, or why an extra instance is idle", () => {
+  const claim = { file: "PLANS.md" as const, key: "plan a", title: "Plan A", at: 1, source: "assigned" as const };
+  assert.equal(idleClaimText({ role: "feature", claim }, "queued"), "Plan A");
+  assert.equal(idleClaimText({ role: "feature", claim }, "sleeping (for 30m)"), "Plan A");
+  assert.equal(idleClaimText({ role: "feature", claim }, "landing 3m"), "Plan A");
+  assert.equal(idleClaimText({ role: "feature-2" }, "queued"), "idle — no unclaimed plans");
+  assert.equal(idleClaimText({ role: "bugfix-3" }, "queued"), "idle — no unclaimed bugs");
+  // A bare role with no claim, or an instance that is not in the `queued` skip state, has no text.
+  assert.equal(idleClaimText({ role: "feature" }, "queued"), null);
+  assert.equal(idleClaimText({ role: "feature-2" }, "sleeping (for 30m)"), null);
+  assert.equal(idleClaimText({ role: "feature-2" }, "working 3m"), null);
 });

@@ -242,42 +242,6 @@ class as a thin delegate to the phase function:
   or a pre-move path.
 - `npm run test` green.
 
-### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; split 2026-10-08 by plan; requires part 5b/7 landed)
-
-Design: plans/parallel-work-instances.md ("Observability").
-
-**Goal.** An operator can see which instance holds which entry, and why an extra instance is
-idle.
-
-**Approach.**
-1. **Status.** `loopStateForPoll` rows (src/status/status-data.ts) carry `claim` (the title)
-   and `instanceOf` (the base role). `tumwater status --json` and `/api/status` serve them.
-2. **TUI and GUI.**
-   - src/ui/status-model.ts and src/ui/status-render.ts show the claim as the row's work text
-     while the row is idle or landing.
-   - An idle extra instance with no claim reads `idle — no unclaimed <plans|bugs>`.
-   - src/ui/gui/gui-client-loops.ts uses the claim when `currentWork` is empty.
-3. **Logs.** src/events/event-format.ts renders `claim` events: `assigned "<title>"` and
-   `released "<title>" (<reason>)`.
-4. **Doctor.** `checkWorkInstances` (src/doctor/doctor-checks.ts) warns on:
-   - a claim whose key is no longer listed;
-   - a claim older than 24 h;
-   - `instances > 1` with `worktreeSlots` below `maxConcurrent`.
-5. **Docs.** docs/how-it-works.md covers instances, claims, the scaling rule and the plan
-   target.
-
-**Files touched.** src/status/status-data.ts, src/ui/status-model.ts,
-src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, src/events/event-format.ts,
-src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests: cases in the
-status, status-render, event-format and doctor tests.
-
-**Acceptance criteria.**
-- **Rows.** A fabricated `feature-2` state with a claim shows the claimed title in
-  `status --json`, the TUI row and the GUI row.
-- **Logs.** `tumwater logs` renders one line per `claim` event.
-- **Doctor.** It warns on a 25 h-old claim and on a claim whose entry is gone.
-- `npm run test` green.
-
 ### Parallel work instances, part 7/7: keep permit headroom for work loops that have work to take (planned 2026-10-07 by operator; requires part 5b/7 landed)
 
 Design: plans/parallel-work-instances.md ("Priority headroom").
@@ -314,6 +278,42 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; split 2026-10-08 by plan; requires part 5b/7 landed; done 2026-10-08 by feature)
+
+Design: plans/parallel-work-instances.md ("Observability").
+
+**Goal.** An operator can see which instance holds which entry, and why an extra instance is
+idle.
+
+**Approach.**
+1. **Status.** `loopStateForPoll` rows (src/status/status-data.ts) carry `claim` (the title)
+   and `instanceOf` (the base role). `tumwater status --json` and `/api/status` serve them.
+2. **TUI and GUI.**
+   - src/ui/status-model.ts and src/ui/status-render.ts show the claim as the row's work text
+     while the row is idle or landing.
+   - An idle extra instance with no claim reads `idle — no unclaimed <plans|bugs>`.
+   - src/ui/gui/gui-client-loops.ts uses the claim when `currentWork` is empty.
+3. **Logs.** src/events/event-format.ts renders `claim` events: `assigned "<title>"` and
+   `released "<title>" (<reason>)`.
+4. **Doctor.** `checkWorkInstances` (src/doctor/doctor-checks.ts) warns on:
+   - a claim whose key is no longer listed;
+   - a claim older than 24 h;
+   - `instances > 1` with `worktreeSlots` below `maxConcurrent`.
+5. **Docs.** docs/how-it-works.md covers instances, claims, the scaling rule and the plan
+   target.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-model.ts,
+src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, src/events/event-format.ts,
+src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests: cases in the
+status, status-render, event-format and doctor tests.
+
+**Acceptance criteria.**
+- **Rows.** A fabricated `feature-2` state with a claim shows the claimed title in
+  `status --json`, the TUI row and the GUI row.
+- **Logs.** `tumwater logs` renders one line per `claim` event.
+- **Doctor.** It warns on a 25 h-old claim and on a claim whose entry is gone.
+- `npm run test` green.
 
 ### Worktree pool, part 5/5: slot waits, slot display, doctor check and docs (planned 2026-10-06 by operator; requires parts 4a/5, 4b/5 and 4c/5 landed; done 2026-10-08 by feature)
 

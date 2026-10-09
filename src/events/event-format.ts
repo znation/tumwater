@@ -381,6 +381,12 @@ export function eventMessage(e: HarnessEvent): string {
       const purpose = e.purpose === "vet" ? "vet" : "tick";
       return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a free worktree slot (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} slots, ${textOr(e.pinned)} pinned)`;
     }
+    case "claim":
+      // Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
+      // the assignment/release is the harness working as designed, so no warning prefix.
+      return e.action === "released"
+        ? `released "${textOr(e.title)}" (${textOr(e.reason, "?")})`
+        : `assigned "${textOr(e.title)}"`;
     case "warning":
       return `warning: ${textOr(e.message)}`;
     default:

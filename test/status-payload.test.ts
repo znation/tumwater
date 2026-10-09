@@ -63,6 +63,30 @@ test("status payload carries the pooled worktree slot a loop holds or is pinned 
   assert.equal(payload.loops.find((l) => l.role === "bugfix")?.slot, undefined);
 });
 
+test("status payload carries an instance's claim title and base role", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload claims test");
+  const cfg = loadConfig(repo);
+  const feature = cfg.roles.feature;
+  assert.ok(feature, "the default config carries the feature role");
+  feature.instances = 2;
+  saveConfig(repo, cfg);
+  saveLoopState(repo, {
+    ...freshLoopState("feature-2"),
+    claim: { file: "PLANS.md", key: "plan a", title: "Plan A", at: Date.now(), source: "assigned" },
+  });
+  const payload = statusPayload(repo) as {
+    loops: Array<{ role: string; claim?: string; instanceOf?: string }>;
+  };
+  const inst = payload.loops.find((l) => l.role === "feature-2");
+  assert.equal(inst?.claim, "Plan A", "the instance row carries the claimed title");
+  assert.equal(inst?.instanceOf, "feature", "the instance row names its base role");
+  // The bare role keeps neither field (the common payload shape is unchanged).
+  const bare = payload.loops.find((l) => l.role === "feature");
+  assert.equal(bare?.claim, undefined);
+  assert.equal(bare?.instanceOf, undefined);
+});
+
 test("status payload marks user-defined loops with the custom flag", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload custom test");

@@ -68,9 +68,17 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const status = pill(info) + (detail ? "<div class='sub" + (stalled ? " t-red" : "") + "' title='" + esc(l.phase) + "'>" + esc(detail) + "</div>" : "");
     let activity;
     if (info.live || info.key === "vetted") {
-      const text = l.currentWork || landingSummary(d, l.role);
+      // Parallel work instances, part 6/7: while idle or landing, show the entry the instance
+      // claimed before the landing summary placeholder.
+      const text = l.currentWork || l.claim || landingSummary(d, l.role);
       const pending = info.key === "working" ? "Starting up…" : info.key === "reviewing" ? "Reviewing the change…" : "Landing the change…";
       activity = text ? "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>" : "<div class='muted'>" + pending + "</div>";
+    } else if (l.claim || (l.instanceOf && info.key === "queued")) {
+      // An idle instance holding a claim names its entry; an idle extra with none (skipped for
+      // want of a free entry) says why. The queued key is the tell that the skip, not a
+      // sleep or a gate, left it idle.
+      const text = l.claim || ("idle — no unclaimed " + (l.instanceOf === "bugfix" ? "bugs" : "plans"));
+      activity = "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>";
     } else if (l.lastResult) {
       const r = resultInfo(l.lastResult);
       const why = resultWhy(l);
