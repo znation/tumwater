@@ -184,6 +184,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "logMaxBytes", POSITIVE);
   checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
   checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
+  // Work ratio 1a/4: the maintenance allowance ratio is a number of 0 or more (a larger value
+  // effectively disables the cap, so there is no separate off switch).
+  checkNumber(r, "", "maintenancePerWorkLanding", NON_NEGATIVE);
   // Disk floor (plans/disk-floor.md, part 1/4): 0 disables the hold, so only a negative
   // value or a non-number is a problem.
   checkNumber(r, "", "diskHoldGB", NON_NEGATIVE);

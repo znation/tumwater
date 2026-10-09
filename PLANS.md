@@ -6,67 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Work ratio, part 1a/4: the maintenance allowance — window counts, the verdict and the `maintenancePerWorkLanding` setting (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4, which feature passed over as too big)
-
-Design: plans/work-ratio.md ("Maintenance follows work").
-
-Context. On 10-07 the fleet landed 335 commits for 22 plans and 28 bugs. 271 of those commits
-came from the code-maintenance roles; clean alone landed 118, averaging 8 lines each.
-
-`deferTickReason` (src/scheduling/scheduling.ts) only holds a maintenance role after a
-`no_change` tick, so a role that always finds something never yields. Part 1a builds the
-arithmetic and the setting with no scheduling effect. Part 1b puts it in front of the scheduler.
-
-**Approach.**
-1. **Tier.** Count by `commitTier` (src/roles/roles.ts, added by Work ratio 4/4):
-   - `"work"` (feature, bugfix, director) is the work count;
-   - `"maintenance"` (code-maintenance roles plus readme) is the maintenance count.
-   - Update `commitTier`'s doc comment: it is now the one home of the split that both the report
-     and the quota use, and it no longer predates 1/4.
-   - steward, observers, plan and custom roles are never counted or held.
-2. **Window.**
-   - A new src/gates/maintenance-quota.ts counts `merged` events by tier over the rolling 24 h
-     ending `now`: `{ work, maint }`.
-   - Read them through the existing windowed event reader (src/events/event-window.ts) with an
-     incremental cache, so a poll folds only newly appended lines and does not re-parse the
-     whole log. Reuse report-data's fold cache if it fits; do not write a third log parser.
-3. **Verdict.** Add a pure `maintenanceQuota({ work, maint, inFlight, perWorkLanding })` that
-   returns `{ allowance, used, held }`, where:
-   - `allowance = perWorkLanding × work + MAINTENANCE_DAILY_FLOOR` (an exported constant, 12);
-   - `used = maint + inFlight`;
-   - `held = used >= allowance`.
-4. **Config.**
-   - Add top-level `maintenancePerWorkLanding`: a number ≥ 0, default 2.
-   - Wire it through src/config/config-schema.ts, config.ts, config-field-checks.ts and
-     config-editable-keys.ts, so `tumwater config set` can edit it live.
-   - There is no switch to turn it off. A large value effectively disables it, per PRINCIPLES.md's
-     "opinionated defaults".
-   - Document it in README.md's config reference. Say that part 1b makes it hold loops; until
-     then it is computed but not enforced.
-
-**Files touched.**
-- src/gates/maintenance-quota.ts (new)
-- src/roles/roles.ts (doc comment only)
-- src/config/config-schema.ts, config.ts, config-field-checks.ts, config-editable-keys.ts
-- README.md
-
-Tests:
-- test/maintenance-quota.test.ts (new)
-- config validation cases
-
-**Acceptance criteria.**
-- **Allowance.** `maintenanceQuota({work: 10, maint: 32, inFlight: 0, perWorkLanding: 2})` is
-  `{allowance: 32, used: 32, held: true}`. With `maint: 31` it is not held.
-- **Floor.** With `work: 0`, the allowance is 12.
-- **Window.** In a fixture log with 3 feature, 1 director, 5 clean, 2 readme, 1 steward and
-  2 plan merges inside the last 24 h, plus 4 clean merges older than 24 h, the count is
-  `{work: 4, maint: 7}`.
-- **Incremental.** After appending one clean merge, a second count is `{work: 4, maint: 8}`,
-  and it reads only the appended bytes (assert through the cache, not timing).
-- **Config.** `maintenancePerWorkLanding: -1` and `"2"` fail validation with a field error, and
-  `tumwater config set maintenancePerWorkLanding 3` is accepted.
-- `npm run test` green.
-
 ### Work ratio, part 1b/4: the scheduler holds maintenance loops past their allowance (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4; requires part 1a/4 landed)
 
 Design: plans/work-ratio.md ("Maintenance follows work").
@@ -231,6 +170,77 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Work ratio, part 1a/4: the maintenance allowance — window counts, the verdict and the `maintenancePerWorkLanding` setting (planned 2026-10-08 by operator; split 2026-10-08 by operator from part 1/4, which feature passed over as too big; done 2026-10-08 by feature)
+
+Design: plans/work-ratio.md ("Maintenance follows work").
+
+Context. On 10-07 the fleet landed 335 commits for 22 plans and 28 bugs. 271 of those commits
+came from the code-maintenance roles; clean alone landed 118, averaging 8 lines each.
+
+`deferTickReason` (src/scheduling/scheduling.ts) only holds a maintenance role after a
+`no_change` tick, so a role that always finds something never yields. Part 1a builds the
+arithmetic and the setting with no scheduling effect. Part 1b puts it in front of the scheduler.
+
+**Approach.**
+1. **Tier.** Count by `commitTier` (src/roles/roles.ts, added by Work ratio 4/4):
+   - `"work"` (feature, bugfix, director) is the work count;
+   - `"maintenance"` (code-maintenance roles plus readme) is the maintenance count.
+   - Update `commitTier`'s doc comment: it is now the one home of the split that both the report
+     and the quota use, and it no longer predates 1/4.
+   - steward, observers, plan and custom roles are never counted or held.
+2. **Window.**
+   - A new src/gates/maintenance-quota.ts counts `merged` events by tier over the rolling 24 h
+     ending `now`: `{ work, maint }`.
+   - Read them through the existing windowed event reader (src/events/event-window.ts) with an
+     incremental cache, so a poll folds only newly appended lines and does not re-parse the
+     whole log. Reuse report-data's fold cache if it fits; do not write a third log parser.
+3. **Verdict.** Add a pure `maintenanceQuota({ work, maint, inFlight, perWorkLanding })` that
+   returns `{ allowance, used, held }`, where:
+   - `allowance = perWorkLanding × work + MAINTENANCE_DAILY_FLOOR` (an exported constant, 12);
+   - `used = maint + inFlight`;
+   - `held = used >= allowance`.
+4. **Config.**
+   - Add top-level `maintenancePerWorkLanding`: a number ≥ 0, default 2.
+   - Wire it through src/config/config-schema.ts, config.ts, config-field-checks.ts and
+     config-editable-keys.ts, so `tumwater config set` can edit it live.
+   - There is no switch to turn it off. A large value effectively disables it, per PRINCIPLES.md's
+     "opinionated defaults".
+   - Document it in README.md's config reference. Say that part 1b makes it hold loops; until
+     then it is computed but not enforced.
+
+**Files touched.**
+- src/gates/maintenance-quota.ts (new)
+- src/roles/roles.ts (doc comment only)
+- src/config/config-schema.ts, config.ts, config-validation.ts
+- README.md
+
+Tests:
+- test/maintenance-quota.test.ts (new)
+- config validation cases
+
+**Acceptance criteria.**
+- **Allowance.** `maintenanceQuota({work: 10, maint: 32, inFlight: 0, perWorkLanding: 2})` is
+  `{allowance: 32, used: 32, held: true}`. With `maint: 31` it is not held.
+- **Floor.** With `work: 0`, the allowance is 12.
+- **Window.** In a fixture log with 3 feature, 1 director, 5 clean, 2 readme, 1 steward and
+  2 plan merges inside the last 24 h, plus 4 clean merges older than 24 h, the count is
+  `{work: 4, maint: 7}`.
+- **Incremental.** After appending one clean merge, a second count is `{work: 4, maint: 8}`,
+  and it reads only the appended bytes (assert through the cache, not timing).
+- **Config.** `maintenancePerWorkLanding: -1` and `"2"` fail validation with a field error, and
+  `tumwater config set maintenancePerWorkLanding 3` is accepted.
+- `npm run test` green.
+
+**As landed.** The validation half is wired through config-validation.ts's top-level `checkNumber`
+using config-field-checks.ts's existing `NON_NEGATIVE` rule, not a new rule in that file;
+`config-editable-keys.ts` is the dashboard Settings shortlist, not the `config set` gate, and the
+CLI accepts the key via its `TOP_LEVEL_KEYS` membership, so adding it there without a matching
+GUI row was left out. The window is instant-shaped (`ts >= now − 24 h`), which the day-keyed
+report fold cache cannot represent, so maintenance-quota.ts carries its own byte-offset memo over
+the shared `parseEventLine`/`readCompleteLines` (and a whole `readWindowEvents` reseed after
+rotation) rather than adding a second line parser. Tests cover the verdict, the floor, the tiered
+window fixture, the appended-bytes-only second count, and a rotation reseed.
 
 ### Work ratio, part 2/4: a clean tick sweeps one kind of drift across the tree instead of one site (planned 2026-10-08 by operator; trimmed 2026-10-08 by operator — the PRINCIPLES.md amendment it needed landed separately, since feature may not edit that file; done 2026-10-08 by feature)
 

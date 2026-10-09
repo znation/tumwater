@@ -249,6 +249,13 @@ export interface TumwaterConfig {
    * autonomous-spend cap. Keys must name known roles (built-in or customLoops) — a typo is a
    * validation error, never a silently inert cap. */
   maxDailyCostUsdPerRole?: Record<string, number>;
+  /** Work ratio 1a/4 (plans/work-ratio.md, "Maintenance follows work"): how many
+   * code-maintenance landings the rolling 24 h window allows per work (feature/bugfix/director)
+   * landing, on top of the fixed 12-landing floor. A number of 0 or more, default 2; there is no
+   * off switch because a large value effectively disables the allowance. Work ratio 1b/4 makes
+   * the scheduler hold maintenance loops past the allowance — until it lands, this is counted
+   * but not enforced. */
+  maintenancePerWorkLanding: number;
   /** Quiet hours: a daily local-time window — "HH:MM-HH:MM", e.g. "23:00-07:00" — during
    * which role loops start no new ticks (in-flight ticks finish; a tick due inside the
    * window starts at window end). A window may wrap midnight (start > end); an empty string
@@ -360,6 +367,7 @@ export const TOP_LEVEL_KEYS = [
   "sessionRetentionDays",
   "maxDailyCostUsd",
   "maxDailyCostUsdPerRole",
+  "maintenancePerWorkLanding",
   "quietHours",
   "quietHoursPerRole",
   "diskHoldGB",

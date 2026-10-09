@@ -105,10 +105,11 @@ export function baselineBlocked(role: string): boolean {
 }
 
 /** Work ratio 4/4: which commit tier a loop's base role lands into, for the work vs maintenance
- * split the report and the "Landed today" tile show. `work` is the shipping tier (feature,
- * bugfix, director); `maintenance` is code upkeep plus readme — Work ratio 1/4's QUOTA_ROLES,
- * which this predates, so its CODE_MAINTENANCE_ROLES list plus readme. Every other role (plan,
- * steward, observers, custom) is neither and counts only toward the total commits. */
+ * split the report and the "Landed today" tile show and the maintenance allowance (Work ratio
+ * 1a/4, src/gates/maintenance-quota.ts) counts. The one home of the split. `work` is the
+ * shipping tier (feature, bugfix, director); `maintenance` is code upkeep plus readme. Every
+ * other role (plan, steward, observers, custom) is neither and counts only toward the total
+ * commits. */
 export function commitTier(role: string): "work" | "maintenance" | undefined {
   const base = baseRoleOf(role);
   if (base === "feature" || base === BUGFIX_ROLE || base === DIRECTOR_ROLE) return "work";

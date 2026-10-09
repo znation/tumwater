@@ -89,6 +89,11 @@ export function defaultConfig(): ResolvedModelConfig {
     // generous for a normal day of autonomous work on mid-tier API models and low enough to
     // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
+    // Work ratio 1a/4 (plans/work-ratio.md): the maintenance allowance is
+    // maintenancePerWorkLanding × work landings + 12 per rolling 24 h. Two keeps roughly two
+    // upkeep landings per shipped change while the fixed floor lets hygiene run on an empty
+    // backlog. Work ratio 1b/4 is what holds loops past it; until then this is inert.
+    maintenancePerWorkLanding: 2,
     // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
     // below this many GB free, the fleet holds new work until it climbs 5 GB back above it.
     // 10 GB leaves room for an in-flight tick to finish and a state write to land. 0 disables.
