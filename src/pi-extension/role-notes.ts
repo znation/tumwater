@@ -39,11 +39,13 @@ const ROLE_NOTES_PARAMETERS = {
 } as const;
 
 /** Validate note text against the byte cap. Returns null when the text is acceptable, or an
- * error naming the byte count and the limit. Pure, so the boundary is testable without pi. */
+ * error naming the byte count and the fix — the same "shorten it to at most" wording
+ * text/text.ts's tooLongMessage gives every other bounded text, so the model that overran
+ * learns what to do, not just what went wrong. Pure, so the boundary is testable without pi. */
 export function validateRoleNote(text: string): string | null {
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > ROLE_NOTES_MAX_BYTES) {
-    return `note is ${bytes} bytes; the limit is ${ROLE_NOTES_MAX_BYTES} bytes`;
+    return `note is ${bytes} bytes — shorten it to at most ${ROLE_NOTES_MAX_BYTES} bytes`;
   }
   return null;
 }

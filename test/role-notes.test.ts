@@ -37,13 +37,13 @@ test("validateRoleNote accepts the 4,096-byte boundary and rejects one byte past
   assert.equal(validateRoleNote("a".repeat(ROLE_NOTES_MAX_BYTES)), null, "exactly at the limit");
   const error = validateRoleNote("a".repeat(ROLE_NOTES_MAX_BYTES + 1));
   assert.ok(error, "one byte past the limit is rejected");
-  assert.match(error, /limit is 4096 bytes/);
+  assert.match(error, /shorten it to at most 4096 bytes/);
 });
 
 test("validateRoleNote counts UTF-8 bytes, not characters", () => {
   // 2,048 characters of "é" are 4,096 bytes: valid. 2,049 are 4,098: rejected.
   assert.equal(validateRoleNote("é".repeat(2048)), null);
-  assert.match(validateRoleNote("é".repeat(2049)) ?? "", /limit is 4096 bytes/);
+  assert.match(validateRoleNote("é".repeat(2049)) ?? "", /shorten it to at most 4096 bytes/);
 });
 
 test("writeRoleNote writes the text and empty text clears the file", () => {
@@ -132,7 +132,7 @@ test("executing role_notes replaces the note and rejects an oversized one withou
 
     await assert.rejects(
       async () => tool.execute("call-2", { text: "a".repeat(ROLE_NOTES_MAX_BYTES + 1) }),
-      /limit is 4096 bytes/,
+      /shorten it to at most 4096 bytes/,
     );
     assert.equal(fs.readFileSync(notes, "utf8"), "where things live", "the rejected note leaves the old one intact");
 
