@@ -93,21 +93,22 @@ function isCheckScript(s: Record<string, unknown>, key: string): boolean {
   return isNonBlankString(v);
 }
 
-/** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors (default
- * 5) — to the nearest directory containing BOTH a package.json and a node_modules/ directory, then
- * preferring scripts.test over scripts.typecheck and scripts.build (npm convention: `test` is the
- * canonical verify command). A configured `check.command` (plans/portability.md §6/7) wins first:
- * the right way to verify a repo is a property of the repo, and the walk cannot know it — a Python,
- * Rust, or Go repo has no npm install for the walk to find, which silently turned every safety gate
- * off there. `config`'s `check` shape is the validated CheckConfig (src/config/config-schema.ts)
- * read structurally so detection needs no import of the config machinery; a blank command
- * (validation rejects one, but a degraded default config could still carry it) falls through to the
- * walk-up. The walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>`
- * with no install of their own (node_modules is gitignored — it exists only where someone ran npm
- * install), so a literal startDir check would silently disable the pre-check forever in dogfood.
- * The FIRST qualifying directory is the project: if its package.json has neither script, there is
- * no check (an unrelated ancestor further up must never be used). Returns null when no ancestor
- * qualifies or the file is missing/unreadable/malformed — detection never throws into the gate. */
+/** Find the project's deterministic check from `startDir` — at most `maxLevels` ancestors
+ * (default 5) — to the nearest directory containing BOTH a package.json and a node_modules/
+ * directory, then preferring scripts.test over scripts.typecheck and scripts.build (npm convention:
+ * `test` is the canonical verify command). A configured `check.command` (plans/portability.md
+ * §6/7) wins first: the right way to verify a repo is a property of the repo, and the walk cannot
+ * know it — a Python, Rust, or Go repo has no npm install for the walk to find, which silently
+ * turned every safety gate off there. `config`'s `check` shape is the validated CheckConfig
+ * (src/config/config-schema.ts) read structurally so detection needs no import of the config
+ * machinery; a blank command (validation rejects one, but a degraded default config could still
+ * carry it) falls through to the walk-up. The walk is required: tumwater worktrees live under
+ * `<repo>/.tumwater/worktrees/<role>` with no install of their own (node_modules is gitignored —
+ * it exists only where someone ran npm install), so a literal startDir check would silently disable
+ * the pre-check forever in dogfood. The FIRST qualifying directory is the project: if its
+ * package.json has neither script, there is no check (an unrelated ancestor further up must never
+ * be used). Returns null when no ancestor qualifies or the file is missing/unreadable/malformed —
+ * detection never throws into the gate. */
 export function detectBuildCheck(
   startDir: string,
   config?: CheckConfigSlice,

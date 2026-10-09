@@ -28,14 +28,14 @@ export function clipReason(r: string): string {
 /** A line that NAMES a failure rather than framing it: Node prints an unhandled error's message
  * ABOVE its stack and property dump (`Error: ENOENT: …`, `AssertionError [ERR_ASSERTION]: …`),
  * so a ten-line tail window that cuts the stack can cut the message too. The pattern is used to
- * PRESERVE that line, never to skip lines: an over-broad "skip property lines" rule would drop
- * real diff content like `actual: 1,` / `expected: 2,` and pick a trailing `diff: 'simple'`
- * instead (BUGS.md 2026-09-19). It matches `<Something>Error: …` / `<Something>Error [CODE]: …`. */
+ * PRESERVE that line, never to skip lines: an over-broad "skip property lines" rule would drop real
+ * diff content like `actual: 1,` / `expected: 2,` and pick a trailing `diff: 'simple'` instead
+ * (BUGS.md 2026-09-19). It matches `<Something>Error: …` / `<Something>Error [CODE]: …`. */
 const ERROR_MESSAGE_LINE = /^\S*Error\b[^:]*:\s/;
 
-/** A failed test's name line in node:test's spec output (`✖ <test name> (12.3ms)`) — every `✖`
- * line but the `✖ failing tests:` section header. The run's LAST one is the failure whose detail
- * ends the output, so it names the test the tail's message and stack belong to. */
+/** A failed test's name line in node:test's spec output (`✖ <test name> (12.3ms)`) — every
+ * `✖` line but the `✖ failing tests:` section header. The run's LAST one is the failure whose
+ * detail ends the output, so it names the test the tail's message and stack belong to. */
 const FAILED_TEST_LINE = /^✖ (?!failing tests:)/;
 
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
