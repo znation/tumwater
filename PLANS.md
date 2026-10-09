@@ -86,36 +86,71 @@ the cross-process lock, without a wake.
   on failure) and the CLI shell (confirmation, `--json`, no wake, help topics); the project's
   check passes.
 
-### A review retry picks up the timed-out reviewer's session instead of reviewing from scratch (planned 2026-10-09 by operator)
+### A review retry picks up the timed-out reviewer's session, part 1/3: per-review session directories (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch", which feature judged too large for one run)
 
-**Needs review 2026-10-09 by feature: too large for one run**
+When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the next attempt reviews it from scratch", so a change too big for one budget never converges. The fix is to continue the same reviewer session, which already holds everything it read. This part is behavior-neutral on its own and exists so part 2/3 can `--continue` exactly the timed-out run: pi's `continueSession` maps to `--continue` (src/pi/pi-args.ts), which reaches only the newest session in the shared `_review/<role>` directory, so another review in between would be the one continued.
 
-When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the commit is kept; the next attempt reviews it from scratch". The next attempt then starts over: a fresh session, a fresh prompt, and the same budget. So a change too big to review inside one budget never finishes. On 2026-10-09 feature-2's ~980-line Agent backends 3a/7 revision (bed22438) went through five progressing timeouts (900 s and 1800 s) plus one connection error, about 3 hours of reviewer time and a six-error streak that raised the `failing` banner. The seventh attempt, starting fresh again, finished in 9 minutes. The author side already resumes a progressing timeout's session (`resumePending`). The reviewer should do the same: continue the same reviewer session, which already holds everything it read and concluded, and finish with a verdict.
+**Goal:** each review run and the follow-ups on its session use their own directory, `reviewRunSessionDir(root, role, runKey)`, so a later attempt can continue precisely that run.
 
 **Approach.**
-1. **Record the resumable review.** On a progressing timeout of the review run itself (`!pi.ok && pi.timedOutProgressing`, not aborted, not a follow-up/nudge failure), save `state.reviewResume = { patchId, sessionDir, sessionName, attempts, at }` on the authoring role's `LoopState`. `patchId` is the patch-id of the change's diff against its frozen base (the same identity the landing's `lastApprovedPatchId` uses), so a sync rebase onto a moved main does not count as a different change. `attempts` counts resumes already spent on this change. A non-timeout failure, any verdict, a discard, or a landing clears the field. Heal it in `loadLoopState` like the other nested fields.
-2. **Resume an exact session, not "the latest one".** `reviewSessionDir(root, role)` is shared by every review of the role, and `--continue` reaches the newest session in the directory, so another review in between would be the one resumed. Run each review in its own subdirectory (`reviewSessionDir(root, role)/<tick>-<shortsha>` or similar, pruned by the existing age-based prune) and save that path in `reviewResume.sessionDir`. A resume continues that directory. `requestVerdict`/`requestNoRerun` (src/review/review-followup.ts) continue the directory the run just used.
-3. **The resume turn.** When `reviewAheadOfMain` starts a review whose patch-id matches `state.reviewResume.patchId`, `attempts < REVIEW_RESUME_LIMIT` (2), and `sessionResumable` holds for the saved directory, run the gate with `continueSession: true` in that directory and a short prompt instead of `buildReviewPrompt`. The prompt says the previous run hit its time budget, asks the reviewer to continue from where it stopped rather than re-reading what it already checked, and to finish with the VERDICT line. If the base moved, it names the new frozen base SHA and states that the change's own diff is unchanged (same patch-id). It uses the same `reviewRunConfig` budget, and the no-re-run rule and suite-rerun tripwire apply as on a fresh run. Increment `attempts` before the run so a crash cannot loop. If the patch-id differs, the session is gone, or the limit is spent, review fresh as today and clear the field.
-4. **Wording.** Rewrite `reviewTimeoutRewrite`'s message to say what will actually happen: "the commit is kept; the next attempt continues this review" while a resume remains, and the current "reviews it from scratch" once the limit is spent. Update the matching failure-digest cluster pattern in src/failure/failure-cluster.ts. A resumed run's `review_start` event carries `resumed: true`, and the event feed renders it as `review resumed`.
-5. **Streak.** A progressing review timeout that will be resumed is still a failed review for `consecutiveErrors` (no change to the counting). The point is that the next attempt converges.
+1. `src/paths.ts`: add `reviewRunSessionDir(root, role, runKey): string` = `path.join(reviewSessionDir(root, role), runKey)`, documented as the per-run child of the role's review dir. Leave `reviewSessionDir` as the parent, so existing callers and `test/paths.test.ts` are unchanged.
+2. `src/review/review.ts`: add a required `sessionDir: string` to `ReviewContext` (the directory this review run and its follow-ups use). `reviewAheadOfMain` passes `ctx.sessionDir` as `runGatePi`'s `sessionDir` (replacing `reviewSessionDir(root, role)`); drop the "fresh session every time" comment the per-run directory now supersedes.
+3. `src/landing/landing-core.ts`: `reviewContextFor` sets `sessionDir: reviewRunSessionDir(ctx.root, req.role, `${req.tick}-${shortSha(req.sha)}`)`, importing `shortSha` from `../text/format.js`. `req.tick` plus the pinned sha keys one directory per review of one change, so a re-vet of the same sha reuses it and the vet and the conflict-resolved re-review agree.
+4. `src/review/review-followup.ts`: `runFollowupTurn` reads `ctx.sessionDir` instead of computing `reviewSessionDir(ctx.root, ctx.role)`, so `requestVerdict`/`requestNoRerun` continue the run they follow; drop the now-unused import.
+5. `src/files/files.ts`: `pruneOldFiles` recurses but deletes only files, so empty per-run directories would accumulate. In `walk`, after a subdirectory is walked, remove it with `fs.rmdirSync(d)` (try/catch, vanish-tolerant) when it is empty and its own mtime is older than the cutoff; update the doc comment.
+6. Tests: `test/fixtures/gate-fixtures.ts`'s `gateCtx` gains `sessionDir: reviewRunSessionDir(root, ROLE, `${tick}-test`)`; `test/review-followup.test.ts`'s `makeCtx` literal gains the field and `touchSession` writes into the per-run dir; `test/files.test.ts` pins the empty-dir removal.
 
-**Files touched.**
-- src/review/review.ts (record/clear `reviewResume`, the resume branch, the wording)
-- src/review/review-followup.ts (follow-ups continue the run's own session directory)
-- src/gates/gate-prompts.ts (the resume prompt, beside `buildReviewPrompt`)
-- src/loop/loop-state.ts (the `reviewResume` field and its heal)
-- src/landing/landing-core.ts or src/landing/landing-vetting.ts only if the patch-id must be computed where the pinned change is synced
-- src/events/event-format.ts (`review resumed`), src/failure/failure-cluster.ts (the new message)
-- test/review.test.ts, test/review-followup.test.ts, test/gate-prompts.test.ts, test/loop-state.test.ts, test/failure-cluster.test.ts
+**Files touched:** src/paths.ts, src/review/review.ts, src/review/review-followup.ts, src/landing/landing-core.ts, src/files/files.ts, test/paths.test.ts, test/review-followup.test.ts, test/fixtures/gate-fixtures.ts, test/files.test.ts.
 
-**Acceptance criteria.**
-- With a fake pi whose first gate run times out while progressing, the next review of the same change runs with `--continue` in the same session directory, its prompt is the resume prompt (not the full diff prompt), and an approve verdict from it lands the change. `review_start` for that run has `resumed: true`.
-- If another review ran in the role's review directory between the two attempts, the resume still continues the timed-out run's own session (per-review subdirectory).
-- A rebase onto a moved main that leaves the patch-id unchanged still resumes. A change whose patch-id differs (a new commit, a revision) reviews fresh and clears `reviewResume`.
-- After `REVIEW_RESUME_LIMIT` resumes, the next attempt reviews fresh, and the failure message switches back to "reviews it from scratch".
-- A non-progressing timeout, a connection error, or a failed verdict follow-up does not set `reviewResume` and behaves exactly as today.
-- `loadLoopState` drops a malformed `reviewResume` without throwing.
-- `npm run test` is green.
+**Acceptance criteria:**
+- A gate run's pi invocation carries `--session-dir <root>/sessions/_review/<role>/<tick>-<shortsha>`, and a follow-up run carries the same directory.
+- Two reviews of different changes in one role use different directories; re-reviewing the same pinned sha uses the same one.
+- `test/review-followup.test.ts` still passes with its session file in the per-run directory.
+- `pruneOldFiles` removes an empty directory whose mtime is older than the window and leaves a non-empty one; the project's check passes.
+
+### A review retry picks up the timed-out reviewer's session, part 2/3: record and resume a progressing-timeout review session (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 1/3 landed)
+
+**Goal:** a review that hits its time budget while still making progress leaves a marker, and the next review of the same change continues that reviewer session instead of starting from scratch. Part 3/3 (separate) updates the event feed and failure-digest rendering.
+
+**Approach.**
+1. `src/loop/loop-state.ts`: add `reviewResume?: { patchId: string; sessionDir: string; attempts: number; at: number }` to `LoopState`, documented as the reviewer session a progressing timeout left for the next attempt. Heal it in `loadLoopState` with `healRecord` like `lastReview` (`v.attempts`/`v.at` through `healNumber`) and drop the field unless `patchId` and `sessionDir` are strings, so a corrupt marker cannot throw in `sessionResumable`. Export `REVIEW_RESUME_LIMIT = 2`.
+2. `src/gates/gate-prompts.ts`: add `buildReviewResumePrompt(base, patchId)` beside `buildReviewPrompt`. It states the previous run hit its time budget, names the frozen base SHA and that the change's diff is unchanged (same patch-id), tells the reviewer to continue from where it stopped rather than re-reading what it already checked, and to finish with the `VERDICT` line. It carries no diff — the session already holds it.
+3. `src/review/review.ts`, in `reviewAheadOfMain`:
+   - Compute `const reviewedPatchId = await patchId(wt, mainBranch, head)` once (reuse it for the already-approved check too) — the same identity `state.lastApprovedPatchId` uses.
+   - Decide `resuming` = `state.reviewResume` exists and `state.reviewResume.patchId === reviewedPatchId` and `state.reviewResume.attempts < REVIEW_RESUME_LIMIT` and `sessionResumable(state.reviewResume.sessionDir, { kind: "gate", agent: reviewCfg.agent ?? "pi" }, hasResumableSession(state.reviewResume.sessionDir))`.
+   - When resuming: increment `state.reviewResume.attempts` and `saveLoopState(root, state)` before the run (a crash cannot loop); run with `sessionDir: state.reviewResume.sessionDir`, `continueSession: true`, and `buildReviewResumePrompt` instead of `buildReviewPrompt`. Log `review_start` with `resumed: true`. Otherwise clear `state.reviewResume` and run fresh with `ctx.sessionDir` and `buildReviewPrompt` as today.
+   - On a progressing timeout of the review run itself (`!pi.ok && pi.timedOutProgressing`, not `pi.aborted`; not a follow-up/nudge failure): set `state.reviewResume = { patchId: reviewedPatchId, sessionDir: <the directory this run used>, attempts: resuming ? state.reviewResume.attempts : 0, at: Date.now() }` and `saveLoopState`. Every other failing path, any verdict (approve/reject), a strike-cap discard, and a landing clear it.
+   - `reviewTimeoutRewrite` becomes conditional on whether a resume remains after this failure: while one does, "the commit is kept; the next attempt continues this review"; once the limit is spent (or the failure cannot resume), keep "the commit is kept; the next attempt reviews it from scratch".
+   - The follow-up path is unchanged: the no-re-run rule and suite-rerun tripwire apply as today, and a follow-up continues the same (resumed or fresh) run directory.
+4. Streak: a progressing timeout that will be resumed still counts for `consecutiveErrors`; the point is that the next attempt converges, so the counting is untouched.
+
+**Files touched:** src/loop/loop-state.ts, src/review/review.ts, src/gates/gate-prompts.ts, test/loop-state.test.ts, test/review.test.ts, test/gate-prompts.test.ts.
+
+**Acceptance criteria:**
+- With a fake pi whose first gate run times out while progressing and whose next run approves, the second review of the same change runs with `--continue` in the timed-out run's own directory, its prompt is the resume prompt (not the full diff prompt), `reviewAheadOfMain` returns `approved`, and `state.reviewResume` is cleared. `review_start` for that run has `resumed: true`.
+- A rebase onto a moved main that leaves the patch-id unchanged still resumes; a different patch-id (new commit, revision) reviews fresh and clears `reviewResume`.
+- After `REVIEW_RESUME_LIMIT` resumes the next attempt reviews fresh and clears the field.
+- A non-progressing timeout sets nothing; a connection error, a failed verdict follow-up, an abort, any verdict, a discard, and a landing each clear `reviewResume` and otherwise behave as today.
+- `loadLoopState` drops a malformed `reviewResume` (non-string `patchId`/`sessionDir`, non-numeric `attempts`/`at`) without throwing.
+- The project's check passes.
+
+### A review retry picks up the timed-out reviewer's session, part 3/3: resumed-review event and failure digest (planned 2026-10-09 by operator; split from "A review retry picks up the timed-out reviewer's session instead of reviewing from scratch"; requires part 2/3 landed)
+
+Part 2/3 already writes the accurate `review_failed` message itself (its conditional `reviewTimeoutRewrite`); this part makes the event feed and the failure digest read the same way. It is separable because a missing `resumed` render or a digest cluster is a reporting gap, not a behavior change.
+
+**Goal:** a resumed review is legible in the feed, and the failure digest clusters "continues this review" separately from "reviews it from scratch" so the top-loss ranking counts the two honestly.
+
+**Approach.**
+1. `src/events/event-format.ts`: the `review_start` case renders `review resumed <shortSha>` (with ` (revision N)` when `revision` is set) when the event's `resumed` flag is set, else the current `reviewing …` line.
+2. `src/failure/failure-cluster.ts`: add the "the next attempt continues this review" pattern as its own cluster and keep the existing "reviews it from scratch" pattern, so old log lines still cluster where they did.
+3. Tests: `test/event-format.test.ts` for the resumed line (flag set and unset), `test/failure-cluster.test.ts` for the two patterns.
+
+**Files touched:** src/events/event-format.ts, src/failure/failure-cluster.ts, test/event-format.test.ts, test/failure-cluster.test.ts.
+
+**Acceptance criteria:**
+- A `review_start` event with `resumed: true` renders `review resumed <sha>`, adding ` (revision N)` when `revision` is set; without the flag it renders the current `reviewing …` line.
+- The failure digest clusters the two timeout messages under distinct causes, and a line with only the from-scratch wording still clusters where it used to.
+- The project's check passes.
 
 ### Retract a config value: `tumwater config unset <key>` (planned 2026-10-09 by plan)
 
