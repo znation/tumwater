@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { mainIsGreen } from "../src/baseline/main-baseline.js";
 import { autoRestartRecord } from "../src/redeploy/redeploy.js";
+import { Redeployer } from "../src/redeploy/redeployer.js";
 import {
   type AutoRestartRecord,
   RESTART_COOLDOWN_MS,
@@ -633,4 +634,25 @@ test("a toolchain-broken suite leaves no latched block: the skip reads as green 
   assert.equal(await r.poll(head, IDLE, true), "restart");
   assert.equal(r.status().restartBlocked, undefined, "no latched block — the skip is environmental");
   assert.ok(!events.some((e) => String(e.message ?? "").includes("is red")), "no false red verdict");
+});
+
+test("an unwritable event feed cannot throw out of poll, and the failure stays loud on stderr", async (t) => {
+  // logEvent throws when .tumwater/events.jsonl is unwritable (ENOSPC, EACCES, the path replaced
+  // by a directory). `poll` runs in the orchestrator's catch-less poll loop, so pre-fix the first
+  // build_stale transition ended the fleet; the state change it describes had already applied.
+  const f = fakeDeps();
+  const errWrites: string[] = [];
+  t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+    errWrites.push(String(chunk));
+    return true;
+  });
+  const r = new Redeployer(BUILD, true, f.deps, () => {
+    throw new Error("EISDIR: illegal operation on a directory, open '.tumwater/events.jsonl'");
+  });
+  // stale + autoRestart off: the first poll logs build_stale through the throwing sink.
+  assert.equal(await r.poll(HEAD_B, IDLE, false), "none");
+  assert.equal(r.status().stale, true, "the staleness verdict still lands despite the failed log");
+  // The state advanced, so the same head is neither re-logged nor re-thrown on the next poll.
+  assert.equal(await r.poll(HEAD_B, IDLE, false), "none");
+  assert.match(errWrites.join(""), /could not record build_stale event: EISDIR/);
 });

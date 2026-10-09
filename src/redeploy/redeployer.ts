@@ -25,6 +25,27 @@ import { PrewarmProbes, track, type Tracked } from "./redeploy-probes.js";
 /** Event input as the orchestrator logs it (logEvent stamps ts). */
 export type RedeployEvent = HarnessEventInput;
 
+/** Wrap the event sink so an unwritable feed cannot throw out of the redeploy state machine.
+ * `poll` runs inside the orchestrator's catch-less poll loop and `forceRestart` inside the
+ * restart-marker consumer's, so a `logEvent` throw (ENOSPC, EACCES, the path replaced by a
+ * directory) on the first build_stale/restart_refused/restart_blocked transition would end the
+ * fleet, and for a forced restart leave its marker unacknowledged — the same "logging must not
+ * throw" policy the orchestrator poll body's `emit` and the abort-request consumer apply. The
+ * state change the event describes has already applied, so the failed write is swallowed here
+ * but still made loud on stderr, the fallback warnTickRejected uses when the feed cannot take a
+ * warning. */
+function bestEffortLog(log: (event: RedeployEvent) => void): (event: RedeployEvent) => void {
+  return (event) => {
+    try {
+      log(event);
+    } catch (err) {
+      process.stderr.write(
+        `tumwater: harness: could not record ${event.type} event: ${errorMessage(err)}\n`,
+      );
+    }
+  };
+}
+
 /** The redeploy state machine — one per orchestrator process. `poll` is called every scheduler
  * cycle with main's current head and how many role/director ticks are in flight, and returns what
  * to do; it never throws and never awaits anything slower than a git query. */
@@ -118,6 +139,9 @@ export class Redeployer {
    * episode adopts is decided by the adopt helpers, not by the pre-warm. The probes themselves
    * live in src/redeploy/redeploy-probes.ts; see there. */
   private readonly probes: PrewarmProbes;
+  /** The event sink, guarded so a failed write cannot throw out of `poll` or `forceRestart`
+   * (see bestEffortLog). */
+  private readonly log: (event: RedeployEvent) => void;
   /** The head whose green check already warned that it could not run (a rejection, not a red
    * verdict) — one warning per episode. */
   private checkFailedHead: string | null = null;
@@ -138,7 +162,7 @@ export class Redeployer {
      * respect to this main, and poll is a no-op (see isSelfHosted). */
     readonly selfHosted: boolean,
     private readonly deps: RedeployDeps,
-    private readonly log: (event: RedeployEvent) => void,
+    log: (event: RedeployEvent) => void,
     /** Cold-start drain window (default RESTART_DRAIN_MAX_MS): the fallback poll uses until the
      * orchestrator supplies enough observed tick durations; a test seam. */
     private readonly drainMaxMs: number = RESTART_DRAIN_MAX_MS,
@@ -147,6 +171,7 @@ export class Redeployer {
     private readonly restartRecord: AutoRestartRecord = { lastAt: null, record: () => {} },
   ) {
     this.lastAutoRestartAt = restartRecord.lastAt;
+    this.log = bestEffortLog(log);
     this.probes = new PrewarmProbes(deps);
   }
 
