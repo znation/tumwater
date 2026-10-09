@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import { eventsLogPath } from "../src/paths.js";
 import { finalizeTick } from "../src/tick/tick-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, zeroCounters } from "../src/loop/loop-state.js";
@@ -320,4 +322,34 @@ test("a claim is released on a terminal result and kept while the change lands",
   held.claim = { ...claim };
   await run(root, "feature-2", held, { result: "queued", summary: "did it" });
   assert.equal(held.claim?.key, "plan a");
+});
+
+test("an unwritable events feed cannot reject finalizeTick — the outcome still folds and saves", async () => {
+  const root = await initializedRepo();
+  // A directory where events.jsonl belongs makes every append throw EISDIR while the state
+  // file still writes. The tick's post-run events are bookkeeping, not its result: a throw
+  // from one must not turn a completed tick into a rejected one, and must not skip the save
+  // that persists the claim release and the next-run schedule (every raw logEvent/warnEvent
+  // here ran after an irreversible fold).
+  const feed = eventsLogPath(root);
+  fs.rmSync(feed, { recursive: true, force: true });
+  fs.mkdirSync(feed, { recursive: true });
+
+  const claim = {
+    file: "PLANS.md" as const,
+    key: "plan a",
+    title: "Plan A",
+    at: Date.now(),
+    source: "assigned" as const,
+  };
+  const s = freshLoopState("feature-2");
+  s.claim = { ...claim };
+  // This run reaches the claim-release event and then the tick_end event; both must survive.
+  const returned = await run(root, "feature-2", s, { result: "no_change", summary: "nothing" });
+  assert.equal(returned.result, "no_change");
+  assert.equal(s.claim, undefined, "the claim release happened despite the unwritable feed");
+  const saved = loadLoopState(root, "feature-2");
+  assert.equal(saved.running, false, "the end-of-tick save still ran");
+  assert.equal(saved.lastResult, "no_change");
+  assert.equal(saved.claim, undefined, "the release was persisted, not lost to the feed failure");
 });

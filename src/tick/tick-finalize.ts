@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { branchHead } from "../git/git.js";
-import { logEvent, usageFragment, warnEvent } from "../events/events.js";
+import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
 import { restoreMidTickWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
@@ -89,7 +89,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   ) {
     const title = s.claim.title;
     s.claim = undefined;
-    logEvent(root, { loop: role, type: "claim", action: "released", title, reason: outcome.result });
+    logEventBestEffort(root, { loop: role, type: "claim", action: "released", title, reason: outcome.result });
   }
   // A wake consumed while this tick ran stamped the shared state in place, but the outcome
   // schedule above overwrites it (lastTickEndedAt past wokenAt, nextRunAt a fresh gap or
@@ -109,7 +109,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
     (s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN
   ) {
-    warnEvent(
+    warnEventBestEffort(
       root,
       role,
       consecutiveFailuresWarning(
@@ -123,7 +123,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // streak on each kill and resets it on any other result, so the crossing fires once;
   // the give-up (fresh session + backoff) follows on the next kill.
   if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
-    warnEvent(root, role, `${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`);
+    warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`);
   }
   // Per-tick usage (PLANS.md, per-tick-usage plan): the event feed is where operators see
   // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning
@@ -140,7 +140,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // 2026-09-29). Unlike the usage fields, tick_end's renderer never prints the span, so an
   // always-present 0 changes no rendered line.
   const tickDurationMs = Math.max(0, Date.now() - deps.tickStartedAt);
-  logEvent(root, {
+  logEventBestEffort(root, {
     loop: role,
     type: "tick_end",
     tick,
