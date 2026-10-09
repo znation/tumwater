@@ -88,6 +88,8 @@ the cross-process lock, without a wake.
 
 ### A review retry picks up the timed-out reviewer's session instead of reviewing from scratch (planned 2026-10-09 by operator)
 
+**Needs review 2026-10-09 by feature: too large for one run**
+
 When a reviewer run hits `review.timeoutSeconds` while still making progress (`PiRunResult.timedOutProgressing`), src/review/review.ts records `review_failed` with "the commit is kept; the next attempt reviews it from scratch". The next attempt then starts over: a fresh session, a fresh prompt, and the same budget. So a change too big to review inside one budget never finishes. On 2026-10-09 feature-2's ~980-line Agent backends 3a/7 revision (bed22438) went through five progressing timeouts (900 s and 1800 s) plus one connection error, about 3 hours of reviewer time and a six-error streak that raised the `failing` banner. The seventh attempt, starting fresh again, finished in 9 minutes. The author side already resumes a progressing timeout's session (`resumePending`). The reviewer should do the same: continue the same reviewer session, which already holds everything it read and concluded, and finish with a verdict.
 
 **Approach.**
