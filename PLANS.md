@@ -168,6 +168,410 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 - **Vets.** A vet at `LANDING_TIER` is never held by the reserve.
 - `npm run test` green.
 
+### Agent backends, part 1/7: the `AgentBackend` seam, with pi as its only adapter (planned 2026-10-09 by operator)
+
+Design: plans/agent-backends.md ("The seam", "Canonical event stream").
+
+A pure refactor: no behavior change and no claude code yet. Every later part plugs into this seam.
+
+**Approach.**
+1. **Module.** Add src/agent/agent-backend.ts with the `AgentBackend` interface and a registry
+   keyed by id. Only `pi` is registered.
+2. **Neutral runner.** Move from src/pi/pi.ts into `runAgent` in src/agent/run-agent.ts:
+   - the spawn, the `tumwater_run` marker, the watchdog wiring, abort, the group kill and the
+     marker sweep, stderr capture, and result assembly;
+   - the runner calls the backend's `invocation()` for argv, stdin and env, and pipes stdout
+     through its `translator()` before `PiStreamParser` and the raw log;
+   - `runPi` stays as a thin alias, so call sites and fakes are untouched.
+3. **pi adapter.** Lives in src/pi/pi-backend.ts:
+   - `invocation` = today's `piArgs` (with the `-e` extensions) plus prompt-as-last-argv;
+   - an identity translator;
+   - `classifyExit` = today's stderr rules (`TRANSIENT_PI_CRASH`, `MODEL_FALLBACK_CLONE`,
+     backend and config matching);
+   - pricing = pi-models.ts; doctor checks = today's pi checks.
+4. **Stdin.** The runner supports `stdin` delivery. When `invocation()` returns `stdin`, stdio[0]
+   is a pipe that is written and ended; otherwise `"ignore"`, as today.
+5. **Marker.** `ResolvedModelConfig` gains `agent?: string`, defaulting to `"pi"` in the view
+   builders. The `tumwater_run` marker gains `agent`.
+
+**Files touched.**
+- src/agent/agent-backend.ts, src/agent/run-agent.ts (new)
+- src/pi/pi.ts, src/pi/pi-backend.ts (new), src/pi/pi-args.ts
+- src/config/config-views.ts
+- src/ui/progress-data.ts (accept the marker's new field)
+
+Tests: test/agent-backend.test.ts (registry, stdin delivery via a fake that echoes stdin). The
+existing pi, pi-process, pi-args and loop-pi tests pass unchanged.
+
+**Acceptance criteria.**
+- Every existing test passes without edits, apart from marker-shape assertions that gain
+  `agent: "pi"`.
+- The pi argv is byte-identical for the default, `agentBin`-wrapper and `piArgs` configs.
+- `npm run test` green.
+
+### Agent backends, part 2/7: a session ledger and the `handoff` resume (planned 2026-10-09 by operator; requires part 1/7 landed)
+
+Design: plans/agent-backends.md ("Sessions").
+
+Backend-neutral, so it can land and be exercised on pi alone. It also fixes a latent pi hazard: a
+landing conflict resolver's fresh session in the author's session dir is "newest", so a later
+`--continue` would resume the resolver instead of the author.
+
+**Approach.**
+1. **Ledger.** Add src/agent/session-ledger.ts:
+   - append `{agent, id, kind, name, cwd, model, at}` to `<sessionDir>/sessions.jsonl` before
+     each spawn, rotated with the session dir's retention;
+   - `resumable(dir, {kind, cwd, agent})` returns the newest matching line, or null;
+   - for pi, it also requires today's `*.jsonl` check, and that the newest *same-kind* line is
+     pi's.
+2. **Resumability.** Replace `hasResumableSession` call sites with the ledger query:
+   src/tick/tick-resume.ts:70, src/loop/loop-pi.ts:344, src/review/review-followup.ts:35.
+3. **Handoff cause.** Add a `handoff` resume cause. When `resumePending` is set but the newest
+   author session belongs to another agent or another cwd, resume as a **fresh session in the
+   unreset worktree**:
+   - the prompt is `buildHandoffPrompt(role, tickPrompt)` (src/prompt/prompt-followup.ts): the
+     tick prompt plus "an earlier run on another model was interrupted; its uncommitted edits
+     are in your worktree — review `git diff`, then finish or discard them";
+   - the edits are not lost to the fresh path's reset.
+4. **Event.** `tick_start` gains `resumeCause: "handoff"`, and event-format renders it.
+
+**Files touched.**
+- src/agent/session-ledger.ts (new)
+- src/tick/tick-resume.ts, src/loop/loop-pi.ts, src/review/review-followup.ts
+- src/prompt/prompt-followup.ts
+- src/events/events.ts, src/events/event-format.ts
+- src/orchestrator/retention.ts
+
+Tests: test/session-ledger.test.ts, plus cases in test/tick-resume.test.ts and
+test/loop-pi.test.ts.
+
+**Acceptance criteria.**
+- **Kind isolation.** With an author session followed by a conflict-resolver session in the same
+  dir, a SUMMARY follow-up resumes the author's.
+- **Handoff.** A resume whose newest author line names another agent runs fresh. The worktree's
+  uncommitted edits are still present, and the prompt carries the handoff bridge.
+- **Unchanged.** A same-agent, same-cwd resume still passes `--continue` to pi.
+- `npm run test` green.
+
+### Agent backends, part 3/7: the claude adapter — invocation, isolation, stream translation, sessions (planned 2026-10-09 by operator; requires parts 1/7 and 2/7 landed)
+
+Design: plans/agent-backends.md ("Findings", "Canonical event stream", "The claude invocation").
+
+Adds the adapter and registers it. It is not yet selectable from tumwater.json (part 4/7);
+tests drive it through `runAgent` with `config.agent = "claude"`.
+
+**Approach.**
+1. **Invocation.** src/agent/claude/claude-args.ts builds the argv in the design's "The claude
+   invocation":
+   - the prompt goes on stdin;
+   - `--session-id` comes from a minted UUID recorded in the ledger;
+   - `--resume <id>` comes from the ledger's resumable line;
+   - `--effort` comes from the thinking level (`off`/`minimal` → `low`).
+2. **Environment.** src/agent/claude/claude-env.ts:
+   - scrubs a host Claude Code session's variables, with the allowlist from the design;
+   - sets the `CLAUDE_CODE_DISABLE_*`, `BASH_*_TIMEOUT_MS`, `DISABLE_AUTOUPDATER`,
+     `DISABLE_TELEMETRY` and `DISABLE_ERROR_REPORTING` variables (telemetry off by operator
+     decision, 2026-10-09);
+   - keeps the `TUMWATER_RUN` and notebook layers;
+   - **first verifies that claude tolerates the macOS `NODE_OPTIONS` preload**, falling back to
+     the `--settings` env route the design describes if it does not.
+3. **Translator.** src/agent/claude/claude-stream.ts implements the design's mapping table:
+   - per-`message.id` coalescing with usage counted once;
+   - tool-name and `file_path` mapping;
+   - `api_retry` → `auto_retry_start`, and `compact_boundary` → `compaction_start`;
+   - `result` → `run_cost` plus an explicit `tumwaterKind` error classification;
+   - `system/init.apiKeySource` (plus the run env's third-party-provider flags) → the result's
+     `billing: "subscription" | "api"`;
+   - `rate_limit_event` → the result's `rateWindows` (every `rate_limit_info`, newest per
+     `rateLimitType`) and `usedOverage`. Part 3 only records these; parts 6 and 7 act on them;
+   - an `agent_unknown_event` warning, once per unmapped type;
+   - the native stream is written to `.tumwater/log/<role>.claude.native.jsonl`.
+4. **Parser.** `PiStreamParser` learns `run_cost` (it replaces the per-message cost sum) and
+   `tumwaterKind` (trusted before the regexes). `PiRunResult` gains `resumeMissing`,
+   `budgetCapped`, `billing`, `rateWindows` and `usedOverage`.
+5. **Missing session.** On `resumeMissing`, `runWithTransientRetry` (src/loop/loop-pi.ts) retries
+   once as a fresh `handoff` run.
+6. **Fakes.** test/fakes/fake-claude.ts is a PATH shim that:
+   - replays canned stream-json;
+   - logs argv and stdin per run;
+   - fakes `~/.claude/projects/<slug>/<id>.jsonl` under a temp HOME.
+
+   test/fixtures/claude-events.ts holds the builders. Strip `TUMWATER_CLAUDE_BIN`, `CLAUDECODE`
+   and `CLAUDE_CODE_*` in test/test-runner.ts.
+
+**Files touched.**
+- src/agent/claude/{claude-args,claude-env,claude-stream,claude-backend}.ts (new)
+- src/agent/agent-backend.ts
+- src/pi/pi-stream.ts, src/pi/pi-run-result.ts
+- src/loop/loop-pi.ts
+- src/paths.ts, src/orchestrator/retention.ts
+- test/fakes/fake-claude.ts, test/fixtures/claude-events.ts, test/test-runner.ts
+
+Tests: test/claude-stream.test.ts, test/claude-args.test.ts, test/claude-env.test.ts, plus a
+runAgent test on fake-claude.
+
+**Acceptance criteria.**
+- **Usage.** A split-block assistant message (text + tool_use, same id, usage repeated) folds to
+  1 turn and its tokens once. `costUsd` equals `result.total_cost_usd`.
+- **Errors.**
+  - The 404 unknown-model result yields `configError`.
+  - "Not logged in" yields `configError`.
+  - 429 yields `transientRateLimit`; 529 yields `transientBackend` (`server`).
+  - "prompt is too long" yields `contextExceeded`.
+  - A SIGTERM `aborted_tools` result yields `aborted`/`quietKilled` from the harness flags, not
+    an error classification.
+- **Readers.** On a claude run, the raw log renders in `tumwater logs --role` and the progress
+  tail exactly as a pi run would. suite-rerun detects a reviewer's `Bash` `npm test`.
+- **Env.** The spawned env has no `CLAUDECODE`/`CLAUDE_CODE_SESSION_ID` even when the suite's
+  parent had them, and stdin carries the prompt.
+- `npm run test` green.
+
+### Agent backends, part 4/7: `agent` / `agents` config, selector routing, per-tier claude defaults, doctor and labels (planned 2026-10-09 by operator; requires part 3/7 landed)
+
+Design: plans/agent-backends.md ("Config", "Every seam, checked" — doctor, startup and status
+rows).
+
+Makes claude selectable.
+
+**Approach.**
+1. **Schema.** Add to src/config/config-schema.ts:
+   - `agent` (`"pi" | "claude"`, default `"pi"`);
+   - `agents.<id>.{bin, args}`;
+   - legacy `agentBin`/`piArgs` read as `agents.pi.*` (both forms → a validation error);
+   - a per-agent reserved-flags set (`HARNESS_CLAUDE_FLAGS`).
+2. **Routing.** src/config/model-selector.ts + config-views.ts (`withModelOverrides`) resolve
+   `agent` per seam:
+   - the provider segment is an agent id → that agent;
+   - any other provider → pi;
+   - a bare id → top-level `agent`;
+   - no `model` key at all → that agent's `defaultModels` for the seam's tier: claude
+     `small` → `claude-haiku-5-5`, `default` → `claude-sonnet-5-5`, `strong` →
+     `claude-opus-5-5`. Once `model` is set, today's tier inheritance applies unchanged.
+
+   It flows through `configForRole`, `reviewRunConfig`, `resolverConfig` and the fallback views.
+3. **Binaries.** src/pi/pi-bin.ts generalizes to `resolveAgentBin(config, agent)` with
+   `TUMWATER_<ID>_BIN` → `agents.<id>.bin` → `defaultBin`. The startup gate and doctor check
+   every agent some enabled seam resolves to.
+4. **Doctor.**
+   - claude: `claude auth status` (scrubbed env) must report `loggedIn`, and doctor prints the
+     billing it implies (subscription type, or API key);
+   - the installed claude version must be at least the claude adapter's `minVersion` for every
+     configured claude model (2.1.280 for the three defaults), and doctor prints it;
+   - claude selectors skip the models.json lookup;
+   - a pi provider named `claude` warns;
+   - the `off`/`minimal` effort clamp is noted;
+   - the total size of claude transcript dirs is reported.
+5. **Pricing.** Route `pairFree`, `fallbackModelFree` and `fleetModelsFree`
+   (src/pi/pi-models.ts) through the backend's `pricing`. In this part, claude selectors are
+   never free; part 6/7 makes subscription billing free.
+6. **Writers.** `tumwater config set agent claude` and `agents.claude.args`; `agent` joins
+   `EDITABLE_CONFIG_KEYS` and the GUI settings mirror. tumwater.example.json and
+   config-example.ts are updated.
+7. **Labels.** "pi default" becomes "`<agent>` default" (role-render.ts, badges.ts,
+   event-format.ts). Model selectors on `tick_start`/`review_start`/status rows carry the agent
+   (`claude/claude-sonnet-5-5`).
+8. **Docs.**
+   - README "Backends": `agent`, routing, the expected-spend note.
+   - docs/backends.md: a claude section.
+   - `Built on pi` → `Built on pi; also runs on Claude Code`.
+
+**Files touched.**
+- src/config/config-schema.ts, config-validation.ts, config-field-checks.ts, config-write.ts,
+  config-views.ts, model-selector.ts, config-editable-keys.ts, config-example.ts
+- src/ui/gui/gui-client-settings.ts
+- src/pi/pi-bin.ts, src/pi/pi-models.ts
+- src/gates/startup-gate.ts
+- src/doctor/doctor-checks.ts, src/doctor/doctor-model-checks.ts
+- src/roles/role-render.ts, src/ui/badges.ts, src/events/event-format.ts
+- tumwater.example.json, README.md, docs/backends.md
+
+Tests: cases in the config*, model-selector, pi-bin, startup-gate, doctor-model-checks and
+role-view tests.
+
+**Acceptance criteria.**
+- **One line.** `{ "agent": "claude" }` runs on fake-claude with:
+  - `--model claude-sonnet-5-5` for author ticks;
+  - `--model claude-opus-5-5` for the reviewer, the plan role and the conflict resolver;
+  - `--model claude-haiku-5-5` for readme.
+
+  `{ "agent": "claude", "model": "claude-sonnet-5-5" }` runs every seam on Sonnet.
+- **Mixed.** `{ "agent": "claude", "fallback": "omlx/Qwen…" }` runs the fallback on fake-pi with
+  `--provider omlx`.
+- **Per-seam.** `{ "review": { "model": "claude/claude-opus-5-5:high" } }` under `agent: "pi"`
+  runs only the reviewer on claude, with `--effort high`.
+- **Legacy.** An existing config with `agentBin` + `piArgs` and no `agent` produces byte-identical
+  pi argv.
+- **Doctor.** Doctor fails "claude auth" when fake `claude auth status` reports
+  `loggedIn: false`. It fails "claude version" when fake `claude --version` reports 2.1.216
+  with Opus configured.
+- **Free-ness.** A claude `fallback` is rejected at runtime as not free, exactly like a priced pi
+  pair.
+- `npm run test` green.
+
+### Agent backends, part 5/7: `role_notes` over MCP and the prompt dialect (planned 2026-10-09 by operator; requires part 4/7 landed)
+
+Design: plans/agent-backends.md ("What the pi extensions did, per backend").
+
+**Approach.**
+1. **MCP server.** src/agent/mcp/role-notes-server.ts is a dependency-free stdio MCP server
+   (JSON-RPC `initialize`, `tools/list`, `tools/call`) exposing `role_notes {text}`.
+   - It writes through the same atomic, 4 KB-capped function as src/pi-extension/role-notes.ts
+     (extract it to src/agent/role-notes-write.ts).
+   - The claude adapter passes it with
+     `--mcp-config '{"mcpServers":{"tumwater":{"command":"node","args":[<dist path>]}}}'` only
+     when the run has a `notesPath`.
+2. **Dialect.** `PromptDialect` on each backend supplies:
+   - the notes tool name (`role_notes` / `mcp__tumwater__role_notes`);
+   - the read-range phrase;
+   - the oversized-output bullet: pi's head+tail marker vs claude's "large output is saved to a
+     file it names — read that file in ranges".
+
+   `ROLE_NOTES_INSTRUCTION` and `CONTEXT_BUDGET_RULE` (src/prompt/prompt.ts) and
+   prompt-followup.ts become functions of the dialect. pi's text stays byte-identical.
+3. **AGENTS.md.** When the worktree has `AGENTS.md` and no `CLAUDE.md`, claude runs get
+   `--append-system-prompt-file AGENTS.md`.
+
+**Files touched.**
+- src/agent/mcp/role-notes-server.ts, src/agent/role-notes-write.ts (new)
+- src/pi-extension/role-notes.ts
+- src/agent/claude/claude-args.ts
+- src/prompt/prompt.ts, src/prompt/prompt-followup.ts
+- src/tick/tick-prompt.ts
+
+Tests: test/role-notes-mcp.test.ts (spawn the server, call the tool, check the file and the
+cap), plus prompt snapshot cases for both dialects.
+
+**Acceptance criteria.**
+- **Unchanged pi.** pi tick prompts are byte-identical to before.
+- **claude prompts.** A claude tick prompt names `mcp__tumwater__role_notes`. A claude authoring
+  run on fake-claude receives `--mcp-config` naming the server. Director, review and landing runs
+  do not.
+- **Server.** The server rejects a note over 4 KB with a tool error, and leaves the old note
+  intact.
+- `npm run test` green.
+
+### Agent backends, part 6/7: subscription billing — exempt from the cap, throttled and displayed by the usage window (planned 2026-10-09 by operator; requires part 4/7 landed)
+
+Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
+window").
+
+Operator decision 2026-10-09: a run paid by a claude.ai subscription does not count against the
+daily dollar cap. The five-hour window is its only throttle, and the TUI/GUI show that window
+instead of the daily spend. API-key runs keep today's spending rules.
+
+**Approach.**
+1. **Account state.** Add src/agent/claude/claude-account.ts, which reads and writes
+   `.tumwater/state/claude-account.json`:
+   - `{billing, subscriptionType, observedAt, windows: {<rateLimitType>: {status, resetsAt,
+     utilization?, overageStatus, isUsingOverage, observedAt}}}`;
+   - the startup gate seeds it from `claude auth status` plus `ANTHROPIC_API_KEY`;
+   - runAgent overwrites it from each claude result's `billing` and `rateWindows`;
+   - readers treat a window past its `resetsAt` as reset.
+2. **Spend.**
+   - A subscription run without `usedOverage` folds its cost into a new `notionalCostUsd`
+     (src/tick/tick-usage.ts, landing-slot.ts, landing-core.ts), never into `recordDailyCost` or
+     the per-role spend.
+   - A run with `usedOverage`, or with `billing: "api"`, folds its cost into `costUsd` as today.
+   - `tick_end` gains `notionalCostUsd` and `billing`.
+3. **Free-ness.** The claude backend's `pricing.pairFree` returns true while the account state's
+   billing is `subscription`, so the following happens with no budget-gate changes:
+   - `applyFallbackModel` leaves subscription seams alone at the cap;
+   - a subscription claude `fallback` is accepted;
+   - `fleetModelsFree` turns true when every seam is subscription claude.
+4. **Hold.**
+   - A window reading with `status: "rejected"` and no overage places a provider-`claude` fleet
+     hold until `resetsAt` (src/fleet/fleet-hold.ts, fleet-polls.ts). It covers subscription
+     claude seams only.
+   - Events, each logged once per window: `claude_window_warning`, `claude_window_limited`
+     {type, resetsAt} and `claude_window_reset` (src/events/events.ts, event-format.ts).
+5. **Display.**
+   - Add a `claudeWindow` block to the status payload (src/status/status-data.ts,
+     src/ui/status-payload.ts) with the most constrained window and the full list.
+   - The budget badge (src/ui/badges.ts), the TUI budget line and the GUI budget tile
+     (gui-client-*) follow the design's table:
+     - **subscription only:** the window replaces the daily spend, e.g. "Claude 5h · 64% · resets
+       14:30" (the status word when no `utilization`), amber at `allowed_warning`, red "held
+       until 14:30" at `rejected`, and an "overage" marker;
+     - **mixed:** both lines, with the daily spend covering priced seams only;
+     - **no subscription:** unchanged.
+   - `tumwater role <id>` shows the billing line.
+   - `tumwater report` shows notional spend on its own line, outside the total.
+6. **Docs.** README: billing detection, the window display, and overage counting as real spend.
+
+**Files touched.**
+- src/agent/claude/claude-account.ts (new), src/agent/claude/claude-backend.ts
+- src/agent/run-agent.ts
+- src/tick/tick-usage.ts, src/tick/tick-finalize.ts
+- src/landing/landing-slot.ts, src/landing/landing-core.ts
+- src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts
+- src/events/events.ts, src/events/event-format.ts
+- src/status/status-data.ts, src/ui/status-payload.ts, src/ui/badges.ts,
+  src/ui/status-render.ts, src/ui/gui/gui-client-*.ts
+- src/roles/role-render.ts, src/report/report-data.ts
+- src/gates/startup-gate.ts
+- README.md
+
+Tests:
+- test/claude-account.test.ts
+- cases in test/tick-usage.test.ts, test/fleet-hold.test.ts, test/tui-budget.test.ts, the GUI
+  budget-tile tests and test/report.test.ts
+
+**Acceptance criteria.**
+- **Exempt.** With `maxDailyCostUsd: 15` and subscription billing, ten fake-claude ticks costing
+  $3 each leave the daily spend at $0. No seam moves to its fallback, and `tumwater report`
+  shows "$30.00 notional".
+- **Overage.** The same ticks with `isUsingOverage: true` count $30 against the cap, and the cap
+  moves them to the fallback.
+- **API.** With `apiKeySource: "ANTHROPIC_API_KEY"`, the costs count against the cap exactly
+  as a priced pi model's do.
+- **Hold.** A `rejected` five-hour reading holds subscription claude seams until `resetsAt`,
+  while pi seams tick. It logs `claude_window_limited` once and `claude_window_reset` once.
+- **Display.** An all-subscription fleet's TUI and GUI show the window line and no daily-spend
+  line. A mixed fleet shows both. A pi-only fleet's rendering is byte-identical to before.
+- `npm run test` green.
+
+### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires part 6/7 landed)
+
+Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
+
+**Approach.**
+1. **Per-run cap.** Every API-billed, non-director claude run gets `--max-budget-usd` = the
+   remaining daily budget (the lower of the fleet's and the role's remaining cap). Billing is
+   read from the account state before the spawn.
+   - `budgetCapped` (from `error_max_budget_usd`) is handled like a budget handback: the
+     worktree is kept, and the next tick runs as `handoff` on the seam's fallback.
+   - A run with no `result` records cost 0 and logs `cost_unknown`.
+2. **Stall threshold.** For claude, src/pi/pi-watchdogs.ts and src/ui/progress-data.ts use
+   `bufferedCommandStallMs` for every open tool call, since claude sends no content updates.
+   They pick the backend from the `tumwater_run` marker's `agent`.
+3. **Smoke script.** `scripts/smoke-claude.mjs` (`npm run smoke:claude`) is opt-in, not part of
+   `npm test`. It runs against a temp git repo:
+   - one call on each default model (Haiku, Sonnet, Opus 5.5), so a CLI too old for one fails
+     here;
+   - a three-turn isolated run, failing if cost exceeds $0.10 (isolation regression);
+   - a `--resume`;
+   - a SIGTERM mid-tool, then a resume;
+   - an unknown-model run, which must classify as `configError`;
+   - a check that the observed `billing` matches `claude auth status`.
+
+**Files touched.**
+- src/agent/claude/claude-args.ts
+- src/loop/loop.ts (handback on `budgetCapped`)
+- src/pi/pi-watchdogs.ts, src/ui/progress-data.ts
+- scripts/smoke-claude.mjs (new), package.json, README.md
+
+Tests: cases in test/pi-watchdogs.test.ts, test/progress.test.ts, test/claude-args.test.ts,
+and a loop test for `budgetCapped` → handoff.
+
+**Acceptance criteria.**
+- **Cap math.** On API billing, with $12 of a $15 cap spent, a claude author run gets
+  `--max-budget-usd 3`. The director gets none, and a subscription-billed run gets none.
+- **Stall warning.** A claude Bash call open for longer than `toolCallStallSeconds` but shorter
+  than `bufferedCommandStallMs` raises no stall warning.
+- **Smoke.** `npm run smoke:claude` passes on a logged-in machine. Run it once by hand and record
+  the result in the landing commit body.
+- `npm run test` green.
+
 
 ## Done
 
