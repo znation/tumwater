@@ -393,6 +393,63 @@ and asserting the refetch shows the second loop's note (not the first's).
   not the previous loop's cached text.
 - `npm run test` green.
 
+### Mark why a backlog entry is held in `tumwater backlog` (planned 2026-10-09 by plan)
+
+**Goal.** `tumwater backlog` and its `--json` show the same eligibility hold the loop prompts'
+`<backlog-index>` already carries, so an operator can see why a planned feature or open bug is
+not being taken — refused, needs review, needs replan, or blocked on a named prerequisite —
+instead of inferring it from a fleet that looks idle.
+
+**Context.** `entryHold` (src/backlog/backlog-eligibility.ts) already decides holds from a body's
+note lines and a heading's `requires … landed` parenthetical against the still-planned entries,
+and `holdMark` (src/backlog/backlog-structure.ts) already renders ` [refused]`,
+` [needs review]`, ` [needs replan]`, ` [blocked: requires …]`. Today that mark is the prompt
+block's private detail — `renderBacklogIndexBlock` is `holdMark`'s only caller, and the
+operator's `backlogPayload`/`renderBacklogMarkdown` carry the entries verbatim with no hold. This
+is an observability gap, not a new eligibility rule: nothing about scheduling changes.
+
+**Approach.**
+1. Move `holdMark` from src/backlog/backlog-structure.ts into src/backlog/backlog-eligibility.ts,
+   exported beside `holdMark`'s `EntryHold`; backlog-structure imports it back unchanged, so the
+   prompt index and the CLI share one wording.
+2. Add `backlogHolds(root): { plans: EntryHold[]; bugs: EntryHold[] }` to
+   src/backlog/backlog-eligibility.ts: read `plannedPlanEntries(root)` once, map each planned
+   entry through `entryHold(entry, planned)` and each `openBugEntries(root)` entry through the
+   same, so each array is parallel to `backlogPayload`'s `plans`/`bugs`. Questions carry no holds.
+3. Widen src/backlog/backlog-render.ts's input to `BacklogView` (`BacklogPayload` plus optional
+   `holds: { plans: EntryHold[]; bugs: EntryHold[] }`): `renderSection` appends
+   `holdMark(holds?.[i])` to a plan's or bug's `### ` heading, and an absent `holds` array or a
+   null hold leaves the heading exactly as today.
+4. src/cli/cli-query-commands.ts's `cmdBacklog` thunk returns
+   `{ ...backlogPayload(root), holds: backlogHolds(root) }`, so the `--json` document and the
+   Markdown consume one collection exactly as they do now.
+5. README.md's `tumwater backlog` row names the hold mark beside both the human and `--json`
+   forms.
+
+**Files touched.**
+- src/backlog/backlog-eligibility.ts (`backlogHolds`, `holdMark`)
+- src/backlog/backlog-structure.ts (`holdMark` import)
+- src/backlog/backlog-render.ts (`BacklogView`, `renderSection`)
+- src/cli/cli-query-commands.ts (`cmdBacklog` thunk)
+- README.md (`backlog` row)
+
+Tests: cases in test/backlog-eligibility.test.ts (a refused/needs-review/blocked entry and an
+eligible one) and test/backlog-render.test.ts (the rendered headings, the unchanged no-holds
+render, and the CLI `--json` holds).
+
+**Acceptance criteria.**
+- `tumwater backlog` prints a plan whose heading names a still-planned prerequisite as
+  `### <title> [blocked: requires <series> <part>/<of>]`, a refused bug as `### <title>
+  [refused]`, and an eligible entry's heading byte-identically to today.
+- `tumwater backlog --json` gains `holds.plans` and `holds.bugs`, arrays parallel to
+  `plans`/`bugs` (`null` for an eligible entry, the `EntryHold` value otherwise); every existing
+  field is unchanged.
+- `renderBacklogMarkdown(backlogPayload(root))` (no `holds`) renders today's document unchanged,
+  so the existing render test stays green untouched.
+- `backlogHolds` marks a **Refused**, **Needs review**, or **Needs replan** body line and a
+  blocked heading, and leaves an eligible entry null.
+- `npm run test` green.
+
 
 ## Done
 
