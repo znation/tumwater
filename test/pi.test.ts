@@ -14,7 +14,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, logFlagsTo, readRunLines } from "./fakes/fake-pi.js";
+import { logFlagsTo, readRunLines, withPi } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -37,25 +37,23 @@ test("a stalled run is reported as quiet-killed, not timed out", async (t) => {
   const config = defaultConfig();
   config.quietTimeoutSeconds = 2; // the watchdog checks every second and kills after ~2 s of silence
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(10_000); // silence well past the 2 s window
+      const result = await run;
+      assert.equal(result.ok, false);
+      assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
+      assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
+      assert.match(result.errorMessage ?? "", /killed as hung/);
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(10_000); // silence well past the 2 s window
-    const result = await run;
-    assert.equal(result.ok, false);
-    assert.equal(result.quietKilled, true, "the watchdog kill is reported as quiet-killed");
-    assert.equal(result.timedOut, false, "a hung tool call is not a tick timeout");
-    assert.match(result.errorMessage ?? "", /killed as hung/);
-  } finally {
-    restore();
-  }
 });
 
 // BUGS.md 2026-09-23: under full-suite load a run's first output could land past the quiet
@@ -76,24 +74,22 @@ test("a run that is slow to speak is not quiet-killed during startup", async (t)
   config.quietTimeoutSeconds = 5; // old single window killed a silent run at the ~7.5 s check
   const go = path.join(dir, "go");
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     [
       `while [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.02; done`, // byte-silent until the test says go
       `printf '%s\n' '${assistantLine("done\nSUMMARY: spoke late")}'`,
     ].join("\n"),
+    async () => {
+      const run = runPi(runPiFixture(dir, { config }));
+      // A minute of silence before the first byte: past the old single window (5 s) and the
+      // doubled startup window (10 s) alike, and well under the 30-minute zero-byte bound.
+      clock.advance(60_000);
+      fs.writeFileSync(go, "");
+      const result = await run;
+      assert.equal(result.quietKilled, false, "startup latency is not a hung tool call");
+      assert.equal(result.ok, true, "the run completes once pi finally speaks");
+    },
   );
-  try {
-    const run = runPi(runPiFixture(dir, { config }));
-    // A minute of silence before the first byte: past the old single window (5 s) and the
-    // doubled startup window (10 s) alike, and well under the 30-minute zero-byte bound.
-    clock.advance(60_000);
-    fs.writeFileSync(go, "");
-    const result = await run;
-    assert.equal(result.quietKilled, false, "startup latency is not a hung tool call");
-    assert.equal(result.ok, true, "the run completes once pi finally speaks");
-  } finally {
-    restore();
-  }
 });
 
 // BUGS.md 2026-09-29: the 2026-09-23 zero-byte exemption was unbounded — a run that never
@@ -109,21 +105,19 @@ test("a run that never emits a byte is quiet-killed at 30 minutes regardless of 
   config.quietTimeoutSeconds = 2; // zero-byte bound = max(2 × 2 s, 30 min) = 30 min
   config.tickTimeoutSeconds = 7200; // far beyond the zero-byte bound: it must not be the reaper
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     // exec so SIGTERM reaches the sleeper directly and the run ends promptly; the script
     // writes nothing, so sawOutput stays false for the whole run.
     `exec sleep 30`,
+    async () => {
+      const run = runPi(runPiFixture(dir, { config }));
+      clock.advance(31 * 60_000); // one minute past the 30-minute zero-byte bound
+      const result = await run;
+      assert.equal(result.quietKilled, true, "a byte-silent run is reaped by the quiet watchdog");
+      assert.equal(result.timedOut, false, "the tick timeout is not the zero-byte bound");
+      assert.match(result.errorMessage ?? "", /killed as hung/);
+    },
   );
-  try {
-    const run = runPi(runPiFixture(dir, { config }));
-    clock.advance(31 * 60_000); // one minute past the 30-minute zero-byte bound
-    const result = await run;
-    assert.equal(result.quietKilled, true, "a byte-silent run is reaped by the quiet watchdog");
-    assert.equal(result.timedOut, false, "the tick timeout is not the zero-byte bound");
-    assert.match(result.errorMessage ?? "", /killed as hung/);
-  } finally {
-    restore();
-  }
 });
 
 // BUGS.md 2026-10-07: a gate run (the reviewer, the landing conflict resolver) runs a fresh
@@ -140,7 +134,7 @@ test("a gate run still progressing at its deadline gets one extension and finish
   const mid = path.join(dir, "mid");
   const finish = path.join(dir, "finish");
   const clock = watchdogClock(t, { timeouts: true });
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${assistantLine("reading the diff")}'`,
       `while [ ! -f '${mid}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
@@ -148,22 +142,20 @@ test("a gate run still progressing at its deadline gets one extension and finish
       `while [ ! -f '${finish}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: review finished")}'`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, kind: "gate" });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "reading the diff");
+      clock.advance(1_500); // past the 1 s checkpoint, still inside the base 2 s budget
+      fs.writeFileSync(mid, "");
+      await waitForLogLines(opts.rawLogFile, "still reading");
+      clock.advance(1_000); // cross the 2 s deadline: progress since the checkpoint extends it
+      fs.writeFileSync(finish, "");
+      const result = await run;
+      assert.equal(result.ok, true, "the extension let the progressing run finish");
+      assert.equal(result.timedOut, false, "the base deadline did not kill the run");
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, kind: "gate" });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "reading the diff");
-    clock.advance(1_500); // past the 1 s checkpoint, still inside the base 2 s budget
-    fs.writeFileSync(mid, "");
-    await waitForLogLines(opts.rawLogFile, "still reading");
-    clock.advance(1_000); // cross the 2 s deadline: progress since the checkpoint extends it
-    fs.writeFileSync(finish, "");
-    const result = await run;
-    assert.equal(result.ok, true, "the extension let the progressing run finish");
-    assert.equal(result.timedOut, false, "the base deadline did not kill the run");
-  } finally {
-    restore();
-  }
 });
 
 test("a gate run that stopped progressing before its deadline is not extended", async (t) => {
@@ -171,21 +163,19 @@ test("a gate run that stopped progressing before its deadline is not extended", 
   const config = defaultConfig();
   config.tickTimeoutSeconds = 2;
   const clock = watchdogClock(t, { timeouts: true });
-  const restore = fakePi(
+  await withPi(
     [`printf '%s\n' '${assistantLine("reading the diff")}'`, `exec sleep 60`].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, kind: "gate" });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "reading the diff");
+      clock.advance(2_500); // past the 1 s checkpoint AND the base 2 s deadline
+      const result = await run;
+      assert.equal(result.timedOut, true, "a run that stalled keeps the base bound");
+      assert.match(result.errorMessage ?? "", /timed out after 2s/);
+      assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, kind: "gate" });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "reading the diff");
-    clock.advance(2_500); // past the 1 s checkpoint AND the base 2 s deadline
-    const result = await run;
-    assert.equal(result.timedOut, true, "a run that stalled keeps the base bound");
-    assert.match(result.errorMessage ?? "", /timed out after 2s/);
-    assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
-  } finally {
-    restore();
-  }
 });
 
 test("a gate run's extension is one-shot: the second deadline kills it at twice the budget", async (t) => {
@@ -194,29 +184,27 @@ test("a gate run's extension is one-shot: the second deadline kills it at twice 
   config.tickTimeoutSeconds = 2;
   const mid = path.join(dir, "mid");
   const clock = watchdogClock(t, { timeouts: true });
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${assistantLine("reading the diff")}'`,
       `while [ ! -f '${mid}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
       `printf '%s\n' '${assistantLine("still reading")}'`,
       `exec sleep 60`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, kind: "gate" });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "reading the diff");
+      clock.advance(1_500); // past the checkpoint, still inside the base budget
+      fs.writeFileSync(mid, "");
+      await waitForLogLines(opts.rawLogFile, "still reading");
+      clock.advance(3_000); // base deadline extends it; the re-armed deadline at 2× then kills it
+      const result = await run;
+      assert.equal(result.timedOut, true, "the extension is spent after one slice");
+      assert.match(result.errorMessage ?? "", /timed out after 4s/, "the kill names the real doubled budget");
+      assert.doesNotMatch(result.errorMessage ?? "", /after 2s/);
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, kind: "gate" });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "reading the diff");
-    clock.advance(1_500); // past the checkpoint, still inside the base budget
-    fs.writeFileSync(mid, "");
-    await waitForLogLines(opts.rawLogFile, "still reading");
-    clock.advance(3_000); // base deadline extends it; the re-armed deadline at 2× then kills it
-    const result = await run;
-    assert.equal(result.timedOut, true, "the extension is spent after one slice");
-    assert.match(result.errorMessage ?? "", /timed out after 4s/, "the kill names the real doubled budget");
-    assert.doesNotMatch(result.errorMessage ?? "", /after 2s/);
-  } finally {
-    restore();
-  }
 });
 
 test("an authoring run is not extended even while it is progressing", async (t) => {
@@ -225,29 +213,27 @@ test("an authoring run is not extended even while it is progressing", async (t) 
   config.tickTimeoutSeconds = 2;
   const mid = path.join(dir, "mid");
   const clock = watchdogClock(t, { timeouts: true });
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${assistantLine("working")}'`,
       `while [ ! -f '${mid}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
       `printf '%s\n' '${assistantLine("still working")}'`,
       `exec sleep 60`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config }); // kind "author"
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "working");
+      clock.advance(1_500); // past the checkpoint, still inside the base budget
+      fs.writeFileSync(mid, "");
+      await waitForLogLines(opts.rawLogFile, "still working");
+      clock.advance(1_000); // cross the deadline with progress since the checkpoint
+      const result = await run;
+      assert.equal(result.timedOut, true, "only gate runs earn the extension");
+      assert.match(result.errorMessage ?? "", /timed out after 2s/);
+      assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config }); // kind "author"
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "working");
-    clock.advance(1_500); // past the checkpoint, still inside the base budget
-    fs.writeFileSync(mid, "");
-    await waitForLogLines(opts.rawLogFile, "still working");
-    clock.advance(1_000); // cross the deadline with progress since the checkpoint
-    const result = await run;
-    assert.equal(result.timedOut, true, "only gate runs earn the extension");
-    assert.match(result.errorMessage ?? "", /timed out after 2s/);
-    assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
-  } finally {
-    restore();
-  }
 });
 
 // Open-tool-call tracking feeds the stall warning (BUGS.md 2026-09-13 sibling): a hung
@@ -316,27 +302,25 @@ test("a stalled call without toolName warns with the bare command named", async 
   config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } })}'`,
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(30_000); // past the stall threshold, then past the quiet window
+      const result = await run;
+      assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+      assert.match(
+        warnings[0] ?? "",
+        /^tool call stalled: sleep 999 — no output for \d+[sm]/,
+        "the warning names the bare command even though pi omitted toolName",
+      );
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(30_000); // past the stall threshold, then past the quiet window
-    const result = await run;
-    assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
-    assert.match(
-      warnings[0] ?? "",
-      /^tool call stalled: sleep 999 — no output for \d+[sm]/,
-      "the warning names the bare command even though pi omitted toolName",
-    );
-  } finally {
-    restore();
-  }
 });
 
 test("toolUpdateHasContent sees real text, not empty or content-less updates", () => {
@@ -360,24 +344,22 @@ test("a stalled tool call warns once with the command named", async (t) => {
   config.toolCallStallSeconds = 2;
   const warnings: string[] = [];
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(30_000); // several checks past the stall threshold, then the kill
+      const result = await run;
+      assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+      assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
+      assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(30_000); // several checks past the stall threshold, then the kill
-    const result = await run;
-    assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
-    assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
-    assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
-  } finally {
-    restore();
-  }
 });
 
 // A piped command's silence is the prescribed shape (BUGS.md 2026-09-28), but the command
@@ -393,30 +375,28 @@ test("a piped command open past the buffered wall-clock threshold warns even tho
   config.toolCallStallSeconds = 300;
   const warnings: string[] = [];
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999 | tail -1" } })}'`,
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(610_000); // past the 10-minute buffered wall-clock floor (max(2×300s, 10 min))
+      assert.equal(warnings.length, 1, "the buffered hang is warned once, by duration");
+      assert.match(
+        warnings[0] ?? "",
+        /^tool call stalled: bash sleep 999 \| tail -1 — no exit for \d+m/,
+        "a buffered call's warning names the open duration, not silence",
+      );
+      clock.advance(900_000); // total 1510s > 2× quiet: the quiet watchdog still owns the kill
+      const result = await run;
+      assert.equal(result.quietKilled, true, "the kill remains the quiet watchdog's");
+      assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(610_000); // past the 10-minute buffered wall-clock floor (max(2×300s, 10 min))
-    assert.equal(warnings.length, 1, "the buffered hang is warned once, by duration");
-    assert.match(
-      warnings[0] ?? "",
-      /^tool call stalled: bash sleep 999 \| tail -1 — no exit for \d+m/,
-      "a buffered call's warning names the open duration, not silence",
-    );
-    clock.advance(900_000); // total 1510s > 2× quiet: the quiet watchdog still owns the kill
-    const result = await run;
-    assert.equal(result.quietKilled, true, "the kill remains the quiet watchdog's");
-    assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
-  } finally {
-    restore();
-  }
 });
 
 test("no stall warning when the tool call ends before the threshold", async () => {
@@ -428,22 +408,20 @@ test("no stall warning when the tool call ends before the threshold", async () =
   // The real default: nothing this fast can trip it.
   assert.equal(config.toolCallStallSeconds, 300);
   const warnings: string[] = [];
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "true" } })}'`,
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "c1", toolName: "bash", result: {}, isError: false })}'`,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
+    async () => {
+      const result = await runPi(
+        runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
+      );
+      assert.equal(result.ok, true);
+      assert.deepEqual(warnings, []);
+    },
   );
-  try {
-    const result = await runPi(
-      runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) }),
-    );
-    assert.equal(result.ok, true);
-    assert.deepEqual(warnings, []);
-  } finally {
-    restore();
-  }
 });
 
 test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
@@ -453,23 +431,21 @@ test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
   config.toolCallStallSeconds = 0; // ...but no warning accompanies it
   const warnings: string[] = [];
   const clock = watchdogClock(t);
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
       `exec sleep 30`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(10_000);
+      const result = await run;
+      assert.equal(result.quietKilled, true);
+      assert.deepEqual(warnings, []);
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(10_000);
-    const result = await run;
-    assert.equal(result.quietKilled, true);
-    assert.deepEqual(warnings, []);
-  } finally {
-    restore();
-  }
 });
 
 // The unbuffered sibling of the buffered-duration test above: a silent call the interval
@@ -484,31 +460,29 @@ test("an unbuffered call silent past a minute warns in whole minutes", async (t)
   config.toolCallStallSeconds = 120; // the first check to see silence is at ~2 min, past 60 s
   const warnings: string[] = [];
   const clock = watchdogClock(t, { timeouts: true });
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
       `exec sleep 30`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(121_000); // past the 2-minute threshold, so the warning is a whole-minute one
+      assert.equal(warnings.length, 1, "the multi-minute silence is warned once");
+      assert.match(
+        warnings[0] ?? "",
+        /^tool call stalled: bash sleep 999 — no output for \d+m$/,
+        "past a minute the silence is named in whole minutes, not seconds",
+      );
+      clock.advance(600_000); // past the 700 s deadline: the tick timeout ends the run
+      const result = await run;
+      assert.equal(result.timedOut, true, "with the quiet watchdog disabled the deadline bounds the run");
+      assert.equal(result.quietKilled, false);
+      assert.equal(warnings.length, 1, "one warning per stalled call");
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(121_000); // past the 2-minute threshold, so the warning is a whole-minute one
-    assert.equal(warnings.length, 1, "the multi-minute silence is warned once");
-    assert.match(
-      warnings[0] ?? "",
-      /^tool call stalled: bash sleep 999 — no output for \d+m$/,
-      "past a minute the silence is named in whole minutes, not seconds",
-    );
-    clock.advance(600_000); // past the 700 s deadline: the tick timeout ends the run
-    const result = await run;
-    assert.equal(result.timedOut, true, "with the quiet watchdog disabled the deadline bounds the run");
-    assert.equal(result.quietKilled, false);
-    assert.equal(warnings.length, 1, "one warning per stalled call");
-  } finally {
-    restore();
-  }
 });
 
 // Both watchdog windows off is the one config that schedules no quiet interval at all: no
@@ -522,24 +496,22 @@ test("disabling both quiet and stall windows leaves only the tick deadline, with
   config.toolCallStallSeconds = 0;
   const warnings: string[] = [];
   const clock = watchdogClock(t, { timeouts: true });
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
       `exec sleep 30`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(10_000); // well past both disabled windows
+      const result = await run;
+      assert.equal(result.timedOut, true, "the tick deadline owns the end of the run");
+      assert.equal(result.quietKilled, false, "no quiet interval runs to kill it");
+      assert.deepEqual(warnings, [], "no stall interval runs to warn");
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(10_000); // well past both disabled windows
-    const result = await run;
-    assert.equal(result.timedOut, true, "the tick deadline owns the end of the run");
-    assert.equal(result.quietKilled, false, "no quiet interval runs to kill it");
-    assert.deepEqual(warnings, [], "no stall interval runs to warn");
-  } finally {
-    restore();
-  }
 });
 
 // The stall warning must not fire on a command whose stdout is piped or redirected — the
@@ -557,24 +529,22 @@ test("a stalled piped-stdout call warns nothing; the redirect is found in the fu
   // One command piped through tail (the prescribed shape) and one whose redirect operator
   // sits past char 32 — describeToolCall truncates the label there, so only the call's full
   // raw command can reveal the `>`; both must stay unwarned while they stall.
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "npm run test 2>&1 | tail -8" } })}'`,
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", toolName: "bash", args: { command: "npm run test -- --runInBand --detectOpenHandles > /tmp/quiet.log" } })}'`,
       `exec sleep 30`,
     ].join("\n"),
+    async () => {
+      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(opts);
+      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+      clock.advance(30_000); // well past the stall threshold, then past the quiet window
+      const result = await run;
+      assert.equal(result.quietKilled, true, "the quiet watchdog still owns the kill");
+      assert.deepEqual(warnings, [], "piped or redirected stdout makes silence meaningless");
+    },
   );
-  try {
-    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-    const run = runPi(opts);
-    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-    clock.advance(30_000); // well past the stall threshold, then past the quiet window
-    const result = await run;
-    assert.equal(result.quietKilled, true, "the quiet watchdog still owns the kill");
-    assert.deepEqual(warnings, [], "piped or redirected stdout makes silence meaningless");
-  } finally {
-    restore();
-  }
 });
 
 test("a non-zero pi exit with assistant text still counts as a successful run", async () => {
@@ -604,23 +574,21 @@ test("a multi-byte character straddling a stdout chunk boundary survives intact"
   // sleep guarantees the first write is drained as its own chunk, so the boundary falls
   // inside the character. Pre-fix this produced "h\uFFFD\uFFFDllo".
   const dir = tmpdir();
-  const restore = fakePi(
+  await withPi(
     [
       `printf '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"h\\303'`,
       `sleep 0.3`,
       `printf '\\251llo"}],"usage":{"totalTokens":5,"output":5,"cost":{"total":0}},"stopReason":"stop"}}\n'`,
     ].join("\n"),
+    async () => {
+      const result = await runPi(runPiFixture(dir));
+      assert.equal(result.ok, true);
+      assert.equal(result.finalText, "héllo", "the split character decodes intact");
+      assert.equal(result.turns, 1);
+      // The raw log is written from the same decoded lines — it must be clean too.
+      assert.ok(!fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8").includes("\uFFFD"));
+    },
   );
-  try {
-    const result = await runPi(runPiFixture(dir));
-    assert.equal(result.ok, true);
-    assert.equal(result.finalText, "héllo", "the split character decodes intact");
-    assert.equal(result.turns, 1);
-    // The raw log is written from the same decoded lines — it must be clean too.
-    assert.ok(!fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8").includes("\uFFFD"));
-  } finally {
-    restore();
-  }
 });
 
 test("a multi-byte character straddling a stderr chunk boundary survives intact", async () => {
@@ -631,21 +599,19 @@ test("a multi-byte character straddling a stderr chunk boundary survives intact"
   // fake pi writes its stderr in two paced writes with é's UTF-8 bytes (0xC3 0xA9) split
   // between them, then exits non-zero so the stderr becomes the reported errorMessage.
   const dir = tmpdir();
-  const restore = fakePi(
+  await withPi(
     [
       `printf 'boom h\\303' >&2`,
       `sleep 0.3`,
       `printf '\\251llo' >&2`,
       `exit 1`,
     ].join("\n"),
+    async () => {
+      const result = await runPi(runPiFixture(dir));
+      assert.equal(result.ok, false);
+      assert.match(result.errorMessage ?? "", /boom héllo/, "the split character decodes intact");
+    },
   );
-  try {
-    const result = await runPi(runPiFixture(dir));
-    assert.equal(result.ok, false);
-    assert.match(result.errorMessage ?? "", /boom héllo/, "the split character decodes intact");
-  } finally {
-    restore();
-  }
 });
 
 // Session lifecycle: every tick starts a fresh pi session (context never accumulates
@@ -656,40 +622,36 @@ test("every tick starts a fresh pi session", async () => {
   await initProject(repo, "fresh session test");
   const argsFile = path.join(tmpdir(), "argv.log");
   // The prompt argument spans many lines, so record only the flags, one run per line.
-  const restore = fakePi(
+  await withPi(
     [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
+    async () => {
+      const runner = makeLoopRunner(repo, "clean");
+      await runner.tick();
+      await runner.tick();
+      const runs = readRunLines(argsFile);
+      assert.equal(runs.length, 2);
+      for (const [i, run] of runs.entries()) {
+        assert.ok(!run.includes("--continue"), `tick ${i + 1} must not resume a prior session`);
+        assert.ok(run.includes("-n"), `tick ${i + 1} names its fresh session`);
+      }
+    },
   );
-  try {
-    const runner = makeLoopRunner(repo, "clean");
-    await runner.tick();
-    await runner.tick();
-    const runs = readRunLines(argsFile);
-    assert.equal(runs.length, 2);
-    for (const [i, run] of runs.entries()) {
-      assert.ok(!run.includes("--continue"), `tick ${i + 1} must not resume a prior session`);
-      assert.ok(run.includes("-n"), `tick ${i + 1} names its fresh session`);
-    }
-  } finally {
-    restore();
-  }
 });
 
 test("a context-exceeded error fails the tick with the real cause", async () => {
   const repo = makeRepo();
   await initProject(repo, "context overflow test");
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "auto_retry_end", success: false, attempt: 3, finalError: "Context size has been exceeded." })}'`,
       `exit 1`,
     ].join("\n"),
+    async () => {
+      const runner = makeLoopRunner(repo, "clean");
+      assert.equal((await runner.tick()).result, "error");
+      assert.ok(runner.state.lastError, "the error is surfaced on the loop state");
+    },
   );
-  try {
-    const runner = makeLoopRunner(repo, "clean");
-    assert.equal((await runner.tick()).result, "error");
-    assert.ok(runner.state.lastError, "the error is surfaced on the loop state");
-  } finally {
-    restore();
-  }
 });
 
 // Run markers: every run writes one marker line to the shared raw log before any of pi's
@@ -699,8 +661,7 @@ test("a context-exceeded error fails the tick with the real cause", async () => 
 
 test("a labeled run writes exactly one kind+label marker line as the raw log's first line", async () => {
   const dir = tmpdir();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`);
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`, async () => {
     await runPiVerified(runPiFixture(dir, { kind: "gate", label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(
@@ -708,15 +669,12 @@ test("a labeled run writes exactly one kind+label marker line as the raw log's f
       `{"type":"tumwater_run","kind":"gate","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
       "the marker precedes every pi output line and appears exactly once",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an unlabeled run writes one kind-only marker and no label", async () => {
   const dir = tmpdir();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
     await runPiVerified(runPiFixture(dir));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(
@@ -724,9 +682,7 @@ test("an unlabeled run writes one kind-only marker and no label", async () => {
       `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
       "the author run's marker carries only its kind",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a failed labeled run still flushes its marker (the stale-marker case)", async () => {
@@ -734,14 +690,11 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
   // The renderer consumes its label at the next agent_start, so it can mislabel at most the
   // following separator and never leaks past one run — pinned here at the source.
   const dir = tmpdir();
-  const restore = fakePi("exit 1");
-  try {
+  await withPi("exit 1", async () => {
     await runPi(runPiFixture(dir, { kind: "gate", label: "review" }));
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
     assert.equal(content, `{"type":"tumwater_run","kind":"gate","label":"review"}\n`);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // Flush-before-resolve: raw-log writes complete on libuv's threadpool, so runPi must not
@@ -753,7 +706,6 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
 test("runPi resolves only after the raw log has flushed (stalled-stream regression)", async () => {
   const dir = tmpdir();
   const file = path.join(dir, "raw.jsonl");
-  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
   // One fresh fake per stream open, so a runPiVerified retry cannot append to the previous
   // attempt's buffered writes.
   const makeStalled = () => {
@@ -772,26 +724,26 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
       },
     });
   };
-  const restoreStream = patchFsMethod("createWriteStream", () => () => makeStalled());
-  try {
-    await runPiVerified(runPiFixture(dir, { rawLogFile: file }));
-    const content = fs.readFileSync(file, "utf8");
-    assert.equal(
-      content,
-      `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
-      "the raw log is complete on the turn runPi resolves — nothing may still be in flight",
-    );
-  } finally {
-    restore();
-    restoreStream();
-  }
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
+    const restoreStream = patchFsMethod("createWriteStream", () => () => makeStalled());
+    try {
+      await runPiVerified(runPiFixture(dir, { rawLogFile: file }));
+      const content = fs.readFileSync(file, "utf8");
+      assert.equal(
+        content,
+        `{"type":"tumwater_run","kind":"author"}\n${assistantLine("done", { tokens: 5 })}\n`,
+        "the raw log is complete on the turn runPi resolves — nothing may still be in flight",
+      );
+    } finally {
+      restoreStream();
+    }
+  });
 });
 
 test("a broken raw log degrades to a lost log, never a stuck tick", async () => {
   // The stream dies instead of finishing ('error' fires, 'finish' never does): runPi must
   // still settle with the run's real result rather than hang the loop.
   const dir = tmpdir();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`);
   const brokenEvents = new EventEmitter();
   const broken = Object.assign(brokenEvents, {
     write: (_data: string) => true,
@@ -799,20 +751,21 @@ test("a broken raw log degrades to a lost log, never a stuck tick", async () => 
       setImmediate(() => brokenEvents.emit("error", new Error("ENOSPC: no space left on device")));
     },
   });
-  const restoreStream = patchFsMethod("createWriteStream", () => () => broken);
-  try {
-    const result = await Promise.race([
-      runPi(runPiFixture(dir)),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("runPi hung on a broken raw log")), 5000),
-      ),
-    ]);
-    assert.equal(result.ok, true, "the run itself succeeded; only its log is lost");
-    assert.equal(result.finalText, "done");
-  } finally {
-    restore();
-    restoreStream();
-  }
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
+    const restoreStream = patchFsMethod("createWriteStream", () => () => broken);
+    try {
+      const result = await Promise.race([
+        runPi(runPiFixture(dir)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("runPi hung on a broken raw log")), 5000),
+        ),
+      ]);
+      assert.equal(result.ok, true, "the run itself succeeded; only its log is lost");
+      assert.equal(result.finalText, "done");
+    } finally {
+      restoreStream();
+    }
+  });
 });
 
 test("a missing pi binary fails the tick with an error", async () => {
