@@ -110,6 +110,17 @@ test("entryHold reports blocked, refused, needs-review and needs-replan, and nul
   );
 });
 
+test("hold notes match only as their own line, and an indented note still holds", () => {
+  const review = "**Needs review 2026-10-07 by feature: too large for one run**";
+  const replan = "**Needs replan 2026-10-07 by feature: rejected after 2 review rounds**";
+  // A prefix quoted inside prose is a mention, not a note.
+  assert.equal(entryHold(entry("Plan", `the loop appends ${review} under the heading`), []), null);
+  assert.equal(entryHold(entry("Plan", `the loop appends ${replan} under the heading`), []), null);
+  // Written on its own line — indented or not — it is the note it looks like.
+  assert.equal(entryHold(entry("Plan", `body\n${review}`), []), "needs-review");
+  assert.equal(entryHold(entry("Plan", `body\n  ${replan}`), []), "needs-replan");
+});
+
 test("a body mentioning 'requires' never blocks — only the heading's clause does", () => {
   assert.equal(entryHold(entry("Foo (planned 2026-10-01)", "This requires part 1/2 landed eventually."), []), null);
 });

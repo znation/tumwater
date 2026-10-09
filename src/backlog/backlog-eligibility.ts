@@ -38,10 +38,17 @@ export interface PartRef {
   of: number;
 }
 
-/** The markdown note prefix the feature loop writes for a plan too large for one run, and the
- * `**Refused …` note prefix a refusing tick writes — matched as line prefixes so a mention in
- * prose never holds an entry. */
+/** The `**Refused …` note prefix a refusing tick writes. Every hold note — this one and the
+ * imported Needs-review and Needs-replan prefixes — is matched as a line prefix (hasNoteLine)
+ * so a mention in prose never holds an entry. */
 const REFUSED_PREFIX = "**Refused ";
+
+/** True when `body` carries a line (ignoring leading indentation) that begins with `prefix`.
+ * The one home of the hold-note rule: a note holds its entry only when written as its own
+ * line, never when its prefix is quoted inside prose. */
+function hasNoteLine(body: string, prefix: string): boolean {
+  return body.split("\n").some((line) => line.trimStart().startsWith(prefix));
+}
 
 /** One prerequisite ref, resolved against the entry's own series when it names none. */
 function parseRef(chunk: string, ownSeries: string | null): PartRef[] {
@@ -99,16 +106,14 @@ export function requiredParts(title: string): PartRef[] {
 }
 
 /** Why `entry` is held against the still-`planned` entries, or null when it may be taken:
- * a `**Refused …` line (refused), a Needs-review prefix (needs-review), a Needs-replan prefix
+ * a `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
  * (needs-replan — the plan loop owns it), or a prerequisite `(series, part)` still among
  * `planned` ({ blockedBy }). Series compare case-insensitively; part tokens compare verbatim.
  * Bodies mentioning "requires" are never consulted — only the heading's trailing parenthetical. */
 export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[]): EntryHold {
-  if (entry.body.split("\n").some((line) => line.trimStart().startsWith(REFUSED_PREFIX))) {
-    return "refused";
-  }
-  if (entry.body.includes(NEEDS_REVIEW_PREFIX)) return "needs-review";
-  if (entry.body.includes(NEEDS_REPLAN_PREFIX)) return "needs-replan";
+  if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
+  if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) return "needs-review";
+  if (hasNoteLine(entry.body, NEEDS_REPLAN_PREFIX)) return "needs-replan";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
   const parts = planned
