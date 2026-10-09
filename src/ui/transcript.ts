@@ -4,9 +4,9 @@ import { collapseWhitespace, squash, textOr, truncate } from "../text/text.js";
 import { describeToolCall } from "../text/phrases.js";
 import { formatTimestamp } from "../text/datetime.js";
 
-/** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
- * run's separator) or a lone retry warning / run separator. Exported because transcript-tail.ts
- * types its window's entries with it — one definition of "a rendered entry" across both readers. */
+/** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its run's
+ * separator) or a lone retry warning / run separator. Exported because transcript-tail.ts types its
+ * window's entries with it — one definition of "a rendered entry" across both readers. */
 export type TranscriptEntry = string[];
 
 const THINKING_MAX_CHARS = 80;
@@ -79,12 +79,12 @@ function renderUserPrompt(content: unknown): string[] {
   return out;
 }
 
-/** The event types createTranscriptRenderer's feed() acts on — everything else (streaming
- * deltas, tool/turn bookkeeping) renders nothing. `message_end` covers both roles: assistant
- * turns render and user messages stamp the run separator; `tumwater_run` is a harness-written
- * marker that labels the next run's separator without rendering anything itself. Also used by
- * feed()'s pre-filter to skip JSON.parse for pi lines whose type is verifiably not one of these;
- * a new renderable case in the switch must be added here too or it will never reach the renderer. */
+/** The event types createTranscriptRenderer's feed() acts on — everything else (streaming deltas,
+ * tool/turn bookkeeping) renders nothing. `message_end` covers both roles: assistant turns render
+ * and user messages stamp the run separator; `tumwater_run` is a harness-written marker that labels
+ * the next run's separator without rendering anything itself. Also used by feed()'s pre-filter to
+ * skip JSON.parse for pi lines whose type is verifiably not one of these; a new renderable case in
+ * the switch must be added here too or it will never reach the renderer. */
 const RENDERABLE_TYPES = new Set(["agent_start", "message_end", "auto_retry_start", "tumwater_run"]);
 
 interface TranscriptRenderer {
@@ -101,26 +101,25 @@ interface TranscriptRenderer {
 }
 
 /** Incremental renderer over pi's streaming JSONL log. Only complete, renderable events ever
- * produce output: `agent_start` (a run separator, stamped from the first user message's
- * epoch-ms timestamp), assistant `message_end` turns, and `auto_retry_start` warnings. A
- * harness-written `tumwater_run` marker renders nothing itself: one carrying a label sets a
- * pending label that the next agent_start captures into its separator (`── review @ <ts> ──`),
- * while a kind-only marker (every run writes one since worktree-pool part 1/5) touches no
- * cross-line state and is transparent to the rendering. Streaming deltas
- * (`message_update`) and tool-execution/turn bookkeeping are never rendered; feed() skips even
- * parsing them via a fast path over pi's compact `type`-first JSON shape.
+ * produce output: `agent_start` (a run separator, stamped from the first user message's epoch-ms
+ * timestamp), assistant `message_end` turns, and `auto_retry_start` warnings. A harness-written
+ * `tumwater_run` marker renders nothing itself: one carrying a label sets a pending label that the
+ * next agent_start captures into its separator (`── review @ <ts> ──`), while a kind-only
+ * marker (every run writes one since worktree-pool part 1/5) touches no cross-line state and is
+ * transparent to the rendering. Streaming deltas (`message_update`) and tool-execution/turn
+ * bookkeeping are never rendered; feed() skips even parsing them via a fast path over pi's compact
+ * `type`-first JSON shape.
  *
- * User messages (in particular the multi-KB tick prompt sent each run) are suppressed by
- * default, but `includePrompts` opts into rendering them after their run separator — the
- * `tumwater logs --role <id> --prompt` surface. The dashboards' polled reader
- * (readTranscript) keeps the default.
+ * User messages (in particular the multi-KB tick prompt sent each run) are suppressed by default,
+ * but `includePrompts` opts into rendering them after their run separator — the `tumwater logs
+ * --role <id> --prompt` surface. The dashboards' polled reader (readTranscript) keeps the default.
  *
- * The renderer's cross-line state is the pending run separator plus that pending label: both
- * are reset/captured by agent_start — a label only a label-bearing marker changes — so
+ * The renderer's cross-line state is the pending run separator plus that pending label: both are
+ * reset/captured by agent_start — a label only a label-bearing marker changes — so
  * readTranscriptTail (transcript-tail.ts) starts windows at an agent_start, or at the closest
- * preceding label-bearing marker, and renders identically to a full re-read. Adding another
- * piece of cross-line state here would silently break that one-shot reader — extend its stop
- * boundary too. */
+ * preceding label-bearing marker, and renders identically to a full re-read. Adding another piece
+ * of cross-line state here would silently break that one-shot reader — extend its stop boundary
+ * too. */
 export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}): TranscriptRenderer {
   const includePrompts = opts.includePrompts === true;
   let runOpen = false; // agent_start seen for this run, separator not yet emitted

@@ -201,7 +201,8 @@ export function readTranscriptTail(
   }
 
   if (armed) {
-    // Reached EOF while still arming: no marker precedes the run — unlabeled, stop at its agent_start.
+    // Reached EOF while still arming: no marker precedes the run — unlabeled, stop at its
+    // agent_start.
     lines.splice(boundaryIndex + 1);
     stoppedAtBoundary = true;
   }
@@ -209,7 +210,8 @@ export function readTranscriptTail(
   let entries = formatTranscript(lines.reverse(), opts); // Oldest first.
   if (entries.length < limit && stoppedAtBoundary) {
     // Contentless assistant turns made the rendered entries fewer than the candidate count
-    // promised — re-read the whole file (the pre-optimization behavior) so slice(-limit) is exact.
+    // promised — re-read the whole file (the pre-optimization behavior) so slice(-limit) is
+    // exact.
     entries = formatTranscript(readCompleteLines(file, 0, size).lines, opts);
   }
   // limit can be 0 (or negative — nonsense a caller should never pass): entries.slice(-0) is

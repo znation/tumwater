@@ -78,7 +78,8 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   if (!stdin.isTTY || !stdout.isTTY) {
     throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));
   }
-  // The no-color.org convention (no-color.org): a set, non-empty variable drops every color — the ink tree takes the terminal's default for every span.
+  // The no-color.org convention (no-color.org): a set, non-empty variable drops every color —
+  // the ink tree takes the terminal's default for every span.
   const noColor = (process.env.NO_COLOR ?? "") !== "";
 
   // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap

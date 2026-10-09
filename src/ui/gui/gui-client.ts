@@ -117,7 +117,8 @@ const FORMAT_JS = String.raw`  // format:start
   // A cap: whole dollars stay bare ($15), fractional ones keep their cents — format.ts's usdCap.
   const fmtCap = (n) => "$" + n.toFixed(2).replace(/\.00$/, "");
   // The number-agreeing word form when the count prints elsewhere in the markup — phrases.ts's
-  // agree, shared by plural below and gui-client-fleet.ts's stats tiles, whose noun sits in <small>.
+  // agree, shared by plural below and gui-client-fleet.ts's stats tiles, whose noun sits in
+  // <small>.
   const agree = (n, one, many) => (n === 1 ? one : many);
   const plural = (n, one, many) => n + " " + agree(n, one, many || one + "s");
   // The landed-commit work/maintenance split the sidebar's "Landed today" tile and the report's
