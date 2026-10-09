@@ -17,7 +17,7 @@ import {
 } from "../src/doctor/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { initProject } from "../src/init/init.js";
-import { loadConfig } from "../src/config/config.js";
+import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -212,9 +212,11 @@ test("checkInit fails when uninitialized and reports the enabled role count for 
   assert.equal(notInit.level, "fail");
   assert.match(notInit.detail, /not initialized/);
 
-  // An empty config enables every catalog role by default.
-  const allEnabled = checkInit(readyRepo());
-  assert.deepEqual(allEnabled, { level: "ok", detail: `${allRoleIds().length} roles enabled` });
+  // An empty config enables every catalog role but the opt-in telemetry by default.
+  const defaults = checkInit(readyRepo());
+  const enabledByDefault = Object.values(defaultConfig().roles).filter((r) => r.enabled).length;
+  assert.equal(enabledByDefault, allRoleIds().length - 1);
+  assert.deepEqual(defaults, { level: "ok", detail: `${enabledByDefault} roles enabled` });
 
   // The count reflects only the enabled entries: disable every role but one.
   const oneEnabled = makeRepo();

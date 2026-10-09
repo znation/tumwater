@@ -24,7 +24,8 @@ instead: `npm install && npm run build && npm link`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.1.1**: working harness. All 15 roles and the director are enabled by default.
+**v0.1.1**: working harness. The director and 14 of the 15 roles are enabled by default; `telemetry`,
+which files harness bugs from tumwater's own event log, is opt-in (`roles.telemetry.enabled`).
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).

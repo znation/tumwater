@@ -87,8 +87,8 @@ test("snapshot lists one row per loop id for a multi-instance role (part 5b/7)",
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
-  // Baseline: every catalog role enabled by default.
-  assert.equal(snapshot(repo).loops.length, allRoleIds().length);
+  // Baseline: every catalog role but the opt-in telemetry enabled by default.
+  assert.equal(snapshot(repo).loops.length, allRoleIds().length - 1);
 
   // A valid config that disables one role becomes the last known-good one.
   const cfg = loadConfig(repo);
@@ -510,8 +510,8 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   let snap = snapshot(repo);
   assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
   assert.ok(
-    snap.loops.filter((l) => !l.custom).length >= allRoleIds().length,
-    "every built-in stays unmarked",
+    snap.loops.filter((l) => !l.custom).length >= allRoleIds().length - 1,
+    "every enabled built-in stays unmarked",
   );
 
   // The file breaks mid-edit: the last known-good config keeps marking the custom.

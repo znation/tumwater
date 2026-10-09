@@ -36,11 +36,15 @@ test("the shipped tick budget clears the longest legitimate observed tick", () =
   );
 });
 
-test("defaultConfig enables every role including director", () => {
+test("defaultConfig enables every role including director, except the opt-in telemetry", () => {
   const config = defaultConfig();
   for (const id of allRoleIds()) {
+    if (id === "telemetry") continue;
     assert.equal(config.roles[id]?.enabled, true, `role ${id} should default enabled`);
   }
+  // Telemetry files only harness bugs from the harness's own event log, so on any other project
+  // its findings land in the wrong backlog; tumwater's own tumwater.example.json opts in.
+  assert.equal(config.roles.telemetry?.enabled, false);
   assert.ok(config.maxConcurrent >= 1);
   // Merge queue 5/5: the batch cap defaults to 3 — the fleet's realistic concurrent-role count.
   assert.equal(config.landBatchMax, 3);

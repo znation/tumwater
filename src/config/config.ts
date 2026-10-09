@@ -27,8 +27,8 @@ export function parseJsonConfig(
   }
 }
 
-/** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa and
- * telemetry on ~2 h, readme on 30 min, plan and organize on 1 h), with defaults for concurrency,
+/** Build the default TumwaterConfig: every role enabled except the opt-in telemetry (steward on
+ * its slow ~6 h tick, qa and telemetry on ~2 h, readme on 30 min, plan and organize on 1 h), with defaults for concurrency,
  * timeouts, log size, retention, thrash detection, idle backoff, self-redeploy, and review
  * settings. The return type is the resolved view (config-views.ts): a freshly defaulted config
  * has no model map to resolve — only a loaded file can carry one — so every call site that
@@ -44,7 +44,11 @@ export function defaultConfig(): ResolvedModelConfig {
   roles.qa = { enabled: true, minTickIntervalSeconds: 7200 };
   // Telemetry reads the event log on the same slow clock: the digest is a windowed view, so a
   // tick a couple of hours apart reads a new window rather than re-filing the same cluster.
-  roles.telemetry = { enabled: true, minTickIntervalSeconds: 7200 };
+  // It is the one opt-in role: its evidence is this harness's own event log and its charter
+  // files only harness misbehavior, so on any other project every finding is a tumwater bug
+  // filed into the wrong backlog, which that project's bugfix loop rightly rejects. Tumwater's
+  // own tumwater.example.json enables it, so this repo's checkouts still get it at `init`.
+  roles.telemetry = { enabled: false, minTickIntervalSeconds: 7200 };
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
   // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans
