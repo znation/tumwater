@@ -70,8 +70,8 @@ const NODE_VALUE_FLAGS = new Set([
  * a for loop, `time npm test`, `env CI=1 npm test`) — skipped before the command is read. */
 const PREFIX_WORDS = new Set(["do", "then", "else", "time", "exec", "nohup", "env", "command", "!"]);
 
-/** Where one shell line splits into separate commands: `&&`, `||`, `;`, `|`, newlines, subshell
- * and group brackets, and a backgrounding `&` — but not the `&` of a redirection (`2>&1`, `&>`). */
+/** Where one shell line splits into separate commands: `&&`, `||`, `;`, `|`, newlines, subshell and
+ * group brackets, and a backgrounding `&` — but not the `&` of a redirection (`2>&1`, `&>`). */
 const SEGMENT_SPLIT = /&&|\|\||[;|\n(){}]|(?<![<>])&(?!>)/;
 
 /** A redirection operator standing alone (`>`, `2>`, `>>`, `&>`, `<`): its target is the next
