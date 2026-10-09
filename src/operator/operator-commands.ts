@@ -109,7 +109,8 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
 
 /** `tumwater reclaim [--dry-run]`: run one manual reclaim pass over every harness worktree
  * (plans/disk-floor.md, part 3/4). `--dry-run` lists each candidate with its idle age and how
- * many ignored paths `git clean -ndX` would remove, and cleans nothing. With a live fleet the
+ * many ignored paths `git clean -ndX` would remove, and changes nothing — it neither cleans a
+ * worktree nor writes the worktree-use registry. With a live fleet the
  * pass is requested through the marker the orchestrator consumes, so in-use worktrees are
  * respected; with none running it runs in-process, since nothing is in use. */
 export async function cmdReclaim(root: string, args: string[]): Promise<void> {

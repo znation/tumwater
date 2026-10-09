@@ -279,6 +279,24 @@ test("inspectReclaimCandidates lists idle age and ignored-path count without cle
   assert.equal(fs.existsSync(path.join(wt, "build")), true, "dry run deletes nothing");
 });
 
+test("inspectReclaimCandidates never seeds the use registry", async () => {
+  // A dry run is a diagnostic: unlike the real pass it must not stamp a never-seen worktree
+  // used-now in .tumwater/state/worktree-use.json, which would delay that worktree's later
+  // reclaim. The never-seen worktree still drops out of the listing, exactly as the real
+  // pass's seeded pass leaves it out.
+  const root = makeRepo();
+  worktreeAt(root, "feature");
+  assert.equal(fs.existsSync(worktreeUsePath(root)), false, "no registry before the dry run");
+  const rows = await inspectReclaimCandidates(root, 24);
+  assert.deepEqual(rows, [], "a never-seen worktree is left out, not listed");
+  assert.equal(fs.existsSync(worktreeUsePath(root)), false, "the dry run wrote no registry");
+  // The real pass still seeds: the first call stamps the worktree (and leaves it out of that
+  // pass), the next lists it.
+  assert.deepEqual(reclaimCandidates(root).map((c) => c.name), [], "the real pass seeds and skips");
+  assert.equal(fs.existsSync(worktreeUsePath(root)), true, "the real pass seeds the registry");
+  assert.deepEqual(reclaimCandidates(root).map((c) => c.name), ["feature"]);
+});
+
 test("ReclaimController.pollIdle cleans once, throttles the next arm, and honors reclaimedAt", async () => {
   const root = makeRepo();
   const wt = worktreeAt(root, "feature");

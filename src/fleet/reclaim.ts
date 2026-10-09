@@ -19,6 +19,7 @@ import {
   claimForReclaim,
   isReclaimInProgress,
   isWorktreeInUse,
+  readWorktreeUse,
   releaseReclaim,
   updateWorktreeUse,
 } from "../git/worktree-use.js";
@@ -50,8 +51,15 @@ interface ReclaimCandidate {
 
 /** The linked worktrees eligible for reclaim, least recently used first, with resume-pending
  * roles last. Worktrees in use, mid-reclaim, and the reserved mirrors are excluded; a worktree
- * the registry has never seen is seeded as used-now and left out of this pass. */
-export function reclaimCandidates(root: string, now = Date.now()): ReclaimCandidate[] {
+ * the registry has never seen is seeded as used-now and left out of this pass. `opts.seed`
+ * defaults true (the real pass, which writes the stamp back); `seed: false` — the
+ * `reclaim --dry-run` query — only reads the registry, so a never-seen worktree drops out of
+ * the listing instead of being stamped used and delaying a later reclaim. */
+export function reclaimCandidates(
+  root: string,
+  now = Date.now(),
+  opts: { seed?: boolean } = {},
+): ReclaimCandidate[] {
   let names: string[];
   try {
     names = fs
@@ -65,20 +73,24 @@ export function reclaimCandidates(root: string, now = Date.now()): ReclaimCandid
   // Seed never-seen worktrees as used-now under the cross-process lock, and remember which of
   // this pass's names that covered so they stay out of it. A later pass (or a restart) then sees
   // them; the lock keeps a concurrent orchestrator release from losing the seeding (or vice
-  // versa).
+  // versa). `seed: false` takes the read path instead, so a diagnostic leaves the durable
+  // registry untouched.
   const seededNames = new Set<string>();
-  const registry = updateWorktreeUse(root, (reg) => {
-    let seeded = false;
-    for (const name of names) {
-      const record = reg[name];
-      if (record === undefined || typeof record.lastUsedAt !== "number") {
-        reg[name] = { ...record, lastUsedAt: now };
-        seeded = true;
-        seededNames.add(name);
-      }
-    }
-    return seeded;
-  });
+  const registry =
+    opts.seed === false
+      ? readWorktreeUse(root)
+      : updateWorktreeUse(root, (reg) => {
+          let seeded = false;
+          for (const name of names) {
+            const record = reg[name];
+            if (record === undefined || typeof record.lastUsedAt !== "number") {
+              reg[name] = { ...record, lastUsedAt: now };
+              seeded = true;
+              seededNames.add(name);
+            }
+          }
+          return seeded;
+        });
   const candidates: ReclaimCandidate[] = [];
   for (const name of names) {
     const wt = path.join(dir, name);
@@ -228,14 +240,16 @@ interface ReclaimInspection {
 
 /** Dry run: every reclaim candidate with its idle age and what `git clean -ndX` would remove,
  * so `tumwater reclaim --dry-run` lists candidates without deleting. Uses the same candidate
- * list (in-use and reserved worktrees excluded) and the idle-mode rule at `idleHours`. */
+ * list (in-use and reserved worktrees excluded) and the idle-mode rule at `idleHours`, and
+ * writes nothing — unlike the real pass it neither cleans a worktree nor seeds the use
+ * registry, so a diagnostic cannot delay a later reclaim. */
 export async function inspectReclaimCandidates(
   root: string,
   idleHours: number,
   now = Date.now(),
 ): Promise<ReclaimInspection[]> {
   const out: ReclaimInspection[] = [];
-  for (const candidate of reclaimCandidates(root, now)) {
+  for (const candidate of reclaimCandidates(root, now, { seed: false })) {
     let paths = 0;
     try {
       const listing = await git(candidate.dir, "clean", "-ndX");
