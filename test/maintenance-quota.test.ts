@@ -60,6 +60,8 @@ test("countMaintenanceWindow counts merged events by tier inside the last 24 h",
     ...Array.from({ length: 4 }, (_, i) => ({ ts: outside, loop: "clean", type: "merged", commit: `oc${i}` })),
     // a non-merged event inside the window is not a landing.
     { ts: inside, loop: "clean", type: "tick_end", tokens: 1 },
+    // a tier-counted merge with no timestamp contributes nothing.
+    { loop: "clean", type: "merged", commit: "nots" },
   ]);
   assert.deepEqual(countMaintenanceWindow(root, newMaintenanceWindowCounter(), now), { work: 4, maint: 7 });
 });
@@ -96,4 +98,50 @@ test("a rotated log is reseeded from the live file and its archive, not folded f
     { ts: now, loop: "clean", type: "merged", commit: "y" },
   ]);
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 2 });
+});
+
+test("a missing events log counts zero and seeds an empty memo", () => {
+  const root = tmpdir();
+  const counter = newMaintenanceWindowCounter();
+  assert.deepEqual(countMaintenanceWindow(root, counter, Date.now()), { work: 0, maint: 0 });
+  assert.equal(counter.seeded, true);
+});
+
+test("an unchanged poll reuses the memo without reseeding", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  const counter = newMaintenanceWindowCounter();
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
+  const offset = counter.offset;
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
+  assert.equal(counter.offset, offset, "an unchanged file must not move the folded offset");
+});
+
+test("appended lines that are torn, non-merged, tierless, or timestamp-less are ignored", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 2 * HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  const counter = newMaintenanceWindowCounter();
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
+  const appended = [
+    "{ torn",
+    JSON.stringify({ ts: now - HOUR, loop: "clean", type: "tick_end", tokens: 1 }),
+    JSON.stringify({ ts: now - HOUR, loop: "steward", type: "merged", commit: "s" }),
+    JSON.stringify({ loop: "feature", type: "merged", commit: "x" }),
+    JSON.stringify({ ts: now - HOUR / 2, loop: "feature", type: "merged", commit: "b" }),
+  ];
+  fs.appendFileSync(eventsLogPath(root), appended.join("\n") + "\n");
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 1, maint: 1 });
+});
+
+test("records that age past the rolling window are dropped from the memo", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 23 * HOUR, loop: "clean", type: "merged", commit: "a" }]);
+  const counter = newMaintenanceWindowCounter();
+  assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
+  // Two hours later the same, unchanged record sits 25 h back — outside the window.
+  assert.deepEqual(countMaintenanceWindow(root, counter, now + 2 * HOUR), { work: 0, maint: 0 });
+  assert.equal(counter.records.length, 0);
 });
