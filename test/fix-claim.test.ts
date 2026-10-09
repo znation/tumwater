@@ -17,7 +17,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, runningAsRoot, sh } from "./fixtures/repo-fixtures.js";
 import { reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
-import { fakePi, piRanMarker } from "./fakes/fake-pi.js";
+import { piRanMarker, withPi } from "./fakes/fake-pi.js";
 
 // Regression coverage for the 2026-09-22 false-fix record (BUGS.md): commit 9cea8c3 was an
 // md-only BUGS.md edit that moved a bug to Fixed with a Fix paragraph naming runScriptGroup
@@ -444,17 +444,14 @@ test("gate rejects an md-only BUGS.md fix claim with no code behind it, without 
   const root = await falseFixFixture("runScriptGroup", false);
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
+  await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected"); // deterministic — no reviewer run
     assert.ok(!fs.existsSync(marker));
     assert.match(result.detail!, /runScriptGroup/);
     assert.match(state.lastReview!.reasons[0]!, /Fixed/);
     assert.equal(await aheadOfMain(wt, "main"), 0); // the false record is discarded
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("gate rejects an md-only rewrite of an already-Fixed record's narrative", async () => {
@@ -475,29 +472,23 @@ test("gate rejects an md-only rewrite of an already-Fixed record's narrative", a
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "bugfix: refresh the record");
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
+  await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected", "the rewrite faces the same symbol check");
     assert.ok(!fs.existsSync(marker));
     assert.match(result.detail!, /runScriptGroup/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("gate exempts an md-only BUGS.md fix claim whose symbols exist on the tree", async () => {
   const root = await falseFixFixture("signalTree", true);
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
+  await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "exempt");
     assert.ok(!fs.existsSync(marker));
-  } finally {
-    restore();
-  }
+  });
 });
 
 // ── The gate's backlog-structure check (plans part 2/4) — same deterministic shape as the
@@ -528,17 +519,14 @@ test("gate rejects an md-only diff that duplicates ## Done, without running pi o
   const root = await duplicateDoneFixture();
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
+  await withPi(`touch '${marker}'`, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected"); // deterministic — no reviewer run
     assert.ok(!fs.existsSync(marker));
     assert.match(result.detail!, /## Done/);
     assert.match(state.lastReview!.reasons[0]!, /PLANS\.md/);
     assert.equal(await aheadOfMain(wt, "main"), 0); // the malformed file is discarded
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("gate rejects a code diff that breaks backlog structure before the build pre-check runs", async () => {
@@ -550,8 +538,7 @@ test("gate rejects a code diff that breaks backlog structure before the build pr
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "code plus a duplicated heading");
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
+  await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.match(result.detail!, /## Done/);
@@ -560,7 +547,5 @@ test("gate rejects a code diff that breaks backlog structure before the build pr
       !readEvents(root).some((e) => e.type === "build_check"),
       "no check run spent on a tree the heading set already condemns",
     );
-  } finally {
-    restore();
-  }
+  });
 });
