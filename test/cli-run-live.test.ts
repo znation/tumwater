@@ -13,7 +13,7 @@ import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
+import { fakePi, fakePiIdle, withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { fastConfig } from "./fixtures/orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./helpers/cli-harness.js";
@@ -31,14 +31,11 @@ test("run refuses a detached primary checkout", async () => {
 
   // pi must be on PATH to get past the earlier check; without the branch guard the
   // orchestrator would start with a null main branch.
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const r = await cli(repo, "run");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /primary checkout is detached/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("run refuses to start while another orchestrator is alive", async () => {
@@ -74,8 +71,7 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
   const cfg = defaultConfig();
   for (const role of Object.values(cfg.roles)) role.enabled = false;
   writeConfig(repo, cfg);
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const r = await cli(repo, "run");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /no roles enabled/);
@@ -84,9 +80,7 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
     assert.equal(down[0]!.generation, 1);
     assert.equal(down[0]!.code, 1);
     assert.equal(down[0]!.reason, undefined, "the gate passes: no reason is invented");
-  } finally {
-    restore();
-  }
+  });
 });
 
 /** Write the config every full-run lifecycle test shares: only the clean role enabled. One
@@ -379,14 +373,11 @@ test("run --gui serves the dashboard from the supervisor and frees the port on S
 test("run --gui --once fails before boot with the rival-shapes message", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run gui once");
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--gui", "--once");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /--gui cannot be combined with --once/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // Ctrl+C from a terminal also reaches the orchestrator generation itself (same foreground
@@ -513,8 +504,7 @@ test("run --role without --once fails with its own message before any fleet boot
   const repo = makeRepo();
   await initProject(repo, "cli run role guard");
 
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--role", "clean");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /--role is only valid with --once/,
@@ -522,25 +512,20 @@ test("run --role without --once fails with its own message before any fleet boot
     // The guard fires before the supervisor spawns a generation: nothing started, nothing died.
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "no orchestrator marker was written");
     assert.equal(readEvents(repo).length, 0, "no events — the fleet never booted");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("run --once --role rejects an unknown id with the shared unknown-role wording", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run role unknown");
 
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--once", "--role", "no-such-loop");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /unknown role: no-such-loop \(valid ids: /,
       "an unknown id fails fast with the one unknownRoleMessage wording");
     assert.equal(readEvents(repo).length, 0, "no events — the round never started");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("run --once --role validates against enabled ids: a disabled built-in reads as unknown", async () => {
@@ -553,16 +538,13 @@ test("run --once --role validates against enabled ids: a disabled built-in reads
   const cfg = defaultConfig();
   cfg.roles.clean!.enabled = false;
   writeConfig(repo, cfg);
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /unknown role: clean \(valid ids: /,
       "a disabled id is not a role this round can run");
     assert.equal(readEvents(repo).length, 0, "no events — the round never started");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("the startup gate is asked before the --role guards: a not-ready repo reports the gate", async () => {
@@ -587,8 +569,7 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
 
   // fakePiIdle ends every tick as nothing-to-do, so the round exits on its own without
   // landing anything — the round's own exit is the observable, not a merge.
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean");
     assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
     assert.match(r.stdout, /tumwater once on branch main/, `the once banner: ${r.stdout}`);
@@ -598,7 +579,5 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
     assert.doesNotMatch(r.stdout, /\bdry\b/, `the unscoped role must be invisible: ${r.stdout}`);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the scoped role ticked exactly once");
     assert.equal(loadLoopState(repo, "dry").ticks, 0, "the unscoped role never ran");
-  } finally {
-    restore();
-  }
+  });
 });
