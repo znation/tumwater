@@ -117,11 +117,12 @@ Usage:
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
-  tumwater questions answer <n> "<decision>" [--json]
+  tumwater questions answer [--json] <n> "<decision>"
                                    Answer the Nth open question: stamps today's date on the
-                                   entry and moves it to ## Answered with your decision
-                                   (--json prints the result as data); loops read the
-                                   answer at their next tick
+                                   entry and moves it to ## Answered with your decision.
+                                   --json prints the result as data and must precede <n>:
+                                   a --json after the decision is recorded as part of it;
+                                   loops read the answer at their next tick
   tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
                                    find text, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is
