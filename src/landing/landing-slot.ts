@@ -3,7 +3,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
-import { logEvent, usageFragment, warnEvent } from "../events/events.js";
+import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { removeQuiet } from "../files/files.js";
 import { landingStatePath } from "../paths.js";
@@ -251,7 +251,10 @@ export function landingChanges(marker: LandingInFlight): LandingChange[] {
  * change for the last-result cell — applyLandingOutcome), persist it, log landed/land_failed
  * with the landing's own duration (from its vet's start) and usage (omitted when zero — the 4/5
  * idiom, so review-exempt landings render bare), and drop the entry: EVERY defined result
- * drops. The change's marker record is the caller's concern (removeLandingChange). */
+ * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
+ * skip the drop, or the settled entry would stay queued and be re-vetted and re-merged on
+ * the next drain — the queue's "drop after EVERY outcome" contract (landing-queue.ts). The
+ * change's marker record is the caller's concern (removeLandingChange). */
 export function writeLandingOutcome(
   root: string,
   entry: LandingEntry,
@@ -267,7 +270,7 @@ export function writeLandingOutcome(
   // feeds the same streak the tick-side warn reads (src/tick/tick-finalize.ts), but it resolves
   // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
   if (result === "rejected" && (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
-    warnEvent(
+    warnEventBestEffort(
       root,
       entry.role,
       consecutiveFailuresWarning(
@@ -279,7 +282,7 @@ export function writeLandingOutcome(
   // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's
   // bookkeeping: the slot picked the entry up (land_queued, logged at enqueue) and finished
   // with or without landing.
-  logEvent(root, {
+  logEventBestEffort(root, {
     loop: entry.role,
     type: result === "changed" ? "landed" : "land_failed",
     commit: entry.sha,

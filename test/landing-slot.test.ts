@@ -22,7 +22,7 @@ import {
   writeLandingMarker,
   writeLandingOutcome,
 } from "../src/landing/landing-slot.js";
-import { landingRefName, landingStatePath } from "../src/paths.js";
+import { eventsLogPath, landingRefName, landingStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -106,6 +106,21 @@ test("a review-exempt landing (zero usage) omits the usage fields instead of log
   assert.ok(landed, "the landing logged a landed event");
   assert.ok(!("tokens" in landed), `no tokens key on a zero-usage event: ${JSON.stringify(landed)}`);
   assert.ok(!("costUsd" in landed), `no costUsd key on a zero-usage event: ${JSON.stringify(landed)}`);
+});
+
+test("an unwritable events feed still drops the settled entry — the queue never retries", () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  const state = freshLoopState("improve");
+  // A directory at the feed path makes every append throw EISDIR: the landed event cannot be
+  // written, but the drop (and the marker removal its caller does next) must still happen —
+  // otherwise the settled entry stays queued and the next drain re-vets and re-merges it.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  writeLandingOutcome(root, entry, state, "changed", 1000, { tokens: 10, cost: 0.1 }, file);
+
+  assert.equal(queueDepth(root), 0, "the outcome drops the entry even when its event cannot be logged");
+  assert.equal(loadLoopState(root, "improve").commits, 1, "the state write still persisted before the event");
 });
 
 test("an unexpected throw inside the landing degrades to an error outcome — the queue drains", async () => {
