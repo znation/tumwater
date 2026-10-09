@@ -42,6 +42,29 @@ function seededState(root: string): LoopState {
   return s;
 }
 
+/** Run attributeRedCheck against `root`'s current main tip the way every test here does:
+ * pin the tip under ROLE's landing ref, carry strike-count state (`state` defaults to a fresh
+ * seeded one), and pass the suite's standard context. Returns the tip, the state, and the
+ * verdict so callers can assert on all three. */
+async function attribute(
+  root: string,
+  scope: Parameters<typeof attributeRedCheck>[3],
+  failure: { check: BuildCheck; outcome: BuildCheckOutcome },
+  state: LoopState = seededState(root),
+): Promise<{ head: string; state: LoopState; result: Awaited<ReturnType<typeof attributeRedCheck>> }> {
+  const head = mainSha(root);
+  await setRef(root, landingRefName(ROLE), head);
+  const result = await attributeRedCheck(
+    { root, mainBranch: "main", config: defaultConfig() },
+    ROLE,
+    head,
+    scope,
+    failure,
+    state,
+  );
+  return { head, state, result };
+}
+
 function reviewRejectedEvents(root: string): { loop: string; head: string; reasons: string[] }[] {
   return readEvents(root)
     .filter((e) => e.type === "review_rejected")
@@ -57,17 +80,7 @@ test("attributeRedCheck rejects deterministically when main's own tip is green",
   const { root } = baselineFixture(ROLE, "attr-green-marker");
   const restore = fakeNpm("echo ok; exit 0");
   try {
-    const head = mainSha(root);
-    await setRef(root, landingRefName(ROLE), head);
-    const state = seededState(root);
-    const result = await attributeRedCheck(
-      { root, mainBranch: "main", config: defaultConfig() },
-      ROLE,
-      head,
-      "landing check",
-      red(),
-      state,
-    );
+    const { head, state, result } = await attribute(root, "landing check", red());
     assert.equal(result, "rejected", "main green means the change broke the check");
     assert.equal(state.unreviewFailures, 0, "the strike count reset with the rejection");
     assert.equal(state.lastReview?.verdict, "reject");
@@ -91,17 +104,7 @@ test("attributeRedCheck returns main_red and keeps the change recoverable when m
   const { root } = baselineFixture(ROLE, "attr-red-marker");
   const restore = fakeNpm("echo baseline-failure; exit 1");
   try {
-    const head = mainSha(root);
-    await setRef(root, landingRefName(ROLE), head);
-    const state = seededState(root);
-    const result = await attributeRedCheck(
-      { root, mainBranch: "main", config: defaultConfig() },
-      ROLE,
-      head,
-      "landing check",
-      red(),
-      state,
-    );
+    const { head, state, result } = await attribute(root, "landing check", red());
     assert.equal(result, "main_red", "the failure is main's, not the change's");
     assert.equal(
       state.lastError,
@@ -126,17 +129,7 @@ test("attributeRedCheck rejects with the unavailable why when main's baseline ca
   // A repo declaring no build check: mainTipVerdict reads `unavailable` ("it declares no
   // check"), and the safe default still rejects — but says so in the reasons.
   const root = makeRepo(path.join(tmpdir("attr-red-none-"), "project"));
-  const head = mainSha(root);
-  await setRef(root, landingRefName(ROLE), head);
-  const state = seededState(root);
-  const result = await attributeRedCheck(
-    { root, mainBranch: "main", config: defaultConfig() },
-    ROLE,
-    head,
-    "batch check",
-    red(),
-    state,
-  );
+  const { state, result } = await attribute(root, "batch check", red());
   assert.equal(result, "rejected", "no verdict still rejects — the safe default");
   assert.deepEqual(state.lastReview?.reasons, [
     `build check failed (\`npm run test\`): ${CHANGE_REASON}`,
@@ -158,9 +151,6 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
   const { root } = baselineFixture(ROLE, "attr-unverified-marker");
   const restore = fakeNpm("echo ok; exit 0");
   try {
-    const head = mainSha(root);
-    await setRef(root, landingRefName(ROLE), head);
-    const state = seededState(root);
     const flag: { check: BuildCheck; outcome: BuildCheckOutcome } = {
       check: { kind: "npm", rootDir: process.cwd(), script: "test" },
       outcome: {
@@ -170,14 +160,7 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
         unverified: true,
       },
     };
-    const result = await attributeRedCheck(
-      { root, mainBranch: "main", config: defaultConfig() },
-      ROLE,
-      head,
-      "batch check",
-      flag,
-      state,
-    );
+    const { head, state, result } = await attribute(root, "batch check", flag);
     assert.equal(result, "merge_blocked", "the pin stays for the next attempt, as for any retriable landing");
     assert.equal(state.unreviewFailures, 3, "no strike: nothing judged this diff");
     assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref was not deleted");
@@ -186,7 +169,6 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
 
     // The other spelling: a plain failed outcome whose run carries the sleep evidence (the
     // gate-scope shape, no flag) is unverified too.
-    const state2 = seededState(root);
     const measured: { check: BuildCheck; outcome: BuildCheckOutcome } = {
       check: { kind: "npm", rootDir: process.cwd(), script: "test" },
       outcome: {
@@ -196,14 +178,7 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
         run: { sleptMs: 59_000 } as BuildCheckRun,
       },
     };
-    const result2 = await attributeRedCheck(
-      { root, mainBranch: "main", config: defaultConfig() },
-      ROLE,
-      head,
-      "landing check",
-      measured,
-      state2,
-    );
+    const { state: state2, result: result2 } = await attribute(root, "landing check", measured);
     assert.equal(result2, "merge_blocked");
     assert.equal(state2.unreviewFailures, 3, "no strike here either");
     assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref still was not deleted");
