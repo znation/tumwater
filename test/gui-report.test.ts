@@ -351,6 +351,7 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
     renderMarkdown: (md: string) => md,
     icon: iconStub,
     plural: (n: number, one: string) => `${n} ${one}`,
+    workSplit: (t: { workCommits?: number; maintenanceCommits?: number }) => `${t.workCommits ?? 0} work / ${t.maintenanceCommits ?? 0} maintenance`,
     fmtTokens: (n: number) => String(n),
     fmtUsd: (n: number) => "$" + n.toFixed(2),
   };

@@ -172,7 +172,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(perDay + " a day" + (extra || "")) + "</span></div>";
     return [
       tile("Commits landed", "merge", String(t.commits), "≈ " + (t.commits / days).toFixed(1),
-        " · " + (t.workCommits ?? 0) + " work / " + (t.maintenanceCommits ?? 0) + " maintenance"),
+        " · " + workSplit(t)),
       tile("Features done", "plan", String(t.featuresDone), "≈ " + (t.featuresDone / days).toFixed(1)),
       tile("Bugs fixed", "bug", String(t.bugsFixed), "≈ " + (t.bugsFixed / days).toFixed(1)),
       tile("Ticks", "refresh", String(t.ticks), "≈ " + Math.round(t.ticks / days)),

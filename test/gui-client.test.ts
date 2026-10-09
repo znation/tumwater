@@ -411,3 +411,12 @@ test("the page's money formatters match format.ts's usd/usdCap rules", () => {
     assert.equal(fmtCap(n), tsUsdCap(n), `usdCap on ${String(n)}`);
   }
 });
+
+test("the page's workSplit names the work/maintenance commit split", () => {
+  // The sidebar's "Landed today" tile and the report's "Commits landed" tile both render this
+  // phrase; a totals payload from an older fold omits the counts and must read 0, not undefined.
+  const { workSplit } = clientScope<{ workSplit(t: { workCommits?: number; maintenanceCommits?: number }): string }>(["format"], ["workSplit"]);
+
+  assert.equal(workSplit({ workCommits: 2, maintenanceCommits: 3 }), "2 work / 3 maintenance");
+  assert.equal(workSplit({}), "0 work / 0 maintenance", "a missing split reads zero, not undefined");
+});

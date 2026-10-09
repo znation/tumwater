@@ -120,6 +120,10 @@ const FORMAT_JS = String.raw`  // format:start
   // agree, shared by plural below and gui-client-fleet.ts's stats tiles, whose noun sits in <small>.
   const agree = (n, one, many) => (n === 1 ? one : many);
   const plural = (n, one, many) => n + " " + agree(n, one, many || one + "s");
+  // The landed-commit work/maintenance split the sidebar's "Landed today" tile and the report's
+  // "Commits landed" tile both print. report-data.ts leaves the counts optional, so a missing
+  // count reads 0 here rather than "undefined".
+  const workSplit = (t) => (t.workCommits ?? 0) + " work / " + (t.maintenanceCommits ?? 0) + " maintenance";
   // The unlanded-commit list both change views paint — each commit's sha and subject on its
   // own clamped line. The Pending roster's Ahead cell and the loop drawer's Pending change
   // section had the byte-identical map; a missing or non-array list paints nothing.
