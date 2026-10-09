@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { eventsLogPath } from "../paths.js";
 import { ensureParentDir, openForRead, rotateIfLarge, statOrNull } from "../files/files.js";
+import { errorMessage } from "../text/text.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
@@ -141,6 +142,30 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
  * without it, each caller restates the event object and a field can drift between them. */
 export function warnEvent(root: string, loop: string, message: string): HarnessEvent {
   return logEvent(root, { loop, type: "warning", message });
+}
+
+/** logEvent for a caller on a path that cannot handle a throw — the orchestrator's
+ * catch-less poll loop and the gate family it runs every couple of seconds. An unwritable
+ * events feed (ENOSPC, EACCES, the path replaced) must not skip the caller's real work; the
+ * failure is reported on stderr so it stays visible rather than swallowed. */
+export function logEventBestEffort(root: string, event: HarnessEventInput): void {
+  try {
+    logEvent(root, event);
+  } catch (err) {
+    process.stderr.write(
+      `tumwater: ${event.loop}: could not log ${event.type} event: ${errorMessage(err)}\n`,
+    );
+  }
+}
+
+/** warnEvent's twin of logEventBestEffort: the "something is off but the loop continues"
+ * warning must not be the thing that ends the loop it warns about. */
+export function warnEventBestEffort(root: string, loop: string, message: string): void {
+  try {
+    warnEvent(root, loop, message);
+  } catch (err) {
+    process.stderr.write(`tumwater: ${loop}: could not log warning event: ${errorMessage(err)}\n`);
+  }
 }
 
 /** The shape this process's last event append left a log in, per log path: while the file

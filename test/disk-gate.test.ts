@@ -135,3 +135,24 @@ test("pollDiskGate: waitForReclaim defers entering the hold until the pass settl
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, true), true);
   assert.deepEqual(typesAt(root), ["disk_low"]);
 });
+
+test("pollDiskGate: an unwritable events feed does not throw out of the poll", () => {
+  // Disk pressure is exactly when the feed can go unwritable (ENOSPC), so the disk_low report
+  // must not be the thing that kills the orchestrator's catch-less poll loop — and the hold
+  // must still engage. Root replaced by a regular file: .tumwater/log cannot exist under it,
+  // so every logEvent under `root` throws ENOTDIR.
+  const root = tmpdir("disk-gate-unwritable-");
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.writeFileSync(root, "");
+  const state = newDiskGateState();
+  assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
+  assert.equal(state.prevHeld, true, "the hold engages even when disk_low cannot be logged");
+  // The unmeasurable-sample warning path is best-effort too, and still marks itself spent.
+  const unmeasurable = newDiskGateState();
+  assert.equal(pollDiskGate(root, null, 10, unmeasurable), false);
+  assert.equal(
+    unmeasurable.warnedUnmeasurable,
+    true,
+    "the once-per-process warning is marked spent",
+  );
+});

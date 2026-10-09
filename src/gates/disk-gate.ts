@@ -12,7 +12,7 @@
 
 import fs from "node:fs";
 import { worktreesDir } from "../paths.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 
 /** GB means 10^9 bytes everywhere — in config and in display (plans/disk-floor.md). Exported
  * so doctor's detail renders the same unit the gate holds on. */
@@ -83,7 +83,7 @@ export function pollDiskGate(
   if (freeBytes === null) {
     if (!state.warnedUnmeasurable) {
       state.warnedUnmeasurable = true;
-      warnEvent(
+      warnEventBestEffort(
         root,
         "harness",
         "cannot measure free disk space (statfs failed) — the disk hold is off for this process",
@@ -103,7 +103,7 @@ export function pollDiskGate(
         : freeGB < holdGB && !waitForReclaim; // out of it: enter below the floor, once reclaim settled
   if (held !== state.prevHeld) {
     state.prevHeld = held;
-    logEvent(
+    logEventBestEffort(
       root,
       held
         ? { loop: "harness", type: "disk_low", freeGB, holdGB }
