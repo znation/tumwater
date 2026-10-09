@@ -7,7 +7,7 @@ import {
   type OpenToolCall,
 } from "./pi-event-line.js";
 import { describeToolCall } from "../text/phrases.js";
-import { nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
+import { isJsonObject, nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi,
@@ -17,7 +17,11 @@ import { nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 
 interface PiMessage {
   role: string;
-  content?: Array<{ type: string; text?: string; name?: string }>;
+  // Content blocks cross the provider boundary unvalidated, so `content` is `unknown` and
+  // every read goes through messageContent: a non-array `content`, or a non-object entry,
+  // reads as no block instead of throwing out of the child's data handler (the same guard
+  // transcript.ts's contentBlocks and progress-data.ts's workItemFromContent apply).
+  content?: unknown;
   // Usage fields are `unknown`, not `number`: they cross the provider boundary unvalidated,
   // and some OpenAI-compatible servers serialize usage numbers as JSON strings. The fold
   // below runs every value through usageNumber before trusting it.
@@ -58,9 +62,22 @@ interface PiStreamEvent {
   partialResult?: unknown;
 }
 
+/** One content block's fields, each unknown until the consumer guards what it reads. */
+type ContentBlock = { type?: unknown; text?: unknown; name?: unknown };
+
+/** The content blocks of one pi message, normalized: a `content` that is not an array (torn
+ * or foreign wire JSON) reads as no blocks, and a non-object entry reads as an empty block,
+ * so the `.filter`/`.some` chains below never throw on a shape the message interface does not
+ * promise — the same guard transcript.ts's contentBlocks and progress-data.ts's
+ * workItemFromContent apply to the identical field. */
+function messageContent(msg: PiMessage): ContentBlock[] {
+  if (!Array.isArray(msg.content)) return [];
+  return msg.content.map((raw) => (isJsonObject(raw) ? raw : {}));
+}
+
 /** Extract the concatenated text blocks of a pi message. */
 function messageText(msg: PiMessage): string {
-  return (msg.content ?? [])
+  return messageContent(msg)
     .filter((c) => c.type === "text" && typeof c.text === "string")
     .map((c) => c.text)
     .join("\n");
@@ -375,8 +392,10 @@ export class PiStreamParser {
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;
     const text = messageText(msg);
-    this.finalMessageContentless = !(msg.content ?? []).some(
-      (c) => c.type === "toolCall" || (c.type === "text" && Boolean(c.text?.trim())),
+    this.finalMessageContentless = !messageContent(msg).some(
+      (c) =>
+        c.type === "toolCall" ||
+        (c.type === "text" && typeof c.text === "string" && Boolean(c.text.trim())),
     );
     if (!this.finalMessageContentless) this.producedAssistantContent = true;
     if (text.trim()) this.finalText = text;
@@ -408,7 +427,7 @@ export class PiStreamParser {
     // firstEditTurn pins the count and later turns stop adding.
     if (this.firstEditTurn === undefined) {
       this.preEditPromptTokens += promptTokens;
-      if ((msg.content ?? []).some((c) => c.type === "toolCall" && (c.name === "edit" || c.name === "write")))
+      if (messageContent(msg).some((c) => c.type === "toolCall" && (c.name === "edit" || c.name === "write")))
         this.firstEditTurn = this.turns;
     }
     this.peakContextTokens = Math.max(this.peakContextTokens, usageNumber(msg.usage?.totalTokens));

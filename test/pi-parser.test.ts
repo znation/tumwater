@@ -104,6 +104,22 @@ test("parser drops negative and non-finite usage numbers", () => {
   assert.ok(Math.abs(parser.costUsd - 0.02) < 1e-9);
 });
 
+test("parser reads a non-array or non-object message content as empty instead of throwing", () => {
+  // pi's stdout is unvalidated JSON: a torn/foreign message_end whose `content` is an object,
+  // a scalar, or an array holding a null/scalar entry must read as no blocks. `.filter`/`.some`
+  // on the raw field would otherwise throw straight out of the child's stdout data handler.
+  const parser = new PiStreamParser();
+  parser.feed('{"type":"message_end","message":{"role":"assistant","content":{},"stopReason":"stop"}}\n');
+  parser.feed('{"type":"message_end","message":{"role":"assistant","content":"nope","stopReason":"stop"}}\n');
+  parser.feed(
+    '{"type":"message_end","message":{"role":"assistant","content":[null,5,{"type":"text","text":"ok"}],'
+      + '"stopReason":"stop"}}\n',
+  );
+  assert.equal(parser.finalText, "ok", "the valid text block is still read");
+  assert.equal(parser.finalMessageContentless, false, "the text block makes the final turn contentful");
+  assert.equal(parser.turns, 3, "each assistant message_end still counts a turn");
+});
+
 test("parser counts zero turns when no assistant message completes", () => {
   // Structural events (turn boundaries), streaming updates, and user messages are not
   // completed assistant turns — only an assistant message_end counts one.
