@@ -6,13 +6,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { leaseSlot, removeDroppedSlots, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
-import { slotWorktreePath } from "../src/paths.js";
+import { eventsLogPath, slotWorktreePath } from "../src/paths.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 
 function sleep(ms: number): Promise<void> {
@@ -336,4 +336,19 @@ test("a failing removal of a dropped slot is logged, not an unhandled rejection"
     String(warnings[0]?.message ?? ""),
     /could not remove idle worktree slot \/slots\/a: EBUSY/,
   );
+});
+
+test("a failing removal with an unwritable events feed still resolves", async () => {
+  const root = makeRepo();
+  // Put a directory where the append-only events log belongs: every warnEvent throws EISDIR,
+  // while every other file under the real root still writes normally.
+  const file = eventsLogPath(root);
+  rmSync(file, { recursive: true, force: true });
+  mkdirSync(file, { recursive: true });
+  // The removal failure is logged best-effort: an unwritable feed must not reject this
+  // fire-and-forget call, which would surface as an unhandled rejection and kill the
+  // orchestrator — the very exit the removal catch exists to prevent.
+  await removeDroppedSlots(root, ["/slots/a"], async () => {
+    throw new Error("EBUSY: resource busy or locked");
+  });
 });

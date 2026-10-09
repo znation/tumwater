@@ -16,7 +16,7 @@ import { slotWorktreePath } from "../paths.js";
 import { slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
-import { warnEvent } from "../events/events.js";
+import { warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 
 /** A live lease as callers see it: the slot directory, the one-shot release, and whether the
@@ -263,8 +263,10 @@ function releaseSlot(root: string, dir: string, role: string, count: number, pin
  * escape as an unhandled rejection and kill the orchestrator: the slots are already
  * unregistered from slots.json, so a directory left behind is only a leak the next prune
  * collects. Each failure is logged so it stays visible, and the remaining removals still run.
- * The remover is an injectable seam so tests can drive a failing removal without a real
- * filesystem failure. */
+ * The log itself must not throw: warnEventBestEffort keeps an unwritable events feed (ENOSPC,
+ * EACCES, the path replaced) from rejecting this function and re-creating the very unhandled
+ * rejection the catch exists to prevent. The remover is an injectable seam so tests can drive a
+ * failing removal without a real filesystem failure. */
 export async function removeDroppedSlots(
   root: string,
   dirs: readonly string[],
@@ -274,7 +276,7 @@ export async function removeDroppedSlots(
     try {
       await remove(root, dir);
     } catch (err) {
-      warnEvent(root, "harness", `could not remove idle worktree slot ${dir}: ${errorMessage(err)}`);
+      warnEventBestEffort(root, "harness", `could not remove idle worktree slot ${dir}: ${errorMessage(err)}`);
     }
   }
 }
