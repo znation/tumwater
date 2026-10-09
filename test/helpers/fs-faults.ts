@@ -5,7 +5,8 @@ import fs from "node:fs";
  * and its open, a file vanishing mid-read), plus the read-counting spy the cache tests use,
  * and `errnoError` — the synthetic errno throw a test raises when it stubs an fs or process
  * call. Each patch swaps a global fs entry point for the duration of a call — surgery on
- * shared state, so these live together here rather than beside ordinary fixture builders. */
+ * shared state, so these live together here rather than beside ordinary fixture builders.
+ * `patchFsMethod` single-homes that capture/swap/restore contract. */
 
 /** An Error carrying the errno `code`, the shape fs and process calls throw — the synthetic
  * failure a stubbed call raises (the code under test reads it back with src/errno.ts's
@@ -15,22 +16,35 @@ export function errnoError(code: string, message = code): NodeJS.ErrnoException 
   return Object.assign(new Error(message), { code }) as NodeJS.ErrnoException;
 }
 
+type FsCall = (...args: unknown[]) => unknown;
+
+/** Swap fs entry point `name` for `wrapper` for the duration of one test phase. `wrapper`
+ * receives the bound original so it can inspect or rewrite arguments and fall through, and
+ * the returned undo restores it. The one home of the capture/swap/restore contract the fault
+ * helpers below are built from — each sets its own one-shot `hit` flag and side effect inside
+ * its wrapper. `withCountedReads`, which scopes its patch to a `body` callback and returns a
+ * count, deliberately keeps its own try/finally scaffold. */
+function patchFsMethod(name: string, wrapper: (orig: FsCall) => FsCall): () => void {
+  const holder = fs as unknown as Record<string, FsCall>;
+  const orig = holder[name]!.bind(fs) as FsCall;
+  holder[name] = wrapper(orig);
+  return () => {
+    holder[name] = orig;
+  };
+}
+
 /** Wrap fs.openSync so the first open of `file` unlinks it instead — simulating a log
  * rotation rename landing between a reader's stat and its open (the race tail readers must
  * survive as "no data", not an ENOENT throw). Returns an undo function. */
 export function vanishOnOpen(file: string): () => void {
-  const orig = fs.openSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).openSync = (p: unknown, flags: string) => {
+  return patchFsMethod("openSync", (orig) => (p, flags) => {
     if (!hit && p === file) {
       hit = true;
       fs.unlinkSync(file);
     }
-    return (orig as (x: unknown, f: string) => number)(p, flags);
-  };
-  return () => {
-    (fs as Record<string, unknown>).openSync = orig;
-  };
+    return orig(p, flags);
+  });
 }
 
 /** The rotation twin of vanishOnOpen where the path comes back before open: on the first
@@ -38,19 +52,15 @@ export function vanishOnOpen(file: string): () => void {
  * original in every use so far), then open — simulating a rotation rename plus a fresh append
  * landing between a reader's stat and its open. Returns an undo function. */
 export function recreateSmallerOnOpen(file: string, content: string): () => void {
-  const orig = fs.openSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).openSync = (p: unknown, flags: string) => {
+  return patchFsMethod("openSync", (orig) => (p, flags) => {
     if (!hit && p === file) {
       hit = true;
       fs.renameSync(file, file + ".1");
       fs.writeFileSync(file, content);
     }
-    return (orig as (x: unknown, f: string) => number)(p, flags);
-  };
-  return () => {
-    (fs as Record<string, unknown>).openSync = orig;
-  };
+    return orig(p, flags);
+  });
 }
 
 /** Make the first fs.renameSync whose source path starts with `target` + ".tmp-" throw instead
@@ -59,18 +69,14 @@ export function recreateSmallerOnOpen(file: string, content: string): () => void
  * file path; the tmp name is derived from it, so the wrapper matches the right write without
  * knowing the pid-suffixed tmp name it will pick. Returns an undo function. */
 export function failRenameSyncOn(target: string, message: string): () => void {
-  const orig = fs.renameSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).renameSync = (a: unknown, b: unknown) => {
+  return patchFsMethod("renameSync", (orig) => (a, b) => {
     if (!hit && typeof a === "string" && a.startsWith(`${target}.tmp-`)) {
       hit = true;
       throw new Error(message);
     }
-    return (orig as (x: unknown, y: unknown) => void)(a, b);
-  };
-  return () => {
-    (fs as Record<string, unknown>).renameSync = orig;
-  };
+    return orig(a, b);
+  });
 }
 
 /** Simulate the process dying partway through a file write: the next fs.writeFileSync writes
@@ -80,36 +86,28 @@ export function failRenameSyncOn(target: string, message: string): () => void {
  * truncated file at its target; a tmp+rename writer leaves the target untouched and cleans up
  * its tmp. Returns an undo function. */
 export function dieMidWrite(partial: string): () => void {
-  const orig = fs.writeFileSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).writeFileSync = (p: unknown, ...rest: unknown[]) => {
+  return patchFsMethod("writeFileSync", (orig) => (p, ...rest) => {
     if (!hit) {
       hit = true;
-      (orig as (x: unknown, ...r: unknown[]) => void)(p, partial);
+      orig(p, partial);
       throw new Error("killed mid-write");
     }
-    return (orig as (x: unknown, ...r: unknown[]) => void)(p, ...rest);
-  };
-  return () => {
-    (fs as Record<string, unknown>).writeFileSync = orig;
-  };
+    return orig(p, ...rest);
+  });
 }
 
 /** The readFileSync twin of vanishOnOpen — for readers that stat and then read a small file
  * whole. Returns an undo function. */
 export function vanishOnReadFile(file: string): () => void {
-  const orig = fs.readFileSync.bind(fs);
   let hit = false;
-  (fs as Record<string, unknown>).readFileSync = (p: unknown, ...rest: unknown[]) => {
+  return patchFsMethod("readFileSync", (orig) => (p, ...rest) => {
     if (!hit && p === file) {
       hit = true;
       fs.unlinkSync(file);
     }
-    return (orig as (x: unknown, ...r: unknown[]) => Buffer)(p, ...rest);
-  };
-  return () => {
-    (fs as Record<string, unknown>).readFileSync = orig;
-  };
+    return orig(p, ...rest);
+  });
 }
 
 /** Swap fs.readFileSync for a pass-through that counts matching reads for the duration of
