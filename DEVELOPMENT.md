@@ -55,6 +55,30 @@ on npm (`npm trust github tumwater --file release.yml --repo znation/tumwater
 --allow-publish`, package must already exist on the registry; first `npm trust`
 commands prompt for an interactive 2FA challenge).
 
+## Checking rendered output by hand
+
+Two scripts run the compiled build against a seeded fake fleet rather than through the
+suite, for a change whose point is that the dashboards should look identical:
+
+- `scripts/diff-check.mjs` renders one fixture through the baseline build and the working
+  build at three widths (default, 120, 60) and compares the TUI status-table strings and the
+  GUI `/api/status` payloads exactly — the safety net for a refactor of
+  `src/status/status-data.ts`, `src/ui/status-render.ts`, or the status payload. Stage the
+  baseline once from a clean main checkout, then rebuild the worktree after your change:
+
+      npm run build && rm -rf /tmp/tw-baseline && mkdir /tmp/tw-baseline && cp -R dist /tmp/tw-baseline/   # from a clean main checkout
+      npm run build && node scripts/diff-check.mjs                                                         # from the worktree
+
+  It prints `DIFF-CHECK PASS`, or the mismatching TUI lines and GUI fields, and exits
+  nonzero on any difference.
+- `scripts/bench-live.mjs` times one dashboard frame (`snapshot` + `renderStatus`) over the
+  same fixture, best of three runs; run it before and after a change to the status read or
+  render path and compare the `us/frame` number.
+
+Neither is part of `npm test`; both name the `npm run build` fix when `dist/` is missing.
+`npm run tumwater <args>` runs the compiled CLI from a checkout (the same `dist/src/cli.js`
+build) with its exit code, for trying a change before `npm link`.
+
 ## Keeping the suite fast
 
 The suite is bound by process creation, not by its own code: a run starts ~12,000 git processes
