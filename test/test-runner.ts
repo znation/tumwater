@@ -11,6 +11,7 @@ import { finiteNumber } from "../src/files/json-object.js";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
+import { typoSuffix } from "../src/text/suggest.js";
 
 /** Run the compiled unit tests with node:test — the target of package.json's `test` script.
  * With no arguments it runs every dist/test/*.test.js EXCEPT the `*.e2e.test.js` tier — the
@@ -142,14 +143,22 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
   const picked = !namedFile
     ? named.filter((n) => !E2E_PATTERN.test(n.file))
     : named.filter((n) => parsed.some((p) => p.file !== "" && n.name.includes(p.file)));
-  if (picked.length === 0)
+  if (picked.length === 0) {
+    // A near-miss filter gets the shared did-you-mean every other unknown-value error
+    // carries, computed against each file's stem (the substring a developer usually types,
+    // `loop` for loop.test.ts) as well as its full source-style name — the listing alone
+    // leaves a one-letter slip like `lopp` unmatched. Only the first file filter is hinted;
+    // this branch is reached only when none of them matched.
+    const firstFileFilter = parsed.find((p) => p.file !== "")?.file ?? "";
+    const candidates = named.flatMap((n) => [n.name.replace(/\.test\.ts$/, ""), n.name]);
     return {
       names: [],
       files: [],
       error: `no test file matches ${filters.map((f) => JSON.stringify(f)).join(" or ")} — available: ${named
         .map((n) => n.name)
-        .join(", ")}`,
+        .join(", ")}${typoSuffix(firstFileFilter, candidates)}`,
     };
+  }
   const nameParts = parsed.flatMap((p) => (p.name === null ? [] : [p.name]));
   return {
     names: picked.map((n) => n.name),

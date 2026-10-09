@@ -131,6 +131,20 @@ test("no match reports every available name so one edit fixes it", () => {
   assert.match(sel.error ?? "", /no test file matches "nosuch" — available: merge\.test\.ts, tui\.test\.ts/);
 });
 
+test("a near-miss filter names the file it probably meant", () => {
+  const dir = fakeDistDir("loop.test.js", "tui.test.js");
+  // A one-letter slip of the stem (`lopp` for `loop`) gets the shared did-you-mean an
+  // unknown value elsewhere in the harness prints, while the listing still follows it.
+  const stem = selectTestFiles(["lopp"], dir);
+  assert.match(stem.error ?? "", /did you mean `loop`\?/);
+  // A near-miss of the full source-style name suggests the name itself, so the hint can be
+  // pasted as a filter unchanged.
+  const full = selectTestFiles(["loop.test.tss"], dir);
+  assert.match(full.error ?? "", /did you mean `loop\.test\.ts`\?/);
+  // A filter with no near miss keeps the plain listing — no invented suggestion.
+  assert.doesNotMatch(selectTestFiles(["nosuch"], dir).error ?? "", /did you mean/);
+});
+
 test("a missing or empty dist/test dir is an actionable build error", () => {
   const missing = selectTestFiles([], path.join(tmpdir(), "does-not-exist"));
   assert.match(missing.error ?? "", /run `npm run build` first/);
