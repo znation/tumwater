@@ -10,7 +10,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { piLogPath } from "../src/paths.js";
+import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
@@ -328,6 +328,56 @@ test("gate rejects a bad diff: branch reset to main, reasons recorded", async ()
   });
 });
 
+test("an unwritable events feed cannot reject a review — approval still records and discards stray edits", async () => {
+  const { root, wt, head } = await gateFixture();
+  // A directory where events.jsonl belongs makes every append throw EISDIR. The declared
+  // check below makes the production fault reachable: gateBuildPrecheck actually runs
+  // runScopedBuildCheck, whose build_check append is the gate's FIRST write (defaultConfig
+  // declares no check, which made the pre-check a no-op and hid that write). Before the fix,
+  // that raw logEvent threw before the reviewer even ran, so an approving review came back as
+  // a thrown error instead of { decision: "approved" }.
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve\n1. solid change")}'`, async () => {
+    const { state, result } = await reviewGate(root, wt, {
+      config: { ...defaultConfig(), check: { command: "true" } },
+    });
+    assert.equal(result.decision, "approved");
+    assert.equal(state.lastApprovedHead, head);
+    assert.equal(state.lastReview?.verdict, "approve");
+    assert.equal(await aheadOfMain(wt, "main"), 1); // the approved commit survives
+  });
+});
+
+test("an unwritable events feed cannot lose a rejection — the branch is still reset and the verdict returned", async () => {
+  const { root, wt } = await gateFixture();
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the build")}'`, async () => {
+    const { state, result } = await reviewGate(root, wt, {
+      config: { ...defaultConfig(), check: { command: "true" } },
+    });
+    assert.equal(result.decision, "rejected");
+    assert.equal(result.detail, "breaks the build");
+    assert.equal(await aheadOfMain(wt, "main"), 0, "the rejected commit is still discarded");
+    assert.equal(state.lastReview?.verdict, "reject");
+  });
+});
+
+test("an unwritable events feed cannot turn a flaky gate check into a rejection — the flake warning is best-effort too", async () => {
+  const { root, wt, head } = await gateFixture();
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  // The command fails its first run and passes the pre-check's one immediate re-run; that
+  // routes the gate through gateBuildPrecheck's flake warning (the raw warnEvent that threw
+  // before the fix) and then on to the reviewer, exactly as production does.
+  const flaky = "if [ -f .gate-flake ]; then exit 0; else : > .gate-flake; exit 1; fi";
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve\n1. solid change")}'`, async () => {
+    const { state, result } = await reviewGate(root, wt, {
+      config: { ...defaultConfig(), check: { command: flaky } },
+    });
+    assert.equal(result.decision, "approved");
+    assert.equal(state.lastApprovedHead, head);
+  });
+});
+
 test("gate logs a bold-numbered approval's first finding as the review_verdict reason, not its preamble", async () => {
   // The event the 2026-09-23 log audit read (BUGS.md): a reviewer that opens with a lead-in
   // and numbers its findings `**1. X.** …` logged "…Findings:" as the approval's reason.
@@ -623,6 +673,39 @@ test("a stalled tool call during the verdict follow-up warns in the event feed t
         `the follow-up stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
       );
   });
+});
+
+test("an unwritable events feed cannot break the verdict follow-up's stall warning", async (t) => {
+  // The same follow-up stall as the test above, with events.jsonl replaced by a directory.
+  // The follow-up's onToolCallStalled warning (review-followup.ts) must be best-effort: a raw
+  // append's EISDIR escapes the watchdog's setInterval callback and, unlike a rejected review
+  // promise, is an uncaught exception out of clock.advance below. The first run replies
+  // verdict-less without starting a tool call, so the stall can only come from the follow-up.
+  const { root, wt } = await gateFixture();
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  await withPi(
+    [
+      TOUCH_SESSION, // the reviewer's session exists, so the follow-up has one to continue
+      `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
+      `  printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `  exec sleep 60`, // exec so the kill signal reaches the sleeper directly
+      `  exit 0`,
+      `fi; done`,
+      `printf '%s\\n' '${assistantLine("I think this is fine overall.")}'`,
+    ].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+      config.toolCallStallSeconds = 2; // ...but the warning lands first
+      const clock = watchdogClock(t);
+      const review = reviewGate(root, wt, { config });
+      await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
+      clock.advance(30_000); // the raw warning's EISDIR used to escape here
+      const { result } = await review;
+      assert.equal(result.decision, "failed");
+      assert.ok(result.followUpRun); // the warned run's spend still folds into the totals
+    },
+  );
 });
 
 test("gate exempts a doc-only diff without running pi", async () => {

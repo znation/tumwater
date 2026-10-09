@@ -7,7 +7,7 @@
 
 import type { ReviewContext, GateResult } from "./review.js";
 import type { LoopState } from "../loop/loop-state.js";
-import { warnEvent } from "../events/events.js";
+import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
@@ -86,10 +86,10 @@ export async function gateBuildPrecheck(
         // sleep is the story — not a flaky test (BUGS.md 2026-09-30): the digest clusters
         // these warnings, and a sleep is weather, not an assertion to hunt.
         if (unverifiedTreeOutcome(outcome)) {
-          warnEvent(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
+          warnEventBestEffort(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
         } else {
           const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
-          warnEvent(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
+          warnEventBestEffort(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
         }
         outcome = retry.outcome;
       } else if (retry?.outcome.status === "failed") {
@@ -102,7 +102,7 @@ export async function gateBuildPrecheck(
       // the gate attributes nothing — it keeps the commit and reports the sleep, and the
       // landing path keeps the pin for a re-land (BUGS.md 2026-09-30).
       const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, "the tree is unverified");
-      warnEvent(root, role, `${detail}; keeping the commit for a re-land`);
+      warnEventBestEffort(root, role, `${detail}; keeping the commit for a re-land`);
       return { resolved: { decision: "failed", detail, unverified: true } };
     }
     if (outcome.status === "failed") {
@@ -116,7 +116,7 @@ export async function gateBuildPrecheck(
       if (isKnownFlake(root, flaky)) {
         const detail = `known-flaky failure, landing kept: ${flaky}`;
         recordReview(state, "failed", [detail], head);
-        warnEvent(root, role, detail);
+        warnEventBestEffort(root, role, detail);
         return { resolved: { decision: "failed", detail, unverified: true } };
       }
       const reasons = checkFailureReasons(check, outcome);
@@ -141,7 +141,7 @@ export async function gateBuildPrecheck(
         // and the author's next tick re-lands the change once main is green again.
         const detail = mainRedNotMine(main.sha);
         recordReview(state, "failed", [detail], head);
-        warnEvent(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
+        warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
         return { resolved: { decision: "failed", detail, mainRed: true } };
       }
       // Main green: the change broke the check — rejected deterministically through the shared

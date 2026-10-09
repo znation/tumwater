@@ -6,7 +6,7 @@
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { hasResumableSession } from "../pi/pi.js";
 import { reviewRunConfig } from "../config/config-views.js";
-import { warnEvent } from "../events/events.js";
+import { warnEventBestEffort } from "../events/events.js";
 import { piLogPath, reviewSessionDir } from "../paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../gates/gate-prompts.js";
 import type { ToolCallStart } from "./suite-rerun.js";
@@ -50,7 +50,7 @@ async function runFollowupTurn(
     rawLogFile: piLogPath(ctx.root, ctx.role),
     label: opts.label,
     signal: ctx.signal,
-    onToolCallStalled: (message) => warnEvent(ctx.root, ctx.role, message),
+    onToolCallStalled: (message) => warnEventBestEffort(ctx.root, ctx.role, message),
     ...(opts.onToolCallStart ? { onToolCallStart: opts.onToolCallStart } : {}),
   });
 }

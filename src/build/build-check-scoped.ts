@@ -10,7 +10,7 @@ import {
   checkTimeoutMs,
   type BuildCheckOutcome,
 } from "./build-check.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import {
   MERGE_SCOPES,
   SCOPE_WORDS,
@@ -114,7 +114,7 @@ export async function runScopedBuildCheck(
         !sleepFailed
       )
         return first;
-      logEvent(root, buildCheckEvent(role, scope, first, durationMs));
+      logEventBestEffort(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
       const retry = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);
       durationMs = Date.now() - retryStart;
@@ -165,12 +165,12 @@ export async function runScopedBuildCheck(
         ...(raw.install ? { install: raw.install } : {}),
       }
     : raw;
-  logEvent(root, buildCheckEvent(role, scope, outcome, durationMs));
+  logEventBestEffort(root, buildCheckEvent(role, scope, outcome, durationMs));
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code tick into the 3-strike discard (gate) or a merge behind the merge lock.
     const w = SCOPE_WORDS[scope];
-    warnEvent(
+    warnEventBestEffort(
       root,
       role,
       buildCheckSkipWarning(
@@ -186,7 +186,7 @@ export async function runScopedBuildCheck(
       ),
     );
   } else if (unverifiedSkip) {
-    warnEvent(root, role, `${unverifiedReason}; rejecting the merge`);
+    warnEventBestEffort(root, role, `${unverifiedReason}; rejecting the merge`);
   }
   return { check, outcome };
 }

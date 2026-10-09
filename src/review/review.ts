@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { changeBaseRev, headOf, patchId } from "../git/git.js";
 import { aheadOfMainDiff, aheadOfMainFiles, revisionInterdiff } from "../git/git-diff.js";
@@ -172,7 +172,7 @@ export async function reviewAheadOfMain(
     recordReview(state, "reject", reasons, head);
     state.unreviewFailures = 0;
     await resetWorktreeToMain(wt, mainBranch);
-    logEvent(root, {
+    logEventBestEffort(root, {
       loop: role,
       type: "review_rejected",
       head,
@@ -245,7 +245,7 @@ export async function reviewAheadOfMain(
   // same config the run below gets, so the event names what the reviewer actually runs on —
   // the budget fallback included. Omitted when no model is configured (pi's own default).
   const reviewCfg = reviewRunConfig(config);
-  logEvent(root, {
+  logEventBestEffort(root, {
     loop: role,
     type: "review_start",
     head,
@@ -319,7 +319,7 @@ export async function reviewAheadOfMain(
     signal: ctx.signal,
     // A stalled tool call during review hangs the gate just like one during authoring —
     // name it in the event feed while the quiet watchdog still counts down.
-    onToolCallStalled: (message) => warnEvent(root, role, message),
+    onToolCallStalled: (message) => warnEventBestEffort(root, role, message),
     onToolCallStart: verifiedByHarness
       ? (toolName, args) => {
           reviewerCalls.push({ toolName, args });
@@ -332,7 +332,7 @@ export async function reviewAheadOfMain(
   // scratch copies under /tmp, `npm ci` and `npm test` there). Warned on every outcome, abort
   // included — the run happened either way; the verdict itself is not touched.
   const rerun = suiteRerunWarning(reviewerCalls);
-  if (rerun) warnEvent(root, role, rerun);
+  if (rerun) warnEventBestEffort(root, role, rerun);
 
   if (pi.aborted) {
     // Shutdown mid-review: fail closed without bookkeeping — the commit stays on the branch
@@ -354,7 +354,7 @@ export async function reviewAheadOfMain(
     }
     nudgeRepeat = nudge ? (suiteRerunWarning(nudgeCalls) ?? null) : null;
     if (nudgeRepeat) {
-      warnEvent(
+      warnEventBestEffort(
         root,
         role,
         `${nudgeRepeat} the repeat fails this review: the commit stays, and the landing re-reviews it without a third suite run`,
@@ -369,7 +369,7 @@ export async function reviewAheadOfMain(
     const recovered = parseVerdict(nudge.verdictText ?? "");
     if (recovered) {
       verdict = recovered;
-      warnEvent(root, role, "the reviewer's reply had no VERDICT line — recovered it with the no-re-run nudge turn on its session");
+      warnEventBestEffort(root, role, "the reviewer's reply had no VERDICT line — recovered it with the no-re-run nudge turn on its session");
     }
   }
   // A run that FAILED (`ok` false: transport error, failed spawn, timeout) produced no reply,
@@ -387,7 +387,7 @@ export async function reviewAheadOfMain(
     const recovered = followUp ? parseVerdict(followUp.verdictText ?? "") : null;
     if (recovered) {
       verdict = recovered;
-      warnEvent(root, role, "the reviewer's reply had no VERDICT line — recovered it with a follow-up turn on its own session");
+      warnEventBestEffort(root, role, "the reviewer's reply had no VERDICT line — recovered it with a follow-up turn on its own session");
     }
   }
   // A repeat after the nudge (BUGS.md 2026-10-02): the reviewer re-ran the suite on the nudge
@@ -396,7 +396,7 @@ export async function reviewAheadOfMain(
   // rejection is recorded against the author's diff.
   if (nudgeRepeat) {
     const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the landing re-reviews it under the normal path.`;
-    logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     recordReview(state, "failed", [message], head);
     return withRuns({ decision: "failed", detail: message }, pi, followUp, nudge);
   }
@@ -431,7 +431,7 @@ export async function reviewAheadOfMain(
               : ""
         }`,
     );
-    logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
     // for the next tick's re-review and do not advance the per-HEAD discard counter. That
     // holds for the review run itself (BUGS.md 2026-09-20), for the verdict-recovery
@@ -459,7 +459,7 @@ export async function reviewAheadOfMain(
       await resetWorktreeToMain(wt, mainBranch);
       state.unreviewFailures = 0; // The HEAD is gone; nothing left to count against.
       discarded = true;
-      warnEvent(root, role, `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`);
+      warnEventBestEffort(root, role, `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`);
     }
     return { ...withRuns({ decision: "failed", detail: message }, pi, followUp, nudge), ...(discarded ? { discarded: true } : {}) };
   }
@@ -477,7 +477,7 @@ export async function reviewAheadOfMain(
   recordReview(state, "approve", verdict.reasons, head);
   state.unreviewFailures = 0;
   await git(wt, "reset", "--hard", "HEAD");
-  logEvent(root, {
+  logEventBestEffort(root, {
     loop: role,
     type: "review_verdict",
     head,
