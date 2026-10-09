@@ -120,14 +120,29 @@ export async function expectOkAsync<T>(fn: () => Promise<T>): Promise<{ value: T
   return out;
 }
 
+/** Install a capturing stub over one process stream; the two capture helpers below are its
+ * only callers. Returned `text()` reads the capture so far — valid after restore() too — and
+ * `restore()` puts the real write back. */
+function captureWrite(stream: { write: (s: string) => boolean }): { text: () => string; restore: () => void } {
+  const real = stream.write;
+  let captured = "";
+  stream.write = (s: string) => ((captured += s), true);
+  return { text: () => captured, restore: () => (stream.write = real) };
+}
+
 /** Intercept process.stdout.write for the duration of a test; restore() must run in finally.
  * For tests that read the output MID-flight or hold a capture across several awaited steps
  * (log-commands.test.ts drives a never-resolving follow this way) — a run-once
  * call-then-assert belongs to expectOkAsync/attemptAsync above, which own the restore. */
 export function captureStdout(): { out: () => string; restore: () => void } {
-  const stdout = process.stdout as unknown as { write: (s: string) => boolean };
-  const real = stdout.write;
-  let out = "";
-  stdout.write = (s: string) => ((out += s), true);
-  return { out: () => out, restore: () => (stdout.write = real) };
+  const capture = captureWrite(process.stdout as unknown as { write: (s: string) => boolean });
+  return { out: capture.text, restore: capture.restore };
+}
+
+/** The stderr twin of captureStdout: intercept process.stderr.write, return the captured text
+ * and the restore step. Safe across child processes (node --test reports over stdout, not
+ * stderr, so stderr-capture windows cannot corrupt the runner's test accounting). */
+export function captureStderr(): { err: () => string; restore: () => void } {
+  const capture = captureWrite(process.stderr as unknown as { write: (s: string) => boolean });
+  return { err: capture.text, restore: capture.restore };
 }

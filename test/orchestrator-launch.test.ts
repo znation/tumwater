@@ -29,6 +29,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
+import { captureStderr } from "./helpers/exit-capture.js";
 
 /** A stand-in runner: only what launchDueTicks reads. `config` is what runConfig returns —
  * the tick's pair comes from the runner's own config view (part 5c/8), or from its active
@@ -280,12 +281,7 @@ test("a warning whose event write throws is reported to stderr, not left as an u
     throw new Error("boom during finalize");
   });
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
-  const stderrWrites: string[] = [];
-  const originalWrite = process.stderr.write;
-  process.stderr.write = ((chunk: unknown) => {
-    stderrWrites.push(String(chunk));
-    return true;
-  }) as typeof process.stderr.write;
+  const stderr = captureStderr();
   const rejections: unknown[] = [];
   const onRejection = (reason: unknown): void => {
     rejections.push(reason);
@@ -299,13 +295,14 @@ test("a warning whose event write throws is reported to stderr, not left as an u
     // Give a leaked rejection a turn to surface before the assertions.
     await new Promise((resolve) => setTimeout(resolve, 20));
   } finally {
-    process.stderr.write = originalWrite;
+    stderr.restore();
     process.off("unhandledRejection", onRejection);
   }
   assert.equal(runner.state.running, false, "the rejected reservation is handed back");
   assert.equal(rejections.length, 0, "no unhandled rejection escaped the detached chain");
-  assert.ok(
-    stderrWrites.some((line) => /boom during finalize/.test(line)),
+  assert.match(
+    stderr.err(),
+    /boom during finalize/,
     "the rejection is still reported, to stderr, when the event log is unwritable",
   );
 });

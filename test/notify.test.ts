@@ -10,6 +10,7 @@ import { validateConfig } from "../src/config/config-validation.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
+import { captureStderr } from "./helpers/exit-capture.js";
 import { errorMessage } from "../src/text/text.js";
 
 // Tests for src/events/notify.ts — the operator notify hook: the `notify` shell command the
@@ -187,12 +188,7 @@ test("a spawn-failure warning whose event write throws falls back to stderr, not
   // fleet. Sabotage the feed after the triggering event is written but before the warning —
   // see the poison subscriber below — and watch where the failure goes.
   const root = tmpdir();
-  const stderrWrites: string[] = [];
-  const originalWrite = process.stderr.write;
-  process.stderr.write = ((chunk: unknown) => {
-    stderrWrites.push(String(chunk));
-    return true;
-  }) as typeof process.stderr.write;
+  const stderr = captureStderr();
   // Subscribe the poison before the notifier so the listener loop poisons the feed after the
   // triggering event is written but before the notifier spawns: whatever the child error's
   // timing (synchronous inside spawn or a later tick), the warning's write meets a root that
@@ -208,16 +204,17 @@ test("a spawn-failure warning whose event write throws falls back to stderr, not
     notifier.update({ notify: `echo ${"x".repeat(2_000_000)}` });
     logEvent(root, { loop: "feature", type: "budget_paused" });
     await waitFor(
-      () => stderrWrites.some((line) => /notify command could not start/.test(line)),
+      () => /notify command could not start/.test(stderr.err()),
       "the stderr fallback for the unwritable warning",
     );
-    assert.ok(
-      stderrWrites.some((line) => /warning log unwritable/.test(line)),
+    assert.match(
+      stderr.err(),
+      /warning log unwritable/,
       "the fallback names why the event log could not take the warning",
     );
   } finally {
     offPoison();
-    process.stderr.write = originalWrite;
+    stderr.restore();
     notifier.dispose();
   }
 });
