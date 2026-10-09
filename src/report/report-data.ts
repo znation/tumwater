@@ -127,15 +127,25 @@ interface ReportFoldEntry {
 const reportFoldCache = new Map<string, ReportFoldEntry>();
 const REPORT_FOLD_CACHE_MAX = 8;
 
+/** The empty commit-family counters every accumulator starts from: the total and per-base-role
+ * landed-commit count plus the work/maintenance split (Work ratio 4/4). Four shapes carry them —
+ * DayFold, UsageFold, the ReportDay series slots, and the window totals — so the empty quartet
+ * lives once here and a new commit counter is added in one place. */
+function zeroCommitCounts(): {
+  commits: number;
+  commitsByRole: Record<string, number>;
+  workCommits: number;
+  maintenanceCommits: number;
+} {
+  return { commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0 };
+}
+
 function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
   let fold = entry.days.get(dayKey);
   if (!fold) {
     fold = {
       tokensOut: 0,
-      commits: 0,
-      commitsByRole: {},
-      workCommits: 0,
-      maintenanceCommits: 0,
+      ...zeroCommitCounts(),
       costUsd: 0,
       ticksByRole: {},
       costByRole: {},
@@ -337,10 +347,7 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
     ticksByRole: {},
     costByRole: {},
     tokensOut: 0,
-    commits: 0,
-    commitsByRole: {},
-    workCommits: 0,
-    maintenanceCommits: 0,
+    ...zeroCommitCounts(),
     costUsd: 0,
     landingRuns: 0,
     landingTokens: 0,
@@ -387,10 +394,7 @@ export function collectReport(root: string, days: number): ReportData {
       tokensOut: 0,
       ticksByRole: {},
       costByRole: {},
-      commits: 0,
-      commitsByRole: {},
-      workCommits: 0,
-      maintenanceCommits: 0,
+      ...zeroCommitCounts(),
       costUsd: 0,
       featuresDone: 0,
       bugsFixed: 0,
@@ -442,10 +446,7 @@ export function collectReport(root: string, days: number): ReportData {
   const totals = {
     tokensOut: 0,
     ticks: 0,
-    commits: 0,
-    commitsByRole: {} as Record<string, number>,
-    workCommits: 0,
-    maintenanceCommits: 0,
+    ...zeroCommitCounts(),
     costUsd: 0,
     featuresDone: 0,
     bugsFixed: 0,
