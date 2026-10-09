@@ -43,6 +43,34 @@ function commitOffMain(file: string, content: string, message = "the rejected wo
   return { root, sha };
 }
 
+/** The resolveTickVerdict context the three nothing-to-do tests share: an "improve" tick whose
+ * fake pi declares NOTHING_TO_DO, with the state, worktree, user prompt, and revision round
+ * the verdict turns on supplied by the caller. */
+function verdictCtx(
+  root: string,
+  wt: string,
+  state: ReturnType<typeof freshLoopState>,
+  userPrompt: string | null,
+  revisionRound?: number,
+): Parameters<typeof resolveTickVerdict>[0] {
+  return {
+    root,
+    wt,
+    role: "improve",
+    mainBranch: "main",
+    state,
+    pending: new PendingPrompt(root, "improve"),
+    turns: 1,
+    userPrompt,
+    ...(revisionRound === undefined ? {} : { revisionRound }),
+    pi: piRunResult({ nothingToDo: true }),
+    flow: null,
+    warn: () => {},
+    merge: async () => "changed" as const,
+    finishAbortedTick: async () => ({ result: "aborted" as const }),
+  };
+}
+
 test("applyRevision re-applies a rejected change onto moved main as uncommitted edits", async () => {
   const { root, sha } = commitOffMain("feature.ts", "export const feature = true;\n");
   // main moves in a file the rejected change does not touch.
@@ -249,22 +277,7 @@ test("a non-revision dirty nothing-to-do tick does not drop a pending revision",
     ...freshLoopState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
-  const pending = new PendingPrompt(root, "improve");
-  const ctx = {
-    root,
-    wt,
-    role: "improve",
-    mainBranch: "main",
-    state,
-    pending,
-    turns: 1,
-    userPrompt: "please do the user thing",
-    pi: piRunResult({ nothingToDo: true }),
-    flow: null,
-    warn: () => {},
-    merge: async () => "changed" as const,
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
-  };
+  const ctx = verdictCtx(root, wt, state, "please do the user thing");
 
   const outcome = await resolveTickVerdict(ctx);
 
@@ -279,23 +292,7 @@ test("a revision tick that declares nothing-to-do drops the change and ends no_c
     ...freshLoopState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
-  const pending = new PendingPrompt(root, "improve");
-  const ctx = {
-    root,
-    wt,
-    role: "improve",
-    mainBranch: "main",
-    state,
-    pending,
-    turns: 1,
-    userPrompt: null,
-    revisionRound: 1,
-    pi: piRunResult({ nothingToDo: true }),
-    flow: null,
-    warn: () => {},
-    merge: async () => "changed" as const,
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
-  };
+  const ctx = verdictCtx(root, wt, state, null, 1);
 
   const outcome = await resolveTickVerdict(ctx);
 
@@ -316,23 +313,7 @@ test("a revision tick that declares nothing-to-do drops the change with a clean 
     ...freshLoopState("improve"),
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
-  const pending = new PendingPrompt(root, "improve");
-  const ctx = {
-    root,
-    wt,
-    role: "improve",
-    mainBranch: "main",
-    state,
-    pending,
-    turns: 1,
-    userPrompt: null,
-    revisionRound: 1,
-    pi: piRunResult({ nothingToDo: true }),
-    flow: null,
-    warn: () => {},
-    merge: async () => "changed" as const,
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
-  };
+  const ctx = verdictCtx(root, wt, state, null, 1);
 
   const outcome = await resolveTickVerdict(ctx);
 
