@@ -1,6 +1,6 @@
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { LandingInFlight } from "../landing/landing-slot.js";
+import { isLandingChange, type LandingInFlight } from "../landing/landing-slot.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -180,8 +180,10 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
  * just its records whose sha is still queued — a change whose entry was dropped is finished,
  * whatever its record last said — and displays only while one of those is not `done`. */
 export function liveLandingMarker(marker: LandingInFlight, queued: ReadonlySet<string>): LandingInFlight | undefined {
-  if (!marker.changes) return queued.has(marker.sha) ? marker : undefined;
-  const changes = marker.changes.filter((c) => queued.has(c.sha));
+  if (!Array.isArray(marker.changes)) return queued.has(marker.sha) ? marker : undefined;
+  // Drop foreign entries before reading their sha/status: a `null`/scalar record in a
+  // hand-edited marker would otherwise throw out of the every-second status poll.
+  const changes = marker.changes.filter(isLandingChange).filter((c) => queued.has(c.sha));
   return changes.some((c) => c.status !== "done") ? { ...marker, changes } : undefined;
 }
 

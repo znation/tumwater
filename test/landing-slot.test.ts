@@ -333,6 +333,36 @@ test("landingChanges reads a one-change marker as one landing record", () => {
   assert.deepEqual(landingChanges(single), [{ ...single, status: "landing" }]);
 });
 
+test("a foreign changes shape or a null record degrades instead of crashing a landing", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.dirname(landingStatePath(root)), { recursive: true });
+  // `changes` present but not an array: as unusable as an absent field. The reads fall back to
+  // the legacy top-level shape and the writers no-op — never `scalar.find`.
+  fs.writeFileSync(
+    landingStatePath(root),
+    JSON.stringify({ role: "improve", sha: "a", summary: "s", startedAt: 1, changes: "oops" }),
+  );
+  assert.doesNotThrow(() => setLandingChangeStatus(root, "improve", "vetted"));
+  assert.deepEqual(landingChanges(readLandingMarker(root)!).map((c) => c.role), ["improve"]);
+
+  // A record array carrying a null entry: the bad entries read as absent and the good one still
+  // advances, so the pipeline and the observers keep working.
+  fs.writeFileSync(
+    landingStatePath(root),
+    JSON.stringify({
+      role: "x",
+      sha: "x",
+      summary: "x",
+      startedAt: 1,
+      changes: [null, { role: "y", sha: "y".repeat(40), summary: "s", status: "landing" }],
+    }),
+  );
+  assert.doesNotThrow(() => setLandingChangeStatus(root, "y", "vetted"));
+  const after = landingChanges(readLandingMarker(root)!);
+  assert.deepEqual(after.map((c) => c.role), ["y"]);
+  assert.equal(after[0]!.status, "vetted");
+});
+
 test("a queued landing's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
   const root = makeRepo();
   // A pinned change ahead of main, exactly what a tick leaves behind for the pipeline.

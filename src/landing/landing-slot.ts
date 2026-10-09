@@ -5,6 +5,7 @@ import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { landingStatePath } from "../paths.js";
 import type { LoopRunner } from "../loop/loop.js";
@@ -104,7 +105,7 @@ export function readLandingMarker(root: string): LandingInFlight | null {
  * throws: the marker is display-only, and a failed write must not fail a landing (the
  * observers keep the previous frame's record until the next write). */
 function rewriteMarker(root: string, marker: LandingInFlight & { changes: LandingChange[] }): void {
-  const headline = marker.changes.find((c) => c.status === "landing");
+  const headline = marker.changes.find((c) => isLandingChange(c) && c.status === "landing");
   if (headline) {
     marker.role = headline.role;
     marker.sha = headline.sha;
@@ -132,8 +133,12 @@ function updateLandingChange(
   apply: (change: LandingChange) => boolean | void,
 ): void {
   const marker = readLandingMarker(root);
-  const change = marker?.changes?.find((c) => c.role === role);
-  if (!marker?.changes || !change) return;
+  // A `changes` field that is not an array is as unusable as an absent one — treat it as no
+  // per-change records (the legacy shape) and leave the marker untouched, rather than reading
+  // `.find` off a scalar and throwing into a live landing.
+  if (!marker || !Array.isArray(marker.changes)) return;
+  const change = marker.changes.find((c) => isLandingChange(c) && c.role === role);
+  if (!change) return;
   if (apply(change) === false) return;
   rewriteMarker(root, { ...marker, changes: marker.changes });
 }
@@ -231,17 +236,32 @@ export function checkWaitStage(root: string, roles: readonly string[]): PermitWa
  * stale-record filtering and status-model's per-role cell cannot disagree about which changes a
  * marker names. */
 export function landingChanges(marker: LandingInFlight): LandingChange[] {
+  return Array.isArray(marker.changes)
+    ? marker.changes.filter(isLandingChange)
+    : [
+        {
+          role: marker.role,
+          sha: marker.sha,
+          summary: marker.summary,
+          status: "landing",
+          startedAt: marker.startedAt,
+          stage: marker.stage,
+        },
+      ];
+}
+
+/** True when a persisted `changes` entry is a record the pipeline and the observers can act on:
+ * a role, sha and summary string and one of the three statuses. A hand-edited, torn, or foreign
+ * entry (a `null`/scalar, or one missing `status`) is dropped by landingChanges rather than read
+ * field-by-field — without this, `c.role` on a `null` entry threw `Cannot read properties of
+ * null` straight into setLandingChangeStatus and the every-second status poll. */
+export function isLandingChange(value: unknown): value is LandingChange {
   return (
-    marker.changes ?? [
-      {
-        role: marker.role,
-        sha: marker.sha,
-        summary: marker.summary,
-        status: "landing",
-        startedAt: marker.startedAt,
-        stage: marker.stage,
-      },
-    ]
+    isJsonObject(value) &&
+    typeof value.role === "string" &&
+    typeof value.sha === "string" &&
+    typeof value.summary === "string" &&
+    (value.status === "landing" || value.status === "vetted" || value.status === "done")
   );
 }
 
