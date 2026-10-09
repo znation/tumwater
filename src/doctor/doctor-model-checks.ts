@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { releaseChildHandles, signalTree } from "../process/process.js";
+import { childEnv, releaseChildHandles, signalTree } from "../process/process.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { cacheReadUnpriced, fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
@@ -119,7 +119,7 @@ export async function piProviderAuth(
         // child until the deadline.
         detached: true,
         stdio: ["ignore", "pipe", "ignore"],
-        env: { ...process.env, PATH: pathEnv },
+        env: childEnv({ PATH: pathEnv }),
       });
     } catch {
       resolve("unknown");

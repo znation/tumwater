@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
-import { runOnAbort } from "./process.js";
+import { childEnv, runOnAbort } from "./process.js";
 
 /** The respawn loop behind `tumwater run`. The command runs as two processes: this supervisor
  * (the one the operator started, holding the terminal) and a child that actually runs the
@@ -191,7 +191,7 @@ function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS
     }
     const child = spawn(process.execPath, [script, ...commandArgs], {
       stdio: "inherit",
-      env: { ...process.env, ...env },
+      env: childEnv(env),
     });
     // runOnAbort closes the register/abort race: an already-fired signal kills the child
     // now, so the dashboard never starts after a stop.

@@ -6,6 +6,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../../src/process/supervisor.js";
+import { childEnv } from "../../src/process/process.js";
 import { exitWithOwnerEnv } from "../fixtures/victim-fixture.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -21,7 +22,7 @@ interface CliResult {
 /** Run the CLI with an explicit env override (merged over process.env). The timeout
  * bounds tests that would otherwise hang if a command regresses to not exiting. */
 export function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]): Promise<CliResult> {
-  const merged = { ...process.env, ...env };
+  const merged = childEnv(env);
   // Hermeticity: the supervised marker leaks from any tumwater orchestrator into pi's (and
   // this test process') environment; without stripping it, `run` skips its supervisor half.
   delete merged[SUPERVISED_ENV];

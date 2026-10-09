@@ -6,7 +6,7 @@
 import { spawn, type PromiseWithChild } from "node:child_process";
 import { findOnPath } from "../files/files.js";
 import { realGitFromXcrun } from "./xcrun-git.js";
-import { EXEC_MAX_BUFFER, releaseChildHandles, signalTree } from "../process/process.js";
+import { EXEC_MAX_BUFFER, childEnv, releaseChildHandles, signalTree } from "../process/process.js";
 import { KILL_GRACE_MS, armGroupDeadline } from "../process/process-group.js";
 import { errorMessage } from "../text/text.js";
 
@@ -138,7 +138,7 @@ export function execGitBounded(
     cwd: opts.cwd,
     detached: true,
     stdio: ["pipe", "pipe", "pipe"],
-    ...(opts.extraEnv ? { env: { ...process.env, ...opts.extraEnv } } : {}),
+    ...(opts.extraEnv ? { env: childEnv(opts.extraEnv) } : {}),
   });
   let stdout = "";
   let stderr = "";
