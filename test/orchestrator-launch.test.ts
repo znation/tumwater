@@ -26,6 +26,7 @@ import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, t
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { readEvents } from "../src/events/event-read.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 
@@ -263,7 +264,7 @@ test("a rejected tick task is logged and un-reserved, not an unhandled rejection
   await Promise.allSettled([...c.roleInFlight]);
   await waitFor(() => c.roleInFlight.size === 0, "the rejected task to leave the bucket");
   assert.equal(runner.state.running, false, "the rejected reservation is handed back");
-  const warnings = readEvents(c.root).filter((e) => e.type === "warning");
+  const warnings = eventsOfType(c.root, "warning");
   assert.equal(warnings.length, 1, "one warning names the rejection");
   assert.match(String(warnings[0]!.message), /boom during finalize/);
 });

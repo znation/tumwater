@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { type RedeployDeps, RESTART_COOLDOWN_MS } from "../src/redeploy/redeploy-policy.js";
+import { warningEvents } from "./fixtures/log-fixtures.js";
 import {
   HEAD_B,
   HEAD_C,
@@ -49,7 +50,7 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
     "none",
     "a different head inside the same cooldown still defers",
   );
-  const warnings = events.filter((e) => e.type === "warning");
+  const warnings = warningEvents(events);
   assert.equal(warnings.length, 1, "one warning for the whole cooldown episode, not one per head");
   assert.match(String(warnings[0]!.message), /cooldown until/);
   assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"]);

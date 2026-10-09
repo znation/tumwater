@@ -29,6 +29,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-s
 import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
+import { warningEvents } from "./fixtures/log-fixtures.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -167,7 +168,7 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   // landing) warns from here instead.
   const cfg = defaultConfig();
   const root = makeRepo();
-  const warnings = () => readEvents(root, 50).filter((e) => e.type === "warning");
+  const warnings = () => warningEvents(readEvents(root, 50));
 
   // Below the bar: the fast first retries stay silent.
   const low = freshLoopState("improve");

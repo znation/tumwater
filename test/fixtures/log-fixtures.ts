@@ -94,10 +94,18 @@ export function eventsOfType(root: string, type: HarnessEvent["type"]): HarnessE
   return readEvents(root).filter((e) => e.type === type);
 }
 
+/** Every warning event in an already-read event array. The array-taking counterpart of
+ * `eventsOfType`; `warningMessagesOf` and the tests that already hold the list build on it.
+ * Generic so both a read-back `HarnessEvent[]` and a harness's in-memory `HarnessEventInput[]`
+ * pass through with their own element type. */
+export function warningEvents<T extends { type: HarnessEvent["type"] }>(events: readonly T[]): T[] {
+  return events.filter((e) => e.type === "warning");
+}
+
 /** Every warning event's message in an already-read event array, coerced to string (the schema
  * leaves message unknown). `warningMessages` is the same list read straight from the repo's log. */
 export function warningMessagesOf(events: HarnessEvent[]): string[] {
-  return events.filter((e) => e.type === "warning").map((e) => String(e.message));
+  return warningEvents(events).map((e) => String(e.message));
 }
 
 /** Every warning event's message in the repo's harness event log, coerced to string. This was the

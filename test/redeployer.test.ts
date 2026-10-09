@@ -27,6 +27,7 @@ import {
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { warningEvents } from "./fixtures/log-fixtures.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
 import { projManifest } from "./fakes/fake-commands.js";
 test("a non-self-hosted harness never acts, whatever main does", async () => {
@@ -409,7 +410,7 @@ test("a red RUNNING build cuts the cooldown to the urgent window: the episode st
   assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS + 20), "restart");
   assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "the prewarmed verdict is adopted, not re-run");
-  const warnings = events.filter((e) => e.type === "warning");
+  const warnings = warningEvents(events);
   assert.equal(warnings.length, 3, "one warning per distinct deadline: ordinary, urgent, then the urgent lapse");
   assert.match(String(warnings[0]!.message), /per 12 h/);
   assert.match(String(warnings[1]!.message), /is red — the cooldown is cut to 15 min/);
@@ -439,7 +440,7 @@ test("the urgency onset mid-cooldown warns once more with the earlier deadline",
     `cooldown until ${new Date(urgentUntil).toISOString()} (the running build's own commit is red — cut to 15 min)`,
     "the earlier deadline is what the dashboard publishes once the red is known",
   );
-  const warnings = events.filter((e) => e.type === "warning");
+  const warnings = warningEvents(events);
   assert.equal(warnings.length, 2, "one warning per distinct deadline: the ordinary one, then the urgent one");
   assert.match(String(warnings[0]!.message), /per 12 h/);
   assert.match(String(warnings[1]!.message), /is red — the cooldown is cut to 15 min/);
@@ -448,7 +449,7 @@ test("the urgency onset mid-cooldown warns once more with the earlier deadline",
     "none",
     "the same deadline does not warn again",
   );
-  assert.equal(events.filter((e) => e.type === "warning").length, 2);
+  assert.equal(warningEvents(events).length, 2);
 });
 
 test("an unknown or unsettled running-build verdict never triggers the urgent window", async () => {
@@ -506,7 +507,7 @@ test("a red RUNNING build whose cut deadline already passed proceeds early with 
     "hold",
     "the red cut the deadline into the past: the episode proceeds now",
   );
-  const warnings = events.filter((e) => e.type === "warning");
+  const warnings = warningEvents(events);
   assert.equal(warnings.length, 2, "the ordinary cooldown warning, then the early-lapse one");
   assert.match(String(warnings[1]!.message), /is red/);
   assert.match(String(warnings[1]!.message), /already passed/);
@@ -515,7 +516,7 @@ test("a red RUNNING build whose cut deadline already passed proceeds early with 
     "hold",
     "the episode is pending: the next poll continues it",
   );
-  assert.equal(events.filter((e) => e.type === "warning").length, 2, "one warning per cooldown, not per poll");
+  assert.equal(warningEvents(events).length, 2, "one warning per cooldown, not per poll");
 });
 
 test("the completion timestamp survives process restart via its state file", async () => {

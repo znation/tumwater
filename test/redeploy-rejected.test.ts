@@ -7,6 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./fixtures/redeploy-fixtures.js";
+import { warningEvents } from "./fixtures/log-fixtures.js";
 
 test("a compile that never ran is a rejection, not a verdict: retried instead of blocked", async () => {
   // `tsc exited ENOENT` is execFile's spawn-failure code, not a compiler exit: the compile said
@@ -46,7 +47,7 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps);
   // Each retry emits its own restart_pending; the dedupe claim is about warnings.
-  const warnings = () => events.filter((e) => e.type === "warning");
+  const warnings = () => warningEvents(events);
   const rejectOnce = async (head: string) => {
     await r.poll(head, IDLE, true);
     f.green(true);
@@ -118,7 +119,7 @@ test("a thrown green check is a 'could not run': drop, warn once, retry — no l
   assert.equal(checks, 2, "the green check re-ran");
   await settle();
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none");
-  assert.equal(events.filter((e) => e.type === "warning").length, 1, "one warning per episode");
+  assert.equal(warningEvents(events).length, 1, "one warning per episode");
 });
 
 test("a green check that fails once and then recovers still reaches the swap: the fleet self-heals", async () => {

@@ -6,7 +6,7 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/baseline/
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
-import { eventsOfType, harnessWarnings } from "./fixtures/log-fixtures.js";
+import { eventsOfType, harnessWarnings, warningEvents } from "./fixtures/log-fixtures.js";
 import { baselineFixture, fakeNpm, runsOf } from "./fixtures/loop-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
@@ -82,7 +82,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     assert.equal(check.status, "failed");
     assert.equal(check.script, "test");
 
-    const warnings = events.filter((e) => e.type === "warning");
+    const warnings = warningEvents(events);
     assert.equal(warnings.length, 1, "one harness-level warning for the newly-discovered red SHA");
     const warning = warnings[0];
     assert.ok(warning);
@@ -162,7 +162,7 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
     assert.ok(check);
     assert.equal(check.status, "skipped");
     assert.equal(check.loop, ROLE);
-    const warnings = events.filter((e) => e.type === "warning");
+    const warnings = warningEvents(events);
     assert.equal(warnings.length, 1);
     const warning = warnings[0];
     assert.ok(warning);

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { HEAD_B, IDLE, fakeDeps, harness, settle } from "./fixtures/redeploy-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";
+import { warningEvents } from "./fixtures/log-fixtures.js";
 
 // --- The sustained-pin escalation (BUGS.md 2026-09-29) -------------------------------------
 // The 2026-09-28/29 incident: build 66afeacd stayed 362 commits behind a churning main for
@@ -42,7 +43,7 @@ test("the incident shape — a failing compile verdict on every head while main 
   assert.match(String(es[1]?.message), /stayed stale for ~30 h/);
   assert.match(String(es[0]?.message), /the sustained pin itself is the problem/);
   // The escalation does not replace the per-head warnings; it sums them up beside them.
-  assert.ok(events.filter((e) => e.type === "warning").length > 300, "the churn kept warning per head");
+  assert.ok(warningEvents(events).length > 300, "the churn kept warning per head");
 });
 
 test("a blocked head on a frozen main escalates the pin once at 6 h, then daily — even though no new failure ever lands", async () => {

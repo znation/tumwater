@@ -411,7 +411,7 @@ test("a verdict-less completed reply is recovered with one follow-up turn, not a
       assert.equal(eventsOfType(root, "review_failed").length, 0);
       assert.equal(eventsOfType(root, "review_verdict").length, 1);
       // The recovery is observable in the event feed.
-      const warnings = readEvents(root).filter((e) => e.type === "warning");
+      const warnings = eventsOfType(root, "warning");
       assert.ok(warnings.some((e) => /follow-up turn/.test(String(e.message))));
       // Exactly one --continue run happened, after the fresh review run.
       const lines = fs.readFileSync(flags, "utf8").trim().split("\n");

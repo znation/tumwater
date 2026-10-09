@@ -21,6 +21,7 @@ import {
 import { worktreesDir } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { warningEvents } from "./fixtures/log-fixtures.js";
 
 function typesAt(root: string): string[] {
   return readEvents(root, 100).map((e) => e.type);
@@ -106,7 +107,7 @@ test("pollDiskGate: a null sample never holds and warns once per process", () =>
   assert.equal(pollDiskGate(root, null, 10, state), false);
   assert.equal(pollDiskGate(root, null, 10, state), false);
   const events = readEvents(root, 100);
-  assert.equal(events.filter((e) => e.type === "warning").length, 1);
+  assert.equal(warningEvents(events).length, 1);
   assert.equal(events.filter((e) => e.type === "disk_low").length, 0);
   // A measurable sample after the unmeasurable ones re-arms a fresh hold event.
   assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state), true);
