@@ -142,6 +142,23 @@ test("renderDoctor prints one padded line per check between the header and the v
   );
 });
 
+test("renderDoctor widens the name column to the longest check name so details align", () => {
+  const rendered = renderDoctor({
+    header: "h",
+    checks: [
+      { name: "repo", level: "ok", detail: "D1" },
+      { name: "backlog headings", level: "warn", detail: "D2" },
+      { name: "build", level: "ok", detail: "D3" },
+    ],
+    verdict: "v",
+  });
+  const lines = rendered.split("\n");
+  const detailCol = lines[1]!.indexOf("D1");
+  assert.equal(lines[2]!.indexOf("D2"), detailCol);
+  assert.equal(lines[3]!.indexOf("D3"), detailCol);
+  assert.ok(lines[1]!.startsWith("ok    repo"), `expected the short row to keep its historical shape, got ${JSON.stringify(lines[1])}`);
+});
+
 test("runDoctor includes the build check and never fails the exit on a stale build", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{}");
