@@ -27,7 +27,7 @@ import {
 } from "../src/loop/loop-state.js";
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
-import { resetRequestPath } from "../src/paths.js";
+import { resetRequestPath, worktreePath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import {
   FAST_POLL_MS,
@@ -211,6 +211,53 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     // Both enabled roles got their startup tick.
     for (const role of ["clean", "dry"])
       assert.ok(loadLoopState(repo, role).ticks >= 1, `${role} should have ticked`);
+  } finally {
+    restore();
+    controller.abort();
+  }
+});
+
+test("runOrchestrator starts one runner per loop id and an unclaimed extra instance stays idle", async () => {
+  const repo = await makeFastRepo("instances runner test", ["feature"]);
+  const config = loadConfig(repo);
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
+  saveConfig(repo, config);
+  // Two eligible plans: feature and feature-2 take one each (part 4/7's claims); feature-3 has
+  // no free entry and never ticks.
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### Alpha (planned 2026-01-01 by operator)",
+      "",
+      "Body.",
+      "",
+      "### Beta (planned 2026-01-01 by operator)",
+      "",
+      "Body.",
+      "",
+      "## Done",
+      "",
+    ].join("\n"),
+  );
+  const restore = fakePiIdle();
+  const controller = new AbortController();
+  try {
+    const done = runRepoOrchestrator(repo, { config, signal: controller.signal, pollMs: FAST_POLL_MS });
+    await waitFor(() => readOrchestratorInfo(repo)?.roles.includes("feature-3") === true, "all three runners registered");
+    assert.deepEqual([...readOrchestratorInfo(repo)!.roles].sort(), ["feature", "feature-2", "feature-3"]);
+    await waitFor(
+      () => loadLoopState(repo, "feature").ticks >= 1 && loadLoopState(repo, "feature-2").ticks >= 1,
+      "the two claimed instances tick",
+    );
+    assert.equal(loadLoopState(repo, "feature-3").ticks, 0, "the extra instance with no claim does not tick");
+    // Ticks lease pooled slots: no per-role worktree is created for the instance.
+    assert.equal(fs.existsSync(worktreePath(repo, "feature-2")), false, "no feature-2 role worktree");
+    controller.abort();
+    await done;
   } finally {
     restore();
     controller.abort();

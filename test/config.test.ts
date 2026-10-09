@@ -533,6 +533,15 @@ test("customLoopNames, isCustomRole, and knownRoleIds are the one source of trut
   assert.deepEqual(knownRoleIds(empty), allRoleIds());
 });
 
+test("knownRoleIds carries a multi-instance role's loop ids (part 5b/7)", () => {
+  const config = defaultConfig();
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
+  assert.equal(knownRoleIds(config).includes("feature-2"), true);
+  // One instance is the bare id alone: the loop id is known exactly while the count covers it.
+  config.roles.feature = { ...config.roles.feature, instances: 1 };
+  assert.equal(knownRoleIds(config).includes("feature-2"), false);
+});
+
 test("knownRoleIdsCached is the one home of the read-only fallback rule", () => {
   // No config: the built-in catalog, without touching loadConfigCached's cache contract.
   assert.deepEqual(knownRoleIdsCached(tmpdir()), allRoleIds());

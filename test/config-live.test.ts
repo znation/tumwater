@@ -279,3 +279,24 @@ test("a scoped round's filter skips runners for other roles, and still logs thei
   assert.equal(warnMessages(root).filter((m) => m.includes("role qa enabled")).length, 1,
     "the enabling is still logged");
 });
+
+test("raising an instance count appends the new loop's runner; lowering keeps it (part 5b/7)", () => {
+  const config = cloneConfig(defaultConfig());
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 1 };
+  const { root, runners, live } = liveReload(config);
+  live.poll();
+  assert.ok(!runners.some((r) => r.role === "feature-2"), "one instance means no -2 runner");
+
+  config.roles.feature = { ...config.roles.feature, instances: 2 };
+  writeConfig(root, config);
+  live.poll();
+  assert.ok(runners.some((r) => r.role === "feature-2"), "the new instance gains a runner");
+  assert.equal(warnMessages(root).filter((m) => m.includes("role feature-2 enabled")).length, 1);
+
+  // A lowered count keeps the runner (loopEnabled skips its future ticks) and warns once.
+  config.roles.feature = { ...config.roles.feature, instances: 1 };
+  writeConfig(root, config);
+  live.poll();
+  assert.ok(runners.some((r) => r.role === "feature-2"), "a lowered count keeps the runner");
+  assert.equal(warnMessages(root).filter((m) => m.includes("role feature-2 disabled")).length, 1);
+});

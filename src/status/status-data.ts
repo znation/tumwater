@@ -1,7 +1,8 @@
 import type { LoopState } from "../loop/loop-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openQuestions } from "../backlog/backlog.js";
-import { enabledRoleIds, isCustomRole } from "../config/config.js";
+import { isCustomRole } from "../config/config.js";
+import { loopIds } from "../roles/loop-ids.js";
 import {
   fallbackPair,
   modelFallbackView,
@@ -262,7 +263,8 @@ export interface StatusSnapshot {
  * and read the live clock, as always. */
 export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   const cfg = configForStatus(root);
-  const roles = enabledRoleIds(cfg);
+  // One row per loop id (part 5b/7): an instance role shows `feature` and `feature-2`.
+  const roles = loopIds(cfg);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);

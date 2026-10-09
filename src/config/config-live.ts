@@ -1,5 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import { changedConfigKeys, enabledRoleIds, loadConfigCached } from "./config.js";
+import { changedConfigKeys, loadConfigCached } from "./config.js";
+import { loopIds } from "../roles/loop-ids.js";
 import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
 import { logEvent, type HarnessEventInput } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
@@ -48,7 +49,7 @@ export function newLiveConfigReload(deps: {
   // transition warnings).
   let lastConfigError: string | null = null;
   let configMissing = false;
-  let prevEnabled = new Set(enabledRoleIds(deps.config));
+  let prevEnabled = new Set(loopIds(deps.config));
   let live = deps.config;
   // The previous successful reload's config, for the one-shot config_changed event. Seeded from
   // the startup config, so the first poll of an unchanged file logs nothing.
@@ -133,10 +134,12 @@ export function newLiveConfigReload(deps: {
           emit({ loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
           lastMaxConcurrent = newMaxConcurrent;
         }
-        const nowEnabled = enabledRoleIds(reloaded.config);
-        // Enabling a role mid-run starts it: create its runner (its persisted state survives).
-        // A scoped round skips every other role: the enabling is logged (the warn loop below),
-        // but its runner waits for the next unscoped round.
+        const nowEnabled = loopIds(reloaded.config);
+        // Enabling a role — or raising `roles.<id>.instances` — mid-run starts it: create the
+        // runner for each newly present loop id (its persisted state survives). A lowered
+        // instance count keeps its runner; `loopEnabled` skips its future ticks. A scoped round
+        // skips every other id: the enabling is logged (the warn loop below), but its runner
+        // waits for the next unscoped round.
         for (const role of nowEnabled) {
           if (deps.roleFilter !== undefined && role !== deps.roleFilter) continue;
           if (!deps.runners.some((r) => r.role === role))

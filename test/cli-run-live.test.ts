@@ -204,6 +204,19 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   });
 });
 
+test("run's banner lists one loop per instance, so the CLI roster matches the runners (part 5b/7)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run instances banner");
+  onlyCleanRole(repo, (cfg) => {
+    cfg.roles.feature = { ...(cfg.roles.feature ?? { enabled: true }), enabled: true, instances: 2 };
+  });
+  await withRunningFleet(repo, fakePiIdle(), async (s) => {
+    // Startup's `enabled` must be `loopIds`, not `enabledRoleIds`: the roster the banner names
+    // is the roster the orchestrator starts runners for.
+    assert.match(s.out(), /loops: [^\n]*feature, feature-2/);
+  });
+});
+
 // BUGS.md 2026-09-30: kill() is the cleanup every spawnCli test's finally relies on, including
 // after a failed assertion that never reached the test's own SIGTERM step. It used to SIGKILL
 // the supervisor alone, leaving the stdio-inherited orchestrator generation alive with the

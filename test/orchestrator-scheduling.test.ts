@@ -115,14 +115,11 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   assert.equal(reasonsLifted.get(runners[0]!), "startup");
 });
 
-/** A config whose feature role runs two instances: loop-ids.ts reads the count through a cast
- * until part 5/7 adds the schema field, so the test sets it the same way. */
+/** A config whose feature role runs two instances, set through the schema field part 5a/7
+ * added (`roles.<id>.instances`). */
 function twoFeatureInstances(): TumwaterConfig {
   const config = defaultConfig();
-  (config.roles as Record<string, { enabled?: boolean; instances?: number }>).feature = {
-    enabled: true,
-    instances: 2,
-  };
+  config.roles.feature = { enabled: true, instances: 2 };
   return config;
 }
 

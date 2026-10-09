@@ -255,6 +255,23 @@ test("tumwater help retire shows the command's usage stanza", () => {
   assert.match(topic ?? "", /--force/);
 });
 
+test("retire refuses an enabled work instance id, not just its bare base role (part 5b/7)", async () => {
+  const root = await initializedRepo();
+  const file = path.join(root, "tumwater.json");
+  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean; instances?: number }> };
+  cfg.roles.feature = { ...cfg.roles.feature, enabled: true, instances: 2 };
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
+
+  // `knownRoleIds` accepts `feature-2`, so retire must agree it is a live loop: the
+  // still-enabled rail trips and nothing is removed.
+  const status = await collectRetire(root, "feature-2");
+  assert.equal(status.enabledInConfig, true, "an enabled instance is not reported disabled");
+  await assert.rejects(
+    () => retireRole(root, "feature-2", {}),
+    /still enabled in tumwater\.json/,
+  );
+});
+
 test("retire refuses when tumwater.json cannot be read, even with --force", async () => {
   const { root } = await initializedWorktree();
   // An unreadable config means retire cannot resolve baseBranch (what "unlanded" counts

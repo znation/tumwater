@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
-import { enabledRoleIds } from "../config/config.js";
+import { loopIds } from "../roles/loop-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
@@ -118,7 +118,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const modelsPath = opts.modelsPath ?? piModelsPath();
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
   const breakerNow = opts.breakerNow ?? Date.now;
-  const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : enabledRoleIds(config);
+  // Parallel work instances (part 5b/7): the runner list is every loop id the config enables
+  // (`feature`, `feature-2`, …), so `instances` creates real runners. A `--once --role` filter
+  // targets exactly that loop id.
+  const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : loopIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
   // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
   // defaults they can fall back to. With a role filter this is unreachable — cmdRun validated

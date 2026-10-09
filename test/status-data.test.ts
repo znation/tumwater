@@ -73,6 +73,17 @@ test("snapshot carries the quiet-hours window when configured and nothing when n
   assert.equal(fromDefaults.inQuietHours, false);
 });
 
+test("snapshot lists one row per loop id for a multi-instance role (part 5b/7)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  const config = loadConfig(repo);
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
+  saveConfig(repo, config);
+  const ids = snapshot(repo).loops.map((l) => l.role);
+  assert.equal(ids.includes("feature"), true);
+  assert.equal(ids.includes("feature-2"), true);
+});
+
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");

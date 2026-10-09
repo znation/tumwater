@@ -421,51 +421,6 @@ pool, event-format, status and doctor tests.
 
 ---
 
-### Parallel work instances, part 5b/7: instance runners spawn at startup and on live reload, gated by claims (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7, 3/7, 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed)
-
-Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
-ahead").
-
-Context: the poll already assigns each runner in a `baseRoleOf` group a distinct claim and
-skips an idle extra instance when nothing is free (src/orchestrator/orchestrator-scheduling.ts),
-and `loopEnabled` (src/scheduling/scheduling.ts) already skips a runner whose configured count
-no longer covers it. The missing piece is the runners: `runOrchestrator` builds
-`enabled.map(...)` from `enabledRoleIds` (src/orchestrator/orchestrator.ts) and
-`newLiveConfigReload` diffs base-role ids (src/config/config-live.ts), so `instances` never
-creates a second loop.
-
-**Approach.**
-1. **Startup.** `runOrchestrator` builds its runner list from `loopIds(config)` (part 5a/7)
-   instead of `enabledRoleIds`; a `--once --role feature-2` filter therefore targets exactly
-   that loop id. Keep the empty-list refusal as-is.
-2. **Live reload.** `newLiveConfigReload` diffs `loopIds(live)` between polls: create a
-   `LoopRunner` for each newly present id (subject to the existing `roleFilter` guard), and
-   keep a lowered id's runner in the list — `loopEnabled` skips it, exactly as a disabled role
-   already is. Log one `warnEvent` per id enabled/disabled (the wording may keep naming the
-   role).
-3. **Known ids and snapshot.** `knownRoleIds` (src/config/config.ts) includes `loopIds(config)`
-   so the CLI and the GUI (which resolve through `knownRoleIdsCached`) accept `--role
-   feature-2`; `snapshot` (src/status/status-data.ts) lists loop ids so the dashboard has a row
-   per instance.
-4. **Landing invariant.** plans/merge-queue.md invariant 3 reads "one in-flight landing per
-   loop" — a `feature-2` may land while `feature` is landing; the poll already enforces it per
-   runner.
-
-**Files touched.** src/orchestrator/orchestrator.ts, src/config/config-live.ts,
-src/config/config.ts, src/status/status-data.ts, plans/merge-queue.md. Tests: orchestrator e2e
-and config-live cases.
-
-**Acceptance criteria.**
-- With `roles.feature.instances: 3` and two eligible plans, an orchestrator e2e run starts
-  `feature` and `feature-2` (each holding its own claim from part 4/7), never starts
-  `feature-3`, and creates no `feature-2` role worktree (ticks lease pooled slots).
-- Raising `instances` 1→2 mid-run adds a `feature-2` runner within one poll; lowering 2→1
-  stops `feature-2`'s future ticks and lets its in-flight landing finish.
-- `knownRoleIds` contains `feature-2` at instances 2 and not at 1; `tumwater status` shows one
-  row per loop id.
-- plans/merge-queue.md invariant 3 names loops, not roles.
-- `npm run test` green.
-
 ### Parallel work instances, part 5c/7: the plan charter's target scales with `feature.instances` (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7 and 2/7 landed)
 
 Design: plans/parallel-work-instances.md ("…keeping the plan loop ahead").
@@ -570,6 +525,59 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 5b/7: instance runners spawn at startup and on live reload, gated by claims (planned 2026-10-08 by plan; split from part 5/7; requires parts 5a/7, 3/7, 4/7, Robust conflict landing 2/2 and Worktree pool 4b/5 landed; done 2026-10-08 by feature)
+
+Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
+ahead").
+
+Context: the poll already assigns each runner in a `baseRoleOf` group a distinct claim and
+skips an idle extra instance when nothing is free (src/orchestrator/orchestrator-scheduling.ts),
+and `loopEnabled` (src/scheduling/scheduling.ts) already skips a runner whose configured count
+no longer covers it. The missing piece was the runners: `runOrchestrator` built
+`enabled.map(...)` from `enabledRoleIds` (src/orchestrator/orchestrator.ts) and
+`newLiveConfigReload` diffed base-role ids (src/config/config-live.ts), so `instances` never
+created a second loop.
+
+**Approach.**
+1. **Startup.** `runOrchestrator` builds its runner list from `loopIds(config)` (part 5a/7)
+   instead of `enabledRoleIds`; a `--once --role feature-2` filter therefore targets exactly
+   that loop id. Keep the empty-list refusal as-is.
+2. **Live reload.** `newLiveConfigReload` diffs `loopIds(live)` between polls: create a
+   `LoopRunner` for each newly present id (subject to the existing `roleFilter` guard), and
+   keep a lowered id's runner in the list — `loopEnabled` skips it, exactly as a disabled role
+   already is. Log one `warnEvent` per id enabled/disabled (the wording may keep naming the
+   role).
+3. **Known ids and snapshot.** `knownRoleIds` (src/config/config.ts) includes `loopIds(config)`
+   so the CLI and the GUI (which resolve through `knownRoleIdsCached`) accept `--role
+   feature-2`; `snapshot` (src/status/status-data.ts) lists loop ids so the dashboard has a row
+   per instance.
+4. **Landing invariant.** plans/merge-queue.md invariant 3 reads "one in-flight landing per
+   loop" — a `feature-2` may land while `feature` is landing; the poll already enforces it per
+   runner.
+
+**Files touched.** src/orchestrator/orchestrator.ts, src/config/config-live.ts,
+src/config/config.ts, src/status/status-data.ts, src/cli/cli-run.ts (the `--once --role`
+validator now accepts loop ids via `loopIds(config)` so `--role feature-2` is a valid target,
+and the banner/once-summary roster is `loopIds(config)` too, so the CLI's loop list matches the
+runners the orchestrator starts), src/operator/retire.ts (the still-enabled rail resolves
+through `loopEnabled`, so an enabled `feature-2` refuses exactly as its base role does; a bare
+`enabledRoleIds` check would read the live instance as disabled and bypass the rail), and
+plans/merge-queue.md. Tests: orchestrator e2e, config-live, retire and CLI-run cases.
+
+**Acceptance criteria.**
+- With `roles.feature.instances: 3` and two eligible plans, an orchestrator e2e run starts
+  `feature` and `feature-2` (each holding its own claim from part 4/7), never starts
+  `feature-3`, and creates no `feature-2` role worktree (ticks lease pooled slots).
+- Raising `instances` 1→2 mid-run adds a `feature-2` runner within one poll; lowering 2→1
+  stops `feature-2`'s future ticks and lets its in-flight landing finish.
+- `knownRoleIds` contains `feature-2` at instances 2 and not at 1; `tumwater status` shows one
+  row per loop id.
+- `tumwater run`'s `loops:` banner and once-summary roster list loop ids (`feature`,
+  `feature-2`), matching the runners; `retire --role feature-2` refuses while `feature` is
+  enabled with `instances: 2`.
+- plans/merge-queue.md invariant 3 names loops, not roles.
+- `npm run test` green.
 
 ### Parallel work instances, part 5a/7: the validated `roles.<id>.instances` config field and `loopIds` enumeration (planned 2026-10-08 by plan; split from part 5/7; requires part 4/7 landed; done 2026-10-08 by feature)
 

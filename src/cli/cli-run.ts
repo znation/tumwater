@@ -4,7 +4,7 @@
  * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were the
  * only implementations living in the dispatcher itself. */
 import { increment } from "../collections.js";
-import { enabledRoleIds } from "../config/config.js";
+import { loopIds } from "../roles/loop-ids.js";
 import { fail, say } from "./cli-output.js";
 import {
   durationLabel,
@@ -104,7 +104,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // who just queued that loop a prompt). Custom loops are valid targets: knownRoleIds
   // accepts them, and an enabled custom passes this check like any built-in. Daemon
   // `run --role` stays an error: scoping is a once-round concept.
-  const roleFilter = parseRoleFlag(args, enabledRoleIds(config));
+  const roleFilter = parseRoleFlag(args, loopIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
   // The refusal an operator hits by trying to start a second fleet in one repo: name the
   // running pid and the two ways to stop it, so the fix is in the message instead of a
@@ -151,8 +151,8 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // supervisor takes its fleet down with it (BUGS.md 2026-09-30). Everything below runs only in
   // the supervised generation: an unsupervised `run` became the supervisor above and returned.
   startParentDeathWatch(stop);
-  const enabled = enabledRoleIds(config);
-  // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
+  const enabled = loopIds(config);
+  // A scoped round's loop list is exactly the filter; otherwise every enabled loop runs.
   const roles = roleFilter !== null ? [roleFilter] : enabled;
   // A once round never self-redeploys: it runs one round on the build it booted and exits,
   // so the hand-off machinery (and its build stamp) stays daemon-only.

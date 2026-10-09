@@ -2,6 +2,7 @@ import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";
 import { allRoleIds } from "../roles/roles.js";
+import { loopIds } from "../roles/loop-ids.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -321,7 +322,17 @@ export function isCustomRole(config: TumwaterConfig, id: string): boolean {
 /** Every valid role id — the catalog plus the user-defined loops (the one answer for "which
  * ids exist", so consumers cannot drift from each other). */
 export function knownRoleIds(config: TumwaterConfig): string[] {
-  return [...allRoleIds(), ...customLoopNames(config)];
+  const ids = [...allRoleIds(), ...customLoopNames(config)];
+  const seen = new Set(ids);
+  // Parallel work instances (part 5b/7): an enabled role's instance loop ids (`feature-2`) are
+  // valid CLI and GUI targets even though they are not catalog roles. The bare ids are already
+  // present, so this only appends the extras; deduping keeps the catalog+customs order intact.
+  for (const id of loopIds(config))
+    if (!seen.has(id)) {
+      ids.push(id);
+      seen.add(id);
+    }
+  return ids;
 }
 
 /** Every valid role id a READ-ONLY surface accepts: the catalog plus the user-defined loops,

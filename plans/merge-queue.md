@@ -36,11 +36,13 @@ long-lived, and no change accumulates more than one commit ahead of main.
    bypass.
 2. **Linear history.** Landing stays rebase-onto-main then fast-forward (merge.ts). No merge
    commits, no remote is touched.
-3. **One in-flight landing per role.** A role with a queued or landing change is not eligible to
-   tick. This is what preserves today's review-feedback contract: `state.lastReview`'s rejection
-   reasons always reach the author's *next* prompt (loop.ts's `tickPrompt`), and a role can never
-   stack two commits on one another. The throughput win comes from *cross-role* parallelism —
-   role B authors while role A's change is under review — not from letting one role run ahead.
+3. **One in-flight landing per loop.** A loop with a queued or landing change is not eligible
+   to tick. This is what preserves today's review-feedback contract: `state.lastReview`'s
+   rejection reasons always reach the author's *next* prompt (loop.ts's `tickPrompt`), and a loop
+   can never stack two commits on one another. The throughput win comes from *cross-loop*
+   parallelism — loop B authors while loop A's change is under review — not from letting one loop
+   run ahead. Instance loops (`feature-2`) land independently of their base role: a `feature-2`
+   may land while `feature` is landing; the poll enforces the invariant per runner.
 4. **One commit ahead of main, always.** A queued change is exactly one commit; its sha is
    pinned by `refs/tumwater/landing/<role>` so resetting the role's branch cannot orphan it.
 5. **Landing costs belong to the author.** The reviewer run and any conflict-resolution run fold

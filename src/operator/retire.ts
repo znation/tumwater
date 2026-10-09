@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import { enabledRoleIds, loadConfigSafe } from "../config/config.js";
+import { loadConfigSafe } from "../config/config.js";
+import { loopEnabled } from "../roles/loop-ids.js";
 import {
   branchExists,
   currentBranch,
@@ -81,7 +82,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     landingRefPresent: landing !== null,
     aheadOfMain: ahead + pinnedUnlanded,
     dirty,
-    enabledInConfig: enabledRoleIds(config.config).includes(role),
+    enabledInConfig: loopEnabled(config.config, role),
     midTick: loadLoopState(root, role).running === true,
   };
 }
