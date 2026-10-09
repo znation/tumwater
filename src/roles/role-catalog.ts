@@ -121,8 +121,10 @@ within that budget, there is nothing to do.`,
         are feature instances (one waiting per instance, plus one for the next planner tick),
         end with ${NOTHING_TO_DO} — feature has work, and a waiting plan is refined by the
         feature run that picks it up, against the code as it stands then. Count only eligible
-        entries — those not blocked, refused, needs-review or needs-replan; with more than one
-        feature instance, prefer a plan independent of the waiting series.
+        entries — those not blocked, refused, needs-review or needs-replan. When it does not
+        stop, prefer a plan independent of the waiting series, so feature can run it alongside
+        the blocked ones; with more than one feature instance, an independent plan keeps every
+        runner fed.
    2. Choose ONE unplanned feature or improvement worth doing, guided by the initial prompt in the
       project brief (TUMWATER.md when it exists with the tumwater:prompt markers, else README.md)
       and by what already exists.

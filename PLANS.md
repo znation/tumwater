@@ -138,44 +138,6 @@ dry's charter already updates every call site of one repetition. clean's says "f
   commits per day fall (`git log --author-date-order --grep '^tumwater(clean)' --shortstat`).
   Record the numbers in plans/work-ratio.md.
 
-### Work ratio, part 3/4: the plan loop's "enough waiting" target counts only entries feature could take now (planned 2026-10-08 by operator)
-
-Design: plans/work-ratio.md ("Keep feature fed").
-
-Context. The plan charter (src/roles/role-catalog.ts, plan step 1) ends with nothing-to-do when
-`## Planned` "holds two or more plans without a Needs-review or Needs-replan note". Entries
-tagged `[blocked: requires …]` in the `<backlog-index>`, and Refused entries, count toward
-that.
-
-On 10-07, 9 entries were planned and 3 were eligible. plan returned `no_change` on 19 of 21
-ticks. A long sequential series therefore leaves feature with only its current part while plan
-idles.
-
-**Approach.**
-1. **Charter.**
-   - Reword the sentence to count only entries the backlog index shows with no hold mark: not
-     `[blocked: …]`, not Refused, and no Needs-review or Needs-replan note.
-   - Example: "when two or more `## Planned` entries are takeable now (no hold mark in the
-     backlog index and no Needs-review/Needs-replan note), end with NOTHING_TO_DO".
-   - When fewer are takeable, plan ONE new feature that does not depend on any planned entry, so
-     feature can run it alongside the blocked series.
-   - Parallel work instances 5c/7 later scales "two" with `feature.instances`. Whichever lands
-     second rebases onto the other's wording; the two do not conflict in intent.
-2. **Index.** `holdMark` (src/backlog/backlog-structure.ts) already tags every hold the
-   charter names (`[refused]`, `[needs review]`, `[needs replan]`, `[blocked: requires …]`), so
-   the charter can say "no bracketed hold mark" without restating each hold.
-
-**Files touched.**
-- src/roles/role-catalog.ts
-- tests pinning the plan charter and `renderBacklogIndexBlock`
-
-**Acceptance criteria.**
-- The plan charter's target counts only unheld entries, and says a new plan should be
-  independent of the blocked series.
-- With one eligible entry and four `[blocked: …]` entries, the rendered plan prompt contains the
-  new rule, and the backlog index marks all four as blocked (a test over the rendered blocks).
-- `npm run test` green.
-
 ### New-project bootstrap, part 1/2: `tumwater init` recognizes an empty project and opts it into bootstrap (planned 2026-10-08 by operator)
 
 Design: plans/work-ratio.md ("New-project bootstrap").
@@ -446,6 +408,48 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Work ratio, part 3/4: the plan loop's "enough waiting" target counts only entries feature could take now (planned 2026-10-08 by operator; done 2026-10-08 by feature)
+
+**As landed:** Parallel work instances 5c/7 had already reshaped the stop target to count only
+eligible entries and to prefer an independent series when `feature.instances` > 1. This tick
+made the independence guidance unconditional and added the rendered-block acceptance test.
+
+Design: plans/work-ratio.md ("Keep feature fed").
+
+Context. The plan charter (src/roles/role-catalog.ts, plan step 1) ends with nothing-to-do when
+`## Planned` "holds two or more plans without a Needs-review or Needs-replan note". Entries
+tagged `[blocked: requires …]` in the `<backlog-index>`, and Refused entries, count toward
+that.
+
+On 10-07, 9 entries were planned and 3 were eligible. plan returned `no_change` on 19 of 21
+ticks. A long sequential series therefore leaves feature with only its current part while plan
+idles.
+
+**Approach.**
+1. **Charter.**
+   - Reword the sentence to count only entries the backlog index shows with no hold mark: not
+     `[blocked: …]`, not Refused, and no Needs-review or Needs-replan note.
+   - Example: "when two or more `## Planned` entries are takeable now (no hold mark in the
+     backlog index and no Needs-review/Needs-replan note), end with NOTHING_TO_DO".
+   - When fewer are takeable, plan ONE new feature that does not depend on any planned entry, so
+     feature can run it alongside the blocked series.
+   - Parallel work instances 5c/7 later scales "two" with `feature.instances`. Whichever lands
+     second rebases onto the other's wording; the two do not conflict in intent.
+2. **Index.** `holdMark` (src/backlog/backlog-structure.ts) already tags every hold the
+   charter names (`[refused]`, `[needs review]`, `[needs replan]`, `[blocked: requires …]`), so
+   the charter can say "no bracketed hold mark" without restating each hold.
+
+**Files touched.**
+- src/roles/role-catalog.ts
+- tests pinning the plan charter and `renderBacklogIndexBlock`
+
+**Acceptance criteria.**
+- The plan charter's target counts only unheld entries, and says a new plan should be
+  independent of the blocked series.
+- With one eligible entry and four `[blocked: …]` entries, the rendered plan prompt contains the
+  new rule, and the backlog index marks all four as blocked (a test over the rendered blocks).
+- `npm run test` green.
 
 ### Work ratio, part 4/4: report commits by role and show work vs maintenance commits on the "Landed today" tile and `tumwater report` (planned 2026-10-08 by operator; done 2026-10-08 by feature)
 

@@ -125,6 +125,37 @@ test("a role tick prompt injects the rendered <backlog-index> block from the pri
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
 });
 
+// Work ratio 3/4: the plan loop counts only entries feature could take now, and the index
+// marks the held ones. One takeable entry beside four blocked ones leaves the plan loop below
+// its target, so the new independence rule tells it what to write instead.
+test("the plan prompt counts only takeable entries and marks the blocked ones in the index", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Base, part 1/2: a (planned 2026-10-01)",
+      "body",
+      "### Later, part 2/2: b (planned 2026-10-02; requires Base 1/2 landed)",
+      "body",
+      "### Later two, part 3/2: c (planned 2026-10-03; requires Base 1/2 landed)",
+      "body",
+      "### Later three, part 4/2: d (planned 2026-10-04; requires Base 1/2 landed)",
+      "body",
+      "### Later four, part 5/2: e (planned 2026-10-05; requires Base 1/2 landed)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  const result = promptFor(dir, "plan");
+  assert.ok(result);
+  assert.match(result.prompt, /prefer a plan independent of the waiting series, so feature can run it alongside/);
+  const blocked = result.prompt.match(/\[blocked: requires Base 1\/2\]/g) ?? [];
+  assert.equal(blocked.length, 4, "all four dependents are marked blocked");
+});
+
 // The role notebook (PLANS.md "Role notebook"): the tick reads the role's note file from disk.
 // A missing file omits the block; the standing write instruction rides either way. The
 // director's branch never reads the path, so its prompt carries neither.
