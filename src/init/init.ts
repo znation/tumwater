@@ -48,6 +48,51 @@ function ensureGitignore(root: string, dryRun = false): boolean {
   return true;
 }
 
+/** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): the plan count a
+ * fresh project's config is seeded with. */
+const BOOTSTRAP_PLANS = 5;
+
+/** Names `tumwater init` itself seeds at the repo root — a project holding nothing but these is
+ * "fresh" for bootstrap detection. A license (any `LICENSE*` spelling) counts too, so a repo
+ * with only a license and a README is still fresh. */
+const SCAFFOLDING_FILES = new Set([
+  ".gitignore",
+  "README.md",
+  "TUMWATER.md",
+  "PLANS.md",
+  "BUGS.md",
+  "QUESTIONS.md",
+  "PRINCIPLES.md",
+  "tumwater.json",
+]);
+
+/** True when `rel` (a repo-relative path git listed) is one of init's own root-level files, so
+ * it does not make the project established. A same-named file below the root is the project's
+ * own and counts as code. */
+function isScaffoldingPath(rel: string): boolean {
+  if (path.posix.dirname(rel) !== ".") return false;
+  const base = path.posix.basename(rel);
+  return SCAFFOLDING_FILES.has(base) || /^LICENSE(?:[.-].*)?$/i.test(base);
+}
+
+/** Whether `root` has a project of its own yet: not a git repo, a repo with no commits, or a
+ * repo whose tracked and untracked-non-ignored files are all init's scaffolding. Drives the
+ * bootstrap seed — a project created from nothing runs plan and feature before the maintenance
+ * loops (plans/work-ratio.md, part 2/2). */
+async function isFreshProject(root: string): Promise<boolean> {
+  if (!(await isGitRepo(root))) return true;
+  if (!(await hasCommits(root))) return true;
+  const listed = [
+    (await gitTry(root, "ls-files")) ?? "",
+    (await gitTry(root, "ls-files", "--others", "--exclude-standard")) ?? "",
+  ]
+    .join("\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  return listed.every(isScaffoldingPath);
+}
+
 interface InitResult {
   /** Files init created — or, on a dry run, would create. */
   created: string[];
@@ -68,6 +113,9 @@ interface InitResult {
   /** The template id the brief and backlog were seeded from — "blank" unless --template named
    * a catalog template (the default, which reproduces the pre-templates output exactly). */
   template: string;
+  /** The plan count the config's `bootstrap.untilPlansDone` was seeded with, when init found a
+   * fresh project and created tumwater.json; null otherwise. */
+  bootstrap: number | null;
 }
 
 /** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
@@ -199,6 +247,10 @@ export async function initProject(
     createdBranch = preferred;
   }
 
+  // Decided before any project file is written (init only seeds bootstrap on a fresh project):
+  // after the `git init` above so a freshly created repo reads as a repo with no commits.
+  const fresh = await isFreshProject(root);
+
   const created: string[] = [];
   const leftAlone: string[] = [];
   /** Record a template path this run either created (via `make`, under a real run only) or
@@ -245,9 +297,15 @@ export async function initProject(
   write("BUGS.md", BUGS_TEMPLATE);
   write("QUESTIONS.md", QUESTIONS_TEMPLATE);
   write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
+  let bootstrap: number | null = null;
   if (fs.existsSync(configPath(root))) leftAlone.push(CONFIG_BASENAME);
   else {
-    if (!dryRun) saveConfig(root, seedConfig(root));
+    const seed = seedConfig(root);
+    if (fresh) {
+      seed.bootstrap = { untilPlansDone: BOOTSTRAP_PLANS };
+      bootstrap = BOOTSTRAP_PLANS;
+    }
+    if (!dryRun) saveConfig(root, seed);
     created.push(CONFIG_BASENAME);
   }
   if (ensureGitignore(root, dryRun)) created.push(".gitignore");
@@ -276,5 +334,5 @@ export async function initProject(
       committed = true;
     }
   }
-  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, adopted, dryRun, template: tpl.id };
+  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, adopted, dryRun, template: tpl.id, bootstrap };
 }

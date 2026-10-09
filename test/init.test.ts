@@ -11,6 +11,7 @@ import {
   readInitialPrompt,
 } from "../src/brief.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
+import { validateConfig } from "../src/config/config-validation.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { assertClean, headSha, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
@@ -37,6 +38,57 @@ test("initProject works on a repo with no commits", async () => {
   const result = await initProject(dir, "Fresh start.");
   assert.ok(result.committed);
   assert.equal(sh(dir, "git", "log", "--oneline").split("\n").length, 1);
+});
+
+test("initProject seeds bootstrap on a fresh project", async () => {
+  // An empty directory (no git at all): the first project the bootstrap is for.
+  const dir = tmpdir();
+  const result = await initProject(dir, "Fresh project.");
+  assert.equal(result.bootstrap, 5);
+  assert.deepEqual(loadConfig(dir).bootstrap, { untilPlansDone: 5 });
+});
+
+test("initProject seeds bootstrap in a repo with no commits", async () => {
+  const dir = tmpdir();
+  sh(dir, "git", "init", "-b", "main");
+  const result = await initProject(dir, "Fresh start.");
+  assert.equal(result.bootstrap, 5);
+  assert.deepEqual(loadConfig(dir).bootstrap, { untilPlansDone: 5 });
+});
+
+test("initProject seeds bootstrap when a repo's only history is scaffolding", async () => {
+  // A repo that has commits but no code of its own is still a project created from nothing.
+  const repo = makeRepo();
+  fs.rmSync(path.join(repo, "seed.txt"));
+  fs.writeFileSync(path.join(repo, "README.md"), "# project\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "scaffolding only");
+  const result = await initProject(repo, "Fresh-ish.");
+  assert.equal(result.bootstrap, 5);
+  assert.deepEqual(loadConfig(repo).bootstrap, { untilPlansDone: 5 });
+});
+
+test("initProject seeds no bootstrap when the repo already carries code", async () => {
+  const repo = makeRepo();
+  fs.rmSync(path.join(repo, "seed.txt"));
+  fs.writeFileSync(path.join(repo, "package.json"), "{}\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "code");
+  const result = await initProject(repo, "Existing project.");
+  assert.equal(result.bootstrap, null);
+  assert.equal(loadConfig(repo).bootstrap, undefined);
+});
+
+test("config validation rejects a bootstrap plan count below 1", () => {
+  assert.throws(
+    () => validateConfig({ bootstrap: { untilPlansDone: 0 } }),
+    /bootstrap\.untilPlansDone must be an integer of at least 1/,
+  );
+  assert.throws(
+    () => validateConfig({ bootstrap: { untilPlansDone: 1.5 } }),
+    /bootstrap\.untilPlansDone must be an integer of at least 1/,
+  );
+  assert.doesNotThrow(() => validateConfig({ bootstrap: { untilPlansDone: 5 } }));
 });
 
 test("initProject leaves no half-written file when a seeded write dies mid-way", async () => {

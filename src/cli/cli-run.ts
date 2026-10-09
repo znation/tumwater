@@ -67,6 +67,11 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
     say(`initialized a new git repository on branch ${result.branch}`);
   }
   say(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}`);
+  if (result.bootstrap !== null) {
+    say(
+      `fresh project — maintenance loops wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,
+    );
+  }
   say("next: `tumwater run` in one terminal, `tumwater tui` in another");
 }
 

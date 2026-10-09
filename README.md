@@ -40,6 +40,10 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                             # prints the catalog
                             # add --file <path> to read the brief from a file
                             # add --adopt to adopt an existing repo as-is
+                            # a fresh/empty project is seeded with
+                            # "bootstrap": {"untilPlansDone": 5}, holding the maintenance
+                            # loops until 5 plans are done; remove "bootstrap" from
+                            # tumwater.json to end that early
 tumwater run                # start the loops (Ctrl+C to stop)
 tumwater run --gui          # ... and serve the browser dashboard at http://127.0.0.1:7180 from the same process
 tumwater run --for 2h       # run for a bounded window (capped at 90d), then drain and exit like Ctrl+C would

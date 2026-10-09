@@ -138,47 +138,6 @@ dry's charter already updates every call site of one repetition. clean's says "f
   commits per day fall (`git log --author-date-order --grep '^tumwater(clean)' --shortstat`).
   Record the numbers in plans/work-ratio.md.
 
-### New-project bootstrap, part 1/2: `tumwater init` recognizes an empty project and opts it into bootstrap (planned 2026-10-08 by operator)
-
-Design: plans/work-ratio.md ("New-project bootstrap").
-
-Context. `initProject` (src/init/init.ts) seeds tumwater.json from `seedConfig` with every role
-enabled. A project created from nothing therefore starts clean, dry, coverage and the rest
-tidying code that does not exist yet, alongside the first feature. The user wants such a project
-to run plan and feature first, until it is established.
-
-**Approach.**
-1. **Detect.**
-   - In `initProject`, before writing anything, decide `fresh`. The project is fresh when either
-     holds:
-     - there is no git repo, or `hasCommits` is false;
-     - `git ls-files` plus untracked, non-ignored files lists nothing outside the paths init
-       itself owns or that carry no code: README.md, TUMWATER.md, PLANS.md, BUGS.md,
-       QUESTIONS.md, PRINCIPLES.md, LICENSE*, .gitignore, tumwater.json.
-   - Detection is language-agnostic: it only asks "is there anything here besides scaffolding".
-2. **Config.**
-   - When fresh, the seeded config gets `"bootstrap": {"untilPlansDone": 5}`.
-   - Add the field to src/config/config-schema.ts and config-field-checks.ts:
-     `untilPlansDone` must be an integer ≥ 1.
-   - Absent means no bootstrap. Existing configs are unaffected.
-3. **Output.** init prints one line saying maintenance loops wait until 5 plans are done, and
-   that removing `bootstrap` from tumwater.json ends it early.
-
-**Files touched.**
-- src/init/init.ts
-- src/config/config-schema.ts, config-field-checks.ts
-- README.md (init section)
-- test/init.test.ts
-
-**Acceptance criteria.**
-- **Empty dir.** `tumwater init` in an empty directory writes `bootstrap.untilPlansDone: 5`.
-- **No commits.** The same holds in a repo with no commits.
-- **Existing code.** In a repo with a tracked `src/main.rs` (or any non-scaffolding file), init
-  writes no `bootstrap`.
-- **Validation.** `bootstrap: {"untilPlansDone": 0}` fails config validation with a field
-  error.
-- `npm run test` green.
-
 ### New-project bootstrap, part 2/2: while bootstrapping, only plan, feature, director and bugfix-with-open-bugs tick (planned 2026-10-08 by operator; requires part 1/2 landed)
 
 Design: plans/work-ratio.md ("New-project bootstrap").
@@ -408,6 +367,49 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### New-project bootstrap, part 1/2: `tumwater init` recognizes an empty project and opts it into bootstrap (planned 2026-10-08 by operator; done 2026-10-08 by feature)
+
+Design: plans/work-ratio.md ("New-project bootstrap").
+
+Context. `initProject` (src/init/init.ts) seeds tumwater.json from `seedConfig` with every role
+enabled. A project created from nothing therefore starts clean, dry, coverage and the rest
+tidying code that does not exist yet, alongside the first feature. The user wants such a project
+to run plan and feature first, until it is established.
+
+**Approach.**
+1. **Detect.**
+   - In `initProject`, after the `git init` step but before writing anything, decide `fresh`.
+     The project is fresh when either holds:
+     - there is no git repo, or `hasCommits` is false;
+     - `git ls-files` plus untracked, non-ignored files lists nothing outside the paths init
+       itself owns or that carry no code: README.md, TUMWATER.md, PLANS.md, BUGS.md,
+       QUESTIONS.md, PRINCIPLES.md, LICENSE*, .gitignore, tumwater.json.
+   - Detection is language-agnostic: it only asks "is there anything here besides scaffolding".
+2. **Config.**
+   - When fresh, the seeded config gets `"bootstrap": {"untilPlansDone": 5}`.
+   - Add the field to src/config/config-schema.ts and validate it in
+     src/config/config-validation.ts: `untilPlansDone` must be an integer ≥ 1. (The plan named
+     config-field-checks.ts; the section rules live in config-validation.ts.)
+   - Absent means no bootstrap. Existing configs are unaffected.
+3. **Output.** `tumwater init` (src/cli/cli-run.ts) prints one line saying maintenance loops
+   wait until 5 plans are done, and that removing `bootstrap` from tumwater.json ends it early.
+
+**Files touched.**
+- src/init/init.ts
+- src/cli/cli-run.ts
+- src/config/config-schema.ts, config-validation.ts
+- README.md (init section)
+- test/init.test.ts
+
+**Acceptance criteria.**
+- **Empty dir.** `tumwater init` in an empty directory writes `bootstrap.untilPlansDone: 5`.
+- **No commits.** The same holds in a repo with no commits.
+- **Existing code.** In a repo with a tracked source file (any non-scaffolding file), init
+  writes no `bootstrap`.
+- **Validation.** `bootstrap: {"untilPlansDone": 0}` fails config validation with a field
+  error.
+- `npm run test` green.
 
 ### Work ratio, part 3/4: the plan loop's "enough waiting" target counts only entries feature could take now (planned 2026-10-08 by operator; done 2026-10-08 by feature)
 

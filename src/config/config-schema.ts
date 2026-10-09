@@ -125,6 +125,14 @@ export interface BackoffConfig {
   maxSeconds: number;
 }
 
+/** New-project bootstrap: when `tumwater init` seeds a project from nothing it sets this so
+ * the bootstrap gate (plans/work-ratio.md, part 2/2) holds the maintenance loops until
+ * `untilPlansDone` plans have moved to PLANS.md's `## Done`. */
+interface BootstrapConfig {
+  /** How many plans must be Done before the maintenance loops are admitted; an integer ≥ 1. */
+  untilPlansDone?: number;
+}
+
 /** The project's declared verification command (plans/portability.md §6/7) — a property of
  * the target repo, not of the machine running tumwater, which is why it is a project key in
  * the shareable config rather than a host setting. */
@@ -309,6 +317,12 @@ export interface TumwaterConfig {
    * move past the running build and main is green, rebuild, drain, and restart onto the new code
    * (default true). Off, the dashboards still flag the build as stale but nothing restarts. */
   autoRestart: boolean;
+  /** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): set by `tumwater
+   * init` when it seeds a project from nothing, and read by the bootstrap gate (part 2/2) to
+   * hold the maintenance loops until this many plans have moved to PLANS.md's `## Done`.
+   * Absent means no bootstrap, so existing configs are unaffected. Removing it ends bootstrap
+   * early. */
+  bootstrap?: BootstrapConfig;
   /** Adversarial pre-merge review gate (see src/review/review.ts). */
   review: ReviewConfig;
   /** User-defined loops (plans/user-defined-loops.md): each entry is merged into `roles` at
@@ -358,12 +372,16 @@ export const TOP_LEVEL_KEYS = [
   "thrashMinutes",
   "idleBackoff",
   "autoRestart",
+  "bootstrap",
   "review",
   "customLoops",
   "roles",
 ];
 
 export const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
+
+/** The keys tumwater.json's `bootstrap` section may hold. */
+export const BOOTSTRAP_KEYS = ["untilPlansDone"];
 
 export const ROLE_ENTRY_KEYS = [
   "enabled",

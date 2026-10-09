@@ -1,5 +1,6 @@
 import {
   BACKOFF_KEYS,
+  BOOTSTRAP_KEYS,
   CHECK_KEYS,
   CUSTOM_LOOP_KEYS,
   CUSTOM_NAME_RE,
@@ -208,6 +209,15 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
 
   checkBoolean(r, "", "autoRestart");
+
+  // New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): an absent section
+  // means no bootstrap. `untilPlansDone` is a count of plans that must reach `## Done`, so it is
+  // an integer of at least 1 — 0 or a fraction can never be reached and would hold the
+  // maintenance loops forever.
+  checkObjectSection(r, "bootstrap", problems, (o) => {
+    checkKnownKeys(o, BOOTSTRAP_KEYS, "bootstrap", problems);
+    checkNumber(o, "bootstrap.", "untilPlansDone", POSITIVE_INTEGER);
+  });
 
   // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and
   // otherwise must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable
