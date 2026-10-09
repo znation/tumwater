@@ -87,11 +87,13 @@ test("a #name part filters the tests inside the selected files, as one escaped-l
   assert.equal(sel.error, undefined);
   assert.deepEqual(sel.names, ["loop.e2e.test.ts", "loop.test.ts"]);
   assert.equal(sel.namePattern, "hangs");
+  assert.deepEqual(sel.nameFilters, ["hangs"], "the raw typed name is kept for the announcement");
   // The name parts OR together and are regex-escaped, so node --test's matcher sees the
   // literal substring typed — the same no-regex rule the file part follows.
   const two = selectTestFiles(["loop#one", "tui#x.y"], dir);
   assert.equal(two.error, undefined);
   assert.equal(two.namePattern, "one|x\\.y");
+  assert.deepEqual(two.nameFilters, ["one", "x.y"], "raw names, not the escaped alternation");
   // A bare #name filter searches the whole suite — the unfiltered gating set, e2e excluded.
   const bare = selectTestFiles(["#only"], dir);
   assert.equal(bare.error, undefined);
@@ -117,6 +119,11 @@ test("noNameMatchReason reads the run's TAP side-channel: all-file ok lines mean
   // node --test names a file whose tests all miss the pattern by the file itself; matched
   // tests and their parent describes carry their own names.
   assert.match(noNameMatchReason(tap("ok 1 - loop.test.js\nok 2 - tui.test.js\n")) ?? "", /no test name matches/);
+  // The typed name parts are echoed so a multi-name run need not reread its command line.
+  assert.match(
+    noNameMatchReason(tap("ok 1 - loop.test.js\n"), ["resume", "wake"]) ?? "",
+    /no test name matches "resume" or "wake"/,
+  );
   assert.equal(noNameMatchReason(tap("ok 1 - resume hangs\nok 2 - loop.test.js\n")), null);
   assert.equal(noNameMatchReason(tap("ok 1 - resume # SKIP later\nok 2 - tui.test.js\n")), null, "a directive suffix is not the name");
   assert.equal(noNameMatchReason(tap("not ok 1 - a failed test\nok 2 - loop.test.js\n")), null, "a failed match still matched");
@@ -367,7 +374,7 @@ test("the spawned runner runs only the tests a #name filter matches, and fails a
   // a green suite that verified nothing.
   const miss = runRunner(["json-object#nosuchname"]);
   assert.equal(miss.status, 1);
-  assert.match(miss.stderr ?? "", /^tumwater: no test name matches the "#name" filter/m);
+  assert.match(miss.stderr ?? "", /^tumwater: no test name matches "nosuchname"/m);
   // The pattern and the syntax error surface like the file filters' do.
   const bare = runRunner(["json-object#"]);
   assert.equal(bare.status, 1);

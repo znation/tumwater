@@ -72,6 +72,11 @@ interface TestFileSelection {
   /** The `#name` parts of the filters, escaped and ORed into one node --test
    * --test-name-pattern (regex) value; undefined when no filter carried one. */
   namePattern?: string;
+  /** The `#name` parts exactly as the developer typed them, in filter order — what main()'s
+   * announcement and noNameMatchReason echo back, rather than the escaped regex above, so a
+   * multi-name run reads as the names typed instead of an `a|b` alternation. Undefined when
+   * no filter carried a name part. */
+  nameFilters?: string[];
 }
 
 /** One filter as typed: `file` selects test files by name substring; the optional part after a
@@ -163,7 +168,9 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
   return {
     names: picked.map((n) => n.name),
     files: picked.map((n) => n.file),
-    ...(nameParts.length === 0 ? {} : { namePattern: nameParts.map(escapeNamePattern).join("|") }),
+    ...(nameParts.length === 0
+      ? {}
+      : { namePattern: nameParts.map(escapeNamePattern).join("|"), nameFilters: nameParts }),
   };
 }
 
@@ -296,9 +303,11 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
  * test file, nothing inside any file ran — the filter passed an empty suite, which must fail
  * loudly (a silent green run would read as verified work that never executed). Returns the
  * failure reason, or null when something matched — or when no TAP was written (a crashed run's
- * exit code already reports that; this guard only speaks for a green-but-empty run).
+ * exit code already reports that; this guard only speaks for a green-but-empty run). The
+ * `nameFilters` the caller passes (the developer's typed name parts, empty when unknown) are
+ * named in the reason, so a multi-name run is not left to reread its command line.
  * Exported for test/test-runner.test.ts to pin without spawning node --test. */
-export function noNameMatchReason(tapPath: string): string | null {
+export function noNameMatchReason(tapPath: string, nameFilters: readonly string[] = []): string | null {
   let raw: string;
   try {
     raw = fs.readFileSync(tapPath, "utf8");
@@ -309,7 +318,14 @@ export function noNameMatchReason(tapPath: string): string | null {
     .map((m) => (m[1] ?? "").replace(/ # .*$/, "")) // a trailing directive (# SKIP, # TODO) is not the name
     .filter((n) => n !== "");
   if (ran.length === 0 || ran.some((n) => !n.endsWith(".test.js"))) return null;
-  return 'no test name matches the "#name" filter — the selected file(s) ran empty; check the spelling after "#"';
+  // Name the filters the developer typed, not just the `#` syntax: the file-filter no-match
+  // error already echoes its input, and a multi-name run is otherwise left to reread its own
+  // command line. An empty list (a caller with no names) keeps the generic wording.
+  const which =
+    nameFilters.length > 0
+      ? nameFilters.map((n) => JSON.stringify(n)).join(" or ")
+      : 'the "#name" filter';
+  return `no test name matches ${which} — the selected file(s) ran empty; check the spelling after "#"`;
 }
 
 /** Split the runner's argv into its filters and its coverage mode: `--coverage` selects the
@@ -372,9 +388,10 @@ function main(): void {
   }
   // One line of what is about to run — only on the filtered path; the unfiltered suite keeps
   // byte-identical output for the harness's build gate.
+  const nameEcho = (sel.nameFilters ?? []).join(" or ");
   if (filters.length > 0)
     console.log(
-      `running ${sel.names.length} test file(s)${sel.namePattern ? ` (tests matching ${sel.namePattern})` : ""}: ${sel.names.join(", ")}`,
+      `running ${sel.names.length} test file(s)${nameEcho ? ` (tests matching ${nameEcho})` : ""}: ${sel.names.join(", ")}`,
     );
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-suite-"));
   const fresh = path.join(scratch, "durations.json");
@@ -403,7 +420,7 @@ function main(): void {
     // A pattern matching nothing exits 0 — node sees a green run of file wrappers — so the
     // guard, not the exit code, catches the typo'd filter. Only a green run needs guarding.
     if (sel.namePattern && status === 0) {
-      const miss = noNameMatchReason(tap);
+      const miss = noNameMatchReason(tap, sel.nameFilters ?? []);
       if (miss !== null) {
         process.stderr.write(`tumwater: ${miss}\n`);
         status = 1;
