@@ -369,6 +369,140 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
   }
 });
 
+// BUGS.md (fixed 2026-10-09): a handoff runs a FRESH session, so an already-applied conflict
+// hand-back must be re-explained — the fresh run meets the marker-bearing files in its kept
+// worktree with none of the interrupted session's context that carried the note.
+test("a cross-agent handoff re-sends an already-applied landing hand-back note", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort();
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
+    restore();
+
+    const sha = pinOffMain(
+      repo,
+      (d) => fs.writeFileSync(path.join(d, "partial.txt"), "handed back\n"),
+      "the handed-back work",
+    );
+    // The interrupted tick had already applied the hand-back: the markers are in the kept
+    // worktree as ordinary edits (applyWithConflicts reset the index).
+    fs.writeFileSync(
+      path.join(roleWt(repo, "improve"), "partial.txt"),
+      "<<<<<<< HEAD\npartial\n=======\nhanded back\n>>>>>>> abc\n",
+    );
+    const dir = sessionDir(repo, "improve");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
+    recordSession(dir, {
+      agent: "claude",
+      id: "c",
+      kind: "author",
+      name: "n",
+      cwd: roleWt(repo, "improve"),
+      at: Date.now(),
+    });
+
+    restore = fakePi(
+      [
+        APPROVE_PI,
+        logPromptsTo(argsFile),
+        `printf '%s\n' '${assistantLine("done\nSUMMARY: resolve the hand-back")}'`,
+      ].join("\n"),
+    );
+    const resumed = makeLoopRunner(repo, "improve");
+    resumed.state.resumePending = true;
+    resumed.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: true };
+    assert.equal((await resumed.tick()).result, "queued");
+    const run = readPromptRuns(argsFile).join("\n");
+    assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the hand-back");
+    assert.match(run, /could not be landed/, "the note names the landing hand-back");
+    assert.match(run, /partial\.txt/, "the note names the marker-bearing file");
+  } finally {
+    restore();
+  }
+});
+
+// The revision-with-conflicts variant: the interrupted tick applied a revision hand-back, so a
+// fresh handoff must carry BOTH the revision note and the conflict-handback note.
+test("a cross-agent handoff over an applied revision conflict carries both notes", async () => {
+  const repo = await initializedRepo();
+  const argsFile = path.join(tmpdir(), "argv.log");
+  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort();
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
+    restore();
+
+    const sha = pinOffMain(
+      repo,
+      (d) => fs.writeFileSync(path.join(d, "partial.txt"), "rejected\n"),
+      "the rejected work",
+    );
+    fs.writeFileSync(
+      path.join(roleWt(repo, "improve"), "partial.txt"),
+      "<<<<<<< HEAD\npartial\n=======\nrejected\n>>>>>>> abc\n",
+    );
+    const dir = sessionDir(repo, "improve");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
+    recordSession(dir, {
+      agent: "claude",
+      id: "c",
+      kind: "author",
+      name: "n",
+      cwd: roleWt(repo, "improve"),
+      at: Date.now(),
+    });
+
+    restore = fakePi(
+      [
+        APPROVE_PI,
+        logPromptsTo(argsFile),
+        `printf '%s\n' '${assistantLine("done\nSUMMARY: resolve the revision conflict")}'`,
+      ].join("\n"),
+    );
+    const resumed = makeLoopRunner(repo, "improve");
+    resumed.state.resumePending = true;
+    resumed.state.revision = { sha, round: 1, at: Date.now() };
+    resumed.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
+    resumed.state.conflictHandback = {
+      sha,
+      at: Date.now(),
+      reason: "revision",
+      round: 1,
+      applied: true,
+    };
+    assert.equal((await resumed.tick()).result, "queued");
+    const run = readPromptRuns(argsFile).join("\n");
+    assert.match(run, /is revision 1 of \d+/, "the fresh handoff is told it is revising");
+    assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the markers too");
+    assert.match(run, /no longer applies cleanly/, "the note names the revision hand-back");
+    assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
+  } finally {
+    restore();
+  }
+});
+
 // BUGS.md 2026-09-12 (fixed 2026-09-13): a hung tool call used to land as a timeout error
 // whose next-tick reset discarded the run's work. The kill must now preserve session + edits,
 // resume them promptly, and name the real cause in the bridge so the session does not re-run

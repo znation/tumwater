@@ -5,29 +5,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A handoff over an already-applied conflict hand-back never re-sends the hand-back note, so the fresh session meets the conflict markers in its worktree with no explanation (found by operator session 2026-10-09 while writing the Interactions notes for Agent backends 3/7–7/7, from src/loop/loop-tick.ts at 9b45a049)
+## Fixed
+
+### A handoff over an already-applied conflict hand-back never re-sends the hand-back note, so the fresh session meets the conflict markers in its worktree with no explanation (found by operator session 2026-10-09 while writing the Interactions notes for Agent backends 3/7–7/7, from src/loop/loop-tick.ts at 9b45a049; fixed 2026-10-09 by bugfix loop)
 
 - **Symptom:** a `handoff` tick (src/tick/tick-resume.ts `planTickStart`) runs a *fresh* session over the interrupted tick's unreset worktree. When that tick had already applied a conflict hand-back, the fresh session's prompt carries the handoff bridge but no `buildConflictHandbackNote`. The worktree holds `<<<<<<<` markers the model was never told about. The same applies when it had applied a revision with conflicts (loop-tick.ts's revision block, `reason: "revision"`). The model may resolve the markers blind, commit them, or treat them as corruption. The revision note is re-sent on a handoff (the `if (handoff)` branch added by Agent backends 2/7); the hand-back note is not.
-- **Reproduce:** offline, in test/loop-interrupted.test.ts beside "a cross-agent handoff does not re-apply a pending conflict hand-back":
-  - set `state.conflictHandback = { …, applied: true }` with markers in the worktree;
-  - set `resumePending: true`;
-  - make the session ledger's newest line a `gate` run (the landing resolver, `runLandingPi` in src/loop/loop-pi.ts, writes `kind: "gate"` into the role's own session dir) or another agent's author run;
-  - run one tick and assert that the authoring prompt contains the hand-back note. Today it does not.
 - **Cause:**
   - `buildConflictHandbackNote` is appended only at the moment a hand-back is applied: loop-tick.ts's hand-back block, gated on `!applied && !resuming && !handoff`, and the revision-conflict branch.
   - A resume does not need it re-sent, because its continued session already holds the note.
   - A handoff is a fresh session and does need it, but nothing re-sends it.
-- **Reachability:**
-  - **Rare today.** With pi as the only agent, a handoff happens only when the newest ledger line is not this agent's author run, i.e. an interruption after the hand-back was applied and before the author run wrote its ledger line, with the resolver's `gate` line newest.
-  - **Routine after Agent backends 3/7 and 4/7.** A claude `resumeMissing` and any change of a seam's agent (config edit, budget fallback) are handoffs.
-- **Expected / fix:** in loop-tick.ts, when `handoff` is true and `state.conflictHandback?.applied`, append `buildConflictHandbackNote(hb.reason, conflicted, intent)`.
-  - Take the conflicted paths from the worktree's current unmerged or marker-bearing files.
-  - Take `intent` from `handbackIntent(wt, mainBranch, hb.sha, …)`, as the apply path does.
-  - Add it next to the revision note's `if (handoff)` branch so the two fresh-session notes sit together.
-  - Pin it with the test above, plus the revision-with-conflicts variant (both notes present).
-- **Check in the same fix:** a hand-back queued but *not* applied (`applied: false`) when the tick was interrupted is skipped on both resume and handoff. tick-apply.ts then clears `conflictHandback` when that tick ends `changed`, so the conflicted lineage may never be re-applied. Confirm whether that loses work, and fix it or note why not.
+- **Fix:** loop-tick.ts appends the note on a handoff when `handoff && s.conflictHandback?.applied`, after the revision block so the two fresh-session notes sit together. The conflicted set comes from `markerBearingFiles(wt)` (a new local helper: `changedFiles` filtered through `hasConflictMarkers`), because the apply path's `applyWithConflicts` reset the index, leaving the marker-bearing files as ordinary working-tree edits that `conflictedFiles` (diff-filter=U) no longer sees. `intent` comes from `handbackIntent(wt, ctx.mainBranch, hb.sha, conflicted)`, exactly as the apply path builds it. It covers both reasons (a landing hand-back with no revision, and a revision hand-back where the revision block already added its own note).
+- **Tests:** test/loop-interrupted.test.ts's `a cross-agent handoff re-sends an already-applied landing hand-back note` and `a cross-agent handoff over an applied revision conflict carries both notes` seed markers in the kept worktree, an `applied: true` `conflictHandback`, and a newer other-agent ledger line, then assert the authoring prompt carries `<conflict-handback>` with the marker file (and that the revision variant also carries the revision note). Both fail before the fix (no note) and pass after.
+- **Check in the same fix (applied: false):** left unchanged. A handoff only skips the apply block; it does not clear the record, and the existing `a cross-agent handoff does not re-apply a pending conflict hand-back` test pins that the record and its landing ref survive the tick. Re-applying a never-applied hand-back onto a handoff's already-dirty worktree is the collision the resume/handoff guard exists to prevent, and telling "interrupted before the apply" from "resume kept the applied edits" needs worktree-state signals this fix does not touch, so that path is not changed here and is not claimed closed.
 
-## Fixed
+**Validation gap:** none (closest fit) — the existing suite had no handoff-over-hand-back case, but the fake pi plus a seeded session ledger reproduced it deterministically on the first run, so no seam, shim, or observation was missing; `none` is the closest tag, said plainly.
 
 ### A re-review that opens its numbered reasons with a prior-objection resolution statement is surfaced as a rejection against that resolution: the harness reads `reasons[0]` verbatim, so the author is told to fix an objection the reviewer just declared resolved and the digest labels the rejection (and its loss cause) with the resolution (found by telemetry loop 2026-10-09 from the failure digest's rejection cluster `clean · 10-09 → 10-09 — Prior objections 1–10 are all resolved — the ten cited lines are now ≤100 bytes, so none is an outstanding rejection on …`, the window's #1 loss cause's role at `1.2 h · $0.20 — 5 ticks: review-rejected authoring on clean`; correlated with the revision re-review prompt added by merged commit b85652c5, whose word `Check each of the prior review's numbered objections FIRST` invites the reviewer to enumerate them; fixed 2026-10-09 by bugfix loop)
 

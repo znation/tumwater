@@ -37,7 +37,8 @@ import { errorMessage } from "../text/text.js";
 import { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "./revision.js";
-import { mainCommitsTouching } from "../landing/landing-git.js";
+import { hasConflictMarkers, mainCommitsTouching } from "../landing/landing-git.js";
+import { changedFiles } from "../git/git-diff.js";
 import { mergeToMain } from "../landing/landing-merge.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
@@ -108,6 +109,16 @@ async function handbackIntent(
   const since = await changeBaseRev(wt, mainBranch, sha);
   const { commits, omitted } = await mainCommitsTouching(wt, since, mainBranch, conflicted);
   return { change, main: commits, ...(omitted > 0 ? { mainOmitted: omitted } : {}) };
+}
+
+/** The repo-relative paths in `wt` that currently carry conflict markers. The apply path knows
+ * its conflicted set because applyWithConflicts reads the unmerged index; a handoff resumes that
+ * already-applied worktree, where the mixed reset dropped the unmerged index entries and the
+ * marker-bearing files remain as ordinary working-tree edits. Reads the same marker definition
+ * (hasConflictMarkers) the stage check and review gate use, over the worktree's changed files. */
+async function markerBearingFiles(wt: string): Promise<string[]> {
+  const files = await changedFiles(wt);
+  return files.filter((f) => hasConflictMarkers(wt, [f]));
 }
 
 /** Run one full tick of a role loop: resolve the config (including the model-fallback probe),
@@ -498,6 +509,19 @@ async function tickWithWorktreePhase(
         prompt += `\n\nThe rejected diff no longer applies to current main.`;
       }
     }
+  }
+  // A handoff runs a FRESH session over the interrupted tick's kept worktree. When that tick had
+  // already applied a conflict hand-back, the marker-bearing files are still there but the fresh
+  // run has none of the interrupted session's context explaining them, so re-send the hand-back
+  // note (a resume keeps its session context and must not see the note twice). The revision
+  // block above covers a revision hand-back's own note; this covers every hand-back reason,
+  // including a landing hand-back with no revision. Unlike the apply path there is no index to
+  // read, so the conflicted set comes from the worktree's current marker-bearing files.
+  if (handoff && s.conflictHandback?.applied) {
+    const hb = s.conflictHandback;
+    const conflicted = await markerBearingFiles(wt);
+    const intent = await handbackIntent(wt, ctx.mainBranch, hb.sha, conflicted);
+    prompt += `\n\n${buildConflictHandbackNote(hb.reason, conflicted, intent)}`;
   }
   const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.ticks}`, resuming, cfg);
   // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
