@@ -64,7 +64,8 @@ with it the director prompt, to your whole network, so pair it with `--token <se
 Settings live in `tumwater.json`: enabled roles, model (either one selector or a map of tiers
 `small`/`default`/`strong` — omitted tiers inherit `default`; per-tier `fallback` overrides may name a
 model or `"pause"`, and a role's `model` may name a tier; see [plans/model-tiers.md](plans/model-tiers.md)),
-intervals, the daily spend cap
+intervals, per-role `instances` (`feature` and `bugfix` may each run 1–8 parallel runners, every one
+with its own branch and state; default 1), the daily spend cap
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
 cap starts no new ticks until the next local day or a live edit), a nightly `quietHours` window
 (e.g. `"23:00-07:00"` local time) during
