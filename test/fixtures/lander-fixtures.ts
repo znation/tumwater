@@ -91,15 +91,21 @@ export function request(sha: string, overrides: Partial<LandRequest> = {}): Land
   return { role: ROLE, sha, tick: 7, summary: "the work", ...overrides };
 }
 
-/** Land one pinned change the way the pipeline does — its vet, then (approved) a one-change
- * merge — over one LanderContext's wiring, returning the outcome the pipeline writes back. */
-export async function vetAndLand(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
-  const w: BatchRoleWiring = {
+/** The BatchRoleWiring a test context implies: its own state and pi/fold halves, so the
+ * hand-assembled literal cannot drift from the context it stubs. */
+export function batchWiring(ctx: LanderContext): BatchRoleWiring {
+  return {
     state: ctx.state,
     foldUsage: ctx.foldUsage,
     runPi: ctx.runPi,
     runGatePi: (opts) => ctx.runGatePi(opts),
   };
+}
+
+/** Land one pinned change the way the pipeline does — its vet, then (approved) a one-change
+ * merge — over one LanderContext's wiring, returning the outcome the pipeline writes back. */
+export async function vetAndLand(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
+  const w = batchWiring(ctx);
   const v = await vetRequest(ctx, req, w);
   if (v.kind === "result") return v.result;
   const [result] = await landVetted(ctx, [{ ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) }], () => w);

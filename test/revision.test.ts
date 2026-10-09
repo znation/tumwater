@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "../src/loop/revision.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
-import { vetRequest, type BatchRoleWiring } from "../src/landing/landing-batch.js";
+import { vetRequest } from "../src/landing/landing-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, landingRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -23,7 +23,7 @@ import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { fakePi, piRunResult } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
+import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -164,12 +164,7 @@ test("a gate rejection points the rejected ref at the judged head and records ro
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
-    const w: BatchRoleWiring = {
-      state,
-      foldUsage: ctx.foldUsage,
-      runPi: ctx.runPi,
-      runGatePi: (opts) => ctx.runGatePi(opts),
-    };
+    const w = batchWiring(ctx);
     const verdict = await vetRequest(ctx, request(sha), w);
     assert.equal(verdict.kind, "result");
     assert.equal(state.revision?.round, 1, "a fresh rejection owes one revision");
@@ -186,12 +181,7 @@ test("a rejection of the last allowed revision exhausts it and deletes the rejec
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
-    const w: BatchRoleWiring = {
-      state,
-      foldUsage: ctx.foldUsage,
-      runPi: ctx.runPi,
-      runGatePi: (opts) => ctx.runGatePi(opts),
-    };
+    const w = batchWiring(ctx);
     // The rejected ref exists from the earlier rounds; a rejection at the limit clears it.
     await setRef(root, rejectedRefName(ROLE), sha);
     const verdict = await vetRequest(ctx, request(sha, { revisionRound: REVISION_LIMIT }), w);
@@ -407,12 +397,7 @@ test("the director never gets a revision: a rejection leaves no revision state",
     await setRef(root, landingRefName(DIRECTOR_ROLE), sha);
     const state = freshLoopState(DIRECTOR_ROLE);
     const { ctx } = makeCtx(root, state);
-    const w: BatchRoleWiring = {
-      state,
-      foldUsage: ctx.foldUsage,
-      runPi: ctx.runPi,
-      runGatePi: (opts) => ctx.runGatePi(opts),
-    };
+    const w = batchWiring(ctx);
     const verdict = await vetRequest(ctx, request(sha, { role: DIRECTOR_ROLE }), w);
     assert.equal(verdict.kind, "result");
     assert.equal(state.revision, undefined, "the director never revises");
