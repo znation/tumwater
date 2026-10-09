@@ -3,6 +3,8 @@
  * (pollBudgetGate reading pi's models.json through fleetModelsFree) resolves against.
  * budget-gates.test.ts and gate-polls.test.ts each staged this file inline before; owning
  * it here keeps the two tests' pricing fixtures from drifting. */
+import fs from "node:fs";
+import path from "node:path";
 
 /** The one priced model both fixtures name — the exact cost the free/paid split turns on. */
 const PAID_MODEL = { id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } };
@@ -24,3 +26,13 @@ export const MODELS_JSON = JSON.stringify({
 export const PAID_ONLY_JSON = JSON.stringify({
   providers: { paid: { models: [PAID_MODEL] } },
 });
+
+/** Stage `content` as `<dir>/models.json` (creating `dir`) and return the file's path — the
+ * write step budget-gates.test.ts, gate-polls.test.ts, and gate-event-best-effort.test.ts
+ * each hand-rolled before. */
+export function writeModelsFile(dir: string, content: string): string {
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(file, content);
+  return file;
+}

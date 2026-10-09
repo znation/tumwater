@@ -4,7 +4,6 @@
  * poll's pause gate sees the marker change and logs a generic role_paused on top of the
  * breaker's own role_streak_paused — one pause, two events, the second mislabeled. */
 
-import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -23,7 +22,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
-import { MODELS_JSON } from "./fixtures/models-fixtures.js";
+import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 
@@ -93,9 +92,7 @@ function fakeRunner(
 
 test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the primary", () => {
   const root = tmpdir("gate-polls-budget-");
-  fs.mkdirSync(root, { recursive: true });
-  const modelsPath = path.join(root, "models.json");
-  fs.writeFileSync(modelsPath, MODELS_JSON);
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const handbacks: string[] = [];
   const featureState = freshLoopState("feature");
@@ -167,9 +164,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
 // and a healthy role still on the primary is not gated by the fallback hold.
 test("pollFleetGates: a fallback episode's failures key the hold on the fallback provider", () => {
   const root = tmpdir("gate-polls-fallback-hold-");
-  fs.mkdirSync(root, { recursive: true });
-  const modelsPath = path.join(root, "models.json");
-  fs.writeFileSync(modelsPath, MODELS_JSON);
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
   const config = defaultConfig();
   config.provider = "paid";
   config.model = "gpt-x";
@@ -263,9 +258,7 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
 // only the engaged pair's, so a per-tier demotion cannot hide from the operator.
 test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, and every demotion is published", () => {
   const root = tmpdir("gate-polls-tier-budget-");
-  fs.mkdirSync(root, { recursive: true });
-  const modelsPath = path.join(root, "models.json");
-  fs.writeFileSync(modelsPath, MODELS_JSON);
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const config = defaultConfig();
   config.provider = "paid";

@@ -14,7 +14,7 @@ import path from "node:path";
 
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { MODELS_JSON } from "./fixtures/models-fixtures.js";
+import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { recordDailyCost } from "../src/budget/budget.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -158,9 +158,7 @@ test("pollFailureSpread: a wide-shallow storm warning survives an unwritable eve
 
 test("pollFleetGates: a budget reopen hands fallback ticks back even when the feed is unwritable", () => {
   const root = tmpdir("gate-best-effort-reopen-");
-  fs.mkdirSync(root, { recursive: true });
-  const modelsPath = path.join(root, "models.json");
-  fs.writeFileSync(modelsPath, MODELS_JSON);
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const handbacks: string[] = [];
   const featureState: LoopState = freshLoopState("feature");

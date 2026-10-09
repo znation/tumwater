@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";import { BUDGET_WARNING_FRACTION, recordDailyCost } from "../src/budget/budget.js";
@@ -9,15 +7,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { MODELS_JSON, PAID_ONLY_JSON } from "./fixtures/models-fixtures.js";
-
-function writeModels(dir: string, content: string): string {
-  fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, "models.json");
-  fs.writeFileSync(file, content);
-  return file;
-}
-
+import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 /** A fleet at a paid top-level model, a free fallback configured, one role pinned to the
  * paid model, and a reviewer override — everything the fallback view must strip. */
 function configWith(capUsd: number): TumwaterConfig {
@@ -45,7 +35,7 @@ function poll(root: string, state: ReturnType<typeof newBudgetGateState>, cfg: T
 
 test("pollBudgetGate keeps the gate open under the cap and hands the live config straight through", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
 
@@ -62,7 +52,7 @@ test("pollBudgetGate keeps the gate open under the cap and hands the live config
 
 test("crossing the cap engages the fallback once: one event, the derived role view, no re-derives", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
   const over = [spent(10)]; // exactly at the cap (>=)
@@ -110,7 +100,7 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
 
 test("a tiered fallback with two distinct pairs carries the per-tier map on the event", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   // Part 7b/8: default runs its own pair and strong declares a DIFFERENT free one — the two
   // distinct pairs the badge and the feed list. Small borrows default's (its own tier
@@ -134,7 +124,7 @@ test("a tiered fallback with two distinct pairs carries the per-tier map on the 
 
 test("raising the cap resumes the gate: one budget_resumed event and the live config again", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
   poll(root, state, cfg, models, [spent(10)]); // engage the fallback first
@@ -149,7 +139,7 @@ test("raising the cap resumes the gate: one budget_resumed event and the live co
 
 test("resumed is true on exactly the reopening poll, with the fallback pair it left", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
 
@@ -174,7 +164,7 @@ test("resumed is true on exactly the reopening poll, with the fallback pair it l
   // paused → open is a resume too: ticks parked on the fallback view while the breaker had
   // the gate paused must be handed back exactly like fallback-held ones.
   const paidOnlyDir = tmpdir("budget-gates-paid-");
-  const paidOnly = writeModels(paidOnlyDir, PAID_ONLY_JSON);
+  const paidOnly = writeModelsFile(paidOnlyDir, PAID_ONLY_JSON);
   const state2 = newBudgetGateState(cfg);
   assert.equal(poll(root, state2, cfg, paidOnly, [spent(10)]).gate, "paused");
   const p5 = poll(root, state2, configWith(100), paidOnly, [spent(10)]);
@@ -188,7 +178,7 @@ test("resumed is true on exactly the reopening poll, with the fallback pair it l
 
 test("crossing 80% of the cap warns once while the gate is open, and re-arms after dropping below", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
   assert.equal(state.warned, false); // a fresh poll state starts unarmed
@@ -218,7 +208,7 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
 
 test("no budget warning at the cap itself, and none with the cap disabled", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
 
@@ -243,7 +233,7 @@ test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
 
 test("a fallback pi prices above zero cannot engage: the gate pauses and the event says why", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, PAID_ONLY_JSON);
+  const models = writeModelsFile(root, PAID_ONLY_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
 
@@ -260,7 +250,7 @@ test("a fallback pi prices above zero cannot engage: the gate pauses and the eve
 
 test("a demoted fallback keeps the gate paused and the role view: demotion never promotes to the paid model", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
   // The breaker already tripped: three consecutive failures on the engaged pair, a probe
@@ -295,7 +285,7 @@ test("a demoted fallback keeps the gate paused and the role view: demotion never
 
 test("a demoted strong-tier pair names itself as the pause cause when only strong declares a fallback", () => {
   const root = tmpdir("budget-gates-strong-pause-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   // Only the strong tier declares a fallback, so the legacy default pair (fallbackPair, the
   // map's `default` entry) is null while strong's price-only resolution still holds the pair.
@@ -333,7 +323,7 @@ test("a demoted strong-tier pair names itself as the pause cause when only stron
 // (nothing could land).
 test("review on and strong unresolvable pauses the gate; review off holds only its roles", () => {
   const root = tmpdir("budget-gates-tier-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   // Only the small tier declares a fallback: default borrows it, strong never borrows small
   // and pauses — the plan role is the strong-tier loop the acceptance names.
@@ -357,7 +347,7 @@ test("review on and strong unresolvable pauses the gate; review off holds only i
 
 test("a breaker-demoted pair re-resolves only the tiers using it", () => {
   const root = tmpdir("budget-gates-demoted-tier-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   cfg.fallback = { default: "free/qwen-free", strong: "free/llama-free" };
   cfg.fallbackModel = undefined;
@@ -393,7 +383,7 @@ test("a breaker-demoted pair re-resolves only the tiers using it", () => {
 
 test("the breaker map is keyed per resolved pair: tiers sharing a fallback share one entry", () => {
   const root = tmpdir("budget-gates-");
-  const models = writeModels(root, MODELS_JSON);
+  const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   // Per-tier fallbacks: small and default declare the same free pair (they share one
   // breaker), strong declares a priced one it must never use.
