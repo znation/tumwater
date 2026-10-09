@@ -25,6 +25,27 @@ import { sleep, waitFor } from "./helpers/wait.js";
 
 const stamp = (sha: string): BuildInfo => ({ sha, builtAt: 1, root: "/r" });
 
+/** A reload watch whose self-hosted gate is driven by hand: each `isSelfHosted` call parks a
+ * resolver in `deferred`, and `fired()` counts the reload triggers, so a test can hold a check
+ * in flight and settle it after a stop(). */
+function deferredReloadWatch() {
+  const deferred: Array<() => void> = []; // one resolver per isSelfHosted call: [gate, polls...]
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("a"),
+    readDisk: () => stamp("b"),
+    isSelfHostedImpl: () => new Promise<boolean>((resolve) => {
+      deferred.push(() => resolve(true));
+    }),
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  return { deferred, watch, fired: () => fired };
+}
+
 test("shouldReload is true only when both stamps exist and name different commits", () => {
   const a = stamp("a");
   const b = stamp("b");
@@ -409,20 +430,7 @@ test("createReloadWatch stays quiet while the on-disk stamp is missing", async (
 test("createReloadWatch never arms its interval when stopped during the startup gate", async () => {
   // start() awaits the gate, then checks stopped; a stop that lands inside the gate must leave
   // no timer behind — the returned object is dead the moment stop() was called.
-  const deferred: Array<() => void> = []; // one resolver per isSelfHosted call: [gate, polls...]
-  let fired = 0;
-  const watch = createReloadWatch({
-    root: "/r",
-    startupInfo: stamp("a"),
-    readDisk: () => stamp("b"),
-    isSelfHostedImpl: () => new Promise<boolean>((resolve) => {
-      deferred.push(() => resolve(true));
-    }),
-    intervalMs: 5,
-    onTrigger: () => {
-      fired++;
-    },
-  });
+  const { deferred, watch, fired } = deferredReloadWatch();
   try {
     const starting = watch.start();
     assert.equal(deferred.length, 1, "the gate is the first self-hosted call");
@@ -430,7 +438,7 @@ test("createReloadWatch never arms its interval when stopped during the startup 
     deferred[0]?.(); // let the gate settle onto a stopped watch
     await starting;
     await sleep(30);
-    assert.equal(fired, 0, "a watch stopped inside its gate never polls, never fires");
+    assert.equal(fired(), 0, "a watch stopped inside its gate never polls, never fires");
   } finally {
     watch.stop();
   }
@@ -439,20 +447,7 @@ test("createReloadWatch never arms its interval when stopped during the startup 
 test("createReloadWatch ignores an in-flight check that settles after stop", async () => {
   // stop() must win over a check that is already in flight: when the pending self-hosted
   // promise later resolves "yes", the stopped watch neither fires nor restarts its interval.
-  const deferred: Array<() => void> = []; // one resolver per isSelfHosted call: [gate, polls...]
-  let fired = 0;
-  const watch = createReloadWatch({
-    root: "/r",
-    startupInfo: stamp("a"),
-    readDisk: () => stamp("b"),
-    isSelfHostedImpl: () => new Promise<boolean>((resolve) => {
-      deferred.push(() => resolve(true));
-    }),
-    intervalMs: 5,
-    onTrigger: () => {
-      fired++;
-    },
-  });
+  const { deferred, watch, fired } = deferredReloadWatch();
   try {
     const starting = watch.start();
     deferred[0]?.(); // the gate passes; the interval arms
@@ -462,7 +457,7 @@ test("createReloadWatch ignores an in-flight check that settles after stop", asy
     watch.stop();
     deferred[1]?.(); // the in-flight check settles "yes" onto a stopped watch
     await sleep(30);
-    assert.equal(fired, 0, "a check that settles after stop never fires the reload");
+    assert.equal(fired(), 0, "a check that settles after stop never fires the reload");
   } finally {
     watch.stop();
   }
