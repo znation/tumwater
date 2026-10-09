@@ -105,7 +105,8 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
 
   // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
-  // and any note it left are the run's verdict — classify what it left behind (src/verdict/refusal.ts).
+  // and any note it left are the run's verdict — classify what it left behind
+  // (src/verdict/refusal.ts).
   if (pi.refused) {
     // A refusal contradicted by its own reply — a SUMMARY beside non-markdown work — is
     // surfaced, not obeyed: the work is finished output a discard would destroy, so the

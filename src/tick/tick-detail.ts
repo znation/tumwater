@@ -62,10 +62,11 @@ export function renderTickDetail(d: TickDetail): string {
   return [header, ...d.events.map(formatEvent)].join("\n");
 }
 
-/** `tumwater tick <role> [<n>] [--last] [--json]`: print one completed tick's full event trail. Read-only:
- * stdout only, no state file created — a tick the scan cannot find prints a not-found line and
- * exits 0 (history's empty-output convention: an absent record is an answer, not a failure),
- * and under --json it prints the JSON document `null` instead — the report --json precedent
+/** `tumwater tick <role> [<n>] [--last] [--json]`: print one completed tick's full event
+ * trail. Read-only: stdout only, no state file created — a tick the scan cannot find prints a
+ * not-found line and exits 0 (history's empty-output convention: an absent record is an
+ * answer, not a failure), and under --json it prints the JSON document `null` instead — the
+ * report --json precedent
  * that every exit-0 output is parseable, never prose. `tumwater tick <role> --last` resolves
  * the role's newest completed tick in the scanned window and prints its trail exactly as the
  * numbered form would — the summary header and event rendering are shared, only the number's

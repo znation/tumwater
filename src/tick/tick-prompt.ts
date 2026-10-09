@@ -125,7 +125,8 @@ export function assembleTickPrompt(
     const digest = base === "telemetry" ? telemetryDigest(root) : undefined;
     // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
-    // runtime state, and a missing or unreadable one degrades to no block (plans/observer-roles.md 2/2).
+    // runtime state, and a missing or unreadable one degrades to no block
+    // (plans/observer-roles.md 2/2).
     let coverage: string | undefined;
     if (base === "qa") {
       try {

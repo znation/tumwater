@@ -292,9 +292,9 @@ export function applyLandingOutcome(
     // A review rejection is a failure the streak must count (BUGS.md 2026-09-30): the
     // authoring tick ended `queued`, which no longer resets the streak (see applyTickOutcome),
     // so this landing outcome is the episode's accumulation point — the same field the warn,
-    // the breaker (src/gates/streak-gate.ts), and the error-storm observation (src/fleet/fleet-polls.ts)
-    // already read. No new machinery, no new constants: the warn bar and the breaker bar are
-    // ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
+    // the breaker (src/gates/streak-gate.ts), and the error-storm observation
+    // (src/fleet/fleet-polls.ts) already read. No new machinery, no new constants: the warn
+    // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
     s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
     const lastReasons = s.lastReview?.verdict === "reject" ? s.lastReview.reasons : undefined;
     s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;

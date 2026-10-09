@@ -27,7 +27,8 @@ interface FinalizeTickDeps {
   /** When this tick started (the runner stamps state.lastTickStartedAt at tick start);
    * captured once so the tick_end span measures the tick's own wall clock. */
   tickStartedAt: number;
-  /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the tick_end event. */
+  /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the tick_end
+   * event. */
   usage: TickUsage;
   /** The landing failure this tick's leftover recovery is retrying, if any (set by
    * finishRecoveryTick); undefined for a tick that ran no leftover recovery. */

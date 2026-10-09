@@ -7,7 +7,8 @@ import { nonNegativeNumber } from "../files/json-object.js";
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
  * commit trailer reads turns, the tick_end event reads costUsd, and the orchestrator's fleet-wide
- * hold reads lastRateLimit and lastBackendFailure (src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts).
+ * hold reads lastRateLimit and lastBackendFailure (src/fleet/fleet-hold.ts,
+ * src/fleet/fleet-polls.ts).
  *
  * fold() is the once-per-run choke point: every pi run of a tick — main attempt, transient
  * retry, conflict resolution, landing runs via foldLandingUsage — lands here exactly once, so
@@ -100,9 +101,10 @@ export class TickUsage {
     // here exactly once, so the fleet's spend for the local day is complete at each tick end.
     recordDailyCost(s, run.costUsd);
     this.turns += run.turns;
-    // The fleet-wide hold's rate-limit input (lastRateLimit above), from the same once-per-run choke
-    // point. Only a run that ENDED on the 429 counts: pi exits on the error, so "now" is when
-    // the provider refused — a run that merely logged one inside pi's own auto-retry and then
+    // The fleet-wide hold's rate-limit input (lastRateLimit above), from the same
+    // once-per-run choke point. Only a run that ENDED on the 429 counts: pi exits on the error,
+    // so "now" is when the provider refused — a run that merely logged one inside pi's own
+    // auto-retry and then
     // finished would stamp a 429 at its end, possibly hours late, and could trip a false storm.
     if (run.transientRateLimit && !run.ok)
       this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds };
