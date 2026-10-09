@@ -102,6 +102,7 @@ export function loopPhase(
   capPaused = false,
   quietHold?: string,
   diskHeld = false,
+  bootstrapHeld = false,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -162,6 +163,9 @@ export function loopPhase(
   // the budget pause (LOOP_RANK_RULES). In-flight ticks keep their live detail above, exactly
   // as under every autonomous gate.
   if (diskHeld) return "disk hold";
+  // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle loop is held until enough
+  // plans are Done. The literal label names the reason, like the gates above.
+  if (bootstrapHeld) return "held: bootstrap";
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
@@ -262,6 +266,9 @@ export function loopRowCells(
     // The disk floor's verdict (status/status-data.ts disk): an idle loop while the hold is on
     // reads `disk hold` — the fleet-wide gate, ranked with the budget pause.
     snap.disk?.held === true,
+    // The new-project bootstrap's verdict (status/status-data.ts bootstrapHeld): an idle loop
+    // it holds reads `held: bootstrap` — the fleet gate's own wording.
+    snap.bootstrapHeld.includes(s.role),
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -305,7 +312,7 @@ export const LOOP_RANK_RULES: ReadonlyArray<{
   { rank: 0, active: true },
   { rank: 1, prefixes: ["vetted", "awaiting slot"] },
   { rank: 2, phases: ["failing", "main red"] },
-  { rank: 3, phases: ["paused", "budget paused", "cap paused", "disk hold"] },
+  { rank: 3, phases: ["paused", "budget paused", "cap paused", "disk hold", "held: bootstrap"] },
 ];
 
 export function loopRank(phase: string): number {

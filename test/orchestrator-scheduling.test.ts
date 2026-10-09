@@ -51,6 +51,8 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     quietNow: false,
     pausedRoles: new Set<string>(),
     capPaused: new Set<string>(),
+    bootstrapHeld: new Set<string>(),
+    bootstrapActive: false,
     budgetPausedRoles: new Set<string>(),
     probeRoles: new Set<string>(),
     reviewStrongPaused: false,
@@ -362,4 +364,28 @@ test("a tick_deferred event survives an unwritable events feed", async () => {
   const reasons = await pollRunnerReasons(c);
   assert.equal(reasons.has(runner), false, "the maintenance tick is still deferred");
   assert.equal(c.deferredDue.get("clean"), true, "the deferral edge is still remembered");
+});
+
+test("the bootstrap hold blocks maintenance through scheduling but admits plan and feature", async () => {
+  const root = tmpdir("tumwater-scheduling-bootstrap-");
+  const runners = [
+    fakeRunner("plan", defaultConfig()),
+    fakeRunner("feature", defaultConfig()),
+    fakeRunner("clean", defaultConfig()),
+  ];
+  const ctx = schedulingCtx(
+    root,
+    runners,
+    new Map([
+      ["plan", undefined],
+      ["feature", undefined],
+      ["clean", undefined],
+    ]),
+  );
+  ctx.bootstrapHeld = new Set(["clean"]);
+  ctx.bootstrapActive = true;
+  const reasons = await pollRunnerReasons(ctx);
+  assert.equal(reasons.has(runners[2]!), false, "a bootstrap-held maintenance loop starts no tick");
+  assert.equal(reasons.has(runners[0]!), true, "plan keeps ticking during bootstrap");
+  assert.equal(reasons.has(runners[1]!), true, "feature keeps ticking during bootstrap");
 });

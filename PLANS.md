@@ -214,66 +214,6 @@ dry's charter already updates every call site of one repetition. clean's says "f
   commits per day fall (`git log --author-date-order --grep '^tumwater(clean)' --shortstat`).
   Record the numbers in plans/work-ratio.md.
 
-### New-project bootstrap, part 2/2: while bootstrapping, only plan, feature, director and bugfix-with-open-bugs tick (planned 2026-10-08 by operator; requires part 1/2 landed)
-
-Design: plans/work-ratio.md ("New-project bootstrap").
-
-**Approach.**
-1. **Gate.**
-   - Add a new src/gates/bootstrap-gates.ts, polled from `pollFleetGates` like the role-cap gate.
-   - Bootstrap is active while `config.bootstrap` is set and the latch file
-     `.tumwater/bootstrap-complete.json` is absent. Put the path helper in src/paths.ts.
-   - While active, every loop is held with reason `bootstrap`, except:
-     - plan, feature and director;
-     - bugfix, only while BUGS.md `## Open` is non-empty (`openBugs`). Its latent-bug search is
-       maintenance.
-   - Check the gate in `pollRunnerReasons` next to `capPaused`. A fresh operator wake or a
-     queued prompt still admits a held loop's tick.
-2. **Progress and latch.**
-   - Each poll, count the `### ` headings under PLANS.md `## Done` using src/backlog/backlog-md.ts
-     helpers. Do not re-read the file when its mtime is unchanged.
-   - When the count reaches `untilPlansDone`:
-     - write the latch with {plansDone, ts};
-     - log `bootstrap_complete` once;
-     - lift the hold.
-   - The latch makes the end permanent. A later steward compression of `## Done` must not
-     re-enter bootstrap.
-   - Removing `bootstrap` from config (live reload) also ends it, without writing a latch.
-3. **Plan cadence.** While bootstrap is active, plan's min tick gap is the global
-   `minTickIntervalSeconds` instead of its per-role default (3600 s), so a fresh project gets a
-   steady stream of plans for feature. Resolve this in src/config/config-views.ts or in
-   `isEligible`, whichever owns the gap.
-4. **Status.**
-   - status, TUI and GUI show "bootstrap: 2/5 plans done".
-   - Held loops show `held: bootstrap`.
-   - doctor reports an active bootstrap as info, not a warning.
-   - Add `bootstrap_complete` to events.ts and event-format.ts.
-
-**Files touched.**
-- src/gates/bootstrap-gates.ts (new)
-- src/gates/gate-polls.ts
-- src/orchestrator/orchestrator-scheduling.ts
-- src/scheduling/scheduling.ts or src/config/config-views.ts
-- src/paths.ts
-- src/status/status-data.ts and its renderers
-- src/events/events.ts, event-format.ts
-- src/doctor/doctor-checks.ts
-
-Tests:
-- test/bootstrap-gates.test.ts (new)
-- an orchestrator scheduling case
-
-**Acceptance criteria.**
-- **Held set.** With `bootstrap.untilPlansDone: 2` and an empty `## Done`, clean, dry, coverage,
-  qa and steward are held; plan and feature tick. bugfix ticks only after a bug is filed under
-  `## Open`.
-- **Completion.** Moving a second plan to `## Done` logs `bootstrap_complete`, writes the latch,
-  and the next poll admits clean.
-- **Latch.** Deleting both Done entries afterwards does not re-hold anything.
-- **Plan gap.** During bootstrap, plan's gap is the global 20 s rather than 3600 s.
-- **Unset.** Removing `bootstrap` from tumwater.json lifts every hold on the next poll.
-- `npm run test` green.
-
 ### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; replanned 2026-10-08 by plan after two review rejections; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed)
 
 Design: plans/worktree-pool.md ("Role ticks lease slots", "Legacy role worktrees").
@@ -443,6 +383,68 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### New-project bootstrap, part 2/2: while bootstrapping, only plan, feature, director and bugfix-with-open-bugs tick (planned 2026-10-08 by operator; requires part 1/2 landed; done 2026-10-08 by feature)
+
+Design: plans/work-ratio.md ("New-project bootstrap").
+
+**Approach.**
+1. **Gate.**
+   - Add a new src/gates/bootstrap-gates.ts, polled from `pollFleetGates` like the role-cap gate.
+   - Bootstrap is active while `config.bootstrap` is set and the latch file
+     `.tumwater/bootstrap-complete.json` is absent. Put the path helper in src/paths.ts.
+   - While active, every loop is held with reason `bootstrap`, except:
+     - plan, feature and director;
+     - bugfix, only while BUGS.md `## Open` is non-empty (`openBugs`). Its latent-bug search is
+       maintenance.
+   - Check the gate in `pollRunnerReasons` next to `capPaused`. A fresh operator wake or a
+     queued prompt still admits a held loop's tick.
+2. **Progress and latch.**
+   - Each poll, count the `### ` headings under PLANS.md `## Done` using src/backlog/backlog-md.ts
+     helpers. Do not re-read the file when its mtime is unchanged.
+   - When the count reaches `untilPlansDone`:
+     - write the latch with {plansDone, ts};
+     - log `bootstrap_complete` once;
+     - lift the hold.
+   - The latch makes the end permanent. A later steward compression of `## Done` must not
+     re-enter bootstrap.
+   - Removing `bootstrap` from config (live reload) also ends it, without writing a latch.
+3. **Plan cadence.** While bootstrap is active, plan's min tick gap is the global
+   `minTickIntervalSeconds` instead of its per-role default (3600 s), so a fresh project gets a
+   steady stream of plans for feature. One rule in `scheduleConfigForRole`
+   (src/config/config-views.ts): `isEligible` (src/scheduling/scheduling.ts, the
+   `bootstrapActive` option) enforces the gap when it admits plan, and loop.ts resolves the same
+   config so `applyTickOutcome` schedules `nextRunAt` from it rather than the role default.
+4. **Status.**
+   - status, TUI and GUI show "bootstrap: 2/5 plans done".
+   - Held loops show `held: bootstrap`.
+   - doctor reports an active bootstrap as info, not a warning.
+   - Add `bootstrap_complete` to events.ts and event-format.ts.
+
+**Files touched.**
+- src/gates/bootstrap-gates.ts (new)
+- src/gates/gate-polls.ts
+- src/orchestrator/orchestrator-scheduling.ts
+- src/scheduling/scheduling.ts or src/config/config-views.ts
+- src/paths.ts
+- src/status/status-data.ts and its renderers
+- src/events/events.ts, event-format.ts
+- src/doctor/doctor-checks.ts
+
+Tests:
+- test/bootstrap-gates.test.ts (new)
+- an orchestrator scheduling case
+
+**Acceptance criteria.**
+- **Held set.** With `bootstrap.untilPlansDone: 2` and an empty `## Done`, clean, dry, coverage,
+  qa and steward are held; plan and feature tick. bugfix ticks only after a bug is filed under
+  `## Open`.
+- **Completion.** Moving a second plan to `## Done` logs `bootstrap_complete`, writes the latch,
+  and the next poll admits clean.
+- **Latch.** Deleting both Done entries afterwards does not re-hold anything.
+- **Plan gap.** During bootstrap, plan's gap is the global 20 s rather than 3600 s.
+- **Unset.** Removing `bootstrap` from tumwater.json lifts every hold on the next poll.
+- `npm run test` green.
 
 ### New-project bootstrap, part 1/2: `tumwater init` recognizes an empty project and opts it into bootstrap (planned 2026-10-08 by operator; done 2026-10-08 by feature)
 

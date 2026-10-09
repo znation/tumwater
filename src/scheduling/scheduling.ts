@@ -10,7 +10,7 @@
 
 import type { LoopRunner } from "../loop/loop.js";
 import type { LoopState } from "../loop/loop-state.js";
-import { configForRole } from "../config/config-views.js";
+import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
   DEFERRABLE_ROLES,
@@ -32,6 +32,11 @@ interface EligibilityOptions {
    * zero; every backoff ladder leaves it raised. Resume gating, `s.running`, and
    * per-role enablement are kept as-is. */
   once?: boolean;
+  /** New-project bootstrap (plans/work-ratio.md, part 2/2): while active, the plan loop's
+   * min-tick gap is the GLOBAL `minTickIntervalSeconds` rather than its per-role default
+   * (3600 s), so a fresh project gets a steady stream of plans for feature instead of one an
+   * hour. Every other role's gap is unchanged. */
+  bootstrapActive?: boolean;
 }
 
 /** Should this loop tick now? `inboxCount` is the calling loop's own queued-prompt count
@@ -90,9 +95,15 @@ export function isEligible(
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
-  const minGap = opts.once
-    ? 0
-    : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000 * mult;
+  // The same bootstrap rule (scheduleConfigForRole) loop.ts schedules nextRunAt from: during a
+  // young project's bootstrap, plan runs on the fleet's global clock rather than its 3600 s
+  // default. Yield scaling still applies to whatever gap is chosen.
+  const minGapSeconds = scheduleConfigForRole(
+    runner.config,
+    runner.role,
+    opts.bootstrapActive === true,
+  ).minTickIntervalSeconds;
+  const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   // An operator wake newer than the gap window's opening tick overrides the interval
   // (LoopState.wokenAt): an explicit "try again now" with an empty queue must not silently

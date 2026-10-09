@@ -82,6 +82,14 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           d.inQuietHours ? "Quiet until " + esc(end) : "Quiet " + esc(d.quietHours),
           "Quiet hours — role loops start no new ticks during this local-time window; the director keeps running your prompts");
       }
+      // New-project bootstrap (plans/work-ratio.md, part 2/2): the payload's preformatted
+      // bootstrapBadge, upcased for the row's label style — the same reading the TUI/status
+      // header carries, so the surfaces cannot drift.
+      if (d.bootstrapBadge) {
+        rows += row("blue", icon("info"),
+          esc(String(d.bootstrapBadge).replace(/^ · /, "").replace(/^./, (c) => c.toUpperCase())),
+          "New-project bootstrap — the harness holds maintenance loops until enough plans are done; plan, feature and director keep ticking");
+      }
     }
     paintPanel("statuschips", rows);
     renderBudgetBadge(d);

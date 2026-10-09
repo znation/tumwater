@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workLanded } from "../src/scheduling/scheduling.js";
-import { configForRole } from "../src/config/config-views.js";
+import { configForRole, scheduleConfigForRole } from "../src/config/config-views.js";
+import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -230,6 +231,34 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   const woken = isEligible(r2, now, "new", 0);
   assert.equal(woken.run, true, "the shorter per-role gap must allow the wake");
   assert.equal(woken.reason, "main moved");
+});
+
+test("bootstrap schedules plan on the global gap instead of its slow per-role default", () => {
+  const cfg = defaultConfig(); // global 20 s, plan's per-role default 3600 s
+  const t0 = Date.now();
+  const r = makeLoopRunner(makeRepo(), "plan", cfg);
+  r.state.ticks = 1;
+  r.state.lastMainHead = ""; // no main-moved wake to confuse the case
+
+  // A productive tick schedules nextRunAt from the gap applyTickOutcome is handed. Outside
+  // bootstrap that is plan's 3600 s slow clock, and isEligible holds the loop until it passes.
+  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", false), "plan", { result: "changed" });
+  assert.ok(r.state.nextRunAt - Date.now() > 3_000_000, "plan schedules an hour out by default");
+  assert.equal(
+    isEligible(r, t0 + 21_000, "", 0).run,
+    false,
+    "outside bootstrap, plan waits out its 3600 s clock",
+  );
+
+  // During bootstrap the same tick schedules the global 20 s clock, and isEligible agrees.
+  applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", true), "plan", { result: "changed" });
+  assert.ok(
+    r.state.nextRunAt - Date.now() <= cfg.minTickIntervalSeconds * 1000,
+    "plan schedules on the global gap during bootstrap",
+  );
+  const bootstrapping = isEligible(r, t0 + 21_000, "", 0, { bootstrapActive: true });
+  assert.equal(bootstrapping.run, true, "during bootstrap, plan runs on the global gap");
+  assert.equal(bootstrapping.reason, "scheduled");
 });
 
 test("an interrupted tick resumes promptly on restart despite the min gap", () => {

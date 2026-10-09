@@ -93,6 +93,14 @@ function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
   return budgetGate(budgetReached(budget), { default: budget.fallback !== null, strong: budget.fallback !== null }, false);
 }
 
+/** The new-project bootstrap's progress fragment (plans/work-ratio.md, part 2/2):
+ * ` · bootstrap: 2/5 plans done` while the hold is active. Empty when no bootstrap is
+ * configured or it has latched complete, so a normal project's header is byte-identical. */
+export function bootstrapBadge(bootstrap: StatusSnapshot["bootstrap"]): string {
+  if (!bootstrap) return "";
+  return ` · bootstrap: ${bootstrap.plansDone}/${bootstrap.untilPlansDone} plans done`;
+}
+
 /** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
  * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a`
  * for a fleet whose models are all free (spend can never accumulate against a cap that

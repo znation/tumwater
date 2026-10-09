@@ -6,7 +6,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -194,6 +194,9 @@ export function renderStatusSpans(
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
     ...badgeSpans(diskBadge(snap.disk, now), snap.disk?.held ? "yellow" : "blue"),
+    // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
+    // hold is active. Empty in every normal project, so the header stays byte-identical.
+    ...badgeSpans(bootstrapBadge(snap.bootstrap), "blue"),
     ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck
       // The helper's tone is string (the GUI's palette differs); with a Tone fallback here
       // every branch is a Tone, so the cast cannot widen the value.

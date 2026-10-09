@@ -696,3 +696,26 @@ test("loopPhase reads disk hold for idle role loops while the disk floor holds",
   assert.equal(loopPhase(running, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "working");
   assert.equal(loopPhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, true), "stopped");
 });
+
+// New-project bootstrap (plans/work-ratio.md, part 2/2): an idle held loop reads
+// `held: bootstrap` — the fleet gate's own wording, ranked with the disk hold. In-flight
+// ticks keep their detail, and a stopped orchestrator still reads stopped.
+test("loopPhase reads held: bootstrap for idle role loops while bootstrap holds", () => {
+  const s = freshLoopState("clean");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "queued");
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
+    "held: bootstrap",
+  );
+  assert.equal(loopRank("held: bootstrap"), 3, "the hold ranks with the other paused states");
+  const running = freshLoopState("clean");
+  running.running = true;
+  assert.equal(
+    loopPhase(running, true, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
+    "working",
+  );
+  assert.equal(
+    loopPhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
+    "stopped",
+  );
+});

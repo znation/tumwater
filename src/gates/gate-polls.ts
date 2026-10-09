@@ -16,6 +16,11 @@ import {
   type RoleCapGateState,
 } from "./role-cap-gates.js";
 import {
+  newBootstrapGateState,
+  pollBootstrapGate,
+  type BootstrapGateState,
+} from "./bootstrap-gates.js";
+import {
   newQuietHoursGateState,
   pollQuietHoursGate,
   roleQuietHold,
@@ -66,6 +71,8 @@ export interface FleetGateStates {
   pause: PauseGateState;
   streak: StreakGateState;
   cap: RoleCapGateState;
+  /** The new-project bootstrap hold (plans/work-ratio.md, part 2/2). */
+  bootstrap: BootstrapGateState;
   quiet: QuietHoursGateState;
   /** The disk floor's cross-poll hold (plans/disk-floor.md, part 1/4). */
   disk: DiskGateState;
@@ -83,6 +90,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     pause: newPauseGateState(),
     streak: newStreakGateState(),
     cap: newRoleCapGateState(),
+    bootstrap: newBootstrapGateState(),
     quiet: newQuietHoursGateState(),
     disk: newDiskGateState(),
     fleetHold: new Map(),
@@ -104,6 +112,15 @@ interface FleetGatePoll {
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
+  /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2): every role but
+   * plan, feature and director — and bugfix while BUGS.md `## Open` is empty. A held loop
+   * starts no new tick unless it has a fresh operator wake or a queued prompt (the scheduling
+   * pass admits that demand), exactly like the need-based deferral. Empty when no bootstrap is
+   * configured or the latch has ended it. */
+  bootstrapHeld: ReadonlySet<string>;
+  /** Whether bootstrap is active this poll: the scheduling pass uses it to give plan the
+   * global min-tick gap so a fresh project gets a steady stream of plans for feature. */
+  bootstrapActive: boolean;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
    * reached (part 5c/8): a role whose own `model` tier (roleSeamTier) has no usable free pair
    * — none configured, one priced above zero, or its breaker demoted — starts no new ticks,
@@ -273,6 +290,14 @@ export function pollFleetGates(
   // local midnight lifts the verdict by itself.
   const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
 
+  // New-project bootstrap (src/gates/bootstrap-gates.ts, plans/work-ratio.md part 2/2): a fresh
+  // project's maintenance loops start no new ticks until `bootstrap.untilPlansDone` plans are
+  // Done. The gate owns the latch write and the one `bootstrap_complete` event; the scheduling
+  // pass folds the held set in beside capPaused (with the fresh-wake/queued-prompt override the
+  // need-based deferral honors).
+  const bootstrapHeld = pollBootstrapGate(root, states.bootstrap, runners, liveConfig, now);
+  const bootstrapActive = states.bootstrap.active;
+
   // Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
   // covers `now` starts no new ticks — the fleet window's semantics scoped to one loop, the
   // director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
@@ -391,6 +416,8 @@ export function pollFleetGates(
     userPaused,
     pausedRoles: pausedRolesNow,
     capPaused,
+    bootstrapHeld,
+    bootstrapActive,
     budgetPausedRoles,
     servingResolved,
     priceResolved,

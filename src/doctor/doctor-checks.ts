@@ -8,6 +8,7 @@ import {
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
+import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { envPath, findOnPath } from "../files/files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
@@ -191,6 +192,22 @@ export function checkBrief(root: string): CheckOutcome {
     };
   }
   return { level: "warn", detail: "no brief file — run `tumwater init <prompt>` to seed one" };
+}
+
+/** New-project bootstrap (plans/work-ratio.md, part 2/2): while active, report its progress as
+ * an ok check — a young project's deliberate hold on the maintenance loops is not a fault. A
+ * missing or unreadable config, or no `bootstrap` entry, reads as not bootstrapping. Read-only,
+ * like every doctor check: it never writes the latch or runs the gate's poll. */
+export function checkBootstrap(
+  root: string,
+  config: TumwaterConfig | undefined,
+): CheckOutcome {
+  const status = config ? bootstrapStatus(root, config) : null;
+  if (status === null || !status.active) return { level: "ok", detail: "not bootstrapping" };
+  return {
+    level: "ok",
+    detail: `bootstrapping: ${status.plansDone}/${status.untilPlansDone} plans done — plan, feature and director tick`,
+  };
 }
 
 /** Agent binary (plans/portability.md §5/7) — resolves TUMWATER_PI_BIN → agentBin → "pi"

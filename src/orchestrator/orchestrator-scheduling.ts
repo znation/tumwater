@@ -36,6 +36,10 @@ interface SchedulingPassCtx {
   quietNow: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
+  /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2). */
+  bootstrapHeld: ReadonlySet<string>;
+  /** Whether bootstrap is active this poll: plan runs on the global min-tick gap when so. */
+  bootstrapActive: boolean;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now. */
   roleQuietHeld: ReadonlySet<string>;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
@@ -92,6 +96,8 @@ export async function pollRunnerReasons(
     quietNow,
     pausedRoles: pausedRolesSet,
     capPaused,
+    bootstrapHeld,
+    bootstrapActive,
     budgetPausedRoles,
     probeRoles,
     reviewStrongPaused,
@@ -183,6 +189,15 @@ export async function pollRunnerReasons(
   const operatorPauseBlocks = (role: string): boolean =>
     (userPaused || quietNow || roleQuietHeld.has(role) || budgetHolds(role)) &&
     role !== DIRECTOR_ROLE;
+  // The new-project bootstrap hold (part 2/2): held unless the loop has a fresh operator wake
+  // or a queued prompt — the same demand override the need-based deferral honors (an explicit
+  // "try again now" is not idle maintenance). The director is never in the held set.
+  const bootstrapHeldNow = (runner: LoopRunner): boolean =>
+    bootstrapHeld.has(runner.role) &&
+    !(
+      inboxSize(root, runner.role) > 0 ||
+      (runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastTickEndedAt ?? 0))
+    );
   for (const runner of runners) {
     // Once mode: a paused role runs no tick this round and must be reported as skipped,
     // so it settles here — before the gates that would otherwise skip it silently (a
@@ -195,6 +210,7 @@ export async function pollRunnerReasons(
       (pausedRolesSet.has(runner.role) ||
         pausedRolesSet.has(baseRoleOf(runner.role)) ||
         capPaused.has(runner.role) ||
+        bootstrapHeldNow(runner) ||
         operatorPauseBlocks(runner.role))
     ) {
       once.settle(runner.role, "paused");
@@ -217,6 +233,9 @@ export async function pollRunnerReasons(
     // stop is about spend, and probing it adds noise, not signal. The lift is a live
     // config edit or local midnight — no marker exists for `resume --role` to touch.
     if (capPaused.has(runner.role)) continue;
+    // The new-project bootstrap (part 2/2): no new maintenance ticks until the plan target is
+    // met; a fresh wake or queued prompt admits one anyway (bootstrapHeldNow).
+    if (bootstrapHeldNow(runner)) continue;
     if (operatorPauseBlocks(runner.role))
       continue; // no new role ticks while either gate holds
     if (
@@ -229,6 +248,7 @@ export async function pollRunnerReasons(
     // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
     const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
       once: once.active,
+      bootstrapActive,
     });
     if (!run) {
       // Not due this poll: any deferral episode has ended (or never started). No event —

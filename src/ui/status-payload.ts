@@ -5,7 +5,7 @@ import { eventMessage, eventResult, formatEvent } from "../events/event-format.j
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { snapshot } from "../status/status-data.js";
-import { buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { fleetAlerts } from "./fleet-alerts.js";
@@ -173,6 +173,12 @@ export function statusPayload(root: string, now = Date.now()): object {
     // loop in this set reads `cap paused` — the loopPhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.
     capPaused: snap.capPaused,
+    // The new-project bootstrap (plans/work-ratio.md, part 2/2): the raw progress and held set
+    // are machine-readable for `status --json` beside capPaused, and the preformatted badge
+    // drives the TUI/status header and the GUI sidebar — the badges.ts one-home rule.
+    ...(snap.bootstrap ? { bootstrap: snap.bootstrap } : {}),
+    bootstrapHeld: snap.bootstrapHeld,
+    bootstrapBadge: bootstrapBadge(snap.bootstrap),
     // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
     // window, machine-readable for `status --json` beside capPaused; the dashboards render
     // the loop's own `quiet until <end>` from it through loopPhase.

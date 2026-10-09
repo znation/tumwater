@@ -567,6 +567,27 @@ test("renderStatus shows a disk hold in the header and the loop's state cell", (
   assert.match(rowOf(text, "clean"), /disk hold/);
 });
 
+// New-project bootstrap (plans/work-ratio.md, part 2/2): the progress badge rides the header
+// and each held idle loop's state cell reads `held: bootstrap`.
+test("renderStatus shows the bootstrap progress and hold in the header and state cell", () => {
+  const snap = snapshotWith(
+    [{ role: "clean" }],
+    DEFAULT_BUDGET,
+    false,
+    [],
+    {},
+    [],
+    [],
+    {},
+    ["clean"], // bootstrapHeld
+    { plansDone: 2, untilPlansDone: 5 },
+  );
+  snap.running = true;
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(headerOf(text), /· bootstrap: 2\/5 plans done/);
+  assert.match(rowOf(text, "clean"), /held: bootstrap/);
+});
+
 /** A running feature loop whose currentWork is a hostile OSC 52 sequence plus a C1 byte: the
  * status table's state cell prepends it, so both terminal consumers must strip it. */
 function hostileWorkItem(): { root: string; snap: StatusSnapshot } {

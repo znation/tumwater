@@ -111,6 +111,24 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
   };
 }
 
+/** The config a role's ticks SCHEDULE from: configForRole, except that while the new-project
+ * bootstrap is active (plans/work-ratio.md, part 2/2) the plan role schedules on the GLOBAL
+ * minTickIntervalSeconds rather than its per-role 3600 s slow clock, so a young project gets a
+ * steady stream of plans for feature. One home for the rule: isEligible enforces the same gap
+ * when it decides whether plan may start, and loop.ts hands this config to applyTickOutcome so
+ * nextRunAt is scheduled from the same figure instead of the role default. */
+export function scheduleConfigForRole(
+  config: TumwaterConfig,
+  role: string,
+  bootstrapActive: boolean,
+): ResolvedModelConfig {
+  const resolved = configForRole(config, role);
+  if (bootstrapActive && baseRoleOf(role) === "plan") {
+    return { ...resolved, minTickIntervalSeconds: config.minTickIntervalSeconds };
+  }
+  return resolved;
+}
+
 /** The config as seen by the review gate's pi runs: the top-level `review` section's
  * optional provider/model/thinking overrides applied over the top-level values — so a
  * strong model can review what the cheap model wrote. Reads its own `review` section on

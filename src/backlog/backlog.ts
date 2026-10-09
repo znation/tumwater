@@ -98,6 +98,13 @@ export function plannedPlans(root: string): string[] {
   return sectionEntries(root, "PLANS.md", "Planned").map((e) => e.title);
 }
 
+/** Done plans: the `### ` headings under PLANS.md's `## Done` section. The bootstrap gate
+ * (src/gates/bootstrap-gates.ts) counts these to decide when to latch bootstrap complete; the
+ * stat-keyed cache means an unchanged PLANS.md costs one syscall per poll, not a re-read. */
+export function donePlans(root: string): string[] {
+  return sectionEntries(root, "PLANS.md", "Done").map((e) => e.title);
+}
+
 /** Open bugs: the `### ` headings under BUGS.md's `## Open` section. Missing or unreadable → []. */
 export function openBugs(root: string): string[] {
   return sectionEntries(root, "BUGS.md", "Open").map((e) => e.title);

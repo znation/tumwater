@@ -19,9 +19,17 @@ import {
   buildRevisionNote,
   buildRejectedReviewNote,
 } from "../gates/gate-prompts.js";
+import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole, fallbackRoleConfig, modelSelectorField, reviewRunConfig, type ResolvedModelConfig } from "../config/config-views.js";
+import {
+  configForRole,
+  fallbackRoleConfig,
+  modelSelectorField,
+  reviewRunConfig,
+  scheduleConfigForRole,
+  type ResolvedModelConfig,
+} from "../config/config-views.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
@@ -447,7 +455,12 @@ export class LoopRunner {
     // This role's view of the config (per-role provider/model/thinking + minTickIntervalSeconds
     // overrides): resolved once so every interval-based scheduling branch below honors a slow
     // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
-    const primaryCfg = configForRole(this.config, this.role);
+    // New-project bootstrap (plans/work-ratio.md, part 2/2): while active, plan schedules on the
+    // global min-tick gap rather than its 3600 s default. The shared verdict below is the same
+    // one the gate and isEligible read, and scheduleConfigForRole is the one home of the rule,
+    // so the scheduler that admits plan and the nextRunAt this tick writes cannot disagree.
+    const bootstrapActive = bootstrapStatus(this.root, this.config)?.active === true;
+    const primaryCfg = scheduleConfigForRole(this.config, this.role, bootstrapActive);
     // Model-fallback episode (src/loop/model-fallback.ts): while one is active the tick runs
     // on the role's tier fallback pair, and once the cooldown elapses it runs on the primary
     // as the probe. Resolved at tick start so the authoring run below and the end-of-tick fold
@@ -456,7 +469,12 @@ export class LoopRunner {
     const fallback = fallbackRoleConfig(this.config, this.role);
     const probing = fallback !== null && modelFallbackProbe(s.modelFallback, now);
     const onFallback = fallback !== null && modelFallbackActive(s.modelFallback, now);
-    const cfg = onFallback && fallback !== null ? fallback : primaryCfg;
+    // The fallback pair keeps primaryCfg's gap (they resolve the same one outside bootstrap),
+    // so a plan on its model fallback during bootstrap still schedules on the global clock.
+    const cfg =
+      onFallback && fallback !== null
+        ? { ...fallback, minTickIntervalSeconds: primaryCfg.minTickIntervalSeconds }
+        : primaryCfg;
     // Capture what this tick runs on (the orchestrator's budget handback matches it against
     // the fallback pair) and clear any stale handback flag: an abort request that lands while
     // the loop is idle must not name a later tick's resume.

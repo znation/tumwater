@@ -361,3 +361,11 @@ export function stagingRootDir(root: string): string {
 export function stagingDir(root: string, sha: string): string {
   return path.join(stagingRootDir(root), sha);
 }
+
+/** The bootstrap gate's completion latch (plans/work-ratio.md, part 2/2): once
+ * `bootstrap.untilPlansDone` plans have reached PLANS.md's `## Done`, the gate writes this
+ * file so a later steward compression of that section cannot re-enter bootstrap. Its presence
+ * ends bootstrap for good, whatever the Done count becomes. */
+export function bootstrapLatchPath(root: string): string {
+  return path.join(tumwaterDir(root), "bootstrap-complete.json");
+}

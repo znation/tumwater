@@ -1,6 +1,6 @@
 import type { LoopState } from "../loop/loop-state.js";
 import type { BuildStatus } from "../build/build-info.js";
-import { openQuestions } from "../backlog/backlog.js";
+import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { isCustomRole } from "../config/config.js";
 import { loopIds } from "../roles/loop-ids.js";
 import {
@@ -31,6 +31,7 @@ import {
 import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
 import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapPaused } from "../gates/role-cap-gates.js";
+import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { queuedLandings } from "../landing/landing-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
@@ -143,6 +144,16 @@ export interface StatusSnapshot {
    * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
+  /** The new-project bootstrap (plans/work-ratio.md, part 2/2) while it is active: its progress
+   * against `bootstrap.untilPlansDone`. Absent once the latch is written or the config entry
+   * removed, so the surfaces render exactly as before in a normal project. */
+  bootstrap?: { plansDone: number; untilPlansDone: number };
+  /** The loops the bootstrap gate holds (see `bootstrap`): every role but plan, feature and
+   * director — and bugfix while BUGS.md `## Open` is empty. An idle loop in this set reads
+   * `held: bootstrap`. Always present, empty when bootstrap is inactive — the `capPaused`
+   * shape. Recomputed per poll from the gate's own predicate (bootstrap-gates.ts), so the hold
+   * an operator sees is the hold the scheduler enforces. */
+  bootstrapHeld: string[];
   /** The roles whose budget tier resolved to pause while the cap is reached (part 5c/8): a
    * loop whose `model` tier (roleSeamTier) has no usable free pair — none configured, one
    * priced above zero, or its fallback breaker demoted — reads `budget paused`, the same cell
@@ -263,6 +274,10 @@ export interface StatusSnapshot {
  * and read the live clock, as always. */
 export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   const cfg = configForStatus(root);
+  // The gate's read-only bootstrap verdict (plans/work-ratio.md, part 2/2), computed over the
+  // same last-known-good config the caps read, so the dashboards show the hold the scheduler
+  // enforces. Null when no bootstrap is configured.
+  const bootstrapNow = bootstrapStatus(root, cfg);
   // One row per loop id (part 5b/7): an instance role shows `feature` and `feature-2`.
   const roles = loopIds(cfg);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
@@ -415,6 +430,17 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     capPaused: loops
       .filter((l) => l.role !== DIRECTOR_ROLE && roleCapPaused(l, cfg.maxDailyCostUsdPerRole?.[l.role]))
       .map((l) => l.role),
+    // The new-project bootstrap hold (plans/work-ratio.md, part 2/2): the same read-only
+    // verdict the gate computes (bootstrapStatus), so the dashboards and the scheduler agree.
+    // The held set is computed with the gate's own predicate over the same loop list.
+    bootstrap:
+      bootstrapNow && bootstrapNow.active
+        ? { plansDone: bootstrapNow.plansDone, untilPlansDone: bootstrapNow.untilPlansDone }
+        : undefined,
+    bootstrapHeld:
+      bootstrapNow && bootstrapNow.active
+        ? loops.filter((l) => bootstrapHoldsRole(l.role, openBugs(root).length > 0)).map((l) => l.role)
+        : [],
     budgetPausedRoles,
     // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
     // window, so the dashboards can render the same `quiet until <end>` wording the fleet

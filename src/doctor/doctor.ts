@@ -9,6 +9,7 @@ import { shortSha } from "../text/format.js";
 import {
   checkAgentBinary,
   checkBrief,
+  checkBootstrap,
   checkBuild,
   checkBuildCheck,
   checkGitBinary,
@@ -59,6 +60,9 @@ export async function runDoctor(
     { name: "repo", ...(await checkRepo(root, config)) },
     { name: "init", ...checkInit(root) },
     { name: "brief", ...checkBrief(root) },
+    // New-project bootstrap (plans/work-ratio.md, part 2/2): an active hold reports as ok
+    // information, never a warning — a young project is not misconfigured.
+    { name: "bootstrap", ...checkBootstrap(root, config) },
     { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
     { name: "tier models", ...(await checkTierModels(root)) },
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },

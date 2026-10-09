@@ -45,6 +45,7 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     [loopPhase(at({}), true, undefined, true), "budget", false],
     [loopPhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
     [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
+    [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, false, undefined, false, true), "bootstrap", false],
     [loopPhase(at({ lastResult: "main_red" }), true), "mainred", false],
     [loopPhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [loopPhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
@@ -63,6 +64,13 @@ test("every phase label loopPhase renders maps to a known status on the page", (
   // The per-role cap's label reads with the other held states (amber) and its own detail.
   const cap = model.phaseInfo("cap paused");
   assert.deepEqual([cap.label, cap.tone, cap.live], ["Cap paused", "amber", false], "cap paused reads like budget paused");
+  // The bootstrap hold ranks with the paused states, not as an idle "other".
+  const boot = model.phaseInfo("held: bootstrap");
+  assert.deepEqual(
+    [boot.label, boot.tone, boot.live],
+    ["Bootstrap hold", "amber", false],
+    "held: bootstrap reads like a hold",
+  );
   // An unknown label still renders — as itself, neutrally.
   assert.deepEqual([model.phaseInfo("molting").key, model.phaseInfo("molting").label, model.phaseInfo("molting").tone], ["other", "molting", "gray"]);
 });
@@ -84,6 +92,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
     { role: "held", phase: "paused", lastTickEndedAt: t(9) },
     { role: "broke", phase: "budget paused", lastTickEndedAt: t(1) },
     { role: "capped", phase: "cap paused", lastTickEndedAt: t(2) },
+    { role: "bootstrapped", phase: "held: bootstrap", lastTickEndedAt: t(0) },
   ];
   const order = model.sortLoops(loops).map((l) => l.role);
   assert.deepEqual(order, [
@@ -91,7 +100,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
     "working-b", "landing-x", "reviewing-a", // live work, newest tick first, never-ticked last
     "parked-p", "vetted-v", // waiting in the pipeline
     "broken", "main-red", // needs attention
-    "held", "capped", "broke", // paused, newest tick first
+    "held", "capped", "broke", "bootstrapped", // paused, newest tick first
     "queued-z", "sleepy", "never-ticked", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.
