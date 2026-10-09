@@ -467,6 +467,27 @@ test("the digest replays harness decisions so a wrong response is visible", () =
   );
 });
 
+test("the digest replays a failure-caused role pause and a model fallback", () => {
+  // The gate transitions added after the digest's section was written (the error-streak
+  // breaker, the role's own cap, and the model-fallback episode) are the reason a loop
+  // stopped ticking or moved off-model: without them the digest shows the failed ticks but
+  // never the harness's response to them.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 12), loop: "docs", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "docs", streak: 10 },
+    { ts: at(0, 14), loop: "feature", type: "model_fallback_started", provider: "groq", model: "llama-3-free", reason: "rate limit" },
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  const section = md.slice(md.indexOf("## Fleet state changes"), md.indexOf("## Outcome by role"));
+  assert.match(section, /role docs paused — 10 ticks failed in a row/);
+  assert.match(section, /model fallback — groq\/llama-3-free engaged \(rate limit\)/);
+  assert.ok(
+    section.indexOf("role docs paused") < section.indexOf("model fallback —"),
+    "the two transitions read oldest first",
+  );
+});
+
 test("the digest omits the state changes section when the window held none", () => {
   const root = tmpdir();
   writeEvents(root, [{ ts: at(0), loop: "feature", type: "tick_end", result: "changed" }]);

@@ -153,8 +153,10 @@ the bottom of the page:
    there is nothing to compare against.
 2. **Fleet state changes** — the harness's own decisions in the window, newest `STATE_CHANGE_TOP`
    kept in chronological order, each as `MM-DD HH:MM <role> — <payload>`: the `budget_*`,
-   `fleet_*`, `max_concurrent_changed`, `retention_changed`, `config_changed`, `build_stale`,
-   `restart_pending`, `restart`, `tick_deferred`, and `orchestrator_*` transitions. This is the
+   `fleet_*`, `role_streak_paused`, `role_cap_paused`/`role_cap_resumed`,
+   `model_fallback_started`/`model_fallback_ended`, `max_concurrent_changed`,
+   `retention_changed`, `config_changed`, `build_stale`, `restart_pending`, `restart`,
+   `tick_deferred`, and `orchestrator_*` transitions. This is the
    evidence the "response was wrong" rule needs, so it reads before the counts. Every free field
    is sliced (`STATE_CHANGE_FIELD_MAX`) and each line capped (`STATE_CHANGE_MAX`), making the
    section a constant; a window with none omits it. (Added 2026-09-21 — it was omitted before,

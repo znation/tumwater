@@ -29,6 +29,11 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "fleet_resumed",
     "role_paused",
     "role_resumed",
+    "role_streak_paused",
+    "role_cap_paused",
+    "role_cap_resumed",
+    "model_fallback_started",
+    "model_fallback_ended",
     "rate_limit_hold",
     "rate_limit_resumed",
     "max_concurrent_changed",
@@ -116,6 +121,48 @@ test("fleet and role pauses render fixed and role-named lines", () => {
   assert.equal(describeStateChange(ev({ type: "role_resumed", role: "steward" })), "role steward resumed — it ticks again");
   // A missing role renders as "?" rather than "undefined".
   assert.equal(describeStateChange(ev({ type: "role_paused" })), "role ? paused — it stops starting new ticks");
+});
+
+test("the error-streak, role-cap and model-fallback transitions render their reason", () => {
+  // The breaker's auto-pause names the streak depth so the pause connects to the failing
+  // ticks; without a count the line still renders (?, like the feed's textOr fallback).
+  assert.equal(
+    describeStateChange(ev({ type: "role_streak_paused", role: "docs", streak: 10 })),
+    "role docs paused — 10 ticks failed in a row",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "role_streak_paused", role: "docs" })),
+    "role docs paused — ? ticks failed in a row",
+  );
+  // The role's own daily cap: spend and cap through the shared budgetPhrase.
+  assert.equal(
+    describeStateChange(ev({ type: "role_cap_paused", role: "feature", spentUsd: 1.5, capUsd: 1.5 })),
+    "role feature paused — $1.50 of $1.50 of its daily cap spent",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "role_cap_resumed", role: "feature" })),
+    "role feature resumed — under its daily cap again",
+  );
+  // The model-fallback episode: the fallback pair and the reason the primary was abandoned,
+  // with the feed's own pi-default/backend-failure fallbacks for missing fields.
+  assert.equal(
+    describeStateChange(ev({ type: "model_fallback_started", provider: "groq", model: "llama-3-free", reason: "rate limit" })),
+    "model fallback — groq/llama-3-free engaged (rate limit)",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "model_fallback_started" })),
+    "model fallback — pi default/pi default engaged (backend failure)",
+  );
+  // durationMs is finiteNumber-coerced then shortSpanPhrase'd (300s rounds to 5m); a torn
+  // payload without it renders 0s rather than throwing.
+  assert.equal(
+    describeStateChange(ev({ type: "model_fallback_ended", provider: "groq", model: "llama-3-free", durationMs: 300_000 })),
+    "model fallback ended — back on groq/llama-3-free after 5m",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "model_fallback_ended" })),
+    "model fallback ended — back on pi default/pi default after 0s",
+  );
 });
 
 test("rate_limit_hold renders the hold duration, relapse, and at most four roles", () => {

@@ -9,13 +9,14 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase } from "../text/phrases.js";
+import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { deferredReasonText } from "../events/event-format.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
- * cap/fleet gates and the fleet hold, live-config edits, self-hosted redeploys, need-based
- * deferrals, orchestrator lifecycle). They are the evidence the telemetry role's load-bearing
+ * cap/fleet gates and the fleet hold, the error-streak breaker's pause, the role's own daily
+ * cap, model fallbacks, live-config edits, self-hosted redeploys, need-based deferrals,
+ * orchestrator lifecycle). They are the evidence the telemetry role's load-bearing
  * rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
  * (plans/telemetry-role.md) — so they sit beside the outcomes rather than being dropped. */
 export const STATE_CHANGE_TYPES = new Set<string>([
@@ -26,6 +27,11 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "fleet_resumed",
   "role_paused",
   "role_resumed",
+  "role_streak_paused",
+  "role_cap_paused",
+  "role_cap_resumed",
+  "model_fallback_started",
+  "model_fallback_ended",
   "rate_limit_hold",
   "rate_limit_resumed",
   "max_concurrent_changed",
@@ -102,6 +108,27 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "role_resumed":
       text = roleResumePhrase(field(ev.role ?? "?"));
+      break;
+    case "role_streak_paused":
+      // The error-streak breaker auto-paused the role; the digest names the depth so the
+      // operator can connect the pause to the failing ticks the clusters above show.
+      text = `role ${field(ev.role ?? "?")} paused — ${field(ev.streak ?? "?")} ticks failed in a row`;
+      break;
+    case "role_cap_paused":
+      // The role reached its own daily spend cap and stopped starting ticks.
+      text = `role ${field(ev.role ?? "?")} paused — ${budgetPhrase(ev.spentUsd, ev.capUsd)} of its daily cap spent`;
+      break;
+    case "role_cap_resumed":
+      text = `role ${field(ev.role ?? "?")} resumed — under its daily cap again`;
+      break;
+    case "model_fallback_started":
+      // The role tripped off its primary onto its fallback after provider-class failures.
+      text = `model fallback — ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} engaged (${field(ev.reason ?? "backend failure")})`;
+      break;
+    case "model_fallback_ended":
+      // The return counterpart: names the primary the role resumed on and how long the
+      // off-model episode ran.
+      text = `model fallback ended — back on ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} after ${shortSpanPhrase(finiteNumber(ev.durationMs, 0))}`;
       break;
     case "rate_limit_hold": {
       // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
