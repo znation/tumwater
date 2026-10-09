@@ -5,6 +5,28 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### A handoff over an already-applied conflict hand-back never re-sends the hand-back note, so the fresh session meets the conflict markers in its worktree with no explanation (found by operator session 2026-10-09 while writing the Interactions notes for Agent backends 3/7–7/7, from src/loop/loop-tick.ts at 9b45a049)
+
+- **Symptom:** a `handoff` tick (src/tick/tick-resume.ts `planTickStart`) runs a *fresh* session over the interrupted tick's unreset worktree. When that tick had already applied a conflict hand-back, the fresh session's prompt carries the handoff bridge but no `buildConflictHandbackNote`. The worktree holds `<<<<<<<` markers the model was never told about. The same applies when it had applied a revision with conflicts (loop-tick.ts's revision block, `reason: "revision"`). The model may resolve the markers blind, commit them, or treat them as corruption. The revision note is re-sent on a handoff (the `if (handoff)` branch added by Agent backends 2/7); the hand-back note is not.
+- **Reproduce:** offline, in test/loop-interrupted.test.ts beside "a cross-agent handoff does not re-apply a pending conflict hand-back":
+  - set `state.conflictHandback = { …, applied: true }` with markers in the worktree;
+  - set `resumePending: true`;
+  - make the session ledger's newest line a `gate` run (the landing resolver, `runLandingPi` in src/loop/loop-pi.ts, writes `kind: "gate"` into the role's own session dir) or another agent's author run;
+  - run one tick and assert that the authoring prompt contains the hand-back note. Today it does not.
+- **Cause:**
+  - `buildConflictHandbackNote` is appended only at the moment a hand-back is applied: loop-tick.ts's hand-back block, gated on `!applied && !resuming && !handoff`, and the revision-conflict branch.
+  - A resume does not need it re-sent, because its continued session already holds the note.
+  - A handoff is a fresh session and does need it, but nothing re-sends it.
+- **Reachability:**
+  - **Rare today.** With pi as the only agent, a handoff happens only when the newest ledger line is not this agent's author run, i.e. an interruption after the hand-back was applied and before the author run wrote its ledger line, with the resolver's `gate` line newest.
+  - **Routine after Agent backends 3/7 and 4/7.** A claude `resumeMissing` and any change of a seam's agent (config edit, budget fallback) are handoffs.
+- **Expected / fix:** in loop-tick.ts, when `handoff` is true and `state.conflictHandback?.applied`, append `buildConflictHandbackNote(hb.reason, conflicted, intent)`.
+  - Take the conflicted paths from the worktree's current unmerged or marker-bearing files.
+  - Take `intent` from `handbackIntent(wt, mainBranch, hb.sha, …)`, as the apply path does.
+  - Add it next to the revision note's `if (handoff)` branch so the two fresh-session notes sit together.
+  - Pin it with the test above, plus the revision-with-conflicts variant (both notes present).
+- **Check in the same fix:** a hand-back queued but *not* applied (`applied: false`) when the tick was interrupted is skipped on both resume and handoff. tick-apply.ts then clears `conflictHandback` when that tick ends `changed`, so the conflicted lineage may never be re-applied. Confirm whether that loses work, and fix it or note why not.
+
 ### Raising `roles.<id>.instances` while the base loop is mid-entry hands that same entry to a new instance: a single-runner base holds no claim, so the first multi-instance poll treats its in-flight plan or bug as free and the new sibling duplicates it (found by operator session 2026-10-09 when a live edit raised `feature.instances` to 3 and `bugfix.instances` to 2 at 05:47:47 — `feature-2` was assigned `tumwater plan/bug --cancel <n>` while base `feature`'s slot already held uncommitted edits to src/backlog/backlog-write.ts, src/cli.ts, src/cli/help.ts and PLANS.md for it, and `bugfix-2` was assigned the prior-objection resolution bug whose fix base `bugfix` had queued (1060f492) and was revising in review)
 
 - **Symptom:** right after a live reload raises a work role's `instances` from 1, the `claim` `assigned` events give the new instances entries the base loop is already working on. In `.tumwater/state/`, `feature.json` and `bugfix.json` show `claim: null` while their ticks are running or in review, and `feature-2.json` and `bugfix-2.json` hold claims on those same entries. Each duplicate costs a full tick, a check and a review. At best the second landing to merge is wasted; at worst it conflicts on PLANS.md/BUGS.md and pays a resolver run.
