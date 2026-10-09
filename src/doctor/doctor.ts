@@ -19,6 +19,7 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
+  checkWorktreePool,
   type DoctorReport,
 } from "./doctor-checks.js";
 import { checkFallbackModel, checkTierModels } from "./doctor-model-checks.js";
@@ -68,6 +69,7 @@ export async function runDoctor(
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
+    { name: "worktree pool", ...checkWorktreePool(root) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },

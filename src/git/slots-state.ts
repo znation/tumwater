@@ -28,6 +28,9 @@ interface SlotRecord {
   dir: string;
   lease: SlotLease | null;
   pinnedFor: string | null;
+  /** When the current pin began (epoch ms), or null/absent when unpinned or written before
+   * this field existed — doctor warns only on a pin it can date. */
+  pinnedAt?: number | null;
   lastRole: string | null;
   lastReleasedAt: number | null;
 }

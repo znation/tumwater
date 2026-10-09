@@ -1,4 +1,6 @@
 import type { LoopState } from "../loop/loop-state.js";
+import path from "node:path";
+import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { isCustomRole } from "../config/config.js";
@@ -86,6 +88,11 @@ export interface StatusSnapshot {
      * fallback (no episode, or a due probe on the primary), so the common row shape is
      * unchanged. */
     fallback?: ModelFallbackView;
+    /** The pooled worktree slot this loop holds (a live tick or vet lease) or is pinned to,
+     * named by basename; absent when the loop has no slot. `slotPinned` marks a pin (a pending
+     * resume waiting on the same checkout) rather than the slot's live lease. */
+    slot?: string;
+    slotPinned?: boolean;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
@@ -283,8 +290,14 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
+  // One slots.json read per poll serves every row: the pooled slot a role leases (a running
+  // tick or vet) or is pinned to, for the state cell and the GUI's per-row slot tag.
+  const slots = readSlotsState(root).slots;
   const loops = roles.map((r) => {
     const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
+    const leased = slots.find((slot) => slot.lease?.role === r);
+    const pinned = slots.find((slot) => slot.pinnedFor === r);
+    const slot = leased ?? pinned;
     // Every row carries the selector its config resolves to, so the dashboards show which
     // model a role rides even with a single string `model`. A tier-name `roles.<id>.model`
     // and a role selector override both resolve through configForRole — the same view the
@@ -301,6 +314,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       ...modelSelectorField(eff),
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
       ...(episode !== null ? { fallback: episode } : {}),
+      ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),
     };
   });
   // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists

@@ -144,7 +144,10 @@ export async function retireRole(root: string, role: string, { force }: { force?
   if (slot !== undefined) {
     updateSlotsState(root, (state) => {
       const rec = state.slots.find((s) => s.dir === slot.dir);
-      if (rec) rec.pinnedFor = null;
+      if (rec) {
+        rec.pinnedFor = null;
+        rec.pinnedAt = null;
+      }
     });
     if (status.worktreeUsable) {
       await git(slot.dir, "reset", "--hard", "HEAD");

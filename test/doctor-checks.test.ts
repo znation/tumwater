@@ -14,6 +14,7 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
+  checkWorktreePool,
 } from "../src/doctor/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { initProject } from "../src/init/init.js";
@@ -22,6 +23,8 @@ import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { writeSlotsState } from "../src/git/slots-state.js";
+import { slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
@@ -507,4 +510,55 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
   const healthy = checkInit(root);
   assert.equal(healthy.level, "warn"); // drift reappears: tumwater.json lacks the key again
   assert.match(healthy.detail, /template drift/);
+});
+
+test("checkWorktreePool reports the pool, warns on a 25 h pin and on leftover legacy checkouts", () => {
+  const root = readyRepo();
+  assert.deepEqual(checkWorktreePool(root), { level: "ok", detail: "0 slots, 0 leased, 0 pinned" });
+
+  const now = Date.now();
+  // A stale pin — a paused role holding a checkout — is the doctor's stuck-pin warning.
+  writeSlotsState(root, {
+    slots: [
+      {
+        dir: slotWorktreePath(root, 1),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 25 * 3_600_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  const pinned = checkWorktreePool(root, now);
+  assert.equal(pinned.level, "warn");
+  assert.match(pinned.detail, /feature pinned on _slot-1 for 25h/);
+
+  // A fresh pin is ordinary: ok.
+  writeSlotsState(root, {
+    slots: [
+      {
+        dir: slotWorktreePath(root, 1),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: now - 1_000,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  assert.equal(checkWorktreePool(root, now).level, "ok");
+
+  // A legacy per-role checkout and a `_land-*` checkout still present warn; the dedicated
+  // director and `_slot-<n>` checkouts do not.
+  fs.mkdirSync(path.join(worktreesDir(root), "clean"), { recursive: true });
+  fs.mkdirSync(path.join(worktreesDir(root), "_land-feature"), { recursive: true });
+  fs.mkdirSync(path.join(worktreesDir(root), "director"), { recursive: true });
+  fs.mkdirSync(path.join(worktreesDir(root), "_slot-1"), { recursive: true });
+  const leftover = checkWorktreePool(root, now);
+  assert.equal(leftover.level, "warn");
+  assert.match(leftover.detail, /legacy worktrees still present: .*clean/);
+  assert.match(leftover.detail, /_land-feature/);
+  assert.doesNotMatch(leftover.detail, /director/);
+  assert.doesNotMatch(leftover.detail, /_slot-1/);
 });

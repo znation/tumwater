@@ -242,37 +242,6 @@ class as a thin delegate to the phase function:
   or a pre-move path.
 - `npm run test` green.
 
-### Worktree pool, part 5/5: slot waits, slot display, doctor check and docs (planned 2026-10-06 by operator; requires parts 4a/5, 4b/5 and 4c/5 landed)
-
-Design: plans/worktree-pool.md ("Observability").
-
-**Goal.** Give the operator what they need to size `worktreeSlots` and spot stuck pins.
-
-**Approach.**
-1. **`slot_wait` event.** Logged when a lease waited 30 s or more. It carries role, purpose,
-   waitedMs, slots and pinned. Add it to src/events/events.ts and src/events/event-format.ts.
-2. **Status and GUI.** `tumwater status` and the GUI role rows show which slot a running tick
-   or vet holds, and any pin, read from slots.json.
-3. **Doctor.** Add `checkWorktreePool` to src/doctor/doctor-checks.ts. It lists slots, leases
-   and pins, and warns on:
-   - a legacy non-director `<role>` directory or a `_land-*` directory still present;
-   - a pin older than 24 h, which usually means a paused role holding a checkout.
-4. **Docs.** docs/how-it-works.md describes slots, `worktreeSlots`, the dedicated `director`,
-   `_merge` and `_gate-main` checkouts, and how to size a disk: about (`worktreeSlots` + 3)
-   warm checkouts.
-
-**Files touched.** src/git/worktree-pool.ts, src/events/events.ts, src/events/event-format.ts,
-src/status/status-data.ts, src/ui/status-model.ts, the GUI role-row renderer,
-src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests: cases in the
-pool, event-format, status and doctor tests.
-
-**Acceptance criteria.**
-- **Wait event.** A lease that waited 31 s logs one `slot_wait`. A lease that waited 1 s logs
-  none.
-- **Display.** Status and GUI show the slot of a running tick.
-- **Doctor.** It warns on a 25 h-old pin and on a leftover `_land-feature` directory.
-- `npm run test` green.
-
 ### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; split 2026-10-08 by plan; requires part 5b/7 landed)
 
 Design: plans/parallel-work-instances.md ("Observability").
@@ -345,6 +314,44 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Worktree pool, part 5/5: slot waits, slot display, doctor check and docs (planned 2026-10-06 by operator; requires parts 4a/5, 4b/5 and 4c/5 landed; done 2026-10-08 by feature)
+
+Design: plans/worktree-pool.md ("Observability").
+
+**Goal.** Give the operator what they need to size `worktreeSlots` and spot stuck pins.
+
+**Approach.**
+1. **`slot_wait` event.** Logged when a lease waited 30 s or more. It carries role, purpose,
+   waitedMs, slots and pinned. Add it to src/events/events.ts and src/events/event-format.ts.
+2. **Status and GUI.** `tumwater status` and the GUI role rows show which slot a running tick
+   or vet holds, and any pin, read from slots.json.
+3. **Doctor.** Add `checkWorktreePool` to src/doctor/doctor-checks.ts. It lists slots, leases
+   and pins, and warns on:
+   - a legacy non-director `<role>` directory or a `_land-*` directory still present;
+   - a pin older than 24 h, which usually means a paused role holding a checkout.
+4. **Docs.** docs/how-it-works.md describes slots, `worktreeSlots`, the dedicated `director`,
+   `_merge` and `_gate-main` checkouts, and how to size a disk: about (`worktreeSlots` + 3)
+   warm checkouts.
+
+**Files touched.** src/git/worktree-pool.ts, src/events/events.ts, src/events/event-format.ts,
+src/status/status-data.ts, src/ui/status-model.ts, src/ui/status-render.ts,
+src/ui/status-payload.ts, src/ui/gui/gui-client-loops.ts,
+src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests: cases in the
+pool, event-format, status and doctor tests.
+
+As landed, the doctor's pin-age warning needed a timestamp the slot record did not carry, so
+`SlotRecord.pinnedAt` (optional) was added in src/git/slots-state.ts and set where the pool pins
+(worktree-pool.ts, retire.ts); a record written before the field warns no age. The display rides
+the shared `slotSuffix` (status-model.ts) in the terminal state cell, plus `slot`/`slotPinned`
+on the status payload for the GUI tag.
+
+**Acceptance criteria.**
+- **Wait event.** A lease that waited 31 s logs one `slot_wait`. A lease that waited 1 s logs
+  none.
+- **Display.** Status and GUI show the slot of a running tick.
+- **Doctor.** It warns on a 25 h-old pin and on a leftover `_land-feature` directory.
+- `npm run test` green.
 
 ### Worktree pool, part 4c/5: retire legacy role worktrees at orchestrator start (planned 2026-10-06 by operator; split 2026-10-07 by plan; replanned 2026-10-08 by plan after two review rejections; requires parts 2a/5, 3/5, 4a/5 and 4b/5 landed; done 2026-10-08 by feature)
 

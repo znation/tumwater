@@ -7,7 +7,7 @@ import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
-import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
+import { isActivePhase, loopRowCells, slotSuffix, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
@@ -264,7 +264,7 @@ export function renderStatusSpans(
     // so the operator can see which loops the fallback pair is carrying without reading logs.
     const fallbackSuffix = s.fallback ? " (on fallback)" : "";
     const name = (s.custom ? `${s.role}*` : s.role) + modelSuffix + fallbackSuffix;
-    const state = stateCell(root, s, phase, live);
+    const state = stateCell(root, s, phase, live) + slotSuffix(s);
     const tone = phaseTone(phase);
     // The whole state cell carries the phase's tone: a work item leads the cell (so it
     // survives clipping), and clipping often leaves only it — the color still tells the state.

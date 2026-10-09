@@ -60,6 +60,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       // Model failure fallback (PLANS.md "Model failure fallback, part 2/2"): present only
       // while the loop's ticks run off-model, so the common row shape is unchanged.
       ...(s.fallback ? { fallback: s.fallback } : {}),
+      ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
       phase,
       // In-flight flag derived from the same rendered phase (isActivePhase's
       // permit-holder prefixes: working/reviewing/landing). The running director is excluded

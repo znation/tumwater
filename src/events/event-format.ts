@@ -374,6 +374,13 @@ export function eventMessage(e: HarnessEvent): string {
       return e.cause === "cut-off"
         ? "resuming the run cut off at the context ceiling (compacted pi session, same worktree)"
         : "resuming the tick a shutdown interrupted (same pi session and worktree)";
+    case "slot_wait": {
+      // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
+      // working as designed. Names the wait, the pool it waited on, and how many slots are
+      // pinned, so the operator can raise worktreeSlots with the numbers in hand.
+      const purpose = e.purpose === "vet" ? "vet" : "tick";
+      return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a free worktree slot (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} slots, ${textOr(e.pinned)} pinned)`;
+    }
     case "warning":
       return `warning: ${textOr(e.message)}`;
     default:

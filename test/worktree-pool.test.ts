@@ -482,3 +482,54 @@ test("a failed slot reset still removes a migrated legacy dir instead of orphani
   assert.equal(existsSync(wt), false, "the failed lease orphaned the legacy dir");
   assert.equal(slotForDir(root, wt), undefined, "the retired slot record survived");
 });
+
+test("a lease that waited 30 s or more logs one slot_wait naming the pool", async (t) => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  let waited: SlotLeaseHandle | undefined;
+  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
+    waited = h;
+  });
+  await sleep(20);
+  assert.equal(waited, undefined, "the second lease claimed a slot with none free");
+  t.mock.timers.tick(31_000);
+  held.release();
+  const got = await waitFor(() => waited);
+  t.mock.timers.reset();
+
+  const events = readEvents(root).filter((e) => e.type === "slot_wait");
+  assert.equal(events.length, 1, "the 31 s wait did not log exactly one slot_wait");
+  assert.equal(events[0]?.role, "clean");
+  assert.equal(events[0]?.purpose, "tick");
+  assert.equal(events[0]?.waitedMs, 31_000);
+  assert.equal(events[0]?.slots, 1);
+  assert.equal(events[0]?.pinned, 0);
+  got.release();
+});
+
+test("a lease that waited under 30 s logs no slot_wait", async (t) => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const held = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  let waited: SlotLeaseHandle | undefined;
+  void leaseSlot(root, { role: "clean", purpose: "tick", ref: "main" }).then((h) => {
+    waited = h;
+  });
+  await sleep(20);
+  t.mock.timers.tick(1_000);
+  held.release();
+  const got = await waitFor(() => waited);
+  t.mock.timers.reset();
+
+  assert.equal(
+    readEvents(root).filter((e) => e.type === "slot_wait").length,
+    0,
+    "a 1 s wait logged a slot_wait",
+  );
+  got.release();
+});

@@ -30,11 +30,13 @@ import {
 } from "../gates/readiness.js";
 import { agentBinSourceLabel, findAgentBinary, piMissingMessage, resolveAgentBin } from "../pi/pi-bin.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
+import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, textOr } from "../text/text.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { readSlotsState } from "../git/slots-state.js";
 
 /** The doctor report contract and the environment/repo pre-flight checks, split out of
  * doctor.ts. CheckOutcome is the shared report contract: every sibling check module
@@ -303,6 +305,58 @@ export function checkMergeLock(root: string): CheckOutcome {
     case "stale":
       return { level: "warn", detail: "stale — will be broken on next merge" };
   }
+}
+
+/** A pin older than a day is the doctor's stuck-pin signal: a paused or retired role is holding
+ * a pooled checkout nobody will reuse (plans/worktree-pool.md, "Observability"). */
+const PIN_STALE_MS = 24 * 60 * 60 * 1000;
+
+/** Directory names under the worktrees root that the pool no longer owns: a legacy per-role
+ * `<role>` checkout (the pre-pool layout) or a `_land-<role>` checkout from the merge queue. The
+ * dedicated `director`, `_slot-<n>`, `_merge`, `_main`, `_gate-main` and `_build` checkouts are
+ * expected and never reported. An unreadable worktrees dir means nothing to report. */
+function leftoverWorktreeDirs(root: string): string[] {
+  let names: string[];
+  try {
+    names = fs
+      .readdirSync(worktreesDir(root), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+  return names.filter(
+    (name) => name !== DIRECTOR_ROLE && !(name.startsWith("_") && !name.startsWith("_land-")),
+  );
+}
+
+/** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the two
+ * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
+ * left behind, and a pin older than PIN_STALE_MS (a paused role holding a checkout). Read-only,
+ * like every doctor check; `now` is a test seam for the pin-age arithmetic. */
+export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome {
+  const slots = readSlotsState(root).slots;
+  const leased = slots.filter((slot) => slot.lease !== null);
+  const pins = slots.filter((slot) => slot.pinnedFor !== null);
+  const stale = pins.filter(
+    (slot) => slot.pinnedAt != null && now - slot.pinnedAt > PIN_STALE_MS,
+  );
+  const leftover = leftoverWorktreeDirs(root);
+  const parts = [`${slots.length} slots, ${leased.length} leased, ${pins.length} pinned`];
+  if (leftover.length > 0) parts.push(`legacy worktrees still present: ${leftover.join(", ")}`);
+  if (stale.length > 0) {
+    parts.push(
+      stale
+        .map(
+          (slot) =>
+            `${textOr(slot.pinnedFor)} pinned on ${path.basename(slot.dir)} for ${Math.round(
+              (now - (slot.pinnedAt ?? now)) / 3_600_000,
+            )}h`,
+        )
+        .join("; "),
+    );
+  }
+  return { level: leftover.length > 0 || stale.length > 0 ? "warn" : "ok", detail: parts.join(" — ") };
 }
 
 /** Declared project check — names what the review gate's deterministic pre-check, the

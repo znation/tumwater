@@ -16,10 +16,10 @@ import { loadConfig, slotCount } from "../config/config.js";
 import { worktreesDir, slotWorktreePath } from "../paths.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { slotForDir, updateSlotsState } from "./slots-state.js";
+import { readSlotsState, slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 
 /** A live lease as callers see it: the slot directory, the one-shot release, and whether the
@@ -54,6 +54,10 @@ interface PoolSlot {
   dir: string;
   lease: { role: string; purpose: "tick" | "vet"; since: number; pid: number } | null;
   pinnedFor: string | null;
+  /** When the current pin began (epoch ms), or null when unpinned. Optional so slot records
+   * written before this field existed read as "pin age unknown" (the doctor warns only on a
+   * known-old pin). */
+  pinnedAt?: number | null;
   lastRole: string | null;
   lastReleasedAt: number | null;
 }
@@ -183,12 +187,35 @@ function chooseSlot(
       dir,
       lease: { role, purpose, since: now, pid },
       pinnedFor: null,
+      pinnedAt: null,
       lastRole: null,
       lastReleasedAt: null,
     });
     return dir;
   }
   return null;
+}
+
+/** A lease that waited at least this long for a free slot is worth an event: it is the
+ * operator's signal that `worktreeSlots` is too small for the current concurrency. */
+export const SLOT_WAIT_EVENT_MS = 30_000;
+
+/** Log one `slot_wait` when a lease waited at least SLOT_WAIT_EVENT_MS; a shorter wait is
+ * ordinary queueing and stays silent. The event names the pool size and how many of its slots
+ * are pinned, so an operator can size `worktreeSlots` from the line alone. Best-effort: an
+ * unwritable feed must not fail the lease it describes. */
+function logSlotWait(root: string, role: string, purpose: "tick" | "vet", waitedMs: number): void {
+  if (waitedMs < SLOT_WAIT_EVENT_MS) return;
+  const slots = readSlotsState(root).slots;
+  logEventBestEffort(root, {
+    loop: role,
+    type: "slot_wait",
+    role,
+    purpose,
+    waitedMs,
+    slots: slots.length,
+    pinned: slots.filter((slot) => slot.pinnedFor !== null).length,
+  });
 }
 
 function tryClaim(
@@ -211,10 +238,14 @@ async function acquire(
   signal?: AbortSignal,
 ): Promise<string> {
   const count = slotCount(loadConfig(root));
+  const startedAt = Date.now();
   for (;;) {
     if (signal?.aborted) throw abortError();
     const chosen = tryClaim(root, role, purpose, count);
-    if (chosen !== null) return chosen;
+    if (chosen !== null) {
+      logSlotWait(root, role, purpose, Date.now() - startedAt);
+      return chosen;
+    }
     const waiter = registerWaiter(root);
     try {
       await raceAbort(waiter.promise, signal);
@@ -255,7 +286,13 @@ function releaseSlot(root: string, dir: string, role: string, count: number, pin
       slot.lease = null;
       slot.lastRole = role;
       slot.lastReleasedAt = Date.now();
-      slot.pinnedFor = pin ? role : slot.pinnedFor === role ? null : slot.pinnedFor;
+      if (pin) {
+        if (slot.pinnedFor !== role) slot.pinnedAt = Date.now();
+        slot.pinnedFor = role;
+      } else if (slot.pinnedFor === role) {
+        slot.pinnedFor = null;
+        slot.pinnedAt = null;
+      }
       if (!pin && slot.pinnedFor === null && !isCanonicalSlotDir(slot.dir)) {
         state.slots = state.slots.filter((s) => s !== slot);
         toRemove.push(slot.dir);
@@ -347,10 +384,13 @@ export async function retireLegacyRoleWorktrees(
             state.slots = state.slots.filter((slot) => slot.dir !== legacyDir);
             toRemove.add(legacyDir);
           }
+          if (owned.pinnedFor !== role) owned.pinnedAt = Date.now();
           owned.pinnedFor = role;
         } else if (ownRecord !== undefined) {
-          // Already migrated (a restart before the resume ran): keep it pinned and inert.
+          // Already migrated (a restart before the resume ran): keep it pinned and inert,
+          // preserving the pin's original age for the doctor's stuck-pin warning.
           ownRecord.lease = null;
+          if (ownRecord.pinnedFor !== role) ownRecord.pinnedAt = Date.now();
           ownRecord.pinnedFor = role;
           ownRecord.lastRole = null;
           ownRecord.lastReleasedAt = null;
@@ -359,6 +399,7 @@ export async function retireLegacyRoleWorktrees(
             dir: legacyDir,
             lease: null,
             pinnedFor: role,
+            pinnedAt: Date.now(),
             lastRole: null,
             lastReleasedAt: null,
           });
@@ -372,6 +413,7 @@ export async function retireLegacyRoleWorktrees(
     for (const slot of [...state.slots]) {
       if (slot.pinnedFor === null || configuredSet.has(slot.pinnedFor)) continue;
       slot.pinnedFor = null;
+      slot.pinnedAt = null;
       if (!isCanonicalSlotDir(slot.dir)) {
         state.slots = state.slots.filter((s) => s !== slot);
         toRemove.add(slot.dir);

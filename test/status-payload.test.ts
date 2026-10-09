@@ -14,12 +14,54 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { writeSlotsState } from "../src/git/slots-state.js";
+import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
+
+test("status payload carries the pooled worktree slot a loop holds or is pinned to", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "pool slot test");
+  // A live tick lease: the row names the slot, unpinned.
+  writeSlotsState(repo, {
+    slots: [
+      {
+        dir: slotWorktreePath(repo, 1),
+        lease: { role: "feature", purpose: "tick", since: Date.now(), pid: process.pid },
+        pinnedFor: null,
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  let payload = statusPayload(repo) as { loops: Array<{ role: string; slot?: string; slotPinned?: boolean }> };
+  const held = payload.loops.find((l) => l.role === "feature");
+  assert.equal(held?.slot, "_slot-1");
+  assert.equal(held?.slotPinned, false);
+
+  // A pin with no lease: the same slot, marked pinned. A loop with no slot carries neither field.
+  writeSlotsState(repo, {
+    slots: [
+      {
+        dir: slotWorktreePath(repo, 2),
+        lease: null,
+        pinnedFor: "feature",
+        pinnedAt: Date.now(),
+        lastRole: null,
+        lastReleasedAt: null,
+      },
+    ],
+  });
+  payload = statusPayload(repo) as typeof payload;
+  const pinned = payload.loops.find((l) => l.role === "feature");
+  assert.equal(pinned?.slot, "_slot-2");
+  assert.equal(pinned?.slotPinned, true);
+  assert.equal(payload.loops.find((l) => l.role === "bugfix")?.slot, undefined);
+});
 
 test("status payload marks user-defined loops with the custom flag", async () => {
   const repo = makeRepo();

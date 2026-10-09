@@ -820,3 +820,19 @@ test("formatEvent renders the model-fallback episode start and end", () => {
   assert.match(endedTorn, /after 0m$/, `corrupt durationMs must read zero: ${endedTorn}`);
   assert.doesNotMatch(endedTorn, /NaN/);
 });
+
+test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "clean",
+    type: "slot_wait",
+    role: "clean",
+    purpose: "vet",
+    waitedMs: 31_000,
+    slots: 4,
+    pinned: 1,
+  } as never);
+  assert.match(line, /waited 31s for a free worktree slot/);
+  assert.match(line, /clean vet/);
+  assert.match(line, /4 slots, 1 pinned/);
+});

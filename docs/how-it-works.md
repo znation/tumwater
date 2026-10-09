@@ -83,6 +83,14 @@ discards a role's in-flight landing.
 
 ## Scheduling
 
+- **Worktree pool.** Ticks and landing vets share `worktreeSlots` pooled checkouts
+  (`.tumwater/worktrees/_slot-<n>`, default `maxConcurrent` + 1): each is leased for one run,
+  reset to that run's commit, and released back. A role whose tick is resumable keeps its slot
+  pinned so the resumed session runs in the same directory; a lease that waits 30 s or more
+  logs a `slot_wait` event so `worktreeSlots` can be sized from real contention. Outside the
+  pool sit the director's own `.tumwater/worktrees/director`, the merge drain's `_merge`, the
+  review gate's `_gate-main`, and the redeploy mirror and witness (`_main`, `_build`). Size the
+  disk for about `worktreeSlots` + 3 warm checkouts of the project.
 - `maxConcurrent` caps parallel ticks and landing vets together. Landings get slots first, then
   work roles (feature, bugfix, plan), then maintenance roles.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
