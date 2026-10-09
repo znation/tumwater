@@ -115,10 +115,11 @@ export class LoopRunner {
    * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every tick start. */
   private tickPair?: { provider?: string; model?: string };
-  /** The loop-identity triple every tick-pipeline helper takes (root/role/mainBranch): the
-   * constructor's readonly fields restated once, so finalizeTick, mergeToMain,
-   * recoverLeftover, and resolveTickVerdict spread it instead of each retyping the pair of
-   * this. accessors — one home for what "this loop" means to the tick pipeline. */
+  /** The loop-identity triple every tick-pipeline helper takes (root/role/mainBranch):
+   * the constructor's readonly fields restated once, so finalizeTick, mergeToMain,
+   * recoverLeftover, and resolveTickVerdict spread it instead of each reading
+   * this.root/this.role/this.mainBranch — one home for what "this loop" means to the
+   * tick pipeline. */
   private get loopCtx(): { root: string; role: string; mainBranch: string } {
     return { root: this.root, role: this.role, mainBranch: this.mainBranch };
   }
