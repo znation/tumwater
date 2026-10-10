@@ -24,6 +24,23 @@ export function statOrNull(file: string): fs.Stats | null {
   }
 }
 
+/** Whether a freshly stat'd file is still the same file at the same bytes as a prior
+ * observation: matching dev/ino (a replaced inode is a different file even at the same size)
+ * plus matching size and, when the caller tracks it, mtime. The one home of the freshness
+ * check shared by files/stat-cache.ts's cachedByStat, events/events.ts's appended-shape memo
+ * (`mtimeMs` omitted — it decides "our own append left this log clean" from identity and size
+ * alone), report/report-data.ts's fold cache, gates/maintenance-quota.ts's window counter,
+ * and failure/failure-data.ts's digest cache. Callers whose cached field is a byte offset
+ * rather than a size (report-data, maintenance-quota) pass that offset as `size`, since a
+ * fully-folded log's offset equals its length. */
+export function sameStatIdentity(
+  st: { dev: number; ino: number; size: number; mtimeMs: number },
+  prev: { dev: number; ino: number; size: number; mtimeMs?: number },
+): boolean {
+  if (st.dev !== prev.dev || st.ino !== prev.ino || st.size !== prev.size) return false;
+  return prev.mtimeMs === undefined || st.mtimeMs === prev.mtimeMs;
+}
+
 /** Open `file` for reading, or null when it vanished between a prior stat and this open — the
  * shared race-handling step for the incremental/tail log readers (forEachTailChunk,
  * terminateTornTail, readCompleteLines, readTranscriptTail), all of which treat a rotated-away

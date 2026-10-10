@@ -1,4 +1,4 @@
-import { readTextOrNull, statOrNull } from "./files.js";
+import { readTextOrNull, sameStatIdentity, statOrNull } from "./files.js";
 
 /** Stat-keyed caching of file-derived values polled on an interval. Split out of
  * src/files/files.ts — which keeps the generic file operations — because this is a
@@ -45,7 +45,7 @@ export function cachedByStat<T>(
     return null;
   }
   const hit = cache.get(key);
-  if (hit && hit.dev === st.dev && hit.ino === st.ino && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+  if (hit && sameStatIdentity(st, hit)) {
     return clone(hit.value); // A copy: callers may treat the result as their own.
   }
   const value = load();

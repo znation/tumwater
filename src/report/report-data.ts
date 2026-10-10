@@ -7,7 +7,7 @@
  * apart from "how it prints" (bars, cell wording), which change for different reasons — and
  * keeps core data collection out of the presentation layer, so a core consumer (as
  * /api/report already is) never forces a core→ui import. */
-import { statOrNull } from "../files/files.js";
+import { sameStatIdentity, statOrNull } from "../files/files.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
 import { readCompleteLines } from "../files/tail.js";
@@ -223,7 +223,13 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
   const dev = liveStat?.dev ?? 0;
   const ino = liveStat?.ino ?? 0;
   const cached = reportFoldCache.get(key);
-  if (cached && size === cached.offset && mtimeMs === cached.mtimeMs && dev === cached.dev && ino === cached.ino) {
+  if (
+    cached &&
+    sameStatIdentity(
+      { dev, ino, mtimeMs, size },
+      { dev: cached.dev, ino: cached.ino, mtimeMs: cached.mtimeMs, size: cached.offset },
+    )
+  ) {
     reportFoldCache.delete(key); // Refresh LRU position.
     reportFoldCache.set(key, cached);
     return cached;

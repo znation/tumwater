@@ -17,7 +17,7 @@
  * share one definition; `pollMaintenanceQuotaGate` is the one writer (the edge-triggered events)
  * and the one reader the scheduler holds from. */
 
-import { statOrNull } from "../files/files.js";
+import { sameStatIdentity, statOrNull } from "../files/files.js";
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import { readWindowEvents } from "../events/event-window.js";
@@ -224,8 +224,10 @@ export function countMaintenanceWindow(
   const mtimeMs = readable?.mtimeMs ?? 0;
   const dev = readable?.dev ?? 0;
   const ino = readable?.ino ?? 0;
-  const unchanged =
-    size === counter.offset && mtimeMs === counter.mtimeMs && dev === counter.dev && ino === counter.ino;
+  const unchanged = sameStatIdentity(
+    { dev, ino, mtimeMs, size },
+    { dev: counter.dev, ino: counter.ino, mtimeMs: counter.mtimeMs, size: counter.offset },
+  );
   if (readable) {
     try {
       if (!counter.seeded || (!unchanged && !(size > counter.offset && dev === counter.dev && ino === counter.ino))) {

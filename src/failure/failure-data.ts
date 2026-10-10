@@ -18,7 +18,7 @@ import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./fai
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, getOrCreate, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
-import { statOrNull } from "../files/files.js";
+import { sameStatIdentity, statOrNull } from "../files/files.js";
 import { eventsLogPath } from "../paths.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
@@ -217,11 +217,6 @@ function digestStat(root: string): FailureDigestStat {
     : { size: 0, mtimeMs: 0, dev: 0, ino: 0 };
 }
 
-/** Whether two log identities name the same file at the same bytes. */
-function sameDigestStat(a: FailureDigestStat, b: FailureDigestStat): boolean {
-  return a.size === b.size && a.mtimeMs === b.mtimeMs && a.dev === b.dev && a.ino === b.ino;
-}
-
 /** Collect the digest over the last `days` local calendar days, reading a 2×-long window once
  * and partitioning it in memory so the delta against the preceding equal window costs no
  * second tail read. Memoized (failureDigestCache): a repeat request whose window and log are
@@ -238,7 +233,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     cached.from === from &&
     cached.to === to &&
     cached.priorFrom === priorFrom &&
-    sameDigestStat(cached.stat, stat)
+    sameStatIdentity(cached.stat, stat)
   ) {
     failureDigestCache.delete(key); // Refresh LRU position.
     failureDigestCache.set(key, cached);

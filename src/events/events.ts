@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { eventsLogPath } from "../paths.js";
-import { ensureParentDir, rotateIfLarge, statOrNull, terminateTornTail } from "../files/files.js";
+import { ensureParentDir, rotateIfLarge, sameStatIdentity, statOrNull, terminateTornTail } from "../files/files.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 
 type EventListener = (event: HarnessEvent) => void;
@@ -199,8 +199,7 @@ const appendedShape = new Map<string, { dev: number; ino: number; size: number }
 function appendEventLine(file: string, line: string): void {
   const st = statOrNull(file);
   const memo = st ? appendedShape.get(file) : undefined;
-  const knownClean =
-    st !== null && memo !== undefined && memo.dev === st.dev && memo.ino === st.ino && memo.size === st.size;
+  const knownClean = st !== null && memo !== undefined && sameStatIdentity(st, memo);
   const terminated = knownClean ? false : terminateTornTail(file, st);
   fs.appendFileSync(file, line);
   if (st) {
