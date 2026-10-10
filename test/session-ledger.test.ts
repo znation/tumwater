@@ -46,6 +46,22 @@ test("recordSession and readSessions round-trip records, skipping malformed line
   assert.equal(latestSession(dir, "gate"), null);
 });
 
+test("readSessions skips a line that parses but is not a complete record", () => {
+  const dir = tmpdir();
+  const good = record({ kind: "author", name: "author" });
+  recordSession(dir, good);
+  // Valid JSON, but not a complete SessionRecord: the claude resume path builds a transcript
+  // path from cwd and id, so a line missing either must not reach it (it would throw from
+  // undefined.replace instead of degrading to no resumable session).
+  fs.appendFileSync(sessionLedgerPath(dir), '{"agent":"claude","kind":"author"}\n');
+  fs.appendFileSync(
+    sessionLedgerPath(dir),
+    '{"agent":"claude","kind":"author","id":"x","name":"n","at":1}\n',
+  );
+  assert.deepEqual(readSessions(dir), [good]);
+  assert.deepEqual(latestSession(dir), good, "a shape-invalid newest line does not shadow a valid one");
+});
+
 test("latestSession and resumableSession pick the newest of the run's kind, not the newest overall", () => {
   const dir = tmpdir();
   // The hazard: a conflict resolver's gate run shares the author's dir and is newest overall.

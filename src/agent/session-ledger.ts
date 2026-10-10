@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ensureParentDir, readTextOrNull, writeTextAtomic } from "../files/files.js";
+import { isJsonObject } from "../files/json-object.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
  * the backend's own session files; readers that count session files must exclude it. */
@@ -67,9 +68,12 @@ export function hasResumableSession(dir: string): boolean {
   }
 }
 
-/** Every valid record in `dir`'s ledger, oldest first. A missing ledger reads as no records; a
- * torn or malformed line is skipped rather than poisoning the rest (a crash mid-append must not
- * cost every earlier record). */
+/** Every valid record in `dir`'s ledger, oldest first. A missing ledger reads as no records;
+ * a torn, malformed, or shape-invalid line is skipped rather than poisoning the rest (a crash
+ * mid-append must not cost every earlier record). Shape-invalid means valid JSON that is not a
+ * complete SessionRecord (see isSessionRecord): a resume path turns a record's `cwd` and `id`
+ * into a filesystem path, so a line missing either must read as no record instead of crashing
+ * the resume check from an unvalidated field. */
 export function readSessions(dir: string): SessionRecord[] {
   const text = readTextOrNull(sessionLedgerPath(dir));
   if (text === null) return [];
@@ -77,13 +81,32 @@ export function readSessions(dir: string): SessionRecord[] {
   for (const line of text.split("\n")) {
     if (!line) continue;
     try {
-      const record = JSON.parse(line) as SessionRecord;
-      if (typeof record.agent === "string" && typeof record.kind === "string") out.push(record);
+      const record: unknown = JSON.parse(line);
+      if (isSessionRecord(record)) out.push(record);
     } catch {
       // Torn or malformed line — no data.
     }
   }
   return out;
+}
+
+/** True when `value` is a complete SessionRecord: the required fields with their declared
+ * types, and `model` a string when present. A ledger line that parses but omits a field is not
+ * a record and must be skipped like a torn one: the claude resume check turns `cwd` and `id`
+ * into a filesystem path (claudeBackend's claudeResumableRecord), and an absent `cwd` there
+ * throws a TypeError from `undefined.replace` instead of degrading to "no resumable
+ * session". Validating in the one reader keeps every consumer's `SessionRecord` a real one. */
+function isSessionRecord(value: unknown): value is SessionRecord {
+  if (!isJsonObject(value)) return false;
+  return (
+    typeof value.agent === "string" &&
+    typeof value.id === "string" &&
+    typeof value.kind === "string" &&
+    typeof value.name === "string" &&
+    typeof value.cwd === "string" &&
+    typeof value.at === "number" &&
+    (value.model === undefined || typeof value.model === "string")
+  );
 }
 
 /** The newest ledger record, optionally limited to `kind`, or null when the ledger holds none.
