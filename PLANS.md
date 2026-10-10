@@ -121,23 +121,6 @@ test` stays green on a machine with no claude installed.
 landing commit body.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 2a/5: `plans/portability.md`, part 5/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "5/7 — Make the
-agent binary configurable" section.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to this section. Its prose is a dense source of line pins past a file's end.
-
-**Files touched.** `plans/portability.md` (only the named section). No source or test change.
-
-**Acceptance criteria.**
-- The inventory over the named section reports no cited path absent from the tree.
-- No `<path>:<line>` in the named section names a line past that file's end.
-- For each split module cited in the named section, the module named beside a symbol exports it
-  (checked against the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 2b/5: `plans/portability.md`, part 6/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "6/7 — Make the
@@ -314,6 +297,23 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Finish the stale code-path citation sweep, part 2a/5: `plans/portability.md`, part 5/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "5/7 — Make the
+agent binary configurable" section.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to this section. Its prose is a dense source of line pins past a file's end.
+
+**Files touched.** `plans/portability.md` (only the named section). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named section reports no cited path absent from the tree.
+- No `<path>:<line>` in the named section names a line past that file's end.
+- For each split module cited in the named section, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
 
 ### Finish the stale code-path citation sweep, part 1c/5: `plans/portability.md`, parts 4a/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 
