@@ -62,48 +62,6 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 1a/5: `plans/portability.md`, parts 1/7–2/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** Every path-shaped token in this part's plan-document sections names a path that exists
-in the tree, every `<path>:<line>` names a line the file actually has, and a module that has
-since split names the module that owns the symbol beside the citation. A reader who follows the
-citation reaches the code it describes. The plans were audited before the landing, pi-facade,
-config, loop, and events splits, so today a citation names a module that no longer exists or a
-line past the file's end; the 2026-10-10 review of `plans/portability.md` named three remaining
-classes — a helper pinned to the wrong landing module, a build-scope call pinned to a stale
-module, and line pins past the file's end.
-
-**Scope.** `plans/portability.md` sections "1/7 — GitHub Actions CI and a publishable npm
-package" and "2/7 — Resolve the repo root, and target any branch". Disjoint from the other
-citation-sweep parts, so the parts land cleanly in any order.
-
-**Method (the other citation-sweep parts apply this same four-step method to their own scope).**
-1. Inventory: scan the scope for path-shaped tokens and keep the ones whose path is absent from
-   the tree; separately list every `<path>:<line>` whose line is past the file's end. A clean
-   inventory over the scope is the acceptance check.
-2. Split-aware map: for each moved module, name the one current module that owns the cited
-   symbol — the root modules that moved into their own directory keep their file name, so
-   `src/config/config.ts`, `src/loop/loop.ts`, `src/pi/pi.ts`, `src/git/git.ts`,
-   `src/orchestrator/orchestrator.ts`, and `src/config/config-validation.ts` are the owners,
-   while the `types`, `state`, and `merge` modules split into per-topic files — but a module
-   that split into a facade plus
-   implementations needs a per-citation symbol check, never a blanket rename. `git log
-   --diff-filter=R --name-status` and `grep -rn <symbol> src` locate the owner.
-3. Rewrite rule: replace the path with its current module and drop the old `:line` pin, keeping
-   the symbol name in the surrounding prose. A path alone is honest; a stale number is not.
-4. Historical audits: a dated "Verified as written" paragraph is a snapshot at the commit its
-   heading names. Keep that commit reference; reword its line pins to symbol names rather than
-   asserting a current line.
-
-**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
-
-**Acceptance criteria.**
-- The inventory over the named sections reports no cited path absent from the tree.
-- No `<path>:<line>` in the named sections names a line past that file's end.
-- For each split module cited in the named sections, the module named beside a symbol exports it
-  (checked against the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 1b/5: `plans/portability.md`, part 3/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "3/7 —
@@ -332,6 +290,48 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Finish the stale code-path citation sweep, part 1a/5: `plans/portability.md`, parts 1/7–2/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** Every path-shaped token in this part's plan-document sections names a path that exists
+in the tree, every `<path>:<line>` names a line the file actually has, and a module that has
+since split names the module that owns the symbol beside the citation. A reader who follows the
+citation reaches the code it describes. The plans were audited before the landing, pi-facade,
+config, loop, and events splits, so today a citation names a module that no longer exists or a
+line past the file's end; the 2026-10-10 review of `plans/portability.md` named three remaining
+classes — a helper pinned to the wrong landing module, a build-scope call pinned to a stale
+module, and line pins past the file's end.
+
+**Scope.** `plans/portability.md` sections "1/7 — GitHub Actions CI and a publishable npm
+package" and "2/7 — Resolve the repo root, and target any branch". Disjoint from the other
+citation-sweep parts, so the parts land cleanly in any order.
+
+**Method (the other citation-sweep parts apply this same four-step method to their own scope).**
+1. Inventory: scan the scope for path-shaped tokens and keep the ones whose path is absent from
+   the tree; separately list every `<path>:<line>` whose line is past the file's end. A clean
+   inventory over the scope is the acceptance check.
+2. Split-aware map: for each moved module, name the one current module that owns the cited
+   symbol — the root modules that moved into their own directory keep their file name, so
+   `src/config/config.ts`, `src/loop/loop.ts`, `src/pi/pi.ts`, `src/git/git.ts`,
+   `src/orchestrator/orchestrator.ts`, and `src/config/config-validation.ts` are the owners,
+   while the `types`, `state`, and `merge` modules split into per-topic files — but a module
+   that split into a facade plus
+   implementations needs a per-citation symbol check, never a blanket rename. `git log
+   --diff-filter=R --name-status` and `grep -rn <symbol> src` locate the owner.
+3. Rewrite rule: replace the path with its current module and drop the old `:line` pin, keeping
+   the symbol name in the surrounding prose. A path alone is honest; a stale number is not.
+4. Historical audits: a dated "Verified as written" paragraph is a snapshot at the commit its
+   heading names. Keep that commit reference; reword its line pins to symbol names rather than
+   asserting a current line.
+
+**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named sections reports no cited path absent from the tree.
+- No `<path>:<line>` in the named sections names a line past that file's end.
+- For each split module cited in the named sections, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
 
 ### Agent backends, part 6e/7: resume across a usage-window hold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6c/7 landed; done 2026-10-10 by feature)
 

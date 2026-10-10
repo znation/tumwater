@@ -95,7 +95,7 @@ two workflows.
   (measured 2026-09-16 against main: a root checkout's `npm pack --dry-run` ships 633 files /
   2.8 MB — 384 untracked machine-local `.claude/` state files, 114 gitignored `dist/` files npm
   packs anyway, and the 135 packed tracked files; the allowlist makes the tarball identical on
-  every machine). `dist/test` is deliberately excluded: `dist/src/test-runner.js` resolves it at
+  every machine). `dist/test` is deliberately excluded: `test/test-runner.ts` resolves it at
   runtime and already reports "run `npm run build` first" when absent, which is the right answer
   for an installed package.
 - **`prepack` builds.** The tarball's entire value is `dist/`, which is gitignored, so a publish
@@ -104,7 +104,7 @@ two workflows.
   place so the three cannot drift.
 - **Build stamping already degrades correctly — no code change.** `scripts/stamp-build.mjs`
   stamps `dist/build-info.json` with the build checkout's HEAD and its absolute root. From CI
-  that root is the runner's workspace, so `isSelfHosted(root, info)` (src/build-info.ts) is false
+  that root is the runner's workspace, so `isSelfHosted(root, info)` (src/build/build-info.ts) is false
   for every user repo: `createRedeployer` still constructs, `buildStaleness` returns null for an
   unknown sha, and nothing tries to redeploy a user's project onto tumwater's history. That is
   exactly the documented contract, and the stamp still gives `tumwater doctor` a provenance line.
@@ -120,7 +120,7 @@ two workflows.
 **Approach.**
 - package.json — add `files`, `prepack`, `keywords`, `engines.os: ["darwin", "linux"]`; keep
   `bin`, and raise `engines.node` to `">=20.3"` rather than keeping `">=20"`:
-  `AbortSignal.any` (src/loop.ts:150, src/orchestrator.ts:165) landed in Node 20.3.0, so a
+  `AbortSignal.any` (src/loop/loop.ts, src/orchestrator/orchestrator.ts) landed in Node 20.3.0, so a
   20.0–20.2 install would throw (correction 1). Do NOT add `repository`/`homepage`/`bugs` — each
   needs a real remote URL and this repo has none (correction 3). Leave the `build` script's
   `rm -rf dist` unchanged (correction 2).
@@ -140,20 +140,20 @@ two workflows.
   GitHub repo whose `repository` field matches, and this tree has neither — correction 3), then
   `gh release create` attaching `npm pack`'s tarball. Like CI, this workflow ships as a file and
   its first run is a human step once a remote exists (correction 4).
-- README.md — rewrite `## Usage`'s opening (line 214 today: `npm install && npm run build`):
+- README.md — rewrite `## Usage`'s opening (today `npm install && npm run build`):
   `npm install -g tumwater` (or `npx tumwater`) as the primary install, `npm install && npm run
   build && npm link` as the from-source path. No CI badge (correction 3).
 - test/packaging.test.ts (new) — the landing gate runs `npm test`, which today verifies nothing
   about a metadata-only diff, so pin the intent deterministically (correction 5). Read
   `package.json` with the `fs.readFileSync(new URL("../../package.json", import.meta.url))` idiom
-  test/cli.test.ts:59 already uses and assert: `files` deep-equals `["dist/src",
+  test/cli.test.ts already uses and assert: `files` deep-equals `["dist/src",
   "dist/build-info.json", "README.md", "LICENSE"]` and has no entry under `test/`, `src/`,
   `plans/`, or `docs/`, nor equal to `PLANS.md`, `BUGS.md`, `PRINCIPLES.md`, `tsconfig.json`, or
   `tumwater.json`; `prepack === "npm run build"`; `engines.os` includes `darwin` and `linux` and
   not `win32`; `engines.node === ">=20.3"`; `bin.tumwater` starts with `dist/`. Then assert the two
   workflow files exist and carry only the stable triggers — `ci.yml` matches `pull_request`,
   `ubuntu-latest`, `macos-latest`; `release.yml` matches `v*` — so a later step edit does not have
-  to touch the test. The existing "version prints the package version" (test/cli.test.ts:59)
+  to touch the test. The existing "version prints the package version" (test/cli.test.ts)
   already covers the installed-version path; this file does not duplicate it.
 
 **Files touched.** package.json, LICENSE (new), .github/workflows/ci.yml (new),
@@ -179,10 +179,10 @@ the one new test file is assertions over the packaged metadata and the workflow 
 
 **Refined 2026-09-16 (plan loop) — audited against main `00501fa` (build clean, suite 1019/1019 per the README's stamp at 10c8ae6; this series had no audit since `074e48f` wrote it on 2026-09-15, and no landing since then touches this sub-plan's anchors — the `--since=2026-09-13` log over package.json/tsconfig.json is empty, and the landings since are markdown, TUI-test, and orchestrator-only). Every load-bearing claim verified on this tree; two pins corrected in place (the redundant `version` test, the test count), and the tarball facts re-measured from a root checkout and a worktree.**
 
-Verified as written: package.json — `files`, `prepack`, `repository`, `homepage`, `bugs`, `keywords`, and `engines.os` are all absent (the Approach adds them), `bin` is still `dist/src/cli.js`, `engines.node` is still ">=20", `build` still opens with `rm -rf dist` (the `node -e` replacement target), and `license: "MIT"` is declared with no LICENSE file on disk — "a license claim it cannot substantiate" holds. No `.github/` directory and no `.npmignore`, so the packlist behavior the allowlist replaces is today's default. `scripts/stamp-build.mjs` stamps through build-info.ts' `stampBuild(root, dist, sha?)` — `dist/build-info.json` with the checkout's HEAD and `path.resolve(root)`, and no resolvable HEAD → no stamp at all — so the "build stamping already degrades correctly" bullet holds for a CI checkout. `isSelfHosted` (src/build/build-info.ts) is false when the stamp's `root` differs from the run root or the sha is not in the repo's history — the "never redeploy a user's project" contract holds. `dist/test/test-runner.js` (test/test-runner.ts) reports "run `npm run build` first" when `dist/test` is absent — the dist/test exclusion rationale holds. The suite's fixtures set their own git identity (test/fixtures/repo-fixtures.ts) — the runner-identity step's rationale holds. package-lock.json is tracked, so CI's `npm ci` and setup-node's `cache: npm` both work. `version`/`--version`/`-v` exists (src/cli.ts line 492) and reads `../../package.json` — present in every tarball, so an installed copy reports its version. README's `## Usage` (line 185) still opens with `npm install && npm run build` — the rewrite anchor holds.
+Verified as written: package.json — `files`, `prepack`, `repository`, `homepage`, `bugs`, `keywords`, and `engines.os` are all absent (the Approach adds them), `bin` is still `dist/src/cli.js`, `engines.node` is still ">=20", `build` still opens with `rm -rf dist` (the `node -e` replacement target), and `license: "MIT"` is declared with no LICENSE file on disk — "a license claim it cannot substantiate" holds. No `.github/` directory and no `.npmignore`, so the packlist behavior the allowlist replaces is today's default. `scripts/stamp-build.mjs` stamps through src/build/build-info.ts' `stampBuild(root, dist, sha?)` — `dist/build-info.json` with the checkout's HEAD and `path.resolve(root)`, and no resolvable HEAD → no stamp at all — so the "build stamping already degrades correctly" bullet holds for a CI checkout. `isSelfHosted` (src/build/build-info.ts) is false when the stamp's `root` differs from the run root or the sha is not in the repo's history — the "never redeploy a user's project" contract holds. `dist/test/test-runner.js` (test/test-runner.ts) reports "run `npm run build` first" when `dist/test` is absent — the dist/test exclusion rationale holds. The suite's fixtures set their own git identity (test/fixtures/repo-fixtures.ts) — the runner-identity step's rationale holds. package-lock.json is tracked, so CI's `npm ci` and setup-node's `cache: npm` both work. `version`/`--version`/`-v` exists (src/cli.ts; the read lives in src/version.ts) and reads `../../package.json` — present in every tarball, so an installed copy reports its version. README's `## Usage` still opens with `npm install && npm run build` — the rewrite anchor holds.
 
 Corrections (pinned in place):
-1. **The `version` test already exists.** test/cli.test.ts line 59 ("version prints the package version") execFiles the compiled `dist/src/cli.js` and asserts package.json's version — the exact pin the old Approach bullet asked to add, already in the suite. The bullet is replaced with a pointer, test/cli.test.ts leaves Files touched, and "No source or test changes" is true; an implementer following the old text would have shipped a duplicate test.
+1. **The `version` test already exists.** test/cli.test.ts ("version prints the package version") execFiles the compiled `dist/src/cli.js` and asserts package.json's version — the exact pin the old Approach bullet asked to add, already in the suite. The bullet is replaced with a pointer, test/cli.test.ts leaves Files touched, and "No source or test changes" is true; an implementer following the old text would have shipped a duplicate test.
 2. **Test count 970 → 1019** (the ci.yml bullet) — the suite has grown since the series was written; the "matrix stays cheap" conclusion is unchanged.
 3. **Tarball facts re-measured** (`npm pack --dry-run`, 2026-09-16): the PLANS.md entry's "230 files / 1.1 MB" is stale in both numbers, and the quirk is worse than "dist by a packlist quirk" — a root checkout packs 633 files / 2.8 MB: 384 untracked machine-local `.claude/` state files, 114 gitignored `dist/` files npm packs anyway, and the 135 packed tracked files (137 tracked, minus `.gitignore` and `package-lock.json`, which npm drops from the pack); a worktree checkout (no `dist/` on disk) packs those 135 / 866 kB. Without the allowlist, a publish from this machine ships `.claude/` — the Design bullet is strengthened with the measured numbers and the PLANS.md bullet corrected to match.
 
@@ -200,14 +200,14 @@ replaces is today's default; package.json still has no `files`, `prepack`, `repo
 `engines.node` is still `">=20"`; `build` still opens with `rm -rf dist`; and `license: "MIT"` is
 declared with no LICENSE on disk. `dist/src/cli.js` opens with `#!/usr/bin/env node`, so the packed
 shim is executable. `scripts/stamp-build.mjs` still calls `stampBuild(root, path.join(root,
-"dist"))`, and `isSelfHosted` is still src/build-info.ts:67 — the CI-degradation bullet holds.
-`dist/src/test-runner.js` still answers "run `npm run build` first" at src/test-runner.ts:39/:46 —
-the `dist/test` exclusion rationale holds. test/cli.test.ts:59 still execFiles the compiled CLI and
+"dist"))`, and `isSelfHosted` is still in src/build/build-info.ts — the CI-degradation bullet holds.
+`dist/test/test-runner.js` still answers "run `npm run build` first" in test/test-runner.ts's `selectTestFiles` —
+the `dist/test` exclusion rationale holds. test/cli.test.ts still execFiles the compiled CLI and
 asserts package.json's version. npm 11.19.1.
 
 Corrections (pinned in place):
-1. **`engines.node` must be `">=20.3"`, not `">=20"`.** `AbortSignal.any` — used at src/loop.ts:150
-   and src/orchestrator.ts:165 — was added in Node 20.3.0, so "keep `engines.node: >=20`" would
+1. **`engines.node` must be `">=20.3"`, not `">=20"`.** `AbortSignal.any` — used at src/loop/loop.ts
+   and src/orchestrator/orchestrator.ts — was added in Node 20.3.0, so "keep `engines.node: >=20`" would
    ship a package that throws on 20.0–20.2. No API above 20.0 other than this one is used: grep for
    `fs.glob`, `Promise.withResolvers`, `Object.groupBy`, `Array.fromAsync`, `import.meta.dirname`,
    and `process.getBuiltinModule` is empty across src/ and test/ (node:test's `t.mock.method`, in
@@ -224,8 +224,8 @@ Corrections (pinned in place):
 4. **The unbounded Linux clause is bounded (open question closed).** "fixing Linux-only suite
    failures the first run surfaces is part of this entry" made an unknown amount of work part of a
    one-run plan, and no worktree here can run Linux. Audited hazards (2026-09-21): the suite shells
-   out only through `#!/bin/sh` shims (test/util.ts:48, :65), `findOnPath` gates on `X_OK`
-   (src/files/files.ts:55), temp dirs come from `fs.mkdtempSync(os.tmpdir())` (test/util.ts:14), and no
+   out only through `#!/bin/sh` shims (`writeScript`, test/fakes/fake-commands.ts), `findOnPath` gates on `X_OK`
+   (src/files/files.ts), temp dirs come from `fs.mkdtempSync(os.tmpdir())` (`tmpdir`, test/fixtures/repo-fixtures.ts), and no
    test or source invokes `timeout`, `sed -i`, `readlink -f`, `stat -f`, `date -r`, `shuf`,
    `nproc`, `pkill`, or `setsid` — the usual macOS↔Linux divergences are absent, and `git init -b`
    (git 2.28+) is satisfied by ubuntu-latest. So this entry ships the workflow and pins its
@@ -237,8 +237,8 @@ Corrections (pinned in place):
    `engines.node`, `bin`, and the two workflow triggers — it is why test/ now appears in Files
    touched. This does not contradict the old "No new CLI test" bullet, which was about not
    duplicating the installed-version test.
-6. **Drifted pins.** test/util.ts's git-identity lines are now :26–:27 (the 2026-09-16 note said
-   :25–:26), and the suite count is 1241, not that note's 1019.
+6. **Drifted pins.** the git-identity fixture lines live in test/fixtures/repo-fixtures.ts (the
+   2026-09-16 note pinned :25–:26 in the then-shared test util), and the suite count is 1241, not that note's 1019.
 7. **Tarball facts re-measured** on this clean worktree (`58b1a27`, 2026-09-21): `npm pack
    --dry-run --json` ships 314 files / 1.6 MB packed / 5.2 MB unpacked — PLANS.md, BUGS.md,
    PRINCIPLES.md, docs/ 1, plans/ 15, src/ 77, test/ 67, scripts/ 3, tsconfig.json, tumwater.json,
@@ -287,40 +287,42 @@ honest.
   where this entry already touches them.
 
 **Approach.**
-- src/git.ts — `repoToplevel(dir): Promise<string | null>` and `branchExists(root, branch)`.
+- src/git/git.ts — `repoToplevel(dir): Promise<string | null>` and `branchExists(root, branch)`.
 - src/cli.ts — `main()` resolves `root = (await repoToplevel(cwd)) ?? cwd` before dispatch;
-  `resolveMainBranch(root, config, branchArg)` implements the precedence and validates existence
-  — `branchArg` is the parsed `--branch` value, `string | null`; `run`'s flag spec gains
-  `--branch <name>`: the `run` case's `rejectUnknownArgs("run", args, [])` (line 341) gains
-  `{ names: ["--branch"], value: true, valueName: "<name>" }`, `cmdRun(root)` (line 109) gains
-  the args and calls `parseBranchFlag(args)` there, the way the `wake` command calls
-  `parseRoleFlag`; the help block's `run` line (line 49) gains the `--branch <name>` spelling
-  the way `wake` shows `--role` (line 67); the start line prints the resolved root when it
-  differs from cwd (it already prints the branch — line 135: `tumwater running on branch
+  `resolveMainBranch(root, config, branchArg)` (src/gates/startup-gate.ts) implements the
+  precedence and validates existence — `branchArg` is the parsed `--branch` value,
+  `string | null`; `run`'s flag spec gains `--branch <name>`: the `run` case's
+  `rejectUnknownArgs("run", args, [])` gains
+  `{ names: ["--branch"], value: true, valueName: "<name>" }`, `cmdRun(root, args)`
+  (src/cli/cli-run.ts) gains the args and calls `parseBranchFlag(args)` there, the way the
+  `wake` command calls `parseRoleFlag`; the help block's `run` line (src/cli/help.ts) gains the
+  `--branch <name>` spelling the way `wake` shows `--role`; the start line prints the resolved
+  root when it differs from cwd (it already prints the branch: `tumwater running on branch
   ${mainBranch}${build} — Ctrl+C to stop`).
 - src/cli/cli-args.ts — `parseBranchFlag(args)` beside `parseRoleFlag`, rejecting empty or
   `-`-leading values.
-- src/types.ts + src/config-validation.ts — `baseBranch?: string` on TumwaterConfig and in
-  `TOP_LEVEL_KEYS`, validated as a non-empty string.
-- src/orchestrator.ts — once per poll, compare `currentBranch(root)` against the resolved base and
+- src/config/config-schema.ts + src/config/config-validation.ts — `baseBranch?: string` on
+  `TumwaterConfig` and in `TOP_LEVEL_KEYS`, validated as a non-empty string.
+- src/orchestrator/orchestrator.ts — once per poll, compare `currentBranch(root)` against the resolved base and
   log one `warning` on a change (edge-triggered via a local).
 - src/init/init.ts — resolve the init branch as above; `initProject` takes an optional branch.
-  `InitResult` (line 75) gains the branch the repo was created on, and `cmdInit`'s "initialized
-  a new git repository on branch main" line (cli.ts line 103) prints it instead of the
-  hardcoded `main`; the rationale comment at lines 107–108 ("a fresh repo has no history for an
+  `InitResult` gains the branch the repo was created on, and `cmdInit`'s "initialized
+  a new git repository on branch main" line (src/cli/cli-run.ts) prints it instead of the
+  hardcoded `main`; the rationale comment above the init call ("a fresh repo has no history for an
   init.defaultBranch preference to protect") is superseded by the new behavior, which
   deliberately honors `init.defaultBranch`, and must be rewritten with it.
-- src/doctor/doctor.ts — `checkRepo` reports the resolved toplevel and the branch the fleet would target,
+- src/doctor/doctor-checks.ts — `checkRepo` reports the resolved toplevel and the branch the fleet would target,
   and fails when a configured `baseBranch` does not exist.
 - Tests: test/git.test.ts (toplevel from a subdirectory; `branchExists`), test/cli.test.ts
   (commands from a subdirectory; `--branch` overrides; an unknown `--branch` fails listing what
-  exists), test/orchestrator.test.ts (the branch-change warning fires exactly once),
+  exists), test/orchestrator-divergence.test.ts (the branch-change warning fires exactly once),
   test/init.test.ts (`init.defaultBranch` respected), test/loop.test.ts (one end-to-end tick
   fixture on a repo whose only branch is `trunk`).
 
-**Files touched.** src/git.ts, src/cli.ts, src/cli/cli-args.ts, src/types.ts, src/config-validation.ts,
-src/orchestrator.ts, src/init/init.ts, src/doctor/doctor.ts, test/git.test.ts, test/cli-args.test.ts,
-test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts,
+**Files touched.** src/git/git.ts, src/cli.ts, src/cli/cli-args.ts, src/config/config-schema.ts,
+src/config/config-validation.ts, src/orchestrator/orchestrator.ts, src/init/init.ts,
+src/doctor/doctor-checks.ts, test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts,
+test/orchestrator-divergence.test.ts, test/init.test.ts, test/doctor.test.ts,
 test/loop.test.ts.
 
 **Acceptance criteria.**
@@ -335,28 +337,28 @@ test/loop.test.ts.
 - `tumwater init` in an empty directory with `init.defaultBranch=trunk` creates the repo on
   `trunk`.
 
-**Refined 2026-09-17 (plan loop) — audited against main `e76c5d5` (build clean, suite 1021/1021 per the README's stamp; this sub-plan's last audit was the 2026-09-15 series write `074e48f` against `1384eeb`, thirty-five landings back). Since then the anchor files moved in a line-shifting wave — `6322625` (wake: cli.ts gains `cmdWake` below this entry's anchors), `4bf85cc`/`bdec4f1`/`776fa0f` (orchestrator.ts' drain and slot rework — nothing this entry touches), `4dba580` (types.ts +5), `a94c1e7` (cli.ts/doctor.ts two-line `shortSha` swaps, no line shift) — while src/git.ts, src/cli/cli-args.ts, src/init/init.ts, and src/config-validation.ts took zero commits. Every load-bearing claim re-verified on this tree; two in-place corrections close the questions the write left open (the flag-parsing seam, and init's hardcoded "on branch main" output).**
+**Refined 2026-09-17 (plan loop) — audited against main `e76c5d5` (build clean, suite 1021/1021 per the README's stamp; this sub-plan's last audit was the 2026-09-15 series write `074e48f` against `1384eeb`, thirty-five landings back). Since then the anchor files moved in a line-shifting wave — `6322625` (wake: cli.ts gains `cmdWake` below this entry's anchors), `4bf85cc`/`bdec4f1`/`776fa0f` (orchestrator.ts' drain and slot rework — nothing this entry touches), `4dba580` (types.ts +5), `a94c1e7` (cli.ts/doctor.ts two-line `shortSha` swaps, no line shift) — while src/git/git.ts, src/cli/cli-args.ts, src/init/init.ts, and src/config/config-validation.ts took zero commits. Every load-bearing claim re-verified on this tree; two in-place corrections close the questions the write left open (the flag-parsing seam, and init's hardcoded "on branch main" output).**
 
-Verified as written: src/cli.ts — `main()` still sets `root = process.cwd()` (line 335) as the single dispatch point every command's root flows through; `resolveMainBranch(root)` (line 78) still only rejects a detached HEAD ("check out your main branch first") and returns `currentBranch(root)` — the precedence and existence-validation work is still to do, as written; `requireReadyRepo(root)` (line 84) is the `isGitRepo` + tumwater.json + `hasCommits` gate, and its "not a git repository (run `git init` first)" message is exactly the misdiagnosis the root fix removes from subdirectories; the `run` case takes no flags today (`rejectUnknownArgs("run", args, [])`, line 341, `cmdRun(root)` at 342) and the `gui` case is the in-tree idiom for a valued flag (`rejectUnknownArgs` spec array, lines 350–353). src/git.ts — `readBranchHead` (line 97) is the file fast path the Problem section cites: `statSync(<root>/.git)` returns null when `.git` is absent (a subdirectory) or is a worktree-pointer file, so a subdirectory root silently degrades to a spawn per poll, as written; `isGitRepo(dir)` (line 138, `rev-parse --git-dir`) passes from any subdirectory; `currentBranch(root)` (line 178) is what both the precedence and the mid-run divergence check read; neither `repoToplevel` nor `branchExists` exists yet, so the two new exports collide with nothing. src/cli/cli-args.ts — `parseRoleFlag(args, validIds?)` (line 44) is the template the entry names — `args.indexOf`, `fail` on a missing value, typed return — and `parsePortFlag` (line 30) is the value-side companion; `parseBranchFlag` beside them holds. src/init/init.ts — `git(root, "init", "-b", "main")` (line ~112) is still hardcoded with the now-superseded rationale comment at 107–108, `InitResult` (line 75) still has no branch field, and `cmdInit`'s "on branch main" output (cli.ts line 103) still hardcodes it. src/doctor/doctor.ts — `checkRepo(root)` (line 50) is the reported site. src/types.ts — `TumwaterConfig` (line 63) is where `baseBranch?: string` lands; the no-rename bullet's on-disk contracts both survive: the `main_red` TickResult (line 132) and the `build_stale` event (line 255). src/config-validation.ts — `TOP_LEVEL_KEYS` (lines 33–53, ending `"customLoops", "roles"`) is where `"baseBranch"` goes, validated non-empty beside the other top-level rules. src/orchestrator.ts — `RunOptions` already carries `mainBranch` (line 71), so the poll loop's (line 378) once-per-poll divergence check compares against the resolved base with no signature change. The Problem section's "not a problem" half holds: `mainBranch` still threads loop/orchestrator/merge/review/lander/worktree, and `ffMainTo`'s detached-primary arm is untouched. All six named test files exist (test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/loop.test.ts).
+Verified as written: src/cli.ts — `main()` still sets `root = process.cwd()` as the single dispatch point every command's root flows through; `resolveMainBranch(root)` (src/gates/startup-gate.ts) still only rejects a detached HEAD ("check out your main branch first") and returns `currentBranch(root)` — the precedence and existence-validation work is still to do, as written; `requireReadyRepo(root)` (src/cli/cli-repo-gate.ts) is the `isGitRepo` + tumwater.json + `hasCommits` gate, and its "not a git repository (run `git init` first)" message is exactly the misdiagnosis the root fix removes from subdirectories; the `run` case takes no flags today (`rejectUnknownArgs("run", args, [])`, `cmdRun(root)`) and the `gui` case is the in-tree idiom for a valued flag (`rejectUnknownArgs` spec array). src/git/git.ts — `readBranchHead` is the file fast path the Problem section cites: `statSync(<root>/.git)` returns null when `.git` is absent (a subdirectory) or is a worktree-pointer file, so a subdirectory root silently degrades to a spawn per poll, as written; `isGitRepo(dir)` (`rev-parse --git-dir`) passes from any subdirectory; `currentBranch(root)` is what both the precedence and the mid-run divergence check read; neither `repoToplevel` nor `branchExists` exists yet, so the two new exports collide with nothing. src/cli/cli-args.ts — `parseRoleFlag(args, validIds?)` is the template the entry names — `args.indexOf`, `fail` on a missing value, typed return — and `parsePortFlag` is the value-side companion; `parseBranchFlag` beside them holds. src/init/init.ts — `git(root, "init", "-b", "main")` is still hardcoded with the now-superseded rationale comment above it, `InitResult` still has no branch field, and `cmdInit`'s "on branch main" output (src/cli/cli-run.ts) still hardcodes it. src/doctor/doctor-checks.ts — `checkRepo(root)` is the reported site. src/config/config-schema.ts — `TumwaterConfig` is where `baseBranch?: string` lands and `TOP_LEVEL_KEYS` is where `"baseBranch"` goes; the no-rename bullet's on-disk contracts both survive: the `main_red` TickResult (src/tick/tick-outcome.ts) and the `build_stale` event (src/events/events.ts); validation lives in src/config/config-validation.ts. src/orchestrator/orchestrator.ts — `RunOptions` already carries `mainBranch`, so the poll loop's once-per-poll divergence check compares against the resolved base with no signature change. The Problem section's "not a problem" half holds: `mainBranch` still threads loop/orchestrator/merge/review/lander/worktree, and `ffMainTo`'s detached-primary arm is untouched. All six named test files exist (test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator-divergence.test.ts, test/init.test.ts, test/loop.test.ts).
 
 Corrections (pinned in place):
 1. **The flag-parsing seam.** The write said "`run`'s flag spec gains `--branch <name>`" and "src/cli/cli-args.ts — parseBranchFlag(args)" without saying who calls what, and its `resolveMainBranch(root, config, args)` signature left open whether `args` is raw command args or a parsed value. Pinned: `rejectUnknownArgs` validates the spelling in `main()`, `cmdRun` receives the args and calls `parseBranchFlag(args)` (the `parseRoleFlag` idiom), and `resolveMainBranch` takes the parsed value as `branchArg`.
 2. **Init's "on branch main" output.** The write's init bullet did not name `cmdInit`'s hardcoded output line, `InitResult`, or the rationale comment; an implementer could land the branch resolution and leave "initialized a new git repository on branch main" lying. Pinned: `InitResult` gains the created branch, `cmdInit` prints it, and the superseded comment is rewritten with the change.
 
-Sizing unchanged: src/git.ts ~20 lines (repoToplevel + branchExists), src/cli.ts ~25 (root resolution, precedence + existence validation, the flag, the help line, the init output), src/cli/cli-args.ts ~10, types/config-validation ~5, src/orchestrator.ts ~10 (the edge-triggered warning local), src/init/init.ts ~15, src/doctor/doctor.ts ~10, and the six test files ~150, the `trunk` end-to-end fixture in test/loop.test.ts the largest. One run. No design question remains open.
+Sizing unchanged: src/git/git.ts ~20 lines (repoToplevel + branchExists), src/cli.ts ~25 (root resolution, precedence + existence validation, the flag, the help line, the init output), src/cli/cli-args.ts ~10, types/config-validation ~5, src/orchestrator/orchestrator.ts ~10 (the edge-triggered warning local), src/init/init.ts ~15, src/doctor/doctor-checks.ts ~10, and the six test files ~150, the `trunk` end-to-end fixture in test/loop.test.ts the largest. One run. No design question remains open.
 
 **Refined 2026-09-21 (plan loop) — 2/7 re-audited against main `423cc78`. This entry carried the series' oldest audit (`e76c5d5`, 2026-09-17, ~53 landings back), and it gates 3/7, 5/7, 6/7 and 7/7. The design holds unchanged; every load-bearing claim was re-verified, three seams the write left open are pinned (a branch-list helper, doctor's config access, and whether `init` resolves the root), two Files-touched omissions are corrected, and every drifted line anchor is re-pinned here.**
 
-Verified as written (re-pinned after the 2/7 landing, commit `c033ad15`): `src/cli.ts` — `main()` resolves the root through `repoToplevel(process.cwd())` with a cwd fallback (line **76**) as the single dispatch point every command's root flows through; the `run` case is `rejectUnknownArgs("run", args, RUN_FLAG_SPECS)` (line **86**) then `cmdRun(root, args)` (line **87**); the `gui` case is `rejectUnknownArgs("gui", args, GUI_FLAG_SPECS)` (line **99**); `requireReadyRepo(root)` (defined at src/cli/cli-repo-gate.ts) is the `isGitRepo` + tumwater.json + `hasCommits` gate; the help block's `run` line is src/cli/help.ts:15 and `wake`'s `--role` spelling src/cli/help.ts:181. `src/gates/startup-gate.ts` — `resolveMainBranch` (line **91**) applies the `--branch` → `baseBranch` → checked-out precedence and refuses a missing branch, called from `runStartupCheck` (line **75**). `src/cli/cli-run.ts` — `cmdRun` (line **89**) parses `--branch` with `parseBranchFlag` and prints the branch at startup (lines **180–181**), and `cmdInit` prints the created branch (line **67**). `src/git/git.ts` — `readBranchHead` **:18**, `isGitRepo` **:60**, `repoToplevel` **:104**, `branchExists` **:109**, `listBranches` **:145**, `currentBranch` **:204**. `src/cli/cli-args.ts` — `parseRoleFlag` **:213**, `parsePortFlag` **:85**, `parseBranchFlag` **:225**, so the flag the entry adds already has its parser. `src/init/init.ts` — `InitResult` **:96**, `initProject` **:130**, and `git init -b <preferred>` **:245**, with `preferred` read from `init.defaultBranch` at **:229**. `src/doctor/doctor-checks.ts` — `checkRepo` **:117** and `checkInit` **:149**, called from src/doctor/doctor.ts **:62–63**. `src/config/config-schema.ts` — `TumwaterConfig` **:173**; the no-rename bullet's on-disk contracts both survive (`main_red` at src/tick/tick-outcome.ts:43; `build_stale` at src/events/events.ts:91). `src/config/config-validation.ts` — `checkString` (:130) is the non-empty-string validator `baseBranch` uses; `TOP_LEVEL_KEYS` (defined at src/config/config-schema.ts:351) already lists `baseBranch` (:355). `src/orchestrator/orchestrator.ts` — `RunOptions` **:54** with `mainBranch` **:57**; the poll loop is `while (!signal.aborted)` **:297** and computes `mainHead` at **:330**.
+Verified as written (re-pinned after the 2/7 landing, commit `c033ad15`): `src/cli.ts` — `main()` resolves the root through `repoToplevel(process.cwd())` with a cwd fallback as the single dispatch point every command's root flows through; the `run` case is `rejectUnknownArgs("run", args, RUN_FLAG_SPECS)` then `cmdRun(root, args)`; the `gui` case is `rejectUnknownArgs("gui", args, GUI_FLAG_SPECS)`; `requireReadyRepo(root)` (defined at src/cli/cli-repo-gate.ts) is the `isGitRepo` + tumwater.json + `hasCommits` gate; the help block's `run` line and `wake`'s `--role` spelling are in src/cli/help.ts. `src/gates/startup-gate.ts` — `resolveMainBranch` applies the `--branch` → `baseBranch` → checked-out precedence and refuses a missing branch, called from `runStartupCheck`. `src/cli/cli-run.ts` — `cmdRun` parses `--branch` with `parseBranchFlag` and prints the branch at startup, and `cmdInit` prints the created branch. `src/git/git.ts` — `readBranchHead`, `isGitRepo`, `repoToplevel`, `branchExists`, `listBranches`, `currentBranch`. `src/cli/cli-args.ts` — `parseRoleFlag`, `parsePortFlag`, `parseBranchFlag`, so the flag the entry adds already has its parser. `src/init/init.ts` — `InitResult`, `initProject`, and `git init -b <preferred>`, with `preferred` read from `init.defaultBranch`. `src/doctor/doctor-checks.ts` — `checkRepo` and `checkInit`, called from src/doctor/doctor.ts. `src/config/config-schema.ts` — `TumwaterConfig`; the no-rename bullet's on-disk contracts both survive (`main_red` at src/tick/tick-outcome.ts; `build_stale` at src/events/events.ts). `src/config/config-validation.ts` — `checkString` is the non-empty-string validator `baseBranch` uses; `TOP_LEVEL_KEYS` (defined at src/config/config-schema.ts) already lists `baseBranch`. `src/orchestrator/orchestrator.ts` — `RunOptions` carries `mainBranch`; the poll loop is `while (!signal.aborted)` and computes `mainHead`.
 
 Corrections (pinned in place):
-1. **A branch-list helper is needed and was unnamed.** "fails at startup listing the branches that exist" requires a git call the Approach never names. Add `listBranches(root): Promise<string[]>` to src/git.ts (`git for-each-ref --format=%(refname:short) refs/heads`), used by the `--branch`/`baseBranch` failure message, and unit-test it in test/git.test.ts.
-2. **`checkRepo`'s config seam.** `checkRepo(root)` (src/doctor/doctor.ts:88) has no config, so "fails when a configured `baseBranch` does not exist" cannot be met as written. Pinned: `checkRepo(root, config?: TumwaterConfig)` reports the resolved toplevel and the target branch and fails on a missing configured one; `runDoctor` loads the config once behind a guard (`let config: TumwaterConfig | null = null; try { config = loadConfig(root) } catch {}`) and passes it, so a malformed file is still reported by `checkInit` rather than throwing out of `checkRepo`. `run`'s `--branch` override is `run`-only, so doctor's precedence is `baseBranch → checked-out`.
+1. **A branch-list helper is needed and was unnamed.** "fails at startup listing the branches that exist" requires a git call the Approach never names. Add `listBranches(root): Promise<string[]>` to src/git/git.ts (`git for-each-ref --format=%(refname:short) refs/heads`), used by the `--branch`/`baseBranch` failure message, and unit-test it in test/git.test.ts.
+2. **`checkRepo`'s config seam.** `checkRepo(root)` (src/doctor/doctor-checks.ts) has no config, so "fails when a configured `baseBranch` does not exist" cannot be met as written. Pinned: `checkRepo(root, config?: TumwaterConfig)` reports the resolved toplevel and the target branch and fails on a missing configured one; `runDoctor` loads the config once behind a guard (`let config: TumwaterConfig | null = null; try { config = loadConfig(root) } catch {}`) and passes it, so a malformed file is still reported by `checkInit` rather than throwing out of `checkRepo`. `run`'s `--branch` override is `run`-only, so doctor's precedence is `baseBranch → checked-out`.
 3. **`init` participates in root resolution (question closed).** `main()` resolves the toplevel before dispatch for every command, `init` included, so `tumwater init` from a subdirectory of an existing repo seeds that repo's root and reports "already initialized" rather than creating a nested document set; in a non-repo directory `repoToplevel` returns null and cwd is used as before. Pinned as an acceptance bullet so the behavior is deliberate, not incidental.
-4. **Files-touched omissions.** The Approach changes `checkRepo`'s signature and adds `parseBranchFlag`, but the entry omitted test/doctor.test.ts and test/cli-args.test.ts. Both are added: test/doctor.test.ts:107 currently `deepEqual`s `checkRepo(makeRepo())` to `{ level: "ok", detail: "on branch main" }` and must follow the new detail, and the new `parseBranchFlag` needs unit tests beside `parseRoleFlag`'s.
+4. **Files-touched omissions.** The Approach changes `checkRepo`'s signature and adds `parseBranchFlag`, but the entry omitted test/doctor.test.ts and test/cli-args.test.ts. Both are added: test/doctor.test.ts currently `deepEqual`s `checkRepo(makeRepo())` to `{ level: "ok", detail: "on branch main" }` and must follow the new detail, and the new `parseBranchFlag` needs unit tests beside `parseRoleFlag`'s.
 5. **Drifted pins** are the re-pinned numbers above; the 2026-09-17 note's "six named test files" list is correct (all six exist).
 
-Sizing now: src/git.ts ~30 lines (`repoToplevel`, `branchExists`, `listBranches`), src/cli.ts ~25, src/cli/cli-args.ts ~10, types/config-validation ~5, src/orchestrator.ts ~12 (the edge-triggered local + check), src/init/init.ts ~15, src/doctor/doctor.ts ~15 (the config seam), and the test files ~180 — test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts, and the `trunk` end-to-end fixture in test/loop.test.ts. One run. No design question remains open.
+Sizing now: src/git/git.ts ~30 lines (`repoToplevel`, `branchExists`, `listBranches`), src/cli.ts ~25, src/cli/cli-args.ts ~10, types/config-validation ~5, src/orchestrator/orchestrator.ts ~12 (the edge-triggered local + check), src/init/init.ts ~15, src/doctor/doctor-checks.ts ~15 (the config seam), and the test files ~180 — test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator-divergence.test.ts, test/init.test.ts, test/doctor.test.ts, and the `trunk` end-to-end fixture in test/loop.test.ts. One run. No design question remains open.
 
 ---
 
