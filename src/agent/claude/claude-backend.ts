@@ -20,8 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { ResolvedModelConfig } from "../../config/config-views.js";
-import { withoutLaunchServicesCheckIn } from "../../process/process.js";
-import { runMarkerEnv } from "../../process/run-marker.js";
+import { agentBaseEnv } from "../../process/run-marker.js";
 import { resolveBinFrom, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { claudeArgs } from "./claude-args.js";
 import { claudeEnv } from "./claude-env.js";
@@ -121,12 +120,12 @@ export const claudeBackend: AgentBackend = {
       ...(resumeSessionId !== undefined ? { resumeSessionId } : { sessionId }),
       prompt: run.prompt,
     });
-    // Same layering as the pi adapter: the run marker and the macOS preload go on first, then
-    // the backend's own scrub-and-set. The notes MCP config lands here in part 5/7.
-    const env = claudeEnv(
-      runMarkerEnv(withoutLaunchServicesCheckIn(process.env), run.runMarker),
-      { quietTimeoutSeconds: run.config.quietTimeoutSeconds },
-    );
+    // agentBaseEnv applies the run marker and the macOS preload (shared with the pi adapter);
+    // claudeEnv layers the backend's own scrub-and-set on top. The notes MCP config lands here
+    // in part 5/7.
+    const env = claudeEnv(agentBaseEnv(run.runMarker), {
+      quietTimeoutSeconds: run.config.quietTimeoutSeconds,
+    });
     return { args, stdin, env, sessionId };
   },
 

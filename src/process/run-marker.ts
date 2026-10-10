@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-import { execFileAsync } from "./process.js";
+import { execFileAsync, withoutLaunchServicesCheckIn } from "./process.js";
 
 /** Every lookup normally finishes in well under a second; a wedged one must not hang
  * its caller — the same ceiling process-table.ts's probe lookups carry. */
@@ -42,6 +42,14 @@ export function makeRunMarker(pid = process.pid): string {
 export function runMarkerEnv(base: NodeJS.ProcessEnv, marker: string): NodeJS.ProcessEnv {
   const prev = base[RUN_MARKER_VAR];
   return { ...base, [RUN_MARKER_VAR]: prev ? `${prev},${marker}` : marker };
+}
+
+/** The environment every agent backend starts from: `base` with the macOS LaunchServices
+ * check-in preload removed (`withoutLaunchServicesCheckIn`) and this run's marker appended
+ * (`runMarkerEnv`). Both adapters (pi and claude) layer their own settings on top, so the
+ * composition lives here rather than being re-derived in each. */
+export function agentBaseEnv(marker: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return runMarkerEnv(withoutLaunchServicesCheckIn(base), marker);
 }
 
 /** True when a `TUMWATER_RUN=` value names `marker` as one of its comma-separated runs. */
