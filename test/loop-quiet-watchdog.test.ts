@@ -15,7 +15,7 @@ import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { withPi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
@@ -31,37 +31,35 @@ test("a pi run that goes silent is killed as hung and never commits partial work
   const repo = await initializedRepo();
   // Emits one line (so it is not silent from birth), writes a partial edit, then hangs
   // like an interactive tool waiting for stdin. `exec` so the signal reaches sleep.
-  const restore = fakePi(
+  await withPi(
     [`printf '%s\n' '${assistantLine("starting work")}'`, `echo partial > partial.txt`, `exec sleep 60`].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      config.quietTimeoutSeconds = 3;
+      config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
+      const clock = watchdogClock(t);
+      const runner = makeLoopRunner(repo, "improve", config);
+      const before = mainSha(repo);
+      const tick = runner.tick();
+      // The kill must come only once the shim has spoken and reached `echo partial` — the
+      // "partial edit survives" assertion below is about the kill, not about shell startup.
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+      await waitForLogLines(piLogPath(repo, "improve"), "starting work");
+      clock.advance(15_000); // silence well past the 3 s window
+      const outcome = await tick;
+      assert.equal(outcome.result, "quiet_killed");
+      assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
+      assert.equal(mainSha(repo), before, "nothing landed on main");
+      assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
+      // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
+      // worktree and the next tick resumes the session instead of resetting it away.
+      assert.ok(
+        fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
+        "the partial edit survives the kill",
+      );
+      assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
+    },
   );
-  try {
-    const config = defaultConfig();
-    config.quietTimeoutSeconds = 3;
-    config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
-    const clock = watchdogClock(t);
-    const runner = makeLoopRunner(repo, "improve", config);
-    const before = mainSha(repo);
-    const tick = runner.tick();
-    // The kill must come only once the shim has spoken and reached `echo partial` — the
-    // "partial edit survives" assertion below is about the kill, not about shell startup.
-    await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    await waitForLogLines(piLogPath(repo, "improve"), "starting work");
-    clock.advance(15_000); // silence well past the 3 s window
-    const outcome = await tick;
-    assert.equal(outcome.result, "quiet_killed");
-    assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
-    assert.equal(mainSha(repo), before, "nothing landed on main");
-    assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
-    // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
-    // worktree and the next tick resumes the session instead of resetting it away.
-    assert.ok(
-      fs.existsSync(path.join(roleWt(repo, "improve"), "partial.txt")),
-      "the partial edit survives the kill",
-    );
-    assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
-  } finally {
-    restore();
-  }
 });
 
 // The stall warning (BUGS.md 2026-09-13 sibling): a tool call open and silent past the
@@ -71,33 +69,31 @@ test("a pi run that goes silent is killed as hung and never commits partial work
 test("a stalled tool call warns in the event feed with the command named", async (t) => {
   const repo = await initializedRepo();
   // Names a hung bash command, then hangs like an interactive tool waiting for stdin.
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
       `exec sleep 60`, // exec so the signal reaches the sleeper directly
     ].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      // The ORDER is what this pins — warning first, kill second — exact on logical time, where a
+      // real-time 1s gap was thinner than the jitter of two suites at once (BUGS.md).
+      config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+      config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
+      const clock = watchdogClock(t);
+      const runner = makeLoopRunner(repo, "improve", config);
+      const tick = runner.tick();
+      await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
+      clock.advance(30_000); // past the stall threshold, then past the quiet window
+      const outcome = await tick;
+      assert.equal(outcome.result, "quiet_killed");
+      const warnings = warningMessages(repo);
+      assert.ok(
+        warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
+        `the stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
+      );
+    },
   );
-  try {
-    const config = defaultConfig();
-    // The ORDER is what this pins — warning first, kill second — exact on logical time, where a
-    // real-time 1s gap was thinner than the jitter of two suites at once (BUGS.md).
-    config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
-    config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
-    const clock = watchdogClock(t);
-    const runner = makeLoopRunner(repo, "improve", config);
-    const tick = runner.tick();
-    await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
-    clock.advance(30_000); // past the stall threshold, then past the quiet window
-    const outcome = await tick;
-    assert.equal(outcome.result, "quiet_killed");
-    const warnings = warningMessages(repo);
-    assert.ok(
-      warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
-      `the stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
-    );
-  } finally {
-    restore();
-  }
 });
 
 test("a slow but talkative pi run is not killed by the quiet watchdog", async (t) => {
@@ -118,8 +114,7 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
     { length: gaps },
     (_, k) => `while [ ! -f '${go(k)}' ] && ${ownerAliveSh()}; do sleep 0.02; done\n${turnStart}`,
   );
-  const restore = fakePi([turnStart, ...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"));
-  try {
+  await withPi([turnStart, ...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"), async () => {
     const config = defaultConfig();
     config.quietTimeoutSeconds = 10;
     const clock = watchdogClock(t);
@@ -134,9 +129,7 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
     }
     const outcome = await tick;
     assert.equal(outcome.result, "no_change", "run completed despite taking longer than the quiet window");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
@@ -144,27 +137,25 @@ test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
   // Speaks first — a byte-silent run is never quiet-killed anyway, so silence only tests the
   // switch once progress has flowed — then stays silent until the test says go.
   const go = path.join(tmpdir(), "go");
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`,
       `while [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      config.quietTimeoutSeconds = 0;
+      const clock = watchdogClock(t);
+      const runner = makeLoopRunner(repo, "improve", config);
+      const tick = runner.tick();
+      await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
+      clock.advance(120_000); // two minutes of silence: any window at all would have fired
+      fs.writeFileSync(go, "");
+      const outcome = await tick;
+      assert.equal(outcome.result, "no_change");
+    },
   );
-  try {
-    const config = defaultConfig();
-    config.quietTimeoutSeconds = 0;
-    const clock = watchdogClock(t);
-    const runner = makeLoopRunner(repo, "improve", config);
-    const tick = runner.tick();
-    await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
-    clock.advance(120_000); // two minutes of silence: any window at all would have fired
-    fs.writeFileSync(go, "");
-    const outcome = await tick;
-    assert.equal(outcome.result, "no_change");
-  } finally {
-    restore();
-  }
 });
 
 test("config validation accepts 0 and rejects negatives for quietTimeoutSeconds", () => {
@@ -183,30 +174,28 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
     type: "message_update",
     message: { role: "assistant", content: [], usage: { totalTokens: 0 } },
   });
-  const restore = fakePi(
+  await withPi(
     [`while true; do`, `  printf '%s\n' '${keepalive}'`, `  sleep 0.2`, `done`].join("\n"),
+    async () => {
+      const config = defaultConfig();
+      config.quietTimeoutSeconds = 1;
+      config.tickTimeoutSeconds = 3600;
+      const clock = watchdogClock(t);
+      const controller = new AbortController();
+      const runner = makeLoopRunner(repo, "improve", config, "main", controller.signal);
+      let settled = false;
+      const tick = runner.tick().finally(() => (settled = true));
+      // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
+      // runs — a watchdog that let raw bytes (or deltas) count as progress would never fire.
+      // Ten windows' worth bounds it: the abort then ends a run the watchdog failed to kill.
+      const log = piLogPath(repo, "improve");
+      for (let k = 1; k <= 40 && (await waitForLogLines(log, "message_update", k, () => settled)); k++) {
+        clock.advance(500);
+      }
+      controller.abort(); // a no-op once the watchdog has killed the run
+      const outcome = await tick;
+      assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung run, not an unfulfilled timeout");
+      assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
+    },
   );
-  try {
-    const config = defaultConfig();
-    config.quietTimeoutSeconds = 1;
-    config.tickTimeoutSeconds = 3600;
-    const clock = watchdogClock(t);
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", config, "main", controller.signal);
-    let settled = false;
-    const tick = runner.tick().finally(() => (settled = true));
-    // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
-    // runs — a watchdog that let raw bytes (or deltas) count as progress would never fire.
-    // Ten windows' worth bounds it: the abort then ends a run the watchdog failed to kill.
-    const log = piLogPath(repo, "improve");
-    for (let k = 1; k <= 40 && (await waitForLogLines(log, "message_update", k, () => settled)); k++) {
-      clock.advance(500);
-    }
-    controller.abort(); // a no-op once the watchdog has killed the run
-    const outcome = await tick;
-    assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung run, not an unfulfilled timeout");
-    assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
-  } finally {
-    restore();
-  }
 });

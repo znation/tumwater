@@ -5,7 +5,7 @@ import { runPi, type PiRunOptions} from "../../src/pi/pi.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import { defaultConfig } from "../../src/config/config.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
-import { fakePi } from "../fakes/fake-pi.js";
+import { withPi } from "../fakes/fake-pi.js";
 
 /** The standard runPi fixture: a run against `dir` with the minimal prompt, a fresh
  * defaultConfig(), and throwaway session/raw-log paths — the shape every test starts from,
@@ -29,12 +29,9 @@ export function runPiFixture(dir: string, over: Partial<PiRunOptions> = {}): PiR
 /** Run the fake pi through runPi with throwaway dirs and return the distilled result. */
 export async function runFakePi(script: string) {
   const dir = tmpdir();
-  const restore = fakePi(script);
-  try {
+  return await withPi(script, async () => {
     return await runPi(runPiFixture(dir));
-  } finally {
-    restore();
-  }
+  });
 }
 
 // The suite runs under fleet load — review gates and main-baseline checks spawn full suites

@@ -27,7 +27,7 @@ import {
 } from "./fixtures/landing-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { leasedRoleShell } from "./fixtures/pi-events.js";
 import { waitFor, waitForFile, within } from "./helpers/wait.js";
 import { readJson } from "./helpers/json-read.js";
@@ -212,7 +212,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
   const mainBefore = mainSha(root);
   await queueChanges(root, roles);
   const runDir = tmpdir();
-  const restore = fakePi(
+  await withPi(
     [
       `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
@@ -220,31 +220,29 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
       `sleep ${T}; rm -f "$f"`,
       APPROVE(),
     ].join("\n"),
-  );
-  try {
-    // Cap 4: vetLimit keeps one permit for authoring, so three vets may run.
-    const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to land");
+    async () => {
+      // Cap 4: vetLimit keeps one permit for authoring, so three vets may run.
+      const { ctx, pipeline } = makePipeline(root, runnersFor(root, roles), { cap: 4 });
+      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the queue to land");
 
-    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three landed");
-    const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
-    assert.equal(samples.length, 3, "one review per change");
-    assert.equal(Math.max(...samples), 3, `all three reviews overlapped (in flight at each start: ${samples})`);
-    const events = readEvents(root);
-    const firstStart = Math.min(...events.filter((e) => e.type === "review_start").map((e) => e.ts));
-    const lastMerged = Math.max(...events.filter((e) => e.type === "merged").map((e) => e.ts));
-    const serialFloorMs = events
-      .filter((e) => e.type === "review_verdict")
-      .reduce((sum, e) => sum + Number(e.durationMs), 0);
-    assert.ok(
-      lastMerged - firstStart < serialFloorMs,
-      `review to last merge took ${lastMerged - firstStart} ms, no less than the reviews' ${serialFloorMs} ms sum — they ran one after another`,
-    );
-    assert.equal(events.filter((e) => e.type === "landed").length, 3, "each change's outcome written once");
-    assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
-  } finally {
-    restore();
-  }
+      assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3", "all three landed");
+      const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
+      assert.equal(samples.length, 3, "one review per change");
+      assert.equal(Math.max(...samples), 3, `all three reviews overlapped (in flight at each start: ${samples})`);
+      const events = readEvents(root);
+      const firstStart = Math.min(...events.filter((e) => e.type === "review_start").map((e) => e.ts));
+      const lastMerged = Math.max(...events.filter((e) => e.type === "merged").map((e) => e.ts));
+      const serialFloorMs = events
+        .filter((e) => e.type === "review_verdict")
+        .reduce((sum, e) => sum + Number(e.durationMs), 0);
+      assert.ok(
+        lastMerged - firstStart < serialFloorMs,
+        `review to last merge took ${lastMerged - firstStart} ms, no less than the reviews' ${serialFloorMs} ms sum — they ran one after another`,
+      );
+      assert.equal(events.filter((e) => e.type === "landed").length, 3, "each change's outcome written once");
+      assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
+    },
+  );
 });
 
 test("a vet runs in a pooled slot (purpose vet while it works, no lease after) and creates no _land-<role>", async () => {
@@ -252,27 +250,25 @@ test("a vet runs in a pooled slot (purpose vet while it works, no lease after) a
   const role = "alpha";
   await queueChanges(root, [role]);
   const flags = tmpdir("vet-slot-");
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\\n' "$PWD" >> '${flags}/cwd'`,
       `cp '${slotsStatePath(root)}' '${flags}/during.json' 2>/dev/null`,
       APPROVE(),
     ].join("\n"),
+    async () => {
+      const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]));
+      await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to land");
+      const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
+      assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
+      assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the vet");
+      const during = readJson(path.join(flags, "during.json")) as {
+        slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
+      };
+      const leased = during.slots.find((s) => fs.realpathSync(s.dir) === fs.realpathSync(cwd));
+      assert.equal(leased?.lease?.role, role, "the slot was leased for the change's role while the vet ran");
+      assert.equal(leased?.lease?.purpose, "vet", "the lease's purpose was vet");
+      assert.equal(readSlotsState(root).slots.every((s) => s.lease === null), true, "no lease survives the landing");
+    },
   );
-  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]));
-  try {
-    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the change to land");
-    const cwd = fs.readFileSync(path.join(flags, "cwd"), "utf8").trim();
-    assert.match(path.basename(cwd), /^_slot-\d+$/, "the reviewer ran in a pooled slot");
-    assert.equal(fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${role}`)), false, "no _land-<role> was created for the vet");
-    const during = readJson(path.join(flags, "during.json")) as {
-      slots: Array<{ dir: string; lease: { role: string; purpose: string } | null }>;
-    };
-    const leased = during.slots.find((s) => fs.realpathSync(s.dir) === fs.realpathSync(cwd));
-    assert.equal(leased?.lease?.role, role, "the slot was leased for the change's role while the vet ran");
-    assert.equal(leased?.lease?.purpose, "vet", "the lease's purpose was vet");
-    assert.equal(readSlotsState(root).slots.every((s) => s.lease === null), true, "no lease survives the landing");
-  } finally {
-    restore();
-  }
 });

@@ -21,7 +21,7 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { fakePi, piRunResult } from "./fakes/fake-pi.js";
+import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
@@ -168,8 +168,7 @@ test("applyWithConflicts resets to main when the cherry-pick fails without confl
 });
 
 test("a gate rejection points the rejected ref at the judged head and records round 1", async () => {
-  const restore = fakePi(reviewerPi("VERDICT: reject\n1. breaks the rules"));
-  try {
+  await withPi(reviewerPi("VERDICT: reject\n1. breaks the rules"), async () => {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
@@ -179,14 +178,11 @@ test("a gate rejection points the rejected ref at the judged head and records ro
     assert.equal(state.revision?.round, 1, "a fresh rejection owes one revision");
     assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
     assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a rejection of the last allowed revision exhausts it and deletes the rejected ref", async () => {
-  const restore = fakePi(reviewerPi("VERDICT: reject\n1. still wrong"));
-  try {
+  await withPi(reviewerPi("VERDICT: reject\n1. still wrong"), async () => {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
@@ -199,9 +195,7 @@ test("a rejection of the last allowed revision exhausts it and deletes the rejec
     assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
     assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
     assert.equal(eventsOfType(root, "revision").length, 1, "the exhaustion is logged");
-  } finally {
-    restore();
-  }
+  });
 });
 
 /** The `stageTickLanding` context the two staging tests share: the loop wiring every tick
@@ -349,8 +343,7 @@ test("the tick prompt skips the plain rejection note while a revision is due", (
 });
 
 test("the director never gets a revision: a rejection leaves no revision state", async () => {
-  const restore = fakePi(reviewerPi("VERDICT: reject\n1. no good"));
-  try {
+  await withPi(reviewerPi("VERDICT: reject\n1. no good"), async () => {
     const { root, sha } = commitOffMain("seed.txt", "director work\n", "director work");
     await setRef(root, landingRefName(DIRECTOR_ROLE), sha);
     const state = freshLoopState(DIRECTOR_ROLE);
@@ -360,9 +353,7 @@ test("the director never gets a revision: a rejection leaves no revision state",
     assert.equal(verdict.kind, "result");
     assert.equal(state.revision, undefined, "the director never revises");
     assert.equal(await refSha(root, rejectedRefName(DIRECTOR_ROLE)), null);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an exhausted rejection's plain note says the rejected diff is gone", () => {
@@ -420,34 +411,32 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
   await setRef(repo, rejectedRefName("improve"), sha);
 
   const prompts = path.join(tmpdir(), "revision-prompts.log");
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' "$@" >> "${prompts}"`,
       `echo resolved > seed.txt`,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: revised with markers resolved")}'`,
       `echo new > new.txt`,
     ].join("\n"),
-  );
-  try {
-    const runner = makeLoopRunner(repo, "improve");
-    runner.state.revision = { sha, round: 1, at: Date.now() };
-    runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
-    const outcome = await runner.tick();
+    async () => {
+      const runner = makeLoopRunner(repo, "improve");
+      runner.state.revision = { sha, round: 1, at: Date.now() };
+      runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
+      const outcome = await runner.tick();
 
-    assert.equal(outcome.result, "queued");
-    const prompt = fs.readFileSync(prompts, "utf8");
-    assert.match(prompt, /revision 1 of 2/);
-    assert.match(prompt, /conflict-handback/);
-    assert.match(prompt, /Conflicted files:\n- seed\.txt/);
-    assert.doesNotMatch(prompt, /The rejected diff no longer applies to current main/);
-    assert.equal(runner.state.revision, undefined, "the revision is consumed by staging");
-    assert.equal(runner.state.conflictHandback?.reason, "revision");
-    assert.equal(runner.state.conflictHandback?.applied, true);
-    assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "it still rides as revision round 1");
-    assert.deepEqual(eventsOfType(repo, "conflict_handback").map((e) => e.reason), ["revision"]);
-  } finally {
-    restore();
-  }
+      assert.equal(outcome.result, "queued");
+      const prompt = fs.readFileSync(prompts, "utf8");
+      assert.match(prompt, /revision 1 of 2/);
+      assert.match(prompt, /conflict-handback/);
+      assert.match(prompt, /Conflicted files:\n- seed\.txt/);
+      assert.doesNotMatch(prompt, /The rejected diff no longer applies to current main/);
+      assert.equal(runner.state.revision, undefined, "the revision is consumed by staging");
+      assert.equal(runner.state.conflictHandback?.reason, "revision");
+      assert.equal(runner.state.conflictHandback?.applied, true);
+      assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "it still rides as revision round 1");
+      assert.deepEqual(eventsOfType(repo, "conflict_handback").map((e) => e.reason), ["revision"]);
+    },
+  );
 });
 
 // The other side of the conflict fallback: when the rejected diff cannot be re-applied at all
@@ -460,32 +449,30 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
   await setRef(repo, rejectedRefName("improve"), rejected);
 
   const prompts = path.join(tmpdir(), "revision-gone-prompts.log");
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' "$@" >> "${prompts}"`,
       `echo fresh > fresh.txt`,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: redid the change")}'`,
     ].join("\n"),
-  );
-  try {
-    const runner = makeLoopRunner(repo, "improve");
-    runner.state.revision = { sha: "0".repeat(40), round: 1, at: Date.now() };
-    runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
-    const outcome = await runner.tick();
+    async () => {
+      const runner = makeLoopRunner(repo, "improve");
+      runner.state.revision = { sha: "0".repeat(40), round: 1, at: Date.now() };
+      runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
+      const outcome = await runner.tick();
 
-    assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
-    const prompt = fs.readFileSync(prompts, "utf8");
-    assert.match(prompt, /The rejected diff no longer applies to current main/);
-    assert.doesNotMatch(prompt, /conflict-handback/);
-    assert.equal(runner.state.revision, undefined, "the unappliable revision is dropped");
-    assert.ok(
-      eventsOfType(repo, "revision").some((e) => e.action === "conflict"),
-      "the failed re-apply is logged as a revision conflict",
-    );
-    assert.equal(await refSha(repo, rejectedRefName("improve")), null, "the rejected ref is gone");
-  } finally {
-    restore();
-  }
+      assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
+      const prompt = fs.readFileSync(prompts, "utf8");
+      assert.match(prompt, /The rejected diff no longer applies to current main/);
+      assert.doesNotMatch(prompt, /conflict-handback/);
+      assert.equal(runner.state.revision, undefined, "the unappliable revision is dropped");
+      assert.ok(
+        eventsOfType(repo, "revision").some((e) => e.action === "conflict"),
+        "the failed re-apply is logged as a revision conflict",
+      );
+      assert.equal(await refSha(repo, rejectedRefName("improve")), null, "the rejected ref is gone");
+    },
+  );
 });
 
 test("a landed revision deletes the rejected ref", async () => {

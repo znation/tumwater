@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { fakeClaudeReplay } from "./fakes/fake-claude.js";
 import { claudeResult, claudeUnknown } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
@@ -120,8 +120,7 @@ test("runRolePi runs a fresh named session and folds one usage into the tick", a
 
 test("runRolePi demuxes as author and runLandingPi as gate (marker kind, not cwd)", async () => {
   const root = tmpdir();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("done", { tokens: 1 })}'`);
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 1 })}'`, async () => {
     const { loopPi } = makeHost(root);
     // The refusal-note landing's resolver runs in the ROLE worktree via runRolePi; the shared
     // lander's resolver runs via runLandingPi. Their markers must name author and gate
@@ -135,9 +134,7 @@ test("runRolePi demuxes as author and runLandingPi as gate (marker kind, not cwd
       all.includes(JSON.stringify({ type: "tumwater_run", kind: "gate", agent: "pi" })),
       "runLandingPi's run writes a gate marker",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("runRolePi with resume passes --continue so a shutdown-interrupted tick resumes its session", async () => {
@@ -460,23 +457,21 @@ test("a fallback-clone warning from pi surfaces as one loop warning", async () =
   // The run itself succeeds; only stderr carries the undefined-id warning pi emits before it
   // falls back to the provider default (BUGS.md 2026-10-06). The loop must surface it so a
   // silently mispriced id is visible from the feed alone.
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\\n' 'Warning: Model "x:deepinfra" not found for provider "huggingface". Using custom model id.' >&2`,
       `printf '%s\\n' '${assistantLine("done", { tokens: 5 })}'`,
     ].join("\n"),
+    async () => {
+      const { loopPi, warns, usage } = makeHost(root);
+      const result = await loopPi.runRolePi(root, "work", "tumwater-feature-10-author");
+      assert.equal(result.ok, true);
+      assert.equal(warns.length, 1, "one warning for the one run");
+      assert.match(warns[0]!, /could not resolve the model id exactly/);
+      assert.match(warns[0]!, /not found for provider "huggingface"/);
+      assert.equal(usage.length, 1, "the warning does not change the run's accounting");
+    },
   );
-  try {
-    const { loopPi, warns, usage } = makeHost(root);
-    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-10-author");
-    assert.equal(result.ok, true);
-    assert.equal(warns.length, 1, "one warning for the one run");
-    assert.match(warns[0]!, /could not resolve the model id exactly/);
-    assert.match(warns[0]!, /not found for provider "huggingface"/);
-    assert.equal(usage.length, 1, "the warning does not change the run's accounting");
-  } finally {
-    restore();
-  }
 });
 
 test("a severed stream (terminated) warns and earns the one retry like the other transient kinds", async () => {
@@ -602,8 +597,7 @@ test("runLandingPi ignores the tick's per-tick runSignal — an aborted tick mus
 
 test("runLandingPi still honors the harness shutdown signal", async () => {
   const root = tmpdir();
-  const restore = fakePi(`sleep 30`);
-  try {
+  await withPi(`sleep 30`, async () => {
     // Point the host's shutdown signal at a real controller and fire it mid-run.
     const shutdown = new AbortController();
     const loopPi = new LoopPi({
@@ -623,9 +617,7 @@ test("runLandingPi still honors the harness shutdown signal", async () => {
     assert.equal(result.ok, false);
     assert.equal(result.aborted, true);
     assert.match(result.errorMessage ?? "", /aborted by harness shutdown/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("requestSummary returns null when the role has no resumable session", async () => {
@@ -731,8 +723,7 @@ test("requestSummary returns the run even when it failed and still folds its usa
   // the failed attempt's spend is folded into the tick's counters like every other run.
   const root = tmpdir();
   const args = path.join(root, "args");
-  const restore = fakePi(`printf '%s\\n' "$*" >> "${args}"\nprintf '%s\\n' 'model exploded' >&2\nexit 1`);
-  try {
+  await withPi(`printf '%s\\n' "$*" >> "${args}"\nprintf '%s\\n' 'model exploded' >&2\nexit 1`, async () => {
     fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
     const { loopPi, usage } = makeHost(root);
@@ -745,9 +736,7 @@ test("requestSummary returns the run even when it failed and still folds its usa
     const recorded = fs.readFileSync(args, "utf8");
     assert.match(recorded, /--continue/, "the failure still continued the authoring session");
     assert.match(recorded, /required closing block/, "the failed run asked for the SUMMARY block");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("requestStageFix returns null when the role has no resumable session", async () => {

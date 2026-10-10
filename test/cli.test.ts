@@ -10,7 +10,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { readInitialPrompt } from "../src/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { withPi } from "./fakes/fake-pi.js";
 import { cli } from "./helpers/cli-harness.js";
 import { seedCounters } from "./fixtures/loop-fixtures.js";
 
@@ -369,8 +369,7 @@ test("run --branch fails at startup when the branch does not exist, listing what
   // fake pi on PATH so the run preflight passes and the branch validation itself is what
   // fails — in the supervisor, before any child spawns: the branch is part of the one startup
   // gate (startup-gate.ts) every generation, and the supervisor itself, runs.
-  const restore = fakePi("# never reached — the unknown branch fails first\n");
-  try {
+  await withPi("# never reached — the unknown branch fails first\n", async () => {
     const r = await cli(repo, "run", "--branch", "ghost");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /branch ghost does not exist/);
@@ -380,9 +379,7 @@ test("run --branch fails at startup when the branch does not exist, listing what
     const noValue = await cli(repo, "run", "--branch");
     assert.equal(noValue.code, 1);
     assert.match(noValue.stderr, /--branch needs a branch name/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("init --file reads the prompt from a file and rejects a missing path", async () => {

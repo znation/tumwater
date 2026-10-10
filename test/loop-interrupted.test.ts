@@ -19,7 +19,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
+import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, withPi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
@@ -28,79 +28,71 @@ test("a tick cut off at the context ceiling warns, skips backoff, and resumes", 
   // Replays the observed incident: mid-run text, then a thinking-only final message
   // (generation truncated by an output clamp but reported as a normal stop), then pi
   // compacting the session at end of run. No changes, no sentinel.
-  const restore = fakePi(
+  await withPi(
     `printf '%s\n' '${assistantLine("Now git.ts:")}'\n` +
       `printf '%s\n' '${thinkingOnlyLine("git.ts looks clean. Next", { output: 16 })}'\n` +
       `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "threshold" })}'`,
+    async () => {
+      const runner = makeLoopRunner(repo, "clean");
+      assert.equal((await runner.tick()).result, "no_change");
+      const [warning] = eventsOfType(repo, "warning");
+      assert.ok(warning, "expected exactly one warning");
+      assert.match(String(warning.message), /cut off at the context ceiling/);
+      assert.match(String(warning.message), /auto-compacted/);
+      assert.doesNotMatch(String(warning.message), /no assistant text/);
+      // The work survives in the compacted session: resume it promptly, no idle backoff.
+      assert.equal(runner.state.resumePending, true, "the next tick resumes the compacted session");
+      assert.equal(runner.state.backoffSeconds, 0, "a cut-off is not idleness");
+      assert.equal(runner.state.cutOffStreak, 1);
+    },
   );
-  try {
-    const runner = makeLoopRunner(repo, "clean");
-    assert.equal((await runner.tick()).result, "no_change");
-    const [warning] = eventsOfType(repo, "warning");
-    assert.ok(warning, "expected exactly one warning");
-    assert.match(String(warning.message), /cut off at the context ceiling/);
-    assert.match(String(warning.message), /auto-compacted/);
-    assert.doesNotMatch(String(warning.message), /no assistant text/);
-    // The work survives in the compacted session: resume it promptly, no idle backoff.
-    assert.equal(runner.state.resumePending, true, "the next tick resumes the compacted session");
-    assert.equal(runner.state.backoffSeconds, 0, "a cut-off is not idleness");
-    assert.equal(runner.state.cutOffStreak, 1);
-  } finally {
-    restore();
-  }
 });
 
 test("cut-off resumes stop after the streak limit and fall back to backoff", async () => {
   const repo = await initializedRepo();
   // Every run gets cut off; a session file exists so resumes are actually attempted.
   const argsFile = path.join(tmpdir(), "argv.log");
-  const restore = fakePi(
+  await withPi(
     [logFlagsTo(argsFile), `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`].join(
       "\n",
     ),
-  );
-  try {
-    fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
-    fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
-    const runner = makeLoopRunner(repo, "perf");
-    for (let i = 1; i <= 3; i++) {
+    async () => {
+      fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
+      fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
+      const runner = makeLoopRunner(repo, "perf");
+      for (let i = 1; i <= 3; i++) {
+        assert.equal((await runner.tick()).result, "no_change");
+        assert.equal(runner.state.resumePending, true, `cut-off ${i} still resumes`);
+        assert.equal(runner.state.cutOffStreak, i);
+        assert.equal(runner.state.backoffSeconds, 0);
+      }
+      // Fourth consecutive cut-off: the task is not converging — give up and back off.
       assert.equal((await runner.tick()).result, "no_change");
-      assert.equal(runner.state.resumePending, true, `cut-off ${i} still resumes`);
-      assert.equal(runner.state.cutOffStreak, i);
-      assert.equal(runner.state.backoffSeconds, 0);
-    }
-    // Fourth consecutive cut-off: the task is not converging — give up and back off.
-    assert.equal((await runner.tick()).result, "no_change");
-    assert.equal(runner.state.resumePending, false, "past the limit the loop stops resuming");
-    assert.ok(runner.state.backoffSeconds > 0, "and backs off normally");
-    const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
-    assert.ok(!runs[0]?.includes("--continue"), "first tick was fresh");
-    for (const later of runs.slice(1)) assert.ok(later.includes("--continue"), "resumes continued the session");
-  } finally {
-    restore();
-  }
+      assert.equal(runner.state.resumePending, false, "past the limit the loop stops resuming");
+      assert.ok(runner.state.backoffSeconds > 0, "and backs off normally");
+      const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
+      assert.ok(!runs[0]?.includes("--continue"), "first tick was fresh");
+      for (const later of runs.slice(1)) assert.ok(later.includes("--continue"), "resumes continued the session");
+    },
+  );
 });
 
 test("a cut-off director tick re-queues the user prompt instead of resuming", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`printf '%s\n' '${thinkingOnlyLine("was routing the request", { output: 16 })}'`);
-  try {
+  await withPi(`printf '%s\n' '${thinkingOnlyLine("was routing the request", { output: 16 })}'`, async () => {
     enqueuePrompt(repo, "add a widget");
     const runner = makeLoopRunner(repo, "director");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(inboxSize(repo), 1, "the truncated prompt was not fulfilled: back in the inbox");
     assert.equal(dequeuePrompt(repo), "add a widget");
     assert.ok(!runner.state.resumePending, "the director reruns the prompt fresh");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an aborted tick lands nothing, does not back off, and marks itself resumable", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
-  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
-  try {
+  await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const controller = new AbortController();
     const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
     const before = mainSha(repo);
@@ -112,9 +104,7 @@ test("an aborted tick lands nothing, does not back off, and marks itself resumab
     assert.equal(runner.state.backoffSeconds, 0);
     assert.ok(runner.state.nextRunAt <= Date.now(), "resumes promptly on restart");
     assert.equal(runner.state.resumePending, true, "the next tick will resume this one");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a resumed tick continues the interrupted session and keeps the worktree edits", async () => {

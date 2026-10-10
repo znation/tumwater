@@ -13,7 +13,7 @@ import {
 } from "../src/gates/readiness.js";
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 
 // `tumwater run`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdRun fails
@@ -23,17 +23,14 @@ import { pathReplace } from "./fakes/fake-commands.js";
 test("a ready repo passes the gate with the config and branch the generation starts on", async () => {
   const repo = makeRepo();
   await initProject(repo, "startup gate ready");
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const check = await runStartupCheck(repo, null);
     assert.ok(!("problem" in check), JSON.stringify(check));
     assert.equal(check.mainBranch, "main");
     assert.ok(check.config.roles, "the loaded config");
     assert.equal(await runStartupProblem(repo, null), null);
     assert.equal(await repoNotReady(repo), null);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("each unmet precondition is the gate's verdict, in cmdRun's order", async () => {
@@ -120,15 +117,12 @@ test("a named branch in a repo with no local branches reports an empty branch li
   // holding any (everything detached), and then the only honest error lists no alternatives.
   const repo = makeRepo();
   await initProject(repo, "startup gate branchless");
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     sh(repo, "git", "checkout", "-q", "--detach");
     sh(repo, "git", "branch", "-d", "main");
     assert.equal(
       await runStartupProblem(repo, "ghost"),
       "branch ghost does not exist (branches: none)",
     );
-  } finally {
-    restore();
-  }
+  });
 });

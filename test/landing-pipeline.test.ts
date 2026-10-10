@@ -37,7 +37,7 @@ import {
 } from "./fixtures/landing-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { sleep, waitFor, waitForFile, within } from "./helpers/wait.js";
 import { assistantLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
@@ -78,8 +78,7 @@ test("a torn head is dropped with a warning and the healthy entry behind it land
   fs.mkdirSync(landQueueDir(root), { recursive: true });
   fs.writeFileSync(path.join(landQueueDir(root), "1-000000-0.json"), '{"role":"improve"');
   enqueueLanding(root, entry("improve", sha));
-  const restore = fakePi(APPROVE());
-  try {
+  await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
     await drainLandings(ctx, pipeline);
     assert.deepEqual([...pipeline.vetting.keys()], ["improve"], "the healthy entry behind the torn head is vetted");
@@ -94,9 +93,7 @@ test("a torn head is dropped with a warning and the healthy entry behind it land
       "the drop carried one warning event",
     );
     assert.ok(await isMergedInto(root, sha, "main"), "the healthy entry landed");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a single queued pinned entry lands through the pipeline: main advances, ref and entry and marker clear", async () => {
@@ -105,8 +102,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
   await setRef(root, landingRefName("improve"), sha);
   enqueueLanding(root, entry("improve", sha));
   const mainBefore = mainSha(root);
-  const restore = fakePi(APPROVE());
-  try {
+  await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the entry to land");
 
@@ -119,9 +115,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
     assert.equal(landed[0]!.loop, "improve");
     assert.equal(landed[0]!.result, "changed");
     assert.equal(loadLoopState(root, "improve").lastResult, "changed", "the outcome folded into the author's state");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a settled landing detaches its shutdown listener: the long-lived stop signal keeps no per-landing wiring", async () => {
@@ -132,9 +126,8 @@ test("a settled landing detaches its shutdown listener: the long-lived stop sign
   // listener on the shutdown signal is a landing task's.
   const root = makeRepo();
   await queueChanges(root, ["alpha"]);
-  const restore = fakePi(APPROVE());
-  const shutdown = new AbortController();
-  try {
+  await withPi(APPROVE(), async () => {
+    const shutdown = new AbortController();
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha"]), { signal: shutdown.signal });
     assert.equal(getEventListeners(shutdown.signal, "abort").length, 0, "nothing is wired before a landing starts");
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the entry to land");
@@ -143,9 +136,7 @@ test("a settled landing detaches its shutdown listener: the long-lived stop sign
       0,
       "the vet's and merge's wiring detached as each task settled",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("changes vetted while the merge slot is busy merge as one stack: one shared check, one fast-forward", async () => {
@@ -798,13 +789,10 @@ test("a git failure inside the gate's reject path settles the vet as an error ou
       `printf '%s\\n' '${assistantLine("VERDICT: reject\\n1. no")}'; exit 0;;`,
     `esac`,
   ].join("\n");
-  const restore = fakePi(shim);
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]), { cap: 1 });
-  try {
+  await withPi(shim, async () => {
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the failed vet to settle", 30_000);
-  } finally {
-    restore();
-  }
+  });
   await Promise.allSettled(allTasks(pipeline));
 
   const state = loadLoopState(root, role);

@@ -35,7 +35,7 @@ import {
   startIdleOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { fakePiIdle } from "./fakes/fake-pi.js";
+import { withIdlePi } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 
@@ -62,8 +62,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
   const repo = await makeFastRepo("once unit deferral test", ["clean"]);
   openBacklog(repo);
   saveLoopState(repo, idleDueState(repo));
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "deferred", "the deferral is the role's round answer, not idle");
@@ -74,9 +73,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
       ["clean"],
       "the deferral is logged once on the transition in, not silent",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: a fresh operator wake overrides the deferral — the demand ticks despite the open backlog", async () => {
@@ -87,16 +84,13 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
     lastTickEndedAt: Date.now() - 60_000,
     wokenAt: Date.now() - 1000, // newer than the last tick's end: an explicit "try again now"
   });
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the tick really ran");
     assert.deepEqual(eventsOfType(repo, "tick_deferred"), [], "no deferral episode: the demand preempted it");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: bugfix in search mode defers on the work-landed verdict alone, backlog or none", async () => {
@@ -107,8 +101,7 @@ test("once: bugfix in search mode defers on the work-landed verdict alone, backl
   // landed since the idle tick and the search waits. The seed must carry the bugfix role
   // itself: saveLoopState keys the state file off the state's role field.
   saveLoopState(repo, { ...idleDueState(repo), role: "bugfix" });
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(
@@ -123,9 +116,7 @@ test("once: bugfix in search mode defers on the work-landed verdict alone, backl
       ["bugfix"],
       "the search-mode deferral logs its episode like any other",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("live: an inbox demand ends a deferral episode silently, and the next deferral logs a fresh episode", async () => {

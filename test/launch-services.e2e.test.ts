@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { LaunchServicesWatch, launchServicesWarning } from "../src/process/launch-services.js";
 import { systemProcessProbe, type ProcessProbe } from "../src/process/process-table.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
-import { fakePiIdle } from "./fakes/fake-pi.js";
+import { fakePiIdle, withIdlePi } from "./fakes/fake-pi.js";
 import { eventsOfType, harnessWarnings } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
 
@@ -67,9 +67,8 @@ test("the real probe reads launchservicesd's port count off the live system with
 
 test("a once round runs without the watch even when one is passed", async () => {
   const repo = await makeFastRepo("launchservices watch once", ["clean"]);
-  const restore = fakePiIdle();
-  const probe = countingProbe(150_000);
-  try {
+  await withIdlePi(async () => {
+    const probe = countingProbe(150_000);
     await runRepoOrchestrator(repo, {
       pollMs: FAST_POLL_MS,
       once: true,
@@ -77,7 +76,5 @@ test("a once round runs without the watch even when one is passed", async () => 
     });
     assert.equal(probe.reads, 0);
     assert.equal(harnessWarnings(repo).filter((e) => String(e.message).startsWith("launchservicesd")).length, 0);
-  } finally {
-    restore();
-  }
+  });
 });

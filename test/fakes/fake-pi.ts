@@ -76,8 +76,8 @@ export function fakePiIdle(opts: { cost?: number } = {}): () => void {
 
 /** Run one async block with fakePi's script on PATH, restoring PATH afterwards even when the
  * block throws — the async form of the `const restore = fakePi(...); try { ... } finally {
- * restore(); }` boilerplate the loop tests repeated verbatim, so a test only writes its script
- * and its body and the save/restore pairing cannot be forgotten or double-restore. */
+ * restore(); }` boilerplate the tests repeated verbatim across the suite, so a test only writes
+ * its script and its body and the save/restore pairing cannot be forgotten or double-restore. */
 export async function withPi<T>(script: string, fn: () => Promise<T>): Promise<T> {
   const restore = fakePi(script);
   try {

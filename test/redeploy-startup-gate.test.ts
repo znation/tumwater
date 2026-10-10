@@ -7,7 +7,7 @@ import { NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { runStartupProblem } from "../src/gates/startup-gate.js";
 import { BUILD, HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./fixtures/redeploy-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
+import { withPi } from "./fakes/fake-pi.js";
 
 // The startup gate (BUGS.md 2026-09-23): a green, compiled build that cannot START here — the
 // environment fails `tumwater run`'s preconditions, not the code — must never be swapped in.
@@ -113,8 +113,7 @@ test("the incident repro through the production gate: a ready repo whose tumwate
   // on behalf of the successor. Pre-fix nothing asked it and the swap went ahead.
   const repo = makeRepo();
   await initProject(repo, "startup gate repro");
-  const restore = fakePi("exit 0");
-  try {
+  await withPi("exit 0", async () => {
     const f = fakeDeps({ bootProblem: () => runStartupProblem(repo, null) });
     const { r, events } = harness(f.deps);
     const config = path.join(repo, "tumwater.json");
@@ -125,7 +124,5 @@ test("the incident repro through the production gate: a ready repo whose tumwate
     assert.equal(events.at(-1)!.reason, NOT_INITIALIZED_MESSAGE, "the reason is the one the child would have died with");
     fs.writeFileSync(config, saved);
     assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the config is back: the restart proceeds");
-  } finally {
-    restore();
-  }
+  });
 });

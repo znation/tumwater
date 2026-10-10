@@ -37,7 +37,7 @@ import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, piRunResult } from "./fakes/fake-pi.js";
+import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 /** A minimal successful pi run carrying the given usage — only the fields the fold reads matter,
@@ -383,28 +383,26 @@ test("a queued landing's record names each phase while it runs: the gate's check
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}' | head -n 1`;
   const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
-  const restore = fakePi(
+  await withPi(
     [
       `echo "review:$(${stageOf})" >> '${rec}'`,
       `git -C '${root}' commit -q --allow-empty -m 'main moves under the landing'`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
     ].join("\n"),
+    async () => {
+      const author = makeLoopRunner(root, "improve", config);
+
+      const result = await landHead(root, author, config, "improve");
+
+      assert.equal(result, "changed", `the landing lands: ${author.state.lastError ?? ""}`);
+      assert.deepEqual(
+        fs.readFileSync(rec, "utf8").trim().split("\n"),
+        ["check:build-check", "review:reviewing", "check:build-check"],
+        "each phase ran under its own stage",
+      );
+      assert.equal(readLandingMarker(root), null, "the marker is removed after the outcome");
+    },
   );
-  try {
-    const author = makeLoopRunner(root, "improve", config);
-
-    const result = await landHead(root, author, config, "improve");
-
-    assert.equal(result, "changed", `the landing lands: ${author.state.lastError ?? ""}`);
-    assert.deepEqual(
-      fs.readFileSync(rec, "utf8").trim().split("\n"),
-      ["check:build-check", "review:reviewing", "check:build-check"],
-      "each phase ran under its own stage",
-    );
-    assert.equal(readLandingMarker(root), null, "the marker is removed after the outcome");
-  } finally {
-    restore();
-  }
 });
 
 // The marker is cross-process display state: observers poll it every second while a pipeline

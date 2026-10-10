@@ -7,7 +7,7 @@ import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, withApprovePi } from "./fakes/fake-pi.js";
+import { withApprovePi, withPi } from "./fakes/fake-pi.js";
 import {
   request,
   checkRunNumber,
@@ -284,33 +284,31 @@ test("a vet reviews each pin rebased onto main's current tip, so no reviewer's c
   // (syncPinToMain): every review_start names a synced head, and the reviewer's own checkout
   // contains main's tip.
   const rec = path.join(tmpdir("batch-rec-"), "seen");
-  const restore = fakePi(
+  await withPi(
     `if git merge-base --is-ancestor main HEAD; then echo synced >> ${rec}; else echo behind >> ${rec}; fi\n` +
       APPROVE_PI,
+    async () => {
+      const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
+      const mainTip = advanceMain(root, "main.txt", "landed after the pins\n");
+
+      const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+      assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+      assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
+      // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a
+      // race.
+      const starts = eventsOfType(root, "review_start");
+      assert.equal(starts.length, 2);
+      const heads = new Map(starts.map((e) => [e.loop, String(e.head)]));
+      for (const role of ["alpha", "beta"] as const) {
+        const head = heads.get(role)!;
+        assert.notEqual(head, shas[role], `${role} was reviewed rebased, not as its stale pin`);
+        assert.equal(sh(root, "git", "rev-parse", `${head}~1`).trim(), mainTip, `${role} sits directly on main's tip`);
+        assert.equal(states[role].lastApprovedHead, head, "the verdict names the head it judged");
+      }
+      assert.ok(fs.existsSync(path.join(root, "main.txt")), "main's own commit survived the landing");
+    },
   );
-  try {
-    const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"]);
-    const mainTip = advanceMain(root, "main.txt", "landed after the pins\n");
-
-    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
-
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
-    assert.deepEqual(fs.readFileSync(rec, "utf8").trim().split("\n"), ["synced", "synced"], "no reviewer sat behind main");
-    // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a
-    // race.
-    const starts = eventsOfType(root, "review_start");
-    assert.equal(starts.length, 2);
-    const heads = new Map(starts.map((e) => [e.loop, String(e.head)]));
-    for (const role of ["alpha", "beta"] as const) {
-      const head = heads.get(role)!;
-      assert.notEqual(head, shas[role], `${role} was reviewed rebased, not as its stale pin`);
-      assert.equal(sh(root, "git", "rev-parse", `${head}~1`).trim(), mainTip, `${role} sits directly on main's tip`);
-      assert.equal(states[role].lastApprovedHead, head, "the verdict names the head it judged");
-    }
-    assert.ok(fs.existsSync(path.join(root, "main.txt")), "main's own commit survived the landing");
-  } finally {
-    restore();
-  }
 });
 
 test("a vet's rebase conflict reviews the bare pin and the fallback's resolver lands it", async () => {

@@ -15,7 +15,7 @@ import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, logPromptsTo } from "./fakes/fake-pi.js";
+import { fakePi, logPromptsTo, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 // --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing
@@ -39,8 +39,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
   const counter = path.join(tmpdir(), "npm-runs");
   makeMainRed(repo, counter);
   const marker = path.join(tmpdir(), "pi-invoked");
-  const restore = fakePi(`touch '${marker}'`);
-  try {
+  await withPi(`touch '${marker}'`, async () => {
     const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "main_red");
@@ -83,9 +82,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     const redError = String(ends[1]?.error ?? "");
     assert.match(redError, /is red \(test: baseline-failure-line\)/);
     assert.match(redError, /authoring skipped until main is green/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a green main passes the baseline check and authoring proceeds normally", async () => {
@@ -117,27 +114,25 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
   const repo = await initializedRepo();
   makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
   const marker = path.join(tmpdir(), "pi-invoked");
-  const restore = fakePi(
+  await withPi(
     [
       APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: note", { tokens: 7, output: 7, cost: 0.01 })}'`,
       `echo more >> PLANS.md`,
       `touch '${marker}'`,
     ].join("\n"),
+    async () => {
+      const runner = makeLoopRunner(repo, "readme");
+      const outcome = await runner.tick();
+      assert.equal(outcome.result, "queued");
+      assert.equal(
+        await landHead(repo, runner, defaultConfig(), "readme"),
+        "changed",
+        "markdown-only diffs are exempt from the build pre-check and land even on red main",
+      );
+      assert.ok(fs.existsSync(marker), "the authoring run started for an exempt role");
+    },
   );
-  try {
-    const runner = makeLoopRunner(repo, "readme");
-    const outcome = await runner.tick();
-    assert.equal(outcome.result, "queued");
-    assert.equal(
-      await landHead(repo, runner, defaultConfig(), "readme"),
-      "changed",
-      "markdown-only diffs are exempt from the build pre-check and land even on red main",
-    );
-    assert.ok(fs.existsSync(marker), "the authoring run started for an exempt role");
-  } finally {
-    restore();
-  }
 });
 
 test("the bugfix healer's fresh prompt carries the red-main handoff", async () => {
@@ -146,7 +141,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
   makeMainRed(repo, counter);
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const marker = path.join(tmpdir(), "pi-invoked");
-  const restore = fakePi(
+  await withPi(
     [
       logPromptsTo(promptsFile),
       APPROVE_PI,
@@ -154,28 +149,26 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       `echo hello > hello.txt`,
       `touch '${marker}'`,
     ].join("\n"),
+    async () => {
+      const runner = makeLoopRunner(repo, "bugfix");
+      const outcome = await runner.tick();
+      assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
+      assert.ok(fs.existsSync(marker), "its pi run started");
+
+      const run = fs.readFileSync(promptsFile, "utf8");
+      assert.ok(run.includes("<main-red>"), "the tick prompt carries the red-main block");
+      assert.ok(run.includes("baseline-failure-line"), "…naming the failure headline");
+      assert.ok(run.includes("test"), "…and the failing script");
+
+      // The healer's check is priced in the feed under bugfix, and the red SHA warns once.
+      const checks = eventsOfType(repo, "build_check");
+      assert.equal(checks.length, 1);
+      assert.equal(checks[0]!.loop, "bugfix");
+      assert.equal(checks[0]!.scope, "baseline");
+      assert.equal(checks[0]!.status, "failed");
+      assert.equal(harnessWarnings(repo).length, 1);
+    },
   );
-  try {
-    const runner = makeLoopRunner(repo, "bugfix");
-    const outcome = await runner.tick();
-    assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
-    assert.ok(fs.existsSync(marker), "its pi run started");
-
-    const run = fs.readFileSync(promptsFile, "utf8");
-    assert.ok(run.includes("<main-red>"), "the tick prompt carries the red-main block");
-    assert.ok(run.includes("baseline-failure-line"), "…naming the failure headline");
-    assert.ok(run.includes("test"), "…and the failing script");
-
-    // The healer's check is priced in the feed under bugfix, and the red SHA warns once.
-    const checks = eventsOfType(repo, "build_check");
-    assert.equal(checks.length, 1);
-    assert.equal(checks[0]!.loop, "bugfix");
-    assert.equal(checks[0]!.scope, "baseline");
-    assert.equal(checks[0]!.status, "failed");
-    assert.equal(harnessWarnings(repo).length, 1);
-  } finally {
-    restore();
-  }
 });
 
 test("after a fix lands on main, the next tick re-checks the new SHA and authoring resumes", async () => {
