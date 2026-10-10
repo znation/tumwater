@@ -13,7 +13,7 @@ import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-st
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
-import { eventsLogPath, slotWorktreePath, slotsStatePath } from "../src/paths.js";
+import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
 import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
 
 function sleep(ms: number): Promise<void> {
@@ -128,6 +128,36 @@ test("slots.json records the lease while held and clears it on release", async (
   assert.equal(after?.lease, null);
   assert.equal(after?.lastRole, "feature");
   assert.equal(typeof after?.lastReleasedAt, "number");
+});
+
+test("a release whose use-record write fails still frees the slot", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "tick", ref: "main" });
+  // The worktree-use registry write is LRU bookkeeping; a directory standing at its path makes
+  // updateWorktreeUse's atomic rename fail (EISDIR), the same way ENOSPC or a lock timeout
+  // would on a real host. Before the fix, this throw escaped release() before releaseSlot ran,
+  // so the slot stayed leased by this live pid (the dead-lease reaper only clears another
+  // process's) and the pool shrank by one permanently.
+  mkdirSync(worktreeUsePath(root), { recursive: true });
+  lease.release();
+  const after = readSlotsState(root).slots.find((slot) => slot.dir === lease.dir);
+  assert.equal(after?.lease, null, "the slot stayed leased after a release whose use-record write failed");
+});
+
+test("a lease whose prepare and use-record write both fail still frees the slot", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  // Same injected write failure as above, but now on leaseSlot's ensureDetachedWorktree error
+  // path. Before the fix that unguarded useRelease() threw (EISDIR) before releaseSlot ran, so
+  // the rejected lease left its slot leased by this live pid and the slot was lost. The unknown
+  // ref makes ensureDetachedWorktree fail regardless.
+  mkdirSync(worktreeUsePath(root), { recursive: true });
+  await assert.rejects(
+    leaseSlot(root, { role: "feature", purpose: "tick", ref: "refs/heads/no-such-ref" }),
+  );
+  const after = readSlotsState(root).slots.find((slot) => slot.dir !== undefined);
+  assert.equal(after?.lease, null, "the failed lease left its slot claimed after a use-record write failure");
 });
 
 test("a lease held by another pid is cleared and its slot reused", async () => {

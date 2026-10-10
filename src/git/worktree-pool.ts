@@ -446,11 +446,26 @@ export async function leaseSlot(
   const dir = await acquire(root, role, purpose, signal, slotBudget);
   const preserved = keep === true && slotForDir(root, dir)?.pinnedFor === role;
   const useRelease = await beginWorktreeUse(root, dir);
+  // The use registry is LRU bookkeeping; freeing the slot is the real work of a release, so a
+  // failed registry write here (ENOSPC, a lock timeout) must not escape: the dead-lease reaper
+  // only clears another process's lease, so the slot would stay leased by this live pid and the
+  // pool would shrink by one every time. Warn so the failure stays visible, then free anyway.
+  const releaseUse = (): void => {
+    try {
+      useRelease();
+    } catch (err) {
+      warnEventBestEffort(
+        root,
+        "harness",
+        `could not record use release for ${path.basename(dir)}: ${errorMessage(err)}`,
+      );
+    }
+  };
   if (!preserved) {
     try {
       await ensureDetachedWorktree(root, dir, ref);
     } catch (err) {
-      useRelease();
+      releaseUse();
       // Free the claim without shrinking. releaseSlot retires a migrated legacy slot on this
       // unpinned release, so hand its removal to removeDroppedSlots; a canonical slot survives
       // for reuse on the next lease.
@@ -467,7 +482,7 @@ export async function leaseSlot(
     release: (options) => {
       if (released) return;
       released = true;
-      useRelease();
+      releaseUse();
       const toRemove = releaseSlot(root, dir, role, liveCount(root), options?.pin === true);
       wakeWaiters(root);
       // Best-effort: a slot whose directory is already gone is unregistered by the prune.
