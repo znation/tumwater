@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { eventsLogPath } from "../paths.js";
-import { ensureParentDir, openForRead, rotateIfLarge, statOrNull } from "../files/files.js";
+import { ensureParentDir, rotateIfLarge, statOrNull, terminateTornTail } from "../files/files.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 
 type EventListener = (event: HarnessEvent) => void;
@@ -215,31 +215,6 @@ function appendEventLine(file: string, line: string): void {
     });
   } else {
     appendedShape.delete(file);
-  }
-}
-
-/** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
- * the next append starts on its own line instead of gluing onto the fragment. Returns whether
- * a newline was appended (the caller folds it into the memoized post-append shape). No-op for
- * a missing, empty, or already-terminated file; never throws (a vanished file just means there
- * is nothing to terminate). `st` is the caller's fresh stat of `file`; the opened fd is still
- * fstat'd for size — correct even if rotation renamed the file between the stat and the open.
- * Runs after rotateIfLarge: rotation moves any torn tail into the unread `.1` archive and
- * starts an empty file that needs no termination. */
-function terminateTornTail(file: string, st: { size: number } | null): boolean {
-  if (!st || st.size === 0) return false; // No log yet.
-  const fd = openForRead(file);
-  if (fd === null) return false; // Vanished between stat and open — nothing to terminate.
-  try {
-    const size = fs.fstatSync(fd).size; // fstat on the opened inode: correct even if rotation renamed the file mid-check.
-    if (size === 0) return false;
-    const buf = Buffer.alloc(1);
-    const got = fs.readSync(fd, buf, 0, 1, size - 1);
-    if (got !== 1 || (buf[0] ?? 0) === 10) return false; // Already newline-terminated (or vanished).
-    fs.appendFileSync(file, "\n");
-    return true;
-  } finally {
-    fs.closeSync(fd);
   }
 }
 

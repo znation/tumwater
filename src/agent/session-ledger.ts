@@ -11,7 +11,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, readTextOrNull, walkFiles, writeTextAtomic } from "../files/files.js";
+import { ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
@@ -44,11 +44,16 @@ export function sessionLedgerPath(dir: string): string {
 
 /** Append one run's record to `dir`'s ledger, before its spawn. Best-effort: an unwritable
  * session dir or a full disk must degrade to "no resumable session" on a later tick, never
- * fail the run it was trying to describe. */
+ * fail the run it was trying to describe. A crash or power loss mid-append leaves the previous
+ * record without its newline; terminating that torn tail first keeps the next record on its
+ * own line instead of gluing the two into one unparseable line that loses both runs' records
+ * (the same repair the event log's append makes — files.ts's terminateTornTail). */
 export function recordSession(dir: string, record: SessionRecord): void {
   try {
-    ensureParentDir(sessionLedgerPath(dir));
-    fs.appendFileSync(sessionLedgerPath(dir), JSON.stringify(record) + "\n");
+    const file = sessionLedgerPath(dir);
+    ensureParentDir(file);
+    terminateTornTail(file, statOrNull(file));
+    fs.appendFileSync(file, JSON.stringify(record) + "\n");
   } catch {
     // Best effort: a lost ledger line costs resumability, not the run.
   }

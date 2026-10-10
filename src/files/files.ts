@@ -36,6 +36,32 @@ export function openForRead(file: string): number | null {
   }
 }
 
+/** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
+ * the next append starts on its own line instead of gluing onto the fragment. Returns whether
+ * a newline was appended. No-op for a missing, empty, or already-terminated file; never throws
+ * (a vanished file just means there is nothing to terminate). `st` is the caller's fresh stat
+ * of `file`; the opened fd is still fstat'd for size — correct even if a rotation renamed the
+ * file between the stat and the open. The append-only logs share this one repair: the event
+ * log's appendEventLine (src/events/events.ts) and the session ledger's recordSession
+ * (src/agent/session-ledger.ts), whose torn line would otherwise glue the next record to the
+ * fragment so both fail to parse and neither run stays resumable. */
+export function terminateTornTail(file: string, st: { size: number } | null): boolean {
+  if (!st || st.size === 0) return false; // No log yet.
+  const fd = openForRead(file);
+  if (fd === null) return false; // Vanished between stat and open — nothing to terminate.
+  try {
+    const size = fs.fstatSync(fd).size; // fstat on the opened inode: correct even if rotation renamed the file mid-check.
+    if (size === 0) return false;
+    const buf = Buffer.alloc(1);
+    const got = fs.readSync(fd, buf, 0, 1, size - 1);
+    if (got !== 1 || (buf[0] ?? 0) === 10) return false; // Already newline-terminated (or vanished).
+    fs.appendFileSync(file, "\n");
+    return true;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 /** Read a text file whole, or null when it does not exist (or cannot be read) — the harness's
  * "missing is no data" policy for the markdown and prompt text a render or prompt-building
  * path must never throw on: the backlog's PLANS/BUGS/QUESTIONS, the principles injected into

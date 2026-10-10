@@ -46,6 +46,20 @@ test("recordSession and readSessions round-trip records, skipping malformed line
   assert.equal(latestSession(dir, "gate"), null);
 });
 
+test("recordSession repairs a torn previous line so the next record is not lost", () => {
+  const dir = tmpdir();
+  const first = record({ name: "first", at: 1000 });
+  recordSession(dir, first);
+  // A crash mid-append leaves the last line without its newline. The next append must
+  // terminate it first: appended raw, the next record glues onto the fragment and BOTH
+  // lines fail to parse (the same repair events.ts's appendEventLine already makes).
+  fs.appendFileSync(sessionLedgerPath(dir), '{"agent":"pi"');
+  const second = record({ name: "second", at: 2000 });
+  recordSession(dir, second);
+  assert.deepEqual(readSessions(dir), [first, second]);
+  assert.deepEqual(latestSession(dir), second, "the run after a torn append is still resumable");
+});
+
 test("readSessions skips a line that parses but is not a complete record", () => {
   const dir = tmpdir();
   const good = record({ kind: "author", name: "author" });
