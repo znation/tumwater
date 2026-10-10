@@ -87,12 +87,16 @@ export function planTickStart(opts: {
   const dir = sessionDir(opts.root, opts.role);
   const agent = opts.agent ?? "pi";
   const resumePending = s.resumePending === true;
+  // The previous run's own verdict that its `--resume` target is gone is authoritative over the
+  // transcript check: a lingering transcript (a torn/empty file, or the fake's planted one) must
+  // not re-arm a resume the backend just rejected, or the loop re-resumes and re-fails forever.
+  const resumeMissing = s.resumeMissing === true;
   const latest = resumePending ? latestSession(dir) : null;
   // Our backend decides whether the newest session of this kind is actually resumable: pi
   // continues the newest FILE in the dir (only a newest author line for pi is safe), while
   // claude resumes an id (safe across a newer gate line). A backend with no `resumable` hook
   // falls back to the session-file check (the historical pi-only behavior).
-  const resumable = resumePending
+  const resumable = resumePending && !resumeMissing
     ? agentSessionResumable(dir, { kind: "author", agent })
     : false;
   const resumableSession = resumable;
@@ -103,14 +107,16 @@ export function planTickStart(opts: {
   // deserve a handoff rather than the fresh path's worktree reset: the next tick runs a FRESH
   // session over the kept worktree, carrying the assembled tick prompt plus the handoff
   // bridge (plans/agent-backends.md "Sessions"). The failed `resumeMissing` run arms
-  // `resumePending` from the verdict (its error turn carries no assistant content), so the
-  // very next tick lands here with the worktree intact. A dir with no ledger line at all is
-  // not a handoff — there is no recorded interrupted session to carry forward.
+  // `resumePending` and records `resumeMissing` from the verdict (its error turn carries no
+  // assistant content), so the very next tick lands here with the worktree intact. A dir with
+  // no ledger line at all is not a handoff — there is no recorded interrupted session to carry
+  // forward.
   const handoff = latest !== null && !resumable;
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
   const pendingResumeCause = s.resumeCause;
   s.resumePending = false;
   s.resumeCause = undefined;
+  s.resumeMissing = undefined;
   // An interruption during the review gate leaves the author's work fully committed — there
   // is nothing left to finish in its session. Recover (and re-review) the leftover commits
   // via a fresh tick instead: continuing the author session would burn a run on finished

@@ -7,7 +7,7 @@ import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { sessionDir } from "../src/paths.js";
-import { readSessions, recordSession } from "../src/agent/session-ledger.js";
+import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
@@ -303,13 +303,14 @@ test("a fake-claude resumeMissing run arms resumePending, and the next tick hand
     assert.equal(outcome?.result, "error", "a failed run with no content is an error outcome");
     assert.equal(s.resumePending, true, "the failed dirty resume armed the next resume");
 
-    // The transcript is gone (the resume-missing cause), so the next tick cannot continue it:
-    // it fresh-starts over the kept worktree with the handoff bridge.
-    const recorded = readSessions(sessionDir(root, "feature")).at(-1)!;
-    fs.rmSync(claudeTranscriptPath(cwd, recorded.id));
+    // The resume-missing verdict, not the filesystem, is what makes the session
+    // gone — a transcript lingering under claude's project dir must not re-arm a
+    // resume the backend just rejected. The transcript the fake planted (and the
+    // resume run refreshed) is still present, yet the next tick must hand off.
+    assert.ok(fs.existsSync(claudeTranscriptPath(cwd, "c1")), "the transcript lingers");
     const p = plan(root, s, { agent: "claude" });
     assert.ok(p);
-    assert.equal(p.resuming, false, "the lost session is not resumable");
+    assert.equal(p.resuming, false, "a resumeMissing session is not resumable");
     assert.equal(p.handoff, true, "the kept worktree is handed off, not reset");
     assert.equal(p.resumeCause, "handoff");
     assert.match(p.prompt, /uncommitted edits are in your worktree/);

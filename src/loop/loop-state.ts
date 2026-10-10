@@ -68,6 +68,14 @@ export interface LoopState {
    * (--continue) instead of starting fresh. Consumed (cleared) by that tick; set again only
    * by another interruption, so a failing resume falls back to a fresh start. */
   resumePending?: boolean;
+  /** True when the run that set `resumePending` reported via `PiRunResult.resumeMissing`
+   * that the backend no longer holds the session it tried to `--resume` (claude's "No
+   * conversation found", or a pruned session). The transcript file the resume guard checks
+   * can outlive the conversation — the fake leaves one, and a torn/empty file can — so the
+   * next tick must hand off on this verdict rather than trust `agentSessionResumable` and
+   * re-resume a session that is gone (BUGS.md 2026-10-09). Set only alongside
+   * `resumePending` and cleared with it at tick start. */
+  resumeMissing?: boolean;
   /** Why a pending resume happened when it was not a cut-off: "hung-tool" when the quiet
    * watchdog killed a run on a stalled tool call, so the bridge prompt names that cause (and
    * warns against re-running the hung command unchanged); "timeout" when the tick deadline

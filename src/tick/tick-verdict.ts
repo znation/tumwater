@@ -151,6 +151,11 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // nothing to carry forward, so the plain re-queue still applies.
     if (changed && ctx.role !== DIRECTOR_ROLE) {
       s.resumePending = true;
+      // A run whose `--resume` target the backend no longer holds records why: the transcript
+      // the resume guard checks can still exist (a torn file, or the fake's planted one), so
+      // the next tick must hand off on this verdict instead of re-resuming a session the
+      // backend just rejected (BUGS.md 2026-10-09).
+      if (pi.resumeMissing) s.resumeMissing = true;
       ctx.pending.requeueForResume(s, ctx.userPrompt);
     } else {
       // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
