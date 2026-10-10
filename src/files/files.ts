@@ -55,8 +55,10 @@ export function openForRead(file: string): number | null {
 
 /** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
  * the next append starts on its own line instead of gluing onto the fragment. Returns whether
- * a newline was appended. No-op for a missing, empty, or already-terminated file; never throws
- * (a vanished file just means there is nothing to terminate). `st` is the caller's fresh stat
+ * a newline was appended. No-op for a missing, empty, already-terminated, or vanished file.
+ * Only the open is swallowed: the fstat/read/append/close on the opened fd can throw like any
+ * fs call, so a caller that must not throw wraps this whole call — session-ledger.ts's
+ * recordSession and events.ts's logEventBestEffort both do. `st` is the caller's fresh stat
  * of `file`; the opened fd is still fstat'd for size — correct even if a rotation renamed the
  * file between the stat and the open. The append-only logs share this one repair: the event
  * log's appendEventLine (src/events/events.ts) and the session ledger's recordSession
