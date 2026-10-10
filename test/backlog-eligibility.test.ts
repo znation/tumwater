@@ -216,3 +216,30 @@ test("eligibleEntries reads BUGS.md's Open section for bugfix and drops a refuse
     { key: "real", title: "Real (reported 2026-10-02)", start: 3, end: 4 },
   ]);
 });
+
+test("eligibleEntries caches an unchanged PLANS.md and re-reads a changed one", (t) => {
+  const dir = tmpdir();
+  const plans = path.join(dir, "PLANS.md");
+  fs.writeFileSync(plans, "# Plans\n## Planned\n### Alpha (planned 2026-10-01)\nBody.\n## Done\n_None._\n");
+  assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["alpha"]);
+
+  // Cache hit: the file's stat is unchanged, so a repeat poll must serve the cached ranges
+  // without re-reading the whole file. Count only this file's reads.
+  const original = fs.readFileSync.bind(fs);
+  let reads = 0;
+  t.mock.method(fs, "readFileSync", ((...args: unknown[]) => {
+    if (args[0] === plans) reads++;
+    return original(...(args as [string | URL, "utf8"]));
+  }) as typeof fs.readFileSync);
+  try {
+    assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["alpha"]);
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(reads, 0, "an unchanged backlog file must not be re-read");
+
+  // A larger rewrite guarantees a new size (and mtime) even on a filesystem with coarse
+  // clocks, so the stat-keyed cache must miss and the fresh walk must yield the new entry.
+  fs.writeFileSync(plans, "# Plans\n## Planned\n### Beta (planned 2026-10-02)\nA longer body line.\n## Done\n_None._\n");
+  assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["beta"]);
+});

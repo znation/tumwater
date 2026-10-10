@@ -308,6 +308,36 @@ export function actionableEntryRanges(md: string, sectionTitle: string): Actiona
   return entries;
 }
 
+/** Per-file cache of a section's actionable ranges (actionableEntryRangesFor). */
+const actionableRangesCache = new Map<string, StatKeyedValue<ActionableEntryRange[]>>();
+
+/** `actionableEntryRanges` for one backlog file, stat-cached per (file path, section title):
+ * the per-poll and per-tick readers (eligibility's eligibleEntries, claims' listedKeys) ask for
+ * the same section of the same file every couple of seconds, and BUGS.md's closed history —
+ * which the whole-file walk reads — grows without bound, so an unchanged file costs one stat
+ * instead of a full read, split, and section walk. Keyed by file path so distinct roots never
+ * collide, bounded inside cachedByStat. A missing or unreadable file reads as no ranges. The
+ * result is copied out, so each caller owns its data. */
+export function actionableEntryRangesFor(
+  root: string,
+  file: string,
+  sectionTitle: string,
+): ActionableEntryRange[] {
+  const full = path.join(root, file);
+  return (
+    cachedByStat(
+      actionableRangesCache,
+      `${full}\u0000${sectionTitle}`,
+      full,
+      () => {
+        const md = readTextOrNull(full);
+        return md === null ? null : actionableEntryRanges(md, sectionTitle);
+      },
+      (ranges) => ranges.slice(), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
 /** Max characters an index title keeps before a trailing ellipsis, so one very long BUGS.md
  * heading cannot dominate the block. */
 const INDEX_TITLE_MAX = 160;

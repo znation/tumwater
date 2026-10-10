@@ -10,7 +10,7 @@ import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { type EligibleEntry, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
-import { actionableEntryRanges } from "../backlog/backlog-structure.js";
+import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
@@ -50,9 +50,7 @@ function roleSection(role: string): { file: "PLANS.md" | "BUGS.md"; section: str
 export function listedKeys(root: string, role: string): Set<string> {
   const { file, section } = roleSection(role);
   const keys = new Set<string>();
-  const md = readTextOrNull(path.join(root, file));
-  if (md === null) return keys;
-  for (const e of actionableEntryRanges(md, section)) keys.add(entryKey(e.title));
+  for (const e of actionableEntryRangesFor(root, file, section)) keys.add(entryKey(e.title));
   return keys;
 }
 

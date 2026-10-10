@@ -142,6 +142,33 @@ test("listedKeys and stagedMovedEntries read a repo's Planned section", async ()
   assert.match(moved[0]!.title, /Plan B/);
 });
 
+test("listedKeys caches an unchanged PLANS.md and re-reads a changed one", (t) => {
+  const repo = makeRepo();
+  const plans = path.join(repo, "PLANS.md");
+  fs.writeFileSync(plans, PLANNED);
+  assert.deepEqual([...listedKeys(repo, "feature")].sort(), ["plan a", "plan b"]);
+
+  // Cache hit: the file's stat is unchanged, so a repeat poll must serve the cached ranges
+  // without re-reading the whole file. Count only this file's reads.
+  const original = fs.readFileSync.bind(fs);
+  let reads = 0;
+  t.mock.method(fs, "readFileSync", ((...args: unknown[]) => {
+    if (args[0] === plans) reads++;
+    return original(...(args as [string | URL, "utf8"]));
+  }) as typeof fs.readFileSync);
+  try {
+    assert.deepEqual([...listedKeys(repo, "feature")].sort(), ["plan a", "plan b"]);
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(reads, 0, "an unchanged backlog file must not be re-read");
+
+  // A larger rewrite guarantees a new size (and mtime) even on a filesystem with coarse
+  // clocks, so the stat-keyed cache must miss and the fresh walk must yield the new entry.
+  fs.writeFileSync(plans, PLANNED.replace("### Plan A", "### Plan Zeta"));
+  assert.deepEqual([...listedKeys(repo, "feature")].sort(), ["plan b", "plan zeta"]);
+});
+
 test("buildAssignmentNote names the entry, its range and the alternatives", () => {
   const note = buildAssignmentNote(
     { file: "PLANS.md", title: "Plan A", source: "assigned" },

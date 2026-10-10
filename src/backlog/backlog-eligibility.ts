@@ -6,13 +6,11 @@
  * reader for a caller that wants the list. The backlog index marks every held entry so a loop
  * skips it without re-deriving the rule. */
 
-import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
-import { actionableEntryRanges, stripEntryStamp } from "./backlog-structure.js";
+import { actionableEntryRangesFor, stripEntryStamp } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unlanded
@@ -164,10 +162,8 @@ export function eligibleEntries(root: string, role: string): EligibleEntry[] {
   const bugfix = baseRoleOf(role) === "bugfix";
   const file = bugfix ? "BUGS.md" : "PLANS.md";
   const section = bugfix ? "Open" : "Planned";
-  const md = readTextOrNull(path.join(root, file));
-  if (md === null) return [];
   const entries = bugfix ? openBugEntries(root) : plannedPlanEntries(root);
-  const ranges = actionableEntryRanges(md, section);
+  const ranges = actionableEntryRangesFor(root, file, section);
   const planned = plannedPlanEntries(root);
   const out: EligibleEntry[] = [];
   for (let i = 0; i < entries.length && i < ranges.length; i++) {
