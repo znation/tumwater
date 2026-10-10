@@ -605,11 +605,11 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   one live-reload path, one validator, one writer. A loop the director adds lands in the live
   config only — promoting it to the template stays a deliberate human act, which is right: one
   person's experiment should not become everyone's loop by accident.
-- **`init` is the only seeder.** `loadConfig` (src/config.ts:73) and `loadConfigCached`
-  (src/config.ts:154) keep returning `defaultConfig()` for a missing file; nothing seeds at run
+- **`init` is the only seeder.** `loadConfig` (src/config/config.ts) and `loadConfigCached`
+  (src/config/config.ts) keep returning `defaultConfig()` for a missing file; nothing seeds at run
   time. A fresh clone of an initialized project therefore runs `tumwater init` first, and until
   then `doctor`'s existing "init" check fails with `NOT_INITIALIZED_MESSAGE`
-  (src/gates/readiness.ts:10) — unchanged.
+  (src/gates/readiness.ts) — unchanged.
 - **`seedConfig` never throws.** An example that is unparseable or fails `validateConfig` falls
   back to `defaultConfig()`: `init` must not die on a bad template, and the user's own file is
   what validation protects.
@@ -617,21 +617,21 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   from the local file are reported with the example's values. Sub-objects (`roles`, `idleBackoff`)
   are compared whole-key only — deep diffing is a bigger design than this entry needs.
 - **`doctor` folds drift into the existing "init" check.** The report's check names are pinned
-  (test/doctor.test.ts:221) and the valid-config detail is pinned as `"N roles enabled"`
-  (test/doctor.test.ts:124), so `checkInit` keeps that detail when there is no drift and returns
+  (test/doctor.test.ts) and the valid-config detail is pinned as `"N roles enabled"`
+  (test/doctor.test.ts), so `checkInit` keeps that detail when there is no drift and returns
   `level: "warn"` naming the drifted keys when there is (`CheckOutcome` is `ok | warn | fail`,
-  src/doctor/doctor.ts:31; a warn never affects the exit code).
+  src/doctor/doctor-checks.ts; a warn never affects the exit code).
 
 **Approach.**
-- src/paths.ts — `exampleConfigPath(root)` beside `configPath` (src/paths.ts:11).
-- src/config-example.ts — `seedConfig(root)` (example → defaults) and `exampleDrift(root)`
-  (moved out of src/config.ts 2026-10-01; the load/save core keeps `overlayDefaults`/`parseJsonConfig`).
+- src/paths.ts — `exampleConfigPath(root)` beside `configPath`.
+- src/config/config-example.ts — `seedConfig(root)` (example → defaults) and `exampleDrift(root)`
+  (moved out of src/config/config.ts 2026-10-01; the load/save core keeps `overlayDefaults`/`parseJsonConfig`).
 - src/init/init.ts — seed through `seedConfig`; and two traps that must be fixed together:
-  1. `ensureGitignore` (src/init/init.ts:66–73) returns early as soon as *one* entry matches (line 70)
+  1. `ensureGitignore` (src/init/init.ts) returns early as soon as *one* entry matches
      — it must test `.tumwater/` and `tumwater.json` independently, and still return true when it
      adds only the second.
-  2. `created` is both the commit pathspec (src/init/init.ts:134,139) and the `created …` line the CLI
-     prints (src/cli.ts:107–114), and `git add -- tumwater.json` **fails** on a path the
+  2. `created` is both the commit pathspec (src/init/init.ts) and the `created …` line the CLI
+     prints (src/cli.ts), and `git add -- tumwater.json` **fails** on a path the
      just-written `.gitignore` ignores. Keep `tumwater.json` in the reported list, drop it from
      the add/commit pathspec, and skip the add/commit entirely when that leaves the list empty
      (`git add --` with no pathspec exits 1) — a repo that only gains a config reports
@@ -650,7 +650,7 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   untracked `tumwater.json` is seeded from (the residual of the landed 4c/7; writable only once
   this entry creates the file).
 
-**Files touched.** src/paths.ts, src/config.ts, src/init/init.ts, src/doctor/doctor.ts, tumwater.example.json
+**Files touched.** src/paths.ts, src/config/config.ts, src/config/config-example.ts, src/init/init.ts, src/doctor/doctor-checks.ts, tumwater.example.json
 (new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a
 project with no example (defaults, as today).
 
@@ -669,10 +669,10 @@ project with no example (defaults, as today).
 **Refined 2026-09-19 (plan loop) — the old 4/7 re-audited against main `2714022` and split (see
 the series header).** Verified on this tree: no `exampleConfigPath`/`seedConfig`/`exampleDrift`
 and no `tumwater.example.json` anywhere (`grep -rn` empty); `initProject` writes the config with
-`saveConfig(root, defaultConfig())` (src/init/init.ts:122–128) and commits through the single `created`
-list (133–141); `.gitignore` is written by `ensureGitignore` (66–73) with its first-entry early
-return at line 70; `doctor`'s check names are pinned at test/doctor.test.ts:221 and `checkInit`
-(src/doctor/doctor.ts:90–99) is the "init" entry. Corrections: the two src/init/init.ts traps above (the old
+`saveConfig(root, defaultConfig())` (src/init/init.ts) and commits through the single `created`
+list; `.gitignore` is written by `ensureGitignore` (src/init/init.ts) with its first-entry early
+return; `doctor`'s check names are pinned at test/doctor.test.ts and `checkInit`
+(src/doctor/doctor-checks.ts) is the "init" entry. Corrections: the two src/init/init.ts traps above (the old
 text said "the config leaves the committed file list while `created` still reports it" without the
 mechanism, and missed that `git add` on an ignored path fails); doctor drift folds into the pinned
 "init" check rather than adding a check entry; and the "repo's own config is removed from
@@ -681,15 +681,15 @@ actually solved.
 
 **Refined 2026-09-21 (plan loop) — 4a/7 re-audited against main `c2ff74b`, and 4c/7's residual
 `## Usage` line folded in here.** Every anchor from the 2026-09-19 audit had drifted, so all are
-re-pinned on this tree: `ensureGitignore` (src/init/init.ts:69, its one-entry early return now :73),
-`initProject` (:89), the `created` list (:116), `saveConfig(root, defaultConfig())` (:130) with
-`created.push("tumwater.json")` (:131), the `.gitignore` push (:133), `git add -- …created` (:137)
-and the commit (:142); `configPath` (src/paths.ts:11); `defaultConfig` (src/config.ts:13),
-`loadConfig` (:77), `loadConfigSafe` (:118), `loadConfigCached` (:158, default fallback :163);
-`NOT_INITIALIZED_MESSAGE` (src/gates/readiness.ts:10); `checkRepo` (src/doctor/doctor.ts:88), `checkInit`
-(:99), and the report's check list (:243–247, `{ name: "init", … }` at :247); the CLI's `created`
-line is src/cli.ts:105–112. Test pins: `"N roles enabled"` (test/doctor.test.ts:118/125) and the
-check-name list (test/doctor.test.ts:274). Capability absence re-confirmed: `grep -rn` for
+re-pinned on this tree: `ensureGitignore` (src/init/init.ts, its one-entry early return),
+`initProject`, the `created` list, `saveConfig(root, defaultConfig())` with
+`created.push("tumwater.json")`, the `.gitignore` push, `git add -- …created`
+and the commit; `configPath` (src/paths.ts); `defaultConfig` (src/config/config.ts),
+`loadConfig`, `loadConfigSafe`, `loadConfigCached` (default fallback);
+`NOT_INITIALIZED_MESSAGE` (src/gates/readiness.ts); `checkRepo` (src/doctor/doctor-checks.ts), `checkInit`
+(src/doctor/doctor-checks.ts), and the report's check list (src/doctor/doctor.ts, `{ name: "init", … }`); the CLI's `created`
+line is src/cli.ts. Test pins: `"N roles enabled"` (test/doctor.test.ts) and the
+check-name list (test/doctor.test.ts). Capability absence re-confirmed: `grep -rn` for
 `exampleConfigPath`, `seedConfig`, or `exampleDrift` over `src/` is empty, and no
 `tumwater.example.json` exists anywhere. The single addition since the split is one README.md line,
 moved here from the now-landed 4c/7 (`dfa6d26`): 4c/7's goal said it depended on nothing, but that
@@ -701,30 +701,30 @@ both pinned traps hold unchanged. Every anchor drifted and is re-pinned on this 
 capability absence re-confirmed; one new shape in `cmdInit` noted.**
 
 Re-pinned anchors:
-- `src/init/init.ts` is 176 lines. The pure-validation preamble grew since the audit — new since
-  `c2ff74b` are the git-binary preflight (`findOnPath("git")` throw, :104, with
-  `GIT_MISSING_MESSAGE`) and the over-long-prompt reject (:113–117, `INITIAL_PROMPT_MAX_CHARS`);
+- `src/init/init.ts`. The pure-validation preamble grew since the audit — new since
+  `c2ff74b` are the git-binary preflight (`findOnPath("git")` throw, with
+  `GIT_MISSING_MESSAGE`) and the over-long-prompt reject (`INITIAL_PROMPT_MAX_CHARS`);
   both sit ahead of any side effect and neither touches this entry's seeding code. The
-  README-without-markers guard is :124–129. Then: `ensureGitignore` :75 with its one-entry early
-  return at :78 (trap 1 verbatim); `initProject(root, initialPrompt, branch?)` :98; the `created`
-  list :145; `saveConfig(root, defaultConfig())` :159 with `created.push("tumwater.json")` :160;
-  the `.gitignore` push :162; `git add -- …created` :166 and the commit with the same `--`
-  pathspec :171 (trap 2 verbatim, including the empty-pathspec hazard at :165).
-- `src/cli.ts` (418 lines): `cmdInit` now destructures `{ prompt, branch }` from
-  `parseInitArgs(args)` (:130 — a shape change since the audit; this entry's edits leave it,
+  README-without-markers guard. Then: `ensureGitignore` with its one-entry early
+  return (trap 1 verbatim); `initProject(root, initialPrompt, branch?)`; the `created`
+  list; `saveConfig(root, defaultConfig())` with `created.push("tumwater.json")`;
+  the `.gitignore` push; `git add -- …created` and the commit with the same `--`
+  pathspec (trap 2 verbatim, including the empty-pathspec hazard).
+- `src/cli.ts`: `cmdInit` now destructures `{ prompt, branch }` from
+  `parseInitArgs(args)` (a shape change since the audit; this entry's edits leave it,
   7/7's flag plumbing is what widens it); the empty-`created` early return ("already
-  initialized; nothing to do") :132–134; the `created …` line :139, which since the audit also
+  initialized; nothing to do"); the `created …` line, which since the audit also
   appends `" (committed)"` from `InitResult.committed` — trap 2's fix already has its reporting
   shape: when the pathspec keeps a subset, `committed` must reflect the commit that actually ran.
-- `src/paths.ts`: `configPath` :11. `src/config.ts` (434 lines): `defaultConfig` :14,
-  `loadConfig` :79, `loadConfigSafe` :120, `loadConfigCached` :160 (default fallback :165).
-- `src/gates/readiness.ts`: `NOT_INITIALIZED_MESSAGE` :10 (unchanged).
-- `src/doctor/doctor.ts` (301 lines): `CheckOutcome` :45; `checkRepo` :101; `checkInit` :124 — the
-  `NOT_INITIALIZED_MESSAGE` fail at :126 and the `` `${n} roles enabled` `` ok at :129 are the two
-  details the drift fold must preserve; the checks array is :276 with `{ name: "init", … }` at
-  :280; the render pads the name column with `padEnd(12)` :298.
-- Test pins re-pinned: `"N roles enabled"` (test/doctor.test.ts:141 and :148), the full check-name
-  list (test/doctor.test.ts:297–298), the fail-list subset (test/doctor.test.ts:319–320).
+- `src/paths.ts`: `configPath`. `src/config/config.ts`: `defaultConfig`,
+  `loadConfig`, `loadConfigSafe`, `loadConfigCached` (default fallback).
+- `src/gates/readiness.ts`: `NOT_INITIALIZED_MESSAGE` (unchanged).
+- `src/doctor/doctor-checks.ts`: `CheckOutcome`; `checkRepo`; `checkInit` — the
+  `NOT_INITIALIZED_MESSAGE` fail and the `` `${n} roles enabled` `` ok are the two
+  details the drift fold must preserve; `src/doctor/doctor.ts` holds the checks array with
+  `{ name: "init", … }`; the render (`renderDoctor`, src/doctor/doctor-render.ts) pads the name column with `padEnd(12)`.
+- Test pins re-pinned: `"N roles enabled"` (test/doctor.test.ts), the full check-name
+  list (test/doctor.test.ts), the fail-list subset (test/doctor.test.ts).
 - Capability absence re-confirmed: `grep -rn 'seedConfig\|exampleDrift\|exampleConfigPath' src/
   test/` is empty, and no `tumwater.example.json` exists anywhere in the repo.
 
@@ -737,7 +737,7 @@ id, or a concurrency sized to one GPU (invariant 1) — and the running fleet ke
 through the landing that removes it.
 
 **Why the split, and why a code change.** The landing fast-forwards the *primary checkout's*
-working tree — `ffMainTo` (src/merge.ts:314) runs `git merge --ff-only <sha>` when the checkout is
+working tree — `ffMainTo` (src/landing/landing-git.ts) runs `git merge --ff-only <sha>` when the checkout is
 on main — so the commit that removes the tracked config deletes the live file out from under the
 fleet. The next ~2 s config poll then reads `defaultConfig()`: no `provider`/`model` (pi's own
 default instead of the budgeted API model), `maxConcurrent` 6 against a 3-slot server, and
@@ -753,12 +753,13 @@ watching or not. The preserve step below makes the landing safe by construction.
   (`git ls-files --error-unmatch`), and is absent from the incoming ref
   (`git cat-file -e <ref>:tumwater.json`, the path from `path.relative(root, configPath(root))`),
   read its bytes. After a successful merge, write those bytes back. `ffMainTo` is the single helper
-  both landing paths go through — the single-change path (src/merge.ts:108) and the batched stack
-  (`ffStackToMain`, :297) — so one helper covers both; the detached arm
+  both landing paths go through — the single-change path (`mergeToMain`, src/landing/landing-merge.ts)
+  and the batched stack
+  (`ffStackToMain`, src/landing/landing-stack.ts) — so one helper covers both; the detached arm
   (`push . <ref>:<main>`) never touches the working tree and needs nothing.
 - **The implementation deletes the file; it does not run git.** Loop prompts forbid state-changing
   git commands, and the old text's `git rm --cached` is one: deleting `tumwater.json` in the
-  worktree is enough, because `commitAll` (src/git.ts:456–459) runs `git add -A` and stages the
+  worktree is enough, because `commitAll` (src/git/git.ts) runs `git add -A` and stages the
   deletion. `.gitignore` must gain `tumwater.json` in the same commit — that is what keeps the
   restored file out of `git status` and out of the next `git add -A`.
 - **A dirty root copy keeps today's behavior.** If the root's `tumwater.json` has uncommitted edits,
@@ -769,14 +770,14 @@ watching or not. The preserve step below makes the landing safe by construction.
   concurrency, idleBackoff) lives on in the restored untracked file; the generic half is
   `tumwater.example.json` from 4a/7.
 
-**Approach.** src/merge.ts (the preserve helper plus its call in the working-tree arm),
-`.gitignore` (`tumwater.json`), `tumwater.json` (deleted in the worktree), test/merge.test.ts (a
+**Approach.** src/landing/landing-git.ts (the preserve helper plus its call in the working-tree arm),
+`.gitignore` (`tumwater.json`), `tumwater.json` (deleted in the worktree), test/landing-config.test.ts (a
 landing commit that deletes and ignores the config leaves the root's file byte-identical,
 untracked, ignored, and `git status --porcelain` clean; a landing that does not touch the config
 leaves it untouched; an absent config is not an error; and a file recreated between the merge and
 the write-back (the applyConfigRequest race, pinned above) is left byte-identical).
 
-**Files touched.** src/merge.ts, .gitignore, tumwater.json (untracked), test/merge.test.ts.
+**Files touched.** src/landing/landing-git.ts, .gitignore, tumwater.json (untracked), test/landing-config.test.ts.
 
 **Acceptance criteria.**
 - After the landing: `git ls-files` lists no `tumwater.json`; the root file exists with the exact
@@ -791,24 +792,24 @@ the write-back (the applyConfigRequest race, pinned above) is left byte-identica
 **Refined 2026-09-23 (plan loop) — 4b/7 re-audited against main `4dafd41`. This was the last
 entry still carrying only its 2026-09-19 audit while ~40 landings moved its anchor files — most
 notably 2/7 (`c033ad1`, repo-root/branch targeting) and 3/7 (`726e3cc`, harness-mediated config
-writes), both of which touched src/merge.ts and src/config.ts directly. The design holds
+writes), both of which touched src/landing/ and src/config/ directly. The design holds
 unchanged; one new seam from 3/7 is pinned below, and one drifted line anchor is corrected.**
 
-Verified as written: `ffMainTo` is still src/merge.ts:314 with the same two arms — the
-working-tree `git merge --ff-only <ref>` when the primary checkout is on main (:317) and the
-detached `push . <ref>:<main>` otherwise (:319, which never touches the working tree and needs
-nothing). `currentBranch` now reads the HEAD file first (6b73279) but its signature and the :315
-call are unchanged. Both landing paths still route through it: the single-change path at :108 and
-the batched stack `ffStackToMain` at :297. `configPath` is src/paths.ts:11; `git ls-files` still
+Verified as written: `ffMainTo` is still src/landing/landing-git.ts with the same two arms — the
+working-tree `git merge --ff-only <ref>` when the primary checkout is on main and the
+detached `push . <ref>:<main>` otherwise (which never touches the working tree and needs
+nothing). `currentBranch` (src/git/git.ts) now reads the HEAD file first (6b73279) but its signature and the
+call are unchanged. Both landing paths still route through it: the single-change path and
+the batched stack `ffStackToMain` (src/landing/landing-stack.ts). `configPath` is src/paths.ts; `git ls-files` still
 lists `tumwater.json` (tracked) and `.gitignore` still lists only `.tumwater/`. The ~2 s live
-reload the degradation story depends on is intact: `POLL_MS = 2000` (src/orchestrator.ts:42) and
-`loadConfigCached` (src/config.ts:160).
+reload the degradation story depends on is intact: `POLL_MS = 2000` (src/orchestrator/orchestrator.ts) and
+`loadConfigCached` (src/config/config.ts).
 
 Corrections and new pins:
-1. **`commitAll` drifted: src/git.ts:366–370 → :456–459.** Body unchanged — `git add -A` plus
-   the commit — so the delete-the-file mechanism stands as written; only the pin moves.
-2. **3/7's `applyConfigRequest` (src/config.ts:279) writes the live config from the director's
-   tick (src/loop.ts:581) — outside the merge lock, so it can interleave with an in-flight
+1. **`commitAll` drifted: src/git/git.ts.** Body unchanged — `git add -A` plus
+   the commit — so the delete-the-file mechanism stands as written.
+2. **3/7's `applyConfigRequest` (src/config/config-write.ts) writes the live config from the director's
+   tick (src/tick/tick-verdict.ts) — outside the merge lock, so it can interleave with an in-flight
    untracking landing. Two consequences, both pinned:** (a) it *strengthens* this entry — since
    3/7, no code path can land a config diff at all (the request file is consumed before every
    staging path and never enters a diff), so the tracked file is pure liability and the
@@ -853,27 +854,27 @@ changed. The `## Usage` line naming `tumwater.example.json` (the second criterio
 be written before that file exists, so it moved to 4a/7.
 
 **Refined 2026-09-22 (plan loop) — 4a/7 re-audited against main `4037522`, after the 3/7 landing
-(`726e3cc`) shifted every anchor in src/init/init.ts, src/config.ts, and src/doctor/doctor.ts.** Design is
-unchanged; all line pins re-verified on this tree: `ensureGitignore` (src/init/init.ts:75, its
-one-entry early return now :79), `initProject` (:98), the `created` list (:145),
-`saveConfig(root, defaultConfig())` (:159) with `created.push("tumwater.json")` (:160), the
-`.gitignore` push (:162), `git add -- …created` (:166) and the commit (:171); `configPath`
-(src/paths.ts:11, unchanged); `defaultConfig` (src/config.ts:14), `loadConfig` (:79),
-`loadConfigSafe` (:120), `loadConfigCached` (:160, default fallback :165);
-`NOT_INITIALIZED_MESSAGE` (src/gates/readiness.ts:10, unchanged); `checkRepo` (src/doctor/doctor.ts:101),
-`checkInit` (:124), and the report's check list (`{ name: "init", … }` at :280); the CLI's
-`created` line is src/cli.ts:132–139. Test pins: `"N roles enabled"` (test/doctor.test.ts:141
-and :148) and the check-name list (test/doctor.test.ts:298). Capability absence re-confirmed:
+(`726e3cc`) shifted every anchor in src/init/init.ts, src/config/, and src/doctor/.** Design is
+unchanged; all line pins re-verified on this tree: `ensureGitignore` (src/init/init.ts, its
+one-entry early return), `initProject`, the `created` list,
+`saveConfig(root, defaultConfig())` with `created.push("tumwater.json")`, the
+`.gitignore` push, `git add -- …created` and the commit; `configPath`
+(src/paths.ts, unchanged); `defaultConfig` (src/config/config.ts), `loadConfig`,
+`loadConfigSafe`, `loadConfigCached` (default fallback);
+`NOT_INITIALIZED_MESSAGE` (src/gates/readiness.ts, unchanged); `checkRepo` (src/doctor/doctor-checks.ts),
+`checkInit` (src/doctor/doctor-checks.ts), and the report's check list (src/doctor/doctor.ts, `{ name: "init", … }`); the CLI's
+`created` line is src/cli.ts. Test pins: `"N roles enabled"` (test/doctor.test.ts)
+and the check-name list (test/doctor.test.ts). Capability absence re-confirmed:
 `grep -rn` for `exampleConfigPath`, `seedConfig`, or `exampleDrift` over `src/` is empty, and no
 `tumwater.example.json` exists. One interaction from 3/7, checked and harmless:
-`applyConfigRequest` (src/config.ts:279) writes the config only when the director's request file
+`applyConfigRequest` (src/config/config-write.ts) writes the config only when the director's request file
 exists and never seeds from the example, so "init is the only seeder" stands — the one nuance is
 that a director request in a repo with no config still creates one (an explicit human act, same
 spirit as seeding); no plan change.
 
-Also re-pinned here (4b/7's drift, checked in the same pass): `ffStackToMain` is now
-src/merge.ts:288 (was :297); `ffMainTo` is still :314 and the single-change path's call site is
-still :108 inside `mergeToMain` (:68) — the 4b/7 hazard analysis is otherwise untouched.
+Also re-pinned here (4b/7's drift, checked in the same pass): `ffStackToMain` is now in
+src/landing/landing-stack.ts; `ffMainTo` is still in src/landing/landing-git.ts and the
+single-change path's call site is inside `mergeToMain` (src/landing/landing-merge.ts) — the 4b/7 hazard analysis is otherwise untouched.
 
 ---
 

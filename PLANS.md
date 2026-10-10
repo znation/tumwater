@@ -64,24 +64,6 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 1c/5: `plans/portability.md`, parts 4a/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "4a/7 — Seed an
-untracked config from a tracked template", "4b/7 — Untrack this repo's own config without
-deleting it", and "4c/7 — Move README's rig notes into docs/backends.md" sections.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these sections.
-
-**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
-
-**Acceptance criteria.**
-- The inventory over the named sections reports no cited path absent from the tree.
-- No `<path>:<line>` in the named sections names a line past that file's end.
-- For each split module cited in the named sections, the module named beside a symbol exports it
-  (checked against the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 2a/5: `plans/portability.md`, part 5/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "5/7 — Make the
@@ -275,6 +257,24 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Finish the stale code-path citation sweep, part 1c/5: `plans/portability.md`, parts 4a/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "4a/7 — Seed an
+untracked config from a tracked template", "4b/7 — Untrack this repo's own config without
+deleting it", and "4c/7 — Move README's rig notes into docs/backends.md" sections.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these sections.
+
+**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named sections reports no cited path absent from the tree.
+- No `<path>:<line>` in the named sections names a line past that file's end.
+- For each split module cited in the named sections, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
 
 ### Finish the stale code-path citation sweep, part 1a/5: `plans/portability.md`, parts 1/7–2/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 
