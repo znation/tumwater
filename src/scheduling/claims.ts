@@ -87,7 +87,8 @@ interface ClaimReleaseCtx {
   now: number;
   /** The runner has a queued or in-flight landing. */
   hasQueuedLanding: boolean;
-  /** The runner's base role is enabled in config (part 5/7 narrows this per instance). */
+  /** The runner's loop id is enabled in config (`loopEnabled`, so a lowered `instances`
+   * disables the surplus runner). */
   enabled: boolean;
 }
 

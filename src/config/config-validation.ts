@@ -302,9 +302,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // rejected: it names nothing, so it would silently never engage.
   // The selector-string shorthand `fallback` (plans/model-tiers.md) validates as one non-empty
   // string; the map form takes per-tier entries whose values are selector strings or "pause"
-  // (the pause entries are consulted per tier in part 5/8). Setting both forms — or the map
-  // form and `fallbackModel` — is an error naming both keys, since which one wins is not a
-  // question the file should ever pose.
+  // (each tier's entry is consulted when that tier runs at the cap; part 5a/8). Setting both
+  // forms — or the map form and `fallbackModel` — is an error naming both keys, since which
+  // one wins is not a question the file should ever pose.
   if ("fallback" in r && r.fallback !== undefined) {
     const f = r.fallback;
     if (isJsonObject(f)) {

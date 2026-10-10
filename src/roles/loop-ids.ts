@@ -2,8 +2,7 @@
  * base role may run several loop ids — `feature`, `feature-2`, `bugfix-3`, … — each keying
  * its own persisted state, branch, refs, session and notebook, while every lookup that is ABOUT the
  * role (its catalog charter, model, tier, caps, scheduling class) resolves through the base role.
- * Until instances are configured (part 5/7) every loop id is bare, so `baseRoleOf` is the identity
- * and nothing here changes behavior.
+ * With no instances configured, every loop id is bare, so `baseRoleOf` is the identity.
  *
  * Only `feature` and `bugfix` may gain instances; any other id is returned unchanged, including a
  * custom loop whose name merely resembles an instance. */

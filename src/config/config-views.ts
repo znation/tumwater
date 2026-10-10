@@ -154,8 +154,9 @@ export function reviewConfig(config: TumwaterConfig): ResolvedModelConfig {
 /** The config the landing conflict resolver runs on (plans/model-tiers.md, part 4/8): the
  * strong tier's model installed over the config the landing was handed — resolution is rare,
  * tolerant of latency, and edits code inside landing, so it rides the seam where model quality
- * matters most. It reads whatever config the landing carries, so it follows the budget
- * fallback's config once part 5/8 lands. No other overrides: the session dir, raw log,
+ * matters most. It reads whatever config the landing carries — the role's per-tier budget
+ * fallback view — so it follows the budget fallback's config (part 5a/8). No other overrides:
+ * the session dir, raw log,
  * transient retry, and usage folding stay the authoring run's. */
 export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
   return withModelOverrides(config, "strong", {});
@@ -260,18 +261,18 @@ export function fleetModelLabel(config: TumwaterConfig): string | null {
  * carrying both, so the order only breaks ties for hand-built configs. A selector string
  * parses as a pure selector — `fallback` is a new key, so no legacy `provider` in scope
  * bends its meaning; the acceptance rule is that a `fallback` string engages exactly like the
- * equivalent `fallbackModel` object. The map form (plans/model-tiers.md) is consulted per
- * tier only in part 5/8 — until then a map uses its `default` entry, and a `pause` default
- * names no model at all. One definition so the freeness check (src/pi/pi-models.ts), the
- * dashboards' badge, and applyFallbackModel below cannot disagree about WHICH model the
- * budget gate would engage. */
+ * equivalent `fallbackModel` object. The map form (plans/model-tiers.md) is read here as its
+ * `default` entry — a `pause` default names no model at all — while resolveTierFallbacks
+ * below resolves each tier (part 5a/8). One definition so the freeness check
+ * (src/pi/pi-models.ts), the dashboards' badge, and applyFallbackModel below cannot disagree
+ * about WHICH model the budget gate would engage. */
 export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
   const fb = config.fallback;
   if (fb !== undefined) {
     if (fb === "pause") return null; // Rejected by validation; defensive against hand-built configs.
     if (typeof fb !== "string") {
-      // Map form: until part 5/8 a map uses its `default` entry; a `pause` default names no
-      // model at all.
+      // Map form: this reads the `default` entry; resolveTierFallbacks resolves per tier, and
+      // a `pause` default names no model at all.
       const sel = fb.default;
       if (sel === undefined || sel === "pause") return null;
       return fallbackSelectorFields(sel, config);

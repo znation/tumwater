@@ -16,7 +16,7 @@ import { isJsonObject } from "../files/json-object.js";
 
 /** The model tiers a selector map may name (plans/model-tiers.md). A tier left out of the
  * `model` map inherits `default`'s model; `fallback` map values may also be `"pause"`
- * (consulted per tier in part 5/8). */
+ * (each tier's own entry is consulted when that tier runs at the cap; part 5a/8). */
 export const MODEL_TIERS = ["small", "default", "strong"] as const;
 export type ModelTier = (typeof MODEL_TIERS)[number];
 
@@ -299,8 +299,8 @@ export interface TumwaterConfig {
   notify?: string;
   /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
    * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` —
-   * or a map by tier whose values are selectors or `"pause"` (the pause entries are consulted
-   * per tier in part 5/8; until then a map uses its `default` entry). Setting `fallback` and
+   * or a map by tier whose values are selectors or `"pause"` (each tier's own entry is
+   * consulted when that tier runs at the cap; part 5a/8). Setting `fallback` and
    * `fallbackModel` both is a validation error. */
   fallback?: string | Partial<Record<ModelTier, string>>;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
