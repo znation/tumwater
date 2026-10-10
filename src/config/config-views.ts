@@ -35,8 +35,14 @@ export function resolvedAgentConfig(
   id: string,
 ): AgentConfig {
   const entry = config.agents?.[id];
-  if (id !== "pi") return { ...entry };
-  return { bin: entry?.bin ?? config.agentBin, args: entry?.args ?? config.piArgs };
+  // A view must own its array: returning the config's own `args` reference would let a caller
+  // that appends passthrough argv (part 4c) silently mutate the loaded config, breaking the
+  // purity promised above. `args` is the only mutable field, so a sliced copy suffices.
+  if (id !== "pi") {
+    if (entry === undefined) return {};
+    return entry.args === undefined ? { ...entry } : { ...entry, args: entry.args.slice() };
+  }
+  return { bin: entry?.bin ?? config.agentBin, args: (entry?.args ?? config.piArgs).slice() };
 }
 
 /** True when `s` names one of the three tiers — the form `roles.<id>.model` /

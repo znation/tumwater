@@ -9,6 +9,15 @@ _None yet._
 
 ## Fixed
 
+### `resolvedAgentConfig` returns `args` aliased to the config, so a consumer appending passthrough argv mutates the loaded config (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
+
+- **Symptom:** `resolvedAgentConfig` (`src/config/config-views.ts`) is documented pure and gives a run the effective `agents.<id>` entry, but it returned the config's own `args` array: the pi branch returned `entry?.args ?? config.piArgs` and the non-pi branch shallow-copied with `{ ...entry }`, which still shares `entry.args`. A caller that appends passthrough argv to the returned view — the exact use part 4c is slated for — would therefore mutate the loaded config in memory, so a later serialization could leak the extra flag into `tumwater.json` (which `validateConfig` would then reject). No runtime consumer mutates it yet; the aliasing was latent.
+- **Reproduce:** The added `test/config-views.test.ts` case "resolvedAgentConfig returns args detached from the config it reads" pushes onto the returned `args` for both `pi` and `claude`; on main it failed on the pi assertion with `actual: [ '--no-skills', '--evil' ]`, showing the write reached `config.piArgs`. The claude branch shares `entry.args` by the same shallow spread, and the case's second assertion covers it once the first passes.
+- **Cause:** the function built a new outer object but never copied the one mutable field, so the view and the config shared the `args` array while the returned object's own reference looked fresh.
+- **Fix:** both branches now `.slice()` the `args` array (the non-pi branch only when present, so an entry with no `args` still returns the same shape), so a caller's mutation cannot reach the config; the new `test/config-views.test.ts` case failed before and passes after.
+
+**Validation gap:** unclear-invariant — the existing assertions only compared by value with `deepEqual`, so confirming the bug meant reconstructing that a value-equal view can still alias the config's array and writing a test that observes the aliasing by mutating the returned `args`.
+
 ### A Pending pane collector that resolves after the roster grew caches the fleet roster onto the shifted pane (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
 
 - **Symptom:** `createTuiKeys`'s Ctrl+T handler (`src/ui/tui/tui-keys.ts`) kicks off the Pending pane's async `collectPending` and guards the late resolution with `if (view !== entered) return;`, where `entered` is the raw view index. But which pane a raw index names is computed from the LIVE `roleIds.length` (`src/ui/tui/tui.tsx`: `view === roleIds.length + 5 ? pending : …`), and `syncSnapshot` updates `roleIds` without clearing `paneCache`. When the roster grows while the collector is in flight, the clamp keeps the raw index (`Math.min(view, roleIds.length + 5)`) but the same index now names History; the stale guard still sees `view === entered`, so the resolved fleet roster is cached into `paneCache` and the History pane renders it. The companion guard test only covered an operator cycling away, which does change the raw index.

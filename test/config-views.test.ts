@@ -455,6 +455,22 @@ test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin
   assert.deepEqual(resolvedAgentConfig(claude, "unknown"), {});
 });
 
+test("resolvedAgentConfig returns args detached from the config it reads", () => {
+  // The view is documented pure: a consumer appending passthrough argv to the returned
+  // `args` (the use part 4c is slated for) must not write back into the loaded config.
+  const config: TumwaterConfig = defaultConfig();
+  config.piArgs = ["--no-skills"];
+  config.agents = { claude: { args: ["--verbose"] } };
+  resolvedAgentConfig(config, "pi").args!.push("--evil");
+  resolvedAgentConfig(config, "claude").args!.push("--evil");
+  assert.deepEqual(config.piArgs, ["--no-skills"], "the pi view's args do not alias config.piArgs");
+  assert.deepEqual(
+    config.agents.claude!.args,
+    ["--verbose"],
+    "the claude view's args do not alias config.agents.claude.args",
+  );
+});
+
 test("applyFallbackModel without a resolved map is unchanged", () => {
   const config: TumwaterConfig = defaultConfig();
   config.model = { default: "paid/a", strong: "paid/b" };
