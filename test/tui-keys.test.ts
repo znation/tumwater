@@ -213,6 +213,33 @@ test("a Pending collector resolution after the operator cycled away does not cac
   assert.equal(keys.state().paneCache, null, "a late resolution does not cache onto Activity");
 });
 
+test("a Pending collector resolution after the roster size changed does not cache onto the shifted view", async () => {
+  const root = makeRoot();
+  const fleet = { mainBranch: "main", roles: [] };
+  let resolveLate!: (view: typeof fleet) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => new Promise<typeof fleet>((resolve) => (resolveLate = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (index 5, no roles)
+  assert.equal(keys.state().view, 5);
+  // A role appears while the collector is in flight: index 5 now maps to History, not Pending.
+  keys.syncSnapshot(0, false, ["feature"], false);
+  assert.equal(keys.state().view, 5, "the clamp keeps the raw index");
+  resolveLate(fleet);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    keys.state().paneCache,
+    null,
+    "the late resolution must not cache the fleet roster onto the shifted History pane",
+  );
+});
+
 test("a flash notice expires on the injected clock", () => {
   const root = makeRoot();
   let t = 1_000_000;

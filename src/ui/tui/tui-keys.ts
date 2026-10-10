@@ -434,19 +434,20 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       } else if (view === roleIds.length + 5) {
         // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
         // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
-        // Guard on the view we entered from: an operator who cycled away must not have this
-        // resolution overwrite the pane they moved to. The default collector degrades rather
-        // than throws, so the rejection arm only covers an injected seam (or an unexpected throw).
-        const entered = view;
+        // Guard on the PENDING pane still being current — view === roleIds.length + 5 — not just
+        // on the raw index: an operator who cycled away, or a roster change that shifted which
+        // pane the same index names, must not have this resolution overwrite the pane now shown.
+        // The default collector degrades rather than throws, so the rejection arm only covers an
+        // injected seam (or an unexpected throw).
         paneCache = null;
         void collectPending(root).then(
           (fleet) => {
-            if (view !== entered) return;
+            if (view !== roleIds.length + 5) return;
             paneCache = renderFleetChange(fleet);
             deps.requestRender();
           },
           (err: unknown) => {
-            if (view !== entered) return;
+            if (view !== roleIds.length + 5) return;
             flashError(err);
             deps.requestRender();
           },
