@@ -7,24 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Finish the stale code-path citation sweep, part 5c/5: `refusal-and-thrash`, `merge-queue`, `work-ratio` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/refusal-and-thrash.md`,
-`plans/merge-queue.md`, and `plans/work-ratio.md`. `plans/refusal-and-thrash.md` carries the bulk
-here: the same moved top-level `pi-stream`, `loop`, `git`, `pi`, `types`, and `config` modules.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these three files.
-
-**Files touched.** Those three `plans/*.md` files. No source or test change.
-
-**Acceptance criteria.**
-- The inventory over these three files reports no cited path absent from the tree.
-- No `<path>:<line>` in them names a line past that file's end.
-- For each split module cited here, the module named beside a symbol exports it (checked against
-  the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 5d/5: `repair-traces`, `revise-rejected` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/repair-traces.md` and
@@ -135,6 +117,24 @@ prompt builder) to name it; the `test/...` cases it cites are unchanged. Doc-onl
 
 
 ## Done
+
+### Finish the stale code-path citation sweep, part 5c/5: `refusal-and-thrash`, `merge-queue`, `work-ratio` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/refusal-and-thrash.md`,
+`plans/merge-queue.md`, and `plans/work-ratio.md`. `plans/refusal-and-thrash.md` carries the bulk
+here: the same moved top-level `pi-stream`, `loop`, `git`, `pi`, `types`, and `config` modules.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these three files.
+
+**Files touched.** Those three `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these three files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
 
 ### Finish the stale code-path citation sweep, part 5a/5: `plans/agent-backends.md` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 

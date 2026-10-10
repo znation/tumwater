@@ -37,7 +37,8 @@ not in the vocabulary.
   the loose whole-reply scan `isNothingToDo` uses, so a reply that merely names the
   sentinel or negates it (`none`, `n/a`) keeps its work (BUGS.md 2026-09-23) — and captures the
   reason → `PiRunResult.refused` / `refusedReason`.
-- **Loop** (`src/loop/loop.ts`): outcome `refused` (new `TickResult`, src/tick/tick-outcome.ts). The harness classifies what
+- **Refusal handling** (`handleRefusal`, src/verdict/refusal.ts; the tick outcome in `src/loop/loop.ts`):
+  outcome `refused` (new `TickResult`, src/tick/tick-outcome.ts). The harness classifies what
   the run left behind with a new git helper `changedFiles(wt): string[]` (src/git/git-diff.ts; parse
   `git status --porcelain`, paths only — covers modified, untracked, and deleted; no such lister
   exists today, only `isDirty`). Then:
@@ -54,7 +55,7 @@ not in the vocabulary.
   Backoff as for `no_change` (`nextBackoffSeconds`, the existing scheduling line); set
   `lastResult = "refused"` and make `lastSummary` the reason — the status/GUI result cell renders
   arbitrary strings, so no new rendering code is needed.
-- **Thrash detection** (`src/loop/loop.ts`, measured at tick end): pi runs autonomously, so mid-run
+- **Thrash detection** (`src/tick/tick-stage.ts`, measured at tick end): pi runs autonomously, so mid-run
   intervention is out of scope — instead measure after: if a changed tick used more than
   `thrashTurns` assistant turns (config, default 40) AND ran longer than `thrashMinutes` (default
   30 — refined 2026-09-19, see below), mark the outcome `highFriction: true`, log a `warning`
@@ -81,8 +82,8 @@ not in the vocabulary.
   message-end events) exposed as `PiRunResult.turns` — commit-bodies.md needs the same field for
   its trailer, so
   whichever plan lands first adds it and the other reuses; duration is wall-clock in `runTick`
-  (no parser change). Do not reuse `src/ui/progress-data.ts`'s live counters: those describe the log tail for
-  dashboards, not a finished run's totals.
+  (no parser change). Do not reuse `readLiveProgress`'s counters (src/ui/progress-data.ts): those
+  describe the log tail for dashboards, not a finished run's totals.
 - **Repeated refusals: an entry is blocked once refused.** A fresh-session tick has no memory of
   earlier refusals except what the markdown says, so without a rule the same loop (or another)
   re-picks the same plan/bug every backoff interval and refuses it again — a full pi run plus a
@@ -116,11 +117,12 @@ not in the vocabulary.
 ## Files touched
 
 `src/verdict/reply-contract.ts` (sentinel constants), `src/prompt/prompt.ts`,
-`src/pi/pi-stream.ts` (parser turn counter), `src/git/git-diff.ts` (`changedFiles`) +
+`src/pi/pi-stream.ts` (parser turn counter), `src/verdict/refusal.ts`
+(`handleRefusal`), `src/git/git-diff.ts` (`changedFiles`) +
 `src/git/git.ts` (`commitPathsAndDiscardRest`),
 `src/loop/loop.ts`, `src/tick/tick-outcome.ts` (TickResult), `src/pi/pi-run-result.ts` (PiRunResult.turns),
 `src/config/config-schema.ts` + `src/config/config-validation.ts` (thrash thresholds + validation),
-`src/config/config.ts` (defaults), `src/roles/roles.ts`,
+`src/config/config.ts` (defaults), `src/roles/role-catalog.ts`,
 `test/refusal.test.ts` (sentinel parse; md-only refusal commits and merges; mixed refusal keeps
 the note and discards tracked *and* untracked code changes; no-note refusal resets cleanly;
 thrash flag set past both thresholds) plus prompt-contract assertions: the skip rule in

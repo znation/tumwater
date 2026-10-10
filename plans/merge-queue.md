@@ -7,9 +7,10 @@ independently landable and cross-references this document for the invariants bel
 ## The problem
 
 A tick today is `reset → pi → commit → review gate → rebase → ff-merge`, all inside one
-`LoopRunner.runTick` and all holding one of the `maxConcurrent` author slots (orchestrator.ts
-acquires the semaphore around the whole tick). The two most expensive steps after `commitAll`
-— the deterministic build pre-check (`npm test` on the branch) and the adversarial reviewer run
+`LoopRunner.runTick` and all holding one of the `maxConcurrent` author slots
+(src/orchestrator/orchestrator.ts acquires the semaphore around the whole tick). The two most
+expensive steps after `commitAll` — the deterministic build pre-check (`npm test` on the branch)
+and the adversarial reviewer run
 — do no authoring, yet they occupy an author slot for their whole duration. With
 `maxConcurrent: 2` that means a role under review blocks a second role from authoring at all.
 
@@ -20,8 +21,9 @@ budget, and let the author's slot free the moment its commit exists.
 
 **Not a "merge" role.** Everything the lander does is deterministic — pick the head of a queue,
 rebase, run the suite, fast-forward — except conflict resolution, which is already a pi run
-(merge.ts's `resolveConflict`). A role would spend a model run and its context deciding what a
-loop of git commands decides better, and it would cut against the standing principle that all
+(`resolveConflict` called by `mergeToMain`, src/landing/landing-merge.ts). A role would spend a
+model run and its context deciding what a loop of git commands decides better, and it would cut
+against the standing principle that all
 git operations belong to the harness, never to pi. The lander is orchestrator code.
 
 **Role branches keep being reset to main every tick.** The tick-start `reset --hard main` is not
@@ -34,11 +36,13 @@ long-lived, and no change accumulates more than one commit ahead of main.
    `reviewAheadOfMain` over the full `main...HEAD` diff first — the contract in
    plans/review-gate.md, unchanged. The lander is one more caller of the same gate, not a
    bypass.
-2. **Linear history.** Landing stays rebase-onto-main then fast-forward (merge.ts). No merge
+2. **Linear history.** Landing stays rebase-onto-main then fast-forward
+   (`mergeToMain` in src/landing/landing-merge.ts). No merge
    commits, no remote is touched.
 3. **One in-flight landing per loop.** A loop with a queued or landing change is not eligible
    to tick. This is what preserves today's review-feedback contract: `state.lastReview`'s
-   rejection reasons always reach the author's *next* prompt (loop.ts's `tickPrompt`), and a loop
+   rejection reasons always reach the author's *next* prompt (`LoopRunner.tickPrompt` in
+   src/loop/loop.ts), and a loop
    can never stack two commits on one another. The throughput win comes from *cross-loop*
    parallelism — loop B authors while loop A's change is under review — not from letting one loop
    run ahead. Instance loops (`feature-2`) land independently of their base role: a `feature-2`
@@ -61,7 +65,8 @@ long-lived, and no change accumulates more than one commit ahead of main.
   other and 2/5 introduces no new lock; the leading underscore is the existing
   reserved-name convention (cf. the `_main` redeploy mirror). node_modules resolves by the
   build-check's existing walk-up to the repo root.
-- `.tumwater/land-queue/` — durable file queue in the inbox.ts idiom (timestamped filenames, one
+- `.tumwater/land-queue/` — durable file queue in the `src/inbox/inbox.ts` idiom (timestamped
+  filenames, one
   JSON entry per file), so a crash loses nothing and any process can inspect it.
 - `refs/tumwater/landing/<role>` — the pin from invariant 4.
 - The merge lock (`.tumwater/merge.lock`) keeps its current, narrower job: guarding main's ref
