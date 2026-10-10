@@ -727,6 +727,12 @@ test("an out-of-range or empty edit fails non-zero and leaves the file byte-iden
   assert.equal(r.code, 1);
   assert.match(r.stderr, /plan needs a title: tumwater plan "<title>"/);
   assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), plansBefore);
+  // The same empty title with no positional at all: `--edit <n>` carries no text, so
+  // editPlan sees "" and refuses before it ever looks the position up.
+  r = await cli(repo, "plan", "--edit", "1");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /plan needs a title: tumwater plan "<title>"/);
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), plansBefore);
 });
 
 test("help topics name the --edit forms", async () => {
