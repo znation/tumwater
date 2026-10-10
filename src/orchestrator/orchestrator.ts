@@ -20,7 +20,7 @@ import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
-import { logEvent, type HarnessEventInput } from "../events/events.js";
+import { logEvent, logEventBestEffort, type HarnessEventInput } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
@@ -169,7 +169,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   if (redeploy) info.build = redeploy.status();
   writeOrchestratorInfo(root, info);
-  logEvent(root, {
+  // Best-effort, like every other event write in this function (see `emit` below): this runs
+  // BEFORE the try/finally and its cleanup, so a raw logEvent throw here would not just stop
+  // the fleet from starting over an informational event — it would also skip the finally that
+  // disposes the notifier and removes the info file just written. An unwritable feed
+  // (ENOSPC, EACCES, the path replaced by a directory) must not turn a fleet that can run
+  // into one that refuses to start; logEventBestEffort reports the write failure on stderr so
+  // it stays visible, and startup proceeds to the poll loop, which is already best-effort.
+  logEventBestEffort(root, {
     loop: "harness",
     type: "orchestrator_start",
     pid: process.pid,
