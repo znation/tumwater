@@ -570,6 +570,10 @@ test("collectReportSince rejects an out-of-range window and accepts the exact ca
   const root = tmpdir();
   assert.throws(() => collectReportSince(root, 0), /sinceMs must be between 1 and 7d \(got 0\)/);
   assert.throws(() => collectReportSince(root, -HOUR), /\(got -3600000\)/);
+  // A non-finite length is outside the range too, and would slip past both comparisons
+  // (`NaN <= 0` and `NaN > MAX` are false): the guard tests finiteness first.
+  assert.throws(() => collectReportSince(root, Number.NaN), /\(got NaN\)/);
+  assert.throws(() => collectReportSince(root, Number.POSITIVE_INFINITY), /\(got Infinity\)/);
   assert.throws(
     () => collectReportSince(root, REPORT_SINCE_MAX_MS + 1),
     new RegExp(`\\(got ${REPORT_SINCE_MAX_MS + 1}\\)`),
