@@ -1,9 +1,9 @@
 /** The per-pane body builder for the TUI's render (extracted from src/ui/tui/tui.tsx): which
  * lines fill the lower pane for the view the frame shows — transcript, backlog, usage,
- * failures, history, pending, or activity. Pure with respect to terminal state: it reads the root's files
- * (transcript, events, PLANS.md/BUGS.md/QUESTIONS.md) and the keypress handler's view
- * state, and returns composed StatusLines plus the empty-pane note; src/ui/tui/tui.tsx owns
- * the terminal lifecycle and the frame assembly around it. */
+ * failures, history, pending, or activity. Pure with respect to terminal state: it reads the
+ * root's files (transcript, events, PLANS.md/BUGS.md/QUESTIONS.md) and the keypress handler's
+ * view state, and returns composed StatusLines plus the empty-pane note; src/ui/tui/tui.tsx
+ * owns the terminal lifecycle and the frame assembly around it. */
 
 import type { StatusLine } from "../status-render.js";
 import { readTranscript } from "../transcript.js";

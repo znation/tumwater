@@ -94,9 +94,9 @@ export function applyTickOutcome(
   // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). A tick whose leftover
   // recovery re-queued a pin its last landing failed to land counts too, even though the tick
   // itself ends `queued` (outcome.recoveryFailure): a dead reviewer backend would otherwise
-  // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21). tick-finalize.ts emits
-  // one warning when the streak crosses ERROR_STREAK_WARN — once per episode, since the reset
-  // re-arms it — and the dashboards read "failing" from the same field.
+  // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21).
+  // tick-finalize.ts emits one warning when the streak crosses ERROR_STREAK_WARN — once per
+  // episode, since the reset re-arms it — and the dashboards read "failing" from the same field.
   // A plain `queued` tick is not yet a verdict about anything: it committed and enqueued, and
   // its LANDING resolves the streak — applyLandingOutcome resets it when the change lands and
   // counts a review rejection into it (BUGS.md 2026-09-30: review-rejected authoring, the

@@ -45,9 +45,9 @@ interface TickStageContext {
    * summary follow-up can finalize through the loop's requeue path. */
   userPrompt: string | null;
   /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
-   * undefined when the tick is not a revision. Set by loop-tick.ts only when the revision was applied
-   * this tick (or a resume carried its already-applied edits), never read from `state.revision`:
-   * a per-role user-request tick leaves that field set by design. */
+   * undefined when the tick is not a revision. Set by loop-tick.ts only when the revision was
+   * applied this tick (or a resume carried its already-applied edits), never read from
+   * `state.revision`: a per-role user-request tick leaves that field set by design. */
   revisionRound?: number;
   /** The branch main's name, for the staged-moved-entry comparison's merge-base (part 4/7).
    * Optional so callers that never staged a backlog move (and older tests) keep compiling;
