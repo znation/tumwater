@@ -20,6 +20,7 @@ import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster 
 import { addTo, getOrCreate, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
 import { sameStatIdentity, statOrNull } from "../files/files.js";
+import { nonNegativeNumber } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
@@ -509,7 +510,10 @@ function median(values: number[]): number {
 
 /** Per-role prompt-token stats from the window's tick_end events. Ticks without a
  * `promptTokens` reading contribute nothing (and skip a role entirely), so the section only
- * appears once some tick ran on a build that records the field. */
+ * appears once some tick ran on a build that records the field. Both reads go through
+ * nonNegativeNumber like every other event-log number: a torn or hand-edited line whose
+ * `promptTokens` is `1e999` (JSON parses to Infinity) would otherwise land in the median and
+ * the `preEditSum / promptSum` ratio as a non-finite value no report can render. */
 function promptStatsFor(ticks: HarnessEvent[]): PromptStatRow[] {
   interface Acc {
     prompts: number[];
@@ -518,11 +522,8 @@ function promptStatsFor(ticks: HarnessEvent[]): PromptStatRow[] {
   }
   const byRole = new Map<string, Acc>();
   for (const ev of ticks) {
-    const prompt = typeof ev.promptTokens === "number" && ev.promptTokens > 0 ? ev.promptTokens : 0;
-    const preEdit =
-      typeof ev.preEditPromptTokens === "number" && ev.preEditPromptTokens > 0
-        ? ev.preEditPromptTokens
-        : 0;
+    const prompt = nonNegativeNumber(ev.promptTokens, 0);
+    const preEdit = nonNegativeNumber(ev.preEditPromptTokens, 0);
     if (prompt === 0 && preEdit === 0) continue;
     const role = eventRole(ev);
     const acc = getOrCreate(byRole, role, () => ({ prompts: [], promptSum: 0, preEditSum: 0 }));

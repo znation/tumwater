@@ -812,6 +812,22 @@ test("the digest reports per-role prompt-token medians and the pre-edit share", 
   assert.match(md, /bugfix: median 50 prompt tokens\/tick · 100% before first edit/);
 });
 
+test("a non-finite prompt-token reading contributes nothing, not Infinity", () => {
+  // JSON has no Infinity literal, but `1e999` parses to Infinity — the shape a torn or
+  // hand-edited log line can carry. The reader must fold it as absent, like every other
+  // event-log number (finiteNumber/nonNegativeNumber), so it cannot reach the median or the
+  // pre-edit ratio. Without the guard the first tick's median read Infinity and the second's
+  // preEditShare read NaN (Infinity/Infinity).
+  const root = tmpdir();
+  writeEvents(root, [
+    `{"ts":${at(0)},"loop":"feature","type":"tick_end","result":"changed","promptTokens":1e999}`,
+    `{"ts":${at(0)},"loop":"feature","type":"tick_end","result":"changed","promptTokens":100,"preEditPromptTokens":1e999}`,
+  ]);
+  const data = collectFailureReport(root, 1);
+  const feature = data.promptStats.find((r) => r.role === "feature");
+  assert.deepEqual(feature, { role: "feature", ticks: 1, medianPromptTokens: 100, preEditShare: 0 });
+});
+
 test("a log without prompt-token fields renders no prompt section", () => {
   const root = tmpdir();
   writeEvents(root, [
