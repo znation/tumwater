@@ -4,7 +4,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * off at the context ceiling (real work, unfulfilled) and the diagnostic notes for the warning
  * event logged when no nothing-to-do sentinel appeared anywhere in the reply. Split out of
  * loop.ts so the classification — with its own data model — has a single testable home; the
- * tick lifecycle there only logs the warning and re-queues unfulfilled prompts from it. */
+ * tick verdict (tick-verdict.ts) logs the warning and re-queues unfulfilled prompts from it. */
 
 interface NoChangeDiagnosis {
   /** True when the run did real work but was truncated before it could declare its outcome:
