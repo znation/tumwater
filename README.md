@@ -122,8 +122,9 @@ the cap it stays put while priced pi seams move to their fallback. A rejected cl
 subscription usage window holds subscription claude seams until it resets (a first
 `allowed_warning` is logged too); `tumwater status`, the TUI, the dashboard, and
 `tumwater role <id>` show the window in place of the daily spend on a subscription-only fleet
-(or beside it on a mixed one, where the daily spend covers priced seams only), while
-resume-across-a-hold is not implemented yet (part 6e/7 in PLANS.md). See
+(or beside it on a mixed one, where the daily spend covers priced seams only), and a run cut off
+by a rejected window keeps its session and worktree edits and resumes once the window resets.
+See
 [docs/backends.md](docs/backends.md) for requirements and a worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see

@@ -90,8 +90,9 @@ and never counted in the spend totals. A rejected subscription usage window hold
 claude seams until it resets (the first `allowed_warning` is logged too), so the fleet does not
 burn a failed run per loop per poll; pi seams and API-key claude seams keep ticking. The
 exemption is not yet complete: a subscription claude selector still counts as not-free to the
-budget gate, so a reached cap can still move it to its fallback (part 6b), and the window's
-display and resume-across-a-hold are not implemented (parts 6d–6e). See
+budget gate, so a reached cap can still move it to its fallback (part 6b). The window is shown
+in place of the daily spend on a subscription-only fleet, and a run cut off by a rejected window
+resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
