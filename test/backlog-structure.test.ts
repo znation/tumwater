@@ -157,6 +157,20 @@ test("a missing PLANS.md gives no block instead of throwing", () => {
   assert.equal(renderBacklogStructureBlock(tmpdir("backlog-structure-missing-")), undefined);
 });
 
+test("renderBacklogStructureBlock re-reads PLANS.md whose stat changed", () => {
+  const dir = tmpdir();
+  const plans = path.join(dir, "PLANS.md");
+  fs.writeFileSync(plans, plansDoc(`## Done\n\n### Landed (planned 2026-09-10, done 2026-09-11)`));
+  assert.equal(renderBacklogStructureBlock(dir), undefined);
+  // A larger rewrite guarantees a new size (and mtime) even on a filesystem with coarse
+  // clocks, so the stat-keyed cache must miss and re-read.
+  fs.writeFileSync(
+    plans,
+    plansDoc(`## Done\n\n### Timed pause support (planned 2026-09-25)\n\nBody.`),
+  );
+  assert.match(renderBacklogStructureBlock(dir) ?? "", /\(now under ## Done\) Timed pause support/);
+});
+
 // ── backlogStructureReason — the heading-set check at the gate and the landing re-check ──
 // (plans: "Backlog structure check at the review gate and the in-lock landing re-check",
 // part 2/4) A change that duplicates or drops a `## ` section heading must not reach main.

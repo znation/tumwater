@@ -248,16 +248,40 @@ export async function backlogStructureReason(
   return undefined;
 }
 
+/** Per-file cache of PLANS.md's stranded entries (strandedPlanEntriesFor). */
+const strandedPlanCache = new Map<string, StatKeyedValue<StrandedPlanEntry[]>>();
+
+/** `strandedPlanEntries` for the primary checkout's PLANS.md, stat-cached per file path
+ * (stat-cache.cachedByStat): the clean loop asks for it every tick and `tumwater role`
+ * previews the same block, and PLANS.md's `## Done` history grows without bound, so an
+ * unchanged file costs one stat instead of a full read and section walk. A missing or
+ * unreadable file reads as no entries. The result is copied out, so each caller owns its
+ * data. */
+function strandedPlanEntriesFor(root: string): StrandedPlanEntry[] {
+  const full = path.join(root, "PLANS.md");
+  return (
+    cachedByStat(
+      strandedPlanCache,
+      full,
+      full,
+      () => {
+        // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
+        const md = readTextOrNull(full);
+        return md === null ? null : strandedPlanEntries(md);
+      },
+      (entries) => entries.slice(), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
 /** The clean loop's `<backlog-structure>` prompt block for the primary checkout at `root`
  * (the same root the telemetry digest and qa coverage blocks read): a rendered block listing
  * each stranded heading with its current section, or undefined when PLANS.md is missing,
  * unreadable, or clean — an unreadable or clean file gives no block, so the prompt is
- * unchanged in the common case. */
+ * unchanged in the common case. The stranded entries are stat-cached (strandedPlanEntriesFor),
+ * so an unchanged PLANS.md is not re-read or re-walked. */
 export function renderBacklogStructureBlock(root: string): string | undefined {
-  // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
-  const md = readTextOrNull(path.join(root, "PLANS.md"));
-  if (md === null) return undefined;
-  const stranded = strandedPlanEntries(md);
+  const stranded = strandedPlanEntriesFor(root);
   if (stranded.length === 0) return undefined;
   const listed = stranded
     .map((e) => `- (now under ## ${e.section}) ${e.title}`)
