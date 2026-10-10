@@ -235,17 +235,30 @@ export async function piProviderAuth(
   return "unknown";
 }
 
+/** One bounded probe of the resolved `claude` binary under the scrubbed run environment a real
+ * tick gets: resolve the binary through the claude adapter that would spawn it and run `args`
+ * with a short deadline. Null when the probe could not run, the child errored, or the deadline
+ * passed. The one home of the resolveBin + claudeEnv pairing the auth and version checks share,
+ * so neither probes a different binary or environment than the other. */
+function claudeProbe(
+  config: TumwaterConfig,
+  args: string[],
+  pathEnv: string,
+  timeoutMs: number,
+): Promise<{ code: number | null; stdout: string } | null> {
+  const resolved = claudeBackend.resolveBin(config);
+  const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
+  return boundedProbe(resolved.bin, args, env, timeoutMs);
+}
+
 /** Run `claude auth status` under the same scrubbed environment a real run gets (claudeEnv),
- * or null when the probe could not run or its reply was unreadable. The binary resolves
- * through the claude adapter, so doctor probes the claude a tick would spawn. */
+ * or null when the probe could not run or its reply was unreadable. */
 async function claudeAuthProbe(
   config: TumwaterConfig,
   pathEnv: string,
   timeoutMs: number,
 ): Promise<ClaudeAuthStatus | null> {
-  const resolved = claudeBackend.resolveBin(config);
-  const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
-  const result = await boundedProbe(resolved.bin, ["auth", "status"], env, timeoutMs);
+  const result = await claudeProbe(config, ["auth", "status"], pathEnv, timeoutMs);
   if (result === null || result.code !== 0) return null;
   return parseClaudeAuthStatus(result.stdout);
 }
@@ -306,9 +319,7 @@ export async function checkClaudeVersion(
     const min = claudeBackend.minVersion?.(seam.model!);
     if (min !== undefined) floors.set(seam.model!, min);
   }
-  const resolved = claudeBackend.resolveBin(config);
-  const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
-  const result = await boundedProbe(resolved.bin, ["--version"], env, timeoutMs);
+  const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
   const found = result !== null && result.code === 0 ? parseClaudeCliVersion(result.stdout) : undefined;
   if (found === undefined)
     return { level: "warn", detail: "could not check — `claude --version` did not run or its output was unreadable" };
