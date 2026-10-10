@@ -38,6 +38,13 @@ const MAX_MISSING_PATHS = 10;
 /** How many files one lost-final-newline finding names before it stops. */
 const MAX_NEWLINE_FILES = 10;
 
+/** The path a unified diff's `+++ b/<path>` header names. Strips the four-character `+++ `
+ * marker and git's `b/` prefix. A deleted file's new side is `+++ /dev/null`, which carries no
+ * `b/` prefix and is returned as `/dev/null`. */
+function diffPlusPath(line: string): string {
+  return line.slice(4).replace(/^b\//, "");
+}
+
 /** The capped list a finding line appends: at most `max` entries joined by ", ", then
  * `moreSuffix` for the rest. Shared by the missing-path and lost-final-newline findings so both
  * cap and join identically. */
@@ -216,7 +223,7 @@ async function missingPathFindings(
   let file: string | null = null;
   for (const line of diff.split("\n")) {
     if (line.startsWith("+++ ")) {
-      file = line.slice(4).replace(/^b\//, "");
+      file = diffPlusPath(line);
       continue;
     }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
@@ -261,7 +268,7 @@ function newlineFindings(diff: string): string[] {
       continue;
     }
     if (line.startsWith("+++ ")) {
-      path = line.slice(4).replace(/^b\//, "");
+      path = diffPlusPath(line);
       continue;
     }
     if (line.startsWith("\\ No newline at end of file")) {
