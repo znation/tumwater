@@ -152,6 +152,20 @@ export function imageReferenceLines(paths: readonly string[]): string {
   return "\n\n" + paths.map((p) => `[image attached: ${p}]`).join("\n");
 }
 
+/** The absolute paths named by a prompt's `[image attached: …]` lines, in order — the reader
+ * counterpart to imageReferenceLines. Used by the edit path to carry an attached prompt's
+ * references (and so their sibling files) over a text rewrite: an edit replaces the prompt's
+ * text, not its attachments, which only cancel and dequeue take with the prompt. A line that
+ * is not exactly the writer's shape is content, not a reference, and is ignored. */
+export function imageReferencePaths(text: string): string[] {
+  const paths: string[] = [];
+  for (const line of text.split("\n")) {
+    const referenced = IMAGE_REF_LINE.exec(line.trim())?.[1];
+    if (referenced !== undefined) paths.push(referenced);
+  }
+  return paths;
+}
+
 /** Drop the `[image attached: …]` lines whose files are no longer on disk from a prompt being
  * re-queued after a tick that already consumed them — takeQueuedFile removes an attached
  * image with its prompt, so a re-queued copy would otherwise send the loop's agent after

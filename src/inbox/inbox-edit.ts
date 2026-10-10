@@ -1,6 +1,7 @@
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { logEventBestEffort } from "../events/events.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
+import { imageReferenceLines, imageReferencePaths } from "./inbox-attachments.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
@@ -32,10 +33,17 @@ export type EditOutcome =
  * like its prompt_cancelled sibling) after a successful write, best-effort: the rewrite is
  * the durable effect, so an unwritable feed must not report the edit as failed.
  *
+ * Carries an attached prompt's `[image attached: …]` reference lines (and so their sibling
+ * files) over the rewrite — the edit replaces the prompt's text, not its attachments, which
+ * only cancel and dequeue take with the prompt. `--edit` has no `--attach` form, so dropping
+ * them would leave the image files orphaned with nothing pointing at them and the receiving
+ * loop reading no image.
+ *
  * Enforces the same prefill length cap as a submission (promptLengthProblem): the edited
- * text rides into the target tick's prefill exactly like a queued prompt, so an edit to an
- * over-cap value must not bypass the cap every enqueue path applies. Throws before any read
- * or write.
+ * text plus its carried image lines ride into the target tick's prefill exactly like a
+ * queued prompt, so an edit to an over-cap value must not bypass the cap every enqueue path
+ * applies. The initial text check throws before any read or write; the composed check (body
+ * plus carried image lines) throws before the write when the body alone fit.
  *
  * Throws for out-of-range positions with no side effects. The race policy pairs with the
  * outcome: the file is read first, and a read that hits ENOENT returns { status: "gone" } —
@@ -59,11 +67,17 @@ export function editRolePrompt(root: string, role: string, position: number, new
   // reads the writer's exact marker shape, so content that merely resembles a marker is
   // content, and the new text goes in marker-free.
   const deferral = notBeforeMs(oldFileText);
-  const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + text;
+  // The rewritten text carries the prompt's attachments over: only the text is editable, and
+  // an edit that dropped the reference lines would leave the image files unreferenced. The
+  // composed text is what a tick's prefill receives, so the submission cap applies to it too.
+  const composed = text + imageReferenceLines(imageReferencePaths(oldFileText));
+  const composedProblem = promptLengthProblem(composed, role);
+  if (composedProblem) throw new Error(composedProblem); // Before the write.
+  const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + composed;
   writeTextAtomic(file, fileText);
   const oldText = stripNotBeforeMarker(oldFileText);
-  logEventBestEffort(root, { loop: role, type: "prompt_edited", preview: promptPreview(text) });
-  return { status: "edited", oldText, newText: text };
+  logEventBestEffort(root, { loop: role, type: "prompt_edited", preview: promptPreview(composed) });
+  return { status: "edited", oldText, newText: composed };
 }
 
 /** Outcome of editListedPrompt: a resolved edit (naming the loop it landed in, since the

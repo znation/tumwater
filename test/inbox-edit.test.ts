@@ -5,7 +5,8 @@ import path from "node:path";
 import { editListedPrompt, editRolePrompt } from "../src/inbox/inbox-edit.js";
 import { enqueuePrompt, enqueueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { cancelListedPrompt } from "../src/inbox/inbox-cancel.js";
-import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
+import { DIRECTOR_PROMPT_MAX_CHARS, submitRolePrompt } from "../src/inbox/inbox-submit.js";
+import { imageReferencePaths } from "../src/inbox/inbox-attachments.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -180,4 +181,25 @@ test("editListedPrompt and cancelListedPrompt resolve the same position to the s
   assert.equal(edited.status, "edited");
   assert.equal(edited.status !== "edited" ? null : edited.role, "clean");
   assert.deepEqual(queuedRolePrompts(root, "clean"), ["edited in the same loop"]);
+});
+
+/** An edit replaces the prompt's text, not its attachments: the image reference lines (and
+ * so the sibling files they name) must survive, or the receiving loop reads no image and the
+ * file is orphaned with `--edit` giving no way to restore it. */
+test("editRolePrompt keeps an attached prompt's image reference and its file", () => {
+  const root = tmpdir();
+  submitRolePrompt(root, "feature", "screenshot this", [
+    { name: "shot.png", dataBase64: Buffer.from("png-bytes").toString("base64") },
+  ]);
+  const before = queuedRolePrompts(root, "feature")[0] as string;
+  const imagePath = imageReferencePaths(before)[0] as string;
+  assert.ok(fs.existsSync(imagePath), "the attachment file exists before the edit");
+
+  const outcome = editRolePrompt(root, "feature", 1, "screenshot that");
+  assert.equal(outcome.status, "edited");
+
+  const after = queuedRolePrompts(root, "feature")[0] as string;
+  assert.match(after, /^screenshot that/);
+  assert.equal(imageReferencePaths(after)[0], imagePath, "the reference line survives the edit");
+  assert.equal(fs.existsSync(imagePath), true, "the image file is not orphaned");
 });
