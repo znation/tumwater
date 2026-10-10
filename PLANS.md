@@ -306,6 +306,8 @@ and a loop test for `budgetCapped` → handoff.
 
 ### Finish the stale code-path citation sweep across `plans/*.md` (planned 2026-10-10 by organize)
 
+**Needs review 2026-10-10 by feature: too large for one run**
+
 Goal. Every path-shaped token in the plan documents names a path that exists in the tree, every
 `<path>:<line>` names a line the file actually has, and a module that has since split names the
 module that owns the symbol beside the citation. A reader who follows a plan's citation reaches
