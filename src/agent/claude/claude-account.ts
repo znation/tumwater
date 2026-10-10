@@ -8,11 +8,10 @@
  * missing or unreadable file reads as "no subscription". `resetsAt` is stored as epoch
  * milliseconds (the run parser reports unix seconds; observeClaudeAccount converts once here),
  * so consumers compare it to `Date.now()` directly. */
-import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { TumwaterConfig } from "../../config/config-schema.js";
-import { writeJsonAtomic } from "../../files/json-files.js";
-import { finiteNumber, isJsonObject } from "../../files/json-object.js";
+import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
+import { finiteNumber, isJsonObject, parseJsonObject } from "../../files/json-object.js";
 import { claudeAccountPath } from "../../paths.js";
 import type { PiRunResult } from "../../pi/pi-run-result.js";
 import type { RateWindow } from "../../pi/pi-stream.js";
@@ -107,19 +106,8 @@ export function claudeWindowEntries(account: ClaudeAccount): ClaudeWindowEntry[]
  * `resetsAt` is at or before `now` reads back with `status: "reset"` — the reader, not every
  * consumer, decides that the window no longer limits. */
 export function readClaudeAccount(root: string, now = Date.now()): ClaudeAccount | null {
-  let raw: string;
-  try {
-    raw = fs.readFileSync(claudeAccountPath(root), "utf8");
-  } catch {
-    return null;
-  }
-  let doc: unknown;
-  try {
-    doc = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!isJsonObject(doc)) return null;
+  const doc = readJsonFile<Record<string, unknown>>(claudeAccountPath(root));
+  if (doc === null) return null;
   const billing =
     doc.billing === "subscription" || doc.billing === "api" ? (doc.billing as ClaudeBilling) : undefined;
   const observedAt = finiteNumber(doc.observedAt, Number.NaN);
@@ -271,8 +259,8 @@ function probeAuthStatus(config: TumwaterConfig): ClaudeAuthStatus | null {
       killSignal: "SIGKILL",
     });
     if (result.status !== 0 || typeof result.stdout !== "string") return null;
-    const doc: unknown = JSON.parse(result.stdout);
-    if (!isJsonObject(doc) || typeof doc.loggedIn !== "boolean") return null;
+    const doc = parseJsonObject(result.stdout);
+    if (doc === null || typeof doc.loggedIn !== "boolean") return null;
     return {
       loggedIn: doc.loggedIn,
       subscriptionType: typeof doc.subscriptionType === "string" ? doc.subscriptionType : undefined,
