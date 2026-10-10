@@ -8,6 +8,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Agent backends, part 4/7: `agent` / `agents` config, selector routing, per-tier claude defaults, doctor and labels (planned 2026-10-09 by operator; requires part 3d/7 landed)
 
+**Needs review 2026-10-09 by feature: too large for one run**
+
 Design: plans/agent-backends.md ("Config", "Every seam, checked" — doctor, startup and status
 rows).
 
