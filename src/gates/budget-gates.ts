@@ -178,9 +178,6 @@ export function pollBudgetGate(
   // run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the full
   // predicate into the resolution so a demoted pair re-resolves only the tiers using it.
   const pairFreeAt = (p: FallbackModelConfig) => pairFree(providers, p.provider, p.model);
-  const pair = fallbackPair(liveConfig);
-  const fallbackReady = pair !== null && pairFreeAt(pair);
-  const pairName = modelPairName(pair);
   // The breaker map is keyed by every pair the tiers would run on absent a demotion
   // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
   // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
@@ -191,6 +188,16 @@ export function pollBudgetGate(
   // runs on it — and the paused tiers the demotion produces are held by the scheduler's
   // per-role set, so nobody but the probe ever reaches the demoted pair.
   const priceResolved = resolveTierFallbacks(liveConfig, pairFreeAt);
+  // The fleet-level engagement is the price-resolved `default` tier's pair: a map with no
+  // `default` entry still reports the free pair the tier borrows, so state.engaged and the
+  // budget_fallback event name what the gate actually engages instead of reading null while
+  // the fleet runs one. fallbackReady is exactly a non-null resolved default. rejectedPair is
+  // the default tier's own declared pair (fallbackPair's borrow order included) — the pair
+  // the operator asked for when the price check refused it, named by the pause event.
+  const pair = priceResolved.default.pair;
+  const fallbackReady = pair !== null;
+  const pairName = modelPairName(pair);
+  const rejectedPair = fallbackPair(liveConfig);
   const pairNames: string[] = [];
   for (const tier of MODEL_TIERS) {
     const p = priceResolved[tier as ModelTier].pair;
@@ -199,7 +206,6 @@ export function pollBudgetGate(
       if (!pairNames.includes(n)) pairNames.push(n);
     }
   }
-  if (fallbackReady && pair !== null && !pairNames.includes(pairName)) pairNames.push(pairName);
   state.breakers = rekeyFallbackBreakers(state.breakers, pairNames, liveConfig.maxDailyCostUsd);
   state.engaged = reached && fallbackReady ? pairName : null;
   // The demotion-aware resolution (part 5c/8): the same engine over the FULL usable predicate —
@@ -256,14 +262,16 @@ export function pollBudgetGate(
               : {}),
           }
         : {}),
-      // The pause's cause, named by the pair story that produced it: the default tier's own
-      // pair demoted or refused (the legacy single-pair story), or — with review on — the
-      // strong tier's price-resolved pair demoted (nothing could land), which is its own
-      // demotion and must not masquerade as the default pair's.
-      ...(gate === "paused" && pair && !fallbackReady
-        ? { fallbackRejected: pairName }
-        : gate === "paused" && pair
-          ? { fallbackDemoted: pairName, failures: state.breakers[pairName]?.failures ?? 0 }
+      // The pause's cause, named by the pair story that produced it. The default tier is the
+      // cause only when it failed to serve: a price-free default the breaker dropped is its
+      // own demotion (with the failure count), and a default with no price-free pair at all
+      // names the declared pair the price check refused. When the default serves, the
+      // review-on pause is the strong tier's: name its price-free pair when the breaker
+      // demoted it, and leave the cause unset when strong simply had no pair to borrow.
+      ...(gate === "paused" && servingResolved.default.pair === null && pair
+        ? { fallbackDemoted: pairName, failures: state.breakers[pairName]?.failures ?? 0 }
+        : gate === "paused" && servingResolved.default.pair === null && rejectedPair
+          ? { fallbackRejected: modelPairName(rejectedPair) }
           : gate === "paused" && priceResolved.strong.pair !== null
             ? {
                 fallbackDemoted: modelPairName(priceResolved.strong.pair),

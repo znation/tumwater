@@ -6,7 +6,6 @@ import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { isCustomRole } from "../config/config.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import {
-  fallbackPair,
   modelFallbackView,
   modelSelectorField,
   resolveTierFallbacks,
@@ -442,10 +441,11 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
       // must not be advertised as one that will save the fleet — and a demoted one is refused
       // until its probe serves, so the dashboards read `budget paused` exactly while the
-      // scheduler is (BUGS.md 2026-09-20). Same stat-cached read of models.json as `free` above.
+      // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
+      // resolution, so a map with no `default` entry names the pair the gate actually runs.
       fallback:
         fallbackModelFree(cfg, modelsPath) && !(running && info?.fallbackDemoted)
-          ? (fallbackPair(cfg) ?? null)
+          ? (servingResolved.default.pair ?? null)
           : null,
       tiers:
         budgetReachedNow && tiersResolveDistinctPairs(servingResolved)

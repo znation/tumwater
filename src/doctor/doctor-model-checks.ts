@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import { childEnv, releaseChildHandles, signalTree } from "../process/process.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
-import { cacheReadUnpriced, fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
-import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
+import { cacheReadUnpriced, fallbackModelPair, piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
@@ -53,13 +53,17 @@ export function checkFallbackModel(
   const loaded = loadConfigForCheck(root);
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
-  const pair = fallbackPair(config);
-  if (!pair) return { level: "ok", detail: "none configured — role loops pause at the cap" };
+  const declared = fallbackPair(config);
+  if (!declared) return { level: "ok", detail: "none configured — role loops pause at the cap" };
   // A pair missing either half would fall through to pi's own (unverified) default, so it can
-  // never be free; naming that case beats rendering a bare "?/model".
-  const name =
+  // never be free; naming that case beats rendering a bare "?/model". The free branch names
+  // the price-resolved pair (a map with no `default` entry borrows another tier's), while the
+  // refusal names the pair the operator declared.
+  const nameOf = (pair: FallbackModelConfig) =>
     pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
-  if (fallbackModelFree(config, modelsPath)) {
+  const free = fallbackModelPair(config, modelsPath);
+  if (free) {
+    const name = nameOf(free);
     if (demoted)
       return {
         level: "warn",
@@ -69,7 +73,7 @@ export function checkFallbackModel(
   }
   return {
     level: "warn",
-    detail: `${name} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`,
+    detail: `${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`,
   };
 }
 

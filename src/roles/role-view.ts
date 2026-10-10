@@ -24,7 +24,7 @@ import {
   roleSeamTier,
   type ModelFallbackView,
 } from "../config/config-views.js";
-import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
+import { fallbackModelPair, piModelsPath } from "../pi/pi-models.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
 
@@ -104,7 +104,13 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     throw new Error(unknownRoleMessage(role, knownRoleIds(cfg)));
   }
   const effective = configForRole(cfg, role);
-  const fallback = fallbackPair(cfg);
+  // The fallback story the operator sees: the declared pair, but the price-resolved pair when
+  // one exists (a map with no `default` entry borrows another tier's free pair) and the
+  // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
+  // so a refused fallback is still named.
+  const declaredFallback = fallbackPair(cfg);
+  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath) : null;
+  const fallback = freeFallback ?? declaredFallback;
   // One state read serves both the model-fallback episode and the next-tick preview below.
   const state = loadLoopState(root, role);
   const episode = state.modelFallback;
@@ -125,7 +131,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     modelTier: roleSeamTier(cfg, role),
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
     fallback,
-    fallbackFree: fallback ? fallbackModelFree(cfg, modelsPath) : false,
+    fallbackFree: freeFallback !== null,
     modelFallback: modelFallbackView(episode, cfg, role),
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,

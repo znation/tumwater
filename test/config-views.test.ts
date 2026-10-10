@@ -284,6 +284,27 @@ test("a map-form model and the equivalent string produce identical resolved trip
   assert.equal(s.thinking, m.thinking);
 });
 
+test("fallbackPair resolves a map with no default entry through the borrow order", () => {
+  // A map with no `default` key (or a `"pause"` one) engages the per-tier gate, but this
+  // view once read only the missing default entry and reported null. It must return the
+  // default tier's RESOLVED pair — borrowed exactly as the gate borrows it.
+  const small: TumwaterConfig = defaultConfig();
+  small.fallback = { small: "omlx/m" };
+  assert.deepEqual(fallbackPair(small), { provider: "omlx", model: "m" });
+  const strong: TumwaterConfig = defaultConfig();
+  strong.fallback = { strong: "omlx/s" };
+  assert.deepEqual(fallbackPair(strong), { provider: "omlx", model: "s" });
+  // The default predicate admits every declared pair (the config-only view); a pricing
+  // predicate yields the borrowed free pair a priced default would be refused in favor of.
+  const priced: TumwaterConfig = defaultConfig();
+  priced.fallback = { default: "paid/x", strong: "free/s" };
+  assert.deepEqual(fallbackPair(priced), { provider: "paid", model: "x" });
+  assert.deepEqual(fallbackPair(priced, (p) => p.provider === "free"), {
+    provider: "free",
+    model: "s",
+  });
+});
+
 test("a map-form fallback engages its default entry until part 5/8 tiers it", () => {
   const config: TumwaterConfig = defaultConfig();
   config.fallback = { default: "omlx/local-free:low", strong: "pause" };

@@ -342,6 +342,53 @@ test("review on and strong unresolvable pauses the gate; review off holds only i
   assert.equal(p2.servingResolved.strong.pair, null, "strong still resolves to pause — the set holds it");
 });
 
+test("an unborrowable strong tier pauses the gate without naming the serving default pair as demoted", () => {
+  const root = tmpdir("budget-gates-strong-unborrowable-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  // Only small declares a fallback: default borrows it and serves, while strong cannot borrow
+  // small and pauses. Review on pauses the gate, but the default pair is free, resolved and
+  // serving — the pause cause must not read as that pair's own demotion (failures 0).
+  cfg.fallback = { small: "free/qwen-free" };
+  cfg.fallbackModel = undefined;
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "paused");
+  assert.equal(p.servingResolved.strong.pair, null);
+  assert.equal(state.engaged, "free/qwen-free", "the serving default pair is still the engaged one");
+
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
+  assert.equal(events[0]!.fallbackDemoted, undefined, "the serving default pair is not demoted");
+  assert.equal(events[0]!.fallbackRejected, undefined, "the serving default pair is not refused");
+  assert.equal(events[0]!.failures, undefined);
+});
+
+test("a map with no default entry engages the gate and reports the borrowed pair", () => {
+  const root = tmpdir("budget-gates-no-default-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  // No `default` key: the default tier borrows strong's pair (default → strong → small), so
+  // the gate runs a fallback and state.engaged must name it instead of staying null.
+  cfg.fallback = { small: "free/qwen-free", strong: "free/llama-free" };
+  cfg.fallbackModel = undefined;
+  cfg.review = { ...cfg.review, enabled: false };
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "fallback");
+  assert.deepEqual(p.priceResolved.default, {
+    pair: { provider: "free", model: "llama-free" },
+    from: "strong",
+  });
+  assert.equal(state.engaged, "free/llama-free");
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
+  assert.equal(events[0]!.provider, "free");
+  assert.equal(events[0]!.model, "llama-free");
+});
+
 test("a breaker-demoted pair re-resolves only the tiers using it", () => {
   const root = tmpdir("budget-gates-demoted-tier-");
   const models = writeModelsFile(root, MODELS_JSON);

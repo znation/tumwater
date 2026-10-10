@@ -254,31 +254,29 @@ export function fleetModelLabel(config: TumwaterConfig): string | null {
   return entries.map((e) => `${e.tier}=${e.label}`).join(", ");
 }
 
-/** The provider/model pair a configured fallback resolves to — its own fields over the
- * top-level ones, the same precedence every other override section uses — or null when no
- * fallback is configured. The selector-string `fallback` (plans/model-tiers.md) and the
- * legacy `fallbackModel` object both feed it, `fallback` first; validation rejects a file
- * carrying both, so the order only breaks ties for hand-built configs. A selector string
- * parses as a pure selector — `fallback` is a new key, so no legacy `provider` in scope
- * bends its meaning; the acceptance rule is that a `fallback` string engages exactly like the
- * equivalent `fallbackModel` object. The map form (plans/model-tiers.md) is read here as its
- * `default` entry — a `pause` default names no model at all — while resolveTierFallbacks
- * below resolves each tier (part 5a/8). One definition so the freeness check
- * (src/pi/pi-models.ts), the dashboards' badge, and applyFallbackModel below cannot disagree
- * about WHICH model the budget gate would engage. */
-export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
-  const fb = config.fallback;
-  if (fb !== undefined) {
-    if (fb === "pause") return null; // Rejected by validation; defensive against hand-built configs.
-    if (typeof fb !== "string") {
-      // Map form: this reads the `default` entry; resolveTierFallbacks resolves per tier, and
-      // a `pause` default names no model at all.
-      const sel = fb.default;
-      if (sel === undefined || sel === "pause") return null;
-      return fallbackSelectorFields(sel, config);
-    }
-    return fallbackSelectorFields(fb, config);
-  }
+/** The fleet-level fallback pair: the `default` tier's resolved pair under
+ * resolveTierFallbacks' borrow order, or null when the tier resolves to pause. The
+ * selector-string `fallback` (plans/model-tiers.md), the legacy `fallbackModel` object, and
+ * the map form all feed one resolution — a map with no `default` entry (or a `"pause"` one)
+ * borrows another tier's pair exactly as the budget gate does, so this view and the gate
+ * cannot disagree about which model the fleet would engage. `usable` filters the pairs that
+ * may supply the answer: the default predicate admits every declared pair (the config-only
+ * view), while a pricing predicate (src/pi/pi-models.ts's fallbackModelPair) yields the pair
+ * the gate would actually engage when a declared `default` pair is priced and a free pair
+ * exists at another tier. One definition so the freeness check, the dashboards' badge, the
+ * doctor, and applyFallbackModel below cannot disagree. */
+export function fallbackPair(
+  config: TumwaterConfig,
+  usable: (pair: FallbackModelConfig) => boolean = () => true,
+): FallbackModelConfig | null {
+  return resolveTierFallbacks(config, usable).default.pair;
+}
+
+/** The legacy `fallbackModel` object resolved to a pair: its own fields over the top-level
+ * values, the same precedence every other override section uses. Private — reached only
+ * through tierOwnFallback (the default tier's own fallback) and so fallbackPair's resolution,
+ * which keeps the object and the string/map forms on one rule without recursing. */
+function legacyFallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
   const fbo = config.fallbackModel;
   if (!fbo) return null;
   // The top-level model is a selector too (parsed the same way withModelOverrides does), so a
@@ -321,15 +319,17 @@ function tierOwnFallback(config: TumwaterConfig, tier: ModelTier): FallbackModel
   const fb = config.fallback;
   let selector: string | undefined;
   if (fb !== undefined) {
-    if (typeof fb === "string") selector = tier === "default" ? fb : undefined;
+    // The top-level string form names the default tier's own fallback; `"pause"` is rejected
+    // by validation but defensively names no model (matching the map entries below).
+    if (typeof fb === "string") selector = tier === "default" && fb !== "pause" ? fb : undefined;
     else {
       const raw = fb[tier];
       if (raw !== undefined && raw !== "pause") selector = raw;
     }
-  } else if (tier === "default" && config.fallback === undefined) {
-    // The legacy object (fallbackPair) resolves the default tier's own fallback, with its
+  } else if (tier === "default") {
+    // The legacy `fallbackModel` object is the default tier's own fallback, with its
     // provider/thinking fields and the top-level borrow precedence.
-    return fallbackPair(config) ?? undefined;
+    return legacyFallbackPair(config) ?? undefined;
   }
   if (selector === undefined) return undefined;
   return fallbackSelectorFields(selector, config);

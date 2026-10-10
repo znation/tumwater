@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import type { TumwaterConfig } from "../config/config-schema.js";
+import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
 import { enabledRoleIds } from "../config/config.js";
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
@@ -137,15 +137,26 @@ export function cacheReadUnpriced(
   return inputPriced && cacheUnpriced;
 }
 
+/** The free fallback pair the budget gate would engage for the fleet, or null when none is
+ * usable: the price-aware resolution of the default tier (fallbackPair over
+ * resolveTierFallbacks' borrow order), so a map whose `default` entry is absent or priced
+ * still names the free pair the tier borrows. Null for a missing, unresolvable, or priced
+ * pair — the gate's refusal, and the pair the badge/doctor must not advertise. */
+export function fallbackModelPair(
+  config: TumwaterConfig,
+  modelsPath = piModelsPath(),
+): FallbackModelConfig | null {
+  const providers = readPiProviders(modelsPath);
+  return fallbackPair(config, (p) => pairFree(providers, p.provider, p.model));
+}
+
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
  * actually engage: configured at all, resolvable to a provider/model pair, and priced at zero in
  * pi's definitions. False for every other case — no fallback, a half-named pair that would fall
  * through to pi's own default, an unknown id, or a priced one — and the gate then pauses role
  * loops exactly as it did before this feature. */
 export function fallbackModelFree(config: TumwaterConfig, modelsPath = piModelsPath()): boolean {
-  const pair = fallbackPair(config);
-  if (!pair) return false;
-  return pairFree(readPiProviders(modelsPath), pair.provider, pair.model);
+  return fallbackModelPair(config, modelsPath) !== null;
 }
 
 /** True when every model the fleet could use is free: each enabled role's effective

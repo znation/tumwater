@@ -201,6 +201,23 @@ test("fallbackModelFree engages only a configured pair pi prices at zero", () =>
   );
 });
 
+test("fallbackModelFree resolves a map with no default entry through the borrow order", () => {
+  const file = writeModels();
+  const paid = fleetAt("paid", "gpt-x");
+  // No `default` key: the default tier borrows small's free pair, exactly as the gate does -
+  // the badge must not read no fallback while the fleet runs one.
+  assert.equal(
+    fallbackModelFree({ ...paid, fallback: { small: "lm-studio/qwen3.8-27b" } }, file),
+    true,
+    "default borrows small's free pair",
+  );
+  assert.equal(
+    fallbackModelFree({ ...paid, fallback: { small: "paid/gpt-x" } }, file),
+    false,
+    "a priced borrowed pair is refused",
+  );
+});
+
 test("a fallback naming one field falls back to the top-level value for the other", () => {
   const file = writeModels();
   // The same precedence every other override section uses: naming only the model keeps the
