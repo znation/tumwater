@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pauseFleet, pausedRoles } from "../src/fleet/fleet-state.js";
+import { isFleetPaused, pauseFleet, pausedRoles } from "../src/fleet/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
@@ -122,6 +122,41 @@ test("Ctrl+W flashes the wake confirmation and drops the wake marker for the vie
     tui.key(undefined, "w", { ctrl: true });
     assert.match(tui.lastFrame(), /wake requested for clean/);
     assert.equal(fs.existsSync(wakeRequestPath(repo)), true);
+  });
+});
+
+test("Ctrl+F toggles the fleet pause marker through pauseFleet/resumeFleet and flashes the shared wording", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    assert.equal(isFleetPaused(repo), false);
+    tui.key(undefined, "f", { ctrl: true });
+    assert.equal(isFleetPaused(repo), true);
+    assert.match(tui.lastFrame(), /fleet paused — role loops stop starting new ticks/);
+    // The next frame's fleet alert reads the marker, so the resume action is visible too.
+    assert.match(tui.lastFrame(), /The fleet is paused/);
+
+    tui.key(undefined, "f", { ctrl: true });
+    assert.equal(isFleetPaused(repo), false);
+    assert.match(tui.lastFrame(), /fleet resumed — role loops tick again/);
+    assert.doesNotMatch(tui.lastFrame(), /The fleet is paused/);
+  });
+});
+
+test("Ctrl+F is inert while the budget editor or the role-prompt editor holds the prompt line", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true }); // → transcript
+    tui.key(undefined, "b", { ctrl: true }); // enter budget mode
+    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    tui.key(undefined, "f", { ctrl: true });
+    assert.equal(isFleetPaused(repo), false);
+    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+F inert");
+
+    tui.key(undefined, "escape"); // leave budget mode
+    tui.key(undefined, "r", { ctrl: true }); // enter role-prompt mode for the viewed loop
+    assert.match(tui.lastFrame(), /prompt for clean/);
+    tui.key(undefined, "f", { ctrl: true });
+    assert.equal(isFleetPaused(repo), false);
   });
 });
 

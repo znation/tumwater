@@ -96,7 +96,7 @@ test("the tab strip names every view and brackets the current one", () => {
 
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null) => plain(hintLine(view, { budget, rolePromptFor }, 300));
-  assert.equal(hint({ kind: "activity" }), "Enter send · ↑↓ history · Ctrl+T next view · Ctrl+B daily cap · Ctrl+C interrupt director · Ctrl+D quit");
+  assert.equal(hint({ kind: "activity" }), "Enter send · ↑↓ history · Ctrl+T next view · Ctrl+B daily cap · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit");
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit",
@@ -123,7 +123,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
   const spans = hintLine({ kind: "activity" }, { budget: false, rolePromptFor: null }, 300);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "Ctrl+T", "Ctrl+B", "Ctrl+C", "Ctrl+D"]);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "Ctrl+T", "Ctrl+B", "Ctrl+F", "Ctrl+C", "Ctrl+D"]);
 });
 
 test("the prompt line names who Enter sends to", () => {

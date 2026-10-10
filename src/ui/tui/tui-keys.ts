@@ -9,7 +9,14 @@ import { collectFleetChanges, type FleetChangeView } from "../../change/change-d
 import { renderFleetChange } from "../../change/change-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
-import { pausedRoles, pauseRole, resumeRole } from "../../fleet/fleet-state.js";
+import {
+  isFleetPaused,
+  pausedRoles,
+  pauseFleet,
+  pauseRole,
+  resumeFleet,
+  resumeRole,
+} from "../../fleet/fleet-state.js";
 import {
   requestAbort,
   requestWake,
@@ -18,6 +25,7 @@ import {
   submitRolePromptAndWake,
 } from "../../operator/operator-intent.js";
 import { errorMessage } from "../../text/text.js";
+import { fleetPausePhrase, fleetResumePhrase } from "../../text/phrases.js";
 import { usdCap } from "../../text/format.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
 import {
@@ -277,6 +285,34 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         input = currentCapUsd > 0 ? String(currentCapUsd) : "";
         cursor = input.length;
         flashMessage("edit daily cost budget (USD): Enter to save, Esc to cancel");
+      }
+      deps.requestRender();
+      return;
+    }
+    if (key.ctrl && key.name === "f" && !budgetMode && !rolePromptFor) {
+      // Ctrl+F toggles the whole-fleet pause (mnemonic: **F**leet) through the same
+      // pauseFleet/resumeFleet marker writers `tumwater pause`/`resume` and the dashboard's
+      // /api/pause call use, so the surfaces cannot drift on marker format or idempotence.
+      // The shared fleetPausePhrase/fleetResumePhrase base lines keep the flash wording the
+      // event feed and failure digest already read; a no-op flashes the same
+      // already-paused/was-not-paused contract the CLI prints. Guarded out of the budget and
+      // role-prompt editors, whose prompt line the fleet toggle must not disturb — the same
+      // inertness the per-loop keys honor below. The write can fail (a lock timeout, a torn
+      // fs), so flash the reason instead of letting the throw kill the TUI.
+      try {
+        const paused = isFleetPaused(root);
+        const changed = paused ? resumeFleet(root) : pauseFleet(root);
+        flashMessage(
+          paused
+            ? changed
+              ? fleetResumePhrase()
+              : "fleet was not paused"
+            : changed
+              ? fleetPausePhrase()
+              : "fleet is already paused",
+        );
+      } catch (err) {
+        flashError(err);
       }
       deps.requestRender();
       return;

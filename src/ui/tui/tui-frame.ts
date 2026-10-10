@@ -92,7 +92,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures" || view.kind === "history" || view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {
     if (i > 0) spans.push({ text: " · ", tone: "dim" });
