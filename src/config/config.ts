@@ -70,7 +70,7 @@ export function defaultConfig(): ResolvedModelConfig {
     piArgs: [],
     // Agent backends (plans/agent-backends.md, part 4a/7): empty until a file names one.
     // Keeping the map always present means read sites need no `?? {}`; the legacy
-    // agentBin/piArgs still feed the pi seam directly until part 4c.
+    // agentBin/piArgs are read as pi's entry through resolvedAgentConfig (config-views.ts).
     agents: {},
     maxConcurrent: 6,
     // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
@@ -159,7 +159,8 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
     // Clone each backend entry (and its args array) so the result owns its data like every
-    // other section. The legacy agentBin/piArgs stay beside it; part 4c resolves between them.
+    // other section. The legacy agentBin/piArgs stay beside it; resolvedAgentConfig picks
+    // between them.
     agents: Object.fromEntries(
       Object.entries(cfg.agents ?? base.agents ?? {}).map(([id, a]) => [
         id,

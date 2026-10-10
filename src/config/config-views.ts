@@ -29,7 +29,7 @@ export type ResolvedModelConfig = Omit<TumwaterConfig, "model" | "agent"> & {
  * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy
  * values back into `config.agents`, so a config write that re-serializes the merged config
  * cannot leak a second spelling into the file (which validateConfig would then reject).
- * Part 4c consumes this to pick the binary and passthrough argv; part 4a only defines it. */
+ * Part 4c reads this to pick the binary and passthrough argv. */
 export function resolvedAgentConfig(
   config: { agents?: Record<string, AgentConfig>; agentBin?: string; piArgs?: string[] },
   id: string,

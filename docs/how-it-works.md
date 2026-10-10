@@ -264,7 +264,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
 
 - **Custom loops:** add `customLoops` entries by hand or by prompting the director ("add a loop
   named X that does Y"). The TUI marks them with `*`, the web dashboard with a `custom` tag.
-- **Agent binary:** resolved as `TUMWATER_PI_BIN`, then `agentBin`, then `pi` on PATH.
+- **Agent binary:** each backend resolves its own: `TUMWATER_<ID>_BIN`, then `agents.<id>.bin`
+  (pi also reads the legacy top-level `agentBin`), then the backend's default binary (`pi` or
+  `claude`) on PATH.
 
 ## Operator notes
 

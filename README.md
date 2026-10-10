@@ -115,7 +115,7 @@ friends) and per-backend `agents.claude.bin`/`agents.claude.args` overrides; a s
 provider names a backend id (`claude/claude-opus-5-5`) always routes there. A claude run's
 cost comes from the CLI's own price table and feeds the daily cap like a priced pi model, so
 pair it with a free `fallback`; the designed subscription exemption and usage-window throttle
-are not implemented yet (part 6/7 in PLANS.md). See [docs/backends.md](docs/backends.md) for
+are not implemented yet (parts 6a–6e/7 in PLANS.md). See [docs/backends.md](docs/backends.md) for
 requirements and a worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see
