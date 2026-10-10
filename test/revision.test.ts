@@ -342,6 +342,26 @@ test("a revision tick that declares nothing-to-do drops the change and ends no_c
   assert.equal(eventsOfType(root, "revision").length, 1, "the drop is logged");
 });
 
+test("a revision tick drops the change when the events feed is unwritable", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  await setRef(root, rejectedRefName("improve"), "a".repeat(40));
+  const state = {
+    ...freshLoopState("improve"),
+    revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
+  };
+  const ctx = verdictCtx(root, wt, state, null, 1);
+  // Put a directory where the append-only events log belongs: the drop event throws EISDIR
+  // while every other file under the root still writes, exactly as on a full disk.
+  fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(state.revision, undefined, "the rejected change is dropped");
+  assert.equal(await refSha(root, rejectedRefName("improve")), null, "the rejected ref is deleted");
+});
+
 test("a revision tick that declares nothing-to-do drops the change with a clean worktree", async () => {
   const { root, wt } = await initializedWorktree("improve");
   // A revision tick need not leave the re-applied diff dirty: the cherry-pick can be an empty

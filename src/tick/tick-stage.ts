@@ -14,7 +14,7 @@ import {
   mergeCommitBody,
   stampedSubject,
 } from "../git/commit-message.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
@@ -145,7 +145,9 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   if (moved.length > 0 && s.claim === undefined) {
     const first = moved[0]!;
     s.claim = { file: first.file, key: first.key, title: first.title, at: Date.now(), source: "staged" };
-    logEvent(ctx.root, {
+    // The assignment is durable in state before this event; an unwritable feed must not reject
+    // the tick and make a claim that did land look unapplied (logEventBestEffort).
+    logEventBestEffort(ctx.root, {
       loop: ctx.role,
       type: "claim",
       action: "assigned",
@@ -255,7 +257,9 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // The round is also stamped on the commit's Revision trailer above, so leftover recovery can
   // rebuild a retriable revision's landing entry with its round when the queue marker is lost.
   if (revisionRound !== undefined) s.revision = undefined;
-  logEvent(ctx.root, { loop: ctx.role, type: "land_queued", commit, summary });
+  // The landing sits in the durable queue above and the commit is pinned; the event is
+  // observability, so an unwritable feed must not reject a tick whose work is already queued.
+  logEventBestEffort(ctx.root, { loop: ctx.role, type: "land_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;
   // lastSummary and the tick_end event carry it too for dashboards and logs.
   const finalSummary = highFriction

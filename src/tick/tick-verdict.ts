@@ -19,7 +19,7 @@ import { extractSummary } from "../git/commit-message.js";
 import { recordFlow } from "./qa-coverage.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { rejectedRefName } from "../paths.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 
 interface TickVerdictContext {
   root: string;
@@ -182,7 +182,10 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     s.revision = undefined;
     await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
     await deleteRef(ctx.root, rejectedRefName(ctx.role));
-    logEvent(ctx.root, { loop: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
+    // The drop's durable effects — the worktree reset, the rejected ref's deletion, and the
+    // cleared state — have all landed; the event is observability, so an unwritable feed must
+    // not end the tick as an error and mask a change that really was dropped.
+    logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
     return { result: "no_change" };
   }
   if (!changed) {

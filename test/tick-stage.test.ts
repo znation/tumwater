@@ -9,6 +9,7 @@ import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from 
 import { ensureWorktree } from "../src/git/worktree.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
+import { eventsLogPath } from "../src/paths.js";
 import { readQaCoverage } from "../src/tick/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/landing/landing-queue.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
@@ -176,6 +177,40 @@ test("an unassigned tick that moves a plan records a staged claim", async () => 
   assert.equal(state.claim?.file, "PLANS.md");
 });
 
+test("an unassigned tick still records its staged claim when the events feed is unwritable", async () => {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
+  commitIn(root, "plans");
+  const wt = await ensureWorktree(root, "improve", "main");
+  const moved = STAGE_PLANS.replace(/### Alpha[^\n]*\n\nBody\.\n\n/, "").replace(
+    "## Done",
+    "## Done\n\n### Alpha (planned 2026-01-01 by operator; done 2026-01-02 by improve)",
+  );
+  fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  const state = freshLoopState("feature-2");
+  const { ctx } = makeCtx(root, wt, state, {
+    role: "feature-2",
+    mainBranch: "main",
+    config: (c) => {
+      (c.roles as Record<string, { enabled?: boolean; instances?: number }>).feature = {
+        enabled: true,
+        instances: 2,
+      };
+    },
+    finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
+  });
+  // Put a directory where the append-only events log belongs: the claim event throws EISDIR
+  // while every other file under the root still writes.
+  fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(state.claim?.key, "alpha", "the claim is assigned despite the unwritable feed");
+});
+
 // A single-runner base has no sibling to hold the entry from, so its unassigned tick stages
 // no claim — and the next tick's prompt is the same as before claims existed (part 4/7's
 // "Single runner: prompts and scheduling are unchanged").
@@ -279,6 +314,24 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
   assert.equal(queued[0]!.summary, "add the feature");
   assert.equal(queued[0]!.highFriction, undefined);
   assert.equal(queued[0]!.priorReview, undefined, "a fresh tick carries no prior review");
+});
+
+test("a tick with a SUMMARY still enqueues its landing when the events feed is unwritable", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = { ...freshLoopState("improve"), ticks: 3 };
+  const { ctx } = makeCtx(root, wt, state, {
+    finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
+  });
+  // Put a directory where the append-only events log belongs: the land_queued event throws
+  // EISDIR while every other file under the root still writes.
+  fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(queueDepth(root), 1, "the landing is durably queued despite the unwritable feed");
+  assert.equal(queuedLandings(root)[0]!.sha, outcome.commit);
 });
 
 test("a revision tick's queued landing carries the prior review's objections", async () => {
