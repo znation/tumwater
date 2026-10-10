@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   backlogLines,
-  backlogMarks,
   entryBodyWindow,
   labeledBacklogEntries,
   moveEntrySelection,
   stepEntryScroll,
 } from "../src/ui/tui/tui-backlog.js";
+import { backlogMarks } from "../src/backlog/backlog-eligibility.js";
 import { paneBody } from "../src/ui/tui/tui-pane.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 

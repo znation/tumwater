@@ -175,6 +175,17 @@ export function backlogHolds(root: string): { plans: EntryHold[]; bugs: EntryHol
   };
 }
 
+/** The eligibility mark (holdMark) for each planned plan and open bug, two arrays parallel
+ * to the entries the observer surfaces list (backlogPayload's `plans`/`bugs`, the TUI's list
+ * and entry modes): backlogHolds' verdicts projected through holdMark, so a surface derives
+ * its marks from the one hold decision rather than re-walking the entries. holdMark renders
+ * an eligible entry as the empty string, so a client can append the mark without a separate
+ * eligibility check. Questions carry no holds. */
+export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
+  const holds = backlogHolds(root);
+  return { plans: holds.plans.map(holdMark), bugs: holds.bugs.map(holdMark) };
+}
+
 /** The entries a `role` loop may take now, in file order: PLANS.md's `## Planned` entries for
  * feature, BUGS.md's `## Open` entries for bugfix, minus every entry entryHold holds, each with
  * its stamp-free key, verbatim title and 1-based line range. Reads the primary checkout through

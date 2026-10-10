@@ -1,5 +1,5 @@
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
-import { backlogHolds, holdMark } from "../backlog/backlog-eligibility.js";
+import { backlogMarks } from "../backlog/backlog-eligibility.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMessage, eventResult, formatEvent } from "../events/event-format.js";
@@ -42,10 +42,10 @@ export function statusPayload(root: string, now = Date.now()): object {
   // describe the same event.
   const recent = readEvents(root, RECENT_EVENTS);
   const questions = openQuestions(root);
-  // Why each plan/bug is held (src/backlog/backlog-eligibility.ts): the same entryHold verdict
-  // the prompt's backlog index and `tumwater backlog` render, so every surface shares one
-  // decision. Read once here, and consumed as the parallel planHolds/bugHolds arrays below.
-  const holds = backlogHolds(root);
+  // Why each plan/bug is held (src/backlog/backlog-eligibility.ts): the same hold decision
+  // the prompt's backlog index and `tumwater backlog` render, projected to the mark each
+  // surface appends. Read once here, consumed as the parallel planHolds/bugHolds arrays below.
+  const marks = backlogMarks(root);
   const loops = snap.loops.map((s) => {
     // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
@@ -230,11 +230,11 @@ export function statusPayload(root: string, now = Date.now()): object {
     // derives the header badge count from this list's length.
     plans: plannedPlans(root),
     bugs: openBugs(root),
-    // The holds beside those titles, index-for-index parallel (backlogHolds and plannedPlans/
+    // The holds beside those titles, index-for-index parallel (backlogMarks and plannedPlans/
     // openBugs walk the same sectionEntries file order): holdMark renders an eligible entry as
     // the empty string, so a client can append the mark without a separate eligibility check.
-    planHolds: holds.plans.map(holdMark),
-    bugHolds: holds.bugs.map(holdMark),
+    planHolds: marks.plans,
+    bugHolds: marks.bugs,
     questions,
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.

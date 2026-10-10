@@ -4,7 +4,7 @@ import {
   plannedPlanEntries,
   type BacklogEntry,
 } from "../../backlog/backlog.js";
-import { entryHoldAgainst, holdMark, plannedPartKeys } from "../../backlog/backlog-eligibility.js";
+import { backlogMarks } from "../../backlog/backlog-eligibility.js";
 import { clipToWidth } from "../../text/text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui/tui.tsx): the three-section backlog body
@@ -13,19 +13,6 @@ import { clipToWidth } from "../../text/text-width.js";
  * guard — because the pane renders and navigates the project backlog (plans/bugs/questions), a
  * self-contained concern sharing no line-editor or key-handling state. Pure, so it is
  * unit-testable without a TTY. */
-
-/** The eligibility mark (holdMark) for each planned plan and open bug, two arrays parallel to
- * the entries `/api/status` and the TUI list carry: the same entryHold decision `tumwater
- * backlog` renders, so the TUI (both list and entry mode) shows the hold beside the title.
- * Questions carry no holds. */
-export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
-  const planned = plannedPlanEntries(root);
-  const plannedParts = plannedPartKeys(planned);
-  return {
-    plans: planned.map((e) => holdMark(entryHoldAgainst(e, plannedParts))),
-    bugs: openBugEntries(root).map((e) => holdMark(entryHoldAgainst(e, plannedParts))),
-  };
-}
 
 /** The project-status pane's flat entry list (plans, then bugs, then questions), each labeled
  * with its section and carrying its eligibility mark (empty for an eligible entry), read fresh
