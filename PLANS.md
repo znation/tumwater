@@ -176,6 +176,57 @@ existing deep-equal against `collectReport(repo, 14)`).
   open, and a persisted role the fleet no longer lists falls back to `All loops`.
 - `npm run test` is green.
 
+### An invariant register: state each subsystem's guarantees where a fixer can read them (planned 2026-10-10 by steward; promoted from the `unclear-invariant` validation gap, carried by 92 Fixed entries — the largest gap tag and mostly in entries still kept verbatim; independent of the Agent backends and citation-sweep series)
+
+**Goal.** Retire the `unclear-invariant` gap. It is recorded when a fixer could not confirm a bug
+until first reconstructing what the code was supposed to guarantee; today that guarantee lives only
+in scattered tests and the fixer's head, so each entry spent effort rediscovering it. Give the
+project one place that states its invariants, and point the loops at it before they reconstruct one.
+
+**Evidence.** `unclear-invariant` is the top validation-gap tag by a wide margin — 92 Fixed entries
+carry it versus 58 for the next non-`none` tag (`no-observability`) — and unlike the historical tags it is not
+mostly compressed: 78 of the 92 are entries still kept verbatim in `## Fixed`. (`grep -oE
+'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c` counts both forms.)
+The recurring families, each visible in the cited entries:
+- **Two surfaces deriving one fact separately** — the dashboards' stall flag versus the event feed's
+  warning ("The dashboards' stall flag never got the piped-stdout exemption…", fixed 2026-09-28),
+  the `status` header badge versus the event log's window contract ("The status header's `main
+  <sha>: green` badge reads only the default 200-event tail…", fixed 2026-09-29), doctor's binary
+  check versus the startup gate's `agentsInUse` ("`checkAgentBinary` always checks pi…", fixed
+  2026-10-10), and a kept free tier versus its pre-cap resolution ("The budget-fallback view's kept
+  free subscription claude tier dropped the ambient thinking level from its selector…", fixed
+  2026-10-10).
+- **A reader and writer over one appended or persisted file** that must agree on its end — the
+  trailing-fragment window fold, and `slots.json`'s non-finite-timestamp boundary ("`slots.json`'s
+  `pinnedAt` and `lastReleasedAt` carried a hand edit's non-finite timestamps…", fixed 2026-10-09).
+- **Sibling result shapes a classifier must treat alike** — the loss ranking's `main_red`, `aborted`,
+  `review_error`, and `merge_conflict` arms ("The failure digest's loss ranking drops the
+  error-class hours a `merge_conflict`/`merge_blocked` landing reprices…", fixed 2026-10-10).
+Seed the register from these families, and add sections as new ones recur.
+
+**Approach.**
+1. Add a new invariants register under `docs/`: grouped by the boundary an invariant binds. Each entry gets a
+   stable id, a one-sentence guarantee, the modules and surfaces it binds, and the `test/...`
+   case(s) that pin it. Start from the three families above, seeded from the cited Fixed entries.
+2. Point the loops at it. The role prompt already injects `PRINCIPLES.md` through `readPrinciples`
+   (src/prompt/principles.ts); name the register there as the place a fixer reads its
+   subsystem's guarantees before reconstructing one, so the reference costs a line of prefill rather
+   than inlining the whole register.
+3. Keep it honest. A landing that adds or changes a guarantee updates the register in the same
+   commit; each invariant cites the test that pins it, so a stale invariant is a visible broken
+   citation rather than silent drift.
+4. No new runtime dependency and no change to the loop pipeline.
+
+**Files touched.** a new invariants register under `docs/`; the role prompt text (src/prompt/principles.ts or the
+prompt builder) to name it; the `test/...` cases it cites are unchanged. Doc-only otherwise.
+
+**Acceptance criteria.**
+- The register states at least the three boundary families above, each with a stable id, the
+  modules/surfaces it binds, and a resolvable `test/...` citation.
+- Every `test/...` path the register cites exists and pins the invariant it is cited for.
+- The role prompt names the register without inlining it; `PRINCIPLES_MAX_CHARS` is unaffected.
+- `npm run test` is green.
+
 
 ## Done
 
