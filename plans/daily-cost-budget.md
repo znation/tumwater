@@ -15,7 +15,7 @@ Spend and the cap are visible on both dashboards, and pause/resume land as event
 ## Motivation
 
 The harness already *measures* spend — per-loop `totalCostUsd` folded from pi's usage events
-(src/loop.ts `foldUsage`, src/pi.ts), a `cost` column plus totals row on both dashboards, and
+(src/tick/tick-usage.ts `TickUsage.fold`, src/pi/pi-stream.ts), a `cost` column plus totals row on both dashboards, and
 `tumwater reset-counters` for fresh observation windows. But nothing *acts* on it: a fleet
 running 24/7 against a paid API can spend unbounded while nobody is watching — exactly the
 failure mode an opinionated harness should refuse to ship. A senior engineer's answer is a
@@ -28,7 +28,7 @@ everyone else.
 
 ### Config: `maxDailyCostUsd` (top-level)
 
-- New top-level key in `TumwaterConfig` (src/types.ts): number ≥ 0, **0 disables** (the same
+- New top-level key in `TumwaterConfig` (src/config/config-schema.ts): number ≥ 0, **0 disables** (the same
   off-switch convention as `quietTimeoutSeconds`/`sessionRetentionDays`).
 - `defaultConfig()` carries **50** — enabled by default. Rationale: an unattended fleet must
   not spend unbounded; $50/day is generous for a normal day of autonomous work on mid-tier API
@@ -36,7 +36,7 @@ everyone else.
   model). One line in tumwater.json raises or disables it. Local-model fleets never see it
   fire because pi reports $0 cost.
 - Validation: add to `TOP_LEVEL_KEYS` (so a typo like `maxDailyCostUsds` fails fast with the
-  unknown-key error) plus a `checkNumber … >= 0` in src/config.ts, like the other numeric
+  unknown-key error) plus a `checkNumberField … >= 0` in src/config/config-field-checks.ts, like the other numeric
   fields.
 - No restart needed: `loadConfig` merges over `defaultConfig()` (`...base, ...cfg`), so
   existing repos pick up the default with no file edit, and the orchestrator's live-reload
@@ -45,22 +45,22 @@ everyone else.
 
 ### State: per-loop daily cost window
 
-- `LoopState` gains two optional fields (src/types.ts): `dayStamp?: string` (local
+- `LoopState` gains two optional fields (src/loop/loop-state.ts): `dayStamp?: string` (local
   `YYYY-MM-DD`) and `dayCostUsd?: number`. `freshLoopState` defaults them to `""`/`0`; old
   state files load unchanged through the existing merge-over-fresh in `loadLoopState`, where a
   missing stamp reads as "stale" (below) — i.e. $0 today, which is honest: spend before this
   field existed is unknown.
-- **Write path** — src/loop.ts's `foldUsage` records the run's cost into the daily window via
-  a new exported pure helper in src/state.ts, e.g. `recordDailyCost(s, usd, now)`: if
+- **Write path** — src/tick/tick-usage.ts's `TickUsage.fold` records the run's cost into the daily window via
+  a new exported pure helper in src/budget/budget.ts, e.g. `recordDailyCost(s, usd, now)`: if
   `s.dayStamp !== todayStamp(now)` it resets `dayCostUsd = 0` and sets the stamp (local-midnight
   rollover), then adds `usd`. A tick that crosses midnight attributes its spend to the correct
   day; the value persists at tick end with the rest of the state. Persistence timing is decided:
   no mid-tick save is added — a run interrupted by a crash loses only its own spend from the
   budget (the window survives on disk up to the last tick-end save), an acceptable undercount
   for a safety valve.
-- **Read path** — never mutates: `dailyCost(s, now)` in src/state.ts returns
+- **Read path** — never mutates: `dailyCost(s, now)` in src/budget/budget.ts returns
   `s.dayStamp === todayStamp(now) ? s.dayCostUsd : 0`. Both the orchestrator (in-memory runner
-  states) and status.ts (state files) read through it, so a loop that hasn't ticked since
+  states) and src/status/status-data.ts (state files) read through it, so a loop that hasn't ticked since
   yesterday reads as $0 today with no save required. `todayStamp` uses local time — the same
   convention as every other wall-clock display in the harness (`lastTickCell`).
 - **`reset-counters` deliberately does NOT zero the daily window** (`zeroCounters` untouched):
@@ -70,11 +70,11 @@ everyone else.
 
 ### Gate: fleet-wide, in the orchestrator poll loop
 
-- New exported pure helpers in src/state.ts (NOT src/orchestrator.ts — observers must not
-  depend on the scheduler module, per state.ts's existing one-way dependency rule):
+- New exported pure helpers in src/budget/budget.ts (NOT src/orchestrator/orchestrator.ts —
+  observers must not depend on the scheduler module, per the budget helpers' one-way dependency rule):
   `fleetDailyCost(states: LoopState[], now)` summing `dailyCost`, and
   `budgetPaused(states, config, now)` = `config.maxDailyCostUsd > 0 && fleetDailyCost ≥ cap`.
-- In `runOrchestrator`'s poll loop (src/orchestrator.ts), compute the predicate once per cycle
+- In `runOrchestrator`'s poll loop (src/orchestrator/orchestrator.ts), compute the predicate once per cycle
   from all runners' states. While paused, **role runners are skipped before `isEligible`** —
   no scheduled tick, no "main moved" early wake, no startup tick starts; the director is
   unaffected and queued prompts still run (explicit human requests outrank the autonomous-spend
@@ -84,7 +84,7 @@ everyone else.
   function plus a few lines in the poll loop.
 - **The director's spend counts toward the total.** The exemption is from *pausing*, not from
   *counting*: director runs fold through the same `foldUsage`, so `fleetDailyCost` includes them
-  (the orchestrator sums every runner's state; status.ts's snapshot loops include the director
+  (the orchestrator sums every runner's state; src/status/status-data.ts's snapshot loops include the director
   row). A human who burns the budget with prompts still pauses the role loops — the cap bounds
   total spend, and only autonomous ticks yield to it.
 - **Config source:** evaluate the predicate with the same last-known-good config the poll just
@@ -100,7 +100,7 @@ everyone else.
 
 ### Events
 
-- `HarnessEvent.type` gains `"budget_paused"` and `"budget_resumed"` (src/types.ts), filed at
+- `HarnessEvent.type` gains `"budget_paused"` and `"budget_resumed"` (src/events/events.ts), filed at
   harness level (`loop: "harness"`) with `spentUsd` + `capUsd`. The orchestrator tracks the
   previous cycle's paused state and logs exactly one event per transition — including
   transitions caused by a live cap edit or midnight rollover, since the predicate is re-evaluated
@@ -110,12 +110,12 @@ everyone else.
 
 ### Display (both dashboards)
 
-- `StatusSnapshot` gains `budget: { spentUsd: number; capUsd: number } | null` (src/status.ts):
-  computed from the same state.ts helpers plus `configForStatus` (which already loads the
+- `StatusSnapshot` gains `budget: { spentUsd: number; capUsd: number } | null` (src/status/status-data.ts):
+  computed from the same budget helpers plus `configForStatus` (which already loads the
   config); `null` when disabled (cap 0). Spend lags in-flight ticks by up to one tick boundary,
   exactly like the existing `cost` column — consistent, not a new property.
 - Header badge: renderStatus's header line appends `· budget: $12.34/$50 today` whenever
-  enabled (src/status-render.ts). Unlike the inbox/questions badges (action-needed → shown only
+  enabled (src/ui/status-render.ts). Unlike the inbox/questions badges (action-needed → shown only
   when non-zero), spend is standing information for a money-spending system, so it shows at all
   levels; on narrow terminals the header's existing last-resort whole-line clipping applies.
 - State cell: `loopPhase` gains an optional trailing `budgetPaused?: boolean`; when set and the
@@ -123,9 +123,9 @@ everyone else.
   not stored: renderStatus computes the fleet predicate once from `snap.budget`
   (`spentUsd >= capUsd`; null → false) and passes that single boolean as loopPhase's trailing
   argument for every row — only non-running role rows surface it (loopPhase ignores it while a
-  tick is running or for the director); src/gui.ts does the same with its snapshot when building
+  tick is running or for the director); src/ui/status-payload.ts does the same with its snapshot when building
   the existing per-loop `phase` payload field. One function covers both surfaces, and the GUI
-  page needs no state-cell JS change. The GUI header badge mirrors the TUI's in gui-page.ts's
+  page needs no state-cell JS change. The GUI header badge mirrors the TUI's in src/ui/gui/gui-page.ts's
   header assembly (the same place inbox/questions badges are built).
 
 ### README
@@ -136,14 +136,17 @@ everyone else.
 
 ## Files touched
 
-src/types.ts (config field, LoopState fields, two event types), src/config.ts (default,
-TOP_LEVEL_KEYS, validation), src/state.ts (`freshLoopState` defaults; `todayStamp`,
-`dailyCost`, `recordDailyCost`, `fleetDailyCost`, `budgetPaused`), src/loop.ts (`foldUsage`
-records the daily window), src/orchestrator.ts (gate in poll loop + transition events),
-src/status.ts (snapshot `budget` field), src/status-render.ts (header badge; `loopPhase`
-param), src/gui.ts (pass paused into phase payload), src/ui/gui/gui-page.ts (header badge JS),
-src/events/event-format.ts (two render cases), test/config.test.ts, test/state.test.ts,
-test/orchestrator.test.ts, test/status-render.test.ts, test/event-format.test.ts,
+src/config/config-schema.ts (config field), src/loop/loop-state.ts (LoopState fields),
+src/events/events.ts (two event types), src/config/config.ts (default), src/config/config-schema.ts
+(TOP_LEVEL_KEYS), src/config/config-field-checks.ts (validation), src/loop/loop-state.ts
+(`freshLoopState` defaults), src/budget/budget.ts (`todayStamp`, `dailyCost`, `recordDailyCost`,
+`fleetDailyCost`, `budgetPaused`), src/tick/tick-usage.ts (`TickUsage.fold` records the daily
+window), src/orchestrator/orchestrator.ts (gate in poll loop + transition events),
+src/status/status-data.ts (snapshot `budget` field), src/ui/status-render.ts (header badge),
+src/ui/status-model.ts (`loopPhase`), src/ui/status-payload.ts (pass paused into phase payload),
+src/ui/gui/gui-page.ts (header badge JS), src/events/event-format.ts (two render cases),
+test/config.test.ts, test/budget.test.ts, test/loop-state.test.ts,
+test/orchestrator-budget.e2e.test.ts, test/status-render.test.ts, test/event-format.test.ts,
 test/gui.test.ts, README.md.
 
 ## Acceptance criteria
@@ -158,7 +161,7 @@ test/gui.test.ts, README.md.
   window untouched.
 - While fleet daily spend ≥ cap, no role loop starts a new tick (scheduled, main-moved wake, or
   startup) — verified end-to-end with the fake pi shim reporting cost. No new shim plumbing is
-  needed: test/util.ts's `assistantLine(text, {cost})` already emits `usage.cost.total`, which
+  needed: test/fixtures/pi-events.ts's `assistantLine(text, {cost})` already emits `usage.cost.total`, which
   PiStreamParser sums into `PiRunResult.costUsd`, so the shim script just prints such a line.
   Pin "tiny cap" to exactly one fake run's cost (e.g. $1 per run, cap 1): tick 1 lands, spend
   reaches the cap, tick 2 is blocked while a queued director prompt still runs; in-flight ticks

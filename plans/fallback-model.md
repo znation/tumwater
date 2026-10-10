@@ -21,7 +21,7 @@ fallback separates the two questions the pause was conflating: *how much money m
 spend today* (still `maxDailyCostUsd`) and *must it stop when the money is gone* (now: only if
 there is nothing free to fall back to).
 
-This is the harness's existing "(cost n/a)" notion — `src/pi-models.ts` already reads pi's
+This is the harness's existing "(cost n/a)" notion — `src/pi/pi-models.ts` already reads pi's
 model definitions to decide whether a fleet's models are priced, and the dashboards already
 read `· budget: n/a` for an all-free fleet — pointed at a second job: not just *describing* a
 free fleet, but *becoming* one when the paid budget runs out.
@@ -45,7 +45,7 @@ free fleet, but *becoming* one when the paid budget runs out.
 
 ### The gate is three-valued
 
-`BudgetGate = "open" | "fallback" | "paused"` (src/state.ts), from one pure function over two
+`BudgetGate = "open" | "fallback" | "paused"` (src/budget/budget.ts), from one pure function over two
 inputs — has spend reached the cap, and is a cost-free fallback ready:
 
 | spend < cap | fallback usable | gate | role loops |
@@ -61,8 +61,8 @@ autonomous-spend cap (the same exemption the pause already had).
 
 ### "Usable" means verified free, not merely configured
 
-`fallbackModelFree(config, modelsPath)` (src/pi-models.ts) resolves the pair and asks pi's
-`models.json` whether it is priced at zero, through the same `pairFree` helper `fleetModelsFree`
+`fallbackModelFree(config, modelsPath)` (src/pi/pi-models.ts) resolves the pair and asks pi's
+`models.json` whether it is priced at zero, through the same `piPairFree` helper `fleetModelsFree`
 now shares. Anything unresolvable — a half-named pair that would fall through to pi's own
 default, an unknown provider or model id, a missing or malformed definitions file, a priced
 model — counts as NOT free, and the gate pauses as before, naming the refused pair in the
@@ -71,7 +71,7 @@ survive, and "I could not check" is not "it is free".
 
 ### Switching is a config swap, not a new plumbing path
 
-`applyFallbackModel(config)` (src/config.ts) returns the config role loops run under while the
+`applyFallbackModel(config)` (src/config/config-views.ts) returns the config role loops run under while the
 gate holds: the fallback pair installed as the top-level `provider`/`model`/`thinking`, **and
 every per-role and reviewer model override dropped**. Dropping the overrides is the point — a
 role pinned to a paid model in `tumwater.json`, or a strong paid reviewer, must not keep
@@ -86,7 +86,7 @@ follow-up, reviewer, conflict resolver — resolve to the free pair with no furt
 
 Resume stays live and stateless: crossing local midnight, raising the cap, or fixing a mistyped
 fallback id re-evaluates the gate on the next ~2 s poll. `models.json` is stat-cached inside
-pi-models.ts, so the added freeness check costs one stat per poll.
+src/pi/pi-models.ts, so the added freeness check costs one stat per poll.
 
 ### Events and display
 
@@ -102,13 +102,14 @@ pi-models.ts, so the added freeness check costs one stat per poll.
 
 ## Files touched
 
-src/types.ts (FallbackModelConfig, config field, `budget_fallback`), src/config-validation.ts
-(key list + shape), src/config.ts (`fallbackPair`, `applyFallbackModel`, clone/merge),
-src/pi-models.ts (`pairFree`, `fallbackModelFree`), src/state.ts (`BudgetGate`, `budgetGate`),
-src/orchestrator.ts (gate, transition events, config push, landing config, `modelsPath` seam),
-src/status/status-data.ts (snapshot `budget.fallback`), src/ui/status-render.ts (badge, state
-cells),
-src/ui/status-payload.ts, src/events/event-format.ts, README.md, and their tests.
+src/config/config-schema.ts (FallbackModelConfig, config field), src/events/events.ts
+(`budget_fallback`), src/config/config-validation.ts (key list + shape),
+src/config/config-views.ts (`fallbackPair`, `applyFallbackModel`, clone/merge),
+src/pi/pi-models.ts (`piPairFree`, `fallbackModelFree`), src/budget/budget.ts (`BudgetGate`,
+`budgetGate`), src/orchestrator/orchestrator.ts (gate, transition events, config push, landing
+config, `modelsPath` seam), src/status/status-data.ts (snapshot `budget.fallback`),
+src/ui/status-render.ts (badge, state cells), src/ui/status-payload.ts,
+src/events/event-format.ts, README.md, and their tests.
 
 ## Acceptance criteria
 

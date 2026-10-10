@@ -20,7 +20,7 @@ fleet collapsing onto one model.
 - **The override plumbing exists but is costly to use.** A provider/model/thinking triple sits
   on the top level, on every `roles.<id>` entry, on `review`, and on `fallbackModel`, so "a
   strong model for the reviewer and the plan role" means repeating one triple in several places.
-  And at the cap `applyFallbackModel` (src/config-views.ts) drops every override and puts every
+  And at the cap `applyFallbackModel` (src/config/config-views.ts) drops every override and puts every
   seam on one free pair — a strong paid reviewer degrades to the same free model as the
   cheapest author.
 - **There is headroom for a stronger reviewer.** Measured from `.tumwater/log/events.jsonl`,
@@ -83,7 +83,7 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
 `--provider` / `--model` / `--thinking` separately (src/pi/pi-args.ts):
 
 1. A trailing `:x` is a thinking level only when `x` is in `THINKING_LEVELS`
-   (src/config-schema.ts). `zai-org/GLM-5.3-Flash:together` keeps its `:together` (the HF
+   (src/config/config-schema.ts). `zai-org/GLM-5.3-Flash:together` keeps its `:together` (the HF
    router's provider pin); `…:together:low` is that model at thinking `low`.
 2. The provider is the text before the first `/`, the id is the rest:
    `huggingface/zai-org/GLM-5.3-Flash:together` → provider `huggingface`, id
@@ -98,10 +98,10 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
 
 | Seam | Tier | Code path |
 | --- | --- | --- |
-| Author ticks — feature, bugfix, organize, coverage, clean, dry, perf, qa, telemetry, improve, steward, director, user-defined loops | default | src/loop-pi.ts via `configForRole` |
+| Author ticks — feature, bugfix, organize, coverage, clean, dry, perf, qa, telemetry, improve, steward, director, user-defined loops | default | `configForRole` (src/config/config-views.ts), run by src/loop/loop-pi.ts |
 | plan role | strong | same |
 | readme role | small | same |
-| Reviewer, plus its VERDICT and no-rerun follow-up turns | strong | src/review/review.ts, src/review/review-followup.ts via `reviewRunConfig` |
+| Reviewer, plus its VERDICT and no-rerun follow-up turns | strong | `reviewRunConfig` (src/config/config-views.ts), run by src/review/review.ts and src/review/review-followup.ts |
 | Conflict resolver | strong | src/landing/landing-merge.ts `resolveConflict` (today: the authoring loop's own config) |
 | SUMMARY follow-up, transient retry, resume-on-restart | the tick's own model | continuations stay on the session's model; switching would lose the prompt cache |
 
@@ -123,7 +123,7 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
 At the cap, each seam runs on its tier's resolved fallback:
 
 1. The tier's **own** fallback, when it is declared, priced at zero in pi's `models.json`
-   (`pairFree`), and its breaker is serving.
+   (`piPairFree`, src/pi/pi-models.ts), and its breaker is serving.
 2. Otherwise another tier's **own** fallback (never one that tier itself borrowed), in order:
 
    | Tier | Tries |
@@ -235,21 +235,21 @@ Each lands and is useful on its own:
 
 ## Files touched
 
-src/config-schema.ts (types, key lists), src/config-validation.ts and src/config-field-checks.ts
-(shapes, legacy conflicts), src/config.ts (defaults, overlay of string-or-map), a new
-src/config/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
-`fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/roles/role-catalog.ts
-(`tier`),
+src/config/config-schema.ts (types, key lists), src/config/config-validation.ts and
+src/config/config-field-checks.ts (shapes, legacy conflicts), src/config/config.ts (defaults,
+overlay of string-or-map), a new src/config/model-selector.ts (parse and format),
+src/config/config-views.ts (`configForRole`, `reviewConfig`, `fallbackPair`, `applyFallbackModel`
+by tier, plus a resolver view), src/roles/role-catalog.ts (`tier`),
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget/budget.ts,
 src/gates/budget-gates.ts, src/budget/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts,
 src/review/review-followup.ts,
-src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
-src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts,
-src/status/status-data.ts, src/ui/*,
-src/config-editable-keys.ts, src/config-write.ts, src/init/init-templates.ts, src/config-example.ts,
-README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
-docs/implementation-model-fallback.md, and their tests.
+src/loop/loop-tick.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts,
+src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts,
+src/roles/role-view.ts, src/status/status-data.ts, src/ui/*,
+src/config/config-editable-keys.ts, src/config/config-write.ts, src/init/init-templates.ts,
+src/config/config-example.ts, README.md, docs/backends.md, docs/how-it-works.md,
+docs/feature-model-fallback.md, docs/implementation-model-fallback.md, and their tests.
 
 ## Acceptance criteria
 

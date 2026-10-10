@@ -38,26 +38,6 @@ the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
 - A pi non-buffered call still warns at `toolCallStallSeconds`.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for the plan documents that cite the config
-and model splits: `plans/daily-cost-budget.md`, `plans/fallback-model.md`, and
-`plans/model-tiers.md`.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these three files. Their absent paths are the `types`, `config`, `loop`,
-`orchestrator`, `pi`, `state`, and `status` module moves, so the split-aware map is exercised
-across several owners.
-
-**Files touched.** Those three `plans/*.md` files. No source or test change.
-
-**Acceptance criteria.**
-- The inventory over these three files reports no cited path absent from the tree.
-- No `<path>:<line>` in these three files names a line past that file's end.
-- For each split module cited here, the module named beside a symbol exports it (checked against
-  the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 4/5: the observer, QA, questions, review, and steward plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/observer-roles.md`,
@@ -229,6 +209,26 @@ prompt builder) to name it; the `test/...` cases it cites are unchanged. Doc-onl
 
 
 ## Done
+
+### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for the plan documents that cite the config
+and model splits: `plans/daily-cost-budget.md`, `plans/fallback-model.md`, and
+`plans/model-tiers.md`.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these three files. Their absent paths are the `types`, `config`, `loop`,
+`orchestrator`, `pi`, `state`, and `status` module moves, so the split-aware map is exercised
+across several owners.
+
+**Files touched.** Those three `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these three files reports no cited path absent from the tree.
+- No `<path>:<line>` in these three files names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
 
 ### Agent backends, part 7c/7: the opt-in `smoke:claude` live check (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7b/7; independent of the citation-sweep series; done 2026-10-10 by feature)
 
