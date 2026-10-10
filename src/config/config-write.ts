@@ -213,6 +213,18 @@ export function unknownRoleFieldError(id: string, field: string): string | null 
   return `unknown role field "${field}" for roles.${id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${typoSuffix(field, ROLE_ENTRY_KEYS)}`;
 }
 
+/** The loaded config viewed as an indexable record: the two known section shapes (a role's
+ * field map, the `model` string or tier map) plus an open index signature, so a parsed
+ * `config set`/`unset` key can be read and rebuilt by name. One home for the cast setConfigKey
+ * and unsetConfigKey share; writeConfigMutation's validateConfig owns the type truth of the
+ * merged candidate, so the cast is safe — a type-invalid merge fails there and nothing is
+ * written. */
+type ConfigRecord = {
+  roles?: Record<string, Record<string, unknown>>;
+  model?: string | Record<string, string>;
+  [key: string]: unknown;
+};
+
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
  * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
@@ -260,11 +272,7 @@ export function setConfigKey(
     }
     let oldValue: unknown;
     const result = writeConfigMutation(root, (cfg) => {
-      const record = cfg as unknown as {
-        roles?: Record<string, Record<string, unknown>>;
-        model?: string | Record<string, string>;
-        [key: string]: unknown;
-      };
+      const record = cfg as unknown as ConfigRecord;
       if (parsed.kind === "map") {
         const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
         oldValue = existing[parsed.role];
@@ -383,11 +391,7 @@ export function unsetConfigKey(
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
     const raw = rawConfigObject(root); // the file's own keys, before defaults fill them in
-    const record = cfg as unknown as {
-      roles?: Record<string, Record<string, unknown>>;
-      model?: string | Record<string, string>;
-      [key: string]: unknown;
-    };
+    const record = cfg as unknown as ConfigRecord;
     if (parsed.kind === "top") {
       // Absent from the file (only a default carries it): nothing to remove.
       if (!Object.hasOwn(raw, parsed.key)) return cfg;
