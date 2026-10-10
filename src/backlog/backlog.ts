@@ -1,6 +1,5 @@
 import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
-import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { entryDates, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
@@ -20,33 +19,10 @@ export type { BacklogEntry } from "./backlog-md.js";
  * parse. */
 
 /** Parsed sections keyed by file + section title (a future reader of a second section from the
- * same file must not collide with the first). Bounded inside cachedByStat: many short-lived
+ * same file must not collide with the first). Bounded inside cachedTextByStat: many short-lived
  * roots in tests would otherwise accumulate. Stores the richer {title, body} shape — one parse
  * per file change subsumes both the titles-only and the full-entry reads. */
 const sectionCache = new Map<string, StatKeyedValue<BacklogEntry[]>>();
-
-/** One stat-cached read of a markdown file, or null when it is missing or unreadable — the
- * shared load half behind both section readers below: readTextOrNull reads the file and a null
- * (no data) propagates through cachedByStat, so a render path never throws on backlog state.
- * `parse` runs only on a cache miss; `clone` hands each caller its own copy. */
-function cachedMarkdown<T>(
-  cache: Map<string, StatKeyedValue<T>>,
-  key: string,
-  file: string,
-  parse: (md: string) => T,
-  clone: (value: T) => T,
-): T | null {
-  return cachedByStat(
-    cache,
-    key,
-    file,
-    () => {
-      const md = readTextOrNull(file); // Missing or unreadable — no data.
-      return md === null ? null : parse(md);
-    },
-    clone,
-  );
-}
 
 /** The entries under `<root>/<fileName>`'s `## <sectionTitle>`: fresh when the file's identity
  * or mtime/size changed since the last read, cached otherwise (see module docs). A missing or
@@ -54,7 +30,7 @@ function cachedMarkdown<T>(
 function sectionEntries(root: string, fileName: string, sectionTitle: string): BacklogEntry[] {
   const file = path.join(root, fileName);
   return (
-    cachedMarkdown(
+    cachedTextByStat(
       sectionCache,
       `${file}\u0000${sectionTitle}`,
       file,
@@ -65,7 +41,7 @@ function sectionEntries(root: string, fileName: string, sectionTitle: string): B
 }
 
 /** Stat-keyed cache of the completion-date reads, keyed by file + section + date regex (each
- * completion section's verbs differ) and bounded inside cachedByStat like sectionCache. */
+ * completion section's verbs differ) and bounded inside cachedTextByStat like sectionCache. */
 const dateCache = new Map<string, StatKeyedValue<string[]>>();
 
 /** Completion dates of an entry section (PLANS.md `## Done`, BUGS.md `## Fixed`), stat-cached
@@ -82,7 +58,7 @@ export function sectionCompletionDates(
 ): string[] {
   const file = path.join(root, fileName);
   return (
-    cachedMarkdown(
+    cachedTextByStat(
       dateCache,
       `${file}\u0000${sectionTitle}\u0000${dateRe.source}\u0000${dateRe.flags}`,
       file,

@@ -1,4 +1,4 @@
-import { statOrNull } from "./files.js";
+import { readTextOrNull, statOrNull } from "./files.js";
 
 /** Stat-keyed caching of file-derived values polled on an interval. Split out of
  * src/files/files.ts — which keeps the generic file operations — because this is a
@@ -56,4 +56,30 @@ export function cachedByStat<T>(
   if (cache.size >= MAX_STAT_CACHED) cache.clear();
   cache.set(key, { dev: st.dev, ino: st.ino, mtimeMs: st.mtimeMs, size: st.size, value });
   return clone(value);
+}
+
+/** One stat-cached read of a text file, or null when it is missing or unreadable — the shared
+ * load half over `cachedByStat` for the readers that parse a markdown/text file: readTextOrNull
+ * reads it, and a null (no data) propagates through so a render path never throws on the file's
+ * state. `parse` runs only on a cache miss and receives the file's text (never null); `clone`
+ * hands each caller its own copy. The callers: backlog.ts's sectionEntries and
+ * sectionCompletionDates, and backlog-structure.ts's strandedPlanEntriesFor,
+ * actionableEntryRangesFor, and renderBacklogIndexBlock. */
+export function cachedTextByStat<T>(
+  cache: Map<string, StatKeyedValue<T>>,
+  key: string,
+  file: string,
+  parse: (md: string) => T,
+  clone: (value: T) => T,
+): T | null {
+  return cachedByStat(
+    cache,
+    key,
+    file,
+    () => {
+      const md = readTextOrNull(file); // Missing or unreadable — no data.
+      return md === null ? null : parse(md);
+    },
+    clone,
+  );
 }

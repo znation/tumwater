@@ -1,7 +1,7 @@
 import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
-import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
   BACKLOG_FILES,
   fenceTracker,
@@ -252,7 +252,7 @@ export async function backlogStructureReason(
 const strandedPlanCache = new Map<string, StatKeyedValue<StrandedPlanEntry[]>>();
 
 /** `strandedPlanEntries` for the primary checkout's PLANS.md, stat-cached per file path
- * (stat-cache.cachedByStat): the clean loop asks for it every tick and `tumwater role`
+ * (stat-cache.cachedTextByStat): the clean loop asks for it every tick and `tumwater role`
  * previews the same block, and PLANS.md's `## Done` history grows without bound, so an
  * unchanged file costs one stat instead of a full read and section walk. A missing or
  * unreadable file reads as no entries. The result is copied out, so each caller owns its
@@ -260,15 +260,11 @@ const strandedPlanCache = new Map<string, StatKeyedValue<StrandedPlanEntry[]>>()
 function strandedPlanEntriesFor(root: string): StrandedPlanEntry[] {
   const full = path.join(root, "PLANS.md");
   return (
-    cachedByStat(
+    cachedTextByStat(
       strandedPlanCache,
       full,
       full,
-      () => {
-        // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
-        const md = readTextOrNull(full);
-        return md === null ? null : strandedPlanEntries(md);
-      },
+      (md) => strandedPlanEntries(md),
       (entries) => entries.slice(), // A copy: callers may treat the result as their own.
     ) ?? []
   );
@@ -348,7 +344,7 @@ const actionableRangesCache = new Map<string, StatKeyedValue<ActionableEntryRang
  * the same section of the same file every couple of seconds, and BUGS.md's closed history —
  * which the whole-file walk reads — grows without bound, so an unchanged file costs one stat
  * instead of a full read, split, and section walk. Keyed by file path so distinct roots never
- * collide, bounded inside cachedByStat. A missing or unreadable file reads as no ranges. The
+ * collide, bounded inside cachedTextByStat. A missing or unreadable file reads as no ranges. The
  * result is copied out, so each caller owns its data. */
 export function actionableEntryRangesFor(
   root: string,
@@ -357,14 +353,11 @@ export function actionableEntryRangesFor(
 ): ActionableEntryRange[] {
   const full = path.join(root, file);
   return (
-    cachedByStat(
+    cachedTextByStat(
       actionableRangesCache,
       `${full}\u0000${sectionTitle}`,
       full,
-      () => {
-        const md = readTextOrNull(full);
-        return md === null ? null : actionableEntryRanges(md, sectionTitle);
-      },
+      (md) => actionableEntryRanges(md, sectionTitle),
       (ranges) => ranges.slice(), // A copy: callers may treat the result as their own.
     ) ?? []
   );
@@ -392,12 +385,12 @@ const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
 
 /** One actionable entry as the index renders it: the 1-based range the loop reads, the
  * verbatim heading, and the body a hold note is read from. Cached per file stat
- * (stat-cache.cachedByStat): both branches of every tick prompt render this block, and the
+ * (stat-cache.cachedTextByStat): both branches of every tick prompt render this block, and the
  * backlog files — BUGS.md above all, since its closed history grows without bound — change only
  * at a landing. An unchanged file then costs one stat per tick instead of a full read, a split
  * into lines, and a section walk proportional to the whole file. The eligibility mark is applied
  * after the cache, against the section-independent prerequisite set; the cache is keyed by the
- * file path so distinct roots never collide, and bounded inside cachedByStat. */
+ * file path so distinct roots never collide, and bounded inside cachedTextByStat. */
 interface IndexEntry {
   start: number;
   end: number;
@@ -427,14 +420,11 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
   const listed: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {
     const full = path.join(root, file);
-    const entries = cachedByStat(
+    const entries = cachedTextByStat(
       indexSectionCache,
       full,
       full,
-      () => {
-        // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
-        const md = readTextOrNull(full);
-        if (md === null) return null; // Unreadable: nothing to cache for this stat.
+      (md) => {
         const ranges = actionableEntryRanges(md, section);
         if (ranges.length === 0) return [];
         const lines = md.split(/\r?\n/);
