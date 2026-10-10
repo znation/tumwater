@@ -10,6 +10,25 @@ import { runCli } from "./helpers/cli-harness.js";
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings), matching the reader and collectReport (dayKey).
 
+test("collectFailureReport memoizes an unchanged log and re-reads a changed one", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+  ]);
+  const first = collectFailureReport(root, 1);
+  const second = collectFailureReport(root, 1);
+  assert.strictEqual(second, first, "an unchanged log and window return the memoized digest");
+  // A changed log — the append below grows the file, changing its identity — must re-derive
+  // rather than serve the memo.
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "bugfix", type: "tick_end", result: "error", error: "boom" },
+  ]);
+  const third = collectFailureReport(root, 1);
+  assert.notStrictEqual(third, first, "a changed log re-derives the digest");
+  assert.equal(third.ticks, 2, "the re-derived digest sees the appended tick");
+});
+
 test("collectFailureReport tallies tick_end results per role", () => {
   const root = tmpdir();
   writeEvents(root, [

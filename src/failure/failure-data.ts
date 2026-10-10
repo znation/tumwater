@@ -18,6 +18,8 @@ import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./fai
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, getOrCreate, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
+import { statOrNull } from "../files/files.js";
+import { eventsLogPath } from "../paths.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -179,13 +181,69 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   return byRole;
 }
 
+/** The live event log's identity at the moment a digest was folded. An append, truncation, or
+ * rotation changes at least one field; `dev`/`ino` catch a replaced file whose size matches. */
+interface FailureDigestStat {
+  size: number;
+  mtimeMs: number;
+  dev: number;
+  ino: number;
+}
+
+/** One memoized digest plus the window and log identity it was folded from. */
+interface FailureDigestEntry {
+  from: string;
+  to: string;
+  priorFrom: string;
+  stat: FailureDigestStat;
+  data: FailureReportData;
+}
+
+/** Bounded memo of whole failure digests, keyed by root and day count. The dashboard's Failures
+ * tab, the TUI's Ctrl+T pane, and every telemetry tick re-request the same digest, and the
+ * collector re-reads and re-parses up to 2× the window's log bytes each time (~4 MB on this
+ * repo's own log, growing toward the rotation cap). An unchanged log and window cost one stat
+ * and return the prior result; any change — an append, a rotation, or a new local day —
+ * re-derives exactly as uncached. Mirrors report-data.ts's foldWindowEvents, which already
+ * spares the usage report the same re-read. */
+const failureDigestCache = new Map<string, FailureDigestEntry>();
+const FAILURE_DIGEST_CACHE_MAX = 8;
+
+/** The live log's identity, all zero when the file is missing (the empty-log case). */
+function digestStat(root: string): FailureDigestStat {
+  const st = statOrNull(eventsLogPath(root));
+  return st
+    ? { size: st.size, mtimeMs: st.mtimeMs, dev: st.dev, ino: st.ino }
+    : { size: 0, mtimeMs: 0, dev: 0, ino: 0 };
+}
+
+/** Whether two log identities name the same file at the same bytes. */
+function sameDigestStat(a: FailureDigestStat, b: FailureDigestStat): boolean {
+  return a.size === b.size && a.mtimeMs === b.mtimeMs && a.dev === b.dev && a.ino === b.ino;
+}
+
 /** Collect the digest over the last `days` local calendar days, reading a 2×-long window once
  * and partitioning it in memory so the delta against the preceding equal window costs no
- * second tail read. */
+ * second tail read. Memoized (failureDigestCache): a repeat request whose window and log are
+ * unchanged returns the prior digest instead of re-reading and re-folding the same bytes. */
 export function collectFailureReport(root: string, days: number): FailureReportData {
   const now = new Date();
   const { from, to } = dayWindow(days, now);
   const priorFrom = formatDate(dayAt(days * 2 - 1, now));
+  const key = `${root}\u0000${days}`;
+  const stat = digestStat(root);
+  const cached = failureDigestCache.get(key);
+  if (
+    cached &&
+    cached.from === from &&
+    cached.to === to &&
+    cached.priorFrom === priorFrom &&
+    sameDigestStat(cached.stat, stat)
+  ) {
+    failureDigestCache.delete(key); // Refresh LRU position.
+    failureDigestCache.set(key, cached);
+    return cached.data;
+  }
 
   const { events, coversFullWindow } = readWindowEvents(root, priorFrom);
   const current: HarnessEvent[] = [];
@@ -197,7 +255,13 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     else if (day >= priorFrom) prior.push(ev);
   }
 
-  return assembleFailureReport(current, prior, events, coversFullWindow, { days, from, to });
+  const data = assembleFailureReport(current, prior, events, coversFullWindow, { days, from, to });
+  failureDigestCache.set(key, { from, to, priorFrom, stat, data });
+  if (failureDigestCache.size > FAILURE_DIGEST_CACHE_MAX) {
+    const oldest = failureDigestCache.keys().next().value;
+    if (oldest !== undefined) failureDigestCache.delete(oldest);
+  }
+  return data;
 }
 
 /** Collect the digest over the trailing `sinceMs` window ending now, partitioning the read into
