@@ -31,11 +31,8 @@ import path from "node:path";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { STATE_DIR } from "../src/paths.js";
-import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
-import { fakePi } from "./fakes/fake-pi.js";
-import { assistantLine } from "./fixtures/pi-events.js";
+import { FAST_POLL_MS, deadFallbackScenario, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakeClock } from "./fakes/time.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
@@ -63,23 +60,9 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
   const cfgPath = path.join(repo, "tumwater.json");
   fs.writeFileSync(cfgPath, JSON.stringify(cfg));
 
-  // pi's model catalog, pricing the fallback pair at zero (an absent cost is free) — the
-  // modelsPath seam keeps the test off the real ~/.pi definitions.
-  const modelsPath = path.join(tmpdir("probe-models-"), "models.json");
-  fs.mkdirSync(path.dirname(modelsPath), { recursive: true });
-  fs.writeFileSync(
-    modelsPath,
-    JSON.stringify({ providers: { free: { models: [{ id: "qwen-free" }] } } }),
-  );
-
-  // The fake pi serves the primary a $10 nothing-to-do and dies on the fallback pair — the
-  // dead backend whose demotion the probe exists to re-test.
-  const argsFile = path.join(tmpdir("probe-args-"), "argv.log");
-  const script =
-    `echo "$@" >> '${argsFile}'\n` +
-    `for a in "$@"; do case "$a" in qwen-free) echo 'fallback backend dead' >&2; exit 1;; esac; done\n` +
-    `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 10 })}'`;
-  const restore = fakePi(script);
+  // The dead-free-fallback scenario: the modelsPath seam keeps the test off the real ~/.pi
+  // definitions, and the fake pi dies on the fallback pair whose demotion the probe re-tests.
+  const { modelsPath, argsFile, restore } = deadFallbackScenario("probe");
 
   // The breaker's clock, advanced by hand: the cool-down deadline and its elapsed check read
   // only this, so an assertion about "the breaker still holds" cannot be outrun by a slow

@@ -3,7 +3,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { defaultConfig, loadConfig, saveConfig } from "../../src/config/config.js";
 import { initProject } from "../../src/init/init.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import { drainMerge } from "../../src/landing/landing-drain.js";
 import { newLandingPipeline, type LandingPipelineContext } from "../../src/landing/landing-pipeline.js";
@@ -16,7 +16,9 @@ import { logEvent } from "../../src/events/events.js";
 import type { RedeployDeps } from "../../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../../src/redeploy/redeployer.js";
 import { LoopRunner } from "../../src/loop/loop.js";
-import { fakePiIdle } from "../fakes/fake-pi.js";
+import { fakePi, fakePiIdle } from "../fakes/fake-pi.js";
+import { assistantLine } from "./pi-events.js";
+import { writeModelsFile } from "./models-fixtures.js";
 import { waitFor } from "../helpers/wait.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { TickResult } from "../../src/tick/tick-outcome.js";
@@ -91,6 +93,31 @@ export async function makeFastRepo(label: string, roles: string[], model?: strin
   await initProject(repo, label);
   saveConfig(repo, fastConfig(roles, model));
   return repo;
+}
+
+/** The dead-free-fallback scenario the breaker and probe tests both stage: a models.json
+ * resolving only the free `model`, and a fake pi that serves the primary a $10
+ * nothing-to-do and exits nonzero the moment the fallback pair runs — the dead backend the
+ * breaker exists to trip and the probe to re-test. Returns the staged models path, the argv
+ * log the fake pi appends each run to, and the fake pi's restore. Orchestrator-fallback and
+ * orchestrator-probe each hand-rolled this scenario before; sharing it keeps the fallback
+ * pair and the failure shape from drifting between them. */
+export function deadFallbackScenario(label: string, model = "qwen-free"): {
+  modelsPath: string;
+  argsFile: string;
+  restore: () => void;
+} {
+  const modelsPath = writeModelsFile(
+    tmpdir(`${label}-models-`),
+    JSON.stringify({ providers: { free: { models: [{ id: model }] } } }),
+  );
+  const argsFile = path.join(tmpdir(`${label}-args-`), "argv.log");
+  const restore = fakePi(
+    `echo "$@" >> '${argsFile}'\n` +
+      `for a in "$@"; do case "$a" in ${model}) echo 'fallback backend dead' >&2; exit 1;; esac; done\n` +
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 10 })}'`,
+  );
+  return { modelsPath, argsFile, restore };
 }
 
 /** Start a run over `repo` with the fields every in-process test start repeats — the repo's
