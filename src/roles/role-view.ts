@@ -25,6 +25,7 @@ import {
   type ModelFallbackView,
 } from "../config/config-views.js";
 import { fallbackModelPair, piModelsPath } from "../pi/pi-models.js";
+import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
 
@@ -64,6 +65,13 @@ export interface RoleViewPayload {
   /** The active model-fallback episode (PLANS.md "Model failure fallback"), or null when
    * the role's ticks are not running off-model. */
   modelFallback: ModelFallbackView | null;
+  /** The claude billing for a claude seam (plans/agent-backends.md §7/§8, PLANS.md part
+   * 6d/7): "subscription" or "api" from the account file, absent for a pi seam or when no
+   * account read exists. */
+  billing?: ClaudeBilling;
+  /** The primary subscription window's type (`five_hour`), present only for a subscription
+   * reading that reported a window — the renderer's "(5h window)". */
+  billingWindow?: string;
   /** The effective min-tick interval: the role's override or the global value. */
   minTickIntervalSeconds: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
@@ -108,6 +116,10 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     throw new Error(unknownRoleMessage(role, knownRoleIds(cfg)));
   }
   const effective = configForRole(cfg, role);
+  // The claude billing answer, read only for a claude seam (the account file is claude's):
+  // its subscription window's primary type rides along for the renderer's label.
+  const account = effective.agent === "claude" ? readClaudeAccount(root) : null;
+  const billingWindow = account?.billing === "subscription" ? claudeWindowEntries(account)[0]?.type : undefined;
   // The fallback story the operator sees: the declared pair, but the price-resolved pair when
   // one exists (a map with no `default` entry borrows another tier's free pair) and the
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
@@ -138,6 +150,8 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     fallback,
     fallbackFree: freeFallback !== null,
     modelFallback: modelFallbackView(episode, cfg, role),
+    ...(account !== null ? { billing: account.billing } : {}),
+    ...(billingWindow !== undefined ? { billingWindow } : {}),
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,

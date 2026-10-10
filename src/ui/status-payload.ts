@@ -124,7 +124,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
-    budgetBadge: budgetBadge(snap.budget),
+    budgetBadge: budgetBadge(snap.budget, snap.claudeWindow),
     // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
     // `status --json`, and the header badge is preformatted through badges.ts's diskBadge —
     // the same string the TUI/status header renders. Omitted (not null) when no orchestrator
@@ -178,6 +178,11 @@ export function statusPayload(root: string, now = Date.now()): object {
     // reported) — machine-readable for `status --json`; the display-ready header badge is
     // the preformatted `budgetBadge`.
     budget: snap.budget,
+    // The subscription usage-window block (part 6d/7), absent on a pi-only or API-claude
+    // fleet — the same raw shape `status --json` carries, which the GUI's spend card reads
+    // to render the window (the preformatted budgetBadge above already folds it into the
+    // header for the TUI/status). Raw data, like budget.
+    ...(snap.claudeWindow ? { claudeWindow: snap.claudeWindow } : {}),
     // Operator pause (`tumwater pause` marker present): every idle role loop's phase reads
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
     paused: snap.paused,

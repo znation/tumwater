@@ -33,6 +33,7 @@ import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbo
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { enqueueLanding, queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet/fleet-state.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the snapshot carries the
 // configured window and the in-window flag — present only while the value parses to a real
@@ -1000,4 +1001,62 @@ test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json"
     snap = snapshot(repo, modelsFile);
   }, "a foreign fallbackDemotions must not crash the poll");
   assert.equal(snap!.running, true, "the running orchestrator still reads as running");
+});
+
+// The subscription usage-window block (plans/agent-backends.md §8, PLANS.md part 6d/7): the
+// snapshot classifies the fleet's paying seams so the display can replace or join the daily
+// spend.
+test("snapshot carries the claude subscription window and classifies paying seams", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "claude window status test");
+  const modelsFile = writeModelsFile(tmpdir("status-claude-"), MODELS_JSON);
+  const cfg = loadConfig(repo);
+
+  // A pi-only fleet with no account reading: absent, so the surfaces render as before.
+  assert.equal(snapshot(repo, modelsFile).claudeWindow, undefined);
+
+  // Every seam claude on subscription billing: the window block is present and `only`.
+  cfg.agent = "claude";
+  saveConfig(repo, cfg);
+  const resetsAt = Date.now() + 3_600_000;
+  writeClaudeAccount(repo, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "allowed_warning", resetsAt, utilization: 0.64, observedAt: Date.now() } },
+  });
+  let snap = snapshot(repo, modelsFile);
+  assert.ok(snap.claudeWindow, "the window block is present");
+  assert.equal(snap.claudeWindow!.only, true, "every paying seam is subscription claude");
+  assert.equal(snap.claudeWindow!.primary.type, "five_hour");
+  assert.equal(snap.claudeWindow!.primary.utilization, 0.64);
+  assert.equal(snap.claudeWindow!.heldUntil, null);
+  // The payload carries the raw block and the preformatted badge folds the window in.
+  const payload = statusPayload(repo) as { claudeWindow?: unknown; budgetBadge: string };
+  assert.ok(payload.claudeWindow, "the payload carries the raw block for the GUI");
+  assert.match(payload.budgetBadge, /Claude 5h · 64% · resets /);
+
+  // A rejected window reports the future hold.
+  writeClaudeAccount(repo, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "rejected", resetsAt, utilization: 1, observedAt: Date.now() } },
+  });
+  snap = snapshot(repo, modelsFile);
+  assert.equal(snap.claudeWindow!.heldUntil, resetsAt);
+
+  // Mixed: the fleet on claude with one role on a priced pi model — the daily spend and the
+  // window both stand. The top-level legacy provider is cleared so the claude default is not
+  // read as a bare id under a pi provider.
+  cfg.agent = "claude";
+  delete (cfg as { provider?: unknown }).provider;
+  delete (cfg as { model?: unknown }).model;
+  cfg.roles.clean!.provider = "paid";
+  cfg.roles.clean!.model = "gpt-x";
+  saveConfig(repo, cfg);
+  snap = snapshot(repo, modelsFile);
+  assert.ok(snap.claudeWindow, "the mixed fleet still shows the window");
+  assert.equal(snap.claudeWindow!.only, false, "priced pi seams keep the daily spend");
+  const mixed = statusPayload(repo) as { budgetBadge: string };
+  assert.match(mixed.budgetBadge, /budget: /, "the daily-spend line stands");
+  assert.match(mixed.budgetBadge, /Claude 5h/, "beside the window line");
 });

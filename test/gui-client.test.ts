@@ -327,7 +327,7 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   const flashes: string[] = [];
   const els: Record<string, unknown> = {};
   const scope = clientScope<{
-    budgetCardHtml(b: object): string;
+    budgetCardHtml(b: object, cw?: object): string;
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
@@ -372,6 +372,37 @@ test("the spend card is an editor button unless every model is free", () => {
   assert.match(uncapped, /id='budgetbadge'/, "a fleet without a cap can still set one");
   assert.match(uncapped, /Set a cap/);
   assert.doesNotMatch(uncapped, /meter/);
+});
+
+// The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7): the sidebar
+// spend card renders it in place of the daily spend when the fleet's seams are all subscription
+// claude, beside it when some are priced, and lists every window.
+test("the spend card renders the subscription window in place of or beside the daily spend", () => {
+  const { scope } = operatorScope();
+  const resetsAt = new Date(2026, 9, 10, 14, 30).getTime();
+  const cw = {
+    windows: [{ type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 }],
+    primary: { type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 },
+    only: true,
+    heldUntil: null,
+  };
+  const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, cw);
+  assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only fleet has no cap editor");
+  assert.match(only, /Claude window/);
+  assert.match(only, /Claude 5h · 64% · resets 14:30/);
+
+  const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, { ...cw, only: false });
+  assert.match(mixed, /id='budgetbadge'/, "a mixed fleet keeps the spend editor");
+  assert.match(mixed, /\$4\.09 <small>of \$15<\/small>/);
+  assert.match(mixed, /Claude 5h · 64% · resets 14:30/);
+
+  const rejected = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, {
+    windows: [{ type: "five_hour", status: "rejected", resetsAt, utilization: 1 }],
+    primary: { type: "five_hour", status: "rejected", resetsAt, utilization: 1 },
+    only: false,
+    heldUntil: resetsAt,
+  });
+  assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · held until 14:30/);
 });
 
 test("the cap editor refuses text the browser rejected instead of silently removing the cap", async () => {

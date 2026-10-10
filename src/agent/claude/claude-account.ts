@@ -65,6 +65,43 @@ export function subscriptionWindowRejected(
   );
 }
 
+/** One window entry with its `rateLimitType` attached (the record key), as every display of the
+ * subscription window needs it. */
+export type ClaudeWindowEntry = ClaudeWindow & { type: string };
+
+/** Status severity for ordering: a rejected window limits, an allowed_warning nears its limit,
+ * every other reading (allowed/ok) rides at the bottom, and a reset one no longer limits. */
+const WINDOW_RANK: Record<string, number> = { rejected: 3, allowed_warning: 2, reset: 0 };
+
+/** The window type as a compact label: `five_hour` → `5h`, `seven_day` → `7d`; an unknown
+ * type falls back to its words with underscores as spaces. The one home of the window spelling
+ * the status badge and the role view share. */
+export function claudeWindowLabel(type: string): string {
+  const m = /^(\w+)_(hour|day|week)$/.exec(type);
+  if (!m) return type.replace(/_/g, " ");
+  const words: Record<string, string> = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10" };
+  const unit = m[2] === "hour" ? "h" : m[2] === "day" ? "d" : "w";
+  const word = m[1] ?? "";
+  return `${words[word] ?? word}${unit}`;
+}
+
+/** The account's windows as a list, most constrained first: by status severity, then the
+ * reported utilization (a missing reading sorts below any number), then the earlier reset, then
+ * the type name — so a tie always orders the same way. Empty when the account reported none. */
+export function claudeWindowEntries(account: ClaudeAccount): ClaudeWindowEntry[] {
+  return Object.entries(account.windows)
+    .map(([type, w]) => ({ type, ...w }))
+    .sort((a, b) => {
+      const rank = (WINDOW_RANK[b.status] ?? 1) - (WINDOW_RANK[a.status] ?? 1);
+      if (rank !== 0) return rank;
+      const util = (b.utilization ?? -1) - (a.utilization ?? -1);
+      if (util !== 0) return util;
+      const reset = (a.resetsAt ?? Number.POSITIVE_INFINITY) - (b.resetsAt ?? Number.POSITIVE_INFINITY);
+      if (reset !== 0) return reset;
+      return a.type.localeCompare(b.type);
+    });
+}
+
 /** Read the persisted account state, or null when it is absent or unreadable. A file without a
  * usable top-level `observedAt` reads as absent (the plan's torn-file rule), and a window whose
  * `resetsAt` is at or before `now` reads back with `status: "reset"` — the reader, not every

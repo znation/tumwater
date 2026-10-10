@@ -1,5 +1,6 @@
 import { agree } from "../text/phrases.js";
 import { formatTimestamp } from "../text/datetime.js";
+import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one loop — what `tumwater role <id>` prints, rendered as Markdown
@@ -100,6 +101,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   if (p.fallback) {
     const pair = modelPair(p.fallback.provider, p.fallback.model) || agentDefault(p);
     lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
+  }
+  // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on
+  // a pi seam, so its role view is byte-identical to before.
+  if (p.billing) {
+    const window =
+      p.billing === "subscription" && p.billingWindow ? ` (${claudeWindowLabel(p.billingWindow)} window)` : "";
+    lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}${window}`);
   }
   lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);
   lines.push(`- Queued prompts: ${p.inboxCount}`);

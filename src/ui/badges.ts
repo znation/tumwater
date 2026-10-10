@@ -1,4 +1,5 @@
 import type { TestCounts } from "../build/build-check-counts.js";
+import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -101,6 +102,48 @@ export function bootstrapBadge(bootstrap: StatusSnapshot["bootstrap"]): string {
   return ` · bootstrap: ${bootstrap.plansDone}/${bootstrap.untilPlansDone} plans done`;
 }
 
+/** One window status as its badge word when no utilization was reported. */
+function claudeWindowStatusWord(status: string): string {
+  if (status === "allowed_warning") return "near limit";
+  if (status === "rejected") return "limited";
+  return status === "reset" ? "reset" : "ok";
+}
+
+/** The local wall-clock `HH:MM` of a window instant, the same hours/minutes-only shape the
+ * burn-rate forecast uses. */
+function clockHm(ms: number): string {
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** The subscription usage-window fragment (plans/agent-backends.md §8, PLANS.md part 6d/7):
+ * `· Claude 5h · 64% · resets 14:30`, with the status word when no `utilization` was reported
+ * and an `overage` marker while the account spends into overage. A rejected window reads
+ * `claude seams held until 14:30` in place of `resets` while a future deadline holds the
+ * seams; a reset reading names neither. The one home of the string, so the TUI header and the
+ * payload's preformatted badge cannot drift. */
+function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>): string {
+  const w = claudeWindow.primary;
+  const parts = [`Claude ${claudeWindowLabel(w.type)}`];
+  parts.push(typeof w.utilization === "number" ? `${Math.round(w.utilization * 100)}%` : claudeWindowStatusWord(w.status));
+  if (w.isUsingOverage === true) parts.push("overage");
+  if (w.status === "rejected" && claudeWindow.heldUntil !== null) {
+    parts.push(`claude seams held until ${clockHm(claudeWindow.heldUntil)}`);
+  } else if (w.status !== "reset" && typeof w.resetsAt === "number") {
+    parts.push(`resets ${clockHm(w.resetsAt)}`);
+  }
+  return ` · ${parts.join(" · ")}`;
+}
+
+/** The window fragment's tone rank, for the header badge and the GUI meter: a rejected window
+ * is red, an allowed_warning amber, anything else no tone. */
+export function claudeWindowTone(claudeWindow: StatusSnapshot["claudeWindow"]): "red" | "yellow" | undefined {
+  if (!claudeWindow) return undefined;
+  if (claudeWindow.primary.status === "rejected") return "red";
+  if (claudeWindow.primary.status === "allowed_warning") return "yellow";
+  return undefined;
+}
+
 /** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
  * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a`
  * for a fleet whose models are all free (spend can never accumulate against a cap that
@@ -121,8 +164,15 @@ export function bootstrapBadge(bootstrap: StatusSnapshot["bootstrap"]): string {
  * needs no forecast slot: a disabled cap never carries a capHitAt (projectCapHit returns null
  * for capUsd <= 0), and the fallback fragment only stands once the cap IS reached — the one
  * state where the forecast is itself null — so the fragments can never compete for the line. */
-export function budgetBadge(budget: StatusSnapshot["budget"]): string {
-  if (budget.free) return " · budget: n/a";
+export function budgetBadge(
+  budget: StatusSnapshot["budget"],
+  claudeWindow?: StatusSnapshot["claudeWindow"],
+): string {
+  const window = claudeWindow ? claudeWindowBadge(claudeWindow) : "";
+  // Subscription-only: the window stands IN PLACE of the daily spend — there is no priced
+  // spend for a dollar figure to report. Mixed and none fall through to the daily spend.
+  if (claudeWindow?.only) return window;
+  if (budget.free) return ` · budget: n/a${window}`;
   // Only while the fallback is actually carrying the fleet (plans/fallback-model.md): the cap
   // is spent, so the dollar figure alone would read like a stopped fleet. Naming the model
   // answers the operator's next question — what is it running on now? Its cost is n/a by
@@ -147,8 +197,8 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
       ? ` · ~cap at ${pad2(new Date(budget.capHitAt).getHours())}:${pad2(new Date(budget.capHitAt).getMinutes())}`
       : "";
   if (budget.capUsd > 0)
-    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${forecast}${fallback}`;
-  return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
+    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${forecast}${fallback}${window}`;
+  return ` · budget: ${usd(budget.spentUsd)} today · no cap${window}`;
 }
 
 /** The header's land-queue fragment (plans/merge-queue.md 4/5): `· land queue: N` while any

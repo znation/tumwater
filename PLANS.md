@@ -44,44 +44,6 @@ src/status/status-data.ts, README.md.
 - With no account file or API billing, free-ness is exactly today's behavior.
 - `npm run test` green.
 
-### Agent backends, part 6d/7: the usage-window display (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 6a/7 and 6c/7 landed)
-
-Design: plans/agent-backends.md ("Display, in place of the daily spend").
-
-Goal: the TUI, GUI, `tumwater status` and `tumwater role <id>` show the subscription window in
-place of (or alongside) the daily spend. Depends on 6a's account state and reads 6c's held
-state for the "held until" wording.
-
-**Approach.**
-1. **Status payload.** src/status/status-data.ts gains a `claudeWindow` block (the most
-   constrained window plus the full list), carried through src/ui/status-payload.ts.
-2. **Rendering, following the design table.**
-   - **subscription only:** the window replaces the daily spend, e.g.
-     "Claude 5h · 64% · resets 14:30" (the status word when no `utilization`), amber at
-     `allowed_warning`, red with "claude seams held until 14:30" at `rejected`, and an "overage"
-     marker while `isUsingOverage`.
-   - **mixed:** both lines, with the daily spend covering priced seams only.
-   - **none:** unchanged.
-   The single preformatted budget fragment lives in src/ui/badges.ts (`budgetBadge`), which both
-   dashboards already render through src/ui/status-payload.ts; the GUI sidebar tile that lists
-   every window is src/ui/gui/gui-client-fleet.ts.
-3. **Role view.** src/roles/role-render.ts shows "billing: subscription (5h window)" or
-   "billing: API" for a claude seam.
-4. **Docs.** README: the window display.
-
-**Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/badges.ts,
-src/ui/gui/gui-client-fleet.ts, src/roles/role-render.ts, README.md.
-
-**Tests.** Cases in test/tui-budget.test.ts, test/gui-client-fleet.test.ts,
-test/status-data.test.ts, and test/role-view.test.ts.
-
-**Acceptance criteria.**
-- An all-subscription fleet's TUI and GUI show the window line and no daily-spend line.
-- A mixed fleet shows both lines, the daily spend covering priced seams only.
-- A pi-only fleet's rendering is byte-identical to before.
-- `tumwater role <id>` names the billing for a claude seam.
-- `npm run test` green.
-
 ### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires parts 6a/7 and 6b/7 landed)
 
 Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
@@ -452,6 +414,50 @@ resume) and test/loop-pi.test.ts (no within-run retry), both using fake-claude.
 - An interrupted fake-claude author tick, a hold, then a reset produces one resume with the same
   session id, with the worktree edits intact.
 - The resume's cause is named (not a plain fresh tick).
+- `npm run test` green.
+
+### Agent backends, part 6d/7: the usage-window display (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 6a/7 and 6c/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Display, in place of the daily spend").
+
+Goal: the TUI, GUI, `tumwater status` and `tumwater role <id>` show the subscription window in
+place of (or alongside) the daily spend. The "held until" wording is derived from the account's
+rejected window (the same predicate fleet-hold.ts uses), so no separate held-state read is
+needed.
+
+**Approach.**
+1. **Status payload.** src/status/status-data.ts gains a `claudeWindow` block (the most
+   constrained window plus the full list, `only` classifying a subscription-only fleet and
+   `heldUntil` the rejected window's deadline), carried through src/ui/status-payload.ts.
+2. **Rendering, following the design table.**
+   - **subscription only:** the window replaces the daily spend, e.g.
+     "Claude 5h · 64% · resets 14:30" (the status word when no `utilization`), amber at
+     `allowed_warning`, red with "claude seams held until 14:30" at `rejected`, and an "overage"
+     marker while `isUsingOverage`.
+   - **mixed:** both, the daily-spend badge with the window appended; the daily spend already
+     covers priced seams only (6a folds subscription cost into notional spend).
+   - **none:** unchanged.
+   The single preformatted budget fragment is src/ui/badges.ts's `budgetBadge`, rendered by the
+   TUI header (src/ui/status-render.ts) and carried preformatted in the payload; the GUI
+   sidebar's spend card (src/ui/gui/gui-client-operator.ts, reached from gui-client-fleet.ts's
+   renderSidebar) lists every window.
+3. **Role view.** src/roles/role-view.ts collects the billing and its primary window;
+   src/roles/role-render.ts shows "- Billing: subscription (5h window)" or "- Billing: API" for
+   a claude seam.
+4. **Docs.** README: the window display.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/badges.ts,
+src/ui/status-render.ts, src/ui/gui/gui-client-operator.ts, src/roles/role-view.ts,
+src/roles/role-render.ts, src/agent/claude/claude-account.ts, README.md.
+
+**Tests.** Cases in test/badges.test.ts, test/gui-client.test.ts, test/status-data.test.ts,
+and test/role-view.test.ts.
+
+**Acceptance criteria.**
+- An all-subscription fleet's TUI and GUI show the window line and no daily-spend line.
+- A mixed fleet shows both lines, the daily spend covering priced seams only.
+- A pi-only fleet's rendering is byte-identical to before.
+- `tumwater role <id>` names the billing for a claude seam.
 - `npm run test` green.
 
 ### Agent backends, part 6c/7: the usage-window hold and its events (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed; done 2026-10-10 by feature)

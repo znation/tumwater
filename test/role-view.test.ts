@@ -15,6 +15,7 @@ import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readmeTemplate } from "../src/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 
@@ -354,4 +355,30 @@ test("agent labels: a claude seam names the backend, pi stays byte-identical", (
 
   // The pi default stays byte-identical to before routing.
   assert.match(renderRoleMarkdown(rolePayload(root(), "feature", NO_MODELS)), /- Model: pi default \(default tier\)/m);
+});
+
+// The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): the role view
+// names subscription (with its primary window) or API; a pi seam carries no billing line.
+test("a claude seam's role view names its billing and subscription window", () => {
+  const dir = root();
+  writeConfig(dir, { agent: "claude" });
+  writeClaudeAccount(dir, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "allowed", utilization: 0.64, observedAt: Date.now() } },
+  });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.billing, "subscription");
+  assert.equal(p.billingWindow, "five_hour");
+  assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
+
+  writeClaudeAccount(dir, { billing: "api", observedAt: Date.now(), windows: {} });
+  const api = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(api.billing, "api");
+  assert.equal(api.billingWindow, undefined);
+  assert.match(renderRoleMarkdown(api), /- Billing: API/m);
+
+  // A pi seam carries no billing line at all, whatever the account file says.
+  writeConfig(dir, {});
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Billing:/m);
 });

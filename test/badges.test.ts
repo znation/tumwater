@@ -5,7 +5,8 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown } from "../src/ui/badges.js";
+import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown } from "../src/ui/badges.js";
+import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
@@ -191,6 +192,70 @@ test("diskBadge names the last reclaim's size and age, held or recovered", () =>
     " · last reclaim freed 3.2 GB 5m ago",
     "the reclaim stands on its own after space recovers",
   );
+});
+
+// The subscription usage-window fragment (plans/agent-backends.md §8, PLANS.md part 6d/7):
+// the window replaces the daily spend on a subscription-only fleet and joins it on a mixed one.
+// The reset clock is built from a LOCAL Date, so the expected HH:MM holds in any test timezone.
+test("budgetBadge renders the subscription window in place of or beside the daily spend", () => {
+  const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
+  const cw = (over: Partial<NonNullable<StatusSnapshot["claudeWindow"]>> = {}): NonNullable<StatusSnapshot["claudeWindow"]> => ({
+    windows: [{ type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 }],
+    primary: { type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 },
+    only: true,
+    heldUntil: null,
+    ...over,
+  });
+  assert.equal(
+    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw()),
+    " · Claude 5h · 64% · resets 14:30",
+    "subscription-only: the window replaces the daily spend",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({
+      primary: { type: "five_hour", status: "allowed_warning", resetsAt: at(14, 30), observedAt: 0 },
+    })),
+    " · Claude 5h · near limit · resets 14:30",
+    "no utilization: the status word stands in",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({
+      primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 },
+      heldUntil: at(15, 0),
+    })),
+    " · Claude 5h · 100% · claude seams held until 15:00",
+    "rejected: the held wording replaces resets",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({
+      primary: { type: "five_hour", status: "allowed", isUsingOverage: true, utilization: 0.8, observedAt: 0 },
+    })),
+    " · Claude 5h · 80% · overage",
+    "the overage marker rides while the account spends into overage",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({
+      primary: { type: "five_hour", status: "reset", observedAt: 0 },
+    })),
+    " · Claude 5h · reset",
+    "a past window reads reset and names no clock",
+  );
+  // Mixed: the daily-spend line plus the window line.
+  assert.equal(
+    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({ only: false })),
+    " · budget: $12.34/$50 today · Claude 5h · 64% · resets 14:30",
+    "mixed: both the daily spend and the window",
+  );
+  // None: no window block, byte-identical to before.
+  assert.equal(
+    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }),
+    " · budget: $12.34/$50 today",
+  );
+  // The tone: red at rejected, yellow near the limit, none otherwise.
+  assert.equal(claudeWindowTone(cw({ primary: { type: "five_hour", status: "rejected", observedAt: 0 } })), "red");
+  assert.equal(claudeWindowTone(cw({ primary: { type: "five_hour", status: "allowed_warning", observedAt: 0 } })), "yellow");
+  assert.equal(claudeWindowTone(cw()), undefined);
+  assert.equal(claudeWindowTone(undefined), undefined);
 });
 
 test("budgetBadge's backend-default fallback label follows the fleet agent", () => {

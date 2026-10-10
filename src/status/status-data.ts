@@ -3,7 +3,7 @@ import path from "node:path";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
-import { isCustomRole } from "../config/config.js";
+import { enabledRoleIds, isCustomRole } from "../config/config.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import {
   modelFallbackView,
@@ -11,11 +11,14 @@ import {
   resolveTierFallbacks,
   roleSeamTier,
   configForRole,
+  reviewConfig,
+  resolverConfig,
   tierFallbackLabels,
   tiersResolveDistinctPairs,
   type ModelFallbackView,
 } from "../config/config-views.js";
-import type { ModelTier } from "../config/config-schema.js";
+import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
+import { claudeWindowEntries, readClaudeAccount, type ClaudeWindowEntry } from "../agent/claude/claude-account.js";
 import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath, piPairFree, readPiProviders } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
@@ -139,6 +142,21 @@ export interface StatusSnapshot {
      * above reads, so the badge and the loop rows cannot disagree about which pair a tier
      * runs on. */
     tiers?: Partial<Record<string, string>> | null;
+  };
+  /** The claude.ai subscription usage window (plans/agent-backends.md §8, PLANS.md part 6d/7),
+   * present only when a seam routes to claude on subscription billing AND the account reported
+   * at least one window reading: `windows` is the full list (most constrained first),
+   * `primary` the one the badge shows, `only` true when every paying seam is a subscription
+   * claude seam (so the window replaces the daily-spend badge, not just joins it), and
+   * `heldUntil` the rejected window's future `resetsAt` (epoch ms) the display names in
+   * "claude seams held until …", or null when no window holds. A pi-only or API-claude fleet
+   * has no account subscription reading, so the block is absent and every surface renders as
+   * before. */
+  claudeWindow?: {
+    windows: ClaudeWindowEntry[];
+    primary: ClaudeWindowEntry;
+    only: boolean;
+    heldUntil: number | null;
   };
   /** True while the operator has paused the fleet (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
@@ -292,6 +310,37 @@ export interface StatusSnapshot {
   disk?: DiskStatus;
 }
 
+/** The claude subscription-window block for a poll (see StatusSnapshot.claudeWindow): absent
+ * unless the account reads subscription billing with at least one window AND a resolved seam
+ * routes to claude. `only` is the free-ness classification the display needs: every paying seam
+ * is a subscription claude seam exactly when no other seam is priced — a pi seam judged by
+ * piPairFree, any other backend's billing unseen so it counts as paying too. The reviewer and
+ * the strong-tier resolver are included, like fleetModelsFree, since they can spend. */
+function claudeWindowBlock(
+  cfg: TumwaterConfig,
+  providers: ReturnType<typeof readPiProviders>,
+  root: string,
+  now: number,
+): StatusSnapshot["claudeWindow"] {
+  const account = readClaudeAccount(root, now);
+  if (account === null || account.billing !== "subscription") return undefined;
+  const windows = claudeWindowEntries(account);
+  if (windows.length === 0) return undefined;
+  const seams = enabledRoleIds(cfg).map((role) => configForRole(cfg, role));
+  if (cfg.review.enabled) seams.push(reviewConfig(cfg));
+  if (seams.length > 0) seams.push(resolverConfig(cfg));
+  if (!seams.some((s) => s.agent === "claude")) return undefined;
+  const priced = seams.some((s) => {
+    if (s.agent === undefined || s.agent === "pi") return !piPairFree(providers, s.provider, s.model);
+    return s.agent !== "claude"; // a backend the account cannot bill is never subscription-paid
+  });
+  const heldUntil =
+    windows
+      .filter((w) => w.status === "rejected" && w.isUsingOverage !== true && typeof w.resetsAt === "number")
+      .reduce((max, w) => Math.max(max, w.resetsAt as number), 0) || null;
+  return { windows, primary: windows[0]!, only: !priced, heldUntil };
+}
+
 /** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
  * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. `now` pins
  * the poll's clock for the budget figures (the persisted day-stamp check and the burn-rate
@@ -417,6 +466,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const usable = (p: { provider?: string; model?: string }) =>
     piPairFree(providers, p.provider, p.model) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
+  // The subscription usage window (part 6d/7): one account read per poll serves the block.
+  const claudeWindow = claudeWindowBlock(cfg, providers, root, now);
   const budgetPausedRoles = budgetReachedNow
     ? roles.filter(
         (r) => r !== DIRECTOR_ROLE && servingResolved[roleSeamTier(cfg, r)].pair === null,
@@ -461,6 +512,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
           ? tierFallbackLabels(servingResolved)
           : null,
     },
+    ...(claudeWindow ? { claudeWindow } : {}),
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
     capPaused: [...roleCapVerdicts(loops.map((l) => ({ role: l.role, state: l })), cfg.maxDailyCostUsdPerRole, now).values()]

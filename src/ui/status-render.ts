@@ -6,7 +6,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -146,8 +146,15 @@ function badgeSpans(badge: string, tone?: StatusSpan["tone"]): StatusSpan[] {
   return [{ text: sep }, { text: badge.slice(sep.length), ...(tone ? { tone } : {}) }];
 }
 
-/** The daily budget badge's tone: yellow from 85% of the cap, red once it is spent. */
-function budgetTone(budget: StatusSnapshot["budget"]): Tone | undefined {
+/** The daily budget badge's tone: yellow from 85% of the cap, red once it is spent; the
+ * subscription window's own severity (amber near its limit, red when a rejected window holds
+ * the seams) wins when it stands beside the daily spend. */
+function budgetTone(
+  budget: StatusSnapshot["budget"],
+  claudeWindow?: StatusSnapshot["claudeWindow"],
+): Tone | undefined {
+  const window = claudeWindowTone(claudeWindow);
+  if (window !== undefined) return window;
   if (budget.free || !(budget.capUsd > 0)) return undefined;
   const share = budget.spentUsd / budget.capUsd;
   return share >= 1 ? "red" : share >= 0.85 ? "yellow" : undefined;
@@ -195,7 +202,7 @@ export function renderStatusSpans(
     ...badgeSpans(landingBadge(snap.landQueue), "blue"),
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
-    ...badgeSpans(budgetBadge(snap.budget), budgetTone(snap.budget)),
+    ...badgeSpans(budgetBadge(snap.budget, snap.claudeWindow), budgetTone(snap.budget, snap.claudeWindow)),
     // The disk floor (plans/disk-floor.md, part 4/4): `disk 8.2 GB free — holding new work`
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
