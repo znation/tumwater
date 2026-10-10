@@ -315,6 +315,18 @@ test("validateConfig rejects piArgs entries that repeat a harness-managed flag",
     validationError({ piArgs: ["-n", "sneaky"] }),
     /piArgs\[0\] "-n" duplicates a flag the harness sets — the harness names the session/,
   );
+  // The `--flag=value` spelling repeats the same flag: pi's parser reads `--model=x` as
+  // `--model x`, so the screen must match the flag before the `=` — exactly as the agents and
+  // claude screens do. Missing this let `piArgs: ["--model=other"]` pass validation and then
+  // be appended last, silently overriding the model tumwater.json named.
+  assert.match(
+    validationError({ piArgs: ["--model=other"] }),
+    /piArgs\[0\] "--model=other" duplicates a flag the harness sets — set the top-level or per-role `model` instead/,
+  );
+  assert.match(
+    validationError({ piArgs: ["--provider=other"] }),
+    /piArgs\[0\] "--provider=other" duplicates a flag the harness sets/,
+  );
   // Non-conflicting extras still pass, including pi's own append-system-prompt and tool flags.
   assert.doesNotThrow(() =>
     validateConfig({ piArgs: ["--append-system-prompt", "be terse", "--no-skills"] }),

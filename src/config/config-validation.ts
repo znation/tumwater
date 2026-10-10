@@ -178,7 +178,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   if (Array.isArray(r.piArgs)) {
     (r.piArgs as unknown[]).forEach((arg, i) => {
       if (typeof arg !== "string") return; // Already reported by checkStringArray.
-      const why = HARNESS_PI_FLAGS.get(arg);
+      // Match the flag itself even when it carries its value as `--flag=value`, so the
+      // `--model=other` spelling cannot slip past this screen and be appended last (the same
+      // split the agents.<id>.args and claude screens use).
+      const why = HARNESS_PI_FLAGS.get(arg.split("=", 1)[0] as string);
       if (why) problems.push(`piArgs[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
     });
   }
