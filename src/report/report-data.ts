@@ -155,6 +155,18 @@ function zeroCommitCounts(): {
   return { commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0 };
 }
 
+/** The empty landing-run counters every accumulator starts from: the landing slot's run count
+ * and its own token/cost share (foldUsageEvent's landed/land_failed branch). Four shapes carry
+ * them — DayFold, UsageFold, the scoped window totals, and the window totals — so the empty
+ * triple lives once here and a new landing counter is added in one place. */
+function zeroLandingCounts(): {
+  landingRuns: number;
+  landingTokens: number;
+  landingCostUsd: number;
+} {
+  return { landingRuns: 0, landingTokens: 0, landingCostUsd: 0 };
+}
+
 /** Sum a per-loop-id count/cost map over one base role: instance keys (`feature-2`) fold into
  * their base (`feature`), so a scoped report aggregates a whole role group exactly as the
  * per-role cap's group does. Ticks/tokens/cost are keyed by exact loop id while commits are
@@ -189,9 +201,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       tokensByRole: {},
       costByRole: {},
       notionalByRole: {},
-      landingRuns: 0,
-      landingTokens: 0,
-      landingCostUsd: 0,
+      ...zeroLandingCounts(),
     };
     entry.days.set(dayKey, fold);
   }
@@ -404,9 +414,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     costUsd: 0,
     notionalCostUsd: 0,
     notionalByRole: {},
-    landingRuns: 0,
-    landingTokens: 0,
-    landingCostUsd: 0,
+    ...zeroLandingCounts(),
   };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
@@ -444,9 +452,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
             commits: roleSum(acc.commitsByRole, base),
             costUsd: roleSum(acc.costByRole, base),
             ...(notional > 0 ? { notionalCostUsd: notional } : {}),
-            landingRuns: 0,
-            landingTokens: 0,
-            landingCostUsd: 0,
+            ...zeroLandingCounts(),
           };
         })();
   return {
@@ -558,9 +564,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     costUsd: 0,
     featuresDone: 0,
     bugsFixed: 0,
-    landingRuns: 0,
-    landingTokens: 0,
-    landingCostUsd: 0,
+    ...zeroLandingCounts(),
   };
   // Notional spend is kept out of the totals object until it is nonzero, so a pre-feature
   // window's totals keep their exact shape.
