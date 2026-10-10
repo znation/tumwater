@@ -10,6 +10,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
+import { MAX_MCP_LINE_CHARS } from "../src/agent/mcp/role-notes-server.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const SERVER = fileURLToPath(new URL("../src/agent/mcp/role-notes-server.js", import.meta.url));
@@ -196,6 +197,62 @@ test("a failed notebook write is a tool error and keeps the server answering", a
   const { responses } = await runServer([call(1, "x"), { jsonrpc: "2.0", id: 2, method: "ping" }], notes);
   assert.equal(responses[0]!.result?.isError, true, "a directory in the note's place fails as a tool error");
   assert.deepEqual(responses[1]!.result, {}, "the stream survives the tool failure");
+});
+
+test("an over-cap frame without a newline is answered and the stream resynchronizes", async () => {
+  // A client (or a broken pipe) that streams bytes without ever terminating a line must not
+  // grow the server's buffer without bound: past MAX_MCP_LINE_CHARS the frame is discarded and
+  // answered, and the next newline resumes normal framing. The server must answer BEFORE the
+  // frame's own newline arrives — that is the buffer bound doing its job, not JSON.parse on a
+  // line that was allowed to grow whole.
+  const notes = path.join(tmpdir(), "notes.md");
+  const child = spawn(process.execPath, [SERVER], {
+    env: { ...process.env, TUMWATER_NOTES_PATH: notes },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", (d: Buffer) => (out += d.toString("utf8")));
+  try {
+    const errorLine = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("no response to the over-cap frame before it was terminated")),
+        5000,
+      );
+      timer.unref();
+      const check = (): void => {
+        const nl = out.indexOf("\n");
+        if (nl < 0) return;
+        clearTimeout(timer);
+        child.stdout.off("data", check);
+        resolve(out.slice(0, nl));
+      };
+      child.stdout.on("data", check);
+      child.stdin.write("x".repeat(MAX_MCP_LINE_CHARS + 1));
+    });
+    const error = JSON.parse(errorLine) as McpResponse;
+    assert.equal(error.error?.code, -32700, "the discarded frame is a JSON-RPC parse error");
+    assert.equal(error.id, null);
+    assert.match(error.error?.message ?? "", /exceeded 1 MiB/);
+
+    child.stdin.end("\n" + JSON.stringify({ jsonrpc: "2.0", id: 9, method: "ping" }) + "\n");
+    const responses = await new Promise<McpResponse[]>((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", () =>
+        resolve(
+          out
+            .split("\n")
+            .filter((l) => l.trim() !== "")
+            .map((l) => JSON.parse(l) as McpResponse),
+        ),
+      );
+    });
+    assert.deepEqual(responses.map((r) => r.id), [null, 9], "the post-overflow frame is served normally");
+    assert.deepEqual(responses[1]!.result, {});
+  } finally {
+    // A failed assertion must not leave the spawned server (and its open stdin) behind to hang
+    // the runner; a closed child's kill is a no-op.
+    child.kill("SIGKILL");
+  }
 });
 
 test("a final unterminated line is flushed when stdin closes", async () => {

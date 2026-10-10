@@ -103,26 +103,56 @@ function errorResponse(id: unknown, code: number, message: string): unknown {
   return { jsonrpc: "2.0", id: id ?? null, error: { code, message } };
 }
 
+/** The largest buffered stdin line before the server treats the stream as malformed. This
+ * server only ever receives small control frames (the tool it exposes caps its `text` at 4 KB),
+ * so a message this size is not a legitimate request. Past it the buffered line is discarded
+ * and resynchronized on the next newline (the same policy the agent runner's
+ * MAX_NATIVE_LINE_CHARS applies to a byte stream with no newline), so a client that streams
+ * bytes without ever terminating a line cannot grow the buffer until the process is OOM-killed. */
+export const MAX_MCP_LINE_CHARS = 1024 * 1024;
+
 /** Wire the handler to stdin/stdout and exit on EOF. */
 function runRoleNotesServer(): void {
   const notesPath = process.env.TUMWATER_NOTES_PATH;
   let buffer = "";
+  // Set when a buffered line passed MAX_MCP_LINE_CHARS without a newline: the rest of that
+  // line is then skipped through its newline so the stream resynchronizes on the next frame.
+  let overflow = false;
   const flush = (line: string): void => {
     if (line.trim() === "") return;
     const response = handleMcpLine(line, notesPath);
     if (response !== null) process.stdout.write(JSON.stringify(response) + "\n");
   };
+  /** Answer an over-cap frame with the JSON-RPC parse error its unparseable line would have
+   * produced, so the client sees a malformed request rather than a dead server. */
+  const discardOversized = (): void => {
+    buffer = "";
+    overflow = true;
+    const message = `Parse error: frame exceeded ${MAX_MCP_LINE_CHARS / (1024 * 1024)} MiB without a newline`;
+    process.stdout.write(JSON.stringify(errorResponse(null, -32700, message)) + "\n");
+  };
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk: string) => {
     buffer += chunk;
+    if (overflow) {
+      const nl = buffer.indexOf("\n");
+      if (nl < 0) {
+        buffer = ""; // Still inside the discarded frame; keep the buffer bounded.
+        return;
+      }
+      overflow = false;
+      buffer = buffer.slice(nl + 1);
+    }
     let nl: number;
     while ((nl = buffer.indexOf("\n")) >= 0) {
       flush(buffer.slice(0, nl));
       buffer = buffer.slice(nl + 1);
     }
+    if (buffer.length > MAX_MCP_LINE_CHARS) discardOversized();
   });
   process.stdin.on("end", () => {
-    if (buffer !== "") flush(buffer);
+    // A discarded over-cap frame has no complete line to flush.
+    if (!overflow && buffer !== "") flush(buffer);
   });
 }
 
