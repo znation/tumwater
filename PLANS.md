@@ -38,28 +38,114 @@ the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
 - A pi non-buffered call still warns at `toolCallStallSeconds`.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
+### Finish the stale code-path citation sweep, part 5a/5: `plans/agent-backends.md` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
-**Needs review 2026-10-10 by feature: too large for one run**
-
-**Goal.** The same citation invariant as part 1a/5, for every `plans/*.md` file not assigned to
-parts 1a/5–1c/5 and 2a/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
-`plans/commit-bodies.md`, `plans/refusal-and-thrash.md`, `plans/repair-traces.md`,
-`plans/telemetry-role.md`, and `plans/user-defined-loops.md`; the rest
-(`plans/disk-floor.md`, `plans/merge-queue.md`, `plans/parallel-work-instances.md`,
-`plans/principles.md`, `plans/revise-rejected.md`, `plans/work-ratio.md`,
-`plans/worktree-pool.md`) are inventoried too, so a later move there is caught rather than
-missed.
+**Goal.** The same citation invariant as part 1a/5, for `plans/agent-backends.md` — the largest
+remaining document. Its path tokens all resolve today, but its citations predate the pi-facade,
+config, and agent splits, so the split-aware symbol check carries the work.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to this scope. `plans/repair-traces.md` and `plans/telemetry-role.md` carry the
-out-of-range pins here; `plans/telemetry-role.md` also cites the `failure-report` module split.
+part 1a/5.
 
-**Files touched.** `plans/*.md` files not assigned to parts 1a/5–1c/5 and 2a/5–4/5. No source or test change.
+**Files touched.** `plans/agent-backends.md`. No source or test change.
 
 **Acceptance criteria.**
-- The inventory over this scope reports no cited path absent from the tree.
-- No `<path>:<line>` in this scope names a line past that file's end.
+- The inventory over `plans/agent-backends.md` reports no cited path absent from the tree.
+- No `<path>:<line>` in it names a line past that file's end.
+- For each split module cited there (e.g. `src/pi/pi.ts`, `src/config/model-selector.ts`), the
+  module named beside a symbol exports it (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5b/5: `commit-bodies`, `refusal-and-thrash`, `user-defined-loops`, `principles` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/commit-bodies.md`,
+`plans/refusal-and-thrash.md`, `plans/user-defined-loops.md`, and `plans/principles.md`. The
+inventory here flags the moved top-level `loop`, `pi`, `types`, `config`, `git`, and `pi-stream`
+modules, plus the moved `commit-bodies` test file cited by `plans/commit-bodies.md`.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these four files.
+
+**Files touched.** Those four `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these four files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5c/5: `refusal-and-thrash`, `merge-queue`, `work-ratio` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/refusal-and-thrash.md`,
+`plans/merge-queue.md`, and `plans/work-ratio.md`. `plans/refusal-and-thrash.md` carries the bulk
+here: the same moved top-level `pi-stream`, `loop`, `git`, `pi`, `types`, and `config` modules.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these three files.
+
+**Files touched.** Those three `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these three files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5d/5: `repair-traces`, `revise-rejected` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/repair-traces.md` and
+`plans/revise-rejected.md`. `plans/repair-traces.md` carries the moved top-level `loop` module and
+two out-of-range pins (`src/roles/roles.ts`, `test/prompt.test.ts`); `plans/revise-rejected.md` is
+inventoried as well so a later move there is caught.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these two files.
+
+**Files touched.** Those two `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these two files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5e/5: `telemetry-role`, `disk-floor` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/telemetry-role.md` and
+`plans/disk-floor.md`. `plans/telemetry-role.md` carries the most absent tokens left in the
+sweep — the `failure-report` module split across its root and UI homes and its test file, the
+moved top-level `loop`, `config`, and `state` modules, and two out-of-range `src/roles/roles.ts`
+pins.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these two files.
+
+**Files touched.** Those two `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these two files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5f/5: `parallel-work-instances`, `worktree-pool` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/parallel-work-instances.md` and
+`plans/worktree-pool.md`. Both are inventoried over their full text so a path or line pin that
+moved is caught rather than missed.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these two files.
+
+**Files touched.** Those two `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these two files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
 - For each split module cited here, the module named beside a symbol exports it (checked against
   the module's export list).
 - `npm run test` is green.
