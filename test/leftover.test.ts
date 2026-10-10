@@ -7,10 +7,10 @@ import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { enqueueLanding, queuedLandings } from "../src/landing/landing-queue.js";
-import { eventsLogPath, landQueueDir, landingRefName } from "../src/paths.js";
+import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
+import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit
@@ -292,12 +292,6 @@ test("a handed-back commit with no readable subject falls back to the bare sha l
 // and turn a completed salvage into a tick error. Fault injected as in
 // test/gate-event-best-effort.test.ts — a directory where events.jsonl belongs, so every append
 // throws EISDIR while the rest of the root still writes.
-function unwritableEvents(root: string): void {
-  const file = eventsLogPath(root);
-  fs.rmSync(file, { recursive: true, force: true });
-  fs.mkdirSync(file, { recursive: true });
-}
-
 test("a pinned leftover is still queued when the events feed is unwritable", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");

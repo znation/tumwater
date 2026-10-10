@@ -6,10 +6,10 @@ import { stageTickLanding } from "../src/tick/tick-stage.js";
 import { stageCheckFindings } from "../src/tick/stage-check.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
+import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
-import { eventsLogPath } from "../src/paths.js";
 import { readQaCoverage } from "../src/tick/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/landing/landing-queue.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
@@ -202,8 +202,7 @@ test("an unassigned tick still records its staged claim when the events feed is 
   });
   // Put a directory where the append-only events log belongs: the claim event throws EISDIR
   // while every other file under the root still writes.
-  fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
-  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  unwritableEvents(root);
 
   const outcome = await stageTickLanding(ctx);
 
@@ -324,8 +323,7 @@ test("a tick with a SUMMARY still enqueues its landing when the events feed is u
   });
   // Put a directory where the append-only events log belongs: the land_queued event throws
   // EISDIR while every other file under the root still writes.
-  fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
-  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  unwritableEvents(root);
 
   const outcome = await stageTickLanding(ctx);
 

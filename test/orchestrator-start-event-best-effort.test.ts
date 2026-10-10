@@ -6,22 +6,13 @@
  * events.jsonl belongs: every append throws EISDIR while every other state file still writes,
  * so a fleet that can run must still start and finish a once round. */
 
-import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { eventsLogPath } from "../src/paths.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
+import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { withIdlePi } from "./fakes/fake-pi.js";
-
-/** Put a directory where the append-only events log belongs: every logEvent under `root`
- * throws EISDIR, while every other file under the real root still writes normally. */
-function unwritableEvents(root: string): void {
-  const file = eventsLogPath(root);
-  fs.rmSync(file, { recursive: true, force: true });
-  fs.mkdirSync(file, { recursive: true });
-}
 
 test("runOrchestrator starts and finishes a once round when the events feed is unwritable", async () => {
   const repo = await makeFastRepo("orchestrator start best-effort", ["clean"]);

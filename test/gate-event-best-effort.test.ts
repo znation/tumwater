@@ -7,13 +7,12 @@
  * every append throws EISDIR, while every other file under the real root still writes, so
  * each gate reaches its own event line exactly as it would on a full disk. */
 
-import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 
-import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
@@ -35,14 +34,6 @@ import {
   type HoldInputs,
 } from "../src/fleet/fleet-polls.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
-
-/** Put a directory where the append-only events log belongs: every logEvent under `root`
- * throws EISDIR, while every other file under the real root still writes normally. */
-function unwritableEvents(root: string): void {
-  const file = eventsLogPath(root);
-  fs.rmSync(file, { recursive: true, force: true });
-  fs.mkdirSync(file, { recursive: true });
-}
 
 const T0 = 1_000_000_000;
 

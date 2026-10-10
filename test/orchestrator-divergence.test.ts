@@ -12,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
+import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { fakePiIdle } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
@@ -91,8 +92,7 @@ test("an unwritable event log does not end the fleet on a divergence warning", a
     // Replace the event feed with a directory: every append inside the poll loop now throws
     // EISDIR (ENOSPC/EACCES behave the same). The divergence warning is a direct poll-loop
     // emission, so it must not take the fleet down with it.
-    fs.rmSync(eventsLogPath(repo), { force: true });
-    fs.mkdirSync(eventsLogPath(repo), { recursive: true });
+    unwritableEvents(repo);
     execFileSync("git", ["-C", repo, "checkout", "-b", "wander"]);
     await sleep(5 * FAST_POLL_MS);
     assert.equal(settled, null, "an unwritable event feed must not end the orchestrator");

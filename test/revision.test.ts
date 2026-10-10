@@ -6,7 +6,7 @@ import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "../src/loop/r
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
 import { vetRequest } from "../src/landing/landing-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
-import { rejectedRefName, landingRefName, eventsLogPath } from "../src/paths.js";
+import { rejectedRefName, landingRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
@@ -20,7 +20,7 @@ import { buildCommitMessage, commitTrailer, stampedSubject } from "../src/git/co
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { readmeTemplate } from "../src/brief.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
@@ -208,8 +208,7 @@ test("exhausting the last revision still records the outcome when the events fee
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
     await setRef(root, rejectedRefName(ROLE), sha);
-    fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
-    fs.mkdirSync(eventsLogPath(root), { recursive: true });
+    unwritableEvents(root);
 
     const verdict = await vetRequest(ctx, request(sha, { revisionRound: REVISION_LIMIT }), w);
 
@@ -230,8 +229,7 @@ test("a permanent reviewer config error still holds the pin when the events feed
     const { ctx } = makeCtx(root, state);
     ctx.config.review.model = "bad/model";
     const w = batchWiring(ctx);
-    fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
-    fs.mkdirSync(eventsLogPath(root), { recursive: true });
+    unwritableEvents(root);
 
     const verdict = await vetRequest(ctx, request(sha), w);
 
@@ -352,8 +350,7 @@ test("a revision tick drops the change when the events feed is unwritable", asyn
   const ctx = verdictCtx(root, wt, state, null, 1);
   // Put a directory where the append-only events log belongs: the drop event throws EISDIR
   // while every other file under the root still writes, exactly as on a full disk.
-  fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
-  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+  unwritableEvents(root);
 
   const outcome = await resolveTickVerdict(ctx);
 

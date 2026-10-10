@@ -12,9 +12,8 @@ import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
-import { eventsLogPath } from "../src/paths.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
-import { writeEvents } from "./fixtures/log-fixtures.js";
+import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
@@ -305,11 +304,6 @@ test("the reviewer's provider being held blocks every role through scheduling, a
  * scheduling pass runs inside the orchestrator's catch-less poll loop, so an unwritable
  * feed must not end the fleet: each converted event site has to survive the throw and
  * still perform the bookkeeping the event reports. */
-function unwritableEvents(root: string): void {
-  const file = eventsLogPath(root);
-  fs.rmSync(file, { recursive: true, force: true });
-  fs.mkdirSync(file, { recursive: true });
-}
 
 test("a claim assignment survives an unwritable events feed", async () => {
   const root = tmpdir("tumwater-scheduling-best-effort-assign-");

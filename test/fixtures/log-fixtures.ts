@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readEvents } from "../../src/events/event-read.js";
 import type { HarnessEvent } from "../../src/events/events.js";
-import { orchestratorStatePath, piLogPath } from "../../src/paths.js";
+import { eventsLogPath, orchestratorStatePath, piLogPath } from "../../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, runMarker, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../../src/files/files.js";
@@ -59,6 +59,19 @@ export function writeLogLines(file: string, lines: readonly unknown[]): void {
  * for malformed lines; objects are JSON-encoded like logEvent writes them). */
 export function writeEvents(root: string, lines: unknown[]): void {
   writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl"), lines);
+}
+
+/** Put a directory where the append-only events log belongs: every logEvent under `root`
+ * throws EISDIR, while every other file under the real root still writes normally. The
+ * fault the event-best-effort tests inject to prove a logging failure never cancels a
+ * durable effect (a gate crossing, a queued prompt, the startup event, a landing decision, a
+ * scheduling bookkeeping). Callers: the three *-event-best-effort files,
+ * orchestrator-scheduling, landing-drain, leftover, revision, tick-stage, and
+ * orchestrator-divergence. */
+export function unwritableEvents(root: string): void {
+  const file = eventsLogPath(root);
+  fs.rmSync(file, { recursive: true, force: true });
+  fs.mkdirSync(file, { recursive: true });
 }
 
 /** Write a synthetic pi session log of `turns` complete runs — the fixture most transcript

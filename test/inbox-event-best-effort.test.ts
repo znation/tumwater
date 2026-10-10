@@ -9,24 +9,15 @@
  * root still writes, so each path reaches its own event line exactly as it would on a full
  * disk. */
 
-import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { cancelRolePrompt } from "../src/inbox/inbox-cancel.js";
 import { editRolePrompt } from "../src/inbox/inbox-edit.js";
 import { enqueueRolePrompt, inboxSize, queuedPrompts, queuedRolePrompts } from "../src/inbox/inbox.js";
-
-/** Put a directory where the append-only events log belongs: every logEvent under `root`
- * throws EISDIR, while every other file under the real root still writes normally. */
-function unwritableEvents(root: string): void {
-  const file = eventsLogPath(root);
-  fs.rmSync(file, { recursive: true, force: true });
-  fs.mkdirSync(file, { recursive: true });
-}
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 const png = (): { name: string; dataBase64: string } => ({ name: "shot.png", dataBase64: PNG.toString("base64") });
