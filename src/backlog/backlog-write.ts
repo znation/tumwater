@@ -14,7 +14,8 @@ import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } fro
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { collapseWhitespace, gotSuffix, parsePositiveInt, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
+import { parsePositionFlag } from "../cli/cli-args.js";
+import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";
@@ -391,7 +392,7 @@ export function editPlan(
  * fileAndAnnounce's flag handling: `--cancel <n>` is the one valued flag, `--json` the one
  * boolean (at most once), `--help`/`-h` tolerated; any positional or other flag is refused
  * through rejectUnknownArgs. The position parses through the plain-decimal rule every position
- * flag shares (parsePositiveInt, text.ts), not Number(). After requireReadyRepo it prints
+ * flag shares (parsePositionFlag, cli-args.ts), not Number(). After requireReadyRepo it prints
  * `cancelled <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
  * fileAndAnnounce there is no wake: removing work must not wake a loop. */
 export async function cancelAndAnnounce(
@@ -412,11 +413,7 @@ export async function cancelAndAnnounce(
     }
     if (arg === "--cancel") {
       if (position !== null) fail("--cancel may only be given once");
-      const raw = args[i + 1];
-      if (raw === undefined) fail(`--cancel needs a position number (e.g. \`--cancel 2\`)`);
-      const n = parsePositiveInt(raw);
-      if (n === null) fail(`--cancel needs a positive integer${gotSuffix(raw)}`);
-      position = n;
+      position = parsePositionFlag("--cancel", args[i + 1], "--cancel 2");
       i++;
       continue;
     }
@@ -460,11 +457,7 @@ export async function editAndAnnounce(
     }
     if (arg === "--edit") {
       if (position !== null) fail("--edit may only be given once");
-      const raw = args[i + 1];
-      if (raw === undefined) fail(`--edit needs a position number (e.g. \`--edit 2\`)`);
-      const n = parsePositiveInt(raw);
-      if (n === null) fail(`--edit needs a positive integer${gotSuffix(raw)}`);
-      position = n;
+      position = parsePositionFlag("--edit", args[i + 1], "--edit 2");
       i++;
       continue;
     }

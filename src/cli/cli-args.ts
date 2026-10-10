@@ -65,6 +65,21 @@ export function parseCountFlag(flag: string, raw: string | undefined, max?: numb
   return n;
 }
 
+/** Parse a position-valued flag's `--cancel <n>` / `--edit <n>` number: a positive integer,
+ * failing with the flag's own example when the value is missing and with the shared
+ * positive-int wording (parseCountFlag's branch) when it is malformed. Positions carry the
+ * `(e.g. …)` example because a bare count flag's `needs a value` reads thin next to the `<n>`
+ * the operator typed; `example` is the spelling shown back to them. One home for the two
+ * failure messages and the plain-decimal rule, shared by the prompt queue's parser
+ * (cli-command-args.ts) and the bug/plan backlog shells (backlog-write.ts), so the rule cannot
+ * drift to Number() at one site. */
+export function parsePositionFlag(flag: string, raw: string | undefined, example: string): number {
+  if (raw === undefined) fail(`${flag} needs a position number (e.g. \`${example}\`)`);
+  const n = parsePositiveInt(raw);
+  if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}`);
+  return n;
+}
+
 /** Resolve a read-only command's `--role <id>` scope: the role id, or null when the flag is
  * absent. The id is validated against built-ins PLUS user-defined loops, read through
  * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a

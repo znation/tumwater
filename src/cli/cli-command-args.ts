@@ -9,7 +9,7 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
-import { failOverDurationCap, parseBranchFlag, parseDurationFlag } from "./cli-args.js";
+import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
@@ -20,7 +20,7 @@ import {
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
 import { templateIds, unknownTemplateError } from "../init/init-templates.js";
-import { errorMessage, gotSuffix, parsePositiveInt } from "../text/text.js";
+import { errorMessage } from "../text/text.js";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
@@ -306,14 +306,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   }
 
   if (cancelFlag >= 0) {
-    const raw = args[cancelFlag + 1];
-    // A missing value is its own error, carrying an example like --role's message; a
-    // flag-looking value falls through to parsePositiveInt and is named in the got-value
-    // message like every other count/duration flag — a bare-text error that swallowed the
-    // offending token left `tumwater prompt --cancel --role feature` guessing what arrived.
-    if (raw === undefined) fail(`--cancel needs a position number (e.g. \`--cancel 2\`)`);
-    const n = parsePositiveInt(raw);
-    if (n === null) fail(`--cancel needs a positive integer${gotSuffix(raw)}`);
+    const n = parsePositionFlag("--cancel", args[cancelFlag + 1], "--cancel 2");
     // The position is the only token --cancel may carry; anything else alongside it would be
     // prompt text, and this mode has none.
     failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1, ...roleClaim);
@@ -321,13 +314,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   }
 
   if (editFlag >= 0) {
-    const raw = args[editFlag + 1];
-    // A missing value is its own error, carrying an example like --cancel's message; a
-    // flag-looking value falls through to parsePositiveInt and is named in the got-value
-    // message like every other count/duration flag.
-    if (raw === undefined) fail(`--edit needs a position number (e.g. \`--edit 2 "new text"\`)`);
-    const n = parsePositiveInt(raw);
-    if (n === null) fail(`--edit needs a positive integer (got ${JSON.stringify(raw)})`);
+    const n = parsePositionFlag("--edit", args[editFlag + 1], '--edit 2 "new text"');
     // The --edit pair and the --role pair are the only flags this mode claims. Tokens
     // preceding --edit (other than a claimed flag) would be silently dropped — a mistyped
     // command would edit prompt N with only the trailing fragment — so they are refused
