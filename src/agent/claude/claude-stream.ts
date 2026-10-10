@@ -15,7 +15,7 @@
  * `agent_unknown_event` warning after the run. `cost_unknown` is recorded the same way when a
  * run produced no authoritative `run_cost`. */
 
-import { isJsonObject, parseJsonObject } from "../../files/json-object.js";
+import { isJsonObject, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind, TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
 
@@ -58,22 +58,14 @@ function str(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-/** A finite, non-negative wire number, or undefined when unusable — the same guard pi-stream's
- * usageNumber applies, kept local because this module must not import the parser's private
- * helpers. */
-function finiteNumber(value: unknown): number | undefined {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return undefined;
-  return value;
-}
-
 /** claude's usage block → pi's canonical usage block, with `cost.total` 0 because the run's
  * authoritative cost rides the final `run_cost` event (a split-block message repeats its usage
  * on every event, so summing per event would double-count — the fold takes it once). */
 function canonicalUsage(usage: Json | undefined): Json {
-  const input = finiteNumber(usage?.input_tokens) ?? 0;
-  const cacheRead = finiteNumber(usage?.cache_read_input_tokens) ?? 0;
-  const cacheWrite = finiteNumber(usage?.cache_creation_input_tokens) ?? 0;
-  const output = finiteNumber(usage?.output_tokens) ?? 0;
+  const input = nonNegativeNumber(usage?.input_tokens, 0);
+  const cacheRead = nonNegativeNumber(usage?.cache_read_input_tokens, 0);
+  const cacheWrite = nonNegativeNumber(usage?.cache_creation_input_tokens, 0);
+  const output = nonNegativeNumber(usage?.output_tokens, 0);
   return {
     input,
     cacheRead,
@@ -126,7 +118,7 @@ function classifyResult(result: Json): {
   if (terminal === "error_max_budget_usd") return { kind: "budgetCapped" };
   const text = [str(result.result), str(result.error)].filter(Boolean).join(" ");
   if (/error_max_budget_usd/i.test(text)) return { kind: "budgetCapped" };
-  const status = finiteNumber(result.api_error_status);
+  const status = nonNegativeNumber(result.api_error_status, undefined);
   if (status === 429) return { kind: "transientRateLimit" };
   if (status !== undefined && SERVER_STATUS.has(status)) return { kind: "transientBackend", backendKind: "server" };
   // The context-overflow text wins over a configuration status: claude reports an oversized
@@ -217,9 +209,9 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
           return out;
         }
         if (subtype === "api_retry") {
-          const attempt = finiteNumber(event.attempt);
-          const maxAttempts = finiteNumber(event.max_retries);
-          const status = finiteNumber(event.error_status);
+          const attempt = nonNegativeNumber(event.attempt, undefined);
+          const maxAttempts = nonNegativeNumber(event.max_retries, undefined);
+          const status = nonNegativeNumber(event.error_status, undefined);
           const error = str(event.error) ?? "";
           const errorMessage = [status !== undefined ? `status ${status}` : "", error].filter(Boolean).join(": ");
           return [
@@ -285,12 +277,12 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         const info = isJsonObject(event.rate_limit_info) ? event.rate_limit_info : {};
         const rateLimitType = str(info.rateLimitType);
         const status = str(info.status);
-        const resetsAt = finiteNumber(info.resetsAt);
+        const resetsAt = nonNegativeNumber(info.resetsAt, undefined);
         const out: Json = { type: "rate_limit" };
         if (rateLimitType !== undefined) out.rateLimitType = rateLimitType;
         if (status !== undefined) out.status = status;
         if (resetsAt !== undefined) out.resetsAt = resetsAt;
-        const utilization = finiteNumber(info.utilization);
+        const utilization = nonNegativeNumber(info.utilization, undefined);
         if (utilization !== undefined) out.utilization = utilization;
         const overageStatus = str(info.overageStatus);
         if (overageStatus !== undefined) out.overageStatus = overageStatus;
@@ -304,7 +296,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       case "result": {
         sawActivity = true;
         const out = flush();
-        const total = finiteNumber(event.total_cost_usd);
+        const total = nonNegativeNumber(event.total_cost_usd, undefined);
         if (total !== undefined) {
           sawRunCost = true;
           out.push(JSON.stringify({ type: "run_cost", total }));

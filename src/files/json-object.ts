@@ -56,7 +56,9 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * pi/pi-stream.ts's usageNumber (one wire usage number → 0), ui/progress-data.ts's message_end
  * read (totalTokens → the previous context, output and its peak floor → 0), and
  * time-spend.ts's tickDurationMs
- * (an event's durationMs → null, the "no own duration" marker). */
+ * (an event's durationMs → null, the "no own duration" marker); and agent/claude/claude-stream.ts's
+ * canonicalUsage (each wire usage number → 0) and its retry/rate-limit/result reads (attempt,
+ * maxAttempts, error_status, resetsAt, utilization, total_cost_usd → undefined). */
 export function nonNegativeNumber<T>(value: unknown, fallback: T): number | T {
   const n = finiteNumber(value, fallback);
   return typeof n === "number" && n >= 0 ? n : fallback;
