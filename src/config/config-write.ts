@@ -328,10 +328,10 @@ export function setConfigKey(
   return { ok: true, value, oldValue };
 }
 
-/** A shallow copy of `obj` without `key` — the shape every `unsetConfigKey` branch returns
- * when the removed value leaves its containing key/section empty (an emptied map, the last
- * field of a `roles.<id>` entry, an emptied `model` map), so tumwater.json never keeps an
- * empty object. */
+/** A shallow copy of `obj` without `key` — the copy each `unsetConfigKey` branch edits
+ * before it decides whether the removal emptied its container, and the shape the branch then
+ * returns when it did (an emptied map, the last field of a `roles.<id>` entry, an emptied
+ * `model` map), so tumwater.json never keeps an empty object. */
 function without<T extends Record<string, unknown>>(obj: T, key: string): T {
   const copy = { ...obj };
   delete copy[key];
@@ -400,8 +400,7 @@ export function unsetConfigKey(
       if (!Object.hasOwn(rawMap, parsed.role)) return cfg; // absent file entry: a no-op success
       oldValue = rawMap[parsed.role];
       const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
-      const next = { ...existing };
-      delete next[parsed.role];
+      const next = without(existing, parsed.role);
       if (Object.keys(next).length === 0) return without(record, parsed.map) as unknown as TumwaterConfig;
       return { ...cfg, [parsed.map]: next } as unknown as TumwaterConfig;
     }
@@ -412,8 +411,7 @@ export function unsetConfigKey(
       if (!Object.hasOwn(rawTiers, parsed.tier)) return cfg;
       oldValue = rawTiers[parsed.tier];
       const existing = modelTierMap(record.model);
-      const next = { ...existing };
-      delete next[parsed.tier];
+      const next = without(existing, parsed.tier);
       if (Object.keys(next).length === 0) return without(record, "model") as unknown as TumwaterConfig;
       return { ...cfg, model: next } as unknown as TumwaterConfig;
     }
@@ -425,13 +423,11 @@ export function unsetConfigKey(
     oldValue = rawEntry[parsed.field];
     const roles = record.roles ?? {};
     const existing = roles[parsed.id] ?? {};
-    const nextEntry = { ...existing };
-    delete nextEntry[parsed.field];
+    const nextEntry = without(existing, parsed.field);
     if (Object.keys(nextEntry).length > 0)
       return { ...cfg, roles: { ...roles, [parsed.id]: nextEntry } } as unknown as TumwaterConfig;
     // The entry emptied: drop it, and the whole `roles` section when it was the last one.
-    const nextRoles = { ...roles };
-    delete nextRoles[parsed.id];
+    const nextRoles = without(roles, parsed.id);
     if (Object.keys(nextRoles).length === 0) return without(record, "roles") as unknown as TumwaterConfig;
     return { ...cfg, roles: nextRoles } as unknown as TumwaterConfig;
   });
