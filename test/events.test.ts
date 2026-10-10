@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { EVENTS_MAX_BYTES, eventsRotationLabel, logEvent, subscribeEvents } from "../src/events/events.js";
+import { EVENTS_MAX_BYTES, eventsRotationLabel, logEvent, logEventBestEffort, subscribeEvents, warnEventBestEffort } from "../src/events/events.js";
 import { parseEventLine, readEvents, readEventsTailWithEnd } from "../src/events/event-read.js";
 import { followFile } from "../src/files/tail.js";
 import { eventsLogPath } from "../src/paths.js";
@@ -23,6 +23,25 @@ test("logEvent appends and readEvents tails in order", () => {
   assert.equal(events[0]?.type, "tick_start");
   assert.equal(events[1]?.type, "tick_end");
   assert.deepEqual(readEvents(dir, 1).map((e) => e.type), ["tick_end"]);
+});
+
+test("the best-effort stderr fallbacks strip terminal controls from the text they surface", (t) => {
+  // A directory where events.jsonl belongs makes every append throw EISDIR, driving both
+  // best-effort loggers into their stderr fallback — whose message can be model-supplied (a
+  // stalled tool call's label) or carry a path with control characters.
+  const dir = tmpdir();
+  fs.mkdirSync(eventsLogPath(dir), { recursive: true });
+  const writes: string[] = [];
+  t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {
+    writes.push(String(chunk));
+    return true;
+  });
+  logEventBestEffort(dir, { loop: "feature", type: "warning" });
+  warnEventBestEffort(dir, "feature", "stalled \u001b[31mred\u001b[0m tool \u0007");
+  const out = writes.join("");
+  assert.ok(out.includes("could not log warning event"), "the log fallback still names the event");
+  assert.ok(out.includes("stalled [31mred[0m tool"), "the warning fallback keeps the visible text");
+  assert.ok(!/\u001b|\u0007/.test(out), "no ESC or BEL reaches the operator's terminal");
 });
 
 // The memo's contract: after this process's own append, the next append stats a file exactly

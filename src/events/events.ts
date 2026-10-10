@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { eventsLogPath } from "../paths.js";
 import { ensureParentDir, openForRead, rotateIfLarge, statOrNull } from "../files/files.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, stripTerminalControls } from "../text/text.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
@@ -157,9 +157,11 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
   try {
     logEvent(root, event);
   } catch (err) {
-    process.stderr.write(
-      `tumwater: ${event.loop}: could not log ${event.type} event: ${errorMessage(err)}\n`,
-    );
+    // A terminal display boundary like cli-output's say()/fail(): the loop id, event type, and
+    // error text can carry model- or subprocess-supplied bytes, and stderr is a terminal. Strip
+    // the control characters the same way so a fallback line cannot drive the operator's shell.
+    const detail = `${event.loop}: could not log ${event.type} event: ${errorMessage(err)}`;
+    process.stderr.write(`tumwater: ${stripTerminalControls(detail)}\n`);
   }
 }
 
@@ -173,9 +175,11 @@ export function warnEventBestEffort(root: string, loop: string, message: string)
   try {
     warnEvent(root, loop, message);
   } catch (err) {
-    process.stderr.write(
-      `tumwater: ${loop}: ${message} (warning log unwritable: ${errorMessage(err)})\n`,
-    );
+    // The warning's own text is very often model-supplied (a stalled tool call's label, a tick's
+    // lastError) and the loop id can be a custom one, so this fallback is a terminal boundary:
+    // sanitize exactly as say()/fail() do before the line reaches the operator's terminal.
+    const detail = `${loop}: ${message} (warning log unwritable: ${errorMessage(err)})`;
+    process.stderr.write(`tumwater: ${stripTerminalControls(detail)}\n`);
   }
 }
 

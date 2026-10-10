@@ -27,7 +27,7 @@ import { donePlans, openBugs } from "../backlog/backlog.js";
 import { bootstrapLatchPath } from "../paths.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { logEventBestEffort } from "../events/events.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 
@@ -97,8 +97,10 @@ export function pollBootstrapGate(
       try {
         writeJsonAtomic(bootstrapLatchPath(root), { plansDone: status.plansDone, ts: now });
       } catch (err) {
+        // A terminal boundary: the error can name a path carrying control characters. Sanitize
+        // like cli-output's say()/fail(), so the fallback line cannot drive the operator's shell.
         process.stderr.write(
-          `tumwater: harness: could not write bootstrap latch: ${errorMessage(err)}\n`,
+          `tumwater: harness: could not write bootstrap latch: ${stripTerminalControls(errorMessage(err))}\n`,
         );
       }
       logEventBestEffort(root, {

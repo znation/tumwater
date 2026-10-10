@@ -1,7 +1,7 @@
 import type { BuildInfo, BuildStaleness, BuildStatus } from "../build/build-info.js";
 import type { CompileResult } from "../build/build-stage.js";
 import type { HarnessEventInput } from "../events/events.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 import { mainRedPhrase } from "../text/phrases.js";
 import {
@@ -42,8 +42,10 @@ export function bestEffortLog(log: (event: RedeployEvent) => void): (event: Rede
     try {
       log(event);
     } catch (err) {
+      // A terminal boundary: the error text can carry control characters. Sanitize like
+      // cli-output's say()/fail(), so the fallback line cannot drive the operator's shell.
       process.stderr.write(
-        `tumwater: harness: could not record ${event.type} event: ${errorMessage(err)}\n`,
+        `tumwater: harness: could not record ${event.type} event: ${stripTerminalControls(errorMessage(err))}\n`,
       );
     }
   };
