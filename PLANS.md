@@ -466,6 +466,74 @@ report-data and report render test passes without edits.
 `--role bogus` fails with the shared unknown-role message; `tumwater help report` names `--role`.
 - `npm run test` green.
 
+### Warn before a loop reaches its own daily cap: the `role_cap_warning` event (planned 2026-10-09 by plan; independent of the Agent backends series)
+
+**Goal.** A loop whose local-day spend crosses 80% of its own `maxDailyCostUsdPerRole` cap logs
+one `role_cap_warning` event while it is still ticking, so the configured `notify` hook can page
+the operator while there is still room to raise the cap. It is the per-role twin of the fleet's
+`budget_warning` (src/gates/budget-gates.ts), which the per-role cap does not have today: the
+first event a per-role cap emits is `role_cap_paused`, when the loop already stops. Scheduling
+is untouched — the warning is observability only.
+
+**Context.** src/gates/role-cap-gates.ts already holds the pure verdict and the edge-triggered
+bookkeeping (`roleCapVerdicts`, `newRoleCapGateState`, `pollRoleCapGate`), so the warning is one
+more band in the same state machine. `budgetWarning` (src/budget/budget.ts) is the fleet gate's
+80% predicate (`spentUsd >= cap * BUDGET_WARNING_FRACTION`, false for absent/non-finite/≤0 caps),
+and a per-role warning reuses it rather than minting a second threshold. The per-role figures are
+the group's summed `verdict.spentUsd` against the base role's cap, exactly as `role_cap_paused`
+reads them, so instances (`feature`, `feature-2`) warn as one group.
+
+**Approach.**
+1. src/gates/role-cap-gates.ts: `RoleCapGateState` gains `warned: Set<string>` (base roles already
+   warned in the current band); `newRoleCapGateState` initializes it. In `pollRoleCapGate`'s
+   per-base loop, after the `over`/resume branch, compute `const cap = caps?.[base]` and
+   `const warn = !verdict.over && cap !== undefined && budgetWarning({ spentUsd: verdict.spentUsd,
+   capUsd: cap })` (import `budgetWarning` beside `dailyCost`/`todayStamp`). On a
+   `warn && !state.warned.has(base)` crossing, `logEventBestEffort(root, { loop: "harness", type:
+   "role_cap_warning", role: base, spentUsd: verdict.spentUsd, capUsd: cap })` and add `base` to
+   `warned`; when `!warn`, delete `base`. The delete re-arms the warning after spend falls back
+   below (a raised cap or a new day), and skipping `over` polls matches the fleet gate's "warn
+   only while open" rule: a poll that jumps straight to the cap logs only `role_cap_paused`.
+2. src/events/events.ts: add `| "role_cap_warning"` to the `HarnessEvent` type union beside
+   `role_cap_paused`, with the carries-`role`/`spentUsd`/`capUsd` comment.
+3. src/events/event-format.ts: a `case "role_cap_warning":` beside the `budget_warning` and
+   `role_cap_paused` cases — `role ${textOr(e.role)} at ${budgetPhrase(e.spentUsd, e.capUsd)} of its
+   daily cap — it keeps ticking; raise or remove the cap in tumwater.json before it pauses`.
+4. src/events/notify.ts: add `"role_cap_warning"` to `NOTIFY_EVENT_TYPES` with its comment, so a
+   configured notify command pages on it like the fleet `budget_warning`.
+5. src/ui/tone.ts: add `"role_cap_warning"` to `PROBLEM_EVENTS` beside `budget_warning`.
+6. docs/how-it-works.md: the `maxDailyCostUsdPerRole` bullet in "Spend and pausing" gains the 80%
+   warning sentence, mirroring the `maxDailyCostUsd` bullet's.
+
+**Files touched.**
+- src/gates/role-cap-gates.ts (`RoleCapGateState`, `newRoleCapGateState`, `pollRoleCapGate`)
+- src/events/events.ts (type union)
+- src/events/event-format.ts (`formatEvent` case)
+- src/events/notify.ts (`NOTIFY_EVENT_TYPES`)
+- src/ui/tone.ts (`PROBLEM_EVENTS`)
+- docs/how-it-works.md
+
+Tests: test/role-cap-gates.test.ts — an 80%-crossing poll over a two-step spend logs exactly one
+`role_cap_warning` with `{role, spentUsd, capUsd}`, returns no paused id and logs no
+`role_cap_paused`; a drop below 80% then a re-crossing logs a second warning; a single poll that
+jumps from below 80% to at/over the cap logs only `role_cap_paused`; an absent/0 cap warns
+nothing. test/event-format-fleet.test.ts — the rendered line names the role, the spend against
+the cap, and that the loop keeps ticking. test/notify.test.ts — extend the pinned
+`NOTIFY_EVENT_TYPES` allowlist assertion with `role_cap_warning`.
+
+**Acceptance criteria.**
+- A base role's summed local-day spend at or past 80% of a finite positive
+  `maxDailyCostUsdPerRole` entry, while still below the cap, logs exactly one `role_cap_warning`
+  carrying `role`, `spentUsd`, and `capUsd`; the returned paused set stays empty and no
+  `role_cap_paused` is logged for that role.
+- Spending the remaining band in one poll to reach or exceed the cap logs only `role_cap_paused`
+  on that poll, and dropping below 80% before re-crossing logs the warning again.
+- A cap of 0, undefined, or absent logs no warning, and the director stays exempt exactly as it is
+  from `role_cap_paused`.
+- `tumwater logs` renders the event naming the role, its spend against its cap, and that the loop
+  keeps ticking; `NOTIFY_EVENT_TYPES` includes it; docs/how-it-works.md names the per-role warning.
+- `npm run test` green.
+
 
 ## Done
 
