@@ -145,7 +145,8 @@ discards a role's in-flight landing.
   tier's own entry, else the nearest other tier's own fallback (small → default → strong;
   default → strong → small; strong → default and never small — a weak reviewer costs more than
   a paused one). Only a model pi's `models.json` prices at zero is accepted; anything else
-  leaves the fleet paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive
+  leaves the fleet paused. Free is not enough either: a fallback whose backend cannot serve
+  (three consecutive
   role ticks failing on it) is demoted to the same pause, then retried with one probe tick after
   a cool-down of 5 minutes doubling to at most 30. When the gate reopens (the cap raised, or a
   new local day), a tick that started on the fallback is handed back to the primary: it is
@@ -188,7 +189,8 @@ discards a role's in-flight landing.
   runs one manual pass over every candidate: with a live fleet it drops a marker the
   orchestrator consumes within a poll, and with none running it cleans in-process; `--dry-run`
   lists each candidate with its idle age and ignored-path count and cleans nothing.
-- `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
+- `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed
+  pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not
   exempt — its queued prompts simply wait in the inbox. `pause --for <duration>` (e.g. `2h`)
@@ -271,7 +273,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   main, a spent budget, an old build, open questions, a pause), the prompt box, today's progress,
   the loops grouped by what they are doing, the backlog, and the notable activity. A new
   needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
-  across reloads; the Queued tab lists each queued prompt and how long it has waited. Clicking a loop
+  across reloads; the Queued tab lists each queued prompt and how long it has waited.
+  Clicking a loop
   opens its details — its notebook and next tick's prompt included — and its live transcript
   (`#loop/<name>` links straight to it). Its History, Usage,
   Failures, and Pending views match `tumwater history`, `tumwater report`, `tumwater report

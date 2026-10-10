@@ -81,12 +81,15 @@ Comment share is comment lines divided by comment plus code lines.
   an explicit user decision (2026-10-01, per PRINCIPLES.md); five dev dependencies.
 - **Tests:** the unit tier runs 2,427 tests. The e2e tier is separate and isn't counted here.
 - **Imports:** 162 modules with 785 import edges and no runtime import cycles (three cycles are
-  type-only). The most-imported module is `src/text/text.ts` (grouped with its format siblings under `src/text/`), with 52 importers.
+  type-only). The most-imported module is `src/text/text.ts` (grouped with its format siblings
+  under `src/text/`), with 52 importers.
 - **Functions in `src/`:** 1,456, with mean McCabe complexity 3.50, median 2, 90th percentile 7,
   and 76 functions (5.2%) above 10.
 - **Most complex functions:**
-  - `runOrchestrator`: complexity 78, cognitive complexity 157, 307 lines ([src/orchestrator/orchestrator.ts](../src/orchestrator/orchestrator.ts)).
-  - `eventMessage`: 72, mostly one flat switch ([src/events/event-format.ts](../src/events/event-format.ts)).
+  - `runOrchestrator`: complexity 78, cognitive complexity 157, 307 lines
+    ([src/orchestrator/orchestrator.ts](../src/orchestrator/orchestrator.ts)).
+  - `eventMessage`: 72, mostly one flat switch
+    ([src/events/event-format.ts](../src/events/event-format.ts)).
   - The TUI key handler: 60 ([src/ui/tui/tui-keys.ts](../src/ui/tui/tui-keys.ts)).
   - `main`: 57 ([src/cli.ts](../src/cli.ts)).
   - `reviewAheadOfMain`: 50 ([src/review/review.ts](../src/review/review.ts)).
@@ -220,8 +223,9 @@ prints a deterministic per-dist-file table after node's, merged from the run's r
 any-process semantics (the merge `coverage.cjs` uses, which was identical across all 11 runs);
 when the caller brings no `NODE_V8_COVERAGE` of its own, the runner captures the dumps in its
 scratch dir and removes them with it, so a plain `npm run test:coverage` costs the dump writes
-and nothing else is kept. That reading is stable where node's flips (back-to-back runs agree on every file's counts); a
-±1-line wobble remains from timing-dependent test paths, which no merge can remove. (The table's
+and nothing else is kept. That reading is stable where node's flips (back-to-back runs agree on
+every file's counts); a ±1-line wobble remains from timing-dependent test paths, which no merge
+can remove. (The table's
 first hours mis-merged the line queries around blank lines, crediting some covered lines to their
 neighbors and dropping others — fixed 2026-09-30, so per-file line figures quoted from runs before
 that fix are artificially low.)
@@ -285,8 +289,10 @@ their code. What they declare at the pinned commits:
 
 For a wider reference point:
 
-- The median mature Java open-source project sits at 63% coverage ([arXiv 2306.09665](https://arxiv.org/pdf/2306.09665)).
-- Google's median project sits at 78% ([Ivanković et al., 2019](https://research.google/pubs/pub48413/)).
+- The median mature Java open-source project sits at 63% coverage
+  ([arXiv 2306.09665](https://arxiv.org/pdf/2306.09665)).
+- Google's median project sits at 78%
+  ([Ivanković et al., 2019](https://research.google/pubs/pub48413/)).
 - [Codecov's 2021 report](https://about.codecov.io/resource/2021-state-of-open-source-code-coverage/)
   says most repositories on Codecov reach 80%, but those are repositories that already track
   coverage.
@@ -354,7 +360,8 @@ history spans 41.1 days (2026-08-20 03:29 → 2026-09-30 04:59 PDT).
 
 - **Seven baselines is a small sample, and all of them are flagship-quality projects.** A typical
   GitHub repository is less tested: one large study puts the median test share at 30% of the code,
-  a ratio of about 0.43 ([Miranda et al., 2025](https://onlinelibrary.wiley.com/doi/full/10.1002/smr.70035)).
+  a ratio of about 0.43
+  ([Miranda et al., 2025](https://onlinelibrary.wiley.com/doi/full/10.1002/smr.70035)).
   The baselines' 19.5% comment density does match the long-run open-source average of about 19%
   ([Arafat & Riehle, 2009](https://dirkriehle.com/2009/02/04/the-comment-density-of-open-source-software-code/)).
 - **Authorship means "last wrote the line".** A one-token Tumwater edit to a line Claude wrote

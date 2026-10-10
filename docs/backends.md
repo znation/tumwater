@@ -195,15 +195,18 @@ longer describe what runs.
   earlier under unified-off was memory pressure at 4 × 262144 slots (~115 GB), not the mode
   itself. At f16 three full 262144-token slots would need ~101 GB (86 GB of KV plus the weights) —
   the wedge zone — so the KV cache is stored at q8_0 instead (LM Studio's saved load config:
-  `llm.load.llama.kCacheQuantizationType` / `vCacheQuantizationType` = q8_0 with flash attention on),
+  `llm.load.llama.kCacheQuantizationType` /
+  `vCacheQuantizationType` = q8_0 with flash attention on),
   which brings 3 × 262144 slots to ~62 GB wired with three streams still at 7.8–8.3 tok/s each.
-  Historical LM Studio configuration (superseded by oMLX, above): unified KV off, context-length 262144 (the model's maximum),
+  Historical LM Studio configuration (superseded by oMLX, above): unified KV off,
+  context-length 262144 (the model's maximum),
   parallel 3, q8_0 K/V cache, pi `contextWindow` 258000 (a margin under the slot for pi's output
   reserve), `maxConcurrent` 2 (+ the director's bypass = 3 clients ≤ 3 slots). Keep the model's
   saved default in LM Studio identical to the live load: a just-in-time load after an idle unload
   otherwise reverts to whatever the default says.
 - **KV memory with dedicated slots**: unified-off KV buffers are allocated per slot — at ~110 KB
-  per token (f16; q8_0 halves it), 4 × 262144-token slots cost ~100 GB of KV on top of the weights (~115 GB total),
+  per token (f16; q8_0 halves it), 4 × 262144-token slots cost ~100 GB of KV on top of
+  the weights (~115 GB total),
   which runs a 128 GB machine at the edge: heavy swapping, and the engine can wedge permanently
   in `PROCESSINGPROMPT` (predictions hang, API reports "Engine protocol predict request failed:
   fetch failed", `lms ps` shows a phantom prefill). Unified-on at the same pool is ~25 GB.
