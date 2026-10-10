@@ -7,7 +7,7 @@
  * src/process/launch-services.ts, shared with the running fleet's watch. `platform` is a
  * parameter so the macOS branches are testable on any host. */
 
-import type { CheckOutcome } from "./doctor-checks.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import {
   LAUNCH_SERVICES_KILL_PORTS,
@@ -20,12 +20,9 @@ export async function checkLaunchServicesPorts(
   probe: ProcessProbe = systemProcessProbe,
   platform: NodeJS.Platform = process.platform,
 ): Promise<CheckOutcome> {
-  if (platform !== "darwin") return { level: "ok", detail: "not macOS — no launchservicesd to watch" };
+  if (platform !== "darwin") return okOutcome("not macOS — no launchservicesd to watch");
   const ports = await probe.launchServicesPorts();
-  if (ports === null) return { level: "warn", detail: "cannot check — top reported no launchservicesd port count" };
-  if (ports >= LAUNCH_SERVICES_WARN_PORTS) return { level: "warn", detail: launchServicesWarning(ports) };
-  return {
-    level: "ok",
-    detail: `launchservicesd holds ${compactTokens(ports)} (warns at ${compactTokens(LAUNCH_SERVICES_WARN_PORTS)}; macOS kills it near ${compactTokens(LAUNCH_SERVICES_KILL_PORTS)})`,
-  };
+  if (ports === null) return warnOutcome("cannot check — top reported no launchservicesd port count");
+  if (ports >= LAUNCH_SERVICES_WARN_PORTS) return warnOutcome(launchServicesWarning(ports));
+  return okOutcome(`launchservicesd holds ${compactTokens(ports)} (warns at ${compactTokens(LAUNCH_SERVICES_WARN_PORTS)}; macOS kills it near ${compactTokens(LAUNCH_SERVICES_KILL_PORTS)})`);
 }

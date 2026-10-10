@@ -15,7 +15,7 @@ import { agree } from "../text/phrases.js";
 import { formatTime } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
-import type { CheckOutcome } from "./doctor-checks.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
  * repo checks stay there): the cap fallback's price check (checkFallbackModel), the agent
@@ -23,8 +23,8 @@ import type { CheckOutcome } from "./doctor-checks.js";
  * (checkTierModels). These three are the doctor's only checks that read pi's model definitions
  * and, for the credential probe, spawn the agent binary — a distinct concern from the
  * filesystem/git checks beside them, kept together so a change to how doctor reads models does
- * not touch the environment checks. The shared report contract (CheckOutcome) is type-imported
- * from doctor-checks.ts, exactly as doctor-orphans.ts and doctor-backlog.ts do. */
+ * not touch the environment checks. The shared report contract (CheckOutcome) is imported from
+ * outcome.ts, exactly as doctor-orphans.ts and doctor-backlog.ts do. */
 
 /** The config a readiness check reads, or the warn outcome a broken tumwater.json earns:
  * checkInit already fails on a broken config, so a model check only reports that it could not
@@ -33,7 +33,7 @@ import type { CheckOutcome } from "./doctor-checks.js";
  * files). */
 function loadConfigForCheck(root: string): { config: TumwaterConfig } | { outcome: CheckOutcome } {
   const { config, error } = loadConfigSafe(root);
-  if (config === undefined) return { outcome: { level: "warn", detail: `cannot check — ${error}` } };
+  if (config === undefined) return { outcome: warnOutcome(`cannot check — ${error}`) };
   return { config };
 }
 
@@ -59,7 +59,7 @@ export function checkFallbackModel(
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
   const declared = fallbackPair(config);
-  if (!declared) return { level: "ok", detail: "none configured — role loops pause at the cap" };
+  if (!declared) return okOutcome("none configured — role loops pause at the cap");
   // A pair missing either half would fall through to pi's own (unverified) default, so it can
   // never be free; naming that case beats rendering a bare "?/model". The free branch names
   // the price-resolved pair (a map with no `default` entry borrows another tier's), while the
@@ -70,16 +70,10 @@ export function checkFallbackModel(
   if (free) {
     const name = nameOf(free);
     if (demoted)
-      return {
-        level: "warn",
-        detail: `${name} is priced at zero but not serving — the running fleet demoted it after ${demoted.failures} consecutive failed ticks, so role loops pause at the cap; one probe tick retries it from ${formatTime(new Date(demoted.probeAt))}`,
-      };
-    return { level: "ok", detail: `${name} — priced at zero (cost n/a), serving not verified` };
+      return warnOutcome(`${name} is priced at zero but not serving — the running fleet demoted it after ${demoted.failures} consecutive failed ticks, so role loops pause at the cap; one probe tick retries it from ${formatTime(new Date(demoted.probeAt))}`);
+    return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
   }
-  return {
-    level: "warn",
-    detail: `${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`,
-  };
+  return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`);
 }
 
 /** The credential verdict one provider's `pi auth check --provider <p> --json` gives:
@@ -278,17 +272,17 @@ export async function checkClaudeAuth(
   const loaded = loadConfigForCheck(root);
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
-  if (!claudeSeamsInUse(config)) return { level: "ok", detail: "no claude seams configured" };
+  if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
   if (auth === null)
-    return { level: "warn", detail: "could not check — `claude auth status` did not run or its output was unreadable" };
+    return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
   if (!auth.loggedIn)
-    return { level: "fail", detail: "claude reports logged in: false — run `claude auth login`" };
+    return failOutcome("claude reports logged in: false — run `claude auth login`");
   const subscription = claudeAuthUsesSubscription(auth);
   const billing = subscription
     ? `subscription${auth.subscriptionType !== undefined ? ` (${auth.subscriptionType})` : ""}`
     : "API key";
-  return { level: "ok", detail: `logged in — billing: ${billing}` };
+  return okOutcome(`logged in — billing: ${billing}`);
 }
 
 /** The dotted version in `claude --version`'s output, or undefined when it names none. */
@@ -312,7 +306,7 @@ export async function checkClaudeVersion(
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
   const seams = seamPairs(config).filter((pair) => pair.agent === "claude" && pair.model !== undefined);
-  if (seams.length === 0) return { level: "ok", detail: "no claude seams configured" };
+  if (seams.length === 0) return okOutcome("no claude seams configured");
   // The floor each configured model needs; a model the adapter does not gate contributes none.
   const floors = new Map<string, string>();
   for (const seam of seams) {
@@ -322,12 +316,12 @@ export async function checkClaudeVersion(
   const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
   const found = result !== null && result.code === 0 ? parseClaudeCliVersion(result.stdout) : undefined;
   if (found === undefined)
-    return { level: "warn", detail: "could not check — `claude --version` did not run or its output was unreadable" };
+    return warnOutcome("could not check — `claude --version` did not run or its output was unreadable");
   const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");
   const clampNote = clamped
     ? "; `off`/`minimal` thinking clamps to `--effort low` (claude has no lower setting)"
     : "";
-  if (floors.size === 0) return { level: "ok", detail: `claude ${found}${clampNote}` };
+  if (floors.size === 0) return okOutcome(`claude ${found}${clampNote}`);
   // The highest floor decides: whichever model needs the newest CLI. Below it, fail and name
   // that model; at or above, print the version against the floor.
   let required = "";
@@ -339,11 +333,8 @@ export async function checkClaudeVersion(
     }
   }
   if (belowNodeFloor(found, `>=${required}`))
-    return {
-      level: "fail",
-      detail: `claude ${found} is older than ${required} required by ${neededBy} — run \`claude update\``,
-    };
-  return { level: "ok", detail: `claude ${found} (>= ${required} for ${neededBy})${clampNote}` };
+    return failOutcome(`claude ${found} is older than ${required} required by ${neededBy} — run \`claude update\``);
+  return okOutcome(`claude ${found} (>= ${required} for ${neededBy})${clampNote}`);
 }
 
 /** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the
@@ -400,7 +391,7 @@ export async function checkTierModels(
       ? ""
       : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
   if (pairs.size === 0 && claudeModels.size === 0)
-    return { level: ompVars.length === 0 ? "ok" : "warn", detail: `no models declared — every seam uses pi's own default${ompNote}` };
+    return (ompVars.length === 0 ? okOutcome : warnOutcome)(`no models declared — every seam uses pi's own default${ompNote}`);
   const providers = readPiProviders(modelsPath);
   const fails: string[] = [];
   const warns: string[] = [];
@@ -414,10 +405,7 @@ export async function checkTierModels(
       );
   }
   if (pairs.size > 0 && !providers)
-    return {
-      level: "warn",
-      detail: `cannot check — could not read pi's model definitions at ${modelsPath}${ompNote}`,
-    };
+    return warnOutcome(`cannot check — could not read pi's model definitions at ${modelsPath}${ompNote}`);
   const readyProviders = new Set<string>();
   const checkedProviders = new Set<string>();
   for (const { provider, model } of pairs.values()) {
@@ -464,6 +452,6 @@ export async function checkTierModels(
     fails.length === 0 && warns.length === 0
       ? [pairs.size > 0 ? resolvedPi : "", claudeNote].filter(Boolean).join("; ")
       : found;
-  if (fails.length > 0) return { level: "fail", detail: `${base}${ompNote}` };
-  return { level: warns.length > 0 || ompVars.length > 0 ? "warn" : "ok", detail: `${base}${ompNote}` };
+  if (fails.length > 0) return failOutcome(`${base}${ompNote}`);
+  return (warns.length > 0 || ompVars.length > 0 ? warnOutcome : okOutcome)(`${base}${ompNote}`);
 }

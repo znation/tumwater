@@ -5,7 +5,7 @@ import { pidAlive } from "../process/process.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "../process/process-table.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { plural } from "../text/phrases.js";
-import type { CheckOutcome } from "./doctor-checks.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The orphan-process check of `tumwater doctor`, split out of doctor.ts: it is the one
  * doctor check that inspects the operating system's process table (argv, cwd, parent-child
@@ -131,7 +131,7 @@ export async function checkOrphans(
   try {
     rows = await probe.list();
   } catch (err) {
-    return { level: "warn", detail: `could not scan the process table — ${errorMessage(err)}` };
+    return warnOutcome(`could not scan the process table — ${errorMessage(err)}`);
   }
   const roots = rootSpellings(root);
   const dirs = roots.map(worktreesDir);
@@ -178,14 +178,8 @@ export async function checkOrphans(
   });
   if (orphans.length === 0) {
     if (cwdProblem !== null)
-      return {
-        level: "warn",
-        detail: `none named in argv, but process cwds are unreadable (${cwdProblem}) — an orphan started inside a worktree, like a leaked test runner, would be missed`,
-      };
-    return {
-      level: "ok",
-      detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks",
-    };
+      return warnOutcome(`none named in argv, but process cwds are unreadable (${cwdProblem}) — an orphan started inside a worktree, like a leaked test runner, would be missed`);
+    return okOutcome("none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks");
   }
   const children = new Map<number, number[]>();
   for (const r of rows) {
@@ -208,11 +202,7 @@ export async function checkOrphans(
   });
   const more = orphans.length - listed.length;
   const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
-  return {
-    level: "fail",
-    detail:
-      `${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
+  return failOutcome(`${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
       " — nothing reaps these; kill each with its descendants" +
-      (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : ""),
-  };
+      (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : ""));
 }

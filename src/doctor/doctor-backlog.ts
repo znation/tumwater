@@ -4,7 +4,7 @@ import { errorMessage, truncate } from "../text/text.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
-import type { CheckOutcome } from "./doctor-checks.js";
+import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the three checks that
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
@@ -12,7 +12,7 @@ import type { CheckOutcome } from "./doctor-checks.js";
  * headings. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
  * andMore) and the heading-trim constant, and all three warn instead of failing: damaged
  * documentation is operator signal, not a broken environment. doctor.ts composes them beside
- * the environment checks; the shared CheckOutcome shape is type-imported from doctor-checks.ts. */
+ * the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */
 
 /** How many Fixed records the fix-claims check verifies: the newest, since the section is
  * newest-first by template convention. Older records drift as the code evolves — a symbol
@@ -52,9 +52,9 @@ function readDoc(p: string): { doc: string } | { error: string } {
  * an absent file is that check's own "nothing to verify" ok outcome, an unreadable one a warn
  * naming the file. Returns the document, or the outcome the caller should return as-is. */
 function readDocChecked(p: string, file: string, missingDetail: string): { doc: string } | { outcome: CheckOutcome } {
-  if (!fs.existsSync(p)) return { outcome: { level: "ok", detail: missingDetail } };
+  if (!fs.existsSync(p)) return { outcome: okOutcome(missingDetail) };
   const read = readDoc(p);
-  if ("error" in read) return { outcome: { level: "warn", detail: `cannot read ${file} — ${read.error}` } };
+  if ("error" in read) return { outcome: warnOutcome(`cannot read ${file} — ${read.error}`) };
   return read;
 }
 
@@ -89,18 +89,14 @@ export function checkFixClaims(root: string): CheckOutcome {
   }
   const [first, ...rest] = phantoms;
   if (!first)
-    return { level: "ok", detail: `newest ${records.length} Fixed record(s) name code that exists on this tree` };
+    return okOutcome(`newest ${records.length} Fixed record(s) name code that exists on this tree`);
   // falseFixReason's message shape: the heading, then up to 3 missing names.
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);
   // Every other suspect is still named, shortened: a doctor check is one line.
   const more = andMore(rest, (p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
-  return {
-    level: "warn",
-    detail:
-      `BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
-      `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`,
-  };
+  return warnOutcome(`BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
+      `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
 }
 
 /** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
@@ -116,16 +112,12 @@ export function checkStrandedPlans(root: string): CheckOutcome {
   const { doc } = read;
   const stranded = strandedPlanEntries(doc);
   const clean = "no plan headings filed under the wrong PLANS.md section";
-  if (stranded.length === 0) return { level: "ok", detail: clean };
+  if (stranded.length === 0) return okOutcome(clean);
   const [first, ...rest] = stranded;
-  if (!first) return { level: "ok", detail: clean };
+  if (!first) return okOutcome(clean);
   const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return {
-    level: "warn",
-    detail:
-      `PLANS.md has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
-      `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean loop repairs these)`,
-  };
+  return warnOutcome(`PLANS.md has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
+      `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean loop repairs these)`);
 }
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
@@ -151,14 +143,10 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
     for (const title of duplicateHeadings(doc)) duplicates.push(`${file} "## ${title}"`);
   }
   if (duplicates.length === 0)
-    return { level: "ok", detail: "no duplicated ## section headings in the backlog files" };
+    return okOutcome("no duplicated ## section headings in the backlog files");
   const [first, ...rest] = duplicates;
   const more = andMore(rest, (d) => d);
-  return {
-    level: "warn",
-    detail:
-      `${first}${more} appears more than once — readers take the first section of a name, so ` +
+  return warnOutcome(`${first}${more} appears more than once — readers take the first section of a name, so ` +
       `later entries are invisible; keep one heading per name (the gate blocks only a landing ` +
-      `that adds another copy — remove the duplicate in a deliberate edit)`,
-  };
+      `that adds another copy — remove the duplicate in a deliberate edit)`);
 }

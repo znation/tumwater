@@ -41,28 +41,21 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse } from "./doctor-model-checks.js";
+import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
 
-/** The doctor report contract and the environment/repo pre-flight checks, split out of
- * doctor.ts. CheckOutcome is the shared report contract: every sibling check module
- * (doctor-orphans.ts, doctor-model-checks.ts, doctor-backlog.ts, and doctor-launch-services.ts)
- * type-imports it from here rather than from doctor.ts, the aggregator that runs them, and the
- * environment and repo checks live here alongside it. The model-readiness checks (the cap
+/** The environment/repo pre-flight checks, split out of
+ * doctor.ts. The shared report contract (CheckOutcome and its constructors) lives in
+ * outcome.ts so it can be imported by every check module — including this one and
+ * doctor-model-checks.ts, which cannot value-import each other — and the environment and repo
+ * checks live here alongside it. The model-readiness checks (the cap
  * fallback, the agent binary's credential probe, the declared tiers) live in
  * doctor-model-checks.ts; the backlog-document checks (BUGS.md / PLANS.md readers) live in
  * doctor-backlog.ts; the report's terminal rendering lives beside the CLI's other
  * Markdown/terminal renderers (doctor-render.ts). doctor.ts stays the composition layer only:
  * runDoctor calls each check in fixed order and folds the results into a DoctorReport. */
-
-/** One line of the doctor report: a check's verdict plus what it found. "ok" and "warn" never
- * affect the exit code; only "fail" does (the CLI sets process.exitCode = 1 on any fail). The
- * orphan check lives in doctor-orphans.ts and returns this shape too. */
-export interface CheckOutcome {
-  level: "ok" | "warn" | "fail";
-  detail: string;
-}
 
 /** The full pre-flight report: a header carrying harness state, one entry per check in fixed
  * order, and the verdict line. */
@@ -93,12 +86,9 @@ export function checkNodeVersion(
 ): CheckOutcome {
   const major = Number.parseInt(version, 10);
   if (!Number.isInteger(major) || major <= 0)
-    return { level: "warn", detail: `unrecognized Node version ${JSON.stringify(version)}` };
-  if (!belowNodeFloor(version, floor)) return { level: "ok", detail: `v${version}` };
-  return {
-    level: "warn",
-    detail: `v${version} is below the ${floor} Node floor declared in package.json engines — upgrade Node`,
-  };
+    return warnOutcome(`unrecognized Node version ${JSON.stringify(version)}`);
+  if (!belowNodeFloor(version, floor)) return okOutcome(`v${version}`);
+  return warnOutcome(`v${version} is below the ${floor} Node floor declared in package.json engines — upgrade Node`);
 }
 
 /** git binary — fail with the shared GIT_MISSING_MESSAGE so every entry point reports the
@@ -107,8 +97,8 @@ export function checkNodeVersion(
  * rule is richer (bare name vs path-shaped) and lives in pi/pi-bin.ts's findAgentBinary. */
 export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
   const found = findOnPath("git", pathEnv);
-  if (!found) return { level: "fail", detail: GIT_MISSING_MESSAGE };
-  return { level: "ok", detail: found };
+  if (!found) return failOutcome(GIT_MISSING_MESSAGE);
+  return okOutcome(found);
 }
 
 /** Repo ready — the git/git.ts predicates in requireReadyRepo's order, so doctor and the
@@ -118,23 +108,20 @@ export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
  * one that does not exist fails here instead of at the first tick. `config` is optional so
  * the check stands alone; runDoctor passes the loaded config behind a guard. */
 export async function checkRepo(root: string, config?: TumwaterConfig): Promise<CheckOutcome> {
-  if (!(await isGitRepo(root))) return { level: "fail", detail: NOT_A_REPO_MESSAGE };
-  if (!(await hasCommits(root))) return { level: "fail", detail: NO_COMMITS_MESSAGE };
+  if (!(await isGitRepo(root))) return failOutcome(NOT_A_REPO_MESSAGE);
+  if (!(await hasCommits(root))) return failOutcome(NO_COMMITS_MESSAGE);
   const toplevel = (await repoToplevel(root)) ?? root;
   const configured = config?.baseBranch;
   if (configured !== undefined) {
     if (!(await branchExists(root, configured))) {
       const existing = await branchesPhrase(root);
-      return {
-        level: "fail",
-        detail: `repo at ${toplevel} — configured baseBranch ${configured} does not exist (branches: ${existing})`,
-      };
+      return failOutcome(`repo at ${toplevel} — configured baseBranch ${configured} does not exist (branches: ${existing})`);
     }
-    return { level: "ok", detail: `repo at ${toplevel} — targeting branch ${configured}` };
+    return okOutcome(`repo at ${toplevel} — targeting branch ${configured}`);
   }
   const branch = await currentBranch(root);
-  if (branch === null) return { level: "fail", detail: DETACHED_HEAD_MESSAGE };
-  return { level: "ok", detail: `repo at ${toplevel} — on branch ${branch}` };
+  if (branch === null) return failOutcome(DETACHED_HEAD_MESSAGE);
+  return okOutcome(`repo at ${toplevel} — on branch ${branch}`);
 }
 
 /** Initialized + config valid — tumwater.json present and loadConfig does not throw. The fail
@@ -150,29 +137,22 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
  * is watching). The template problem outranks drift: drift is computed from a parse that has
  * already failed. */
 export function checkInit(root: string): CheckOutcome {
-  if (!fs.existsSync(configPath(root))) return { level: "fail", detail: NOT_INITIALIZED_MESSAGE };
+  if (!fs.existsSync(configPath(root))) return failOutcome(NOT_INITIALIZED_MESSAGE);
   try {
     const config = loadConfig(root);
     const templateProblem = exampleConfigProblem(root);
     if (templateProblem !== null) {
-      return {
-        level: "warn",
-        detail: `broken template: ${templateProblem} — init seeds the bare defaults from it on fresh checkouts; fix the file so new clones get your roles/intervals baseline`,
-      };
+      return warnOutcome(`broken template: ${templateProblem} — init seeds the bare defaults from it on fresh checkouts; fix the file so new clones get your roles/intervals baseline`);
     }
     const drift = exampleDrift(root);
     if (drift.length > 0) {
-      return {
-        level: "warn",
-        detail:
-          `template drift: tumwater.json lacks keys ${EXAMPLE_CONFIG_BASENAME} sets (${drift.join(", ")})` +
+      return warnOutcome(`template drift: tumwater.json lacks keys ${EXAMPLE_CONFIG_BASENAME} sets (${drift.join(", ")})` +
           " — copy them in, or delete tumwater.json and re-run `tumwater init` to reseed from the " +
-          "template (it omits machine keys like provider/model, so re-add those after reseeding)",
-      };
+          "template (it omits machine keys like provider/model, so re-add those after reseeding)");
     }
-    return { level: "ok", detail: `${enabledRoleIds(config).length} roles enabled` };
+    return okOutcome(`${enabledRoleIds(config).length} roles enabled`);
   } catch (err) {
-    return { level: "fail", detail: errorMessage(err) };
+    return failOutcome(errorMessage(err));
   }
 }
 
@@ -190,17 +170,13 @@ export function checkBrief(root: string): CheckOutcome {
   try {
     owner = briefFile(root);
   } catch (err) {
-    return { level: "fail", detail: errorMessage(err) };
+    return failOutcome(errorMessage(err));
   }
-  if (owner) return { level: "ok", detail: `brief in ${owner}` };
+  if (owner) return okOutcome(`brief in ${owner}`);
   if (fs.existsSync(path.join(root, "README.md"))) {
-    return {
-      level: "warn",
-      detail:
-        `README.md carries no tumwater:prompt markers — the fleet would run without its project brief; add the block or re-run \`tumwater init\``,
-    };
+    return warnOutcome(`README.md carries no tumwater:prompt markers — the fleet would run without its project brief; add the block or re-run \`tumwater init\``);
   }
-  return { level: "warn", detail: "no brief file — run `tumwater init <prompt>` to seed one" };
+  return warnOutcome("no brief file — run `tumwater init <prompt>` to seed one");
 }
 
 /** New-project bootstrap (plans/work-ratio.md, part 2/2): while active, report its progress as
@@ -212,11 +188,8 @@ export function checkBootstrap(
   config: TumwaterConfig | undefined,
 ): CheckOutcome {
   const status = config ? bootstrapStatus(root, config) : null;
-  if (status === null || !status.active) return { level: "ok", detail: "not bootstrapping" };
-  return {
-    level: "ok",
-    detail: `bootstrapping: ${status.plansDone}/${status.untilPlansDone} plans done — plan, feature and director tick`,
-  };
+  if (status === null || !status.active) return okOutcome("not bootstrapping");
+  return okOutcome(`bootstrapping: ${status.plansDone}/${status.untilPlansDone} plans done — plan, feature and director tick`);
 }
 
 /** Resolve and test ONE agent's binary: the ok detail names the resolved path and its source
@@ -230,10 +203,10 @@ function agentBinaryCheck(
 ): CheckOutcome {
   const resolved = resolveAgentBin(config, agent);
   const found = findAgentBinary(resolved, pathEnv);
-  if (!found) return { level: "fail", detail: agentMissingMessage(resolved, agent) };
-  if (resolved.source === "default") return { level: "ok", detail: found };
+  if (!found) return failOutcome(agentMissingMessage(resolved, agent));
+  if (resolved.source === "default") return okOutcome(found);
   const from = agentBinSourceLabelFor(agent, resolved.source);
-  return { level: "ok", detail: `${found} — resolved from ${from}` };
+  return okOutcome(`${found} — resolved from ${from}`);
 }
 
 /** Agent binary (plans/portability.md §5/7) — every agent an enabled seam resolves to
@@ -259,10 +232,7 @@ export function checkAgentBinary(
   const failed = checks.find(({ outcome }) => outcome.level === "fail");
   if (failed) return failed.outcome;
   if (checks.length === 1) return checks[0]!.outcome;
-  return {
-    level: "ok",
-    detail: checks.map(({ agent, outcome }) => `${agent}: ${outcome.detail}`).join("; "),
-  };
+  return okOutcome(checks.map(({ agent, outcome }) => `${agent}: ${outcome.detail}`).join("; "));
 }
 
 /** The total bytes under one directory tree, counted iteratively and skipping unreadable
@@ -311,8 +281,8 @@ export function checkClaudeTranscripts(
   config: TumwaterConfig | undefined,
   homeDir: string = os.homedir(),
 ): CheckOutcome {
-  if (!config) return { level: "ok", detail: "no readable tumwater.json — nothing to verify" };
-  if (!claudeSeamsInUse(config)) return { level: "ok", detail: "no claude seams configured" };
+  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+  if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
   const dir = path.join(homeDir, ".claude", "projects");
   let slugs: string[];
   try {
@@ -321,26 +291,26 @@ export function checkClaudeTranscripts(
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name);
   } catch {
-    return { level: "ok", detail: `no transcript dir at ${dir}` };
+    return okOutcome(`no transcript dir at ${dir}`);
   }
   let bytes = 0;
   for (const slug of slugs) bytes += treeBytes(path.join(dir, slug));
   const projects = slugs.length === 1 ? "1 project" : `${slugs.length} projects`;
-  return { level: "ok", detail: `${formatBytes(bytes)} across ${projects} in ${dir}` };
+  return okOutcome(`${formatBytes(bytes)} across ${projects} in ${dir}`);
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
  * and deleting a temp file inside. The probe leaves the dir's listing unchanged after the run. */
 export function checkStateDir(root: string): CheckOutcome {
   const dir = path.join(root, STATE_DIR);
-  if (!fs.existsSync(dir)) return { level: "ok", detail: "absent — created on first run" };
+  if (!fs.existsSync(dir)) return okOutcome("absent — created on first run");
   const probe = path.join(dir, `.doctor-probe-${process.pid}`);
   try {
     fs.writeFileSync(probe, "");
     fs.rmSync(probe);
-    return { level: "ok", detail: "writable" };
+    return okOutcome("writable");
   } catch (err) {
-    return { level: "fail", detail: `not writable: ${errorMessage(err)}` };
+    return failOutcome(`not writable: ${errorMessage(err)}`);
   }
 }
 
@@ -362,24 +332,15 @@ export function checkDiskSpace(
   const where = diskVolumePath(root);
   const free = sample(root);
   if (free === null)
-    return {
-      level: "warn",
-      detail: `cannot measure free space at ${where} (statfs failed) — the disk hold is off for this process`,
-    };
+    return warnOutcome(`cannot measure free space at ${where} (statfs failed) — the disk hold is off for this process`);
   const freeGB = free / BYTES_PER_GB;
   const freeText = `${formatGB(freeGB)} free at ${where}`;
   if (holdGB > 0 && freeGB < holdGB)
-    return {
-      level: "fail",
-      detail: `${freeText} — below the ${holdGB} GB diskHoldGB floor; the fleet holds new work until space recovers`,
-    };
+    return failOutcome(`${freeText} — below the ${holdGB} GB diskHoldGB floor; the fleet holds new work until space recovers`);
   if (reclaimGB > 0 && freeGB < reclaimGB)
-    return {
-      level: "warn",
-      detail: `${freeText} — below the ${reclaimGB} GB diskReclaimGB threshold; a pressure reclaim pass deletes ignored build outputs from idle worktrees`,
-    };
+    return warnOutcome(`${freeText} — below the ${reclaimGB} GB diskReclaimGB threshold; a pressure reclaim pass deletes ignored build outputs from idle worktrees`);
   const floor = holdGB > 0 ? `above the ${holdGB} GB floor` : "diskHoldGB is 0 (hold disabled)";
-  return { level: "ok", detail: `${freeText}, ${floor}` };
+  return okOutcome(`${freeText}, ${floor}`);
 }
 
 /** Merge lock — read-only classification via classifyLock (the same three cases the breaker
@@ -388,16 +349,13 @@ export function checkMergeLock(root: string): CheckOutcome {
   const dir = mergeLockDir(root);
   switch (classifyLock(dir)) {
     case "absent":
-      return { level: "ok", detail: "not held" };
+      return okOutcome("not held");
     case "live": {
       const pid = readLockPid(dir);
-      return {
-        level: "ok",
-        detail: pid !== null ? `held by running loop (pid ${pid})` : "held (pid not yet written)",
-      };
+      return okOutcome(pid !== null ? `held by running loop (pid ${pid})` : "held (pid not yet written)");
     }
     case "stale":
-      return { level: "warn", detail: "stale — will be broken on next merge" };
+      return warnOutcome("stale — will be broken on next merge");
   }
 }
 
@@ -442,7 +400,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
         .join("; "),
     );
   }
-  return { level: leftover.length > 0 || stale.length > 0 ? "warn" : "ok", detail: parts.join(" — ") };
+  return (leftover.length > 0 || stale.length > 0 ? warnOutcome : okOutcome)(parts.join(" — "));
 }
 
 /** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7): the
@@ -460,7 +418,7 @@ export function checkWorkInstances(
   config?: TumwaterConfig | null,
   now = Date.now(),
 ): CheckOutcome {
-  if (!config) return { level: "ok", detail: "no readable tumwater.json — nothing to verify" };
+  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
   const claims: Array<{ id: string; title: string; key: string; at: number }> = [];
   for (const id of loopIds(config)) {
     const claim = loadLoopState(root, id).claim;
@@ -476,7 +434,7 @@ export function checkWorkInstances(
   const slots = slotCount(config);
   const smallPool = multi.length > 0 && slots < config.maxConcurrent;
   if (gone.length === 0 && stale.length === 0 && !smallPool)
-    return { level: "ok", detail: claims.length > 0 ? `${claims.length} claims held` : "no claims held" };
+    return okOutcome(claims.length > 0 ? `${claims.length} claims held` : "no claims held");
   const parts: string[] = [
     ...gone.map((c) => `claim "${c.title}" (${c.id}) names an entry no longer listed`),
     ...stale.map(
@@ -488,7 +446,7 @@ export function checkWorkInstances(
     parts.push(
       `${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`,
     );
-  return { level: "warn", detail: parts.join("; ") };
+  return warnOutcome(parts.join("; "));
 }
 
 /** Declared project check — names what the review gate's deterministic pre-check, the
@@ -505,16 +463,13 @@ export function checkBuildCheck(
 ): CheckOutcome {
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
-    return {
-      level: "warn",
-      detail: "none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)",
-    };
+    return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)");
   if (check.kind === "command") {
     const where = path.relative(root, check.cwd);
-    return { level: "ok", detail: where ? `${check.command} (cwd ${where})` : check.command };
+    return okOutcome(where ? `${check.command} (cwd ${where})` : check.command);
   }
   const where = path.relative(root, check.rootDir);
-  return { level: "ok", detail: where ? `npm ${check.script} in ${where}` : `npm ${check.script}` };
+  return okOutcome(where ? `npm ${check.script} in ${where}` : `npm ${check.script}`);
 }
 
 /** Build provenance — is the harness about to run (this process's dist/) the code main
@@ -532,28 +487,25 @@ export async function checkBuild(
    * doctor is where an operator goes to find out why. */
   running: BuildStatus | null = null,
 ): Promise<CheckOutcome> {
-  if (!info) return { level: "ok", detail: "no build stamp — dist/ compiled without `npm run build`" };
+  if (!info) return okOutcome("no build stamp — dist/ compiled without `npm run build`");
   const sha = shortSha(info.sha);
   if (!(await isSelfHosted(root, info)))
     // Not "dist/ from …": in someone else's project that names a dist/ directory the project
     // does not have — the stamp read here is the running harness install's own, so say that.
-    return { level: "ok", detail: `harness build ${sha} (this project is not the harness itself)` };
+    return okOutcome(`harness build ${sha} (this project is not the harness itself)`);
   const mainHead = head === undefined ? await currentHead(root) : head;
-  if (!mainHead) return { level: "ok", detail: `dist/ from ${sha}` };
+  if (!mainHead) return okOutcome(`dist/ from ${sha}`);
   const stale = await buildStaleness(root, info.sha, mainHead);
-  if (!stale) return { level: "ok", detail: `dist/ from ${sha}` };
+  if (!stale) return okOutcome(`dist/ from ${sha}`);
   if (stale.stale) {
     const next = running?.restartBlocked
       ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
       : running?.restartPending
         ? "; auto-restart is under way"
         : "; run `npm run build` and restart `tumwater run` (auto-restart does this for a running fleet)";
-    return {
-      level: "warn",
-      detail: `dist/ from ${sha} is stale — main has ${stale.aheadCommits} later commit(s) touching ${STALE_INPUTS_LABEL}${next}`,
-    };
+    return warnOutcome(`dist/ from ${sha} is stale — main has ${stale.aheadCommits} later commit(s) touching ${STALE_INPUTS_LABEL}${next}`);
   }
-  return { level: "ok", detail: `dist/ from ${sha}, matches main` };
+  return okOutcome(`dist/ from ${sha}, matches main`);
 }
 
 /** The primary checkout's HEAD sha, or null when it cannot be resolved (no repo) —
