@@ -15,14 +15,27 @@ export interface TestCounts {
   skipped: number;
 }
 
-/** The four summary counts when `v` carries all of them as numbers, else undefined — the one
+/** One count field, when it is a count: a non-negative safe integer, else undefined. Counts
+ * are attested verbatim, so a non-integer or unrepresentable value is corrupt input, not a
+ * count — parseTestCounts builds its fields with Number() on an unbounded `\d+` run, which
+ * overflows to Infinity or rounds an oversized digit run, and either would render a nonsense
+ * badge (`Infinity/Infinity`) or attest a total no runner printed. */
+function countField(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : undefined;
+}
+
+/** The four summary counts when `v` carries all of them as counts, else undefined — the one
  * structural guard for a loose-typed source: parseTestCounts's own block assembly, and the
  * status snapshot's loose-typed event log (status/status-polls.ts). */
 export function asTestCounts(v: unknown): TestCounts | undefined {
   if (typeof v !== "object" || v === null) return undefined;
   const c = v as Record<string, unknown>;
-  return typeof c.tests === "number" && typeof c.pass === "number" && typeof c.fail === "number" && typeof c.skipped === "number"
-    ? { tests: c.tests, pass: c.pass, fail: c.fail, skipped: c.skipped }
+  const tests = countField(c.tests);
+  const pass = countField(c.pass);
+  const fail = countField(c.fail);
+  const skipped = countField(c.skipped);
+  return tests !== undefined && pass !== undefined && fail !== undefined && skipped !== undefined
+    ? { tests, pass, fail, skipped }
     : undefined;
 }
 

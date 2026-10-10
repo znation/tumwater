@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runBuildCheck } from "../src/build/build-check.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
-import { parseTestCounts } from "../src/build/build-check-counts.js";
+import { asTestCounts, parseTestCounts } from "../src/build/build-check-counts.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { checkFailureReasons } from "../src/build/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build/build-check-events.js";
@@ -71,6 +71,20 @@ test("parseTestCounts returns undefined when no complete summary block appears",
   assert.equal(parseTestCounts("ok\nnothing summary-shaped\n"), undefined);
   // A block missing any of the four counts is not a summary.
   assert.equal(parseTestCounts("ℹ pass 2\nℹ fail 0\n"), undefined);
+});
+
+// A count must be a non-negative safe integer: parseTestCounts's Number() on an unbounded
+// digit run overflows to Infinity or rounds an oversized total, and either would render a
+// nonsense badge or attest a number no runner printed, so the guard reads the block as absent.
+test("asTestCounts rejects non-count numbers and parseTestCounts drops an overflowing block", () => {
+  assert.deepEqual(asTestCounts({ tests: 2, pass: 2, fail: 0, skipped: 0 }), { tests: 2, pass: 2, fail: 0, skipped: 0 });
+  assert.equal(asTestCounts({ tests: 2, pass: 2, fail: 0 }), undefined);
+  assert.equal(asTestCounts({ tests: 2, pass: 2, fail: 0, skipped: Infinity }), undefined);
+  assert.equal(asTestCounts({ tests: 2, pass: 2, fail: 0, skipped: -1 }), undefined);
+  assert.equal(asTestCounts({ tests: 2.5, pass: 2, fail: 0, skipped: 0 }), undefined);
+  // Number("9".repeat(400)) is Infinity, so the whole block is not a summary.
+  const overflowing = ["ℹ tests " + "9".repeat(400), "ℹ pass 0", "ℹ fail 0", "ℹ skipped 0"].join("\n");
+  assert.equal(parseTestCounts(overflowing), undefined);
 });
 
 test("parseTestCounts takes the last complete block when several appear", () => {
