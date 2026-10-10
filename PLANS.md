@@ -205,6 +205,8 @@ and a loop test for `budgetCapped` → handoff.
 
 ### Finish the stale code-path citation sweep, part 1/5: `plans/portability.md`, parts 1/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 2/5–5/5)
 
+**Needs review 2026-10-10 by feature: too large for one run**
+
 **Goal.** Every path-shaped token in this part's plan-document sections names a path that exists
 in the tree, every `<path>:<line>` names a line the file actually has, and a module that has
 since split names the module that owns the symbol beside the citation. A reader who follows the
