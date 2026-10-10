@@ -191,7 +191,7 @@ fresh mtimes, so the tool rebuilds exactly what changed.
 **Release,** in runTick's `finally`:
 - **When the role's state has `resumePending`,** the slot stays **pinned** for the role, with
   the branch checked out and the edits uncommitted.
-  - This is required, not an optimisation. pi 1.0.0's `--continue` only considers sessions
+  - This is required, not an optimization. pi 1.0.0's `--continue` only considers sessions
     whose recorded cwd equals the current directory exactly (session-manager.js
     `continueRecent`).
   - A resume in any other directory silently starts a fresh session, while tumwater's

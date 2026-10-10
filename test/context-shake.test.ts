@@ -313,7 +313,7 @@ test("shakeMessages returns nothing for an event with no context", () => {
 });
 
 test("shakeMessages leaves toolName unset for a tool result pi did not label", () => {
-  // A toolResult can arrive without a toolName; only a labelled result is a shake candidate, so
+  // A toolResult can arrive without a toolName; only a labeled result is a shake candidate, so
   // the message map must skip the toolName/readInput fields instead of asserting one is present.
   const messages = shakeMessages({
     context: {

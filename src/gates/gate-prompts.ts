@@ -19,7 +19,7 @@ import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-c
  * how an empty objection list reads. */
 const NO_REASONS = "(no reasons recorded)";
 
-/** The two labelled blocks that show the resolver what each side meant: this branch's own
+/** The two labeled blocks that show the resolver what each side meant: this branch's own
  * commit message and the main commits that touched a conflicted file since the merge-base. Both
  * are framed as data, not instructions, so pi cannot mistake a commit body for a rule. */
 function conflictIntentBlocks(intent: {

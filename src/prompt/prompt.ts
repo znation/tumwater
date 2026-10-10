@@ -59,7 +59,7 @@ export const CONTEXT_BUDGET_RULE = `- Your context window is finite: everything 
  * conflict resolver, and the reviewer. Project-neutral on purpose — a fleet works on any codebase
  * (npm, cargo, pytest, a configured check.command), so the rule names no ecosystem's runner as THE
  * right one: it points at the declared check or the framework already in use, and its one example
- * is labelled as a mismatch. A run that does not know the suite's runner guesses one: in the week
+ * is labeled as a mismatch. A run that does not know the suite's runner guesses one: in the week
  * to 2026-10-05 the fleet's agents ran `npx vitest` 19 times in tumwater, a node:test repo, and
  * vitest killed the compiled tests mid-run, so no cleanup hook ran (BUGS.md 2026-10-05: ~725 temp
  * run roots abandoned and test children orphaned by one conflict resolver's five runs). Even where
