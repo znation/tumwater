@@ -534,6 +534,81 @@ the cap, and that the loop keeps ticking. test/notify.test.ts — extend the pin
   keeps ticking; `NOTIFY_EVENT_TYPES` includes it; docs/how-it-works.md names the per-role warning.
 - `npm run test` green.
 
+### A Pending view in `tumwater tui` matching `tumwater diff` (planned 2026-10-10 by plan; sibling of the just-landed "A History view in `tumwater tui`"; independent of the Agent backends series)
+
+**Goal.** `Ctrl+T` in `tumwater tui` gains a fleet-wide **Pending** pane showing the unlanded-change
+roster `tumwater diff` prints — one line per loop holding work, or `no pending changes` — so the
+terminal can read what each loop holds between its commit and its merge without leaving the TUI.
+This is the last view parity gap: `docs/how-it-works.md`'s Operator notes already say the TUI
+"names its views the same way" and list only Activity, Transcript, Backlog, Usage, Failures, and
+History, while the dashboard has a Pending view (PLANS.md ## Done, "GUI Pending view",
+commit 5ecdaaa6) and the just-landed TUI History entry noted the dashboard's History "(and
+Pending)" had no terminal counterpart. The pane reuses the existing collector and renderer —
+`collectFleetChanges` (src/change/change-data.ts) and `renderFleetChange` (src/change/change-render.ts)
+— so the TUI, the CLI, and `/api/diff` cannot disagree about the roster.
+
+**Context.** The Usage/Failures/History panes are the template: a text cache `paneCache` computed
+once per activation by the `Ctrl+T` handler (src/ui/tui/tui-keys.ts) and re-windowed each frame by
+`paneBody` through `entryBodyWindow` (src/ui/tui/tui-pane.ts). History's read is synchronous;
+`collectFleetChanges` is async (it awaits git plumbing behind `collectRoleChange`), so the Pending
+branch kicks the collector off fire-and-forget from the sync handler, caches the rendered text when
+it resolves, and calls `deps.requestRender()` — guarding on the view index so a resolution after the
+operator cycled away cannot overwrite the new pane's cache. This is the same async-collector call
+the GUI's `/api/diff` makes, reached directly rather than over HTTP.
+
+**Approach.**
+1. src/ui/tui/tui-frame.ts: add `{ kind: "pending" }` to `TuiView`; append `["pending", "Pending"]`
+to `tabStrip`'s tab list **after** History, so the existing Usage/Failures/History indices and
+their tests do not move; give `hintLine` a Pending branch with the Usage/Failures/History keys
+(`Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+T next view · Ctrl+D quit`); update the
+`TuiView` and `tabStrip` doc comments to name Pending.
+2. src/ui/tui/tui-pane.ts: a `pane.kind === "pending"` branch mirroring the history branch —
+window `state.paneCache` through `entryBodyWindow(state.paneCache ?? "", state.paneScroll,
+eventBudget, width)` and return `emptyNote: "(loading pending changes…)"` (the cache is null only
+until the collector resolves); enumerate Pending in the module header comment.
+3. src/ui/tui/tui-keys.ts: (a) change the cycle modulus to `roleIds.length + 6` and the pending
+index to `roleIds.length + 5`, updating the cycle comment; (b) add an optional seam
+`collectPending?: (root: string) => Promise<FleetChangeView>` to `TuiKeysDeps`, defaulting to
+`collectFleetChanges` (imported from src/change/change-data.ts); (c) in the `Ctrl+T` handler, when
+the new view is the pending index, leave `paneCache` null and `void deps.collectPending(root).then`:
+if `view === roleIds.length + 5` still holds, set `paneCache = renderFleetChange(fleet)` (import
+`renderFleetChange` from src/change/change-render.ts; name the resolved `FleetChangeView`
+parameter `fleet`, since `view` is the handler's own view index) and call `deps.requestRender()`; on rejection
+call `flashError(err)` and `deps.requestRender()` (the default collector's doc promises it degrades
+rather than throws, so this only covers an injected seam). The existing `paneScroll = 0` reset and
+the `view >= roleIds.length + 2` PgUp/PgDn condition already cover the new pane.
+4. src/ui/tui/tui.tsx: map `view === roleIds.length + 5` to `{ kind: "pending" }` in the pane
+assembly.
+5. docs/how-it-works.md's Operator notes TUI bullet: add Pending to the `Ctrl+T` cycle sentence
+(Activity, each loop's Transcript, Backlog, Usage, Failures, History, Pending).
+
+**Files touched.**
+- src/ui/tui/tui-frame.ts (`TuiView`, `tabStrip`, `hintLine`, comments)
+- src/ui/tui/tui-pane.ts (`paneBody`, comment)
+- src/ui/tui/tui-keys.ts (cycle modulus, `collectPending` seam, async pending cache)
+- src/ui/tui/tui.tsx (view mapping)
+- docs/how-it-works.md
+
+Tests: extend test/tui-frame.test.ts's tab-strip and hint assertions for the Pending tab last;
+extend the view-cycle test in test/tui-keys.test.ts to reach the pending index and page it, and add
+one test that injects a `collectPending` resolving a fixed `FleetChangeView` — after the promise
+settles the pane's `paneCache` is `renderFleetChange`'s text and a render was requested, and
+cycling away drops the cache.
+
+**Acceptance criteria.**
+- `Ctrl+T` cycles Activity → each loop's Transcript → Backlog → Usage → Failures → History →
+Pending → Activity, and the tab strip shows `[Pending]` last.
+- The Pending pane shows the fleet-wide `renderFleetChange(await collectFleetChanges(root))` text:
+one line per role holding unlanded work (`role: N commits ahead of <main>[, M uncommitted files]`),
+or `no pending changes` when the fleet holds none; entering the pane recomputes it and the pane
+repaints when the collector resolves.
+- PgUp/PgDn page the pane and clamp at both ends, exactly as Usage/Failures/History page their
+text; leaving the pane before the collector resolves does not cache onto the view the operator
+moved to.
+- `tumwater diff`, `tumwater diff --json`, the GUI Pending view, and `tumwater history` are
+unchanged (`collectFleetChanges`, `renderFleetChange`, and `TickRow` are untouched).
+- `npm run test` green.
+
 
 ## Done
 
