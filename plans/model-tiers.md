@@ -105,7 +105,8 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
 | Conflict resolver | strong | src/landing/landing-merge.ts `resolveConflict` (today: the authoring loop's own config) |
 | SUMMARY follow-up, transient retry, resume-on-restart | the tick's own model | continuations stay on the session's model; switching would lose the prompt cache |
 
-- Catalog roles carry their tier as a new `tier` field in src/roles/role-catalog.ts; user-defined loops
+- Catalog roles carry their tier as a new `tier` field in src/roles/role-catalog.ts; user-defined
+  loops
   are `default`.
 - Why these: **strong** where an error costs the most and runs are rare or gate everything (the
   reviewer judges every code change; the plan role steers many feature ticks; the resolver edits
@@ -151,7 +152,8 @@ on; `budget_handback` hands running ticks back when the gate reopens; the review
 (a selector, not a tier name) is dropped at the cap, so the seam falls back through its built-in
 tier and a paid pin cannot keep spending.
 
-The fallback breaker (src/budget/fallback-breaker.ts) is one `FallbackBreaker` keyed by the pair's name
+The fallback breaker (src/budget/fallback-breaker.ts) is one `FallbackBreaker` keyed by the pair's
+name
 today; it becomes a map keyed by pair, so tiers sharing a fallback share a breaker and a demoted
 pair re-resolves only the tiers that use it.
 
@@ -179,7 +181,8 @@ This keeps today's behavior exactly: a single `fallbackModel` F reads as `fallba
 - `tick_start` and `review_start`, plus the conflict resolver's run, record the model actually
   used (`model: "provider/id:thinking"`). Today they carry only the tick number or head, so no
   model choice can be evaluated from the event log.
-- Role rows (src/roles/role-view.ts, src/status/status-data.ts, both dashboards) show each role's tier and
+- Role rows (src/roles/role-view.ts, src/status/status-data.ts, both dashboards) show each role's
+  tier and
   resolved model.
 - `budget_fallback` carries the per-tier resolution, e.g. `tiers: { default:
   "omlx/Qwen3.8-27B-MLX-oQ4e-mtp", strong: "omlx/Qwen3.8-27B-MLX-oQ4e-mtp (from default)" }`,
@@ -200,7 +203,8 @@ This keeps today's behavior exactly: a single `fallbackModel` F reads as `fallba
 
 ### Fleet hold per provider
 
-src/fleet/fleet-hold.ts trips one fleet-wide hold when two roles fail the same way within two minutes;
+src/fleet/fleet-hold.ts trips one fleet-wide hold when two roles fail the same way within two
+minutes;
 it assumes a single backend. With seams on different providers, a 429 storm at the reviewer's
 provider would stop authors on a healthy one. Key storms by provider as well as kind, and hold
 only the roles whose tick model is on the failing provider. A hold on the strong tier's provider
@@ -234,12 +238,15 @@ Each lands and is useful on its own:
 src/config-schema.ts (types, key lists), src/config-validation.ts and src/config-field-checks.ts
 (shapes, legacy conflicts), src/config.ts (defaults, overlay of string-or-map), a new
 src/config/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
-`fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/roles/role-catalog.ts (`tier`),
+`fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/roles/role-catalog.ts
+(`tier`),
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget/budget.ts,
 src/gates/budget-gates.ts, src/budget/fallback-breaker.ts, src/landing/landing-merge.ts and
-src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
+src/landing/landing-core.ts (resolver on strong), src/review/review.ts,
+src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
-src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts, src/status/status-data.ts, src/ui/*,
+src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts,
+src/status/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
 docs/implementation-model-fallback.md, and their tests.

@@ -48,7 +48,8 @@ roles landed 271 commits, about 6.3 for every work landing.
 
 ## Design
 
-1. **Maintenance follows work (Work ratio 1a/4 and 1b/4, split from 1/4 on 10-08 after feature passed over it as too big).**
+1. **Maintenance follows work (Work ratio 1a/4 and 1b/4, split from 1/4 on 10-08 after feature
+   passed over it as too big).**
    - Code-maintenance landings in a rolling 24 h window are capped at
      `maintenancePerWorkLanding × work landings + 12`. The default for `maintenancePerWorkLanding`
      is 2.

@@ -102,7 +102,8 @@ already carve roles by charter, and reads the same way.
 ### Relationship to the deferral latch — resolved, this plan is landable now
 
 The latch was a live defect with its own BUGS.md entry; it is **fixed** (bugfix tick `704139c`,
-2026-09-18: `DEFER_MAX_MS = 3 h` and `deferralExpired(s, now)` in `src/scheduling/scheduling.ts` force a due
+2026-09-18: `DEFER_MAX_MS = 3 h` and `deferralExpired(s, now)` in `src/scheduling/scheduling.ts`
+force a due
 tick to run once it has been deferred past the cap, so a deferred role ticks at least once per
 window and `lastResult` can no longer freeze its own precondition). The ordering this section
 used to impose — fix the latch first — is therefore satisfied; the two were never substitutes and
@@ -146,10 +147,12 @@ a passing check would still grow monotonically until the cap intervened. This pl
   `else`: observers schedule at `minTickIntervalSeconds` and leave `backoffSeconds` at 0. The
   `user_aborted` arm (a deliberate operator stop, not a passing check) keeps its idle backoff for
   every role — the predicate is scoped to the final `else` only.
-- `src/scheduling/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which `deferTick`
+- `src/scheduling/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which
+  `deferTick`
   already reads. Note `deferTick` now takes a fifth argument, `now: number` (`704139c`), so the
   new "returns false for every observer" tests must pass it.
-- `src/verdict/reply-contract.ts` — `extractFlow(text): { flow: string; result: "passed" | "bug" } | null`,
+- `src/verdict/reply-contract.ts` —
+  `extractFlow(text): { flow: string; result: "passed" | "bug" } | null`,
   built on the existing `labeledLine` helper that already serves
   `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED`. The line is
   `FLOW: <name> — <passed|bug>`; a bare `FLOW: <name>` is tolerated as `passed`. The result token
@@ -238,16 +241,19 @@ confirmed absent: `grep -rn OBSERVER src/ test/` is empty, and `qa` is still in
 
 Verified on this tree:
 
-- `src/roles/roles.ts` — `DEFERRABLE_ROLES` at line 272 (`qa` at 279), the doc comment above it reading
+- `src/roles/roles.ts` — `DEFERRABLE_ROLES` at line 272 (`qa` at 279), the doc comment above it
+  reading
   "exactly the nine deferrable built-ins"; `WORK_ROLES` at 268; `BASELINE_BLOCKED_ROLES` at 300
   (does not contain `qa`); the `qa` role at 185, whose find text already tells the model to
   "prefer a flow not recently exercised, as far as BUGS.md filings and Verified notes show" —
   exactly the blind lookup 2/2 replaces.
 - `src/state.ts` — `applyTickOutcome` at 185; its final `else` (the idle branch) at 268–270 is
   `nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff)` then `nextRunAt = now + backoff`, which
-  is what observers must bypass. `state.ts` already imports from `roles/roles.js` (`DIRECTOR_ROLE`, line
+  is what observers must bypass. `state.ts` already imports from `roles/roles.js` (`DIRECTOR_ROLE`,
+  line
   4), so `OBSERVER_ROLES` joins that import with no new edge and no cycle.
-- `src/scheduling/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number` (`704139c`),
+- `src/scheduling/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number`
+  (`704139c`),
   and ANDs `!deferralExpired(s, now)`; `DEFER_MAX_MS` (98) and `deferralExpired` (105) are the
   latch fix. The single production caller is `src/orchestrator.ts:684`. No change is needed here
   beyond `DEFERRABLE_ROLES` shrinking, as the Shape bullet says — but every new `deferTick` test
@@ -289,12 +295,15 @@ Sizing unchanged: `src/roles/roles.ts` ~6 lines (the set, its comment, the expor
 The 1/2 note above audited the scheduler half only; 2/2's anchors were never verified. Audited
 against main `a3b5138` (the README's stamp is four merges behind at `c53dba4`; the landings since
 — `8a3e6a1` merge-queue 5/5, `a3b5138` the quiet-kill bugfix, and the markdown commits — touch
-no 2/2 anchor). The capability is confirmed absent: `grep -rn 'qa-coverage\|renderCoverage\|recordFlow\|QA_FLOWS\|extractFlow' src/ test/` is empty, and `FLOW:` appears nowhere in the
+no 2/2 anchor). The capability is confirmed absent:
+`grep -rn 'qa-coverage\|renderCoverage\|recordFlow\|QA_FLOWS\|extractFlow' src/ test/` is empty, and
+`FLOW:` appears nowhere in the
 role texts.
 
 Verified on this tree:
 
-- `src/verdict/reply-contract.ts` (75 lines) — `labeledLine(text, label)` at line 28 is exactly the helper
+- `src/verdict/reply-contract.ts` (75 lines) — `labeledLine(text, label)` at line 28 is exactly the
+  helper
   the plan assumes: `^\s*<label>:\s*(.+)\s*$` with the `m` flag, returning the trimmed remainder
   or null. `extractRefusal` (line 37) is the precedent for a thin wrapper. The `FLOW` label is
   literal text, so there is no regex-escaping concern.
@@ -310,9 +319,11 @@ Verified on this tree:
 - `src/paths.ts` — `tumwaterDir(root)` at 6; `statePath(root, role)` at 26 is the exact idiom
   `qaCoveragePath` copies; the state dir already holds `orchestrator.json`/landing markers, and
   `writeJsonAtomic` creates the parent, so no directory setup is needed.
-- `src/files/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn; `writeJsonAtomic`
+- `src/files/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn;
+  `writeJsonAtomic`
   at 43 is the per-pid tmp+rename writer. Both are what invariant 5 needs.
-- `src/roles/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not recently
+- `src/roles/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not
+  recently
   exercised, as far as BUGS.md filings and Verified notes show" — the blind lookup this replaces.
 - plans/qa-role.md — line 53 fixes the ordered flow universe
   `init → status → logs → prompt → reset-counters → gui → tui → run`, which `QA_FLOWS` mirrors;

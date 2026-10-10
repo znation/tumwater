@@ -28,7 +28,8 @@ to ask.
   paragraph of context, the concrete options, and the loop's own recommendation — a senior asks
   with a proposal, not a shrug. Question-only diffs are md-only, hence cheap under the review
   gate's exemption.
-- **Prompt contract** (`src/prompt/prompt.ts`): add QUESTIONS.md to the read-first list in COMMON_RULES
+- **Prompt contract** (`src/prompt/prompt.ts`): add QUESTIONS.md to the read-first list in
+  COMMON_RULES
   plus a new bullet: "when a fork in the road is genuinely the user's call, do not guess — append
   a question to QUESTIONS.md (context, options, your recommendation) and either continue with the
   parts that don't depend on it or end the tick. Never block on an unanswered question; check for
@@ -46,7 +47,8 @@ to ask.
   gui-page.ts renders it as a third section — *open questions (K)*, `(none)` when empty — in the
   same `#backlog` panel below the loop table. TUI: the Ctrl+T-cycled project-status view gains an
   open-questions list after planned features and open bugs (`backlogLines` in src/tui.ts takes it
-  as a third argument). Both reuse `parseEntries(md, "Open")` from src/backlog/backlog.ts — QUESTIONS.md's
+  as a third argument). Both reuse `parseEntries(md, "Open")` from src/backlog/backlog.ts —
+  QUESTIONS.md's
   `## Open` section parses as-is; add an `openQuestions(root)` reader there (or in questions.ts,
   delegating to it) so the count and the list come from one parse. No new route, no panel-on-
   click. TUI: keep the highlighted line above recent activity when N > 0 — a cheap nudge that
@@ -63,7 +65,8 @@ to ask.
   the rebase and compare after `ffMergeToMain` succeeds; for each new entry log one
   `question_posted` alongside the existing `merged` event — pi stays out of the event system.
   Add `question_posted` to the `HarnessEvent.type` union (src/types.ts) with plain rendering in
-  `formatEvent` (src/events/event-format.ts — it no longer lives in src/events/events.ts); no warning prefix,
+  `formatEvent` (src/events/event-format.ts — it no longer lives in src/events/events.ts); no
+  warning prefix,
   this is routine operation.
 
 ## Files touched
@@ -73,7 +76,8 @@ ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new
 parsing), `src/backlog/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
 `src/status.ts` (`StatusSnapshot.questions`, as inbox does today),
 `src/status-render.ts` (header badge in renderStatus), `src/gui.ts` (statusPayload gains a
-fresh-per-poll `questions` list beside `plans`/`bugs`), `src/ui/gui/gui-page.ts` (header badge + open-
+fresh-per-poll `questions` list beside `plans`/`bugs`), `src/ui/gui/gui-page.ts` (header badge +
+open-
 questions section in the project status panel), `src/tui.ts` (highlighted line + open-questions
 list in the Ctrl+T project-status view),
 `src/merge.ts` (post-merge count diff → event in tryMerge; extracted from loop.ts 2026-08-29),

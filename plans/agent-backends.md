@@ -255,7 +255,8 @@ Back-compat:
 Reserved flags: claude's `HARNESS_*_FLAGS` set covers `-p/--print`, `--output-format`,
 `--verbose`, `--model`, `--effort`, `--session-id`, `--resume/-r`, `--continue/-c`,
 `--permission-mode`, `--tools`, `--setting-sources`, `--strict-mcp-config`, `--mcp-config`,
-`--disable-slash-commands` and `--max-budget-usd`. Repeating any of them in `agents.claude.args` is a validation
+`--disable-slash-commands` and `--max-budget-usd`. Repeating any of them in `agents.claude.args` is
+a validation
 error.
 
 ### 4. Sessions

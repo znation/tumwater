@@ -14,16 +14,19 @@ review gate (see [review-gate.md](review-gate.md)) checks diffs against.
 HN commenter **chermi**: LLMs are bad at following prohibitions and work best off positive
 constraints — keep a "bias field" of design principles to lint outputs toward consistency.
 **dd8601fn**: knowing what *not* to do is the high-value expertise. Today tumwater's standing
-constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and README fragments; per-role
+constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and README fragments;
+per-role
 `instructions` in tumwater.json exist but are per-role and unversioned prose.
 
 ## Design
 
-- **Template at init** (`src/init/init.ts`): seed `PRINCIPLES.md` beside PLANS.md/BUGS.md with a short
+- **Template at init** (`src/init/init.ts`): seed `PRINCIPLES.md` beside PLANS.md/BUGS.md with a
+  short
   header explaining its purpose and 3–4 starter principles phrased positively (e.g. "prefer the
   standard library over a new dependency", "keep every module under ~500 lines", "every behavior
   change ships with a test"). Add to the init commit and to `initProject`'s created-files list.
-- **Injection** (`src/prompt/principles.ts`): new `readPrinciples(root)` reads the file (cap at ~4,000 chars,
+- **Injection** (`src/prompt/principles.ts`): new `readPrinciples(root)` reads the file (cap at
+  ~4,000 chars,
   clipping with a note so a runaway file cannot blow up every prompt). `buildTickPrompt` and
   `buildDirectorPrompt` include it as a `<principles>` block introduced as "design principles this
   project holds — uphold them in everything you produce". Positive framing preserved verbatim.
@@ -31,7 +34,8 @@ constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and READ
   ([steward-role.md](steward-role.md)) may edit PRINCIPLES.md. Add to `COMMON_RULES`: all other
   roles treat it as read-only; if a principle seems wrong, question it via the questions outbox
   ([questions-outbox.md](questions-outbox.md)) or a PLANS.md note rather than editing.
-- **Director routing** (`src/prompt/prompt.ts`): the routing block's "guidance, decision, or constraint"
+- **Director routing** (`src/prompt/prompt.ts`): the routing block's "guidance, decision, or
+  constraint"
   bullet points at PRINCIPLES.md first, README/PLANS/BUGS otherwise.
 - **Self-hosting**: seed this repo's own PRINCIPLES.md as part of the implementation (zero runtime
   dependencies; offline tests via the fake-pi shim; all git operations belong to the harness, never
@@ -39,7 +43,8 @@ constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and READ
 
 ## Files touched
 
-`src/init/init.ts`, `src/prompt/prompt.ts`, `src/roles/roles.ts` (readme role: keep PRINCIPLES.md out of its
+`src/init/init.ts`, `src/prompt/prompt.ts`, `src/roles/roles.ts` (readme role: keep PRINCIPLES.md
+out of its
 status-section remit), `test/init.test.ts`, `test/prompt.test.ts`, `PRINCIPLES.md` (this repo),
 README ("How it works" mention).
 

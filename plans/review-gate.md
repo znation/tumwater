@@ -118,7 +118,8 @@ diff** `git diff <main>...<head>` — everything this merge will land, not just 
 capped (~200 KB; over the cap, send `--stat` plus the largest files and note the truncation — an
 oversized diff is itself reviewable information). For a clean fresh tick that equals the new
 commit's own diff (`git show <commit>`); for a resumed or recovered tick it also includes leftover
-commits from an interrupted run (see crash path below). **Verdict parsing:** scan the run's assistant text (any message,
+commits from an interrupted run (see crash path below). **Verdict parsing:** scan the run's
+assistant text (any message,
 like the nothing-to-do sentinel) for the last `/^VERDICT:\s*(approve|reject)/m`; anything else is a
 failed review, not an approval.
 
@@ -133,7 +134,8 @@ without review; a diff with even one non-exempt file gets the full pass.
 (Refusal notes and QA bug reports are md-only, so they stay cheap by construction.)
 
 **Exemption semantics** (small pure helper, e.g. `isExemptPath(relPath, patterns)` in
-`src/review/review.ts`, unit-tested): a pattern containing no `/` matches the file's **basename** at any
+`src/review/review.ts`, unit-tested): a pattern containing no `/` matches the file's **basename** at
+any
 depth (`*.md` exempts `docs/notes.md` too); a pattern containing `/` matches the full repo-relative
 path, where `*` matches within one path segment and `**` across segments (`docs/**` = everything
 under `docs/`). Exemption is per-diff: *every* changed file in the commit must match some pattern.
@@ -156,7 +158,8 @@ is run by the harness, not asked of the reviewer.
 - **Command detection** (pure helper, no config knob — one sensible way): find the project root by
   walking UP from the worktree — at most five levels — to the nearest ancestor directory that
   contains BOTH a `package.json` and a `node_modules/` directory; read scripts from THAT file. The
-  walk is required, not optional: tumwater's own worktrees live at `<repo>/.tumwater/worktrees/<role>`
+  walk is required, not optional: tumwater's own worktrees live at
+  `<repo>/.tumwater/worktrees/<role>`
   with no install of their own (node_modules is gitignored — it exists only where someone ran npm
   install, i.e. the main repo root), so a literal `<wt>/package.json` + `<wt>/node_modules` check
   would silently disable the pre-check forever in dogfood. When both hold at one level: prefer
@@ -170,7 +173,8 @@ is run by the harness, not asked of the reviewer.
   an EMPTY `node_modules/` directory is enough — npm resolves the script without any install.
 - **Outcomes:** exit 0 → proceed to the reviewer run unchanged. Nonzero exit from a started
   process → a review REJECTION with machine-generated reasons — `build check failed (<script>): …`
-  plus the clipped output tail — routed through the existing reject path verbatim (`resetWorktreeToMain`,
+  plus the clipped output tail — routed through the existing reject path verbatim
+  (`resetWorktreeToMain`,
   `state.lastReview`, `review_rejected` event, next-prompt injection via
   `buildRejectedReviewNote`); no pi run is consumed (`GateResult.run` absent, as on exempt) and
   `unreviewFailures` resets exactly like a model reject — a deterministic verdict about this HEAD.
@@ -232,7 +236,8 @@ Prompt), any path that merges a branch head has already reviewed everything it w
    reset + record reasons exactly like a tick reject; fail → leave for retry under the 3-strike cap.
 
 This makes the invariant structural: every path that can move a commit into main (fresh merge,
-resumed-tick merge, recovery merge) has reviewed the full ahead-of-main diff first. Note the prompt is
+resumed-tick merge, recovery merge) has reviewed the full ahead-of-main diff first. Note the prompt
+is
 built before recovery in `runTick`, so reasons recorded during this tick's recovery surface on the
 *following* tick — acceptable, say nothing cleverer. Leftovers are rare (crash/abort/reject only),
 so the extra reviewer run costs nothing in steady state.
@@ -269,8 +274,10 @@ lives in src/events/events.ts).
 `src/review/review.ts` (new: exemption matcher, verdict parsing, build pre-check + detection,
 review-run orchestration shared by the tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
 state — not src/status.ts), `src/events/event-format.ts` (review event rendering — formatEvent no longer
-lives in src/events/events.ts), `tumwater.json` (dogfood: top-level `review` section with the strong-model override),
-`test/review.test.ts` (renamed from review-gate.test.ts; fake-pi shim scripting both verdicts; review-section config
+lives in src/events/events.ts), `tumwater.json` (dogfood: top-level `review` section with the
+strong-model override),
+`test/review.test.ts` (renamed from review-gate.test.ts; fake-pi shim scripting both verdicts;
+review-section config
 validation + accessor fallback over top-level values; exemption matcher unit tests — basename vs
 path patterns, all-files-must-match; approve merges / reject resets + next-prompt
 injection; review failure leaves commit and re-reviews next tick; 3-strike discard; recoverLeftover

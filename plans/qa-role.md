@@ -82,7 +82,8 @@ a green suite precisely because no consumer of the page existed in CI.
 
 ## Files touched
 
-`src/roles/roles.ts`, `tumwater.json` (enable + cadence), and — only if the per-role cadence override
+`src/roles/roles.ts`, `tumwater.json` (enable + cadence), and — only if the per-role cadence
+override
 has not landed yet (see Cadence) — `src/types.ts`, `src/config.ts`, `src/orchestrator.ts`,
 `src/loop.ts`; `test/qa-role.test.ts` (prompt contract: BUGS.md-only writes, time-limit and
 ephemeral-port rules, the ordered flow list + vary rule + once-per-day real-run guard with its
