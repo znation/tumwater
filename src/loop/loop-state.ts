@@ -206,7 +206,7 @@ export interface LoopState {
    * re-queued as merge_blocked again. */
   landingCheckFailures?: { patchId: string; count: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick
-   * window (loop.ts resets it at tick start), not a lifetime total. */
+   * window (loop-tick.ts resets it at tick start), not a lifetime total. */
   generatedTokens: number;
   /** Largest single-request context of this loop's current or last completed tick (per-tick
    * window, reset at tick start). */

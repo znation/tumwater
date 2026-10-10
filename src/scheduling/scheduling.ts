@@ -95,7 +95,7 @@ export function isEligible(
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
-  // The same bootstrap rule (scheduleConfigForRole) loop.ts schedules nextRunAt from: during a
+  // The same bootstrap rule (scheduleConfigForRole) loop-tick.ts schedules nextRunAt from: during a
   // young project's bootstrap, plan runs on the fleet's global clock rather than its 3600 s
   // default. Yield scaling still applies to whatever gap is chosen.
   const minGapSeconds = scheduleConfigForRole(

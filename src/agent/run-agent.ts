@@ -74,7 +74,7 @@ function openAppendLog(file: string, maxBytes: number): AppendLog {
 }
 
 /** Options for one non-interactive agent run (runAgent / its runPi alias). Exported so a caller
- * that builds the same wiring in several places (loop.ts's author run and SUMMARY follow-up) can
+ * that builds the same wiring in several places (loop-pi.ts's author run and SUMMARY follow-up) can
  * share one construction helper typed against this exact shape. */
 export interface PiRunOptions {
   cwd: string;

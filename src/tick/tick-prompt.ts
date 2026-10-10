@@ -112,7 +112,7 @@ export function assembleTickPrompt(
       throw new Error(unknownRoleMessage(role, validIds));
     }
     // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
-    // in the tick's prompt; loop.ts's runner records it as pending and re-queues it on every
+    // in the tick's prompt; PendingPrompt records it as pending and re-queues it on every
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
     // A deferred prompt's `tumwater:not-before` marker line is plumbing
     // (src/inbox/prompt-not-before.ts), not

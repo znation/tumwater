@@ -46,7 +46,7 @@ let seq = 0;
  * and return its path. The filename orders prompts across processes by wall-clock time; the
  * per-process counter and pid break ties within one process. No event is logged —
  * inbox-submit.ts's submitPrompt and submitRolePrompt are the user-facing wrappers that add the
- * prompt_enqueued line, and loop.ts's re-queue of an unfulfilled prompt calls this directly.
+ * prompt_enqueued line, and PendingPrompt's re-queue of an unfulfilled prompt calls this directly.
  * The write is atomic (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll,
  * `tumwater prompt --list`, and the dequeuing loop — run in other processes, and a read that
  * raced a plain writeFileSync could see a truncated prompt and run a tick on a half user request.
@@ -224,9 +224,10 @@ export function queuedRolePromptCount(root: string, role: string): number {
  * (ENOENT — a cancel or a prior dequeue won) or when the removal itself finds it gone (a
  * concurrent cancel won after our read). Any other read error propagates — it is not a race.
  * Shared by inbox-cancel.ts's cancel paths (position- and file-addressed), dequeueRolePrompt
- * (oldest-first pop), and loop.ts's resume reclaim — which calls this for one exact queue file
- * instead of popping oldest-first, so the prompt recorded at requeue time is the one reclaimed,
- * whatever else was enqueued or cancelled meanwhile — so the race policy lives once. */
+ * (oldest-first pop), and PendingPrompt's resume reclaim — which calls this for one exact
+ * queue file instead of popping oldest-first, so the prompt recorded at requeue time is the
+ * one reclaimed, whatever else was enqueued or cancelled meanwhile — so the race policy lives
+ * once. */
 export function takeQueuedFile(root: string, role: string, file: string): string | null {
   const text = readTextIfExists(file);
   if (text === null) return null; // Cancelled mid-listing.
@@ -308,7 +309,7 @@ export function peekPrompt(root: string): string | null {
 }
 
 // --- Director special cases: the director's queue IS the historical inbox root, so these thin
-// wrappers keep every existing caller (the status dashboards, the GUI server, loop.ts's
+// wrappers keep every existing caller (the status dashboards, the GUI server, PendingPrompt's
 // re-queue, the pre-1/2 CLI) working unchanged, with no queue format migration.
 
 /** Append a prompt to the director's queue; see enqueueRolePrompt. */

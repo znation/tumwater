@@ -29,7 +29,7 @@ interface TickFlow {
   result: "passed" | "bug";
 }
 
-/** The shared loop wiring a changed worktree's staging needs (src/loop/loop.ts): the per-tick
+/** The shared loop wiring a changed worktree's staging needs (src/loop/loop-tick.ts): the per-tick
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
  * the summary follow-up run, the pre-queue self-check with its fix-up run, the landing-ref pin,
  * and the abort finalizer. Mirrors the context-object shapes of leftover.ts, refusal.ts, and
@@ -45,13 +45,13 @@ interface TickStageContext {
    * summary follow-up can finalize through the loop's requeue path. */
   userPrompt: string | null;
   /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
-   * undefined when the tick is not a revision. Set by loop.ts only when the revision was applied
+   * undefined when the tick is not a revision. Set by loop-tick.ts only when the revision was applied
    * this tick (or a resume carried its already-applied edits), never read from `state.revision`:
    * a per-role user-request tick leaves that field set by design. */
   revisionRound?: number;
   /** The branch main's name, for the staged-moved-entry comparison's merge-base (part 4/7).
    * Optional so callers that never staged a backlog move (and older tests) keep compiling;
-   * loop.ts always supplies it. */
+   * loop-tick.ts always supplies it. */
   mainBranch?: string;
   wt: string;
   /** The pi run's final reply text, the summary's source. */
@@ -83,7 +83,7 @@ interface TickStageContext {
  * outcome without anything queued. */
 export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutcome> {
   const s = ctx.state;
-  // A revision tick carries the round it applied on its context (loop.ts): it rides onto the
+  // A revision tick carries the round it applied on its context (loop-tick.ts): it rides onto the
   // queued landing so a rejection of this change records the NEXT round (plans/revise-rejected.md).
   // Undefined for a fresh change — including a user-request tick that leaves a pending revision
   // untouched — so only the tick that actually held the rejected diff is labeled a revision.

@@ -380,7 +380,7 @@ export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[
   });
 }
 
-/** Token metrics for display. gen / peak ctx are per-tick windows — loop.ts resets them at
+/** Token metrics for display. gen / peak ctx are per-tick windows — loop-tick.ts resets them at
  * tick start, so the persisted values hold only what the current (mid-flight) or last
  * completed tick used, never lifetime totals. While a tick is in flight the on-disk values
  * are 0 and the live log tail supplies exactly this run's output; idle loops show their

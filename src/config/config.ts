@@ -115,11 +115,11 @@ export function defaultConfig(): ResolvedModelConfig {
     // whatever the free space. A day catches paused, retired and rarely due roles without
     // sweeping a worktree that merely slept through the night. 0 disables idle reclaim.
     worktreeIdleReclaimHours: 24,
-    // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop/loop.ts): the
-    // absolute turn count alone measures model speed, so a fast model's ordinary 40+ turn /
-    // few-minute tick stays unflagged, while a genuinely hard tick that burned 40+ turns over
-    // half an hour or more still is (BUGS.md 2026-09-19). Tuned for the ~27B local model at
-    // 24-35 tok/s, where 40 turns is half an hour of work.
+    // Friction is flagged only when a changed tick burns BOTH thresholds
+    // (src/tick/tick-stage.ts): the absolute turn count alone measures model speed, so a fast
+    // model's ordinary 40+ turn / few-minute tick stays unflagged, while a genuinely hard tick
+    // that burned 40+ turns over half an hour or more still is (BUGS.md 2026-09-19). Tuned for
+    // the ~27B local model at 24-35 tok/s, where 40 turns is half an hour of work.
     thrashTurns: 40,
     thrashMinutes: 30,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },

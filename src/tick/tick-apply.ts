@@ -35,7 +35,7 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
  * Called from the points a change lands (`applyLandingOutcome`'s changed branch and
  * `handleRefusal`'s note merge), never while a revision is still owed: a landing that leaves
  * `state.revision` set — a per-role user-request tick did not apply the rejected change — did
- * not resolve it, and its next revision tick still needs the objections (loop.ts's revision
+ * not resolve it, and its next revision tick still needs the objections (loop-tick.ts's revision
  * note). A model-reviewed landing already overwrote `lastReview` with its approve; this only
  * clears a standing `reject`. */
 export function clearSupersededRejection(s: LoopState): void {
@@ -94,7 +94,7 @@ export function applyTickOutcome(
   // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). A tick whose leftover
   // recovery re-queued a pin its last landing failed to land counts too, even though the tick
   // itself ends `queued` (outcome.recoveryFailure): a dead reviewer backend would otherwise
-  // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21). loop.ts emits
+  // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21). tick-finalize.ts emits
   // one warning when the streak crosses ERROR_STREAK_WARN — once per episode, since the reset
   // re-arms it — and the dashboards read "failing" from the same field.
   // A plain `queued` tick is not yet a verdict about anything: it committed and enqueued, and
@@ -109,7 +109,7 @@ export function applyTickOutcome(
   if (failed) s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
   else if (outcome.result !== "queued") s.consecutiveErrors = 0;
   // The quiet-kill streak counts consecutive watchdog kills; any other result resets it.
-  // loop.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
+  // tick-finalize.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
   s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
   // The yield ring records the result beside the streaks: a landing or a counted empty

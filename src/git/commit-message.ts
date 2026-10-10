@@ -7,7 +7,7 @@ import { labeledLine } from "../verdict/reply-contract.js";
  * with tick metadata. Split out of prompt.ts — which keeps building the prompts that declare
  * this contract (the machine-detectable half — sentinel and verdict-line detection — lives in
  * reply-contract.ts) — because turning a reply into what `git commit` receives is the git side
- * of the contract, consumed only by loop.ts. */
+ * of the contract, consumed by the tick pipeline (tick-stage.ts, tick-verdict.ts) and refusal.ts. */
 
 /** Cap on the commit subject's summary portion (the SUMMARY line), so a verbose model cannot
  * bloat every commit subject. Truncated with an ellipsis — like the body fields below — rather
@@ -149,7 +149,7 @@ export interface CommitMetadata {
   revisionRound?: number;
 }
 
-/** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part loop.ts (and
+/** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part tick-stage.ts (and
  * refusal.ts) adds before the SUMMARY line, space included when a summary follows. */
 const SUBJECT_PREFIX = /^tumwater\([^)]+\):(?:\s|$)/;
 
