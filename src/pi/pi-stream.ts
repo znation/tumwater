@@ -193,30 +193,46 @@ export type BackendFailureKind =
  * below, the parser, and backendKind all share the one instance. */
 const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
 
+/** The connection-class backend-failure phrases: fetch-level "Connection error.", the
+ * refusals and resets Node surfaces. One home shared by the TRANSIENT_BACKEND gate and the
+ * backendKind classifier, so a spelling added to one cannot go missing from the other. */
+const CONNECTION_ERROR = /connection error|connection refused|connection reset|econn(refused|reset)/i;
+
+/** The timeout-class backend-failure phrase (OpenAI-style "Request timed out"). Shared by the
+ * TRANSIENT_BACKEND gate and the backendKind classifier. */
+const TIMEOUT_ERROR = /request timed out/i;
+
+/** The server-class backend-failure phrases: 5xx status texts, oMLX's model-server pause, and
+ * a provider pausing itself fleet-wide with a 503 whose body carries prose rather than any
+ * status phrase ("Provider '<name>' is currently failing for model '<id>' and has been paused
+ * by the provider"). Shared by the TRANSIENT_BACKEND gate and the backendKind classifier. */
+const SERVER_ERROR = /internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider/i;
+
+/** The model-load spelling (oMLX's "Failed to load model"): its backendKind is the
+ * "model-load" default, so only the gate names the pattern. */
+const MODEL_LOAD_ERROR = /failed to load model/i;
+
 /** The backend-failure error texts pi actually surfaces, matched against every error text
- * feedLine sees — the same shapes as the rate-limit regex's various renderings: pi renders the
- * provider's status and message variously (fetch-level "Connection error.", OpenAI-style
- * "Request timed out" and 5xx status texts, oMLX's model-server "Failed to load model",
- * undici's bare stream-cut "terminated", and a provider pausing itself fleet-wide with a
- * 503 whose body carries prose rather than any status phrase — "Provider '<name>' is
- * currently failing for model '<id>' and has been paused by the provider").
+ * feedLine sees — the same shapes as the rate-limit regex's various renderings.
  * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
  * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
- * and never counts as a backend failure. Composed so the stream-severed spelling lives in
- * STREAM_SEVERED alone. Only matchBackendFailure and PiStreamParser.feedLine match it;
- * backendKind below classifies which phrase matched. */
+ * and never counts as a backend failure. Composed from the per-kind patterns above so each
+ * kind's spellings — including the stream-severed one (STREAM_SEVERED) — live in exactly one
+ * place. Only matchBackendFailure and PiStreamParser.feedLine match it; backendKind below
+ * classifies which phrase matched. */
 const TRANSIENT_BACKEND = new RegExp(
-  `connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider|failed to load model|${STREAM_SEVERED.source}`,
+  `${CONNECTION_ERROR.source}|${TIMEOUT_ERROR.source}|${SERVER_ERROR.source}|${MODEL_LOAD_ERROR.source}|${STREAM_SEVERED.source}`,
   "i",
 );
 
 /** Which backend-failure kind an error text belongs to — pure, exported so the parser's
  * classification is unit-testable without a stream (pi-parser.test.ts feeds the texts
- * directly). The order is the TRANSIENT_BACKEND alternation's: one text names one kind. */
+ * directly). Each check is the same per-kind pattern the TRANSIENT_BACKEND gate composes, so
+ * the gate and the classifier cannot disagree; the order matches that alternation. */
 export function backendKind(text: string): BackendFailureKind {
-  if (/connection error|connection refused|connection reset|econn(refused|reset)/i.test(text)) return "connection";
-  if (/request timed out/i.test(text)) return "timeout";
-  if (/internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider/i.test(text)) return "server";
+  if (CONNECTION_ERROR.test(text)) return "connection";
+  if (TIMEOUT_ERROR.test(text)) return "timeout";
+  if (SERVER_ERROR.test(text)) return "server";
   if (STREAM_SEVERED.test(text)) return "stream-severed";
   return "model-load";
 }
