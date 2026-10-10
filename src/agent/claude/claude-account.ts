@@ -161,7 +161,8 @@ export function seedClaudeAccount(
   config: TumwaterConfig,
   now = Date.now(),
 ): ClaudeAccount | null {
-  if (readClaudeAccount(root, now) !== null) return readClaudeAccount(root, now);
+  const existing = readClaudeAccount(root, now);
+  if (existing !== null) return existing;
   const billing = seedBilling(config);
   if (billing === null) return null;
   const account: ClaudeAccount = {
