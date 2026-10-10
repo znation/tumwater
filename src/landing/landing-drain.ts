@@ -2,10 +2,12 @@ import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
 import { removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
 import { queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text/text.js";
+import { warnEventBestEffort } from "../events/events.js";
 import { saveLoopState } from "../loop/loop-state.js";
 import {
   abortOnShutdown,
   discardPinnedRefs,
+  guardLandingTask,
   settleLandingOutcome,
   type InFlightLanding,
   type LandingPipeline,
@@ -110,7 +112,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       },
     ]),
   );
-  merge.promise = (async () => {
+  const task = (async () => {
     let results: Array<TickResult | undefined>;
     let threw = false;
     // A result reaches settleLandingOutcome the moment landVetted finalizes it, not after the
@@ -150,7 +152,19 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       results = picks.map(() => undefined);
       const head = picks[0]!.author;
       head.state.lastError = errorMessage(err);
-      saveLoopState(root, head.state);
+      // The catch exists to keep every entry queued and un-vetted when landVetted throws. A
+      // throw out of this write — an unwritable state file — must not skip the settle loop
+      // and the finally that frees the merge slot, or the pipeline wedges with p.merge set
+      // forever; the write is bookkeeping a later save retries, so warn and keep going.
+      try {
+        saveLoopState(root, head.state);
+      } catch (writeErr) {
+        warnEventBestEffort(
+          root,
+          "harness",
+          `the merge error for ${head.state.role} could not be saved: ${errorMessage(writeErr)}`,
+        );
+      }
     }
     try {
       for (let s = 0; s < picks.length; s++) {
@@ -175,5 +189,6 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       p.merge = null;
     }
   })();
+  merge.promise = guardLandingTask(root, merge.roles.join(", "), task);
   return merge;
 }

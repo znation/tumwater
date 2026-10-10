@@ -12,6 +12,7 @@ import {
   abortOnShutdown,
   acquireUnlessAborted,
   discardPinnedRefs,
+  guardLandingTask,
   liveRoles,
   settleLandingOutcome,
   type InFlightLanding,
@@ -146,7 +147,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
   };
   const detachShutdown = abortOnShutdown(signal, vet.controller);
   p.vetting.set(role, vet);
-  vet.promise = (async () => {
+  const task = (async () => {
     try {
       const release = await acquireUnlessAborted(semaphore, LANDING_TIER, vet.controller.signal);
       vet.parked = false;
@@ -205,4 +206,5 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       p.vetting.delete(role);
     }
   })();
+  vet.promise = guardLandingTask(root, role, task);
 }

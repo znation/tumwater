@@ -12,7 +12,7 @@ import {
 import { vetLimit } from "../src/landing/landing-vetting.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing/landing-queue.js";
-import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";
+import { abortRequestPath, landQueueDir, landingRefName, landingStatePath, statePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/landing/landing-slot.js";
@@ -772,6 +772,44 @@ test("a plumbing throw in the merge keeps every entry queued and un-vetted, reco
   }
 });
 
+test("a failing state write in the merge's error path still frees the merge slot and warns", async () => {
+  const { root, restore, ctx, pipeline } = await busyMergePipeline();
+  const worktreesHome = path.join(root, ".git", "worktrees");
+  try {
+    await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 2, "both changes to be vetted");
+
+    // Break the merge's plumbing so landVetted throws, then break the head author's state
+    // file so the catch's saveLoopState throws too — the exact unwritable-state failure the
+    // guard exists for. The catch must not let that second throw skip the settle loop and the
+    // finally, or p.merge stays set forever and every later merge is wedged.
+    fs.rmSync(worktreesHome, { recursive: true, force: true });
+    fs.writeFileSync(worktreesHome, "not a directory");
+    const stateFile = statePath(root, "alpha");
+    fs.rmSync(stateFile, { recursive: true, force: true });
+    fs.mkdirSync(stateFile, { recursive: true });
+    fs.writeFileSync(path.join(stateFile, "keep"), "");
+
+    pipeline.merge = null; // the busy slot frees
+    await drainLandings(ctx, pipeline);
+    const merge = pipeline.merge as InFlightLanding | null;
+    assert.ok(merge, "the merge started");
+    const [settled] = await Promise.allSettled([merge.promise]);
+    assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
+    assert.equal(pipeline.merge, null, "the merge slot freed despite the failed state write");
+    assert.equal(queueDepth(root), 2, "every entry stays queued and un-vetted");
+    assert.ok(
+      readEvents(root).some(
+        (e) => e.type === "warning" && /the merge error for alpha could not be saved/.test(String(e.message)),
+      ),
+      "the failed state write is warned about, not swallowed",
+    );
+  } finally {
+    fs.rmSync(worktreesHome, { recursive: true, force: true });
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
 test("a git failure inside the gate's reject path settles the vet as an error outcome, naming the failure in the author's state", async () => {
   const root = makeRepo();
   const role = "improve";
@@ -807,4 +845,37 @@ test("a git failure inside the gate's reject path settles the vet as an error ou
     shas[role],
     "the pin survives the error outcome (only a rejection deletes it) for the next re-land",
   );
+});
+
+test("an unwritable state file on a settling landing warns instead of rejecting the task promise", async () => {
+  const root = makeRepo();
+  const role = "improve";
+  await queueChanges(root, [role]);
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]), { cap: 1 });
+  // Break the author's state write: the state file becomes a non-empty directory, so
+  // writeJsonAtomic's rename fails (EISDIR) — the shape an ENOSPC or an immutable state path
+  // takes. The outcome write happens in the vet's fire-and-forget task, which nothing awaits
+  // during normal operation, so a throw there must be warned about, never left as an
+  // unhandled rejection that takes the orchestrator down.
+  const stateFile = statePath(root, role);
+  fs.mkdirSync(stateFile, { recursive: true });
+  fs.writeFileSync(path.join(stateFile, "keep"), "");
+  const flags = tmpdir("landing-state-fault-");
+  const restore = fakePi(reviewers(flags, [role], { [role]: "VERDICT: reject\n1. no" }));
+  try {
+    await drainLandings(ctx, pipeline);
+    const pending = allTasks(pipeline);
+    assert.equal(pending.length, 1, "the rejected vet started");
+    const [settled] = await Promise.allSettled(pending);
+    assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
+    assert.ok(
+      readEvents(root).some(
+        (e) => e.type === "warning" && /landing task for improve/.test(String(e.message)),
+      ),
+      "the state-write failure is warned about, not swallowed",
+    );
+  } finally {
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
 });

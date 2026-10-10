@@ -1,6 +1,8 @@
 import type { LoopRunner } from "../loop/loop.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
+import { warnEventBestEffort } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { deleteRef } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome, type LandingUsage } from "./landing-slot.js";
@@ -126,6 +128,19 @@ export function abortableLandings(p: LandingPipeline): AbortableLanding[] {
  * ever runs, growing without bound until the shutdown it was waiting for. */
 export function abortOnShutdown(signal: AbortSignal, controller: AbortController): () => void {
   return runOnAbort(signal, () => controller.abort());
+}
+
+/** Wrap a landing task's stored promise so it can never reject: the tasks are fire-and-forget
+ * during normal operation (only the shutdown/restart drain awaits them), and an unexpected
+ * throw out of their bookkeeping — an unwritable state file, event feed, or marker while
+ * settling an outcome — would otherwise surface as an unhandled rejection and take the
+ * orchestrator down. The throw is reported best-effort; the task's own finally has already
+ * released its slot and controller, and the surviving queue entry and pin recover on the next
+ * poll. */
+export function guardLandingTask(root: string, role: string, promise: Promise<void>): Promise<void> {
+  return promise.catch((err: unknown) => {
+    warnEventBestEffort(root, "harness", `landing task for ${role} could not settle: ${errorMessage(err)}`);
+  });
 }
 
 /** Take a permit at `tier` unless `signal` fires first: resolves to its release, or to null
