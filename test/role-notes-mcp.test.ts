@@ -22,11 +22,19 @@ interface McpResponse {
 }
 
 /** Spawn the compiled server, send each request as one line, close stdin (which is the
- * server's exit condition), and resolve with the parsed responses. */
-function runServer(requests: readonly unknown[], notesPath: string): Promise<{ responses: McpResponse[]; stderr: string }> {
+ * server's exit condition), and resolve with the parsed responses. A request given as a
+ * string is sent verbatim (for malformed frames); `notesPath === undefined` leaves
+ * TUMWATER_NOTES_PATH unset, the no-notebook server configuration. */
+function runServer(
+  requests: readonly (unknown | string)[],
+  notesPath: string | undefined,
+): Promise<{ responses: McpResponse[]; stderr: string }> {
   return new Promise((resolve, reject) => {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (notesPath === undefined) delete env.TUMWATER_NOTES_PATH;
+    else env.TUMWATER_NOTES_PATH = notesPath;
     const child = spawn(process.execPath, [SERVER], {
-      env: { ...process.env, TUMWATER_NOTES_PATH: notesPath },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
@@ -41,7 +49,33 @@ function runServer(requests: readonly unknown[], notesPath: string): Promise<{ r
         .map((l) => JSON.parse(l) as McpResponse);
       resolve({ responses, stderr });
     });
-    for (const request of requests) child.stdin.write(JSON.stringify(request) + "\n");
+    for (const request of requests) {
+      child.stdin.write((typeof request === "string" ? request : JSON.stringify(request)) + "\n");
+    }
+    child.stdin.end();
+  });
+}
+
+/** Spawn the compiled server and write `script` to stdin exactly, without adding a trailing
+ * newline — the server must still flush a final unterminated line when stdin closes. */
+function runServerScript(script: string, notesPath: string | undefined): Promise<McpResponse[]> {
+  return new Promise((resolve, reject) => {
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (notesPath === undefined) delete env.TUMWATER_NOTES_PATH;
+    else env.TUMWATER_NOTES_PATH = notesPath;
+    const child = spawn(process.execPath, [SERVER], { env, stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.on("data", (d: Buffer) => (out += d.toString("utf8")));
+    child.on("error", reject);
+    child.on("close", () => {
+      resolve(
+        out
+          .split("\n")
+          .filter((l) => l.trim() !== "")
+          .map((l) => JSON.parse(l) as McpResponse),
+      );
+    });
+    child.stdin.write(script);
     child.stdin.end();
   });
 }
@@ -95,4 +129,91 @@ test("the MCP server rejects a malformed text instead of clearing the notebook",
   assert.equal(result.isError, true);
   assert.match((result.content as Array<{ text: string }>)[0]!.text, /requires a string "text"/);
   assert.equal(fs.readFileSync(notes, "utf8"), "keep me");
+});
+
+test("the MCP server answers ping and drops notifications, methodless messages, and unknown notifications", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const { responses } = await runServer(
+    [
+      { jsonrpc: "2.0", id: 1, method: "ping" },
+      { jsonrpc: "2.0", method: "notifications/cancelled" },
+      { jsonrpc: "2.0", id: 2, method: "unknown/method" },
+      { jsonrpc: "2.0", method: "unknown/notification" },
+      { jsonrpc: "2.0", id: null, method: "ping" },
+      { jsonrpc: "2.0", id: 3, result: {} },
+    ],
+    notes,
+  );
+  assert.deepEqual(responses.map((r) => r.id), [1, 2], "only the two requests carrying an id are answered");
+  assert.deepEqual(responses[0]!.result, {});
+  assert.equal(responses[1]!.error?.code, -32601);
+  assert.match(responses[1]!.error?.message ?? "", /Method not found: unknown\/method/);
+});
+
+test("initialize falls back to the default protocol version and a call without arguments is a tool error", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const { responses } = await runServer(
+    [
+      { jsonrpc: "2.0", id: 1, method: "initialize" },
+      { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "role_notes" } },
+    ],
+    notes,
+  );
+  assert.equal(responses[0]!.result?.protocolVersion, "2024-11-05");
+  const result = responses[1]!.result!;
+  assert.equal(result.isError, true);
+  assert.match((result.content as Array<{ text: string }>)[0]!.text, /requires a string "text"/);
+});
+
+test("the server reports an unknown tool and a missing notebook path as tool errors", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const { responses } = await runServer(
+    [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "other", arguments: { text: "x" } } }],
+    notes,
+  );
+  const unknown = responses[0]!.result!;
+  assert.equal(unknown.isError, true);
+  assert.match((unknown.content as Array<{ text: string }>)[0]!.text, /unknown tool "other"/);
+
+  const bare = await runServer([call(1, "x")], undefined);
+  const noPath = bare.responses[0]!.result!;
+  assert.equal(noPath.isError, true);
+  assert.match((noPath.content as Array<{ text: string }>)[0]!.text, /no notebook path is configured/);
+});
+
+test("malformed frames get the matching JSON-RPC error, one response per line", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const { responses } = await runServer(["{ not json", "null", "[]", "42"], notes);
+  assert.deepEqual(
+    responses.map((r) => r.error?.code),
+    [-32700, -32600, -32600, -32600],
+  );
+});
+
+test("a failed notebook write is a tool error and keeps the server answering", async () => {
+  const notes = path.join(tmpdir(), "notes-dir");
+  fs.mkdirSync(notes, { recursive: true });
+  const { responses } = await runServer([call(1, "x"), { jsonrpc: "2.0", id: 2, method: "ping" }], notes);
+  assert.equal(responses[0]!.result?.isError, true, "a directory in the note's place fails as a tool error");
+  assert.deepEqual(responses[1]!.result, {}, "the stream survives the tool failure");
+});
+
+test("a final unterminated line is flushed when stdin closes", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const responses = await runServerScript(JSON.stringify({ jsonrpc: "2.0", id: 7, method: "ping" }), notes);
+  assert.deepEqual(responses.map((r) => r.id), [7]);
+  assert.deepEqual(responses[0]!.result, {});
+});
+
+test("blank and whitespace-only lines are ignored without a response", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const { responses } = await runServer(["", "   ", { jsonrpc: "2.0", id: 1, method: "ping" }], notes);
+  assert.deepEqual(responses.map((r) => r.id), [1]);
+});
+
+test("importing the server module starts no transport", async () => {
+  const before = { data: process.stdin.listenerCount("data"), end: process.stdin.listenerCount("end") };
+  await import("../src/agent/mcp/role-notes-server.js");
+  assert.equal(process.stdin.listenerCount("data"), before.data, "importing must not attach stdin handlers");
+  assert.equal(process.stdin.listenerCount("end"), before.end);
 });
