@@ -53,6 +53,14 @@ interface TickVerdictContext {
  * in `state.lastError` or a warning event. */
 export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickOutcome | null> {
   const { pi, state: s } = ctx;
+  // A run whose `--resume` target the backend no longer holds records why before any branch
+  // returns: the resume guard the next tick consults is the transcript FILE, which can outlive
+  // the conversation (a torn/empty file, or the fake's planted one), so this verdict must
+  // outrank it. The failed-dirty arm below is the common case, but an aborted, quiet-killed, or
+  // progressing-timeout run keeps the same session and arms the same resume (tick-apply.ts), so
+  // recording it once here covers every path that resumes (BUGS.md 2026-10-09). Director ticks
+  // never resume, so the flag is role-only.
+  if (pi.resumeMissing && ctx.role !== DIRECTOR_ROLE) s.resumeMissing = true;
   // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
   // The next tick's reset discards them.
   if (pi.aborted) return ctx.finishAbortedTick();
@@ -151,11 +159,6 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // nothing to carry forward, so the plain re-queue still applies.
     if (changed && ctx.role !== DIRECTOR_ROLE) {
       s.resumePending = true;
-      // A run whose `--resume` target the backend no longer holds records why: the transcript
-      // the resume guard checks can still exist (a torn file, or the fake's planted one), so
-      // the next tick must hand off on this verdict instead of re-resuming a session the
-      // backend just rejected (BUGS.md 2026-10-09).
-      if (pi.resumeMissing) s.resumeMissing = true;
       ctx.pending.requeueForResume(s, ctx.userPrompt);
     } else {
       // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome

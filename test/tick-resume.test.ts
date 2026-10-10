@@ -16,6 +16,7 @@ import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakeClaudeReplay } from "./fakes/fake-claude.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
 
@@ -316,6 +317,48 @@ test("a fake-claude resumeMissing run arms resumePending, and the next tick hand
     assert.match(p.prompt, /uncommitted edits are in your worktree/);
   } finally {
     fake.restore();
+    restoreHome();
+  }
+});
+
+// BUGS.md 2026-10-09: the resume-missing verdict must be remembered on every path that arms
+// the next resume, not just the failed-dirty one. An aborted (shutdown) run keeps the session
+// and worktree and resumes; when that run had already answered "No conversation found", the
+// record must survive so the next tick hands off instead of re-resuming a dead session whose
+// transcript file still exists.
+test("an aborted resumeMissing run records the missing session for the next tick's handoff", async () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    withClaudeAuthor(root, fs.realpathSync(wt), "c1");
+    const s = freshLoopState("feature");
+    const outcome = await resolveTickVerdict({
+      root,
+      wt,
+      role: "feature",
+      mainBranch: "main",
+      state: s,
+      pending: new PendingPrompt(root, "feature"),
+      turns: 1,
+      userPrompt: null,
+      pi: piRunResult({ aborted: true, ok: false, resumeMissing: true, errorMessage: "aborted" }),
+      flow: null,
+      warn: () => {},
+      merge: async () => "changed" as const,
+      finishAbortedTick: async () => ({ result: "aborted" as const }),
+    });
+    assert.equal(outcome?.result, "aborted");
+    assert.equal(s.resumeMissing, true, "the killed run's missing-session verdict is remembered");
+    // applyTickOutcome arms the resume for an aborted tick (tick-apply.ts); the next tick must
+    // hand off over the kept worktree rather than re-resume the session claude just rejected.
+    s.resumePending = true;
+    assert.ok(fs.existsSync(claudeTranscriptPath(fs.realpathSync(wt), "c1")), "the transcript lingers");
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, false, "a resumeMissing session is not resumable");
+    assert.equal(p.handoff, true, "the kept worktree is handed off, not reset");
+  } finally {
     restoreHome();
   }
 });
