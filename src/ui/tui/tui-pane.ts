@@ -9,8 +9,6 @@ import type { StatusLine } from "../status-render.js";
 import { readTranscript } from "../transcript.js";
 import { readEvents } from "../../events/event-read.js";
 import { formatEvent } from "../../events/event-format.js";
-import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../../backlog/backlog.js";
-import { backlogMarks } from "../../backlog/backlog-eligibility.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -74,29 +72,29 @@ export function paneBody(
     };
   }
   if (pane.kind === "backlog") {
-    // Planned features, open bugs, and open questions from PLANS.md/BUGS.md/QUESTIONS.md,
-    // read fresh each render like events. Keeps the HEAD of the list when it overflows —
-    // file order is newest-first, unlike events which keep the tail.
-    const planEntries = plannedPlanEntries(root);
-    const bugEntries = openBugEntries(root);
-    const questionEntries = openQuestionEntries(root);
-    // The eligibility marks beside each title in both modes: the same entryHold verdict
-    // `tumwater backlog` renders, so the TUI reader sees why an entry is skipped.
-    const marks = backlogMarks(root);
-    const flat = state.selectedEntry === null ? [] : labeledBacklogEntries(root);
+    // The flat, labeled entry list is the one backlog read this frame needs: it carries every
+    // planned feature, open bug, and open question from PLANS.md/BUGS.md/QUESTIONS.md with its
+    // section label and eligibility mark (the same entryHold verdict `tumwater backlog`
+    // renders). List and entry mode share this one pass; entry mode used to read the three
+    // sections and derive the holds directly and then again inside labeledBacklogEntries, so
+    // every render paid twice for the same reads and verdicts.
+    const flat = labeledBacklogEntries(root);
+    // A stale selection (an entry removed since the last render) clamps to the last; no
+    // entries at all falls back to list mode.
     const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
     if (sel === null) {
-      // List mode (and a stale selection with no entries left falls back to it): section
-      // headings stand out, empty sections read dim.
+      // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
+      // list when it overflows — file order is newest-first, unlike events which keep the tail.
+      const listed = (label: string) => flat.filter((e) => e.label === label).map((e) => e.title + e.mark);
       return {
-        body: backlogLines(planEntries.map((e, i) => e.title + (marks.plans[i] ?? "")), bugEntries.map((e, i) => e.title + (marks.bugs[i] ?? "")), questionEntries.map((e) => e.title))
+        body: backlogLines(listed("plan"), listed("bug"), listed("question"))
           .slice(0, eventBudget)
           .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
         emptyNote: "(no events yet)",
       };
     }
     // Entry browsing: the selected entry's full body under a line naming its section and
-    // title. A stale selection (an entry removed since the last render) clamps to the last.
+    // title.
     const e = flat[sel]!;
     const win = entryBodyWindow(e.body, state.entryScroll, entryBudget, width);
     return {
