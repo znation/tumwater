@@ -266,7 +266,7 @@ ${listed}
 /** One actionable backlog entry with the 1-based line range its text occupies in its file:
  * `start` is its `### ` heading line, `end` the last line before the next heading (or the
  * file's last line). */
-interface ActionableEntryRange {
+export interface ActionableEntryRange {
   title: string;
   start: number;
   end: number;

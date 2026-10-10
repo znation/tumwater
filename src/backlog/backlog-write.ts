@@ -10,7 +10,7 @@
  * other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading } from "./backlog-md.js";
-import { actionableEntryRanges, stripEntryStamp } from "./backlog-structure.js";
+import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
@@ -123,6 +123,23 @@ function sectionNoun(sectionTitle: string): string {
   return sectionTitle.toLowerCase();
 }
 
+/** The nth (1-based, as `tumwater backlog` lists it) actionable entry of `<fileName>`'s
+ * `## <sectionTitle>` section, or a failure naming the section but not the position — the
+ * shared lookup and out-of-range wording both the remove and the edit lock hold. */
+function locateEntry(
+  md: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+): ActionableEntryRange {
+  const entries = actionableEntryRanges(md, sectionTitle);
+  const entry = entries[n - 1];
+  if (entry === undefined) {
+    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${entries.length} in ${fileName})`);
+  }
+  return entry;
+}
+
 /** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
  * cancel and a landing's working-tree fast-forward cannot each clobber the other's
  * read-modify-write. */
@@ -154,11 +171,7 @@ function removeEntryLocked(
   const file = path.join(root, fileName);
   // An absent file is an empty section, never a seed: cancel removes, it never writes scaffolding.
   const md = readTextIfExists(file) ?? "";
-  const entries = actionableEntryRanges(md, sectionTitle);
-  const entry = entries[n - 1];
-  if (entry === undefined) {
-    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${entries.length} in ${fileName})`);
-  }
+  const entry = locateEntry(md, fileName, sectionTitle, n);
   const lines = md.split("\n");
   // The range's end is the 1-based line before the next heading (the separating blank line at a
   // well-formed section); start-1/end-1 are its 0-based bounds, and the length is end-start+1.
@@ -205,11 +218,7 @@ function editEntryLocked(
   const file = path.join(root, fileName);
   // An absent file is an empty section, never a seed: edit rewrites, it never writes scaffolding.
   const md = readTextIfExists(file) ?? "";
-  const entries = actionableEntryRanges(md, sectionTitle);
-  const entry = entries[n - 1];
-  if (entry === undefined) {
-    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${entries.length} in ${fileName})`);
-  }
+  const entry = locateEntry(md, fileName, sectionTitle, n);
   const lines = md.split("\n");
   const metaText = headingMetadata(lines, entry.start - 1).text;
   const stamp = metaText.slice(stripEntryStamp(metaText).length);
