@@ -1,5 +1,5 @@
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
@@ -29,7 +29,8 @@ export type EditOutcome =
  * old file starts with the marker, the new text is written under the same marker; a
  * non-deferred prompt stays marker-free even if the new text's first line resembles a
  * marker. Logs one prompt_edited event under that loop (preview via promptPreview, exactly
- * like its prompt_cancelled sibling) only after a successful write.
+ * like its prompt_cancelled sibling) after a successful write, best-effort: the rewrite is
+ * the durable effect, so an unwritable feed must not report the edit as failed.
  *
  * Enforces the same prefill length cap as a submission (promptLengthProblem): the edited
  * text rides into the target tick's prefill exactly like a queued prompt, so an edit to an
@@ -61,7 +62,7 @@ export function editRolePrompt(root: string, role: string, position: number, new
   const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + text;
   writeTextAtomic(file, fileText);
   const oldText = stripNotBeforeMarker(oldFileText);
-  logEvent(root, { loop: role, type: "prompt_edited", preview: promptPreview(text) });
+  logEventBestEffort(root, { loop: role, type: "prompt_edited", preview: promptPreview(text) });
   return { status: "edited", oldText, newText: text };
 }
 

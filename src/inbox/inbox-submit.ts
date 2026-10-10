@@ -6,7 +6,7 @@ import {
   savePromptImages,
   type PromptImageInput,
 } from "./inbox-attachments.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "../brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { tooLongMessage } from "../text/text.js";
@@ -42,7 +42,9 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
 }
 
 /** A user submits a new prompt for one loop (TUI, GUI, or CLI): enqueue it there and record it
- * in the event log under that loop. Returns the trimmed prompt that was queued. The logged
+ * in the event log under that loop, best-effort — the queue write is the durable effect the
+ * caller asked for, so an unwritable feed must not report the submit as failed. Returns the
+ * trimmed prompt that was queued. The logged
  * preview goes through promptPreview — not a raw slice — so an over-long prompt is marked with
  * an ellipsis like every other label and never carries a lone surrogate at the cut point.
  * Throws (before anything is queued or logged) when the trimmed prompt exceeds
@@ -71,7 +73,7 @@ export function submitRolePrompt(
   }
   const prompt = text.trim();
   enqueueRolePrompt(root, role, prompt, notBeforeMs);
-  logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
+  logEventBestEffort(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
   return prompt;
 }
 
@@ -106,7 +108,7 @@ function submitPromptWithImages(root: string, role: string, text: string, images
     unlinkAllMissingTolerant(savedImagePaths);
     throw err;
   }
-  logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });
+  logEventBestEffort(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });
   return final;
 }
 

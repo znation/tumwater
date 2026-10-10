@@ -1,5 +1,5 @@
 import path from "node:path";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix } from "../text/text.js";
@@ -20,15 +20,16 @@ export type CancelOutcome = { status: "cancelled"; text: string } | { status: "g
  * race-policy-and-event pairing both cancel paths go through: { status: "gone" } when the
  * loop already dequeued or another cancel removed the file (takeQueuedFile's race policy,
  * a normal race, never an error), else one prompt_cancelled event under that loop (preview
- * via promptPreview, exactly like the prompt_enqueued sibling) logged only after a successful
- * removal — a prompt the loop just dequeued ran, it was not cancelled — and
+ * via promptPreview, exactly like the prompt_enqueued sibling) logged, best-effort, only
+ * after a successful removal — the removal is the durable effect, so an unwritable feed must
+ * not report the cancel as failed;
  * { status: "cancelled", text }. Shared by cancelRolePrompt (position-addressed) and
  * cancelQueuedFile (file-addressed), so the two cannot drift on the event, its preview
  * width, or what counts as gone. */
 function takeCancelledPrompt(root: string, role: string, file: string): CancelOutcome {
   const text = takeQueuedFile(root, role, file);
   if (text === null) return { status: "gone" };
-  logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
+  logEventBestEffort(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };
 }
 
