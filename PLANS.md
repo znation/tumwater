@@ -216,6 +216,8 @@ order.
 
 ### Finish the stale code-path citation sweep, part 2/5: `plans/portability.md`, parts 5/7–7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
 
+**Needs review 2026-10-10 by feature: too large for one run**
+
 **Goal.** The same citation invariant as part 1/5, for `plans/portability.md`'s "5/7 — Make the
 agent binary configurable", "6/7 — Make the project's verification command configurable", and
 "7/7 — Adopt an existing repository without hijacking its README" sections.
