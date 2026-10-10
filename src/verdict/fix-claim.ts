@@ -24,9 +24,9 @@
  * dashboards read — with one scanner serving headings and bodies alike (as of 2026-09-29,
  * replacing the earlier hand-rolled fenceTracker walk), so the two cannot drift apart. */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { readTextOrNull } from "../files/files.js";
+import { readTextOrNull, walkFiles } from "../files/files.js";
 import { parseEntryDetails, type BacklogEntry } from "../backlog/backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace } from "../text/text.js";
@@ -115,27 +115,20 @@ function unwrapSymbol(span: string): string {
  * claim, including a false one. */
 export function sourceHaystack(root: string): string {
   const parts: string[] = [];
-  const walk = (dir: string): void => {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return; // Absent directory (early repo, no test/ yet): contributes nothing.
-    }
-    for (const e of entries) {
-      const p = join(dir, e.name);
-      if (e.isDirectory()) {
-        if (e.name !== "node_modules" && e.name !== "dist") walk(p);
-      } else if (/\.(ts|mts|cts|js|mjs|cjs)$/.test(e.name)) {
+  const skipDirs = new Set(["node_modules", "dist"]);
+  for (const dir of ["src", "test", "scripts"])
+    walkFiles(
+      join(root, dir),
+      (p, entry) => {
+        if (!/\.(ts|mts|cts|js|mjs|cjs)$/.test(entry.name)) return;
         try {
           if (statSync(p).isFile()) parts.push(readFileSync(p, "utf8"));
         } catch {
           // Unreadable file: contributes nothing rather than failing the check.
         }
-      }
-    }
-  };
-  for (const dir of ["src", "test", "scripts"]) walk(join(root, dir));
+      },
+      skipDirs,
+    );
   for (const file of ["package.json", "tsconfig.json"]) {
     const p = join(root, file);
     if (existsSync(p)) {

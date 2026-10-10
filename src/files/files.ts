@@ -148,6 +148,36 @@ export function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: stri
   return null;
 }
 
+/** Recurse depth-first through `dir` calling `visit(file, entry)` for every non-directory
+ * entry — regular files, symlinks, and other special entries alike, since a symlink reports
+ * `isDirectory()` false; the caller filters by `entry` (isFile, name, extension). A directory
+ * whose name is in `skipDirs` is not descended (node_modules/dist for the source haystack),
+ * and an unreadable or vanished directory is skipped rather than thrown on, the harness's
+ * missing-is-no-data policy. The shared recursion of the two tree scans — session-ledger.ts's
+ * ledger prune and verdict/fix-claim.ts's source haystack — so the descend-and-swallow rule
+ * cannot drift between them. (files.ts's own pruneOldFiles keeps its hand-rolled walk: it
+ * removes emptied directories on the way back up, which this file-only visitor cannot do.) */
+export function walkFiles(
+  dir: string,
+  visit: (file: string, entry: fs.Dirent) => void,
+  skipDirs: ReadonlySet<string> = new Set(),
+): void {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // Vanished or unreadable — skip this directory.
+  }
+  for (const entry of entries) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!skipDirs.has(entry.name)) walkFiles(file, visit, skipDirs);
+      continue;
+    }
+    visit(file, entry);
+  }
+}
+
 /** Write `data` — UTF-8 text or raw bytes — to `file` via a tmp file + rename, so a concurrent
  * reader of the same path sees either the old (absent) or the new content, never a partial
  * write: the prompt-inbox queue files (inbox.ts's enqueueRolePrompt) are written by one process

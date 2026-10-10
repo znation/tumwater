@@ -11,7 +11,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, readTextOrNull, writeTextAtomic } from "../files/files.js";
+import { ensureParentDir, readTextOrNull, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
@@ -163,40 +163,26 @@ export function sessionResumable(
 export function pruneSessionLedgers(sessionsRoot: string, days: number): number {
   const cutoff = Date.now() - days * 24 * 3600 * 1000;
   let pruned = 0;
-  const walk = (dir: string): void => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return; // Vanished or unreadable — skip this directory.
-    }
-    for (const entry of entries) {
-      const file = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(file);
+  walkFiles(sessionsRoot, (file, entry) => {
+    if (!entry.isFile() || entry.name !== SESSION_LEDGER_FILE) return;
+    const text = readTextOrNull(file);
+    if (text === null) return;
+    const lines = text.split("\n").filter((line) => line !== "");
+    const kept: string[] = [];
+    for (const line of lines) {
+      let at: unknown;
+      try {
+        at = (JSON.parse(line) as { at?: unknown }).at;
+      } catch {
+        pruned += 1; // Malformed line: no timestamp to keep, so it ages out.
         continue;
       }
-      if (!entry.isFile() || entry.name !== SESSION_LEDGER_FILE) continue;
-      const text = readTextOrNull(file);
-      if (text === null) continue;
-      const lines = text.split("\n").filter((line) => line !== "");
-      const kept: string[] = [];
-      for (const line of lines) {
-        let at: unknown;
-        try {
-          at = (JSON.parse(line) as { at?: unknown }).at;
-        } catch {
-          pruned += 1; // Malformed line: no timestamp to keep, so it ages out.
-          continue;
-        }
-        if (typeof at === "number" && at >= cutoff) kept.push(line);
-        else pruned += 1;
-      }
-      if (kept.length !== lines.length) {
-        writeTextAtomic(file, kept.length > 0 ? kept.join("\n") + "\n" : "");
-      }
+      if (typeof at === "number" && at >= cutoff) kept.push(line);
+      else pruned += 1;
     }
-  };
-  walk(sessionsRoot);
+    if (kept.length !== lines.length) {
+      writeTextAtomic(file, kept.length > 0 ? kept.join("\n") + "\n" : "");
+    }
+  });
   return pruned;
 }
