@@ -22,7 +22,7 @@ a green suite precisely because no consumer of the page existed in CI.
 
 ## Design
 
-- **Role** (`src/roles/roles.ts`): id `qa`, title "product QA", after `perf` in catalog order. Find
+- **Role** (`src/roles/role-catalog.ts`): id `qa`, title "product QA", after `perf` in catalog order. Find
   prompt, in spirit: "Act as a first-time user. Follow README's usage instructions literally in a
   scratch directory: build, run the CLI commands, exercise endpoints with curl, check outputs
   against what the docs promise. Pick ONE flow per tick. When something is broken, confusing, or
@@ -39,7 +39,7 @@ a green suite precisely because no consumer of the page existed in CI.
   resets to main every tick, so there is never a stale binary), then invoke the CLI as
   `node <worktree>/dist/cli.js …` with cwd set to a scratch repo — the CLI resolves its root from
   `process.cwd()` (src/cli.ts), so no install or link step in the scratch dir. Two modes for the
-  `run` flow: (a) **fake-pi shim** (the test/util.ts pattern): deterministic and cheap; covers
+  `run` flow: (a) **fake-pi shim** (the test/fakes/fake-pi.ts pattern): deterministic and cheap; covers
   init/run/status/logs/prompt mechanics end to end without touching the model server; or
   (b) **one real, bounded run**: after `tumwater init`, edit the scratch repo's tumwater.json so
   exactly ONE role is enabled and `maxConcurrent` is 1 — a default-config nested run would start
@@ -84,8 +84,9 @@ a green suite precisely because no consumer of the page existed in CI.
 
 `src/roles/roles.ts`, `tumwater.json` (enable + cadence), and — only if the per-role cadence
 override
-has not landed yet (see Cadence) — `src/types.ts`, `src/config.ts`, `src/orchestrator.ts`,
-`src/loop.ts`; `test/qa-role.test.ts` (prompt contract: BUGS.md-only writes, time-limit and
+has not landed yet (see Cadence) — `src/config/config-schema.ts`, `src/config/config-validation.ts`,
+`src/config/config-views.ts`, `src/scheduling/scheduling.ts`,
+`src/loop/loop.ts`; `test/prompt-roles.test.ts` (prompt contract: BUGS.md-only writes, time-limit and
 ephemeral-port rules, the ordered flow list + vary rule + once-per-day real-run guard with its
 Verified-note shape, constrained nested run — single enabled role, maxConcurrent 1, wall cap +
 kill; plus the cadence-override tests if it lands here), README roles list.

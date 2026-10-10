@@ -51,8 +51,8 @@ But fixing the latch is not enough, and that is what this plan is about.
 fresh, run a documented flow end to end, and file a bug if reality disagrees with the docs. When
 the flow works, the correct outcome is "nothing to do" — the role did its job and the product was
 fine. The harness treats that identically to a `clean` tick that surveyed the tree and found no
-mess: it climbs the idle-backoff ladder (`applyTickOutcome`'s final `else` in `src/state.ts`,
-`idleBackoff` = 120 s × 2, capped at 36000 s) and, since 2026-09-12, defers. After roughly eight
+mess: it climbs the idle-backoff ladder (`applyTickOutcome`'s final `else` in
+`src/tick/tick-apply.ts`, `idleBackoff` = 120 s × 2, capped at 36000 s) and, since 2026-09-12, defers. After roughly eight
 consecutive passing checks `qa` is asleep for ten hours. **The role is punished, monotonically,
 for the product being healthy.** That is precisely backwards: a fleet landing 60 commits a day
 into a product nobody exercises is when an end-to-end check is worth the most.
@@ -143,8 +143,8 @@ a passing check would still grow monotonically until the cap intervened. This pl
 - `src/roles/roles.ts` — `OBSERVER_ROLES` (exported); `qa` removed from `DEFERRABLE_ROLES` and the
   set's doc comment updated (it currently says "exactly the nine deferrable built-ins"); the `qa`
   find text gains the `FLOW:` contract line (2/2).
-- `src/state.ts` — `applyTickOutcome` takes the observer predicate into account in its final
-  `else`: observers schedule at `minTickIntervalSeconds` and leave `backoffSeconds` at 0. The
+- `src/tick/tick-apply.ts` — `applyTickOutcome` takes the observer predicate into account in its
+  final `else`: observers schedule at `minTickIntervalSeconds` and leave `backoffSeconds` at 0. The
   `user_aborted` arm (a deliberate operator stop, not a passing check) keeps its idle backoff for
   every role — the predicate is scoped to the final `else` only.
 - `src/scheduling/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which
@@ -165,14 +165,14 @@ a passing check would still grow monotonically until the cap intervened. This pl
   `.tumwater/state/qa-coverage.json` — no `mode` field: the flow name itself distinguishes
   `run (real)` from `run`. Reads via `readJsonFile`, writes via `writeJsonAtomic`, both in
   `src/files/json-files.ts` (2/2).
-- `src/paths.ts` — `qaCoveragePath(root)` beside `statePath` (line 26):
+- `src/paths.ts` — `qaCoveragePath(root)` beside `statePath`:
   `path.join(tumwaterDir(root), "state", "qa-coverage.json")` (2/2).
 - `src/prompt/prompt.ts` — `TickPromptInput` gains `coverage?: string`; `buildTickPrompt` pushes it
-  immediately after the principles block (line 169), beside that existing injection (2/2).
-- `src/loop.ts` — `tickPrompt()` (line 143) renders the block for `qa` only
+  immediately after the principles block, beside that existing injection (2/2).
+- `src/loop/loop.ts` — `tickPrompt()` renders the block for `qa` only
   (`this.role === "qa" ? renderCoverageBlock(readQaCoverage(this.root), Date.now()) : undefined`)
-  and passes it to `buildTickPrompt` (line 160). After the pi run (line 590), `runTick` extracts
-  the flow once; the `no_change` return (line 655) and the `queued` return (line 747) call
+  and passes it to `buildTickPrompt`. After the pi run, `runTick` extracts the flow once; the
+  `no_change` return and the `queued` return call
   `recordFlow` before returning. Error/aborted/quiet_killed/refused paths record nothing (2/2).
 
 ### The coverage block
@@ -241,29 +241,27 @@ confirmed absent: `grep -rn OBSERVER src/ test/` is empty, and `qa` is still in
 
 Verified on this tree:
 
-- `src/roles/roles.ts` — `DEFERRABLE_ROLES` at line 272 (`qa` at 279), the doc comment above it
-  reading
-  "exactly the nine deferrable built-ins"; `WORK_ROLES` at 268; `BASELINE_BLOCKED_ROLES` at 300
-  (does not contain `qa`); the `qa` role at 185, whose find text already tells the model to
-  "prefer a flow not recently exercised, as far as BUGS.md filings and Verified notes show" —
-  exactly the blind lookup 2/2 replaces.
-- `src/state.ts` — `applyTickOutcome` at 185; its final `else` (the idle branch) at 268–270 is
+- `src/roles/roles.ts` — `DEFERRABLE_ROLES`, the doc comment above it reading "exactly the nine
+  deferrable built-ins"; `WORK_ROLES`; `BASELINE_BLOCKED_ROLES` (does not contain `qa`); the
+  `qa` role's find text (in `src/roles/role-catalog.ts`) already tells the model to "prefer a
+  flow not recently exercised, as far as BUGS.md filings and Verified notes show" — exactly the
+  blind lookup 2/2 replaces.
+- `src/tick/tick-apply.ts` — `applyTickOutcome`'s final `else` (the idle branch) is
   `nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff)` then `nextRunAt = now + backoff`, which
-  is what observers must bypass. `state.ts` already imports from `roles/roles.js` (`DIRECTOR_ROLE`,
-  line
-  4), so `OBSERVER_ROLES` joins that import with no new edge and no cycle.
-- `src/scheduling/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number`
-  (`704139c`),
-  and ANDs `!deferralExpired(s, now)`; `DEFER_MAX_MS` (98) and `deferralExpired` (105) are the
-  latch fix. The single production caller is `src/orchestrator.ts:684`. No change is needed here
-  beyond `DEFERRABLE_ROLES` shrinking, as the Shape bullet says — but every new `deferTick` test
-  must pass `now`.
-- `src/config.ts` — `roles.qa = { enabled: true, minTickIntervalSeconds: 7200 }` at line 21, so
-  the plan's ~12-checks/day premise holds.
-- Tests — `deferTick`'s unit tests live in `test/orchestrator.test.ts` (222, 246, and the new
-  `DEFER_MAX_MS` regression at 269), **not** in a `test/scheduling.test.ts` — that file does not
-  exist. `applyTickOutcome`'s tests are in `test/state.test.ts` (332 onward); the baseline-exempt
-  assertion is `test/roles.test.ts` 46–48. Files touched is corrected in PLANS.md accordingly.
+  is what observers must bypass. The module already imports from `roles/roles.js`
+  (`DIRECTOR_ROLE`, `OBSERVER_ROLES`), so the predicate joins that import with no new edge and no
+  cycle.
+- `src/scheduling/scheduling.ts` — `deferTick` now takes a fifth argument, `now: number`
+  (`704139c`), and ANDs `!deferralExpired(s, now)`; `DEFER_MAX_MS` and `deferralExpired` are the
+  latch fix. The single production caller is `src/orchestrator/orchestrator.ts`. No change is
+  needed here beyond `DEFERRABLE_ROLES` shrinking, as the Shape bullet says — but every new
+  `deferTick` test must pass `now`.
+- `src/config/config.ts` — `defaultConfig()` sets
+  `roles.qa = { enabled: true, minTickIntervalSeconds: 7200 }`, so the plan's ~12-checks/day
+  premise holds.
+- Tests — `deferTick`'s unit tests live in `test/scheduling.test.ts`, including the `DEFER_MAX_MS`
+  regression. `applyTickOutcome`'s tests are in `test/tick-apply.test.ts`; the baseline-exempt
+  assertion is `test/roles.test.ts`. Files touched is corrected in PLANS.md accordingly.
 
 Corrections:
 1. **The ordering gate is satisfied; the section above now records the latch as fixed.** The old
@@ -271,8 +269,8 @@ Corrections:
    already landed. Rewritten to record `704139c` and to state what this plan still adds on top of
    it: the cap forces a run every 3 h but leaves the idle ladder and the deferral episode intact,
    so `minTickIntervalSeconds` is still not the honest cadence for an observer.
-2. **The test file was wrong.** `test/scheduling.test.ts` does not exist; the `deferTick` cases
-   belong in `test/orchestrator.test.ts` beside the existing ones. The acceptance criterion's
+2. **The test file was wrong.** The `deferTick` cases belong in `test/scheduling.test.ts` beside
+   the existing ones. The acceptance criterion's
    "returns false for every observer under every input" becomes one more case in the existing
    loops there (which already assert non-deferral for `feature`/`bugfix`/`plan`/`director`/custom)
    plus `qa`, passing `now`.
@@ -286,9 +284,9 @@ Corrections:
    check; it is left unchanged for every role. This closes the only place a literal reading of
    "observers do not climb the idle ladder" could over-reach.
 
-Sizing unchanged: `src/roles/roles.ts` ~6 lines (the set, its comment, the export); `src/state.ts` ~4
-(the observer branch in the final `else`); tests ~25 across `test/state.test.ts` and
-`test/orchestrator.test.ts`. One run. No design question remains open.
+Sizing unchanged: `src/roles/roles.ts` ~6 lines (the set, its comment, the export);
+`src/tick/tick-apply.ts` ~4 (the observer branch in the final `else`); tests ~25 across
+`test/tick-apply.test.ts` and `test/scheduling.test.ts`. One run. No design question remains open.
 
 ## Refined 2026-09-18 (plan loop) — 2/2 audit
 
@@ -302,35 +300,31 @@ role texts.
 
 Verified on this tree:
 
-- `src/verdict/reply-contract.ts` (75 lines) — `labeledLine(text, label)` at line 28 is exactly the
-  helper
-  the plan assumes: `^\s*<label>:\s*(.+)\s*$` with the `m` flag, returning the trimmed remainder
-  or null. `extractRefusal` (line 37) is the precedent for a thin wrapper. The `FLOW` label is
-  literal text, so there is no regex-escaping concern.
-- `src/prompt/prompt.ts` — `interface TickPromptInput` at 142 (fields
-  `role`/`initialPrompt`/`principles?`/`extraInstructions?`); `buildTickPrompt` at 163; the
-  principles push at 169 (`if (principles) parts.push(principlesBlock(principles));`). The
-  coverage push goes on the next line, before `parts.push(...role.find...)` at 170.
-- `src/loop.ts` — `tickPrompt()` at 143, its `buildTickPrompt({...})` call at 160 (where
-  `coverage` joins `extraInstructions`); `runTick` at 515, the pi run at 590
-  (`const pi = await this.runRolePi(...)`), the `no_change` return at 655, the `queued` return at
-  747. `this.root` and `this.role` are in scope at both returns, so `recordFlow` needs no new
-  plumbing and `TickOutcome` need not widen.
-- `src/paths.ts` — `tumwaterDir(root)` at 6; `statePath(root, role)` at 26 is the exact idiom
+- `src/verdict/reply-contract.ts` — `labeledLine(text, label)` is exactly the helper the plan
+  assumes: `^\s*<label>:\s*(.+)\s*$` with the `m` flag, returning the trimmed remainder or null.
+  `extractRefusal` is the precedent for a thin wrapper. The `FLOW` label is literal text, so
+  there is no regex-escaping concern.
+- `src/prompt/prompt.ts` — `interface TickPromptInput` (fields
+  `role`/`initialPrompt`/`principles?`/`extraInstructions?`); `buildTickPrompt`; the principles
+  push (`if (principles) parts.push(principlesBlock(principles));`). The coverage push goes
+  immediately after it, before `parts.push(...role.find...)`.
+- `src/loop/loop.ts` — `tickPrompt()`, its `buildTickPrompt({...})` call (where `coverage` joins
+  `extraInstructions`); `runTick`, the pi run (`const pi = await this.runRolePi(...)`), the
+  `no_change` return, and the `queued` return. `this.root` and `this.role` are in scope at both
+  returns, so `recordFlow` needs no new plumbing and `TickOutcome` need not widen.
+- `src/paths.ts` — `tumwaterDir(root)`; `statePath(root, role)` is the exact idiom
   `qaCoveragePath` copies; the state dir already holds `orchestrator.json`/landing markers, and
   `writeJsonAtomic` creates the parent, so no directory setup is needed.
-- `src/files/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn;
-  `writeJsonAtomic`
-  at 43 is the per-pid tmp+rename writer. Both are what invariant 5 needs.
-- `src/roles/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not
-  recently
+- `src/files/json-files.ts` — `readJsonFile<T>` returns null on missing/torn; `writeJsonAtomic`
+  is the per-pid tmp+rename writer. Both are what invariant 5 needs.
+- `src/roles/roles.ts` — the `qa` role's find text currently says "prefer a flow not recently
   exercised, as far as BUGS.md filings and Verified notes show" — the blind lookup this replaces.
-- plans/qa-role.md — line 53 fixes the ordered flow universe
+- plans/qa-role.md — fixes the ordered flow universe
   `init → status → logs → prompt → reset-counters → gui → tui → run`, which `QA_FLOWS` mirrors;
-  `run (real)` (line 63) is the expensive variant.
-- Tests — `test/reply-contract.test.ts` (`labeledLine`/`extractRefusal` cases at 23–37),
-  `test/prompt.test.ts` (the qa prompt contract at 578), `test/paths.test.ts`, `test/loop.test.ts`
-  (the fake-pi shim loop harness), and `test/json-files.test.ts` all exist;
+  `run (real)` is the expensive variant.
+- Tests — `test/reply-contract.test.ts` (`labeledLine`/`extractRefusal` cases),
+  `test/prompt.test.ts` (the qa prompt contract), `test/paths.test.ts`, `test/loop.test.ts` (the
+  fake-pi shim loop harness), and `test/json-files.test.ts` all exist;
   `test/qa-coverage.test.ts` is new.
 
 Pinned (open questions closed):
@@ -346,15 +340,16 @@ Pinned (open questions closed):
 3. **Ordering corrected.** The draft's example listed never-exercised flows last while its
    instruction said "exercise the flow at the top" — self-defeating. Pinned: never-exercised
    first, then exercised oldest-first. The acceptance criterion is updated in PLANS.md.
-4. **The age formatter stays in core.** `src/ui/status-render.ts`'s `ago()`/`humanSeconds` are
-   the only existing age helpers, but importing UI into `src/` inverts the layering; a few local
-   lines in `qa-coverage.ts` (`6d`/`4h`/`12m`) are pinned instead.
+4. **The age formatter stays in core.** `src/ui/status-render.ts`'s `ago()` — which builds on
+   `humanSeconds` (`src/text/datetime.ts`) — is the age helper the block would otherwise reuse,
+   but importing UI into `src/` inverts the layering; a few local lines in `qa-coverage.ts`
+   (`6d`/`4h`/`12m`) are pinned instead.
 5. **Recording seam.** `runTick` extracts the flow once after the pi run and records it at the
    two success returns (`no_change`, `queued`) only; `error`/`aborted`/`quiet_killed`/`refused`
    record nothing, so an interrupted check never advances the ledger.
 
 Sizing: `src/tick/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
 `src/verdict/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt/prompt.ts` ~3;
-`src/loop.ts` ~8; `src/roles/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
+`src/loop/loop.ts` ~8; `src/roles/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
 `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.
 One run. No design question remains open.

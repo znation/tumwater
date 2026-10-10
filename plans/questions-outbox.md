@@ -34,25 +34,25 @@ to ask.
   a question to QUESTIONS.md (context, options, your recommendation) and either continue with the
   parts that don't depend on it or end the tick. Never block on an unanswered question; check for
   answers at the start of each tick. Do not re-ask an open question."
-- **Surfacing**: `openQuestionCount(root)` plus an entry parser (id, first line) in a small new
-  `src/questions.ts`. The count flows through `StatusSnapshot` exactly like `inbox` does today:
-  `snapshot()` (src/status.ts) adds `questions: openQuestionCount(root)`, and `renderStatus`
-  (src/status-render.ts — the presentation layer, not status.ts) appends `· questions: N` to the
-  header line only when N > 0 (inbox is omitted at zero; do the same). The GUI header badge reads
-  a new `questions` field in `statusPayload`. **Decided (user note 2026-08-26, supersedes the
-  earlier `/api/questions` panel-on-click design):** the Open section is surfaced *alongside*
-  planned features and open bugs — inside the project-status surface that the now-done "Show open
-  bugs and planned features in the TUI/GUI" plan built. GUI: `statusPayload` (src/gui.ts) gains a
-  `questions` list, fresh per poll exactly like its existing `plans`/`bugs` fields, and
-  gui-page.ts renders it as a third section — *open questions (K)*, `(none)` when empty — in the
-  same `#backlog` panel below the loop table. TUI: the Ctrl+T-cycled project-status view gains an
-  open-questions list after planned features and open bugs (`backlogLines` in src/tui.ts takes it
-  as a third argument). Both reuse `parseEntries(md, "Open")` from src/backlog/backlog.ts —
-  QUESTIONS.md's
-  `## Open` section parses as-is; add an `openQuestions(root)` reader there (or in questions.ts,
-  delegating to it) so the count and the list come from one parse. No new route, no panel-on-
-  click. TUI: keep the highlighted line above recent activity when N > 0 — a cheap nudge that
-  something needs an answer.
+- **Surfacing**: `openQuestions(root)` (id, first line per entry) lives in
+  `src/backlog/backlog.ts`. The count flows through `StatusSnapshot` exactly like `inbox` does
+  today: `snapshot()` (`src/status/status-data.ts`) adds `questions: openQuestions(root).length`,
+  and `renderStatus` (`src/ui/status-render.ts` — the presentation layer, not `status-data.ts`)
+  appends `· questions: N` to the header line only when N > 0 (inbox is omitted at zero; do the
+  same). The GUI header badge reads a new `questions` field in `statusPayload`. **Decided (user
+  note 2026-08-26, supersedes the earlier `/api/questions` panel-on-click design):** the Open
+  section is surfaced *alongside* planned features and open bugs — inside the project-status
+  surface that the now-done "Show open bugs and planned features in the TUI/GUI" plan built. GUI:
+  `statusPayload` (`src/ui/status-payload.ts`) gains a `questions` list, fresh per poll exactly
+  like its existing `plans`/`bugs` fields, and `src/ui/gui/gui-page.ts` renders it as a third
+  section — *open questions (K)*, `(none)` when empty — in the same `#backlog` panel below the
+  loop table. TUI: the Ctrl+T-cycled project-status view gains an open-questions list after
+  planned features and open bugs (`backlogLines` in `src/ui/tui/tui-backlog.ts` takes it as a
+  third argument). Both reuse `parseEntryDetails(md, "Open")` from
+  `src/backlog/backlog-md.ts` —
+  QUESTIONS.md's `## Open` section parses as-is; `openQuestions(root)` keeps the count and the
+  list coming from one parse. No new route, no panel-on-click. TUI: keep the highlighted line
+  above recent activity when N > 0 — a cheap nudge that something needs an answer.
 - **Answer flow**: two paths, both already natural. (1) The user edits QUESTIONS.md directly —
   moving the entry to Answered with a decision; the next tick of any loop reads it. (2) The user
   tells the director ("answer Q3: choose SQLite"), and the director's routing block gains a
@@ -60,30 +60,31 @@ to ask.
   any follow-on work. Durable decisions graduate to PRINCIPLES.md
   ([principles.md](principles.md)).
 - **Events**: a `question_posted` event (loop, id, first line) when a merged diff adds an Open
-  entry. Detection lives in `tryMerge` (src/merge.ts — the merge machinery was extracted from loop.ts on
-2026-08-29): capture `openQuestionCount(root)` before
-  the rebase and compare after `ffMergeToMain` succeeds; for each new entry log one
+  entry. Detection lives in the landing merge machinery (`src/landing/landing-merge.ts`) and the
+  stack fast-forward (`src/landing/landing-stack.ts`), with `logNewQuestions`
+  (`src/landing/landing-questions.ts`) diffing `openQuestions(root)` captured under the merge lock
+  before the fast-forward against the list after it succeeds; for each new entry log one
   `question_posted` alongside the existing `merged` event — pi stays out of the event system.
-  Add `question_posted` to the `HarnessEvent.type` union (src/types.ts) with plain rendering in
-  `formatEvent` (src/events/event-format.ts — it no longer lives in src/events/events.ts); no
-  warning prefix,
-  this is routine operation.
+  Add `question_posted` to the `HarnessEvent.type` union (`src/events/events.ts`) with plain
+  rendering in `formatEvent` (`src/events/event-format.ts` — it no longer lives in
+  `src/events/events.ts`); no warning prefix, this is routine operation.
 
 ## Files touched
 
 `src/init/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt/prompt.ts` (read-first list +
-ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new: count + entry
-parsing), `src/backlog/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
-`src/status.ts` (`StatusSnapshot.questions`, as inbox does today),
-`src/status-render.ts` (header badge in renderStatus), `src/gui.ts` (statusPayload gains a
-fresh-per-poll `questions` list beside `plans`/`bugs`), `src/ui/gui/gui-page.ts` (header badge +
-open-
-questions section in the project status panel), `src/tui.ts` (highlighted line + open-questions
-list in the Ctrl+T project-status view),
-`src/merge.ts` (post-merge count diff → event in tryMerge; extracted from loop.ts 2026-08-29),
-`src/types.ts` (event type) +
-`src/events/event-format.ts` (plain rendering); tests: new `test/questions.test.ts` (count parsing,
-header rendering, prompt contract text, director routing text, post-merge event emission) plus
+ask-don't-guess bullet; director answer-routing bullet), `src/backlog/backlog.ts`
+(`openQuestions(root)` reader reusing `parseEntryDetails` in `src/backlog/backlog-md.ts`),
+`src/status/status-data.ts` (`StatusSnapshot.questions`, as inbox does today),
+`src/ui/status-render.ts` (header badge in renderStatus), `src/ui/status-payload.ts` (statusPayload
+gains a fresh-per-poll `questions` list beside `plans`/`bugs`), `src/ui/gui/gui-page.ts` (header
+badge + open-questions section in the project status panel), `src/ui/tui/tui-backlog.ts`
+(highlighted line + open-questions list in the Ctrl+T project-status view),
+`src/landing/landing-merge.ts` and `src/landing/landing-stack.ts` (post-merge count diff → event,
+via `logNewQuestions` in `src/landing/landing-questions.ts`; extracted from
+`src/loop/loop.ts` 2026-08-29), `src/events/events.ts` (event type) +
+`src/events/event-format.ts` (plain rendering); tests: `test/backlog.test.ts` (count parsing),
+`test/prompt.test.ts` (prompt contract text, director routing text),
+`test/landing-merge.test.ts`/`test/landing-stack.test.ts` (post-merge event emission) plus
 GUI payload/panel and TUI project-status-view assertions in test/gui.test.ts / test/tui.test.ts
 (mirroring the backlog plan's test precedent), README.
 

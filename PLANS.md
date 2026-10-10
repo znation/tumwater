@@ -38,26 +38,6 @@ the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
 - A pi non-buffered call still warns at `toolCallStallSeconds`.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 4/5: the observer, QA, questions, review, and steward plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/observer-roles.md`,
-`plans/qa-role.md`, `plans/questions-outbox.md`, `plans/review-gate.md`, and
-`plans/steward-role.md`.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these five files. Their absent paths are the `loop`, `types`, `config`,
-`orchestrator`, `state`, `questions`, and `status-render` module moves, and
-`plans/observer-roles.md` also carries one out-of-range pin.
-
-**Files touched.** Those five `plans/*.md` files. No source or test change.
-
-**Acceptance criteria.**
-- The inventory over these five files reports no cited path absent from the tree.
-- No `<path>:<line>` in these five files names a line past that file's end.
-- For each split module cited here, the module named beside a symbol exports it (checked against
-  the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for every `plans/*.md` file not assigned to
@@ -226,6 +206,26 @@ across several owners.
 **Acceptance criteria.**
 - The inventory over these three files reports no cited path absent from the tree.
 - No `<path>:<line>` in these three files names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 4/5: the observer, QA, questions, review, and steward plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/observer-roles.md`,
+`plans/qa-role.md`, `plans/questions-outbox.md`, `plans/review-gate.md`, and
+`plans/steward-role.md`.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these five files. Their absent paths are the `loop`, `types`, `config`,
+`orchestrator`, `state`, `questions`, and `status-render` module moves, and
+`plans/observer-roles.md` also carries one out-of-range pin.
+
+**Files touched.** Those five `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these five files reports no cited path absent from the tree.
+- No `<path>:<line>` in these five files names a line past that file's end.
 - For each split module cited here, the module named beside a symbol exports it (checked against
   the module's export list).
 - `npm run test` is green.

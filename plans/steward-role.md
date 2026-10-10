@@ -25,7 +25,7 @@ them, and nothing compares the codebase to the project's reason for existing.
 
 ## Design
 
-- **Role** (`src/roles/roles.ts`): id `steward`, title "project steward", appended to the end of the
+- **Role** (`src/roles/role-catalog.ts`): id `steward`, title "project steward", appended to the end of the
   `ROLES` array — after `improve`. The director is not a catalog entry (it is appended separately
   by `allRoleIds()`), so last-in-`ROLES` is exactly the lowest tie-break priority: it should never
   outrank shipping work. Find prompt,
@@ -41,13 +41,14 @@ them, and nothing compares the codebase to the project's reason for existing.
   empowered.
 - **Slow cadence**: a *global* `minTickIntervalSeconds` already exists (`TumwaterConfig`,
   default 20 s) and is read at four sites (verified against main 2026-08-27): the min-gap check
-  in `isEligible` (src/orchestrator.ts — this one also gates "main moved" early wakes, which is
-  what keeps a slow clock slow) and three `nextRunAt` branches in `LoopRunner.tick()`
-  (src/loop.ts: the `changed`, `skipped`, and cut-off-resume outcomes; the `aborted` branch
+  in `isEligible` (`src/scheduling/scheduling.ts` — this one also gates "main moved" early wakes,
+  which is what keeps a slow clock slow) and three `nextRunAt` branches in `LoopRunner.tick()`
+  (`src/loop/loop.ts`: the `changed`, `skipped`, and cut-off-resume outcomes; the `aborted` branch
   schedules at once and the backoff branch uses `backoffSeconds`, so neither touches the
-  interval). Add an optional **per-role** override to `RoleConfig` (`src/types.ts`; validated in
-  src/config.ts by adding it to `ROLE_ENTRY_KEYS` plus a `checkNumber … >= 0`). Resolution is
-  decided: extend `configForRole` — already the single place role overrides are applied over
+  interval). Add an optional **per-role** override to `RoleConfig`
+  (`src/config/config-schema.ts`; validated in `src/config/config-validation.ts` by adding it to
+  `ROLE_ENTRY_KEYS` plus a `checkNumber … >= 0`). Resolution is decided: extend `configForRole`
+  (`src/config/config-views.ts`) — already the single place role overrides are applied over
   top-level values — with
   `minTickIntervalSeconds: rc.minTickIntervalSeconds ?? config.minTickIntervalSeconds`, and update
   its doc comment from "as seen by one role's pi runs" to "as seen by one role". Both read sites
@@ -79,14 +80,15 @@ them, and nothing compares the codebase to the project's reason for existing.
 
 ## Files touched
 
-`src/roles/roles.ts`, `src/types.ts`, `src/config.ts` (RoleConfig field, ROLE_ENTRY_KEYS + validation,
-`configForRole` fallback, defaultConfig steward entry), `src/orchestrator.ts` (`isEligible`
-min-gap via configForRole) + `src/loop.ts` (resolve once in tick(); use in the changed/skipped/
-cut-off-resume branches), `test/steward.test.ts` (role prompt contract — curation move list,
-markdown-only restriction, deletion/PRINCIPLES powers, conditional QUESTIONS.md mention; interval
-override honored in isEligible and all three tick() nextRunAt branches with global fallback when
-unset; catalog order last), README roles list. `tumwater.json` only if the optional strong-model
-entry is wanted (see Thinking budget / dogfood).
+`src/roles/role-catalog.ts`, `src/config/config-schema.ts`, `src/config/config-validation.ts`
+(RoleConfig field, ROLE_ENTRY_KEYS + validation), `src/config/config-views.ts` (`configForRole`
+fallback), `src/config/config.ts` (defaultConfig steward entry), `src/scheduling/scheduling.ts`
+(`isEligible` min-gap via configForRole) + `src/loop/loop.ts` (resolve once in tick(); use in the
+changed/skipped/cut-off-resume branches), `test/prompt-steward.test.ts` (role prompt contract —
+curation move list, markdown-only restriction, deletion/PRINCIPLES powers, conditional
+QUESTIONS.md mention; catalog order last), `test/backoff.test.ts` (interval override honored in
+isEligible and the tick() nextRunAt branches with global fallback when unset), README roles list.
+`tumwater.json` only if the optional strong-model entry is wanted (see Thinking budget / dogfood).
 
 ## Acceptance criteria
 
