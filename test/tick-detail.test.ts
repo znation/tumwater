@@ -12,7 +12,7 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 // The `tick <role> <n>` command: the readTickDetail collector's window bracketing and
 // unpaired/in-flight behavior as unit cases, the renderer's summary header, and the CLI
 // surface — the --json shape and the arg-error cases, driven in-process the way
-// ui-history.test.ts drives cmdHistory (pure in-process reads only; the subprocess dispatch
+// cli-history-views.test.ts drives cmdHistory (pure in-process reads only; the subprocess dispatch
 // gets one smoke run through the real binary, as cli-history.test.ts does).
 
 function start(over: Partial<HarnessEvent>): HarnessEvent {
