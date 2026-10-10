@@ -5,7 +5,7 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { flagValue, parseRoleFlag } from "./cli-args.js";
+import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
 import { repoNotReady } from "../gates/startup-gate.js";
 import { knownRoleIdsCached } from "../config/config.js";
@@ -136,7 +136,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   let numbered = false;
   for (const arg of args) {
     if (!numbered && arg === "--json") {
-      if (jsonFlag) fail("--json may only be given once");
+      rejectRepeatFlag(jsonFlag, "--json");
       jsonFlag = true;
       continue;
     }

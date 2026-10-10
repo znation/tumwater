@@ -14,7 +14,7 @@ import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } fro
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { parsePositionFlag } from "../cli/cli-args.js";
+import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -299,7 +299,7 @@ export async function fileAndAnnounce(
       // parser apply (cli-flag-specs.ts's rejectUnknownArgs, cli-command-args.ts's
       // rejectDuplicateFlags): a second --json was silently collapsed here while
       // `backlog --json --json` and `questions --json --json` refuse it.
-      if (json) fail("--json may only be given once");
+      rejectRepeatFlag(json, "--json");
       json = true;
       continue;
     }
@@ -407,12 +407,12 @@ export async function cancelAndAnnounce(
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === "--json") {
-      if (json) fail("--json may only be given once");
+      rejectRepeatFlag(json, "--json");
       json = true;
       continue;
     }
     if (arg === "--cancel") {
-      if (position !== null) fail("--cancel may only be given once");
+      rejectRepeatFlag(position !== null, "--cancel");
       position = parsePositionFlag("--cancel", args[i + 1], "--cancel 2");
       i++;
       continue;
@@ -451,12 +451,12 @@ export async function editAndAnnounce(
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? "";
     if (arg === "--json") {
-      if (json) fail("--json may only be given once");
+      rejectRepeatFlag(json, "--json");
       json = true;
       continue;
     }
     if (arg === "--edit") {
-      if (position !== null) fail("--edit may only be given once");
+      rejectRepeatFlag(position !== null, "--edit");
       position = parsePositionFlag("--edit", args[i + 1], "--edit 2");
       i++;
       continue;

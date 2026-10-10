@@ -9,7 +9,7 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
-import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag } from "./cli-args.js";
+import { failOverDurationCap, parseBranchFlag, parseDurationFlag, parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
@@ -119,8 +119,7 @@ const LIST_TEMPLATES_PROMPT_ERROR =
  * spec-parsed commands. Two call sites: parseInitArgs (over every known flag) and
  * parsePromptArgs (over --list/--cancel/--role/--json). */
 function rejectDuplicateFlags(args: readonly string[], flags: readonly string[]): void {
-  for (const flag of flags)
-    if (args.filter((a) => a === flag).length > 1) fail(`${flag} may only be given once`);
+  for (const flag of flags) rejectRepeatFlag(args.filter((a) => a === flag).length > 1, flag);
 }
 
 /** `tumwater init` argument handling. Init's positionals are free-form prompt text, so

@@ -31,6 +31,17 @@ export function flagValue(args: string[], flag: string): string | null | undefin
   return i < 0 ? null : args[i + 1];
 }
 
+/** The "each flag at most once" rule at a flag fold: fail the occurrence after the first with
+ * the shared wording (`<flag> may only be given once`), `seen` being the caller's accumulator
+ * for that flag. One home for the wording the spec-driven gate (cli-flag-specs.ts), the
+ * free-form parsers' pre-scan (cli-command-args.ts), and the bespoke command shells
+ * (backlog-write.ts, cli-query-commands.ts) all apply, so a repeat cannot be reported as a
+ * different error on one surface. Called per occurrence rather than pre-scanned at every site,
+ * so a malformed invocation still reports whichever error its token order reaches first. */
+export function rejectRepeatFlag(seen: boolean, flag: string): void {
+  if (seen) fail(`${flag} may only be given once`);
+}
+
 /** Parse an optional `--grep <text>` filter flag for the filtering views (logs, history): the
  * substring pattern, or null when absent, returned alongside `rest` — the args with the
  * flag's value token removed. The value token leaves the list because a flag-shaped token

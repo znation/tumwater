@@ -9,7 +9,7 @@
  * duplicated, missing or malformed value, equals-form spelling) fails fast with an
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "./cli-output.js";
-import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag } from "./cli-args.js";
+import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag, rejectRepeatFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { typoSuffix } from "../text/suggest.js";
 import { gotSuffix } from "../text/text.js";
@@ -342,7 +342,7 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
       if (specs.length === 0) fail(`tumwater ${command} takes no arguments${gotSuffix(arg)}`);
       failUnknownArgument(command, arg, specs);
     }
-    if (seen.has(spec)) fail(`${spec.names[0]} may only be given once`);
+    rejectRepeatFlag(seen.has(spec), spec.names[0]!);
     seen.add(spec);
     if (spec.value && i === args.length - 1)
       fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
