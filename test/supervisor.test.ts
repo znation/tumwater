@@ -63,6 +63,38 @@ test("superviseRun passes a failing child's exit straight through (no respawn)",
   assert.equal(killed.spawns, 1);
 });
 
+test("superviseRun runs onDone once on every ending, and its failure never changes the exit", async () => {
+  // The end-of-supervision repair hook: the production wiring restores an interrupted build
+  // swap to dist/ (build-stage.recoverInterruptedSwap). It must run for a failure ending too —
+  // that is exactly the mid-swap SIGKILL shape — and a hook that throws must leave the child's
+  // exit code intact, since the repair is best-effort and the caller reports its own failure.
+  const failed = scripted([1]);
+  let done = 0;
+  const code = await superviseRun(
+    {
+      spawnChild: failed.spawnChild,
+      stopping: () => false,
+      onDone: () => {
+        done += 1;
+        throw new Error("simulated repair failure");
+      },
+    },
+    new AbortController().signal,
+  );
+  assert.equal(code, 1, "onDone's failure never changes the exit");
+  assert.equal(done, 1, "the hook runs exactly once");
+
+  // Also on a clean exit, and exactly once after respawns.
+  const clean = scripted([RESTART_EXIT_CODE, 0]);
+  let cleanDone = 0;
+  const cleanCode = await superviseRun(
+    { spawnChild: clean.spawnChild, stopping: () => false, onDone: () => { cleanDone += 1; } },
+    new AbortController().signal,
+  );
+  assert.equal(cleanCode, 0);
+  assert.equal(cleanDone, 1);
+});
+
 test("a restart request after the operator asked to stop ends the supervisor instead of respawning", async () => {
   const child = scripted([RESTART_EXIT_CODE]);
   const code = await superviseRun({ spawnChild: child.spawnChild, stopping: () => true }, new AbortController().signal);

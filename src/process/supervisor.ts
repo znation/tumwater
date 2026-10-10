@@ -102,6 +102,12 @@ interface SuperviseOptions {
   onRespawn?(generation: number): void;
   /** Called when the crash-loop guard trips. */
   onCrashLoop?(): void;
+  /** Run exactly once after the loop ends, whatever ended it (a clean exit, a failure, a
+   * crash loop, or an abort), before the supervisor returns — the production wiring restores a
+   * build swap interrupted mid-rename so the next boot can load its own CLI
+   * (build-stage.recoverInterruptedSwap). A hook that throws is ignored: the exit code must
+   * stay the child's, and the hook's own reporting is its responsibility. */
+  onDone?(): Promise<void> | void;
   /** Called — and awaited — right before the supervisor gives up on a fleet the operator did
    * not stop: a generation exited with a failure (not a restart request, not a clean exit, and not
    * while stopping) or the crash-loop guard tripped. Production logs a `supervisor_exit` event: on
@@ -132,24 +138,33 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
       // Best-effort (see onFleetDown): a trace that cannot be written must not change the exit.
     }
   };
-  for (;;) {
-    const exit = await opts.spawnChild(signal);
-    if (exit.code !== RESTART_EXIT_CODE || opts.stopping()) {
-      // A clean exit (a child stopped by its own SIGTERM logs orchestrator_stop) and anything
-      // while the operator is stopping are asked-for endings; everything else is the fleet dying.
-      if (exitCodeOf(exit) !== 0 && !opts.stopping()) await fleetDown({ generation, exit, crashLoop: false });
-      return exitCodeOf(exit);
+  try {
+    for (;;) {
+      const exit = await opts.spawnChild(signal);
+      if (exit.code !== RESTART_EXIT_CODE || opts.stopping()) {
+        // A clean exit (a child stopped by its own SIGTERM logs orchestrator_stop) and anything
+        // while the operator is stopping are asked-for endings; everything else is the fleet dying.
+        if (exitCodeOf(exit) !== 0 && !opts.stopping()) await fleetDown({ generation, exit, crashLoop: false });
+        return exitCodeOf(exit);
+      }
+      const t = now();
+      while (recentRespawns.length > 0 && t - (recentRespawns[0] ?? t) > RESPAWN_WINDOW_MS) recentRespawns.shift();
+      recentRespawns.push(t);
+      if (recentRespawns.length > MAX_RAPID_RESPAWNS) {
+        opts.onCrashLoop?.();
+        await fleetDown({ generation, exit, crashLoop: true });
+        return 1;
+      }
+      generation += 1;
+      opts.onRespawn?.(generation);
     }
-    const t = now();
-    while (recentRespawns.length > 0 && t - (recentRespawns[0] ?? t) > RESPAWN_WINDOW_MS) recentRespawns.shift();
-    recentRespawns.push(t);
-    if (recentRespawns.length > MAX_RAPID_RESPAWNS) {
-      opts.onCrashLoop?.();
-      await fleetDown({ generation, exit, crashLoop: true });
-      return 1;
+  } finally {
+    // The end-of-supervision repair (see onDone): a hook that throws must not change the exit.
+    try {
+      await opts.onDone?.();
+    } catch {
+      // Best-effort — see onDone.
     }
-    generation += 1;
-    opts.onRespawn?.(generation);
   }
 }
 

@@ -4,7 +4,8 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { readBuildInfo } from "../src/build/build-info.js";
-import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
+import { compileStaged, pruneStaleStagings, recoverInterruptedSwap, repairInterruptedSwap, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
+import { readEvents } from "../src/events/event-read.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { eventsLogPath, mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -113,6 +114,109 @@ test("swapDist puts the old dist back when the staged rename fails after steppin
   assert.deepEqual(fs.readdirSync(dist), ["old.js"], "the old build is put back before the error propagates");
   assert.ok(fs.existsSync(path.join(staged, "new.js")), "the staged build survives for a retry");
   assert.ok(!fs.existsSync(path.join(stagingRootDir(root), "dist.prev")), "the stepped-aside tree is gone, not left behind");
+});
+
+test("recoverInterruptedSwap restores dist from dist.prev after a swap died between its renames", () => {
+  // The fault: swapDist renamed dist -> dist.prev and the process died before staged -> dist.
+  // dist/ is now missing; the next `tumwater run` cannot load dist/src/cli.js (MODULE_NOT_FOUND)
+  // and the repo is wedged until a hand rename. The fix renames the preserved build back.
+  const { root, dist } = rootWithDist();
+  const prev = path.join(stagingRootDir(root), "dist.prev");
+  fs.mkdirSync(stagingRootDir(root), { recursive: true });
+  fs.renameSync(dist, prev); // Reproduce the mid-swap state: no dist, old build at dist.prev.
+  assert.equal(recoverInterruptedSwap(root, dist), true);
+  assert.deepEqual(fs.readdirSync(dist), ["old.js"], "the preserved build is back at dist/");
+  assert.ok(!fs.existsSync(prev), "the backup is consumed, not duplicated");
+});
+
+test("recoverInterruptedSwap leaves a present dist and an absent backup alone", () => {
+  const { root, dist } = rootWithDist();
+  assert.equal(recoverInterruptedSwap(root, dist), false, "a live dist (swap completed or was restored) is untouched");
+  assert.deepEqual(fs.readdirSync(dist), ["old.js"]);
+  const empty = tmpdir();
+  assert.equal(
+    recoverInterruptedSwap(empty, path.join(empty, "dist")),
+    false,
+    "nothing to restore when neither dist nor dist.prev exists",
+  );
+  assert.ok(!fs.existsSync(path.join(stagingRootDir(empty), "dist.prev")));
+});
+
+test("recoverInterruptedSwap throws when the restore rename fails and leaves dist missing", (t) => {
+  // The repair must fail loudly rather than claim success: the caller reports it and dist stays
+  // missing for a hand fix. Before the fix this state had no reporter at all.
+  const { root, dist } = rootWithDist();
+  const prev = path.join(stagingRootDir(root), "dist.prev");
+  fs.mkdirSync(stagingRootDir(root), { recursive: true });
+  fs.renameSync(dist, prev);
+  t.mock.method(fs, "renameSync", () => {
+    throw new Error("EACCES: simulated restore failure");
+  });
+  try {
+    assert.throws(() => recoverInterruptedSwap(root, dist), /simulated restore failure/);
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.ok(!fs.existsSync(dist), "dist stays missing when the restore failed");
+  assert.ok(fs.existsSync(prev), "the backup survives for a retry");
+});
+
+test("repairInterruptedSwap restores dist and logs it when the swap died between its renames", () => {
+  // The production hook cli-run wires into superviseRun's onDone. The fault: swapDist renamed
+  // dist -> dist.prev and the process died before staged -> dist. Calling the hook now must
+  // restore dist/ from the preserved backup and report it.
+  const { root, dist } = rootWithDist();
+  const prev = path.join(stagingRootDir(root), "dist.prev");
+  fs.mkdirSync(stagingRootDir(root), { recursive: true });
+  fs.renameSync(dist, prev);
+  repairInterruptedSwap(root, dist);
+  assert.deepEqual(fs.readdirSync(dist), ["old.js"], "the preserved build is back at dist/");
+  assert.ok(!fs.existsSync(prev), "the backup is consumed, not duplicated");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "warning" && String(e.message).includes("restored it from")),
+    "the repair is on the event feed, not silent",
+  );
+});
+
+test("repairInterruptedSwap logs a failed restore instead of throwing", (t) => {
+  // The hook runs on the way out of the supervisor, so a restore that fails must be reported
+  // and never thrown: a throw escaping onDone would leave no event behind, the silent failure
+  // this covers. dist/ stays missing for a hand fix and dist.prev survives.
+  const { root, dist } = rootWithDist();
+  const prev = path.join(stagingRootDir(root), "dist.prev");
+  fs.mkdirSync(stagingRootDir(root), { recursive: true });
+  fs.renameSync(dist, prev);
+  t.mock.method(fs, "renameSync", () => {
+    throw new Error("EACCES: simulated restore failure");
+  });
+  try {
+    repairInterruptedSwap(root, dist);
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.ok(!fs.existsSync(dist), "dist stays missing when the restore failed");
+  assert.ok(fs.existsSync(prev), "the backup survives for a retry");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "warning" && String(e.message).includes("could not be restored")),
+    "the failed repair is reported, not swallowed",
+  );
+});
+
+test("cli-run statically imports the swap repair so its code is loaded before dist can move", () => {
+  // The fault behind `repairInterruptedSwap` living in build-stage and cli-run calling it
+  // directly: the onDone hook used to `await import("../build/build-stage.js")`, which resolves
+  // under dist/ — the directory an interrupted swap has just moved away — so it failed
+  // ERR_MODULE_NOT_FOUND and recovery never ran. A static import loads the code at boot, before
+  // any swap. This scan pins the wiring itself: it fails if a call-time import of build-stage
+  // returns to cli-run. (Reading the source, not the compiled copy, so the check states the
+  // intent even if tsc output changes.)
+  const cliRun = fs.readFileSync(new URL("../../src/cli/cli-run.ts", import.meta.url), "utf8");
+  assert.match(
+    cliRun,
+    /import \{[^}]*\brepairInterruptedSwap\b[^}]*\} from "\.\.\/build\/build-stage\.js";/,
+    "cli-run imports repairInterruptedSwap statically",
+  );
+  assert.doesNotMatch(cliRun, /import\("\.\.\/build\/build-stage\.js"\)/, "no call-time import of the moved module");
 });
 
 test("swapDist names the lost dist and its dist.prev backup when even the restore fails", (t) => {

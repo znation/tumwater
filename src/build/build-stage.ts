@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { stampBuild } from "./build-info.js";
+import { distDir, stampBuild } from "./build-info.js";
 import { clipBuildTail } from "./build-check-report.js";
 import { resolveFromNodeModules } from "./build-check-detect.js";
 import { ensureDir, removeTree } from "../files/files.js";
 import { stagingDir, stagingRootDir } from "../paths.js";
 import { execFileAsync } from "../process/process.js";
-import { warnEvent } from "../events/events.js";
+import { warnEvent, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 
@@ -223,6 +223,49 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
   // never fails the work it follows.
   removeSupersededQuiet(root, prev);
   sweepSupersededStagings(root);
+}
+
+/** Restore dist/ after a swap that died between its two renames: `swapDist` moves the old
+ * build aside to `dist.prev` and then moves the staged build into `dist`, and a process killed
+ * (SIGKILL — the OOM killer) in that microsecond window leaves `dist` missing. Nothing in the
+ * swap can close the window, because the survivor is the supervisor and it exits on the dead
+ * generation; the next `tumwater run` then cannot even load `dist/src/cli.js` and fails with
+ * MODULE_NOT_FOUND, so the repo is wedged until someone renames `dist.prev` back by hand. The
+ * supervisor calls this before it exits (src/cli/cli-run.ts, via superviseRun's onDone): while
+ * it is still up, it renames the preserved old build back into place so the next boot works.
+ *
+ * Only acts when `dist` is missing and a `dist.prev` exists — both conditions together are the
+ * interrupted swap. A completed swap leaves a live `dist` (prev is swept later), and a swap
+ * that failed and restored also leaves one, so neither is touched. Throws when the restore
+ * rename itself fails — the caller reports it, and `dist` stays missing for a hand fix —
+ * never leaves a half-restored tree. Returns whether it restored. */
+export function recoverInterruptedSwap(root: string, dist: string): boolean {
+  const prev = path.join(stagingRootDir(root), "dist.prev");
+  if (fs.existsSync(dist) || !fs.existsSync(prev)) return false;
+  fs.renameSync(prev, dist); // Atomic: dist is either the restored old build or still missing.
+  return true;
+}
+
+/** The supervisor's end-of-supervision repair (src/cli/cli-run.ts wires this into
+ * superviseRun's onDone): recover dist/ after an interrupted swap and, either way, put the
+ * outcome on the event feed. Kept beside recoverInterruptedSwap so the CLI wiring is one call.
+ * cli-run.ts imports this module statically, so the code is in memory before a swap can move
+ * dist/ away — recovering via an import at call time would fail ERR_MODULE_NOT_FOUND exactly
+ * when it is needed, the window this closes. `dist` defaults to this process's own dist
+ * (build-info.distDir, a pure path computation captured at load), overridable so a test can
+ * point it at a temp root. A failed restore is reported, never thrown: the hook runs on the
+ * way out and must not change the supervisor's exit code. */
+export function repairInterruptedSwap(root: string, dist = distDir()): void {
+  try {
+    if (recoverInterruptedSwap(root, dist))
+      warnEventBestEffort(root, "harness", "an interrupted build swap left dist/ missing — restored it from .tumwater/build/dist.prev");
+  } catch (err) {
+    warnEventBestEffort(
+      root,
+      "harness",
+      `dist/ is missing after an interrupted build swap and could not be restored from .tumwater/build/dist.prev: ${errorMessage(err)}`,
+    );
+  }
 }
 
 /** Remove one post-swap leftover tree, warning instead of throwing: the swap is already

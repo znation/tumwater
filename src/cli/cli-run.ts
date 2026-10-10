@@ -22,6 +22,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-i
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";
+import { repairInterruptedSwap } from "../build/build-stage.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
@@ -367,6 +368,14 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
       onFleetDown: async (down) => {
         logEvent(root, fleetDownEvent(down, down.crashLoop ? null : await runStartupProblem(root, branchArg)));
       },
+      // The end-of-supervision build repair (see build-stage.repairInterruptedSwap): a swap
+      // killed between its two renames leaves dist/ missing, and this process is the only one
+      // still able to rename the preserved old build back before it exits — the next `tumwater
+      // run` would otherwise fail to load its own dist/src/cli.js. repairInterruptedSwap is a
+      // static import, so its code is in memory before any swap can move dist/ away: an import
+      // at call time would fail ERR_MODULE_NOT_FOUND exactly when it is needed. The repair
+      // reports its own outcome, so it can never change the exit code.
+      onDone: () => repairInterruptedSwap(root),
     },
     controller.signal,
   );
