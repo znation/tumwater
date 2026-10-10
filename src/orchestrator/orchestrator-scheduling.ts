@@ -365,13 +365,18 @@ export async function pollRunnerReasons(
     }
     // Parallel work instances (part 4/7): a multi-runner base role's claim assignment, after
     // every gate has admitted this runner. A runner that already holds a claim proceeds — its
-    // revision, resume or retry is the same entry. Otherwise, when the tick is not an
-    // inbox/resume run, it takes the first free entry; an extra instance with none free is
-    // skipped without touching its backoff, and the primary runs unassigned as today.
+    // revision, resume or retry is the same entry. An unclaimed runner with outstanding work
+    // (a revision) is the mid-entry runner the group hold waits on: it proceeds unassigned —
+    // holding it too would deadlock the whole group, since only its tick can settle the hold.
+    // Otherwise, when the tick is not an inbox/resume run, it takes the first free entry; an
+    // extra instance with none free is skipped without touching its backoff, and the primary
+    // runs unassigned as today.
     const claimGroup = claimGroups.get(baseRoleOf(runner.role));
     if (claimGroup) {
       if (runner.state.claim) {
         // keeps its claim
+      } else if (hasOutstandingWork(runner.state)) {
+        // finishes its own unrecorded entry
       } else if (reason !== "inbox" && reason !== "resume") {
         // The group holds an unclaimed mid-entry sibling: assign nothing this poll, or a
         // sibling could be handed that same entry (the reported `feature-2`/`bugfix-2`

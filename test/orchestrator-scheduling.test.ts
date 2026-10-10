@@ -269,10 +269,14 @@ test("a base with an outstanding revision and no claim also holds the group", as
   // The base's change is out of the landing queue for a revision (state.revision) and it never
   // recorded a claim: the same unclaimed-mid-entry shape, caught while the base is idle.
   feature.state.revision = { sha: "deadbeef", round: 1, at: T0 };
-  await pollRunnerReasons(
+  const reasons = await pollRunnerReasons(
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
   assert.equal(feature2.state.claim, undefined, "the revision holds the group too");
+  // The holder itself must still tick: only its revision can settle the hold, so skipping it
+  // too deadlocks every instance (the 2026-10-09 fleet stall).
+  assert.equal(reasons.has(feature), true, "the base still ticks to finish its revision");
+  assert.equal(feature.state.claim, undefined, "and is assigned no new entry");
 });
 
 test("the reviewer's provider being held blocks every role through scheduling, and only while it stands", async () => {
