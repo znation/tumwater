@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkFallbackModel, checkTierModels, piProviderAuth } from "../src/doctor/doctor-model-checks.js";
+import {
+  checkClaudeAuth,
+  checkClaudeVersion,
+  checkFallbackModel,
+  checkTierModels,
+  piProviderAuth,
+} from "../src/doctor/doctor-model-checks.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
@@ -269,6 +275,103 @@ test("checkTierModels cannot run on an invalid config and says so without failin
   const outcome = await checkTierModels(root, path.join(tmpdir(), "absent.json"), async () => "ready");
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /cannot check — invalid tumwater\.json/);
+});
+
+// --- claude routing (plans/agent-backends.md "Every seam, checked", part 4e/7) ---
+
+// A claude-routed config has no pi pair to resolve, so the sweep must not consult (or require)
+// pi's models.json for it — and must not probe pi's auth check.
+test("checkTierModels skips pi's definitions for claude-routed models", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  let probed = 0;
+  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => {
+    probed++;
+    return "ready";
+  });
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /claude-routed .* resolved by the claude backend, not pi's definitions/);
+  assert.equal(probed, 0, "a claude-routed config probes no pi provider");
+});
+
+// An agent id is reserved: a pi models.json provider of the same name can never be reached
+// through routing, so doctor warns rather than silently ignoring the definitions.
+test("checkTierModels warns when pi's definitions name a reserved agent id", async () => {
+  const dir = tmpdir("doctor-reserved-");
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ providers: { claude: { models: [{ id: "claude-x", cost: { input: 0, output: 0 } }] } } }),
+  );
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  const outcome = await checkTierModels(root, file, async () => "ready");
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /declare provider "claude" — the name is reserved for an agent backend/);
+});
+
+// The auth probe is pinned against a fake claude on PATH (never a real model) for each verdict.
+test("checkClaudeAuth fails a logged-out claude and names the billing it implies", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  const bin = tmpdir("doctor-claude-auth-");
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":false}\'');
+  const out = await checkClaudeAuth(root, bin);
+  assert.equal(out.level, "fail");
+  assert.match(out.detail, /logged in: false — run `claude auth login`/);
+
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"team"}\'');
+  const subscription = await checkClaudeAuth(root, bin);
+  assert.equal(subscription.level, "ok");
+  assert.match(subscription.detail, /logged in — billing: subscription \(team\)/);
+
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"authMethod":"ANTHROPIC_API_KEY"}\'');
+  const api = await checkClaudeAuth(root, bin);
+  assert.equal(api.level, "ok");
+  assert.match(api.detail, /logged in — billing: API key/);
+
+  writeScript(path.join(bin, "claude"), "echo not-json");
+  const unreadable = await checkClaudeAuth(root, bin);
+  assert.equal(unreadable.level, "warn");
+  assert.match(unreadable.detail, /could not check/);
+});
+
+// A pi-only config stands the claude checks down, so a fleet that never runs claude spawns no
+// claude and reads no claude state.
+test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model" });
+  const empty = tmpdir("doctor-claude-empty-");
+  assert.deepEqual(await checkClaudeAuth(root, empty), { level: "ok", detail: "no claude seams configured" });
+  assert.deepEqual(await checkClaudeVersion(root, empty), { level: "ok", detail: "no claude seams configured" });
+});
+
+// The version gate: a CLI below a configured model's floor fails and names the model, a newer
+// one passes and prints the version against the floor.
+test("checkClaudeVersion fails a CLI below a configured model's floor", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  const bin = tmpdir("doctor-claude-version-");
+  writeScript(path.join(bin, "claude"), 'echo "2.1.216 (Claude Code)"');
+  const old = await checkClaudeVersion(root, bin);
+  assert.equal(old.level, "fail");
+  assert.match(old.detail, /claude 2\.1\.216 is older than 2\.1\.280 required by claude-/);
+
+  writeScript(path.join(bin, "claude"), 'echo "2.1.295 (Claude Code)"');
+  const fresh = await checkClaudeVersion(root, bin);
+  assert.equal(fresh.level, "ok");
+  assert.match(fresh.detail, /claude 2\.1\.295 \(>= 2\.1\.280 for claude-/);
+
+  // `off`/`minimal` thinking has no claude setting below `low`, and the check notes the clamp.
+  writeConfig(root, { agent: "claude", thinking: "minimal" });
+  const clamped = await checkClaudeVersion(root, bin);
+  assert.equal(clamped.level, "ok");
+  assert.match(clamped.detail, /`off`\/`minimal` thinking clamps to `--effort low`/);
+
+  writeScript(path.join(bin, "claude"), "exit 3");
+  const unreadable = await checkClaudeVersion(root, bin);
+  assert.equal(unreadable.level, "warn");
+  assert.match(unreadable.detail, /could not check/);
 });
 
 // The default probe runs the resolved agent binary's own auth check; pinned against a fake

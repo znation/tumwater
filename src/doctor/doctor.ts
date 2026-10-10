@@ -12,6 +12,7 @@ import {
   checkBootstrap,
   checkBuild,
   checkBuildCheck,
+  checkClaudeTranscripts,
   checkGitBinary,
   checkInit,
   checkDiskSpace,
@@ -23,7 +24,7 @@ import {
   checkWorkInstances,
   type DoctorReport,
 } from "./doctor-checks.js";
-import { checkFallbackModel, checkTierModels } from "./doctor-model-checks.js";
+import { checkClaudeAuth, checkClaudeVersion, checkFallbackModel, checkTierModels } from "./doctor-model-checks.js";
 import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
@@ -67,7 +68,11 @@ export async function runDoctor(
     { name: "bootstrap", ...checkBootstrap(root, config) },
     { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
     { name: "tier models", ...(await checkTierModels(root)) },
+    { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },
+    { name: "claude version", ...(await checkClaudeVersion(root, pathEnv)) },
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
+    // The transcript total is informational and only read when a seam routes to claude.
+    { name: "claude transcripts", ...checkClaudeTranscripts(config) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "worktree pool", ...checkWorktreePool(root) },

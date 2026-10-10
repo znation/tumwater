@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   enabledRoleIds,
@@ -38,6 +39,7 @@ import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
+import { claudeSeamsInUse } from "./doctor-model-checks.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
@@ -237,6 +239,70 @@ export function checkAgentBinary(
   if (resolved.source === "default") return { level: "ok", detail: found };
   const from = agentBinSourceLabel(resolved.source);
   return { level: "ok", detail: `${found} — resolved from ${from}` };
+}
+
+/** The total bytes under one directory tree, counted iteratively and skipping unreadable
+ * entries: a permission-denied subdirectory must not fail doctor. */
+function treeBytes(dir: string): number {
+  let total = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (entry.isFile()) {
+        try {
+          total += fs.statSync(full).size;
+        } catch {
+          // A file that vanished mid-walk contributes nothing.
+        }
+      }
+    }
+  }
+  return total;
+}
+
+/** A human-readable byte count for the transcript-size line. */
+function formatBytes(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
+  if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
+/** claude transcript disk — the total size of `~/.claude/projects` (plans/agent-backends.md
+ * "Sessions" retention): claude ages transcripts out under its own cleanupPeriodDays, so an
+ * operator asking where claude's disk went gets the number without `du`. Informational (ok) in
+ * every case — a large transcript tree is a fact, not a misconfiguration. Stands down when no
+ * seam routes to claude: a pi-only fleet reads no claude state, and the report must not walk a
+ * host directory that has nothing to do with the fleet. `homeDir` is a test seam. */
+export function checkClaudeTranscripts(
+  config: TumwaterConfig | undefined,
+  homeDir: string = os.homedir(),
+): CheckOutcome {
+  if (!config) return { level: "ok", detail: "no readable tumwater.json — nothing to verify" };
+  if (!claudeSeamsInUse(config)) return { level: "ok", detail: "no claude seams configured" };
+  const dir = path.join(homeDir, ".claude", "projects");
+  let slugs: string[];
+  try {
+    slugs = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return { level: "ok", detail: `no transcript dir at ${dir}` };
+  }
+  let bytes = 0;
+  for (const slug of slugs) bytes += treeBytes(path.join(dir, slug));
+  const projects = slugs.length === 1 ? "1 project" : `${slugs.length} projects`;
+  return { level: "ok", detail: `${formatBytes(bytes)} across ${projects} in ${dir}` };
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing

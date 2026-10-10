@@ -111,6 +111,10 @@ export interface AgentBackend {
   defaultBin: string;
   /** The environment variable that overrides the binary. */
   binEnv: string;
+  /** The minimum CLI version `model` needs (plans/agent-backends.md "Every seam, checked"):
+   * claude gates which models work and how they are priced, so doctor fails an installed CLI
+   * below a configured model's floor. Optional — a backend with no version gate omits it. */
+  minVersion?(model: string): string | undefined;
   /** Resolve which binary this backend spawns and where the value came from, reading its own
    * `agents.<id>.bin` entry through pi/pi-bin.ts's resolveAgentBin. */
   resolveBin(config: AgentBinConfig): ResolvedAgentBin;

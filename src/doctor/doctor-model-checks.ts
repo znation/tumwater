@@ -4,11 +4,15 @@ import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
+import { isAgentId, routeModel } from "../config/model-selector.js";
+import { claudeBackend } from "../agent/claude/claude-backend.js";
+import { claudeEnv } from "../agent/claude/claude-env.js";
 import { isJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
 import { formatTime } from "../text/datetime.js";
+import { belowNodeFloor } from "../version.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
@@ -94,47 +98,88 @@ const AUTH_CHECK_TIMEOUT_MS = 15_000;
  * unknown. */
 const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
 
-/** The default credential probe: run the resolved agent binary's own auth check for one
- * provider and read `ready` out of its JSON. The binary resolves exactly as the spawn does
- * (resolveAgentBin — the same source a real tick would launch), so doctor tests the auth of
- * the pi it would actually run. Never throws; every failure mode lands on "unknown".
- *
- * The probe's wall-clock is enforced by the probe itself, not only by a signal: the child runs
- * detached, and at `timeoutMs` (or when its output passes AUTH_CHECK_MAX_OUTPUT_BYTES) its
- * whole process group is SIGKILLed AND the promise settles as "unknown" with the stdout pipe
- * destroyed. Killing alone is not enough — `'close'` waits for the stdio pipes to close, so a
- * child stuck in an uninterruptible sleep, or one that left a grandchild holding the pipes
- * open, would otherwise leave the promise pending forever and hang `tumwater doctor` past its
- * own deadline (the same trap git-run.ts's bounded spawn closes for git). `timeoutMs` is a
- * test seam; production callers leave it unset. */
-export async function piProviderAuth(
-  config: TumwaterConfig,
-  provider: string,
-  pathEnv: string = envPath(),
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-): Promise<ProviderAuth> {
-  const resolved = resolveAgentBin(config);
+/** One resolved seam pair: the backend it routes to and the provider/model it names, with the
+ * thinking level its selector carried. Collected the same way fleetModelsFree sweeps — each
+ * tier, every enabled role, and the reviewer — so doctor and the budget see the same seams. */
+interface SeamPair {
+  agent: string | undefined;
+  provider: string | undefined;
+  model: string | undefined;
+  thinking: string | undefined;
+}
+
+/** Every model a seam can run, paired with its backend (plans/agent-backends.md "Config"):
+ * the top-level tiers (routed so a `claude/<id>` selector names its backend), every enabled
+ * role's resolved pair, and the reviewer's while review is on. Deduplicated by
+ * backend/provider/model, so a model reached through several surfaces is checked once. */
+function seamPairs(config: TumwaterConfig): SeamPair[] {
+  const pairs = new Map<string, SeamPair>();
+  const add = (pair: SeamPair): void => {
+    if (pair.model === undefined) return;
+    pairs.set(`${pair.agent ?? ""}\0${pair.provider ?? ""}\0${pair.model}`, pair);
+  };
+  for (const tier of MODEL_TIERS) {
+    const sel = tierModel(config, tier);
+    if (!sel) continue;
+    const routed = routeModel(sel.provider, sel.model, config.agent ?? "pi", tier);
+    add({
+      agent: routed.agent,
+      provider: routed.agent === "pi" ? sel.provider : undefined,
+      model: routed.model,
+      thinking: sel.thinking,
+    });
+  }
+  for (const role of enabledRoleIds(config)) {
+    const rc = configForRole(config, role);
+    add({ agent: rc.agent, provider: rc.provider, model: rc.model, thinking: rc.thinking });
+  }
+  if (config.review.enabled) {
+    const rv = reviewConfig(config);
+    add({ agent: rv.agent, provider: rv.provider, model: rv.model, thinking: rv.thinking });
+  }
+  return [...pairs.values()];
+}
+
+/** Whether any seam runs on the claude backend — the doctor's claude checks stand down when
+ * none does (a pi-only fleet reads no `~/.claude` state and spawns no claude). */
+export function claudeSeamsInUse(config: TumwaterConfig): boolean {
+  return seamPairs(config).some((pair) => pair.agent === "claude");
+}
+
+/** One bounded probe of an agent binary: `null` when the spawn threw, the child errored, the
+ * deadline passed, or stdout overran the cap — every case the caller must read as "could not
+ * check", never as a verdict. The child runs detached and at the deadline (or on overrun) its
+ * whole process group is SIGKILLed and the promise settles, because `'close'` waits for the
+ * stdio pipes and a grandchild holding them open would otherwise leave the promise pending past
+ * the deadline and hang `tumwater doctor` (the same trap git-run.ts's bounded spawn closes for
+ * git). `timeoutMs` is a test seam; production callers leave it at the default. */
+function boundedProbe(
+  bin: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): Promise<{ code: number | null; stdout: string } | null> {
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>;
     try {
-      child = spawn(resolved.bin, ["auth", "check", "--provider", provider, "--json"], {
+      child = spawn(bin, args, {
         cwd: process.cwd(),
         // Detached so the deadline's signalTree reaches a grandchild too; stderr is ignored
         // rather than piped, since nothing reads it and a full stderr pipe would block the
         // child until the deadline.
         detached: true,
         stdio: ["ignore", "pipe", "ignore"],
-        env: childEnv({ PATH: pathEnv }),
+        env,
       });
     } catch {
-      resolve("unknown");
+      resolve(null);
       return;
     }
     let out = "";
     let bytes = 0;
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const settle = (auth: ProviderAuth): void => {
+    const settle = (result: { code: number | null; stdout: string } | null): void => {
       if (settled) return;
       settled = true;
       if (timer !== undefined) clearTimeout(timer);
@@ -142,13 +187,13 @@ export async function piProviderAuth(
       // grandchild that escaped the group and holds the pipe's write end would otherwise keep
       // the harness's event loop alive though the probe already has its answer.
       releaseChildHandles(child);
-      resolve(auth);
+      resolve(result);
     };
     // Deadline or runaway output: kill the whole group, tear down the handles, and settle —
     // do not wait for a `'close'` the group may never deliver.
     const abort = (): void => {
       signalTree(child, "SIGKILL");
-      settle("unknown");
+      settle(null);
     };
     timer = setTimeout(abort, timeoutMs);
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -156,19 +201,158 @@ export async function piProviderAuth(
       bytes += chunk.length;
       if (bytes > AUTH_CHECK_MAX_OUTPUT_BYTES) abort();
     });
-    child.on("error", () => settle("unknown"));
-    child.on("close", (code) => {
-      try {
-        const doc: unknown = JSON.parse(out);
-        const ready = isJsonObject(doc) && doc.ready;
-        if (code === 0 && ready === true) settle("ready");
-        else if (code === 0 && ready === false) settle("not-ready");
-        else settle("unknown");
-      } catch {
-        settle("unknown");
-      }
-    });
+    child.on("error", () => settle(null));
+    child.on("close", (code) => settle({ code, stdout: out }));
   });
+}
+
+/** The default credential probe: run the resolved agent binary's own auth check for one
+ * provider and read `ready` out of its JSON. The binary resolves exactly as the spawn does
+ * (resolveAgentBin — the same source a real tick would launch), so doctor tests the auth of
+ * the pi it would actually run. Never throws; every failure mode lands on "unknown". The
+ * bounded subprocess is boundedProbe above, shared with the claude probes. */
+export async function piProviderAuth(
+  config: TumwaterConfig,
+  provider: string,
+  pathEnv: string = envPath(),
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+): Promise<ProviderAuth> {
+  const resolved = resolveAgentBin(config);
+  const result = await boundedProbe(
+    resolved.bin,
+    ["auth", "check", "--provider", provider, "--json"],
+    childEnv({ PATH: pathEnv }),
+    timeoutMs,
+  );
+  if (result === null) return "unknown";
+  try {
+    const doc: unknown = JSON.parse(result.stdout);
+    const ready = isJsonObject(doc) && doc.ready;
+    if (result.code === 0 && ready === true) return "ready";
+    if (result.code === 0 && ready === false) return "not-ready";
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** claude's billing, as `claude auth status` reports it: whether a login exists, and what
+ * pays for runs — a subscription type from claude.ai OAuth, else an API key. `undefined`
+ * fields mean the reply did not name them. */
+interface ClaudeAuth {
+  loggedIn: boolean;
+  subscriptionType?: string;
+  authMethod?: string;
+}
+
+/** Run `claude auth status` under the same scrubbed environment a real run gets (claudeEnv),
+ * or null when the probe could not run or its reply was unreadable. The binary resolves
+ * through the claude adapter, so doctor probes the claude a tick would spawn. */
+async function claudeAuthProbe(
+  config: TumwaterConfig,
+  pathEnv: string,
+  timeoutMs: number,
+): Promise<ClaudeAuth | null> {
+  const resolved = claudeBackend.resolveBin(config);
+  const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
+  const result = await boundedProbe(resolved.bin, ["auth", "status"], env, timeoutMs);
+  if (result === null || result.code !== 0) return null;
+  try {
+    const doc: unknown = JSON.parse(result.stdout);
+    if (!isJsonObject(doc) || typeof doc.loggedIn !== "boolean") return null;
+    return {
+      loggedIn: doc.loggedIn,
+      subscriptionType: typeof doc.subscriptionType === "string" ? doc.subscriptionType : undefined,
+      authMethod: typeof doc.authMethod === "string" ? doc.authMethod : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** claude credential readiness (plans/agent-backends.md "Every seam, checked"): a claude seam
+ * whose login is gone fails every tick before it can work, so doctor runs `claude auth status`
+ * under the scrubbed run environment and fails when it reports `loggedIn: false`. An ok detail
+ * names the billing the reply implies — the subscription type, or an API key — so an operator
+ * telling subscription spend from API spend does not have to run the command themselves. A
+ * probe that could not run or a reply this cannot read warns rather than guesses. Stands down
+ * (ok) when no seam routes to claude, so a pi-only fleet spawns nothing. */
+export async function checkClaudeAuth(
+  root: string,
+  pathEnv: string = envPath(),
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+): Promise<CheckOutcome> {
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
+  if (!claudeSeamsInUse(config)) return { level: "ok", detail: "no claude seams configured" };
+  const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
+  if (auth === null)
+    return { level: "warn", detail: "could not check — `claude auth status` did not run or its output was unreadable" };
+  if (!auth.loggedIn)
+    return { level: "fail", detail: "claude reports logged in: false — run `claude auth login`" };
+  const subscription = auth.subscriptionType !== undefined || auth.authMethod === "claude.ai";
+  const billing = subscription
+    ? `subscription${auth.subscriptionType !== undefined ? ` (${auth.subscriptionType})` : ""}`
+    : "API key";
+  return { level: "ok", detail: `logged in — billing: ${billing}` };
+}
+
+/** The dotted version in `claude --version`'s output, or undefined when it names none. */
+function parseClaudeCliVersion(output: string): string | undefined {
+  return /(\d+\.\d+\.\d+)/.exec(output)?.[1];
+}
+
+/** claude CLI-version readiness (plans/agent-backends.md finding 9): an installed CLI below a
+ * configured model's minimum fails or misprices that model, and fleet runs disable the
+ * auto-updater, so the version an operator has is the version ticks run. Fails below the
+ * highest floor among the claude-routed models, naming which model needs it; an ok detail
+ * prints the installed version and the floor it satisfied (or no floor when none applies).
+ * The `off`/`minimal` thinking clamp is noted here too, since this check already has the
+ * claude seams in hand. Stands down when no seam routes to claude. */
+export async function checkClaudeVersion(
+  root: string,
+  pathEnv: string = envPath(),
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+): Promise<CheckOutcome> {
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
+  const seams = seamPairs(config).filter((pair) => pair.agent === "claude" && pair.model !== undefined);
+  if (seams.length === 0) return { level: "ok", detail: "no claude seams configured" };
+  // The floor each configured model needs; a model the adapter does not gate contributes none.
+  const floors = new Map<string, string>();
+  for (const seam of seams) {
+    const min = claudeBackend.minVersion?.(seam.model!);
+    if (min !== undefined) floors.set(seam.model!, min);
+  }
+  const resolved = claudeBackend.resolveBin(config);
+  const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
+  const result = await boundedProbe(resolved.bin, ["--version"], env, timeoutMs);
+  const found = result !== null && result.code === 0 ? parseClaudeCliVersion(result.stdout) : undefined;
+  if (found === undefined)
+    return { level: "warn", detail: "could not check — `claude --version` did not run or its output was unreadable" };
+  const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");
+  const clampNote = clamped
+    ? "; `off`/`minimal` thinking clamps to `--effort low` (claude has no lower setting)"
+    : "";
+  if (floors.size === 0) return { level: "ok", detail: `claude ${found}${clampNote}` };
+  // The highest floor decides: whichever model needs the newest CLI. Below it, fail and name
+  // that model; at or above, print the version against the floor.
+  let required = "";
+  let neededBy = "";
+  for (const [model, min] of floors) {
+    if (required === "" || belowNodeFloor(required, `>=${min}`)) {
+      required = min;
+      neededBy = model;
+    }
+  }
+  if (belowNodeFloor(found, `>=${required}`))
+    return {
+      level: "fail",
+      detail: `claude ${found} is older than ${required} required by ${neededBy} — run \`claude update\``,
+    };
+  return { level: "ok", detail: `claude ${found} (>= ${required} for ${neededBy})${clampNote}` };
 }
 
 /** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the
@@ -201,21 +385,22 @@ export async function checkTierModels(
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
   const pairs = new Map<string, { provider?: string; model?: string }>();
-  const add = (provider: string | undefined, model: string | undefined) => {
-    if (model !== undefined) pairs.set(`${provider ?? ""}/${model}`, { provider, model });
+  const claudeModels = new Set<string>();
+  const add = (
+    agent: string | undefined,
+    provider: string | undefined,
+    model: string | undefined,
+  ) => {
+    if (model === undefined) return;
+    // A non-pi backend's models are not in pi's definitions, so they are not swept for
+    // resolution or auth here — the claude checks cover them instead.
+    if (agent !== undefined && agent !== "pi") {
+      claudeModels.add(model);
+      return;
+    }
+    pairs.set(`${provider ?? ""}/${model}`, { provider, model });
   };
-  for (const tier of MODEL_TIERS) {
-    const sel = tierModel(config, tier);
-    if (sel) add(sel.provider, sel.model);
-  }
-  for (const role of enabledRoleIds(config)) {
-    const rc = configForRole(config, role);
-    add(rc.provider, rc.model);
-  }
-  if (config.review.enabled) {
-    const rv = reviewConfig(config);
-    add(rv.provider, rv.model);
-  }
+  for (const pair of seamPairs(config)) add(pair.agent, pair.provider, pair.model);
   const ompVars = ["PI_SMOL_MODEL", "PI_SLOW_MODEL", "PI_PLAN_MODEL"].filter(
     (v) => env[v] !== undefined && env[v] !== "",
   );
@@ -223,16 +408,25 @@ export async function checkTierModels(
     ompVars.length === 0
       ? ""
       : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
-  if (pairs.size === 0)
+  if (pairs.size === 0 && claudeModels.size === 0)
     return { level: ompVars.length === 0 ? "ok" : "warn", detail: `no models declared — every seam uses pi's own default${ompNote}` };
   const providers = readPiProviders(modelsPath);
-  if (!providers)
+  const fails: string[] = [];
+  const warns: string[] = [];
+  // Reserved agent ids: a pi provider whose name is an agent backend's id can never reach pi
+  // (the provider segment wins the routing), so its definitions are unreachable — warn.
+  if (providers) {
+    const reserved = [...providers.keys()].filter(isAgentId);
+    if (reserved.length > 0)
+      warns.push(
+        `pi's definitions (${modelsPath}) declare provider ${reserved.map((p) => `"${p}"`).join(", ")} — the name is reserved for an agent backend, so selectors under it never reach pi`,
+      );
+  }
+  if (pairs.size > 0 && !providers)
     return {
       level: "warn",
       detail: `cannot check — could not read pi's model definitions at ${modelsPath}${ompNote}`,
     };
-  const fails: string[] = [];
-  const warns: string[] = [];
   const readyProviders = new Set<string>();
   const checkedProviders = new Set<string>();
   for (const { provider, model } of pairs.values()) {
@@ -240,7 +434,7 @@ export async function checkTierModels(
       warns.push(`${model} names no provider — pi resolves it with its own default, tumwater cannot verify it`);
       continue;
     }
-    const defs = providers.get(provider);
+    const defs = providers?.get(provider);
     if (!defs) {
       fails.push(`provider ${provider} is not in pi's definitions (${modelsPath})`);
       continue;
@@ -270,9 +464,14 @@ export async function checkTierModels(
     }
   }
   const found = [...fails, ...warns].join("; ");
+  const resolvedPi = `${pairs.size} declared ${agree(pairs.size, "model", "models")} resolve${readyProviders.size > 0 ? ` and ${agree(readyProviders.size, "provider", "all providers")} ${[...readyProviders].sort().join(", ")} report ready` : ""}`;
+  const claudeNote =
+    claudeModels.size > 0
+      ? `${claudeModels.size} claude-routed ${agree(claudeModels.size, "model", "models")} — resolved by the claude backend, not pi's definitions`
+      : "";
   const base =
     fails.length === 0 && warns.length === 0
-      ? `${pairs.size} declared ${agree(pairs.size, "model", "models")} resolve${readyProviders.size > 0 ? ` and ${agree(readyProviders.size, "provider", "all providers")} ${[...readyProviders].sort().join(", ")} report ready` : ""}`
+      ? [pairs.size > 0 ? resolvedPi : "", claudeNote].filter(Boolean).join("; ")
       : found;
   if (fails.length > 0) return { level: "fail", detail: `${base}${ompNote}` };
   return { level: warns.length > 0 || ompVars.length > 0 ? "warn" : "ok", detail: `${base}${ompNote}` };

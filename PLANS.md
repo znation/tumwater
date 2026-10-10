@@ -6,31 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 4e/7: doctor for claude (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
-
-Design: plans/agent-backends.md ("Sessions" retention; "Every seam, checked" doctor row).
-
-**Approach.** Extend src/doctor/doctor-checks.ts and src/doctor/doctor-model-checks.ts:
-- claude: `claude auth status` under the scrubbed claude env must report `loggedIn`, and doctor
-  prints the billing it implies (subscription type, or API key);
-- the installed `claude --version` must be at least a per-model `minVersion` in the claude
-  adapter (a table added to src/agent/claude/claude-backend.ts; 2.1.280 for the three tier
-  defaults), and doctor prints it;
-- claude selectors skip the models.json lookup in the model sweep;
-- a pi provider named `claude` in the fleet warns (agent ids are reserved);
-- the `off`/`minimal` `--effort` clamp is noted;
-- the total size of claude's transcript dirs is reported.
-
-**Files touched.** src/doctor/doctor-checks.ts, src/doctor/doctor-model-checks.ts,
-src/agent/claude/claude-backend.ts.
-
-**Acceptance criteria.**
-- Doctor fails "claude auth" when fake `claude auth status` reports `loggedIn: false`.
-- It fails "claude version" when fake `claude --version` reports 2.1.216 with Opus configured.
-- A claude-routed config produces no models.json resolution error; a pi provider named `claude`
-  yields a warning.
-- Doctor reports the transcript-dir total size.
-- `npm run test` green.
 
 ### Agent backends, part 4f/7: agent labels and docs (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
 
@@ -440,6 +415,33 @@ part 2/7; the backend-aware resume guard in parts 3c/3d; and the `cfg.agent` rou
 4b/7 (`loop-tick.ts` passes `cfg.agent ?? DEFAULT_AGENT`, the fallback view's agent while an
 episode is active). This tick added tests for the mixed-seam gate and the fallback-view
 selector (test/tick-resume.test.ts) and moved the entry to Done; no src change was needed.
+
+### Agent backends, part 4e/7: doctor for claude (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Sessions" retention; "Every seam, checked" doctor row).
+
+**Approach.** Extend src/doctor/doctor-checks.ts and src/doctor/doctor-model-checks.ts:
+- claude: `claude auth status` under the scrubbed claude env must report `loggedIn`, and doctor
+  prints the billing it implies (subscription type, or API key);
+- the installed `claude --version` must be at least a per-model `minVersion` in the claude
+  adapter (a table added to src/agent/claude/claude-backend.ts; 2.1.280 for the three tier
+  defaults), and doctor prints it;
+- claude selectors skip the models.json lookup in the model sweep;
+- a pi provider named `claude` in the fleet warns (agent ids are reserved);
+- the `off`/`minimal` `--effort` clamp is noted;
+- the total size of claude's transcript dirs is reported.
+
+**Files touched.** src/agent/agent-backend.ts (the `minVersion` seam),
+src/agent/claude/claude-backend.ts, src/doctor/doctor-checks.ts,
+src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts.
+
+**Acceptance criteria.**
+- Doctor fails "claude auth" when fake `claude auth status` reports `loggedIn: false`.
+- It fails "claude version" when fake `claude --version` reports 2.1.216 with Opus configured.
+- A claude-routed config produces no models.json resolution error; a pi provider named `claude`
+  yields a warning.
+- Doctor reports the transcript-dir total size.
+- `npm run test` green.
 
 ### Scope the failure digest to one role: `tumwater report --failures --role <id>` (planned 2026-10-10 by plan; sibling of the landed "Scope the usage report to one role: `tumwater report --role <id>`"; independent of the Agent backends series; done 2026-10-10 by feature)
 

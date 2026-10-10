@@ -7,6 +7,7 @@ import {
   checkBrief,
   checkBuild,
   checkBuildCheck,
+  checkClaudeTranscripts,
   checkDiskSpace,
   checkGitBinary,
   checkInit,
@@ -605,4 +606,35 @@ test("checkWorkInstances does not warn about a disabled instance role's pool", (
   const root = readyRepo();
   writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
   assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claims held" });
+});
+
+// claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor
+// reports the total size for a claude fleet and reads nothing for a pi-only one.
+test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () => {
+  const home = tmpdir("doctor-claude-home-");
+  const projects = path.join(home, ".claude", "projects");
+  fs.mkdirSync(path.join(projects, "-slot-one"), { recursive: true });
+  fs.mkdirSync(path.join(projects, "-slot-two"), { recursive: true });
+  fs.writeFileSync(path.join(projects, "-slot-one", "a.jsonl"), "x".repeat(1500));
+  fs.writeFileSync(path.join(projects, "-slot-two", "b.jsonl"), "y".repeat(500));
+
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  const claudeConfig = loadConfig(root);
+  const outcome = checkClaudeTranscripts(claudeConfig, home);
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /2\.0 KB across 2 projects/);
+
+  // A pi-only fleet reads no claude state at all.
+  writeConfig(root, {});
+  assert.deepEqual(checkClaudeTranscripts(loadConfig(root), home), {
+    level: "ok",
+    detail: "no claude seams configured",
+  });
+
+  // A missing transcript dir is informational, not a warning.
+  assert.match(
+    checkClaudeTranscripts(claudeConfig, tmpdir("doctor-empty-home-")).detail,
+    /no transcript dir/,
+  );
 });

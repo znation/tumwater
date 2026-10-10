@@ -20,6 +20,8 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { resolvedAgentConfig } from "../../config/config-views.js";
+import { MODEL_TIERS } from "../../config/config-schema.js";
+import { routeModel } from "../../config/model-selector.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
 import { resolveAgentBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { claudeArgs } from "./claude-args.js";
@@ -49,6 +51,25 @@ export function claudeProjectSlug(cwd: string): string {
  * cannot drift. */
 export function claudeTranscriptPath(cwd: string, id: string): string {
   return path.join(os.homedir(), ".claude", "projects", claudeProjectSlug(cwd), `${id}.jsonl`);
+}
+
+/** The CLI version every gated claude model needs (plans/agent-backends.md finding 9): on
+ * 2.1.216 Opus 5.5 is refused outright and Haiku 5.5 is mispriced about 250×, and fleet runs
+ * set DISABLE_AUTOUPDATER so they never update themselves. The gated models are the three
+ * tier defaults, derived from AGENT_DEFAULT_MODELS through the same routing the config uses
+ * rather than listed again, so this table cannot drift from the models a seam resolves. */
+const CLAUDE_MIN_VERSION = "2.1.280";
+
+const CLAUDE_GATED_MODELS = new Set(
+  MODEL_TIERS.map((tier) => routeModel(undefined, undefined, "claude", tier).model).filter(
+    (model): model is string => model !== undefined,
+  ),
+);
+
+/** The minimum CLI version `model` needs, or undefined when this adapter gates no floor for
+ * it (a model outside the three tier defaults). Doctor reads it through `claudeBackend`. */
+function claudeMinVersion(model: string): string | undefined {
+  return CLAUDE_GATED_MODELS.has(model) ? CLAUDE_MIN_VERSION : undefined;
 }
 
 /** Classify claude's stderr: a nonzero exit naming a login or model problem is a permanent
@@ -102,6 +123,8 @@ export const claudeBackend: AgentBackend = {
   label: "Claude Code",
   defaultBin: "claude",
   binEnv: "TUMWATER_CLAUDE_BIN",
+
+  minVersion: claudeMinVersion,
 
   resolveBin(config: AgentBinConfig): ResolvedAgentBin {
     return resolveAgentBin(config, this.id, { binEnv: this.binEnv, defaultBin: this.defaultBin });
