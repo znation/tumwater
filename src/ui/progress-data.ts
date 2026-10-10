@@ -220,18 +220,16 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
       );
       break;
     }
-    case "tool_execution_update": {
-      // Only content-bearing updates prove the command is alive — bash emits one empty-content
-      // update right after start, and a content-free keepalive must not mask a hang.
+    // Updates and ends fold through the same call: `applyToolExecutionEvent` reads `event.type`
+    // to decide what to do (a content-bearing update moves the activity clock; end closes the
+    // call), and both no-op when no call is tracked. Only content-bearing updates prove the
+    // command is alive — bash emits one empty-content update right after start, and a
+    // content-free keepalive must not mask a hang — a rule applyToolExecutionEvent owns.
+    case "tool_execution_update":
+    case "tool_execution_end":
       if (progress.openToolCalls)
         applyToolExecutionEvent(progress.openToolCalls, event.type, event.toolCallId, event.partialResult);
       break;
-    }
-    case "tool_execution_end": {
-      if (progress.openToolCalls)
-        applyToolExecutionEvent(progress.openToolCalls, event.type, event.toolCallId, event.partialResult);
-      break;
-    }
     case "message_end":
       if (event.message?.role === "assistant") {
         progress.turns += 1;
