@@ -9,11 +9,11 @@
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
 import type { TickResult } from "../tick/tick-outcome.js";
-import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
+import { assertReportSinceMs, eventWindowCovers, readWindowEvents } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
-import { dayAt, dayKey, dayWindow, formatDate, humanSeconds } from "../text/datetime.js";
+import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, getOrCreate, rankByCount } from "../collections.js";
@@ -206,10 +206,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
  * prior half's own day key, exactly as the day collector reads 2× its window; the cutoff instant
  * for coverage is the prior half's start, which a day key alone cannot prove. */
 export function collectFailureReportSince(root: string, sinceMs: number): FailureReportData {
-  if (sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
-    throw new Error(
-      `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`,
-    );
+  assertReportSinceMs(sinceMs);
   const now = Date.now();
   const cutoff = now - sinceMs;
   const priorFrom = cutoff - sinceMs;

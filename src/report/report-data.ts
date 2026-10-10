@@ -8,13 +8,13 @@
  * keeps core data collection out of the presentation layer, so a core consumer (as
  * /api/report already is) never forces a core→ui import. */
 import { statOrNull } from "../files/files.js";
-import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
+import { assertReportSinceMs, eventWindowCovers, readWindowEvents } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
-import { dayAt, dayKey, dayWindow, formatDate, humanSeconds } from "../text/datetime.js";
+import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo } from "../collections.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { commitTier } from "../roles/roles.js";
@@ -329,10 +329,7 @@ export interface SinceReport {
  * separate function rather than a `collectReport` variant flag: the day collector's
  * zero-filled series and backlog-file reads have no place in a window totals view. */
 export function collectReportSince(root: string, sinceMs: number): SinceReport {
-  if (sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
-    throw new Error(
-      `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`,
-    );
+  assertReportSinceMs(sinceMs);
   const now = Date.now();
   const cutoff = now - sinceMs;
   // The window key is the cutoff's local calendar day, from the shared dayKey helper

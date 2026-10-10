@@ -1,4 +1,4 @@
-import { dayKey } from "../text/datetime.js";
+import { dayKey, humanSeconds } from "../text/datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
@@ -26,6 +26,17 @@ export const LOGS_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
  * signal, and the log rotates at 16 MB (EVENTS_MAX_BYTES in events.ts) anyway. Lives here so
  * the CLI's flag validation and the collector's window read share one bound. */
 export const REPORT_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Reject a trailing-window length outside the report bound before a collector reads the log.
+ * The CLI's parseSinceFlag already rejects one, but both trailing-window collectors are also
+ * called directly (tests, future callers), so the data layer enforces the bound too. One home
+ * for the message keeps the usage report and the failure digest from drifting apart. */
+export function assertReportSinceMs(sinceMs: number): void {
+  if (sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
+    throw new Error(
+      `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`,
+    );
+}
 
 /** The one-line note every windowed render prints when its read cannot prove the window was
  * fully covered (coversFullWindow false or eventWindowCovers false): the log's oldest retained
