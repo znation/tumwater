@@ -182,20 +182,27 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     else body = drawerChangeHtml(c.view);
     return "<section><div class='sec-head'><h3>Pending change</h3></div>" + body + "</section>";
   }
-  // Fetch the open loop's unlanded change once when the drawer opens. A stale answer (the
-  // drawer moved to another loop) is dropped; later status polls repaint from the stored view.
-  async function loadDrawerChange(role) {
+  // Fetch one drawer section's payload once when the drawer opens, storing it in the
+  // caller's state cell. A stale answer (the drawer moved to another loop) is dropped;
+  // later status polls repaint from the stored view. The assign callback writes that cell
+  // (drawerChange / drawerRole), so the loading/ok/error contract lives here once for both
+  // the pending-change and notebook sections.
+  async function loadDrawerSection(role, url, fallbackMessage, assign) {
     if (!role) return;
-    drawerChange = { role, state: "loading" };
+    assign({ role, state: "loading" });
     try {
-      const d = await getJson("/api/diff?role=" + encodeURIComponent(role), pollSignal());
+      const d = await getJson(url + encodeURIComponent(role), pollSignal());
       if (openLoopRole() !== role) return;
-      drawerChange = { role, state: "ok", view: d };
+      assign({ role, state: "ok", view: d });
     } catch (e) {
       if (openLoopRole() !== role) return;
-      drawerChange = { role, state: "error", message: e && e.message ? e.message : "Pending change unavailable" };
+      assign({ role, state: "error", message: e && e.message ? e.message : fallbackMessage });
     }
     if (lastStatus) renderLoopDrawer(lastStatus);
+  }
+  // The open loop's unlanded change, as /api/diff?role serves it.
+  function loadDrawerChange(role) {
+    return loadDrawerSection(role, "/api/diff?role=", "Pending change unavailable", (v) => { drawerChange = v; });
   }
 
   // The open loop's notebook and next-tick prompt, as /api/role serves them (rolePayload):
@@ -220,21 +227,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }
     return "<section>" + body + "</section>";
   }
-  // Fetch the open loop's notebook and next prompt once when the drawer opens. A stale answer
-  // (the drawer moved to another loop) is dropped; later status polls repaint from the stored
-  // view. Closing the drawer clears it, so reopening refetches.
-  async function loadDrawerRole(role) {
-    if (!role) return;
-    drawerRole = { role, state: "loading" };
-    try {
-      const d = await getJson("/api/role?role=" + encodeURIComponent(role), pollSignal());
-      if (openLoopRole() !== role) return;
-      drawerRole = { role, state: "ok", view: d };
-    } catch (e) {
-      if (openLoopRole() !== role) return;
-      drawerRole = { role, state: "error", message: e && e.message ? e.message : "Notebook and prompt unavailable" };
-    }
-    if (lastStatus) renderLoopDrawer(lastStatus);
+  // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
+  // reopening refetches.
+  function loadDrawerRole(role) {
+    return loadDrawerSection(role, "/api/role?role=", "Notebook and prompt unavailable", (v) => { drawerRole = v; });
   }
 
   async function loadLoopTicks(force) {
