@@ -177,7 +177,11 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
   // A custom absent from `roles` stays enabled. Insertion order = built-ins then customs in
   // array order — the display and startup tie-break order.
   for (const c of merged.customLoops) {
-    if (!merged.roles[c.name]) merged.roles[c.name] = { enabled: true };
+    // Own-property test, not a bare truthiness read: the custom name `constructor` passes the
+    // lowercase charset check and collides with an Object.prototype key, whose inherited value
+    // is truthy — a bare `!merged.roles[c.name]` would skip the seed and the loop would never
+    // become an own key, so loopIds silently dropped it.
+    if (!Object.hasOwn(merged.roles, c.name)) merged.roles[c.name] = { enabled: true };
   }
   for (const [id, rc] of Object.entries(cfg.roles ?? {})) {
     merged.roles[id] = { ...(merged.roles[id] ?? { enabled: true }), ...rc };

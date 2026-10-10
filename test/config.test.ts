@@ -387,6 +387,27 @@ test("loadConfig merges customLoops into roles after the built-ins in array orde
   assert.equal(config.roles["perf-hunter"]?.enabled, true);
 });
 
+test("loadConfig seeds a custom loop whose name collides with an Object.prototype key", () => {
+  // Custom names are validated only by charset, and "constructor" passes that lowercase
+  // check while colliding with an Object.prototype key. The seeding check read
+  // `!merged.roles[c.name]`, and the inherited Object.prototype value is truthy, so the seed
+  // was skipped. The loop then never became an own key of config.roles, so
+  // Object.entries/loopIds silently dropped it.
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "tumwater.json"),
+    JSON.stringify({
+      customLoops: [{ name: "constructor", task: "Keep an eye on construction." }],
+    }),
+  );
+  const config = loadConfig(dir);
+  assert.ok(
+    Object.keys(config.roles).includes("constructor"),
+    "constructor custom loop is seeded into roles",
+  );
+  assert.equal(config.roles["constructor"]?.enabled, true);
+});
+
 test("loadConfig defaults customLoops to [] when the key is absent", () => {
   const dir = tmpdir();
   writeConfig(dir, { model: "sonnet" });

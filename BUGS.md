@@ -9,6 +9,15 @@ _None yet._
 
 ## Fixed
 
+### `overlayDefaults` still seeds a custom loop named after an Object.prototype key, so `loopIds` silently drops it (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
+
+- **Symptom:** `overlayDefaults` (`src/config/config.ts`) seeds each `customLoops` name into `roles` with `if (!merged.roles[c.name]) merged.roles[c.name] = { enabled: true }`. Custom names are validated only by charset (`/^[a-z0-9][a-z0-9_-]{0,31}$/`, config-validation.ts); of `Object.prototype`'s own keys only the all-lowercase `constructor` passes that regex, and it collides. The inherited function is truthy, the seed is skipped, and the custom loop never becomes an own key of `config.roles`, so `Object.entries`/`loopIds` (src/roles/loop-ids.ts) never create a runner for it: the loop is accepted by validation and then silently never runs.
+- **Reproduce:** The added `test/config.test.ts` case "loadConfig seeds a custom loop whose name collides with an Object.prototype key" writes a `tumwater.json` with a `customLoops` entry named `constructor`; on main it failed with `constructor custom loop is seeded into roles` because `Object.keys(config.roles)` lacked `constructor` (the inherited truthy value skipped the seed). After the fix it appears with `enabled: true`.
+- **Cause:** a presence check on a plain `Record<string, …>` used the value's truthiness instead of own-property membership, so an inherited `Object.prototype` member read as a present entry.
+- **Fix:** the seeding check is now `Object.hasOwn(merged.roles, c.name)`, the same own-property guard claude-stream.ts and claude-args.ts apply to their name tables; the new `test/config.test.ts` case failed before and passes after.
+
+**Validation gap:** unclear-invariant — the existing customLoops tests used ordinary names, so confirming the bug meant reconstructing that a `Record` read falls through to `Object.prototype` and that `loopIds` enumerates own keys only, then writing a test whose custom name collides.
+
 ### `resolvedAgentConfig` returns `args` aliased to the config, so a consumer appending passthrough argv mutates the loaded config (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
 
 - **Symptom:** `resolvedAgentConfig` (`src/config/config-views.ts`) is documented pure and gives a run the effective `agents.<id>` entry, but it returned the config's own `args` array: the pi branch returned `entry?.args ?? config.piArgs` and the non-pi branch shallow-copied with `{ ...entry }`, which still shares `entry.args`. A caller that appends passthrough argv to the returned view — the exact use part 4c is slated for — would therefore mutate the loaded config in memory, so a later serialization could leak the extra flag into `tumwater.json` (which `validateConfig` would then reject). No runtime consumer mutates it yet; the aliasing was latent.
