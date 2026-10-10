@@ -335,13 +335,54 @@ test("claude rejects a run with no resolved model", async () => {
   await assert.rejects(runAgent(run), /no model resolved/);
 });
 
-test("claude resolves its binary from TUMWATER_CLAUDE_BIN and names it in the source label", () => {
+test("claude resolves its binary from TUMWATER_CLAUDE_BIN or agents.claude.bin", () => {
   const restore = setEnv("TUMWATER_CLAUDE_BIN", "/opt/claude");
   try {
     assert.deepEqual(claudeBackend.resolveBin({}), { bin: "/opt/claude", source: "env" });
     assert.equal(agentBinSourceLabel("env", "TUMWATER_CLAUDE_BIN"), "TUMWATER_CLAUDE_BIN");
   } finally {
     restore();
+  }
+  // Part 4c/7: the config entry names claude's binary too, and env stays the override.
+  assert.deepEqual(
+    claudeBackend.resolveBin({ agents: { claude: { bin: "/opt/claude" } } }),
+    { bin: "/opt/claude", source: "config" },
+  );
+});
+
+test("a claude spawn error names agents.claude.bin, not pi's agentBin", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const run = claudeRun(dir);
+    run.config = { ...run.config, agents: { claude: { bin: "/no/such/dir-xyz/claude-here" } } };
+    const result = await runAgent(run);
+    assert.equal(result.ok, false);
+    assert.match(result.errorMessage ?? "", /failed to spawn \/no\/such\/dir-xyz\/claude-here/);
+    assert.match(result.errorMessage ?? "", /resolved from agents\.claude\.bin in tumwater\.json/);
+  } finally {
+    restoreHome();
+  }
+});
+
+test("agents.claude.args reaches the fake's recorded argv after the harness flags", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
+  try {
+    const run = claudeRun(dir);
+    run.config = { ...run.config, agents: { claude: { args: ["--debug"] } } };
+    const result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");
+    assert.ok(argv.includes("--debug"), `passthrough arg reaches argv: ${argv.join(" ")}`);
+    assert.ok(
+      argv.indexOf("--debug") > argv.indexOf("--strict-mcp-config"),
+      "passthrough args are appended after the harness flags",
+    );
+  } finally {
+    fake.restore();
+    restoreHome();
   }
 });
 

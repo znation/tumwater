@@ -112,6 +112,24 @@ test("a bare agentBin name that is nowhere on PATH fails the gate with the resol
   }
 });
 
+test("the startup gate checks every enabled seam's agent and names that agent's binary", async () => {
+  // A claude-routed review seam must be checked like the pi default: the gate refuses to boot
+  // and the message names claude's resolved binary and config key, not pi's.
+  const repo = makeRepo();
+  await initProject(repo, "startup gate claude seam");
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.agents = { claude: { bin: "/no/such/claude" } };
+    cfg.review = { model: "claude/claude-opus-5-5" };
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    assert.match(
+      String(await runStartupProblem(repo, null)),
+      /claude not found — resolved "\/no\/such\/claude" from agents\.claude\.bin in tumwater\.json/,
+    );
+  });
+});
+
 test("a named branch in a repo with no local branches reports an empty branch list", async () => {
   // The empty-list half of resolveMainBranch's verdict: commits can exist with no branch
   // holding any (everything detached), and then the only honest error lists no alternatives.

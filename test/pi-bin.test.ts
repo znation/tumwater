@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { agentBinSourceLabel, piMissingMessage, resolveAgentBin } from "../src/pi/pi-bin.js";
+import {
+  agentBinSourceLabel,
+  agentMissingMessage,
+  piMissingMessage,
+  resolveAgentBin,
+} from "../src/pi/pi-bin.js";
 
 // Unit coverage for src/pi/pi-bin.ts's agent-binary resolution messages. The module exists so
 // that cli.ts's fail-fast, doctor.ts's report, and src/agent/run-agent.ts's spawn errors describe
@@ -93,4 +98,47 @@ test("resolveAgentBin normalizes a path-shaped value against the process cwd; a 
 
   assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).bin, "pi-wrapper");
   assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).source, "config");
+});
+
+// plans/agent-backends.md "Config": each backend reads its own `agents.<id>.bin`, while the
+// legacy `agentBin` remains pi's alias and `TUMWATER_<ID>_BIN` outranks both.
+test("resolveAgentBin reads each agent's own entry; agentBin stays pi's legacy alias", () => {
+  assert.deepEqual(resolveAgentBin({ agents: { pi: { bin: "/opt/pi" } }, agentBin: "/legacy" }), {
+    bin: "/opt/pi",
+    source: "config",
+  });
+  assert.deepEqual(
+    resolveAgentBin({ agents: { claude: { bin: "/opt/claude" } }, agentBin: "/legacy" }, "claude"),
+    { bin: "/opt/claude", source: "config" },
+  );
+  // The default binary is the agent's own name, so an unconfigured claude does not resolve as pi.
+  assert.deepEqual(resolveAgentBin({}, "claude"), { bin: "claude", source: "default" });
+  process.env.TUMWATER_CLAUDE_BIN = "/env/claude";
+  try {
+    assert.deepEqual(resolveAgentBin({ agents: { claude: { bin: "/opt/claude" } } }, "claude"), {
+      bin: "/env/claude",
+      source: "env",
+    });
+  } finally {
+    delete process.env.TUMWATER_CLAUDE_BIN;
+  }
+});
+
+test("agentMissingMessage names the agent and its own source, not pi's", () => {
+  assert.equal(
+    agentMissingMessage({ bin: "claude", source: "default" }, "claude"),
+    "claude not found on PATH — install it or add its bin directory to your PATH",
+  );
+  const configured = agentMissingMessage({ bin: "/opt/claude", source: "config" }, "claude");
+  assert.match(configured, /^claude not found — resolved "\/opt\/claude" from agents\.claude\.bin in tumwater\.json/);
+  assert.match(configured, /point agents\.claude\.bin in tumwater\.json at a working claude binary/);
+  assert.match(
+    agentMissingMessage({ bin: "/env/claude", source: "env" }, "claude"),
+    /from TUMWATER_CLAUDE_BIN/,
+  );
+  // pi keeps its pinned wording through the shared function.
+  assert.equal(
+    agentMissingMessage({ bin: "pi", source: "default" }, "pi"),
+    piMissingMessage({ bin: "pi", source: "default" }),
+  );
 });

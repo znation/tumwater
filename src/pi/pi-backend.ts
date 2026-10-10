@@ -9,9 +9,9 @@ import { resolveAgentBin, type ResolvedAgentBin } from "./pi-bin.js";
 import { agentBaseEnv } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-stream.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
-import type { ResolvedModelConfig } from "../config/config-views.js";
 import {
   type AgentBackend,
+  type AgentBinConfig,
   type AgentExitClassification,
   type AgentExitInfo,
   type AgentInvocation,
@@ -51,8 +51,8 @@ export const piBackend: AgentBackend = {
   defaultBin: "pi",
   binEnv: "TUMWATER_PI_BIN",
 
-  resolveBin(config: Pick<ResolvedModelConfig, "agentBin">): ResolvedAgentBin {
-    return resolveAgentBin(config);
+  resolveBin(config: AgentBinConfig): ResolvedAgentBin {
+    return resolveAgentBin(config, this.id, { binEnv: this.binEnv, defaultBin: this.defaultBin });
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {

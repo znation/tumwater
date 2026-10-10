@@ -6,37 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 4c/7: per-agent binary resolution, passthrough args and the startup gate (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires parts 4a/7 and 4b/7 landed)
-
-Design: plans/agent-backends.md ("Config" back-compat; "Every seam, checked" — startup row).
-
-**Approach.**
-1. `resolveAgentBin` in src/pi/pi-bin.ts becomes `resolveAgentBin(config, agent)`:
-   `TUMWATER_<ID>_BIN` env → `config.agents?.[agent]?.bin` (with `agentBin` still read for
-   `pi`) → the backend's `defaultBin`. `AgentBackend.resolveBin` (src/agent/agent-backend.ts)
-   resolves through it.
-2. src/pi/pi-backend.ts and src/agent/claude/claude-backend.ts resolve their own entries, so
-   `agents.pi.bin`/`agents.claude.bin` take effect while `TUMWATER_PI_BIN`/`TUMWATER_CLAUDE_BIN`
-   keep working.
-3. **Passthrough args.** `claudeBackend.invocation` passes `config.agents?.claude?.args` as
-   `claudeArgs`' `args` (the builder already rejects reserved flags); pi keeps reading the
-   resolved `agents.pi.args` as `piArgs`.
-4. **Startup gate.** src/gates/startup-gate.ts checks the binary of every agent that `agent`
-   plus any per-role or `review` selector makes an enabled seam resolve to, through the same
-   `findAgentBinary`.
-
-**Files touched.** src/pi/pi-bin.ts, src/pi/pi-backend.ts, src/agent/agent-backend.ts,
-src/agent/claude/claude-backend.ts, src/gates/startup-gate.ts.
-
-**Acceptance criteria.**
-- `agents.claude.bin` and `TUMWATER_CLAUDE_BIN` each change the binary a claude run spawns;
-  `agents.pi.bin` and legacy `agentBin` resolve the pi binary.
-- `agents.claude.args: ["--verbose"]` reaches fake-claude's recorded argv after the harness
-  flags; a reserved flag in that array fails validation, not the run.
-- The startup gate refuses to boot when an enabled seam's agent binary is missing, and names
-  that agent's binary rather than pi's.
-- `npm run test` green.
-
 ### Agent backends, part 4e/7: doctor for claude (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
 
 Design: plans/agent-backends.md ("Sessions" retention; "Every seam, checked" doctor row).
@@ -391,6 +360,50 @@ Acceptance criteria.
 
 
 ## Done
+
+### Agent backends, part 4c/7: per-agent binary resolution, passthrough args and the startup gate (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires parts 4a/7 and 4b/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Config" back-compat; "Every seam, checked" — startup row).
+
+**Approach.**
+1. `resolveAgentBin` in src/pi/pi-bin.ts becomes `resolveAgentBin(config, agent)`:
+   `TUMWATER_<ID>_BIN` env → `config.agents?.[agent]?.bin` (with `agentBin` still read for
+   `pi`) → the backend's `defaultBin`. `AgentBackend.resolveBin` (src/agent/agent-backend.ts)
+   resolves through it.
+2. src/pi/pi-backend.ts and src/agent/claude/claude-backend.ts resolve their own entries, so
+   `agents.pi.bin`/`agents.claude.bin` take effect while `TUMWATER_PI_BIN`/`TUMWATER_CLAUDE_BIN`
+   keep working.
+3. **Passthrough args.** `claudeBackend.invocation` passes `config.agents?.claude?.args` as
+   `claudeArgs`' `args` (the builder already rejects reserved flags); pi keeps reading the
+   resolved `agents.pi.args` as `piArgs`.
+4. **Startup gate.** src/gates/startup-gate.ts checks the binary of every agent that `agent`
+   plus any per-role or `review` selector makes an enabled seam resolve to, through the same
+   `findAgentBinary`.
+
+**Files touched.** src/pi/pi-bin.ts, src/pi/pi-backend.ts, src/agent/agent-backend.ts,
+src/agent/claude/claude-backend.ts, src/agent/run-agent.ts, src/gates/startup-gate.ts,
+src/config/config-views.ts.
+
+**Acceptance criteria.**
+- `agents.claude.bin` and `TUMWATER_CLAUDE_BIN` each change the binary a claude run spawns;
+  `agents.pi.bin` and legacy `agentBin` resolve the pi binary.
+- `agents.claude.args: ["--debug"]` reaches fake-claude's recorded argv after the harness
+  flags; a reserved flag (e.g. `--verbose`, itself harness-managed) in that array fails
+  validation, not the run.
+- The startup gate refuses to boot when an enabled seam's agent binary is missing, and names
+  that agent's binary rather than pi's.
+- `npm run test` green.
+
+**Landed.** `resolveAgentBin` takes an optional per-agent `{binEnv, defaultBin}`: the backends
+pass their own fields, while the startup gate derives the reserved agents' conventional
+`TUMWATER_<ID>_BIN`/default-binary values. `resolveBinFrom` is now module-private (`resolveAgentBin`
+is its one caller), `resolvedAgentConfig` treats `piArgs` as optional so a bare `{}` type-checks,
+and the acceptance example moved off `--verbose` to the non-reserved `--debug`. The spawn-error
+path (`spawnErrorMessage` in src/agent/run-agent.ts) takes the backend so a claude config-sourced
+spawn failure names `agents.claude.bin`; `agentBinConfigKey` centralizes that key for the
+missing-binary and spawn-error wording. Doctor's `checkAgentBinary` still checks only pi's binary
+(its agent-aware checks are part 4e/7), so the shared comments name that scope rather than claiming
+the gate and doctor can never disagree.
 
 ### Agent backends, part 4d/7: resume and handoff under routing (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed; done 2026-10-10 by feature)
 

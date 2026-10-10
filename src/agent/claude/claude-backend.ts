@@ -19,15 +19,16 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { ResolvedModelConfig } from "../../config/config-views.js";
+import { resolvedAgentConfig } from "../../config/config-views.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
-import { resolveBinFrom, type ResolvedAgentBin } from "../../pi/pi-bin.js";
+import { resolveAgentBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { claudeArgs } from "./claude-args.js";
 import { claudeEnv } from "./claude-env.js";
 import { claudeTranslator } from "./claude-stream.js";
 import { resumableSession, type SessionRecord } from "../session-ledger.js";
 import {
   type AgentBackend,
+  type AgentBinConfig,
   type AgentExitClassification,
   type AgentExitInfo,
   type AgentInvocation,
@@ -102,8 +103,8 @@ export const claudeBackend: AgentBackend = {
   defaultBin: "claude",
   binEnv: "TUMWATER_CLAUDE_BIN",
 
-  resolveBin(config: Pick<ResolvedModelConfig, "agentBin">): ResolvedAgentBin {
-    return resolveBinFrom("TUMWATER_CLAUDE_BIN", "claude", config.agentBin);
+  resolveBin(config: AgentBinConfig): ResolvedAgentBin {
+    return resolveAgentBin(config, this.id, { binEnv: this.binEnv, defaultBin: this.defaultBin });
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
@@ -118,6 +119,10 @@ export const claudeBackend: AgentBackend = {
       model: run.config.model,
       thinking: run.config.thinking,
       ...(resumeSessionId !== undefined ? { resumeSessionId } : { sessionId }),
+      // The operator's `agents.claude.args` passthrough, appended after the harness flags (the
+      // builder rejects any entry that repeats a harness-managed flag). resolvedAgentConfig
+      // owns the view so a caller cannot mutate the loaded config through the returned array.
+      args: resolvedAgentConfig(run.config, "claude").args,
       prompt: run.prompt,
     });
     // agentBaseEnv applies the run marker and the macOS preload (shared with the pi adapter);

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfigSafe } from "../config/config.js";
+import { configForRole, reviewConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { findOnPath } from "../files/files.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -11,7 +12,8 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
 } from "./readiness.js";
-import { findAgentBinary, piMissingMessage, resolveAgentBin } from "../pi/pi-bin.js";
+import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
+import { loopIds } from "../roles/loop-ids.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
@@ -64,17 +66,32 @@ export async function runStartupCheck(
   if (notReady !== null) return { problem: notReady };
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) return { problem: error };
-  // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT". The agent
-  // binary (TUMWATER_PI_BIN → agentBin → "pi", plans/portability.md §5/7) is resolved from the
-  // config; resolveAgentBin normalizes path-shaped values against THIS process's cwd, which
-  // every generation inherits, so what is checked here is exactly what the ticks spawn.
-  const resolved = resolveAgentBin(config);
-  // The shared executability rule (pi/pi-bin.ts's findAgentBinary — the same one doctor's
-  // checkAgentBinary asks), so the gate can never boot a fleet whose doctor report disagrees.
-  if (!findAgentBinary(resolved)) return { problem: piMissingMessage(resolved) };
+  // Fail fast instead of starting loops whose every tick dies with "spawn <bin> ENOENT". Every
+  // enabled seam's agent — the top-level `agent` plus each enabled loop's resolved view and the
+  // reviewer — resolves through the same resolveAgentBin the spawn uses (and doctor's pi check);
+  // a missing one names its own agent's binary, not pi's. resolveAgentBin normalizes path-shaped
+  // values against THIS process's cwd, which every generation inherits, so what is checked here
+  // is exactly what the ticks spawn.
+  for (const agent of agentsInUse(config)) {
+    const resolved = resolveAgentBin(config, agent);
+    // The shared executability rule (pi/pi-bin.ts's findAgentBinary — the one doctor's pi check
+    // asks too), so a seam's missing binary reads the same way on both surfaces.
+    if (!findAgentBinary(resolved)) return { problem: agentMissingMessage(resolved, agent) };
+  }
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
   return { config, mainBranch: branch.mainBranch };
+}
+
+/** Every agent backend an enabled seam resolves to: the top-level `agent` plus each enabled
+ * loop's configForRole view and, when the review gate is on, the reviewer's view
+ * (reviewConfig). One list the startup gate walks to check each agent's binary, so a claude
+ * route the harness would spawn is checked exactly like pi. */
+function agentsInUse(config: TumwaterConfig): string[] {
+  const agents = new Set<string>([config.agent ?? "pi"]);
+  for (const id of loopIds(config)) agents.add(configForRole(config, id).agent ?? "pi");
+  if (config.review.enabled) agents.add(reviewConfig(config).agent ?? "pi");
+  return [...agents];
 }
 
 /** runStartupCheck reduced to its verdict: the message a generation would fail on right now, or

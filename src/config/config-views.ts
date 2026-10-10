@@ -31,7 +31,7 @@ export type ResolvedModelConfig = Omit<TumwaterConfig, "model" | "agent"> & {
  * cannot leak a second spelling into the file (which validateConfig would then reject).
  * Part 4c consumes this to pick the binary and passthrough argv; part 4a only defines it. */
 export function resolvedAgentConfig(
-  config: Pick<TumwaterConfig, "agents" | "agentBin" | "piArgs">,
+  config: { agents?: Record<string, AgentConfig>; agentBin?: string; piArgs?: string[] },
   id: string,
 ): AgentConfig {
   const entry = config.agents?.[id];
@@ -42,7 +42,7 @@ export function resolvedAgentConfig(
     if (entry === undefined) return {};
     return entry.args === undefined ? { ...entry } : { ...entry, args: entry.args.slice() };
   }
-  return { bin: entry?.bin ?? config.agentBin, args: (entry?.args ?? config.piArgs).slice() };
+  return { bin: entry?.bin ?? config.agentBin, args: (entry?.args ?? config.piArgs ?? []).slice() };
 }
 
 /** True when `s` names one of the three tiers — the form `roles.<id>.model` /

@@ -9,6 +9,7 @@
  * registers the pi adapter at load), so a test can register a fake backend without importing a
  * real one. */
 
+import type { AgentConfig } from "../config/config-schema.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
@@ -51,6 +52,15 @@ export interface AgentInvocation {
    * resumes by session dir. The runner records it in the session ledger. */
   sessionId?: string;
 }
+
+/** The config fields a backend's resolveBin reads (plans/agent-backends.md "Config"): the
+ * per-agent entries plus pi's legacy aliases. Every field is optional, so a bare `{}` or
+ * pi-bin.ts's resolvedAgentConfig view both type-check. */
+export type AgentBinConfig = {
+  agents?: Record<string, AgentConfig>;
+  agentBin?: string;
+  piArgs?: string[];
+};
 
 /** One run's native-stdout-to-canonical translator (plans/agent-backends.md "Canonical event
  * stream"): `translate` takes one complete native line (no trailing newline) and returns the
@@ -101,8 +111,9 @@ export interface AgentBackend {
   defaultBin: string;
   /** The environment variable that overrides the binary. */
   binEnv: string;
-  /** Resolve which binary this backend spawns and where the value came from. */
-  resolveBin(config: Pick<ResolvedModelConfig, "agentBin">): ResolvedAgentBin;
+  /** Resolve which binary this backend spawns and where the value came from, reading its own
+   * `agents.<id>.bin` entry through pi/pi-bin.ts's resolveAgentBin. */
+  resolveBin(config: AgentBinConfig): ResolvedAgentBin;
   /** Build the argv, stdin and environment for one run. */
   invocation(run: AgentRunSpec): AgentInvocation;
   /** A fresh, per-run native-to-canonical line translator. */

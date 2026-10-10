@@ -11,14 +11,14 @@ import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files/files.js";
-import { agentBinSourceLabel, type ResolvedAgentBin } from "../pi/pi-bin.js";
+import { agentBinConfigKey, agentBinSourceLabel, type ResolvedAgentBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
 import { makeRunMarker, sweepRunMarker } from "../process/run-marker.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { DEFAULT_AGENT, agentBackend, registerAgentBackend } from "./agent-backend.js";
+import { DEFAULT_AGENT, agentBackend, registerAgentBackend, type AgentBackend } from "./agent-backend.js";
 import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
@@ -39,17 +39,18 @@ registerAgentBackend(claudeBackend);
 const SPAWN_ERROR_PREFIX = "failed to spawn";
 
 /** The spawn-error message for a resolved binary: the default source keeps today's text
- * ("failed to spawn pi: …"); a configured source names the binary and where it came from,
- * so a wrong agentBin does not read as "pi is broken". */
+ * ("failed to spawn pi: …"); a configured source names the binary and where it came from —
+ * the backend's own env var and config key (agentBinConfigKey) — so a wrong
+ * `agents.claude.bin` does not read as pi's legacy `agentBin`. */
 function spawnErrorMessage(
   resolved: ResolvedAgentBin,
   errMessage: string,
-  binEnv: string,
+  backend: AgentBackend,
 ): string {
   const source =
     resolved.source === "default"
       ? ""
-      : ` (resolved from ${agentBinSourceLabel(resolved.source, binEnv)})`;
+      : ` (resolved from ${agentBinSourceLabel(resolved.source, backend.binEnv, agentBinConfigKey(backend.id))})`;
   return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
 }
 
@@ -387,7 +388,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     child.on("error", (err) => {
       finish(
         resultFromParser({
-          errorMessage: spawnErrorMessage(resolved, err.message, backend.binEnv),
+          errorMessage: spawnErrorMessage(resolved, err.message, backend),
         }),
       );
     });
