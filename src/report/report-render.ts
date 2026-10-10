@@ -63,6 +63,15 @@ function landingShareLine(t: ReportTotals): string {
   return `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
 }
 
+/** The notional-spend line (plans/agent-backends.md part 6a): the API-equivalent cost of
+ * claude.ai subscription runs folded into the window. Never part of the totals' costUsd,
+ * because a subscription run is exempt from the daily dollar cap; the caller prints it only
+ * when a subscription run actually folded in (zero means absent, like the landing line), so
+ * an API-only fleet's report is unchanged. */
+function notionalLine(t: ReportTotals): string {
+  return `claude subscription, API-equivalent: ${usd(t.notionalCostUsd ?? 0)} notional`;
+}
+
 /** The scope note a `--role` report prints: landing runs belong to the landing slot and the
  * features-done/bugs-fixed tallies come from day-granular backlog-file dates, so neither can
  * be scoped to a role and both are omitted from the scoped totals. Shared by the day and
@@ -91,6 +100,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // resolution work. Omitted entirely when no landing ran (zero means absent, like the
   // cost-by-role line), so a fleet with no landing spend renders exactly as before.
   if (t.landingRuns > 0) lines.push(landingShareLine(t));
+  if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
   // A role scope also names what it left out: landing usage and the backlog tallies. A scoped
   // report never prints the landing-share line (its totals are zero), so this note replaces it.
   if (data.role !== undefined) lines.push(ROLE_SCOPE_NOTE);
@@ -133,6 +143,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // the budget already charges, shown only when landing runs actually folded into the window
   // (the shared zero-means-absent rule lives on landingShareLine).
   if (t.landingRuns > 0) lines.push(landingShareLine(t));
+  if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
   if (data.role !== undefined) lines.push(ROLE_SCOPE_NOTE);
   lines.push("");
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);

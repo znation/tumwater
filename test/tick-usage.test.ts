@@ -182,3 +182,56 @@ test("reset keeps lastBackendFailure for the orchestrator's hold, like lastRateL
   u.reset();
   assert.ok(u.lastBackendFailure, "an episodic observation survives the per-tick reset");
 });
+
+// The claude billing split (plans/agent-backends.md part 6a): a subscription run's cost is
+// notional and never charges the daily cap; an API run's — or one that saw overage — is real.
+test("a subscription run folds its cost into notionalCostUsd, never the daily cap", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+
+  u.fold(s, run({ costUsd: 3, billing: "subscription" }));
+  u.fold(s, run({ costUsd: 3, billing: "subscription" }));
+
+  assert.equal(u.notionalCostUsd, 6, "subscription spend is API-equivalent");
+  assert.equal(u.costUsd, 0, "and never real spend");
+  assert.equal(s.dayCostUsd ?? 0, 0, "so the daily cap sees nothing");
+  assert.equal(s.totalCostUsd, 6, "but lifetime usage still counts it");
+  assert.equal(u.billing, "subscription");
+});
+
+test("a subscription run that saw overage charges its cost as real spend", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+
+  u.fold(s, run({ costUsd: 3, billing: "subscription", usedOverage: true }));
+
+  assert.equal(u.costUsd, 3, "overage is real money");
+  assert.equal(u.notionalCostUsd, 0);
+  assert.equal(s.dayCostUsd, 3);
+});
+
+test("an API-billed run charges the cap and leaves notional at zero", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+
+  u.fold(s, run({ costUsd: 1.5, billing: "api" }));
+
+  assert.equal(u.costUsd, 1.5);
+  assert.equal(u.notionalCostUsd, 0);
+  assert.equal(s.dayCostUsd, 1.5);
+  assert.equal(u.billing, "api");
+});
+
+test("fold carries the newest rate windows and reset clears them", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+  const windows = [{ type: "five_hour", status: "allowed", utilization: 0.4 }];
+
+  u.fold(s, run({ billing: "subscription", rateWindows: windows }));
+  assert.deepEqual(u.rateWindows, windows);
+
+  u.reset();
+  assert.equal(u.billing, undefined);
+  assert.equal(u.rateWindows, undefined);
+  assert.equal(u.notionalCostUsd, 0);
+});

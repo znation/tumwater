@@ -13,6 +13,7 @@ import {
   NO_COMMITS_MESSAGE,
 } from "./readiness.js";
 import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
+import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { loopIds } from "../roles/loop-ids.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
@@ -78,10 +79,25 @@ export async function runStartupCheck(
     // asks too), so a seam's missing binary reads the same way on both surfaces.
     if (!findAgentBinary(resolved)) return { problem: agentMissingMessage(resolved, agent) };
   }
+  // Seed the claude account state before the first run (plans/agent-backends.md part 6a):
+  // `claude auth status` decides subscription vs API key, and an existing file is left alone.
+  // Gated on a claude seam so a pi-only fleet spawns nothing, and attempted once per root per
+  // process: runStartupCheck is also the redeploy/supervisor poll's ask (runStartupProblem),
+  // and a logged-out claude would otherwise spawn a bounded probe on every poll. If the seed
+  // fails, the first claude run's observation fills the file in.
+  if (!claudeSeedAttempted.has(root) && agentsInUse(config).includes("claude")) {
+    claudeSeedAttempted.add(root);
+    seedClaudeAccount(root, config);
+  }
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
   return { config, mainBranch: branch.mainBranch };
 }
+
+/** Roots this process has already attempted a claude-account seed for (see runStartupCheck),
+ * so the supervisor's and redeploy's repeated startup checks do not respawn `claude auth
+ * status` on every poll when the probe fails. */
+const claudeSeedAttempted = new Set<string>();
 
 /** Every agent backend an enabled seam resolves to: the top-level `agent` plus each enabled
  * loop's configForRole view and, when the review gate is on, the reviewer's view

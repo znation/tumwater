@@ -2,6 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
+import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
 import { restoreMidTickWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
@@ -140,6 +141,17 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // 2026-09-29). Unlike the usage fields, tick_end's renderer never prints the span, so an
   // always-present 0 changes no rendered line.
   const tickDurationMs = Math.max(0, Date.now() - deps.tickStartedAt);
+  // The account state (plans/agent-backends.md part 6a): fold this tick's billing answer and
+  // rate-window readings into .tumwater/state/claude-account.json for the sibling parts that
+  // throttle or display the subscription window. Best-effort — the file is a cache, and an
+  // unwritable state dir must not fail a tick whose real work is already done.
+  if (usage.billing !== undefined || usage.rateWindows !== undefined) {
+    try {
+      observeClaudeAccount(root, { billing: usage.billing, rateWindows: usage.rateWindows });
+    } catch {
+      // The next reporting run rewrites it; nothing this tick depends on is lost.
+    }
+  }
   logEventBestEffort(root, {
     loop: role,
     type: "tick_end",
@@ -148,7 +160,10 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     summary: outcome.summary,
     error: s.lastError,
     durationMs: tickDurationMs,
-    ...usageFragment(s.generatedTokens, usage.costUsd),
+    ...usageFragment(s.generatedTokens, usage.costUsd, usage.notionalCostUsd),
+    // The billing answer the tick's runs reported, so the report can tell notional spend from
+    // real spend without re-deriving it from the file (plans/agent-backends.md part 6a).
+    ...(usage.billing !== undefined ? { billing: usage.billing } : {}),
     // Per-tick prompt-token telemetry (PLANS.md, per-tick-prompt-token plan): how many prompt
     // tokens the tick sent, how many were cache reads, and how many went out before its first
     // edit. Omitted when zero like usageFragment's fields, so a tick that sent no prompt — and

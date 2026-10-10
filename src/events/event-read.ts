@@ -65,11 +65,13 @@ export function eventTick(ev: HarnessEvent): number {
  * the one convention every usage consumer applies (the event feed's usage fragment,
  * `tumwater history`'s rows and --json, the usage report's fold), so the field rule —
  * including what a corrupt value contributes — lives beside the consumers, not re-spelled
- * per consumer. */
-export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number } {
+ * per consumer. `notionalCostUsd` (subscription spend, plans/agent-backends.md part 6a) is
+ * coerced the same way. */
+export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number; notionalCostUsd: number } {
   const tokens = finiteNumber(ev.tokens, 0);
   const costUsd = finiteNumber(ev.costUsd, 0);
-  return { tokens, costUsd };
+  const notionalCostUsd = finiteNumber(ev.notionalCostUsd, 0);
+  return { tokens, costUsd, notionalCostUsd };
 }
 
 /** Pair the tick_start events of `events` by tick, keyed `${loop}#${tick}` → start epoch ms —

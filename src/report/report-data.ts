@@ -40,6 +40,11 @@ interface UsageFold {
   workCommits: number;
   maintenanceCommits: number;
   costUsd: number;
+  /** Subscription spend (plans/agent-backends.md part 6a): API-equivalent, never in costUsd. */
+  notionalCostUsd: number;
+  /** The notional share per role, so a role-scoped report can carry a role's own
+   * subscription spend (the landing slot's notional is fleet-wide like its cost). */
+  notionalByRole: Record<string, number>;
   landingRuns?: number;
   landingTokens?: number;
   landingCostUsd?: number;
@@ -58,11 +63,13 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const role = eventRole(ev);
     addTo(target.ticksByRole, role, 1);
     if (target.ticks !== undefined) target.ticks++;
-    const { tokens, costUsd } = eventUsage(ev);
+    const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     addTo(target.tokensByRole, role, tokens);
     target.tokensOut += tokens;
     target.costUsd += costUsd;
+    target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
+    if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
   } else if (ev.type === "merged") {
     target.commits++;
     // Work ratio 4/4: split landed commits by base role and by tier. Instance suffixes fold
@@ -74,9 +81,12 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     else if (tier === "maintenance") target.maintenanceCommits++;
   } else if (ev.type === "landed" || ev.type === "land_failed") {
     target.landingRuns = (target.landingRuns ?? 0) + 1;
-    const { tokens, costUsd } = eventUsage(ev);
+    const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.landingTokens = (target.landingTokens ?? 0) + tokens;
     target.landingCostUsd = (target.landingCostUsd ?? 0) + costUsd;
+    // A subscription landing's API-equivalent spend joins the notional line, never the
+    // budgeted cost totals (plans/agent-backends.md part 6a).
+    target.notionalCostUsd += notionalCostUsd;
   }
 }
 
@@ -91,9 +101,11 @@ interface DayFold {
   workCommits: number;
   maintenanceCommits: number;
   costUsd: number;
+  notionalCostUsd: number;
   ticksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
+  notionalByRole: Record<string, number>;
   landingRuns: number;
   landingTokens: number;
   landingCostUsd: number;
@@ -172,9 +184,11 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       tokensOut: 0,
       ...zeroCommitCounts(),
       costUsd: 0,
+      notionalCostUsd: 0,
       ticksByRole: {},
       tokensByRole: {},
       costByRole: {},
+      notionalByRole: {},
       landingRuns: 0,
       landingTokens: 0,
       landingCostUsd: 0,
@@ -275,10 +289,13 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
  * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`.
  * `costByRole` splits that same costUsd per loop id — sourced from the same tick_end events
  * (never a second pass), so its per-day sum equals the day's costUsd by construction.
+ * `notionalCostUsd`/`notionalByRole` carry subscription spend the same way, kept apart
+ * because it never charges the cap (plans/agent-backends.md part 6a).
  * Landing usage (`landed`/`land_failed`) is sparse: the landing fields are absent until the
- * day folds a landing event, and a day's tokensOut/costUsd already include the landing share
- * by the time they are read (the collector folds it in right after the event pass), so the
- * series keeps summing to the totals the budget also reports. */
+ * day folds a landing event, and a day's tokensOut/costUsd already include the landing's
+ * real-money share by the time they are read (the collector folds it in right after the event
+ * pass), so the series keeps summing to the totals the budget also reports; a subscription
+ * landing's notional share joins notionalCostUsd instead. */
 export interface ReportDay {
   date: string; // "YYYY-MM-DD" local day key
   tokensOut: number;
@@ -294,6 +311,7 @@ export interface ReportDay {
   landingRuns?: number; // landed/land_failed events this day folded (absent when none)
   landingTokens?: number; // their output tokens, also included in tokensOut above
   landingCostUsd?: number; // their cost, also included in costUsd above
+  notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
 }
 
 /** The window totals both reports surface — output tokens (the landing share included), the
@@ -306,6 +324,9 @@ export interface ReportTotals {
   ticks: number;
   commits: number;
   costUsd: number; // includes landing spend, so the report and the budget agree
+  /** Subscription spend, API-equivalent: never in costUsd, shown on its own line
+   * (plans/agent-backends.md part 6a). Optional so pre-feature test literals still typecheck. */
+  notionalCostUsd?: number;
   landingRuns: number; // the landing share of the above, named for itself
   landingTokens: number;
   landingCostUsd: number;
@@ -381,6 +402,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     tokensOut: 0,
     ...zeroCommitCounts(),
     costUsd: 0,
+    notionalCostUsd: 0,
+    notionalByRole: {},
     landingRuns: 0,
     landingTokens: 0,
     landingCostUsd: 0,
@@ -406,19 +429,26 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
           ticks: acc.ticks ?? 0,
           commits: acc.commits,
           costUsd: acc.costUsd + (acc.landingCostUsd ?? 0),
+          ...(acc.notionalCostUsd > 0 ? { notionalCostUsd: acc.notionalCostUsd } : {}),
           landingRuns: acc.landingRuns ?? 0,
           landingTokens: acc.landingTokens ?? 0,
           landingCostUsd: acc.landingCostUsd ?? 0,
         }
-      : {
-          tokensOut: roleSum(acc.tokensByRole, base),
-          ticks: roleSum(acc.ticksByRole, base),
-          commits: roleSum(acc.commitsByRole, base),
-          costUsd: roleSum(acc.costByRole, base),
-          landingRuns: 0,
-          landingTokens: 0,
-          landingCostUsd: 0,
-        };
+      : (() => {
+          // The role's own notional spend, from its tick_end events; the landing slot's
+          // notional is fleet-wide and stays out like its cost.
+          const notional = roleSum(acc.notionalByRole, base);
+          return {
+            tokensOut: roleSum(acc.tokensByRole, base),
+            ticks: roleSum(acc.ticksByRole, base),
+            commits: roleSum(acc.commitsByRole, base),
+            costUsd: roleSum(acc.costByRole, base),
+            ...(notional > 0 ? { notionalCostUsd: notional } : {}),
+            landingRuns: 0,
+            landingTokens: 0,
+            landingCostUsd: 0,
+          };
+        })();
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
@@ -466,6 +496,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.workCommits = fold.workCommits;
       day.maintenanceCommits = fold.maintenanceCommits;
       day.costUsd = fold.costUsd;
+      // Only set when nonzero, so zero-notional days keep their exact pre-feature shape.
+      if (fold.notionalCostUsd > 0) day.notionalCostUsd = fold.notionalCostUsd;
       day.landingRuns = fold.landingRuns;
       day.landingTokens = fold.landingTokens;
       day.landingCostUsd = fold.landingCostUsd;
@@ -487,6 +519,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.workCommits = tier === "work" ? commits : 0;
       day.maintenanceCommits = tier === "maintenance" ? commits : 0;
       day.costUsd = roleSum(fold.costByRole, base);
+      const notional = roleSum(fold.notionalByRole, base);
+      if (notional > 0) day.notionalCostUsd = notional;
     }
   }
 
@@ -528,6 +562,9 @@ export function collectReport(root: string, days: number, role?: string): Report
     landingTokens: 0,
     landingCostUsd: 0,
   };
+  // Notional spend is kept out of the totals object until it is nonzero, so a pre-feature
+  // window's totals keep their exact shape.
+  let notionalCostUsd = 0;
   for (const d of series) {
     totals.tokensOut += d.tokensOut;
     for (const n of Object.values(d.ticksByRole)) totals.ticks += n;
@@ -536,6 +573,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     totals.workCommits += d.workCommits ?? 0;
     totals.maintenanceCommits += d.maintenanceCommits ?? 0;
     totals.costUsd += d.costUsd;
+    notionalCostUsd += d.notionalCostUsd ?? 0;
     totals.featuresDone += d.featuresDone;
     totals.bugsFixed += d.bugsFixed;
     totals.landingRuns += d.landingRuns ?? 0;
@@ -562,7 +600,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     to,
     ...(role === undefined ? {} : { role: baseRoleOf(role) }),
     series,
-    totals,
+    totals: { ...totals, ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}) },
     coversFullWindow,
   };
 }

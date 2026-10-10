@@ -128,3 +128,11 @@ export interface PiRunResult {
   /** True when any reported rate-limit window showed the account spending into overage. */
   usedOverage?: boolean;
 }
+
+/** Whether a run's cost is real money that charges the daily cap (plans/agent-backends.md
+ * part 6a): an API-billed run, or a subscription run that saw overage. A plain subscription
+ * run's cost is notional — API-equivalent spend that never moves the cap. The one predicate
+ * both the tick-usage fold and the landing accumulator split on, so the two cannot drift. */
+export function runCostIsReal(run: Pick<PiRunResult, "billing" | "usedOverage">): boolean {
+  return run.billing !== "subscription" || run.usedOverage === true;
+}

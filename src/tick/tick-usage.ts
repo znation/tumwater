@@ -1,5 +1,7 @@
 import type { BackendFailureKind } from "../pi/pi.js";
-import type { PiRunResult } from "../pi/pi-run-result.js";
+import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
+import type { RateWindow } from "../pi/pi-stream.js";
+import type { ClaudeBilling } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { recordDailyCost } from "../budget/budget.js";
 import { nonNegativeNumber } from "../files/json-object.js";
@@ -37,6 +39,17 @@ export class TickUsage {
    * dashboard reads it mid-run; its only consumer is the tick_end event, which fires before
    * the next tick resets it (plans: per-tick usage in the event feed). */
   costUsd = 0;
+  /** Subscription runs' cost folded into THIS tick (non-persisted): API-equivalent spend the
+   * run reported but that never charges the daily cap (plans/agent-backends.md part 6a). The
+   * tick_end event carries it and the report shows it on its own notional line. Reset at tick
+   * start like costUsd. */
+  notionalCostUsd = 0;
+  /** How the tick's runs were last reported as paid for, and the newest subscription
+   * rate-window readings any of them carried — the account state (claude-account.ts) the
+   * orchestrator persists at tick end. Per-tick windows: reset at tick start, the last
+   * reporting run of the tick wins. Undefined until a run reports them. */
+  billing?: ClaudeBilling;
+  rateWindows?: RateWindow[];
   /** Prompt tokens folded into THIS tick so far (non-persisted, reset at tick start). Every
    * pi run of the tick contributes — the authoring run, its transient retry, the SUMMARY
    * follow-up, and (through foldLandingUsage) review and conflict-resolution runs — because
@@ -73,6 +86,9 @@ export class TickUsage {
   reset(): void {
     this.turns = 0;
     this.costUsd = 0;
+    this.notionalCostUsd = 0;
+    this.billing = undefined;
+    this.rateWindows = undefined;
     this.promptTokens = 0;
     this.cacheReadTokens = 0;
     this.preEditPromptTokens = 0;
@@ -87,7 +103,20 @@ export class TickUsage {
     s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;
     s.peakContextTokens = Math.max(counter(s.peakContextTokens), run.peakContextTokens);
     s.totalCostUsd = counter(s.totalCostUsd) + run.costUsd;
-    this.costUsd += run.costUsd;
+    // The billing split (plans/agent-backends.md §7): a subscription run's cost is notional
+    // and never charges the daily cap; an API run's — or a run that ever saw overage — is real
+    // money. totalCostUsd still counts both: it is lifetime usage, not a budget figure.
+    if (runCostIsReal(run)) {
+      this.costUsd += run.costUsd;
+      // The daily cost budget window (plans/daily-cost-budget.md): every real-money pi run of
+      // a tick folds here exactly once, so the fleet's spend for the local day is complete at
+      // each tick end.
+      recordDailyCost(s, run.costUsd);
+    } else {
+      this.notionalCostUsd += run.costUsd;
+    }
+    if (run.billing !== undefined) this.billing = run.billing;
+    if (run.rateWindows !== undefined) this.rateWindows = run.rateWindows;
     this.promptTokens += run.promptTokens;
     this.cacheReadTokens += run.cacheReadTokens;
     // The pre-edit prefix freezes at the tick's first edit: every authoring run while no edit
@@ -97,9 +126,6 @@ export class TickUsage {
       if (!this.editSeen) this.preEditPromptTokens += run.preEditPromptTokens;
       if (run.firstEditTurn !== undefined) this.editSeen = true;
     }
-    // The daily cost budget window (plans/daily-cost-budget.md): every pi run of a tick folds
-    // here exactly once, so the fleet's spend for the local day is complete at each tick end.
-    recordDailyCost(s, run.costUsd);
     this.turns += run.turns;
     // The fleet-wide hold's rate-limit input (lastRateLimit above), from the same
     // once-per-run choke point. Only a run that ENDED on the 429 counts: pi exits on the error,

@@ -7,55 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 6a/7: the claude account state and notional spend (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 4a/7, 4b/7 and 4e/7 landed)
-
-Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
-window", "Testing").
-
-Goal: detect whether a claude run is paid by a claude.ai subscription or an API key, persist
-that answer, and keep subscription cost out of the daily dollar budget. This is the foundation
-the sibling 6b/7–6e/7 parts read; it changes no scheduling, badge, or display behavior on its own.
-
-**Approach.**
-1. **Account state.** Add src/agent/claude/claude-account.ts, which reads and writes
-   `.tumwater/state/claude-account.json`:
-   `{billing, subscriptionType, observedAt, windows: {<rateLimitType>: {status, resetsAt,
-   utilization?, overageStatus, isUsingOverage, observedAt}}}`. Export the `ClaudeAccount`,
-   `ClaudeBilling` and `ClaudeWindow` types plus a reader that treats a window past its
-   `resetsAt` as reset (and an `observedAt`-less file as absent). Only the orchestrator process
-   writes it.
-2. **Seeding.** src/gates/startup-gate.ts seeds it before the first run from `claude auth status`
-   (`authMethod: "claude.ai"`, `subscriptionType`) plus the presence of `ANTHROPIC_API_KEY`
-   (which claude prefers when set); doctor mirrors the same read.
-3. **Per-run observation.** src/agent/run-agent.ts overwrites the billing and the newest reading
-   per `rateLimitType` from each run result's `billing` and `rateWindows` (already carried on
-   `PiRunResult` in src/pi/pi-run-result.ts), stamping `observedAt`.
-4. **Spend.** src/tick/tick-usage.ts folds a subscription run's `costUsd` into a new
-   `notionalCostUsd` and never calls `recordDailyCost`; an API run, or a run that saw
-   `isUsingOverage` at any point, folds its cost into `costUsd` as today (its cost is real
-   money). `tick_end` gains `notionalCostUsd` and `billing` (src/events/events.ts and
-   event-format.ts, following the omit-when-zero convention the other usage fields use).
-5. **Report.** src/report/report-data.ts prints notional spend on its own line ("claude
-   subscription, API-equivalent: $X"), never in the total.
-6. **Docs.** README: billing detection and overage counting as real spend.
-
-**Files touched.** src/agent/claude/claude-account.ts (new), src/agent/run-agent.ts,
-src/gates/startup-gate.ts, src/doctor/doctor-model-checks.ts, src/tick/tick-usage.ts,
-src/events/events.ts, src/events/event-format.ts, src/report/report-data.ts, README.md.
-
-**Tests.** test/claude-account.test.ts (new); cases in test/tick-usage.test.ts,
-test/report.test.ts.
-
-**Acceptance criteria.**
-- With `maxDailyCostUsd: 15` and subscription billing, ten fake-claude ticks costing $3 each
-  leave the daily spend at $0, and `tumwater report` shows "$30.00 notional".
-- The same ticks with `isUsingOverage: true` count $30 against the cap.
-- With `apiKeySource: "ANTHROPIC_API_KEY"`, costs count against the cap exactly as a priced pi
-  model's do, and the report's notional line stays at $0.
-- A window whose `resetsAt` has passed reads as reset; an absent account file reads as no
-  subscription.
-- `npm run test` green.
-
 ### Agent backends, part 6b/7: subscription free-ness and the cap exemption (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed)
 
 Design: plans/agent-backends.md ("Free-ness", "Every seam, checked").
@@ -456,6 +407,65 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Agent backends, part 6a/7: the claude account state and notional spend (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 4a/7, 4b/7 and 4e/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
+window", "Testing").
+
+Goal: detect whether a claude run is paid by a claude.ai subscription or an API key, persist
+that answer, and keep subscription cost out of the daily dollar budget. This is the foundation
+the sibling 6b/7–6e/7 parts read; it changes no scheduling, badge, or display behavior on its own.
+
+**Approach.**
+1. **Account state.** src/agent/claude/claude-account.ts reads and writes
+   `.tumwater/state/claude-account.json`:
+   `{billing, subscriptionType, observedAt, windows: {<rateLimitType>: {status, resetsAt,
+   utilization?, overageStatus, isUsingOverage, observedAt}}}`. Exports the `ClaudeAccount`,
+   `ClaudeBilling` types plus an internal `ClaudeWindow` shape and a reader that treats a
+   window past its `resetsAt` as reset (and an `observedAt`-less file as absent). Only the
+   orchestrator process writes it; the path lives in src/paths.ts.
+2. **Seeding.** seedClaudeAccount (claude-account.ts) seeds before the first run from the
+   presence of `ANTHROPIC_API_KEY`/a third-party provider env and, otherwise, `claude auth
+   status` (`authMethod: "claude.ai"`, `subscriptionType`); src/gates/startup-gate.ts calls it
+   when a seam routes to claude and an account file is absent. Doctor's existing `claude auth
+   status` check already surfaces the same billing.
+3. **Per-run observation.** src/tick/tick-finalize.ts (which has the repo root; run-agent.ts does
+   not) folds each tick's `billing` and newest `rateWindows` — carried on `PiRunResult` in
+   src/pi/pi-run-result.ts and collected by src/tick/tick-usage.ts — into the account file,
+   stamping `observedAt`.
+4. **Spend.** src/tick/tick-usage.ts folds a subscription run's `costUsd` into a new
+   `notionalCostUsd` and never calls `recordDailyCost`; an API run, or a run that saw
+   `isUsingOverage` at any point, folds its cost into `costUsd` as today (its cost is real
+   money). src/pi/pi-run-result.ts's `runCostIsReal` is the one predicate both the tick fold
+   and the landing accumulator split on. A landing/review run (reviewer + conflict resolution)
+   is split the same way in src/landing/landing-slot.ts: real cost rides the landed event's
+   `costUsd`, notional rides a new `notionalCostUsd` field. `tick_end` gains `notionalCostUsd`
+   and `billing` (src/events/events.ts's usageFragment and src/events/event-read.ts's
+   eventUsage, following the omit-when-zero convention the other usage fields use).
+5. **Report.** src/report/report-data.ts sums notional spend apart from the totals — fleet-wide
+   and, for a `--role` scope, the role's own tick notional (its landing slot's is fleet-wide
+   like its cost) — and src/report/report-render.ts prints it on its own line ("claude
+   subscription, API-equivalent: $X notional"), never in the total.
+6. **Docs.** README: billing detection and overage counting as real spend.
+
+**Files touched.** src/agent/claude/claude-account.ts (new), src/paths.ts,
+src/tick/tick-finalize.ts, src/gates/startup-gate.ts, src/tick/tick-usage.ts,
+src/pi/pi-run-result.ts, src/landing/landing-slot.ts, src/events/events.ts,
+src/events/event-read.ts, src/report/report-data.ts, src/report/report-render.ts, README.md.
+
+**Tests.** test/claude-account.test.ts (new); cases in test/tick-usage.test.ts,
+test/landing-slot.test.ts, test/report-data.test.ts.
+
+**Acceptance criteria.**
+- With `maxDailyCostUsd: 15` and subscription billing, ten fake-claude ticks costing $3 each
+  leave the daily spend at $0, and `tumwater report` shows "$30.00 notional".
+- The same ticks with `isUsingOverage: true` count $30 against the cap.
+- With `apiKeySource: "ANTHROPIC_API_KEY"`, costs count against the cap exactly as a priced pi
+  model's do, and the report's notional line stays at $0.
+- A window whose `resetsAt` has passed reads as reset; an absent account file reads as no
+  subscription.
+- `npm run test` green.
 
 ### A numbered read half for `tumwater plan`/`bug`: `--list` (planned 2026-10-10 by plan; independent of the Agent backends series; sibling of the landed `tumwater plan --edit/--cancel` and `tumwater bug --edit/--cancel`; done 2026-10-10 by feature)
 

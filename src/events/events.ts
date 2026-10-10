@@ -119,10 +119,14 @@ export interface HarnessEventInput {
 export function usageFragment(
   tokens: number,
   costUsd: number,
-): { tokens?: number; costUsd?: number } {
+  notionalCostUsd = 0,
+): { tokens?: number; costUsd?: number; notionalCostUsd?: number } {
   return {
     ...(tokens > 0 ? { tokens } : {}),
     ...(costUsd > 0 ? { costUsd } : {}),
+    // Subscription spend rides on the same fragment (plans/agent-backends.md part 6a): it is
+    // omitted when zero like the other fields, so an API-only fleet's lines are unchanged.
+    ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}),
   };
 }
 

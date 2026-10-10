@@ -27,18 +27,26 @@ test("eventRole answers '?' for absent, empty, and non-string loop fields", () =
 });
 
 test("eventUsage coerces non-numeric or non-finite usage to 0 and passes real numbers through", () => {
-  assert.deepEqual(eventUsage(ev({ tokens: 120, costUsd: 0.5 })), { tokens: 120, costUsd: 0.5 });
+  assert.deepEqual(eventUsage(ev({ tokens: 120, costUsd: 0.5 })), { tokens: 120, costUsd: 0.5, notionalCostUsd: 0 });
   // `unknown` through the index signature: absent, wrong-typed, NaN, and Infinity all read as 0,
   // so a corrupt line contributes nothing instead of poisoning a report's totals with NaN.
-  assert.deepEqual(eventUsage(ev({})), { tokens: 0, costUsd: 0 });
+  assert.deepEqual(eventUsage(ev({})), { tokens: 0, costUsd: 0, notionalCostUsd: 0 });
   assert.deepEqual(eventUsage(ev({ tokens: "many" as unknown as number })), {
     tokens: 0,
     costUsd: 0,
+    notionalCostUsd: 0,
   });
   assert.deepEqual(
     eventUsage(ev({ tokens: Number.NaN, costUsd: Number.POSITIVE_INFINITY })),
-    { tokens: 0, costUsd: 0 },
+    { tokens: 0, costUsd: 0, notionalCostUsd: 0 },
   );
+  // Subscription spend is coerced the same way and passes a real number through.
+  assert.deepEqual(eventUsage(ev({ notionalCostUsd: 3 })), { tokens: 0, costUsd: 0, notionalCostUsd: 3 });
+  assert.deepEqual(eventUsage(ev({ notionalCostUsd: "lots" as unknown as number })), {
+    tokens: 0,
+    costUsd: 0,
+    notionalCostUsd: 0,
+  });
 });
 
 test("eventDayKey buckets by ts and answers null when ts is not a number", () => {

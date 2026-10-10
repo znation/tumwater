@@ -87,6 +87,12 @@ export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
 
+/** The claude account state (.tumwater/state/claude-account.json; claude-account.ts): the
+ * billing answer and newest subscription window readings, written by the orchestrator only. */
+export function claudeAccountPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "claude-account.json");
+}
+
 /** The worktree-use registry (plans/disk-floor.md, part 2/4; git/worktree-use.ts): which
  * worktrees are in use and when each was last used, so pressure reclaim can order candidates
  * least-recently-used first across restarts. Runtime state under .tumwater/state/. */

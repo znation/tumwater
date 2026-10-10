@@ -72,6 +72,29 @@ test("landingUsage charges each run to both the authoring role and the landing's
   assert.equal(usage.cost, 1, "…and its cost");
 });
 
+// A subscription-paid landing is API-equivalent notional spend, never real money the daily cap
+// charges (plans/agent-backends.md part 6a): its cost rides the landed event's notional field
+// and its real field stays empty.
+test("a subscription landing run folds as notional, and rides the event's notional field", () => {
+  const root = makeRepo();
+  const author = { foldLandingUsage: () => {} } as unknown as LoopRunner;
+  const { usage, foldUsage } = landingUsage(author);
+  foldUsage(piRunResult({ outputTokens: 100, costUsd: 0.3, billing: "subscription" }));
+  foldUsage(piRunResult({ outputTokens: 20, costUsd: 0.1, billing: "api" }));
+
+  assert.equal(usage.cost, 0.1, "only the API run is real spend");
+  assert.equal(usage.notionalCost, 0.3, "the subscription run is notional");
+
+  const { entry, file } = queued(root);
+  const state = freshLoopState("improve");
+  writeLandingOutcome(root, entry, state, "changed", 7, usage, file);
+
+  const landed = readEvents(root, 10).find((e) => e.type === "landed");
+  assert.ok(landed, "the landing logged a landed event");
+  assert.equal(landed.costUsd, 0.1, "the event's cost is the real share only");
+  assert.equal(landed.notionalCostUsd, 0.3, "the subscription share is notional");
+});
+
 test("a landing's nonzero usage rides its landed event and the entry is dropped", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);

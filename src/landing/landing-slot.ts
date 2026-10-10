@@ -1,6 +1,6 @@
 import { dropLanding, type LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { PiRunResult } from "../pi/pi-run-result.js";
+import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
@@ -308,15 +308,18 @@ export function writeLandingOutcome(
     commit: entry.sha,
     result,
     durationMs,
-    ...usageFragment(usage.tokens, usage.cost),
+    ...usageFragment(usage.tokens, usage.cost, usage.notionalCost),
   });
   dropLanding(file);
 }
 
 /** One landing's own spend (reviewer + conflict resolution), accumulated across its pi runs.
- * The single home of the shape: writeLandingOutcome and landingUsage build it here, and
- * landing-pipeline.ts's VettedLanding and settleLandingOutcome carry the same object. */
-export type LandingUsage = { tokens: number; cost: number };
+ * `cost` is the real money (API-billed runs and subscription overage); `notionalCost` is a
+ * subscription landing's API-equivalent spend, which never charges the cap and rides the
+ * landed event's own notional field (plans/agent-backends.md part 6a). The single home of the
+ * shape: writeLandingOutcome and landingUsage build it here, and landing-pipeline.ts's
+ * VettedLanding and settleLandingOutcome carry the same object. */
+export type LandingUsage = { tokens: number; cost: number; notionalCost?: number };
 
 /** A fresh usage accumulator for one landing plus the foldUsage callback that charges each of
  * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
@@ -333,7 +336,8 @@ export function landingUsage(author: LoopRunner): {
     foldUsage: (run) => {
       author.foldLandingUsage(run);
       usage.tokens += run.outputTokens;
-      usage.cost += run.costUsd;
+      if (runCostIsReal(run)) usage.cost += run.costUsd;
+      else usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;
     },
   };
 }

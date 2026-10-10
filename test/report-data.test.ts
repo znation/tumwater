@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { collectReport, collectReportSince } from "../src/report/report-data.js";
-import { renderSinceReportMarkdown } from "../src/report/report-render.js";
+import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { eventsLogPath } from "../src/paths.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
@@ -714,4 +714,79 @@ test("collectReportSince scopes a trailing window to one role, excluding the lan
   assert.equal(fleet.totals.ticks, 2);
   assert.equal(fleet.totals.commits, 2);
   assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
+});
+
+// The claude billing split (plans/agent-backends.md part 6a): a subscription run's cost is
+// API-equivalent notional spend, summed on its own line and never in the budgeted totals.
+test("subscription runs total as notional spend, never in the cost totals", () => {
+  const root = tmpdir();
+  const lines: string[] = [];
+  for (let i = 0; i < 10; i++) {
+    lines.push(
+      JSON.stringify({
+        ts: at(0),
+        loop: "feature",
+        type: "tick_end",
+        tick: i + 1,
+        result: "changed",
+        notionalCostUsd: 3,
+        billing: "subscription",
+      }),
+    );
+  }
+  writeEvents(root, lines);
+
+  const data = collectReport(root, 1);
+  assert.equal(data.totals.notionalCostUsd, 30, "ten $3 subscription ticks");
+  assert.equal(data.totals.costUsd, 0, "against the cap");
+  assert.equal(data.series[data.series.length - 1]?.notionalCostUsd, 30);
+  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$30\.00 notional/);
+});
+
+// A subscription landing's API-equivalent spend joins the notional line, while only the real
+// share reaches the budgeted cost totals (plans/agent-backends.md part 6a).
+test("a subscription landing's spend is notional, never in the cost totals", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2 }),
+  ]);
+
+  const data = collectReport(root, 1);
+  assert.equal(data.totals.costUsd, 0.5, "only the real share is budgeted");
+  assert.equal(data.totals.landingCostUsd, 0.5);
+  assert.equal(data.totals.notionalCostUsd, 2);
+  assert.equal(data.series[data.series.length - 1]?.costUsd, 0.5);
+  assert.equal(data.series[data.series.length - 1]?.notionalCostUsd, 2);
+  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$2\.00 notional/);
+});
+
+// Role scoping carries a role's OWN notional spend (its tick_end events), so `report --role`
+// does not misreport a subscription loop as $0; the landing slot's notional stays fleet-wide
+// and omitted, exactly like its real cost (plans/agent-backends.md part 6a).
+test("collectReport scopes notional spend to the role, like cost", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 3 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 5 }),
+  ]);
+
+  const scoped = collectReport(root, 1, "feature");
+  assert.equal(scoped.totals.notionalCostUsd, 3, "the feature loop's own notional spend");
+  assert.equal(scoped.totals.costUsd, 0);
+  assert.equal(scoped.series[scoped.series.length - 1]?.notionalCostUsd, 3);
+
+  const fleet = collectReport(root, 1);
+  assert.equal(fleet.totals.notionalCostUsd, 8, "the fleet report sums both roles");
+});
+
+test("collectReportSince scopes notional spend to the role, like cost", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 3 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 5 }),
+  ]);
+
+  const scoped = collectReportSince(root, HOUR, "feature");
+  assert.equal(scoped.totals.notionalCostUsd, 3);
+  assert.equal(scoped.totals.costUsd, 0);
 });
