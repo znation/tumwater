@@ -6,52 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 4b/7: `agent`, selector routing and per-tier claude defaults (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4a/7 landed)
-
-Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors";
-"Decisions" 5).
-
-Goal: claude becomes selectable.
-
-**Approach.**
-1. **`agent`.** Add `agent?: "pi" | "claude"` (default `"pi"`) to src/config/config-schema.ts
-   and `defaultConfig()`.
-2. **Routing.** A pure helper beside `parseModelSelector` in src/config/model-selector.ts
-   resolves a `ModelSelector` plus `agent` to a backend id and, when no model is set, that
-   backend's tier default. `withModelOverrides` in src/config/config-views.ts uses it to set
-   `ResolvedModelConfig.agent`: the provider segment is a registered agent id → that agent; any
-   other provider → pi; a bare id → top-level `agent`; no `model` key at all → `agent`'s
-   `defaultModels[seam tier]`. Once `model` is set, today's tier inheritance is unchanged.
-   `configForRole`, `reviewRunConfig`, `reviewConfig`, `resolverConfig` and the fallback views
-   (`fallbackRoleConfig`) all carry the resolved `agent`.
-3. **Defaults.** `AgentBackend` (src/agent/agent-backend.ts) gains
-   `defaultModels?: Partial<Record<ModelTier, string>>`; the claude adapter
-   (src/agent/claude/claude-backend.ts) supplies `small: claude-haiku-5-5`,
-   `default: claude-sonnet-5-5`, `strong: claude-opus-5-5`. They stay out of `defaultConfig()`, so
-   a config that never set `model` does not grow a model key.
-4. **Free-ness.** `fallbackModelFree` and `fleetModelsFree` (src/pi/pi-models.ts) consult the
-   backend a selector routes to. In this part a claude-routed selector is never free, matching
-   the safe direction `pairFree` already takes for an unresolvable pair; part 6/7 makes
-   subscription billing free.
-
-**Files touched.** src/config/config-schema.ts, model-selector.ts, config-views.ts, config.ts;
-src/agent/agent-backend.ts, src/agent/claude/claude-backend.ts; src/pi/pi-models.ts.
-
-**Acceptance criteria.**
-- **One line.** `{ "agent": "claude" }` runs author ticks on fake-claude with
-  `--model claude-sonnet-5-5`, the reviewer/plan/conflict-resolver with
-  `--model claude-opus-5-5`, and readme with `--model claude-haiku-5-5`;
-  `{ "agent": "claude", "model": "claude-sonnet-5-5" }` puts every seam on Sonnet.
-- **Mixed.** `{ "agent": "claude", "fallback": "omlx/Qwen…" }` runs the fallback on fake-pi
-  with `--provider omlx`.
-- **Per-seam.** `{ "review": { "model": "claude/claude-opus-5-5:high" } }` under `agent: "pi"`
-  runs only the reviewer on claude, with `--effort high`.
-- **Legacy.** A config with `agentBin` + `piArgs` and no `agent`/`model` produces byte-identical
-  pi argv.
-- **Free-ness.** A claude-routed `fallback` is rejected as not free, exactly like a priced pi
-  pair.
-- `npm run test` green.
-
 ### Agent backends, part 4c/7: per-agent binary resolution, passthrough args and the startup gate (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires parts 4a/7 and 4b/7 landed)
 
 Design: plans/agent-backends.md ("Config" back-compat; "Every seam, checked" — startup row).
@@ -668,6 +622,65 @@ moved to.
 - `tumwater diff`, `tumwater diff --json`, the GUI Pending view, and `tumwater history` are
 unchanged (`collectFleetChanges`, `renderFleetChange`, and `TickRow` are untouched).
 - `npm run test` green.
+
+
+### Agent backends, part 4b/7: `agent`, selector routing and per-tier claude defaults (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4a/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors";
+"Decisions" 5).
+
+Goal: claude becomes selectable.
+
+**Approach.**
+1. **`agent`.** Add `agent?: "pi" | "claude"` (default `"pi"`) to src/config/config-schema.ts
+   and `defaultConfig()`.
+2. **Routing.** A pure helper beside `parseModelSelector` in src/config/model-selector.ts
+   resolves a `ModelSelector` plus `agent` to a backend id and, when no model is set, that
+   backend's tier default. `withModelOverrides` in src/config/config-views.ts uses it to set
+   `ResolvedModelConfig.agent`: the provider segment is a registered agent id → that agent; any
+   other provider → pi; a bare id → top-level `agent`; no `model` key at all → the backend's
+   tier default from `AGENT_DEFAULT_MODELS` below. Once `model` is set, today's tier
+   inheritance is unchanged.
+   `configForRole`, `reviewRunConfig`, `reviewConfig`, `resolverConfig` and the fallback views
+   (`fallbackRoleConfig`) all carry the resolved `agent`.
+3. **Defaults.** The tier-default table lives in src/config/model-selector.ts as
+   `AGENT_DEFAULT_MODELS`, read by `routeModel` (the pure config layer resolves seam models and
+   must not import the runtime backend registry): claude supplies `small: claude-haiku-5-5`,
+   `default: claude-sonnet-5-5`, `strong: claude-opus-5-5`, pi none. They stay out of
+   `defaultConfig()`, so a config that never set `model` does not grow a model key.
+4. **Free-ness.** `fallbackModelFree` and `fleetModelsFree` (src/pi/pi-models.ts) consult the
+   backend a selector routes to. In this part a claude-routed selector is never free, matching
+   the safe direction `pairFree` already takes for an unresolvable pair; part 6/7 makes
+   subscription billing free. The budget gate (src/gates/budget-gates.ts) and the status pause
+   set (src/status/status-data.ts) judge fallback pairs with the same predicate, so neither
+   engages a claude-routed fallback the badge would not call free.
+
+**Files touched.** src/config/config-schema.ts, model-selector.ts, config-views.ts, config.ts;
+src/agent/claude/claude-backend.ts; src/pi/pi-models.ts; src/gates/budget-gates.ts,
+src/status/status-data.ts.
+
+**Acceptance criteria.**
+- **One line.** `{ "agent": "claude" }` runs author ticks on fake-claude with
+  `--model claude-sonnet-5-5`, the reviewer/plan/conflict-resolver with
+  `--model claude-opus-5-5`, and readme with `--model claude-haiku-5-5`;
+  `{ "agent": "claude", "model": "claude-sonnet-5-5" }` puts every seam on Sonnet.
+- **Mixed.** `{ "agent": "claude", "fallback": "omlx/Qwen…" }` runs the fallback on fake-pi
+  with `--provider omlx`.
+- **Per-seam.** `{ "review": { "model": "claude/claude-opus-5-5:high" } }` under `agent: "pi"`
+  runs only the reviewer on claude, with `--effort high`.
+- **Legacy.** A config with `agentBin` + `piArgs` and no `agent`/`model` produces byte-identical
+  pi argv.
+- **Free-ness.** A claude-routed `fallback` is rejected as not free, exactly like a priced pi
+  pair.
+- `npm run test` green.
+
+Note (2026-10-10 by feature): the tier-default table lives in
+src/config/model-selector.ts as `AGENT_DEFAULT_MODELS` and is the single source; `routeModel`
+reads it directly because the pure config layer resolves seam models and must not import the
+runtime backend registry, so `AgentBackend` carries no tier-default field. The config field is
+typed `string` and validated against the reserved `AGENT_IDS` (`pi`, `claude`) so a test or
+later backend can register an id outside the schema's set. Doctor's model sweep is not
+agent-aware yet — a claude-routed config is read there as a bare pi model until part 4e/7.
 
 ### Agent backends, part 4a/7: the `agents` config section, legacy mapping, reserved flags and writers (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7, which feature judged too large for one run; requires part 3d/7 landed; done 2026-10-09 by feature)
 

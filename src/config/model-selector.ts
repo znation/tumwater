@@ -4,7 +4,7 @@
  * (src/pi/pi-args.ts) still passes `--provider` / `--model` / `--thinking` separately. Pure
  * string algebra — no I/O, no config knowledge beyond THINKING_LEVELS. */
 
-import { THINKING_LEVELS } from "./config-schema.js";
+import { AGENT_IDS, THINKING_LEVELS, type AgentId, type ModelTier } from "./config-schema.js";
 
 /** The parsed form of one selector: the triple piArgs consumes. `provider` is absent for a
  * bare model pattern (pi resolves it itself), `thinking` for a selector without a level
@@ -45,6 +45,44 @@ export function parseModelSelector(s: string, legacyProvider?: string): ModelSel
           return { provider: rest.slice(0, slash), model: rest.slice(slash + 1) };
         })();
   return thinking ? { ...base, thinking } : base;
+}
+
+/** True when `s` names a registered agent backend — the reserved selector provider namespace
+ * (`claude/<id>` always runs on claude). Validation restricts the config's `agent` key to the
+ * same ids; a `provider/id` selector's provider is checked here. */
+export function isAgentId(s: string | undefined): s is AgentId {
+  return s !== undefined && (AGENT_IDS as readonly string[]).includes(s);
+}
+
+/** Each agent backend's per-tier default model, applied only when the config resolves no model
+ * id for a seam (plans/agent-backends.md "Config" decision 5). pi has none — its own default
+ * applies. It lives here, in the pure config layer, because `routeModel` runs at config-
+ * resolution time and must not import the runtime backend registry. */
+const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> = {
+  pi: {},
+  claude: {
+    small: "claude-haiku-5-5",
+    default: "claude-sonnet-5-5",
+    strong: "claude-opus-5-5",
+  },
+};
+
+/** The backend and concrete model a resolved seam's provider/model pair routes to
+ * (plans/agent-backends.md "Config"). The provider segment decides the backend: a provider
+ * naming a registered agent id runs that agent (and its provider field is cleared, since it is
+ * a namespace, not a pi provider); any other provider runs on pi, the one backend with
+ * providers; no provider at all runs on the config's `agent`. When no model id survives the
+ * resolution, the backend's tier default fills in (pi supplies none). */
+export function routeModel(
+  provider: string | undefined,
+  model: string | undefined,
+  configAgent: string,
+  tier: ModelTier,
+): { agent: string; model?: string } {
+  const agent = provider === undefined ? configAgent : isAgentId(provider) ? provider : "pi";
+  if (model !== undefined) return { agent, model };
+  const def = AGENT_DEFAULT_MODELS[agent as AgentId]?.[tier];
+  return def !== undefined ? { agent, model: def } : { agent };
 }
 
 /** The inverse of parseModelSelector (in its no-legacyProvider form): the selector string a

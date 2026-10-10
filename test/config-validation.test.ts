@@ -298,6 +298,18 @@ test("validateConfig rejects blank string-array entries and names their position
   assert.doesNotThrow(() => validateConfig({ piArgs: ["--no-skills", "--verbose"] }));
 });
 
+test("validateConfig accepts a reserved agent id and rejects an unknown or blank one", () => {
+  // The schema reserves AGENT_IDS; an unknown id would silently fall back to pi at run time
+  // (src/agent/run-agent.ts), running the wrong backend against a named one.
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), agent: "pi" }));
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), agent: "claude" }));
+  assert.match(
+    validationError({ ...defaultConfig(), agent: "codex" }),
+    /agent must name a backend \(pi, claude; got "codex"\)/,
+  );
+  assert.match(validationError({ ...defaultConfig(), agent: "" }), /agent must not be empty/);
+});
+
 test("validateConfig rejects piArgs entries that repeat a harness-managed flag", () => {
   // pi-args.ts appends config.piArgs AFTER its own flags and pi's parser is last-wins, so a
   // repeated flag silently overrides the harness: `--mode text` makes every tick's stream

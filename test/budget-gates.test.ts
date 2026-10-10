@@ -245,6 +245,29 @@ test("a fallback pi prices above zero cannot engage: the gate pauses and the eve
   assert.equal(events[0]!.capUsd, 10);
 });
 
+test("a claude-routed fallback cannot engage even when models.json prices its namespace at zero", () => {
+  // The same refusal as a priced pi pair: pi's pricing cannot see claude CLI billing, so a
+  // models.json that happens to list a free `claude` provider must not let the gate engage it
+  // and run unpriceable spend past the cap (plans/agent-backends.md "Config" step 4).
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(
+    root,
+    JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5", cost: { input: 0, output: 0 } }] } } }),
+  );
+  const cfg = configWith(10);
+  cfg.fallback = "claude/claude-sonnet-5-5";
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "paused");
+  assert.equal(p.onFallback, false);
+  assert.equal(p.roleConfig, cfg); // no fallback view while nothing is engaged
+
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
+  assert.equal(events[0]!.fallbackRejected, "claude/claude-sonnet-5-5");
+});
+
 test("a demoted fallback keeps the gate paused and the role view: demotion never promotes to the paid model", () => {
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(root, MODELS_JSON);

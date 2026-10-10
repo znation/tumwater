@@ -2,7 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
 import { enabledRoleIds } from "../config/config.js";
-import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
+import { configForRole, fallbackPair, resolverConfig, reviewConfig } from "../config/config-views.js";
+import { isAgentId } from "../config/model-selector.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -104,10 +105,10 @@ function resolveModelDef(
  * default), a missing or malformed definitions file, an unknown provider, or a model id the
  * file does not list. An unverified model may well be paid, and no caller here may treat
  * "I could not check" as "it is free" — the badge would lie, and the fallback would defeat
- * the very cap it exists to survive. Exported for budget-gates.ts's per-tier fallback
- * resolution (part 5b/8), which composes it with the fallback breaker's serving verdict.
+ * the very cap it exists to survive. Private: the backend-aware `piPairFree` below wraps it
+ * for every caller, so no site can price a non-pi backend as free by reaching pi's raw check.
  */
-export function pairFree(
+function pairFree(
   providers: Map<string, PiModelDef[]> | null,
   provider: string | undefined,
   model: string | undefined,
@@ -137,6 +138,22 @@ export function cacheReadUnpriced(
   return inputPriced && cacheUnpriced;
 }
 
+/** Whether a seam's resolved pair may be called free: only pi's own models.json can price a
+ * run, so a selector whose provider names an agent backend (e.g. `claude/<id>`) is never
+ * free, exactly as an unresolvable pi pair is not — the badge must not read n/a while a
+ * backend whose billing it cannot see runs (plans/agent-backends.md "Config" step 4). A
+ * claude-routed bare id has no provider and is already refused by pairFree. Exported so the
+ * budget gate (src/gates/budget-gates.ts) and the status pause set (src/status/status-data.ts)
+ * judge fallback pairs with the same predicate the free-ness view does — neither may engage a
+ * backend their own badge would not call free. */
+export function piPairFree(
+  providers: Map<string, PiModelDef[]> | null,
+  provider: string | undefined,
+  model: string | undefined,
+): boolean {
+  return !isAgentId(provider) && pairFree(providers, provider, model);
+}
+
 /** The free fallback pair the budget gate would engage for the fleet, or null when none is
  * usable: the price-aware resolution of the default tier (fallbackPair over
  * resolveTierFallbacks' borrow order), so a map whose `default` entry is absent or priced
@@ -147,7 +164,7 @@ export function fallbackModelPair(
   modelsPath = piModelsPath(),
 ): FallbackModelConfig | null {
   const providers = readPiProviders(modelsPath);
-  return fallbackPair(config, (p) => pairFree(providers, p.provider, p.model));
+  return fallbackPair(config, (p) => piPairFree(providers, p.provider, p.model));
 }
 
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
@@ -164,28 +181,32 @@ export function fallbackModelFree(config: TumwaterConfig, modelsPath = piModelsP
  * its tier per plans/model-tiers.md) plus the reviewer's while review is on, plus the
  * `strong` tier's own model whenever any role is enabled — the conflict resolver (part 4/8)
  * runs on strong, so the budget must never read n/a while a priced strong model can spend.
- * Every pair is judged by pairFree above, so an unresolvable one
- * counts as NOT free — the badge must never read n/a while spend it is tracking could still
- * reach the cap. With no enabled roles and review off there are no pairs at all, so the fleet
- * cannot spend and the answer is true. */
+ * Every pair is judged by piPairFree above — a non-pi backend is never free, since only pi's
+ * models.json can price a run — so an unresolvable one counts as NOT free: the badge must
+ * never read n/a while spend it is tracking could still reach the cap. With no enabled roles
+ * and review off there are no pairs at all, so the fleet cannot spend and the answer is true. */
 export function fleetModelsFree(config: TumwaterConfig, modelsPath = piModelsPath()): boolean {
-  const pairs: Array<[string | undefined, string | undefined]> = [];
+  const pairs: Array<{ agent: string | undefined; provider: string | undefined; model: string | undefined }> = [];
   for (const role of enabledRoleIds(config)) {
     const rc = configForRole(config, role);
-    pairs.push([rc.provider, rc.model]);
+    pairs.push({ agent: rc.agent, provider: rc.provider, model: rc.model });
   }
   if (config.review.enabled) {
     const rv = reviewConfig(config);
-    pairs.push([rv.provider, rv.model]);
+    pairs.push({ agent: rv.agent, provider: rv.provider, model: rv.model });
   }
-  // The conflict resolver's strong tier (part 4/8): priced whenever any seam can run.
+  // The conflict resolver's strong tier (part 4/8): priced whenever any seam can run, read
+  // through the same resolved view the resolver runs on so its backend is known too.
   if (pairs.length > 0) {
-    const strong = tierModel(config, "strong");
-    if (strong) pairs.push([strong.provider, strong.model]);
+    const strong = resolverConfig(config);
+    pairs.push({ agent: strong.agent, provider: strong.provider, model: strong.model });
   }
   // No enabled roles and review off: nothing can spend, so the budget is n/a by
   // construction — no definitions file to consult.
   if (pairs.length === 0) return true;
   const providers = readPiProviders(modelsPath);
-  return pairs.every(([provider, model]) => pairFree(providers, provider, model));
+  return pairs.every(
+    ({ agent, provider, model }) =>
+      (agent === undefined || agent === "pi") && piPairFree(providers, provider, model),
+  );
 }

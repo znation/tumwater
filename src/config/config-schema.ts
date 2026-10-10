@@ -21,6 +21,13 @@ import { isJsonObject } from "../files/json-object.js";
 export const MODEL_TIERS = ["small", "default", "strong"] as const;
 export type ModelTier = (typeof MODEL_TIERS)[number];
 
+/** The agent backends an `agent` value may name (plans/agent-backends.md "Config"). The
+ * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
+ * ids so validation rejects a typo'd backend at load time instead of falling back to pi. The
+ * agent id doubles as the selector provider namespace: `claude/<id>` always routes to claude. */
+export const AGENT_IDS = ["pi", "claude"] as const;
+export type AgentId = (typeof AGENT_IDS)[number];
+
 /** The tier-map key list validation feeds checkKnownKeys: a `model` or `fallback` map whose
  * keys are not exactly these tiers is a typo that would silently never resolve. */
 export const TIER_MAP_KEYS: readonly string[] = MODEL_TIERS;
@@ -181,6 +188,12 @@ export interface TumwaterConfig {
   model?: string | Partial<Record<ModelTier, string>>;
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
+  /** The agent backend for bare selectors and the no-model default (plans/agent-backends.md
+   * "Config"): `"pi"` (the default) or `"claude"`. A `provider/id` selector whose provider
+   * names a backend always runs that backend; any other provider runs on pi. Typed as a string
+   * so a test or later backend can register an id outside the schema's reserved AGENT_IDS;
+   * validation still rejects an unknown id in a loaded file. */
+  agent?: string;
   /** The branch the fleet merges into and bases every role worktree on — the resolved
    * "main". Omitted, the fleet targets whatever branch the primary checkout has checked
    * out (the default that makes it branch-agnostic); an explicit value must exist. */
@@ -360,6 +373,7 @@ export const TOP_LEVEL_KEYS = [
   "provider",
   "model",
   "thinking",
+  "agent",
   "baseBranch",
   "agentBin",
   "agents",

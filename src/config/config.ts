@@ -64,6 +64,9 @@ export function defaultConfig(): ResolvedModelConfig {
   // fewer, better-considered runs suit its larger changes (its scope is not the others').
   roles.organize = { enabled: true, minTickIntervalSeconds: 3600 };
   return {
+    // The agent backend for bare selectors and the no-model default (plans/agent-backends.md
+    // "Config"): pi, the historical backend.
+    agent: "pi",
     piArgs: [],
     // Agent backends (plans/agent-backends.md, part 4a/7): empty until a file names one.
     // Keeping the map always present means read sites need no `?? {}`; the legacy

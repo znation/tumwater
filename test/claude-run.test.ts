@@ -12,6 +12,7 @@ import { claudeBackend, claudeProjectSlug, claudeTranscriptPath } from "../src/a
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { agentBinSourceLabel } from "../src/pi/pi-bin.js";
 import { defaultConfig } from "../src/config/config.js";
+import { configForRole } from "../src/config/config-views.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv } from "./helpers/env.js";
@@ -84,6 +85,30 @@ test("runAgent runs the claude backend on a fake and folds its stream", async ()
       fs.existsSync(claudeTranscriptPath(run.cwd, record.id)),
       "the fake wrote the transcript the resume check reads",
     );
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("agent: claude with no model resolves the author tier default that reaches --model", async () => {
+  // Part 4b/7's config routing, end to end: a config that names only the backend must spawn
+  // claude with the default tier's model on the command line.
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([
+    claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "ignored-init-id" }),
+    claudeResult({ totalCostUsd: 0.01 }),
+  ]);
+  try {
+    const config = defaultConfig();
+    config.agent = "claude";
+    const run = claudeRun(dir, { config: configForRole(config, "feature") });
+    const result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const argv = readRunBlocks(fake.argvFile);
+    assert.equal(argv.length, 1);
+    assert.equal(argValue(argv[0]!, "--model"), "claude-sonnet-5-5", "the default-tier claude model runs");
   } finally {
     fake.restore();
     restoreHome();

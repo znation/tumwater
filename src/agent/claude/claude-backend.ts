@@ -107,8 +107,8 @@ export const claudeBackend: AgentBackend = {
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
-    // Part 4/7 resolves a claude tier default before the seam; until then a run must name a
-    // concrete model, and a nameless one is a caller bug, not a claude default.
+    // Part 4b/7's config routing fills a claude tier default before the seam, so a nameless
+    // run here is a caller bug (a config that named claude without going through the views).
     if (run.config.model === undefined) {
       throw new Error("claude backend: no model resolved for this run");
     }

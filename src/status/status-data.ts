@@ -17,7 +17,7 @@ import {
 } from "../config/config-views.js";
 import type { ModelTier } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
-import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { fallbackModelFree, fleetModelsFree, piModelsPath, piPairFree, readPiProviders } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
@@ -411,7 +411,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const providers = readPiProviders(modelsPath);
   const publishedDemotions = info?.fallbackDemotions ?? {};
   const usable = (p: { provider?: string; model?: string }) =>
-    pairFree(providers, p.provider, p.model) && !(modelPairName(p) in publishedDemotions);
+    piPairFree(providers, p.provider, p.model) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
   const budgetPausedRoles = budgetReachedNow
     ? roles.filter(

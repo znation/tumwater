@@ -9,6 +9,7 @@ import {
   fallbackPair,
   fallbackRoleConfig,
   fleetModelLabel,
+  resolverConfig,
   reviewConfig,
   resolvedAgentConfig,
   resolveTierFallbacks,
@@ -18,6 +19,7 @@ import {
   type TierFallback,
   type TierFallbackMap,
 } from "../src/config/config-views.js";
+import { routeModel } from "../src/config/model-selector.js";
 
 // config-views.ts's derived views over a loaded config: how the role, review, and fallback
 // overlays resolve on top of the top-level pi settings. The load/save/validation side of the
@@ -461,4 +463,92 @@ test("applyFallbackModel without a resolved map is unchanged", () => {
   assert.equal(out.provider, "free");
   assert.equal(out.model, "f");
   assert.equal(out.roles.feature?.model, undefined);
+});
+
+// --- Agent routing (plans/agent-backends.md part 4b/7) ------------------------------------
+
+test("routeModel: a registered provider runs its agent; any other provider runs pi", () => {
+  // A provider naming an agent is a namespace, not a pi provider: that agent runs.
+  assert.deepEqual(routeModel("claude", "claude-opus-5-5", "pi", "strong"), {
+    agent: "claude",
+    model: "claude-opus-5-5",
+  });
+  // Any other provider/id keeps pi — the one backend with providers — even under a claude default.
+  assert.deepEqual(routeModel("omlx", "Qwen", "claude", "default"), { agent: "pi", model: "Qwen" });
+  // A bare id (no provider) runs the top-level agent.
+  assert.deepEqual(routeModel(undefined, "sonnet", "claude", "default"), { agent: "claude", model: "sonnet" });
+  assert.deepEqual(routeModel(undefined, "sonnet", "pi", "default"), { agent: "pi", model: "sonnet" });
+  // No model at all: the backend's tier default, or none for pi.
+  assert.deepEqual(routeModel(undefined, undefined, "claude", "small"), {
+    agent: "claude",
+    model: "claude-haiku-5-5",
+  });
+  assert.deepEqual(routeModel(undefined, undefined, "pi", "small"), { agent: "pi" });
+});
+
+test("agent: claude with no model runs each seam on its tier's claude default", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.agent = "claude";
+  // Author (default tier), readme (small), plan (strong): sonnet, haiku, opus.
+  const feature = configForRole(config, "feature");
+  assert.equal(feature.agent, "claude");
+  assert.equal(feature.model, "claude-sonnet-5-5");
+  assert.equal(feature.provider, undefined, "the claude namespace is not a pi provider");
+  assert.equal(configForRole(config, "readme").model, "claude-haiku-5-5");
+  assert.equal(configForRole(config, "plan").model, "claude-opus-5-5");
+  // The reviewer and the conflict resolver run the strong tier.
+  assert.equal(reviewConfig(config).agent, "claude");
+  assert.equal(reviewConfig(config).model, "claude-opus-5-5");
+  assert.equal(resolverConfig(config).agent, "claude");
+  assert.equal(resolverConfig(config).model, "claude-opus-5-5");
+  // A model string then applies at every tier, exactly as for pi.
+  config.model = "claude-sonnet-5-5";
+  for (const role of ["feature", "readme", "plan"]) {
+    assert.equal(configForRole(config, role).agent, "claude");
+    assert.equal(configForRole(config, role).model, "claude-sonnet-5-5");
+  }
+});
+
+test("a provider/id selector routes its seam alone to that agent", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.agent = "pi";
+  config.review = { ...config.review, model: "claude/claude-opus-5-5:high" };
+  const review = reviewConfig(config);
+  assert.equal(review.agent, "claude");
+  assert.equal(review.model, "claude-opus-5-5");
+  assert.equal(review.thinking, "high");
+  assert.equal(review.provider, undefined, "the routed provider namespace is dropped");
+  // The rest of the fleet stays on pi with pi's own default.
+  assert.equal(configForRole(config, "feature").agent, "pi");
+  assert.equal(configForRole(config, "feature").model, undefined);
+});
+
+test("a mixed fallback under agent: claude runs on pi while the primary stays claude", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.agent = "claude";
+  config.fallback = "omlx/Qwen3.8-27B-MLX";
+  assert.equal(configForRole(config, "feature").agent, "claude");
+  const fb = fallbackRoleConfig(config, "feature");
+  assert.equal(fb?.agent, "pi", "a non-agent provider runs on pi");
+  assert.equal(fb?.provider, "omlx");
+  assert.equal(fb?.model, "Qwen3.8-27B-MLX");
+});
+
+test("a legacy pi config gains no model and stays on pi", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.agentBin = "/opt/pi";
+  config.piArgs = ["--no-skills"];
+  config.provider = "omlx";
+  config.model = "Qwen";
+  const feature = configForRole(config, "feature");
+  assert.equal(feature.agent, "pi");
+  assert.equal(feature.provider, "omlx", "the pi provider half is kept");
+  assert.equal(feature.model, "Qwen", "no default is injected when a model resolves");
+  // No model at all: pi supplies no default, so the triplet is unchanged from before routing.
+  const bare: TumwaterConfig = defaultConfig();
+  bare.provider = "omlx";
+  const bareFeature = configForRole(bare, "feature");
+  assert.equal(bareFeature.agent, "pi");
+  assert.equal(bareFeature.provider, "omlx");
+  assert.equal(bareFeature.model, undefined);
 });

@@ -4,7 +4,7 @@
  * persistence side (defaults, loading, saving, the role-selection helpers) lives in
  * config.ts, the write side in config-write.ts. */
 import { MODEL_TIERS, type AgentConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
-import { formatModelSelector, parseModelSelector, type ModelSelector } from "./model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
 import { roleById } from "../roles/roles.js";
@@ -14,9 +14,15 @@ import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fall
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
  * the seam's tier), so consumers of a role/reviewer/fallback view never see a map. `agent`
- * names the agent backend (plans/agent-backends.md); it is absent until part 4/7 adds the
- * selector, and the runner defaults an absent value to `"pi"`. */
-export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & { model?: string; agent?: string };
+ * names the agent backend the selector routes to (plans/agent-backends.md); a provider naming
+ * a registered agent id wins, any other provider routes to pi, a bare id or no model routes to
+ * the top-level `agent`. */
+export type ResolvedModelConfig = Omit<TumwaterConfig, "model" | "agent"> & {
+  model?: string;
+  /** The routed backend id; typed as a string so a test can register a fake backend under an
+   * id outside the config schema's reserved set (src/agent/agent-backend.ts). */
+  agent?: string;
+};
 
 /** The effective `agents.<id>` entry as a run sees it (plans/agent-backends.md "Back-compat"):
  * the file's own entry, with the legacy top-level `agentBin`/`piArgs` read as the pi backend's
@@ -84,11 +90,17 @@ function withModelOverrides(
   const topSel = topTierSelector(config, tier);
   const ownSel =
     o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
+  const provider = ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider);
+  const model = ownSel ? ownSel.model : topSel?.model;
+  // The routed backend decides whether the provider half survives: a pi provider name is kept,
+  // a backend namespace such as `claude` is dropped (that backend takes no provider).
+  const routed = routeModel(provider, model, config.agent ?? "pi", tier);
   return {
     ...config,
-    provider: ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider),
-    model: ownSel ? ownSel.model : topSel?.model,
+    provider: routed.agent === "pi" ? provider : undefined,
+    model: routed.model,
     thinking: o.thinking ?? ownSel?.thinking ?? topSel?.thinking ?? config.thinking,
+    agent: routed.agent,
   };
 }
 

@@ -1,4 +1,5 @@
 import {
+  AGENT_IDS,
   AGENT_KEYS,
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
@@ -20,7 +21,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
-import { parseModelSelector } from "./model-selector.js";
+import { isAgentId, parseModelSelector } from "./model-selector.js";
 import { HARNESS_CLAUDE_FLAGS } from "../agent/claude/claude-args.js";
 import {
   AT_LEAST_ONE,
@@ -171,6 +172,12 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // An empty agentBin would silently fall back to "pi" — the same silent-ignore class: the
   // operator named a binary, so a blank value must fail validation, not run the default.
   checkString(r, "", "agentBin", false);
+  // The agent backend for bare/no-model selectors (plans/agent-backends.md "Config"): a
+  // non-blank id from the schema's reserved set. An unknown id would fall back to pi at run
+  // time (src/agent/run-agent.ts), silently running the wrong backend against a named one.
+  checkString(r, "", "agent", false);
+  if (typeof r.agent === "string" && !isAgentId(r.agent))
+    problems.push(`agent must name a backend (${AGENT_IDS.join(", ")}; got ${show(r.agent)})`);
   checkStringArray(r, "", "piArgs");
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the

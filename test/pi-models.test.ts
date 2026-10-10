@@ -243,6 +243,26 @@ test("a fallback naming one field falls back to the top-level value for the othe
 
 // --- Model tiers (plans/model-tiers.md part 3/8) --------------------------------------------
 
+test("a claude-routed selector is never free, even if models.json prices its namespace at zero", () => {
+  // A models.json that even names a free `claude` provider must not make a claude run read
+  // cost n/a: pi's pricing cannot see claude CLI billing (part 6/7 makes subscriptions free).
+  const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
+  const cfg = fleetAt("claude", "claude-sonnet-5-5");
+  cfg.agent = "claude";
+  assert.equal(fleetModelsFree(cfg, file), false, "a claude-routed seam is not free");
+  // The same for a fallback selector that routes to claude by its provider namespace.
+  assert.equal(
+    fallbackModelFree({ ...cfg, fallback: "claude/claude-sonnet-5-5" }, file),
+    false,
+    "a claude-routed fallback is refused",
+  );
+  // A non-agent provider under agent: claude still runs on pi and can be free.
+  const piRouted = writeModels();
+  const mixed = fleetAt("lm-studio", "qwen3.8-27b");
+  mixed.agent = "claude";
+  assert.equal(fleetModelsFree(mixed, piRouted), true, "a provider/id fallback runs on pi");
+});
+
 test("a priced strong tier keeps the badge off even when every role runs a free model", () => {
   const file = writeModels();
   // Every role and the reviewer run the free model, but the strong tier names a paid one —

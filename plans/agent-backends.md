@@ -128,7 +128,6 @@ interface AgentBackend {
   label: string;                       // "pi", "Claude Code" — for doctor/status/error text
   defaultBin: string;                  // "pi" | "claude"
   binEnv: string;                      // "TUMWATER_PI_BIN" | "TUMWATER_CLAUDE_BIN"
-  defaultModels?: Partial<Record<ModelTier, string>>; // claude: haiku/sonnet/opus 5.5 by tier; pi: none
   minVersion?(model: string): string | undefined;     // claude: CLI version a model needs (doctor)
   invocation(run: AgentRunSpec): { args: string[]; stdin?: string; env: NodeJS.ProcessEnv };
   translator(): StreamTranslator;      // native stdout lines → canonical event lines (§2)
@@ -235,8 +234,10 @@ Routing a selector to a backend:
      one model everywhere.
    - The defaults are full ids, not the `sonnet`/`opus`/`haiku` aliases: an alias floats with
      claude releases, while event labels and cost history should name what actually ran.
-   - The defaults live in the claude adapter (`AgentBackend.defaultModels`, a tier map), not in
-     `defaultConfig()`. That keeps `model` absent from configs that never set it.
+   - The defaults live in the pure config layer (`AGENT_DEFAULT_MODELS` in
+     src/config/model-selector.ts), not in `defaultConfig()`. That keeps `model` absent from
+     configs that never set it, and lets the routing helper resolve a tier default without
+     importing the runtime backend registry.
 
 A thinking suffix maps to `--effort` (`low…max` 1:1). `off` and `minimal` map to `low`; claude
 has no lower setting, and doctor notes the clamp. `ResolvedModelConfig` gains `agent`, so every
