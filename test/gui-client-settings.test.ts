@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { GUI_CLIENT_BOOT_JS } from "../src/ui/gui/gui-client-boot.js";
+import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { clientScope, clientRegion, ESC_LINE } from "./helpers/gui-client-scope.js";
 
 // The dashboard's Settings panel, browser-side (src/ui/gui/gui-client-settings.ts): the curated
@@ -11,6 +12,7 @@ import { clientScope, clientRegion, ESC_LINE } from "./helpers/gui-client-scope.
 // function scope with stand-ins for the DOM and the server.
 
 type SettingsFns = {
+  SETTINGS_KEYS: ReadonlyArray<readonly [string, string]>;
   renderSettings(d: unknown): string;
   fetchSettings(): Promise<void>;
   renderSettingsPanel(d: unknown): void;
@@ -20,21 +22,24 @@ type SettingsFns = {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["settings-view"],
-    ["renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting"],
     inject,
   );
 }
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
-  const { renderSettings } = settingsScope();
+  const { renderSettings, SETTINGS_KEYS } = settingsScope();
   const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, quietHours: null, notify: undefined, agents: { pi: { bin: "pi" } } });
-  // Exactly the curated keys, each with its row, field, and Save button.
-  for (const key of ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify", "agents"]) {
+  // The browser list is a hand copy of the server constant; pin key and order to it so the
+  // two cannot drift — an added editable key must appear here too.
+  assert.deepEqual(SETTINGS_KEYS.map(([key]) => key), [...EDITABLE_CONFIG_KEYS]);
+  // Each curated key has its row, field, and Save button.
+  for (const key of EDITABLE_CONFIG_KEYS) {
     assert.match(html, new RegExp(`data-key='${key}'`));
     assert.match(html, new RegExp(`id='set-${key}'`));
   }
-  assert.equal((html.match(/<form class='settings-row'/g) || []).length, 7);
-  assert.equal((html.match(/type='submit'/g) || []).length, 7);
+  assert.equal((html.match(/<form class='settings-row'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
+  assert.equal((html.match(/type='submit'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
   // Values are escaped; null and undefined render as an empty field.
   assert.match(html, /value='a&amp;b'/);
   assert.match(html, /id='set-model' value='gpt-5'/);

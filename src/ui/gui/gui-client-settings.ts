@@ -1,4 +1,4 @@
-/** The dashboard's Settings view, browser-side: the six curated top-level config keys
+/** The dashboard's Settings view, browser-side: the curated top-level config keys
  * (EDITABLE_CONFIG_KEYS's set, mirrored here for the labels) as label + current value +
  * inline field + Save, one row per key. Values load once through GET /api/config when the
  * view is first opened — no polling loop of its own; a re-click of the tab refetches, like
@@ -9,8 +9,8 @@
  * that concatenation. */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // The curated keys, in display order: [key, label]. Mirrors the server's
-  // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts) by hand — the GET /api/config
-  // test pins the served key set to that constant, not to this list.
+  // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts) by hand — the settings test pins
+  // this list's keys and order to that constant.
   const SETTINGS_KEYS = [
     ["provider", "Provider"],
     ["model", "Model"],

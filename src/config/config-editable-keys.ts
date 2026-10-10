@@ -10,7 +10,8 @@
  * TOP_LEVEL_KEYS, config-write.ts's per-key validators) rather than in the endpoint module
  * that first consumed it. The browser side mirrors the set for its labels
  * (ui/gui/gui-client-settings.ts's SETTINGS_KEYS), a manual copy; the GET /api/config test
- * pins the served key set to this list.
+ * pins the served key set to this list, and the settings test pins the browser copy's keys
+ * and order to it.
  */
 export const EDITABLE_CONFIG_KEYS = [
   "provider",
