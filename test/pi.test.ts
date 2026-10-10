@@ -1,4 +1,5 @@
 import test from "node:test";
+import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -298,33 +299,64 @@ test("runPi's spawn-error message names the resolved binary and its source", asy
   assert.match(result.errorMessage ?? "", /resolved from agentBin in tumwater\.json/);
 });
 
-test("a stalled call without toolName warns with the bare command named", async (t) => {
+/** Run a fake pi that opens one tool call (`command`, optionally `toolName`) and then hangs,
+ * collecting the stall warnings. `configure` mutates the watchdogs before the run; `during`
+ * runs once the call is on the raw log — before the run ends — and receives the logical clock
+ * and the warnings so far, so a test can advance time and inspect a warning mid-run. Set
+ * `timeouts: true` to mock the tick deadline (config.tickTimeoutSeconds) too. Returns the run
+ * result and the warnings. */
+async function withStalledToolCall(
+  t: TestContext,
+  opts: {
+    command: string;
+    toolName?: string;
+    configure: (config: ReturnType<typeof defaultConfig>) => void;
+    during?: (clock: ReturnType<typeof watchdogClock>, stallWarnings: string[]) => void;
+    timeouts?: boolean;
+  },
+): Promise<{ result: Awaited<ReturnType<typeof runPi>>; warnings: string[] }> {
   const dir = tmpdir();
   const config = defaultConfig();
-  // The warning (2 s) lands before the kill (5 s of silence): exact on logical time, where a
-  // real-time 1s gap lost that ordering to jitter under concurrent suites (BUGS.md 2026-09-18).
-  config.quietTimeoutSeconds = 5;
-  config.toolCallStallSeconds = 2;
+  opts.configure(config);
   const warnings: string[] = [];
-  const clock = watchdogClock(t);
-  await withPi(
+  const clock = watchdogClock(t, { timeouts: opts.timeouts });
+  const result = await withPi(
     [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", args: { command: "sleep 999" } })}'`,
+      `printf '%s\n' '${JSON.stringify({
+        type: "tool_execution_start",
+        toolCallId: "c1",
+        ...(opts.toolName === undefined ? {} : { toolName: opts.toolName }),
+        args: { command: opts.command },
+      })}'`,
       `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
     ].join("\n"),
     async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-      const run = runPi(opts);
-      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-      clock.advance(30_000); // past the stall threshold, then past the quiet window
-      const result = await run;
-      assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
-      assert.match(
-        warnings[0] ?? "",
-        /^tool call stalled: sleep 999 — no output for \d+[sm]/,
-        "the warning names the bare command even though pi omitted toolName",
-      );
+      const runOpts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+      const run = runPi(runOpts);
+      await waitForLogLines(runOpts.rawLogFile, "tool_execution_start");
+      opts.during?.(clock, warnings);
+      return run;
     },
+  );
+  return { result, warnings };
+}
+
+test("a stalled call without toolName warns with the bare command named", async (t) => {
+  // The warning (2 s) lands before the kill (5 s of silence): exact on logical time, where a
+  // real-time 1s gap lost that ordering to jitter under concurrent suites (BUGS.md 2026-09-18).
+  const { result, warnings } = await withStalledToolCall(t, {
+    command: "sleep 999",
+    configure: (config) => {
+      config.quietTimeoutSeconds = 5;
+      config.toolCallStallSeconds = 2;
+    },
+    during: (clock) => clock.advance(30_000), // past the stall threshold, then past the quiet window
+  });
+  assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+  assert.match(
+    warnings[0] ?? "",
+    /^tool call stalled: sleep 999 — no output for \d+[sm]/,
+    "the warning names the bare command even though pi omitted toolName",
   );
 });
 
@@ -341,30 +373,20 @@ test("toolUpdateHasContent sees real text, not empty or content-less updates", (
 // watchdog still owns the kill.
 
 test("a stalled tool call warns once with the command named", async (t) => {
-  const dir = tmpdir();
-  const config = defaultConfig();
   // 5s/2s: see the sibling above — the warning fires while the run is still alive, and every
   // later check before the kill must stay quiet about the same call.
-  config.quietTimeoutSeconds = 5;
-  config.toolCallStallSeconds = 2;
-  const warnings: string[] = [];
-  const clock = watchdogClock(t);
-  await withPi(
-    [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
-      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
-    ].join("\n"),
-    async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-      const run = runPi(opts);
-      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-      clock.advance(30_000); // several checks past the stall threshold, then the kill
-      const result = await run;
-      assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
-      assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
-      assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
+  const { result, warnings } = await withStalledToolCall(t, {
+    toolName: "bash",
+    command: "sleep 999",
+    configure: (config) => {
+      config.quietTimeoutSeconds = 5;
+      config.toolCallStallSeconds = 2;
     },
-  );
+    during: (clock) => clock.advance(30_000), // several checks past the stall threshold, then the kill
+  });
+  assert.equal(result.quietKilled, true, "the run still ends via the quiet watchdog");
+  assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
+  assert.match(warnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]/);
 });
 
 // A piped command's silence is the prescribed shape (BUGS.md 2026-09-28), but the command
@@ -372,36 +394,28 @@ test("a stalled tool call warns once with the command named", async (t) => {
 // evidence is wall-clock, and the warning names the open duration instead of silence.
 
 test("a piped command open past the buffered wall-clock threshold warns even though it holds its bytes", async (t) => {
-  const dir = tmpdir();
-  const config = defaultConfig();
   // The quiet watchdog must not win the race: its silence window (2× quiet after the first
   // byte, no progress events in this fixture) must outlast the 10-min buffered floor.
-  config.quietTimeoutSeconds = 700;
-  config.toolCallStallSeconds = 300;
-  const warnings: string[] = [];
-  const clock = watchdogClock(t);
-  await withPi(
-    [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999 | tail -1" } })}'`,
-      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
-    ].join("\n"),
-    async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-      const run = runPi(opts);
-      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+  const { result, warnings } = await withStalledToolCall(t, {
+    toolName: "bash",
+    command: "sleep 999 | tail -1",
+    configure: (config) => {
+      config.quietTimeoutSeconds = 700;
+      config.toolCallStallSeconds = 300;
+    },
+    during: (clock, stallWarnings) => {
       clock.advance(610_000); // past the 10-minute buffered wall-clock floor (max(2×300s, 10 min))
-      assert.equal(warnings.length, 1, "the buffered hang is warned once, by duration");
+      assert.equal(stallWarnings.length, 1, "the buffered hang is warned once, by duration");
       assert.match(
-        warnings[0] ?? "",
+        stallWarnings[0] ?? "",
         /^tool call stalled: bash sleep 999 \| tail -1 — no exit for \d+m/,
         "a buffered call's warning names the open duration, not silence",
       );
       clock.advance(900_000); // total 1510s > 2× quiet: the quiet watchdog still owns the kill
-      const result = await run;
-      assert.equal(result.quietKilled, true, "the kill remains the quiet watchdog's");
-      assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
     },
-  );
+  });
+  assert.equal(result.quietKilled, true, "the kill remains the quiet watchdog's");
+  assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
 });
 
 test("no stall warning when the tool call ends before the threshold", async () => {
@@ -430,27 +444,17 @@ test("no stall warning when the tool call ends before the threshold", async () =
 });
 
 test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
-  const dir = tmpdir();
-  const config = defaultConfig();
-  config.quietTimeoutSeconds = 2; // the kill still happens...
-  config.toolCallStallSeconds = 0; // ...but no warning accompanies it
-  const warnings: string[] = [];
-  const clock = watchdogClock(t);
-  await withPi(
-    [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
-      `exec sleep 30`,
-    ].join("\n"),
-    async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-      const run = runPi(opts);
-      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-      clock.advance(10_000);
-      const result = await run;
-      assert.equal(result.quietKilled, true);
-      assert.deepEqual(warnings, []);
+  const { result, warnings } = await withStalledToolCall(t, {
+    toolName: "bash",
+    command: "sleep 999",
+    configure: (config) => {
+      config.quietTimeoutSeconds = 2; // the kill still happens...
+      config.toolCallStallSeconds = 0; // ...but no warning accompanies it
     },
-  );
+    during: (clock) => clock.advance(10_000),
+  });
+  assert.equal(result.quietKilled, true);
+  assert.deepEqual(warnings, []);
 });
 
 // The unbuffered sibling of the buffered-duration test above: a silent call the interval
@@ -458,65 +462,49 @@ test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
 // 30 s interval period, or an earlier check always warns in seconds first.
 
 test("an unbuffered call silent past a minute warns in whole minutes", async (t) => {
-  const dir = tmpdir();
-  const config = defaultConfig();
-  config.tickTimeoutSeconds = 700; // the deadline ends the run after the warning
-  config.quietTimeoutSeconds = 0; // the quiet kill must not win before the 2-minute warning
-  config.toolCallStallSeconds = 120; // the first check to see silence is at ~2 min, past 60 s
-  const warnings: string[] = [];
-  const clock = watchdogClock(t, { timeouts: true });
-  await withPi(
-    [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
-      `exec sleep 30`,
-    ].join("\n"),
-    async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-      const run = runPi(opts);
-      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+  const { result, warnings } = await withStalledToolCall(t, {
+    toolName: "bash",
+    command: "sleep 999",
+    timeouts: true,
+    configure: (config) => {
+      config.tickTimeoutSeconds = 700; // the deadline ends the run after the warning
+      config.quietTimeoutSeconds = 0; // the quiet kill must not win before the 2-minute warning
+      config.toolCallStallSeconds = 120; // the first check to see silence is at ~2 min, past 60 s
+    },
+    during: (clock, stallWarnings) => {
       clock.advance(121_000); // past the 2-minute threshold, so the warning is a whole-minute one
-      assert.equal(warnings.length, 1, "the multi-minute silence is warned once");
+      assert.equal(stallWarnings.length, 1, "the multi-minute silence is warned once");
       assert.match(
-        warnings[0] ?? "",
+        stallWarnings[0] ?? "",
         /^tool call stalled: bash sleep 999 — no output for \d+m$/,
         "past a minute the silence is named in whole minutes, not seconds",
       );
       clock.advance(600_000); // past the 700 s deadline: the tick timeout ends the run
-      const result = await run;
-      assert.equal(result.timedOut, true, "with the quiet watchdog disabled the deadline bounds the run");
-      assert.equal(result.quietKilled, false);
-      assert.equal(warnings.length, 1, "one warning per stalled call");
     },
-  );
+  });
+  assert.equal(result.timedOut, true, "with the quiet watchdog disabled the deadline bounds the run");
+  assert.equal(result.quietKilled, false);
+  assert.equal(warnings.length, 1, "one warning per stalled call");
 });
 
 // Both watchdog windows off is the one config that schedules no quiet interval at all: no
 // silence kill, no stall warning — the tick deadline is the only clock left.
 
 test("disabling both quiet and stall windows leaves only the tick deadline, with no warning", async (t) => {
-  const dir = tmpdir();
-  const config = defaultConfig();
-  config.tickTimeoutSeconds = 2;
-  config.quietTimeoutSeconds = 0;
-  config.toolCallStallSeconds = 0;
-  const warnings: string[] = [];
-  const clock = watchdogClock(t, { timeouts: true });
-  await withPi(
-    [
-      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
-      `exec sleep 30`,
-    ].join("\n"),
-    async () => {
-      const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
-      const run = runPi(opts);
-      await waitForLogLines(opts.rawLogFile, "tool_execution_start");
-      clock.advance(10_000); // well past both disabled windows
-      const result = await run;
-      assert.equal(result.timedOut, true, "the tick deadline owns the end of the run");
-      assert.equal(result.quietKilled, false, "no quiet interval runs to kill it");
-      assert.deepEqual(warnings, [], "no stall interval runs to warn");
+  const { result, warnings } = await withStalledToolCall(t, {
+    toolName: "bash",
+    command: "sleep 999",
+    timeouts: true,
+    configure: (config) => {
+      config.tickTimeoutSeconds = 2;
+      config.quietTimeoutSeconds = 0;
+      config.toolCallStallSeconds = 0;
     },
-  );
+    during: (clock) => clock.advance(10_000), // well past both disabled windows
+  });
+  assert.equal(result.timedOut, true, "the tick deadline owns the end of the run");
+  assert.equal(result.quietKilled, false, "no quiet interval runs to kill it");
+  assert.deepEqual(warnings, [], "no stall interval runs to warn");
 });
 
 // The stall warning must not fire on a command whose stdout is piped or redirected — the
