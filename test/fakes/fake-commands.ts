@@ -61,6 +61,24 @@ export function projManifest(scripts: Record<string, string | null>): string {
   return JSON.stringify({ name: "proj", version: "1.0.0", scripts });
 }
 
+/** The run-block marker the fake-command shims delimit each recorded run with: fake-pi's
+ * logPromptsTo and the fake-claude replay both append one block per run, and readRunBlocks
+ * splits on this exact string. Single home so every writer and the reader cannot drift. */
+export const RUN_MARKER = "===RUN===";
+
+/** Read back a run-block log written by logPromptsTo or the fake-claude replay: one string per
+ * recorded run, blank blocks dropped, and an empty list for a missing file (no run was
+ * captured). fake-pi's readPromptRuns and fake-claude's readRunBlocks each carried their own
+ * copy of this split; shared here so the capture format's single home covers every writer and
+ * reader. */
+export function readRunBlocks(file: string): string[] {
+  try {
+    return fs.readFileSync(file, "utf8").split(RUN_MARKER).filter((b) => b.trim());
+  } catch {
+    return [];
+  }
+}
+
 /** Put a directory at the front of PATH for the duration of a test, so executables dropped
  * into it shadow the real ones (the same technique behind every fake-* helper here).
  * Returns a restore function. */

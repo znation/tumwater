@@ -17,7 +17,7 @@ import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fakes/fake-pi.js";
+import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, errorLine, leasedRoleShell } from "./fixtures/pi-events.js";
 
@@ -150,7 +150,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       // declares nothing-to-do, so the revision is dropped and the worktree reset clean. The
       // prompts log holds exactly the two author runs: the landing spent none.
       assert.equal((await runner.tick()).result, "no_change");
-      const runs = readPromptRuns(promptsFile);
+      const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 2, "two author runs and nothing from the landing");
       assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
       const second = runs[1] ?? "";

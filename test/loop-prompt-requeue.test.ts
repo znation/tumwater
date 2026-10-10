@@ -11,7 +11,7 @@ import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts 
 import { makeLoopRunner, pinWorktreeAsSlot } from "./fixtures/loop-fixtures.js";
 import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
-import { logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 // PLANS.md "Per-role prompts 1/2" criterion (b), red-gate arm: a per-role prompt is dequeued
@@ -65,7 +65,7 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
 
       const second = await runner.tick();
       assert.equal(second.result, "no_change");
-      const runs = readPromptRuns(promptsFile);
+      const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 2);
       assert.match(runs[1]!, /--continue/, "tick 2 resumed the cut-off session");
       // The fulfilling resume consumed the requeued copy: nothing is left for a fresh tick to run
@@ -75,7 +75,7 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
 
       const third = await runner.tick();
       assert.equal(third.result, "no_change");
-      const runs3 = readPromptRuns(promptsFile);
+      const runs3 = readRunBlocks(promptsFile);
       assert.equal(runs3.length, 3);
       assert.doesNotMatch(runs3[2]!, /--continue/, "tick 3 is fresh again");
       assert.doesNotMatch(runs3[2]!, /flubbernator/, "tick 3 does not re-run the fulfilled request");
@@ -102,7 +102,7 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
       // The reclaim took the queue copy and the failed resume put it back: the request survives.
       assert.deepEqual(queuedRolePrompts(repo, "perf"), ["fix the flubbernator"], "the failed resume re-queued the prompt");
       assert.equal((await runner.tick()).result, "no_change");
-      const runs = readPromptRuns(promptsFile);
+      const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 3);
       assert.doesNotMatch(runs[1]!, /flubbernator/, "the resume bridge does not re-send the request text");
       assert.match(runs[2]!, /flubbernator/, "the fresh tick after the failed resume retries the request");
@@ -146,7 +146,7 @@ test("a resume that fails on the provider's error turn keeps the edits and reque
       assert.equal(runner.state.resumePending, true, "the edits and session are kept for the next resume");
       assert.ok(runner.state.resumePromptFile, "the prompt is recorded for the resume to reclaim");
       assert.deepEqual(queuedRolePrompts(root, "perf"), ["fix the flubbernator"], "the durable copy is queued");
-      const runs = readPromptRuns(promptsFile);
+      const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 1, "the error turn needed no missing-SUMMARY follow-up");
       assert.match(runs[0]!, /--continue/, "the failed tick was the resume");
       assert.doesNotMatch(runs[0]!, /flubbernator/, "the resume bridge does not re-send the request text");

@@ -15,7 +15,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead, landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fakes/fake-pi.js";
+import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 test("a rejected change is re-applied on the role's next tick and its reasons ride along", async () => {
   const repo = await initializedRepo();
@@ -51,7 +51,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     // uncommitted edits and the revision note carries the full reasons; the idle run then
     // declares nothing-to-do, so the revision is dropped and the worktree reset clean.
     assert.equal((await runner.tick()).result, "no_change");
-    const runs = readPromptRuns(promptsFile);
+    const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
     assert.ok(!runs[0]?.includes("already in the worktree as uncommitted edits"), "tick 1 had no revision yet");

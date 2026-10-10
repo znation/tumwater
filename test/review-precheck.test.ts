@@ -22,7 +22,7 @@ import { shortSha } from "../src/text/format.js";
 import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { logPromptsTo, piRanMarker, readRunBlocks, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
@@ -371,7 +371,7 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(result.run, "the reviewer ran, exactly as after a first-time pass");
-    const runs = readPromptRuns(prompts);
+    const runs = readRunBlocks(prompts);
     assert.equal(runs.length, 1, "the reviewer is the only pi run");
     assert.equal(await aheadOfMain(wt, "main"), 1, "the author's commit alone");
     assert.equal(result.verifiedHead, head, "the re-run's green verdict verifies the tree");
@@ -762,7 +762,7 @@ test("a reviewer that re-runs the suite even after the no-re-run nudge fails the
       assert.equal(state.lastReview?.verdict, "failed");
       assert.equal(await aheadOfMain(green.wt, "main"), 1, "the commit stays for the next re-review");
       assert.ok(result.nudgeRun, "the nudge turn's spend rides back for folding");
-      const runs = readPromptRuns(prompts);
+      const runs = readRunBlocks(prompts);
       assert.equal(runs.length, 2);
       assert.match(runs[1]!, /Do not re-run it/, "the nudge names the exact tool call");
       const warnings = warningMessages(green.root);

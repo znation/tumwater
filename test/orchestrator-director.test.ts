@@ -40,7 +40,7 @@ import {
   startRedeployRun,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { fakePi, fakePiIdle, logPromptsTo, readPromptRuns } from "./fakes/fake-pi.js";
+import { fakePi, fakePiIdle, logPromptsTo, readRunBlocks } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { waitFor } from "./helpers/wait.js";
@@ -171,7 +171,7 @@ test("merge queue interlock: a role with a queued landing starts no tick until t
   try {
     await waitFor(() => queueDepth(repo) === 0, "the queued landing to settle and drop", 30_000);
     await awaitSettledTick(repo, "clean", 1, "clean's first tick after the interlock released it");
-    const runs = readPromptRuns(log);
+    const runs = readRunBlocks(log);
     const reviewIdx = runs.findIndex((b) => b.includes("interlock sentinel change"));
     const tickIdx = runs.findIndex((b) => sessionOf(b).startsWith("tumwater-clean-"));
     assert.ok(reviewIdx >= 0, "the queued change was vetted with a review run");

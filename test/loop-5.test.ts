@@ -19,7 +19,7 @@ import { queueDepth } from "../src/landing/landing-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
@@ -374,9 +374,9 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     const s2 = loadLoopState(repo, "improve");
     assert.ok(!s2.resumePending, "the resume consumed the pending flag");
     assert.equal(s2.resumeCause, undefined, "the cause rode the resume and was consumed");
-    const runs = readPromptRuns(promptsFile);
+    const runs = readRunBlocks(promptsFile);
     assert.ok(runs.length >= 2, JSON.stringify(runs).slice(0, 400));
-    // readPromptRuns joins each run's argv with newlines, so the pair matches with \s+.
+    // readRunBlocks joins each run's argv with newlines, so the pair matches with \s+.
     assert.match(runs[0] ?? "", /--provider\s+local\s+--model\s+local-free/, "the first run was on the fallback");
     assert.doesNotMatch(runs[0] ?? "", /--continue/, "the first run started fresh");
     // The resume (and its SUMMARY follow-up, if the fake reply lacks the block): every

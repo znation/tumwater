@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { pathPrepend, writeScript } from "./fake-commands.js";
+import { pathPrepend, RUN_MARKER, writeScript } from "./fake-commands.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
 
 // --- The fake claude shim (fakeClaudeReplay/readRunBlocks), the twin of fake-pi.ts ---
 // Every claude run in the suite goes through this PATH shim: it replays canned
 // `--output-format stream-json` lines, records each run's argv and stdin (delimited by the
-// same `===RUN===` block marker fake-pi uses), and creates the transcript file at claude's
+// same `RUN_MARKER` block marker fake-pi uses), and creates the transcript file at claude's
 // real layout under $HOME, so the adapter's resume check finds what a real run would have
 // written. No test reaches a real claude (see PRINCIPLES.md).
 
@@ -15,7 +15,7 @@ import { tmpdir } from "../fixtures/repo-fixtures.js";
 // covers a test file run directly with `node --test`.
 delete process.env.TUMWATER_CLAUDE_BIN;
 
-/** One installed fake-claude replay. `argvFile`/`stdinFile` accumulate one `===RUN===`-delimited
+/** One installed fake-claude replay. `argvFile`/`stdinFile` accumulate one `RUN_MARKER`-delimited
  * block per run; `restore` removes the shim from PATH. */
 interface FakeClaudeReplay {
   argvFile: string;
@@ -49,8 +49,8 @@ export function fakeClaudeReplay(
     `slug="$(printf '%s' "$(pwd)" | sed 's/[^A-Za-z0-9]/-/g')"`,
     `mkdir -p "$HOME/.claude/projects/$slug"`,
     `: > "$HOME/.claude/projects/$slug/$id.jsonl"`,
-    `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "$argvFile"`,
-    `cat >> "$stdinFile"; echo "===RUN===" >> "$stdinFile"`,
+    `{ printf '%s\\n' "$@"; echo "${RUN_MARKER}"; } >> "$argvFile"`,
+    `cat >> "$stdinFile"; echo "${RUN_MARKER}" >> "$stdinFile"`,
     ...(opts.extraScript ?? []),
     `cat "$streamFile"`,
   ].join("\n");
@@ -59,12 +59,7 @@ export function fakeClaudeReplay(
   return { argvFile, stdinFile, restore };
 }
 
-/** Read back a run-block log written by fakeClaudeReplay's `===RUN===` marker: one string per
- * recorded run, blank blocks dropped. Used for both argv and stdin logs. */
-export function readRunBlocks(file: string): string[] {
-  try {
-    return fs.readFileSync(file, "utf8").split("===RUN===").filter((b) => b.trim());
-  } catch {
-    return [];
-  }
-}
+/** Read back a run-block log written by fakeClaudeReplay's RUN_MARKER: fake-commands'
+ * readRunBlocks, the single home of the split, re-exported here for the claude tests that
+ * import it beside fakeClaudeReplay. Used for both argv and stdin logs. */
+export { readRunBlocks } from "./fake-commands.js";

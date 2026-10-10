@@ -19,7 +19,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, withPi } from "./fakes/fake-pi.js";
+import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
@@ -204,7 +204,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
-    const run = readPromptRuns(argsFile).join("\n");
+    const run = readRunBlocks(argsFile).join("\n");
     assert.ok(!run.includes("--continue"), "the handoff starts a fresh session");
     assert.match(
       run,
@@ -265,7 +265,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     assert.equal(eventsOfType(repo, "revision").length, 0, "no re-apply runs on a handoff");
     // The handoff is a FRESH session and tick-prompt suppresses the rejected-review note while
     // state.revision is set, so the revision note must ride this tick's prompt.
-    const run = readPromptRuns(argsFile).join("\n");
+    const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1 of \d+/, "the fresh handoff is told it is revising the rejected change");
     assert.match(run, /fix it/, "the fresh handoff receives the review objections");
     assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
@@ -374,7 +374,7 @@ test("a cross-agent handoff re-sends an already-applied landing hand-back note",
     resumed.state.resumePending = true;
     resumed.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: true };
     assert.equal((await resumed.tick()).result, "queued");
-    const run = readPromptRuns(argsFile).join("\n");
+    const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the hand-back");
     assert.match(run, /could not be landed/, "the note names the landing hand-back");
     assert.match(run, /partial\.txt/, "the note names the marker-bearing file");
@@ -431,7 +431,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
       applied: true,
     };
     assert.equal((await resumed.tick()).result, "queued");
-    const run = readPromptRuns(argsFile).join("\n");
+    const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1 of \d+/, "the fresh handoff is told it is revising");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the markers too");
     assert.match(run, /no longer applies cleanly/, "the note names the revision hand-back");

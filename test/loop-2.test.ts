@@ -18,7 +18,7 @@ import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
@@ -256,7 +256,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
     const runner = makeLoopRunner(repo, "perf");
     // Tick 1 fresh; ticks 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); tick 5 is fresh again.
     for (let i = 1; i <= 5; i++) assert.equal((await runner.tick()).result, "no_change");
-    const runs = readPromptRuns(promptsFile);
+    const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 5);
     assert.doesNotMatch(runs[0]!, /ran out of context/, "the first, fresh tick carries no cut-off text");
     // The resumes continue the compacted session: the bridge names the real cause, not a restart.

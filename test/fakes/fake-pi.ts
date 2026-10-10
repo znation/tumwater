@@ -1,7 +1,7 @@
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import fs from "node:fs";
 import { APPROVE_PI, assistantLine } from "../fixtures/pi-events.js";
-import { pathPrepend, writeScript } from "./fake-commands.js";
+import { pathPrepend, readRunBlocks, RUN_MARKER, writeScript } from "./fake-commands.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
 import path from "node:path";
 
@@ -34,22 +34,19 @@ export function logFlagsTo(file: string): string {
 }
 
 /** A shell fragment for fake-pi scripts: append the run's full argv (the prompt is pi's last
- * argument) to `file` as one `===RUN===`-delimited block per run. The loop, requeue, and
+ * argument) to `file` as one `RUN_MARKER`-delimited block per run. The loop, requeue, and
  * review-precheck tests repeated this fragment verbatim — with two drifting spellings of the
  * printf newline — so the prompt-capture technique is shared here, like logFlagsTo, and a
- * change to how prompts are observed cannot drift between the copies. Pair with
- * readPromptRuns to read the log back. */
+ * change to how prompts are observed cannot drift between the copies. Pair with readRunBlocks
+ * to read the log back. */
 export function logPromptsTo(file: string): string {
-  return `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${file}"`;
+  return `{ printf '%s\\n' "$@"; echo "${RUN_MARKER}"; } >> "${file}"`;
 }
 
-/** Read back a prompt log written by logPromptsTo: one string per recorded pi run (its argv,
- * newline-separated), blank blocks dropped. The loop, requeue, and review-precheck tests
- * repeated this split-and-filter verbatim; shared with logPromptsTo so the capture format's
- * single home covers both its writer and its reader. */
-export function readPromptRuns(file: string): string[] {
-  return fs.readFileSync(file, "utf8").split("===RUN===").filter((b) => b.trim());
-}
+/** The run-block reader the pi tests import beside logPromptsTo, their writer: fake-commands'
+ * readRunBlocks, the single home of the `RUN_MARKER` split shared with the fake-claude replay.
+ * Re-exported rather than redefined so the format has one implementation. */
+export { readRunBlocks };
 
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
