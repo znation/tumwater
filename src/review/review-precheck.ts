@@ -11,7 +11,7 @@ import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
-import { sleptPhrase, unverifiedTreeOutcome } from "../build/build-check-events.js";
+import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { mainRedNotMine } from "../text/phrases.js";
@@ -101,7 +101,7 @@ export async function gateBuildPrecheck(
       // (runScopedBuildCheck already retried once): nothing here is the change's failure, so
       // the gate attributes nothing — it keeps the commit and reports the sleep, and the
       // landing path keeps the pin for a re-land (BUGS.md 2026-09-30).
-      const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, "the tree is unverified");
+      const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, UNVERIFIED_TREE);
       warnEventBestEffort(root, role, `${detail}; keeping the commit for a re-land`);
       return { resolved: { decision: "failed", detail, unverified: true } };
     }

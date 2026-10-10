@@ -22,6 +22,7 @@ import {
   timedOutPhrase,
   SLEEP_SPAN_TOLERANCE_MS,
   sleptPhrase,
+  UNVERIFIED_TREE,
   type BuildCheckScope,
 } from "./build-check-events.js";
 import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../concurrency/check-permit.js";
@@ -145,16 +146,16 @@ export async function runScopedBuildCheck(
       sleepFailed));
   const unverifiedReason =
     raw.skipReason === "install"
-      ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, "the tree is unverified")
+      ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, UNVERIFIED_TREE)
       : raw.skipReason === "killed"
       ? killedPhrase(
           SCOPE_WORDS[scope].label,
           raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
-          "the tree is unverified",
+          UNVERIFIED_TREE,
         )
       : sleepFailed
-        ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, "the tree is unverified")
-        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; the tree is unverified`;
+        ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, UNVERIFIED_TREE)
+        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}`;
   const outcome: BuildCheckOutcome = unverifiedSkip
     ? {
         status: "failed",

@@ -51,6 +51,13 @@ export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: s
  * (BUGS.md: a landing build check that times out must not merge unverified). */
 export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
 
+/** The proceeding reason a merge-scope check that made no verdict about the tree carries: the
+ * run was killed, timed out, or spanned a host sleep, so nothing it saw is the change's
+ * failure. The single home of that wording, shared by runScopedBuildCheck's four merge-scope
+ * reasons (build-check-scoped.ts) and the gate pre-check's unverified-sleep detail
+ * (review-precheck.ts), so the two surfaces cannot drift on it. */
+export const UNVERIFIED_TREE = "the tree is unverified";
+
 /** Format a millisecond measurement as seconds to one decimal place (`712.4`), the
  * granularity the timeout/sleep wording needs to name a wall-clock time without dragging in
  * sub-second noise. The one home of that format in this module: timedOutPhrase uses it for
