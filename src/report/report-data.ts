@@ -32,6 +32,7 @@ import { commitTier } from "../roles/roles.js";
 interface UsageFold {
   ticks?: number;
   ticksByRole: Record<string, number>;
+  tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   tokensOut: number;
   commits: number;
@@ -58,6 +59,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     addTo(target.ticksByRole, role, 1);
     if (target.ticks !== undefined) target.ticks++;
     const { tokens, costUsd } = eventUsage(ev);
+    addTo(target.tokensByRole, role, tokens);
     target.tokensOut += tokens;
     target.costUsd += costUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
@@ -90,6 +92,7 @@ interface DayFold {
   maintenanceCommits: number;
   costUsd: number;
   ticksByRole: Record<string, number>;
+  tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   landingRuns: number;
   landingTokens: number;
@@ -140,6 +143,28 @@ function zeroCommitCounts(): {
   return { commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0 };
 }
 
+/** Sum a per-loop-id count/cost map over one base role: instance keys (`feature-2`) fold into
+ * their base (`feature`), so a scoped report aggregates a whole role group exactly as the
+ * per-role cap's group does. Ticks/tokens/cost are keyed by exact loop id while commits are
+ * already base-role keyed; running every key through `baseRoleOf` reads both shapes the same
+ * and returns 0 when nothing matches. */
+function roleSum(record: Record<string, number>, role: string): number {
+  let sum = 0;
+  for (const [key, n] of Object.entries(record)) {
+    if (baseRoleOf(key) === role) sum += n;
+  }
+  return sum;
+}
+
+/** Narrow a per-loop-id count/cost map to one base role, keyed by the base role; a role absent
+ * from the map (no ticks, or no nonzero cost) yields an empty map, never a zero entry — the
+ * same zero-means-absent rule the fleet render applies. Used by the role-scoped collectors so a
+ * scoped series derives from the fold's per-role maps without inventing entries. */
+function narrowToRole(record: Record<string, number>, role: string): Record<string, number> {
+  const n = roleSum(record, role);
+  return n === 0 ? {} : { [role]: n };
+}
+
 function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
   let fold = entry.days.get(dayKey);
   if (!fold) {
@@ -148,6 +173,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       ...zeroCommitCounts(),
       costUsd: 0,
       ticksByRole: {},
+      tokensByRole: {},
       costByRole: {},
       landingRuns: 0,
       landingTokens: 0,
@@ -284,6 +310,7 @@ export interface ReportData {
   days: number;
   from: string; // day key of the oldest day in the series
   to: string; // day key of today
+  role?: string; // set by the role-scoped collector; absent on the fleet report
   series: ReportDay[]; // oldest → newest, zero-filled
   totals: ReportTotals & {
     featuresDone: number;
@@ -310,6 +337,7 @@ export interface ReportData {
 export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
+  role?: string; // set by the role-scoped collector; absent on the fleet report
   totals: ReportTotals;
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
@@ -328,7 +356,7 @@ export interface SinceReport {
  * only (tick_end/merged — see SinceReport for why the backlog files are not read). Kept a
  * separate function rather than a `collectReport` variant flag: the day collector's
  * zero-filled series and backlog-file reads have no place in a window totals view. */
-export function collectReportSince(root: string, sinceMs: number): SinceReport {
+export function collectReportSince(root: string, sinceMs: number, role?: string): SinceReport {
   assertReportSinceMs(sinceMs);
   const now = Date.now();
   const cutoff = now - sinceMs;
@@ -342,6 +370,7 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
   const acc: UsageFold = {
     ticks: 0,
     ticksByRole: {},
+    tokensByRole: {},
     costByRole: {},
     tokensOut: 0,
     ...zeroCommitCounts(),
@@ -359,27 +388,45 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
   // history that never existed. When neither proof holds, the oldest retained event lies inside
   // the window and the render notes the possible truncation.
   const coversFullWindow = eventWindowCovers(raw, cutoff);
+  // Role scope: every total derives from the fold's per-role maps for the named base role alone
+  // — landing usage (the landing slot's, not the role's) and the fleet-only fields stay out, so
+  // a scoped --since report sums exactly the same events the scoped day report would. The scope
+  // is the base role, so instances (`feature-2`) aggregate into their group as the cap does.
+  const base = role === undefined ? undefined : baseRoleOf(role);
+  const scopedTotals: ReportTotals =
+    base === undefined
+      ? {
+          tokensOut: acc.tokensOut + (acc.landingTokens ?? 0),
+          ticks: acc.ticks ?? 0,
+          commits: acc.commits,
+          costUsd: acc.costUsd + (acc.landingCostUsd ?? 0),
+          landingRuns: acc.landingRuns ?? 0,
+          landingTokens: acc.landingTokens ?? 0,
+          landingCostUsd: acc.landingCostUsd ?? 0,
+        }
+      : {
+          tokensOut: roleSum(acc.tokensByRole, base),
+          ticks: roleSum(acc.ticksByRole, base),
+          commits: roleSum(acc.commitsByRole, base),
+          costUsd: roleSum(acc.costByRole, base),
+          landingRuns: 0,
+          landingTokens: 0,
+          landingCostUsd: 0,
+        };
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
-    totals: {
-      tokensOut: acc.tokensOut + (acc.landingTokens ?? 0),
-      ticks: acc.ticks ?? 0,
-      commits: acc.commits,
-      costUsd: acc.costUsd + (acc.landingCostUsd ?? 0),
-      landingRuns: acc.landingRuns ?? 0,
-      landingTokens: acc.landingTokens ?? 0,
-      landingCostUsd: acc.landingCostUsd ?? 0,
-    },
-    ticksByRole: acc.ticksByRole,
-    costByRole: acc.costByRole,
+    ...(base === undefined ? {} : { role: base }),
+    totals: scopedTotals,
+    ticksByRole: base === undefined ? acc.ticksByRole : narrowToRole(acc.ticksByRole, base),
+    costByRole: base === undefined ? acc.costByRole : narrowToRole(acc.costByRole, base),
     coversFullWindow,
   };
 }
 
 /** Aggregate fleet usage over exactly `days` local calendar days ending today, from the event
  * log (tick_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
-export function collectReport(root: string, days: number): ReportData {
+export function collectReport(root: string, days: number, role?: string): ReportData {
   const now = new Date();
   // One captured instant for the whole window, so every day key derives from the same day.
   const { from, to } = dayWindow(days, now);
@@ -404,17 +451,37 @@ export function collectReport(root: string, days: number): ReportData {
   for (const [dayKey, fold] of foldEntry.days) {
     const day = byDate.get(dayKey);
     if (!day) continue; // Out-of-window day key (e.g. future-dated) — no series slot to fill.
-    day.tokensOut = fold.tokensOut;
-    day.ticksByRole = fold.ticksByRole;
-    day.costByRole = fold.costByRole;
-    day.commits = fold.commits;
-    day.commitsByRole = fold.commitsByRole;
-    day.workCommits = fold.workCommits;
-    day.maintenanceCommits = fold.maintenanceCommits;
-    day.costUsd = fold.costUsd;
-    day.landingRuns = fold.landingRuns;
-    day.landingTokens = fold.landingTokens;
-    day.landingCostUsd = fold.landingCostUsd;
+    if (role === undefined) {
+      day.tokensOut = fold.tokensOut;
+      day.ticksByRole = fold.ticksByRole;
+      day.costByRole = fold.costByRole;
+      day.commits = fold.commits;
+      day.commitsByRole = fold.commitsByRole;
+      day.workCommits = fold.workCommits;
+      day.maintenanceCommits = fold.maintenanceCommits;
+      day.costUsd = fold.costUsd;
+      day.landingRuns = fold.landingRuns;
+      day.landingTokens = fold.landingTokens;
+      day.landingCostUsd = fold.landingCostUsd;
+    } else {
+      // Role scope: derive this day from the fold's per-role maps, so the series carries only
+      // the named role's ticks/tokens/cost and (base-role-keyed) commits. The scope is the
+      // base role, so an instance id's usage and its siblings' commits fold into one group and
+      // the numbers match the per-role cap, which is base-role keyed too. The landing fields
+      // stay unset — landing runs are the landing slot's, not this role's — and the work /
+      // maintenance split follows the base role's own tier rather than the day's whole split.
+      const base = baseRoleOf(role);
+      const commits = roleSum(fold.commitsByRole, base);
+      const tier = commitTier(base);
+      day.tokensOut = roleSum(fold.tokensByRole, base);
+      day.ticksByRole = narrowToRole(fold.ticksByRole, base);
+      day.costByRole = narrowToRole(fold.costByRole, base);
+      day.commits = commits;
+      day.commitsByRole = narrowToRole(fold.commitsByRole, base);
+      day.workCommits = tier === "work" ? commits : 0;
+      day.maintenanceCommits = tier === "maintenance" ? commits : 0;
+      day.costUsd = roleSum(fold.costByRole, base);
+    }
   }
 
   // The landing share joins its day's tokensOut/costUsd (the budget charges these same
@@ -429,16 +496,20 @@ export function collectReport(root: string, days: number): ReportData {
     const day = byDate.get(date);
     if (day) day[field] += 1; // Out-of-window dates drop out here.
   };
-  for (const d of sectionCompletionDates(root, "PLANS.md", "Done", /done (\d{4}-\d{2}-\d{2})/))
-    countOn(d, "featuresDone");
-  // The completion verbs track the phrasing the harness's own loops actually write: the
-  // bugfix prompt pins the date, not the verb, and the re-land flow's own epitaph —
-  // "re-landed <date>" on an entry whose first landing was rejected in review — is a
-  // completion the report must count (a rejected landing is not a fix, the re-land is).
-  // Body verbs without a date ("was fixed;") match nothing, and a bare "landed <date>"
-  // stays out: headings mention sibling landings, and a sibling's date is not this entry's.
-  for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
-    countOn(d, "bugsFixed");
+  // Role scope leaves both tallies at zero: their dates are day-granular file metadata with no
+  // role, so a scoped report cannot attribute a completion (the render states the omission).
+  if (role === undefined) {
+    for (const d of sectionCompletionDates(root, "PLANS.md", "Done", /done (\d{4}-\d{2}-\d{2})/))
+      countOn(d, "featuresDone");
+    // The completion verbs track the phrasing the harness's own loops actually write: the
+    // bugfix prompt pins the date, not the verb, and the re-land flow's own epitaph —
+    // "re-landed <date>" on an entry whose first landing was rejected in review — is a
+    // completion the report must count (a rejected landing is not a fix, the re-land is).
+    // Body verbs without a date ("was fixed;") match nothing, and a bare "landed <date>"
+    // stays out: headings mention sibling landings, and a sibling's date is not this entry's.
+    for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
+      countOn(d, "bugsFixed");
+  }
 
   const totals = {
     tokensOut: 0,
@@ -479,5 +550,13 @@ export function collectReport(root: string, days: number): ReportData {
     foldEntry.fileCovers ||
     !foldEntry.hadEvents ||
     (foldEntry.firstEventTs !== undefined && foldEntry.firstEventTs <= cutoffMs);
-  return { days, from, to, series, totals, coversFullWindow };
+  return {
+    days,
+    from,
+    to,
+    ...(role === undefined ? {} : { role: baseRoleOf(role) }),
+    series,
+    totals,
+    coversFullWindow,
+  };
 }

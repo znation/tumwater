@@ -600,3 +600,114 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
   assert.ok(!out.includes("rotated"), "a missing log must not claim events rotated out");
   assert.match(out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
 });
+
+test("collectReport scopes the day series and totals to one role, leaving fleet cells off", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234" }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "def5678" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "aaa", tokens: 40, costUsd: 0.4 }),
+  ]);
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Done", body: `- A (done ${dayKey(at(0))}; commit 1)` }]);
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Fixed", body: `- B (fixed ${dayKey(at(0))}; commit 2)` }]);
+
+  const scoped = collectReport(root, 5, "feature");
+  const today = scoped.series[scoped.series.length - 1];
+  assert.equal(scoped.role, "feature");
+  assert.equal(today?.tokensOut, 500, "only feature's tick tokens; not bugfix's or the landing share");
+  assert.deepEqual(today?.ticksByRole, { feature: 1 });
+  assert.deepEqual(today?.costByRole, { feature: 0.5 });
+  assert.equal(today?.commits, 1);
+  assert.deepEqual(today?.commitsByRole, { feature: 1 });
+  assert.equal(today?.workCommits, 1);
+  assert.equal(today?.maintenanceCommits, 0);
+  assert.ok(Math.abs((today?.costUsd ?? -1) - 0.5) < 1e-9);
+  assert.equal(today?.landingRuns, undefined, "landing fields stay off the scoped series");
+  assert.equal(today?.featuresDone, 0);
+  assert.equal(today?.bugsFixed, 0);
+  assert.equal(scoped.totals.tokensOut, 500);
+  assert.equal(scoped.totals.ticks, 1);
+  assert.equal(scoped.totals.commits, 1);
+  assert.ok(Math.abs(scoped.totals.costUsd - 0.5) < 1e-9);
+  assert.equal(scoped.totals.featuresDone, 0);
+  assert.equal(scoped.totals.bugsFixed, 0);
+  assert.equal(scoped.totals.landingRuns, 0);
+
+  // The same fixture without a role totals every role and reads the day-granular backlog tallies.
+  const fleet = collectReport(root, 5);
+  assert.equal(fleet.role, undefined);
+  assert.equal(fleet.totals.tokensOut, 640); // 500 + 100 + the 40 landing tokens
+  assert.equal(fleet.totals.ticks, 2);
+  assert.equal(fleet.totals.commits, 2);
+  assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
+  assert.equal(fleet.totals.featuresDone, 1);
+  assert.equal(fleet.totals.bugsFixed, 1);
+  assert.equal(fleet.totals.landingRuns, 1);
+});
+
+test("collectReport scopes an instance id to its base role, aggregating its siblings' usage", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "feature-2", type: "tick_end", tick: 1, result: "changed", tokens: 300, costUsd: 0.3 }),
+    JSON.stringify({ ts: ago(8 * 60_000), loop: "feature-2", type: "merged", commit: "abc1234" }),
+  ]);
+
+  // The scope normalizes to the base role, so the instance's usage and its sibling's commits
+  // both count — the same group the base-role cap reads (objection: exact-id vs base-role mix).
+  const scoped = collectReport(root, 2, "feature-2");
+  assert.equal(scoped.role, "feature");
+  const today = scoped.series[scoped.series.length - 1];
+  assert.equal(today?.tokensOut, 400);
+  assert.deepEqual(today?.ticksByRole, { feature: 2 });
+  assert.ok(Math.abs((today?.costByRole.feature ?? -1) - 0.4) < 1e-9);
+  assert.equal(today?.commits, 1);
+  assert.deepEqual(today?.commitsByRole, { feature: 1 });
+  assert.equal(scoped.totals.tokensOut, 400);
+  assert.equal(scoped.totals.ticks, 2);
+  assert.equal(scoped.totals.commits, 1);
+  assert.ok(Math.abs(scoped.totals.costUsd - 0.4) < 1e-9);
+
+  const since = collectReportSince(root, HOUR, "feature-2");
+  assert.equal(since.role, "feature");
+  assert.equal(since.totals.tokensOut, 400);
+  assert.equal(since.totals.ticks, 2);
+  assert.equal(since.totals.commits, 1);
+  assert.ok(Math.abs(since.totals.costUsd - 0.4) < 1e-9);
+  assert.deepEqual(since.ticksByRole, { feature: 2 });
+  assert.ok(Math.abs((since.costByRole.feature ?? -1) - 0.4) < 1e-9);
+});
+
+test("collectReportSince scopes a trailing window to one role, excluding the landing share", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
+    JSON.stringify({ ts: ago(8 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
+    JSON.stringify({ ts: ago(7 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
+    JSON.stringify({ ts: ago(6 * 60_000), loop: "feature", type: "landed", commit: "aaa", tokens: 40, costUsd: 0.4 }),
+  ]);
+
+  const scoped = collectReportSince(root, HOUR, "feature");
+  assert.equal(scoped.role, "feature");
+  assert.deepEqual(scoped.totals, {
+    tokensOut: 500,
+    ticks: 1,
+    commits: 1,
+    costUsd: 0.5,
+    landingRuns: 0,
+    landingTokens: 0,
+    landingCostUsd: 0,
+  });
+  assert.deepEqual(scoped.ticksByRole, { feature: 1 });
+  assert.deepEqual(scoped.costByRole, { feature: 0.5 });
+
+  const fleet = collectReportSince(root, HOUR);
+  assert.equal(fleet.role, undefined);
+  assert.equal(fleet.totals.tokensOut, 640);
+  assert.equal(fleet.totals.ticks, 2);
+  assert.equal(fleet.totals.commits, 2);
+  assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
+});

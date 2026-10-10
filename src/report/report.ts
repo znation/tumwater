@@ -7,7 +7,7 @@ import { collectFailureReport, collectFailureReportSince } from "../failure/fail
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
 import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
-import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "../cli/cli-args.js";
+import { failRivalShapes, flagValue, parseCountFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags and
@@ -17,6 +17,11 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
   const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
+  // --role scopes the usage report only (day and --since); the failure digest is fleet-wide,
+  // so the combination is a rival shape rather than a silently ignored flag.
+  const role = parseRoleScope(root, args);
+  if (role !== null && args.includes("--failures"))
+    failRivalShapes("report --role", "--failures", "the failure digest is fleet-wide");
   if (ms !== null) {
     // --days is still a rival shape: it counts whole local days, while --since totals a trailing
     // window. --failures is not a rival anymore — the digest has a windowed-since collector that
@@ -32,7 +37,7 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     }
     // --json swaps the renderer for the collector's own payload, exactly as status --json
     // does: bounds and cap checks above are shared, only the printing differs.
-    const since = collectReportSince(root, ms);
+    const since = collectReportSince(root, ms, role ?? undefined);
     sayJsonOrRender(args, since, renderSinceReportMarkdown);
     return;
   }
@@ -55,12 +60,12 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     return;
   }
   if (args.includes("--json")) {
-    sayJson(collectReport(root, days));
+    sayJson(collectReport(root, days, role ?? undefined));
     return;
   }
   say(
     args.includes("--failures")
       ? renderFailureMarkdown(collectFailureReport(root, days))
-      : renderReportMarkdown(collectReport(root, days)),
+      : renderReportMarkdown(collectReport(root, days, role ?? undefined)),
   );
 }

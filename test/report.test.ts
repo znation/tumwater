@@ -426,3 +426,69 @@ test("report --failures --json prints the digest's collected data; --since --jso
   const sinceJson = await runCli(root, "report", "--json", "--since", "6h");
   assert.equal(sinceJson.code, 0);
 });
+
+test("renderReportMarkdown scopes a role report: role line, no backlog tail, scope note", () => {
+  const data: ReportData = {
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    role: "feature",
+    series: [
+      { date: "2026-09-09", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 500, ticksByRole: { feature: 1 }, costByRole: { feature: 0.5 }, commits: 1, commitsByRole: { feature: 1 }, workCommits: 1, maintenanceCommits: 0, costUsd: 0.5, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { tokensOut: 500, ticks: 1, commits: 1, costUsd: 0.5, featuresDone: 0, bugsFixed: 0, commitsByRole: { feature: 1 }, workCommits: 1, maintenanceCommits: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  const out = renderReportMarkdown(data);
+  assert.match(out, /^role: feature$/m);
+  assert.match(out, /^\*\*Totals:\*\* 500 output tokens · 1 ticks · 1 commits · \$0\.50$/m);
+  assert.ok(!/features done · 0 bugs fixed/.test(out), "the fleet backlog cells are dropped from the totals line");
+  assert.ok(!out.includes("of which landing runs"), "no landing-share line prints");
+  assert.match(out, /role scope: landing runs and backlog tallies \(features done \/ bugs fixed\) are fleet-wide and omitted/);
+});
+
+test("tumwater report --role scopes the report, scopes --since/--json, and validates the flag", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 313, costUsd: 0.31 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 42, costUsd: 0.04 }),
+  ]);
+
+  const scoped = await runCli(root, "report", "--role", "feature");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /^role: feature$/m);
+  assert.match(scoped.out, /313 output tokens/);
+  assert.ok(!scoped.out.includes("42 output tokens"), "the other role's tokens are excluded");
+  assert.match(scoped.out, /role scope: landing runs and backlog tallies/);
+
+  const fleet = await runCli(root, "report");
+  assert.ok(!/^role:/m.test(fleet.out), "the fleet report carries no role line");
+
+  const json = JSON.parse((await runCli(root, "report", "--role", "feature", "--json")).out) as {
+    role?: string;
+    totals: { tokensOut: number };
+  };
+  assert.equal(json.role, "feature");
+  assert.equal(json.totals.tokensOut, 313);
+
+  const since = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(since.code, 0);
+  assert.match(since.out, /^role: feature$/m);
+  assert.match(since.out, /role scope: landing runs and backlog tallies/);
+  // The scope note already states the backlog-tally omission, so the --days pointer (which
+  // would imply a scoped day report shows tallies it too omits) must not also print.
+  assert.ok(!since.out.includes("need the day report"), "scoped --since does not repeat the --days tally pointer");
+
+  const bogus = await runCli(root, "report", "--role", "bogus");
+  assert.notEqual(bogus.code, 0);
+  assert.match(bogus.out, /unknown role: bogus/);
+
+  const rival = await runCli(root, "report", "--role", "feature", "--failures");
+  assert.notEqual(rival.code, 0);
+  assert.match(rival.out, /report --role cannot be combined with --failures/);
+
+  const trailing = await runCli(root, "report", "--role");
+  assert.notEqual(trailing.code, 0);
+  assert.match(trailing.out, /--role needs a role id/);
+});

@@ -400,72 +400,6 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Scope the usage report to one role: `tumwater report --role <id>` (planned 2026-10-09 by plan; completes Stage 2 of docs/feature-per-role-spending.md; independent of the Agent backends series)
-
-**Goal.** `tumwater report --role <id> [--days N]` and `tumwater report --role <id>
---since <duration>` (text and `--json`) report only that role's interactive usage and landed
-commits, so an operator running per-role caps (`maxDailyCostUsdPerRole`, already landed) can
-see where one role's spend went without eyeballing the fleet's per-role lines. This is the last
-unlanded piece of docs/feature-per-role-spending.md's Stage 2: the per-role cap and the
-dashboard's per-role cost already exist; only the scoped report is missing. Explicitly out of
-scope here: scoping the failure digest (`--failures` stays fleet-wide and is rejected with
-`--role`) and the dashboard/TUI report views, which keep their fleet-wide data.
-
-**Approach.**
-1. **Per-role output tokens.** In src/report/report-data.ts `foldUsageEvent`'s `tick_end`
-branch, add `addTo(target.tokensByRole, role, tokens)` beside the existing `ticksByRole` and
-`costByRole` bumps; add `tokensByRole: Record<string, number>` to `UsageFold` and `DayFold`,
-initialized to `{}` in `dayFoldFor` and in `collectReportSince`'s accumulator. The map stays off
-`ReportDay`/`SinceReport`, so no existing data-shape assertion changes.
-2. **Scope both collectors.** Give `collectReport(root, days, role?)` and
-`collectReportSince(root, sinceMs, role?)` an optional `role`. When set, each day/accumulator
-derives its numbers from the fold's per-role maps instead of the fleet fields: `tokensOut` from
-`tokensByRole[role]`, `costUsd` from `costByRole[role]`, `ticksByRole`/`costByRole`/`commits`/
-`commitsByRole` narrowed to that role, the work/maintenance split from `commitTier(role)`, and
-the landing fields plus `featuresDone`/`bugsFixed` left at zero (landing runs belong to the
-landing slot, and backlog tallies are day-granular file dates with no role). Both payloads gain
-`role?: string`; the fleet callers (src/report/report.ts, src/ui/tui/tui-keys.ts,
-src/gui/gui-endpoints.ts) pass no third argument and are unchanged.
-3. **CLI.** src/report/report.ts calls `parseRoleScope(root, args)` (src/cli/cli-args.ts — the
-existing read-only role-id validator, custom loops included) and passes it to the collectors;
-`--role` with `--failures` fails through the existing `failRivalShapes` wording (usage-report
-scoping only). src/cli.ts's `case "report"` `rejectUnknownArgs` spec gains `ROLE_FLAG`;
-src/cli/help.ts adds `[--role <id>]` to the `--days` and `--since` stanzas.
-4. **Render.** In src/report/report-render.ts, when `data.role` is set: print a `role: <id>` line
-under the window line; pass an empty tail to `totalsLine` in `renderReportMarkdown` so the fleet
-`features done / bugs fixed` cells are dropped; and print one shared module constant (e.g.
-`ROLE_SCOPE_NOTE`) to both renders naming that landing runs and backlog tallies are fleet-wide
-and omitted. The landing-share line already disappears (zero means absent), and the fleet render
-paths — including the TUI Usage pane and `/api/report` — are untouched.
-
-**Files touched.**
-- src/report/report-data.ts (fold maps; optional `role` on both collectors)
-- src/report/report-render.ts (`role` line, scoped totals tail, `ROLE_SCOPE_NOTE`)
-- src/report/report.ts (`parseRoleScope`, pass `role`, `--failures` rival)
-- src/cli.ts (report gate admits `--role`)
-- src/cli/help.ts (usage)
-
-Tests: test/report-data.test.ts — scoped day and `--since` collectors over a two-role event set
-(only the named role's tokens/ticks/cost/commits, landing and backlog cells zero), plus the same
-fixture without `role` still totalling all roles; test/report.test.ts — the scoped render omits
-the backlog tail and prints the scope note, `runCli(root, "report", "--role", "feature")` prints
-only that role, `--role bogus` fails with the shared unknown-role message, `--role feature
---failures` fails as rival shapes, a trailing `--role` names the missing-value error, and
-`report --help` names the flag.
-
-**Acceptance criteria.**
-- `tumwater report --role feature --days 14` totals and every day row count only `feature`'s
-`tick_end` tokens/ticks/cost and `feature`'s `merged` commits; the Ticks/Cost/Commits by role
-lines name only `feature`; the header carries `role: feature` and the report states that landing
-runs and backlog tallies are omitted; no landing-share line prints.
-- `tumwater report --role feature --since 90m` does the same over the trailing window, and
-`--json` carries `"role": "feature"`.
-- `tumwater report` (text and `--json`) without `--role` is unchanged — every existing
-report-data and report render test passes without edits.
-- `tumwater report --role feature --failures` fails with a rival-shape error naming both flags;
-`--role bogus` fails with the shared unknown-role message; `tumwater help report` names `--role`.
-- `npm run test` green.
-
 ### Warn before a loop reaches its own daily cap: the `role_cap_warning` event (planned 2026-10-09 by plan; independent of the Agent backends series)
 
 **Goal.** A loop whose local-day spend crosses 80% of its own `maxDailyCostUsdPerRole` cap logs
@@ -611,6 +545,73 @@ unchanged (`collectFleetChanges`, `renderFleetChange`, and `TickRow` are untouch
 
 
 ## Done
+
+### Scope the usage report to one role: `tumwater report --role <id>` (planned 2026-10-09 by plan; done 2026-10-09 by feature; completes Stage 2 of docs/feature-per-role-spending.md; independent of the Agent backends series)
+
+**Goal.** `tumwater report --role <id> [--days N]` and `tumwater report --role <id>
+--since <duration>` (text and `--json`) report only that role's interactive usage and landed
+commits, so an operator running per-role caps (`maxDailyCostUsdPerRole`, already landed) can
+see where one role's spend went without eyeballing the fleet's per-role lines. This is the last
+unlanded piece of docs/feature-per-role-spending.md's Stage 2: the per-role cap and the
+dashboard's per-role cost already exist; only the scoped report is missing. Explicitly out of
+scope here: scoping the failure digest (`--failures` stays fleet-wide and is rejected with
+`--role`) and the dashboard/TUI report views, which keep their fleet-wide data.
+
+**Approach.**
+1. **Per-role output tokens.** In src/report/report-data.ts `foldUsageEvent`'s `tick_end`
+branch, add `addTo(target.tokensByRole, role, tokens)` beside the existing `ticksByRole` and
+`costByRole` bumps; add `tokensByRole: Record<string, number>` to `UsageFold` and `DayFold`,
+initialized to `{}` in `dayFoldFor` and in `collectReportSince`'s accumulator. The map stays off
+`ReportDay`/`SinceReport`, so no existing data-shape assertion changes.
+2. **Scope both collectors.** Give `collectReport(root, days, role?)` and
+`collectReportSince(root, sinceMs, role?)` an optional `role`. When set, each day/accumulator
+derives its numbers from the fold's per-role maps instead of the fleet fields: `tokensOut`,
+`costUsd`, `ticksByRole`/`costByRole`/`commits`/`commitsByRole` narrowed to that role's base —
+instance keys fold into their group, matching the base-role cap — the work/maintenance split
+from `commitTier(base)`, and
+the landing fields plus `featuresDone`/`bugsFixed` left at zero (landing runs belong to the
+landing slot, and backlog tallies are day-granular file dates with no role). Both payloads gain
+`role?: string`; the fleet callers (src/report/report.ts, src/ui/tui/tui-keys.ts,
+src/gui/gui-endpoints.ts) pass no third argument and are unchanged.
+3. **CLI.** src/report/report.ts calls `parseRoleScope(root, args)` (src/cli/cli-args.ts — the
+existing read-only role-id validator, custom loops included) and passes it to the collectors;
+`--role` with `--failures` fails through the existing `failRivalShapes` wording (usage-report
+scoping only). src/cli.ts's `case "report"` `rejectUnknownArgs` spec gains `ROLE_FLAG`;
+src/cli/help.ts adds `[--role <id>]` to the `--days` and `--since` stanzas.
+4. **Render.** In src/report/report-render.ts, when `data.role` is set: print a `role: <id>` line
+under the window line; pass an empty tail to `totalsLine` in `renderReportMarkdown` so the fleet
+`features done / bugs fixed` cells are dropped; and print one shared module constant (e.g.
+`ROLE_SCOPE_NOTE`) to both renders naming that landing runs and backlog tallies are fleet-wide
+and omitted. The landing-share line already disappears (zero means absent), and the fleet render
+paths — including the TUI Usage pane and `/api/report` — are untouched.
+
+**Files touched.**
+- src/report/report-data.ts (fold maps; optional `role` on both collectors)
+- src/report/report-render.ts (`role` line, scoped totals tail, `ROLE_SCOPE_NOTE`)
+- src/report/report.ts (`parseRoleScope`, pass `role`, `--failures` rival)
+- src/cli.ts (report gate admits `--role`)
+- src/cli/help.ts (usage)
+
+Tests: test/report-data.test.ts — scoped day and `--since` collectors over a two-role event set
+(only the named role's tokens/ticks/cost/commits, landing and backlog cells zero), plus the same
+fixture without `role` still totalling all roles; test/report.test.ts — the scoped render omits
+the backlog tail and prints the scope note, `runCli(root, "report", "--role", "feature")` prints
+only that role, `--role bogus` fails with the shared unknown-role message, `--role feature
+--failures` fails as rival shapes, a trailing `--role` names the missing-value error, and
+`report --help` names the flag.
+
+**Acceptance criteria.**
+- `tumwater report --role feature --days 14` totals and every day row count only `feature`'s
+`tick_end` tokens/ticks/cost and `feature`'s `merged` commits; the Ticks/Cost/Commits by role
+lines name only `feature`; the header carries `role: feature` and the report states that landing
+runs and backlog tallies are omitted; no landing-share line prints.
+- `tumwater report --role feature --since 90m` does the same over the trailing window, and
+`--json` carries `"role": "feature"`.
+- `tumwater report` (text and `--json`) without `--role` is unchanged — every existing
+report-data and report render test passes without edits.
+- `tumwater report --role feature --failures` fails with a rival-shape error naming both flags;
+`--role bogus` fails with the shared unknown-role message; `tumwater help report` names `--role`.
+- `npm run test` green.
 
 ### Show backlog entry eligibility holds in the GUI and TUI backlog lists (planned 2026-10-09 by plan; done 2026-10-09 by feature; sibling of "Mark why a backlog entry is held in `tumwater backlog`")
 

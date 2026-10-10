@@ -63,6 +63,13 @@ function landingShareLine(t: ReportTotals): string {
   return `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
 }
 
+/** The scope note a `--role` report prints: landing runs belong to the landing slot and the
+ * features-done/bugs-fixed tallies come from day-granular backlog-file dates, so neither can
+ * be scoped to a role and both are omitted from the scoped totals. Shared by the day and
+ * --since renders so the two say the same thing. */
+const ROLE_SCOPE_NOTE =
+  "role scope: landing runs and backlog tallies (features done / bugs fixed) are fleet-wide and omitted";
+
 /** Render a trailing-window totals report as Markdown — the aggregate sibling of the
  * `logs --since` raw stream ("how much" here, "what exactly" there). Pure function of
  * SinceReport: no I/O, no clock reads (the window line's local time is rendered from the
@@ -72,6 +79,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   lines.push("# tumwater usage report");
   lines.push("");
   lines.push(`window: last ${durationLabel(data.sinceMs)} (since ${formatTimestamp(new Date(data.fromIso).getTime())})`);
+  if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;
   // Same totals voice as the day report, minus the features/bugs cells: those tallies come
@@ -83,6 +91,9 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // resolution work. Omitted entirely when no landing ran (zero means absent, like the
   // cost-by-role line), so a fleet with no landing spend renders exactly as before.
   if (t.landingRuns > 0) lines.push(landingShareLine(t));
+  // A role scope also names what it left out: landing usage and the backlog tallies. A scoped
+  // report never prints the landing-share line (its totals are zero), so this note replaces it.
+  if (data.role !== undefined) lines.push(ROLE_SCOPE_NOTE);
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleMap(data.ticksByRole), String));
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
@@ -93,9 +104,12 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // that stays true whenever it prints (the oldest retained event lies inside the window —
   // whether from rotation or a log born inside the window), or the one-time statement of the
   // backlog-tally omission. A flat "rotated out" claim would be false for a log that never
-  // had the older events, so the wording names only what is provably the case.
+  // had the older events, so the wording names only what is provably the case. A role-scoped
+  // report already states the omission in ROLE_SCOPE_NOTE, so it does not repeat the --days
+  // pointer, which would imply a scoped day report shows the tallies it too omits.
   if (!data.coversFullWindow) lines.push(SPARSE_WINDOW_NOTE);
-  else lines.push("backlog tallies (features done / bugs fixed) need the day report (--days)");
+  else if (data.role === undefined)
+    lines.push("backlog tallies (features done / bugs fixed) need the day report (--days)");
   return lines.join("\n");
 }
 
@@ -107,13 +121,19 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push("# tumwater usage report");
   lines.push("");
   lines.push(reportWindow(data.from, data.to, data.days, eventsRotationLabel()));
+  if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;
-  lines.push(totalsLine(t, ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`));
+  // A role-scoped report drops the fleet-only features/bugs cells from the totals line — their
+  // dates carry no role — and states the omission through ROLE_SCOPE_NOTE below instead.
+  const tail =
+    data.role === undefined ? ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed` : "";
+  lines.push(totalsLine(t, tail));
   // The landing share of those totals: the reviewer's and conflict resolution's part of spend
   // the budget already charges, shown only when landing runs actually folded into the window
   // (the shared zero-means-absent rule lives on landingShareLine).
   if (t.landingRuns > 0) lines.push(landingShareLine(t));
+  if (data.role !== undefined) lines.push(ROLE_SCOPE_NOTE);
   lines.push("");
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);
   lines.push(

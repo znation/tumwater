@@ -32,10 +32,12 @@ Usage:
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    fleet state — the GUI's /api/status payload minus the
                                    serving process's serverBuildSha)
-  tumwater report [--days N] [--json]
+  tumwater report [--days N] [--role <id>] [--json]
                                    Markdown usage report — tokens/ticks/commits per day (default
                                    14 days); totals also include landing runs (reviewer + conflict
-                                   resolution); --json prints machine-readable usage data — the
+                                   resolution); --role <id> scopes the report to one loop's ticks,
+                                   tokens, cost, and commits (landing runs and backlog tallies
+                                   omitted); --json prints machine-readable usage data — the
                                    collector's own payload, not the Markdown render
   tumwater report --failures [--days N] [--since <duration>]
                                    Markdown failure digest — tick outcomes, deltas,
@@ -45,11 +47,13 @@ Usage:
   tumwater report --failures --since <duration>
                                    The failure digest over a trailing window, compared
                                    against the equal-length window before it
-  tumwater report --since <duration> [--json]
+  tumwater report --since <duration> [--role <id>] [--json]
                                    Totals over a trailing window (capped at 7d) —
                                    tokens/ticks/commits/cost since a point in time; totals
                                    also include landing runs (reviewer + conflict
-                                   resolution); not combinable with --days
+                                   resolution); --role <id> scopes the totals to one loop
+                                   (landing runs and backlog tallies omitted); not
+                                   combinable with --days
   tumwater doctor [--json]         Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, build, orphans, mach ports
                                    (read-only; exit 0/1; --json prints the report object —

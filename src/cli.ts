@@ -147,6 +147,7 @@ async function main(): Promise<void> {
         { names: ["--failures"] },
         sinceFlagSpec("report --since"),
         JSON_FLAG,
+        ROLE_FLAG,
       ]);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
       // trailing window vs a series over whole days), not a modifier of either.
