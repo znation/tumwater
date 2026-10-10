@@ -11,8 +11,8 @@
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { TumwaterConfig } from "../../config/config-schema.js";
+import { writeJsonAtomic } from "../../files/json-files.js";
 import { finiteNumber, isJsonObject } from "../../files/json-object.js";
-import { ensureParentDir } from "../../files/files.js";
 import { claudeAccountPath } from "../../paths.js";
 import type { PiRunResult } from "../../pi/pi-run-result.js";
 import type { RateWindow } from "../../pi/pi-stream.js";
@@ -106,11 +106,12 @@ function readWindow(value: unknown, fileObservedAt: number, now: number): Claude
 }
 
 /** Overwrite the account file with `account`, creating the state directory. The orchestrator's
- * one writer; a failure to write is the caller's to handle (best-effort at the tick boundary). */
+ * one writer; a failure to write is the caller's to handle (best-effort at the tick boundary).
+ * Written through writeJsonAtomic (tmp + rename): a crash or ENOSPC mid-write leaves the
+ * previous file whole, not a torn one the reader heals to "no subscription" — which would
+ * silently drop the billing answer and the window hold until the next run re-observed them. */
 export function writeClaudeAccount(root: string, account: ClaudeAccount): void {
-  const file = claudeAccountPath(root);
-  ensureParentDir(file);
-  fs.writeFileSync(file, JSON.stringify(account, null, 2) + "\n");
+  writeJsonAtomic(claudeAccountPath(root), account, true);
 }
 
 /** Fold one run's billing and rate-window readings into the account file: the run's `billing`

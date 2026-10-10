@@ -118,6 +118,37 @@ test("observeClaudeAccount updates only the reported window, keeping the other",
   assert.equal(read?.windows.seven_day?.status, "rejected", "the untouched window is kept");
 });
 
+test("writeClaudeAccount: a write that fails mid-way leaves the previous reading whole", (t) => {
+  // The persisted billing/window cache is rewritten after every run that reports one. A plain
+  // overwrite that dies partway (ENOSPC, EIO, a killed orchestrator) left a torn file, which
+  // readClaudeAccount heals to null — silently "no subscription", so the window hold is ignored
+  // until the next run re-observes. The write must leave the previous file untouched instead.
+  const root = tmpdir();
+  const before = account({ billing: "subscription", observedAt: 1_000, subscriptionType: "team" });
+  writeClaudeAccount(root, before);
+
+  const real = fs.writeFileSync as (file: fs.PathLike, data: string | Uint8Array) => void;
+  t.mock.method(fs, "writeFileSync", ((file: fs.PathLike, data: string | Uint8Array) => {
+    if (String(file).includes("claude-account.json")) {
+      // The bytes land partially before the write dies — the torn file the reader would heal.
+      real(file, String(data).slice(0, 5));
+      throw new Error("ENOSPC: simulated mid-write failure");
+    }
+    return real(file, data);
+  }) as typeof fs.writeFileSync);
+
+  try {
+    assert.throws(
+      () => writeClaudeAccount(root, account({ billing: "api", observedAt: 2_000 })),
+      /simulated mid-write failure/,
+    );
+  } finally {
+    t.mock.restoreAll();
+  }
+
+  assert.deepEqual(readClaudeAccount(root, 2_000), before, "the previous reading survives a failed write");
+});
+
 test("seedClaudeAccount: ANTHROPIC_API_KEY means API billing", () => {
   const root = tmpdir();
   const saved = process.env.ANTHROPIC_API_KEY;
