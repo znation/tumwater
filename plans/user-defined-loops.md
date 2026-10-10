@@ -44,7 +44,7 @@ stay untouched: the user manages only their own loops.
   tie-break order — so **rearranging = reordering the array** — and customs always sit after
   built-ins (the user rearranges their own set; built-in order is the harness's).
 - **One source of truth for "which ids exist / which are user-defined":** `customLoopNames`,
-  `isCustomRole`, and `knownRoleIds` in src/config.ts — every consumer goes through these so
+  `isCustomRole`, and `knownRoleIds` in src/config/config.ts — every consumer goes through these so
   the answer cannot drift.
 - **Only the director may write `customLoops`** — through a harness-mediated request file, not
   a commit (superseded 2026-09-22 by plans/portability.md §3/7): the director writes
@@ -74,7 +74,7 @@ stay untouched: the user manages only their own loops.
 2. **A custom loop is a full citizen.** It owns `.tumwater/worktrees/<name>` and branch
    `tumwater/<name>`, ticks through the same lifecycle (review gate, merge lock, backoff), and
    honors minTickInterval, budget, and fleet pause exactly like a built-in — no special-casing
-   in loop.ts beyond the prompt lookup.
+   in src/loop/loop.ts beyond the prompt lookup.
 3. **Names never collide with or shadow built-ins** (validation at load, not runtime checks).
 4. **Only the director writes tumwater.json** — now via the harness-mediated request file, and
    only `customLoops` within it (enforced by `applyConfigRequest`'s permitted-key filter, not

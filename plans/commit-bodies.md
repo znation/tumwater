@@ -18,7 +18,8 @@ non-persisted `tickTurns` (reset at tick start, folded in `foldUsage`) so the tr
 `commitAll` — are excluded. The review prompt consumes the body ("check these claims against the
 diff") via src/review/review.ts. One deviation: unit tests landed in test/prompt.test.ts rather than
 a
-new test/commit-bodies.test.ts (coverage tick `0f73491`) — same coverage, different file.
+new dedicated test file (coverage tick `0f73491`) — same coverage, different file; they live in
+test/commit-message.test.ts today.
 Remaining — two test gaps against the acceptance criteria, nothing structural: (a) no tick-level
 e2e asserting real commit content (compliant reply → body + trailer; SUMMARY-only → subject +
 trailer only); (b) the turn counter feeding the trailer is untested at every level (parser
@@ -42,7 +43,7 @@ paper trail of claimed understanding to check against.
 
 ## Design
 
-- **Protocol** (`src/prompt/prompt.ts`): extend `SUMMARY_RULE` — the single constant both
+- **Protocol** (`src/verdict/reply-contract.ts`): extend `SUMMARY_BLOCK` — the single constant both
   tick/director
   prompts (via COMMON_RULES) and the resume bridge share; extending it there keeps all three from
   drifting. After the existing `SUMMARY:` line, a run that made changes appends three short lines:
@@ -54,7 +55,7 @@ paper trail of claimed understanding to check against.
   still commits), and **capped at 200 chars per field** (truncate + ellipsis) so a verbose model
   cannot bloat every commit. `SUMMARY` itself is untouched — existing contract, no new
   enforcement.
-- **Commit assembly** (`src/loop.ts`): the changed-tick path builds
+- **Commit assembly** (`src/loop/loop.ts`): the changed-tick path builds
   `tumwater(<role>): <summary>\n\n<body>\n\n<trailer>` where `<body>` is the three lines joined by
   newlines (omitted entirely when none were extracted) and the trailer is harness-stamped truth,
   not model claims. Fallback when the run omitted the body: subject + trailer only. **Single
@@ -67,12 +68,12 @@ paper trail of claimed understanding to check against.
 - **Trailer format (decided):** one line — `Tick: <role> #<tick> · turns <t> · ctx <c>` where
   `<tick>` is `s.ticks` and `<c>` uses the status table's compact style (`12k` at ≥10,000, bare
   integer below). Built by a pure helper (e.g. `commitTrailer(role, tick, turns, peakCtx)`) in
-  src/prompt/prompt.ts beside the extractors — unit-tested there, formatting kept out of the tick
+  src/git/commit-message.ts beside the extractors — unit-tested there, formatting kept out of the tick
   lifecycle. The high-friction flag from [refusal-and-thrash.md](refusal-and-thrash.md) appends to
   this line when set (that plan owns the flag; this one reserves the slot).
 - **Trailer number sources (decided):** a tick can fold several pi runs before its commit — the
   main run plus, on a transient model-server timeout, one resumed retry. Both already land in
-  `foldUsage` (src/loop.ts), the single place every pre-commit run's usage is folded into the
+  `foldUsage` (src/loop/loop.ts), the single place every pre-commit run's usage is folded into the
   per-tick windows:
   - `turns`: add a **non-persisted** counter to LoopRunner (e.g. `tickTurns`), reset at tick start
     alongside `generatedTokens`/`peakContextTokens`, incremented in `foldUsage` by `run.turns`. At
@@ -83,13 +84,13 @@ paper trail of claimed understanding to check against.
     state-schema change.
   - `ctx`: read `s.peakContextTokens` at commit time — already the max across this tick's
     pre-commit runs by the existing per-tick-window logic (see BUGS.md "gen / peak ctx columns").
-- **Turn counter** (`src/pi.ts`): a small `PiStreamParser` addition — count assistant
+- **Turn counter** (`src/pi/pi-stream.ts`): a small `PiStreamParser` addition — count assistant
   `message_end` events in the same hook that already reads usage (`this.outputTokens += …`) —
   exposed as `PiRunResult.turns`. Adding the field touches the parser plus the single
   `resultFromParser(overrides)` builder in runPi (the unified PiRunResult construction added by a
   recent dry pass — its comment says adding a field touches that one place).
   [refusal-and-thrash.md](refusal-and-thrash.md) needs the same field for thrash detection:
-  whichever plan lands first adds it and the other reuses. Do not reuse `progress.ts`'s live
+  whichever plan lands first adds it and the other reuses. Do not reuse `src/ui/progress-data.ts`'s live
   counters: those describe the log tail for dashboards, not a finished run's totals.
 - **Consumers**: the review gate's prompt includes the body (claimed WHY/VERIFIED vs. actual diff
   is exactly the adversarial angle); `tumwater logs --role` transcripts and git history read
@@ -97,10 +98,10 @@ paper trail of claimed understanding to check against.
 
 ## Files touched
 
-`src/prompt/prompt.ts` (SUMMARY_RULE extension, extractCommitBody + commitTrailer), `src/pi.ts` (parser
-turn counter; PiRunResult.turns via the single builder), `src/loop.ts` (tickTurns reset in tick()
-+ increment in foldUsage; assembly at the changed-tick site), `src/types.ts` (PiRunResult.turns),
-`test/commit-bodies.test.ts` (extraction tolerant of partial blocks + 200-char caps; trailer
+`src/verdict/reply-contract.ts` (SUMMARY_BLOCK extension), `src/git/commit-message.ts` (extractCommitBody + commitTrailer), `src/pi/pi-stream.ts` (parser
+turn counter; PiRunResult.turns via the single `resultFromParser` builder, src/agent/run-agent.ts), `src/loop/loop.ts` (tickTurns reset in tick()
++ increment in foldUsage; assembly at the changed-tick site),
+`test/commit-message.test.ts` (extraction tolerant of partial blocks + 200-char caps; trailer
 format from harness counters, not model text; assembled message shape with and without body; turn
 counter over a multi-run tick — main + transient retry folds both, conflict run excluded), README
 example.

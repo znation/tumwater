@@ -7,25 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Finish the stale code-path citation sweep, part 5b/5: `commit-bodies`, `refusal-and-thrash`, `user-defined-loops`, `principles` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/commit-bodies.md`,
-`plans/refusal-and-thrash.md`, `plans/user-defined-loops.md`, and `plans/principles.md`. The
-inventory here flags the moved top-level `loop`, `pi`, `types`, `config`, `git`, and `pi-stream`
-modules, plus the moved `commit-bodies` test file cited by `plans/commit-bodies.md`.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these four files.
-
-**Files touched.** Those four `plans/*.md` files. No source or test change.
-
-**Acceptance criteria.**
-- The inventory over these four files reports no cited path absent from the tree.
-- No `<path>:<line>` in them names a line past that file's end.
-- For each split module cited here, the module named beside a symbol exports it (checked against
-  the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 5c/5: `refusal-and-thrash`, `merge-queue`, `work-ratio` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/refusal-and-thrash.md`,
@@ -171,6 +152,25 @@ part 1a/5.
 - No `<path>:<line>` in it names a line past that file's end.
 - For each split module cited there (e.g. `src/pi/pi.ts`, `src/config/model-selector.ts`), the
   module named beside a symbol exports it (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5b/5: `commit-bodies`, `refusal-and-thrash`, `user-defined-loops`, `principles` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/commit-bodies.md`,
+`plans/refusal-and-thrash.md`, `plans/user-defined-loops.md`, and `plans/principles.md`. The
+inventory here flags the moved top-level `loop`, `pi`, `types`, `config`, `git`, and `pi-stream`
+modules, plus the moved `commit-bodies` test file cited by `plans/commit-bodies.md`.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these four files.
+
+**Files touched.** Those four `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these four files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
 - `npm run test` is green.
 
 ### Role-scoped Usage and Failures views in the dashboard (planned 2026-10-10 by plan; independent of the Agent backends series; sibling of the landed `tumwater report --role <id>` and `tumwater report --failures --role <id>`; completes the CLI's role scope on the dashboard's two report tabs; done 2026-10-10 by feature)
