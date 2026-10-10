@@ -28,6 +28,14 @@ import { claudeBackend } from "./claude/claude-backend.js";
  * hundred characters always cover a straddle. */
 const STDERR_MATCH_TAIL = 512;
 
+/** The largest native stdout line the runner will buffer. A complete native event is one JSON
+ * object; a line this long is already at the default whole-log cap (`logMaxBytes`, 16 MiB), so
+ * continuing to buffer it can only be a malformed stream. Past it `feedCanonical` drops the
+ * buffered line and skips input to the next newline, so a backend that streams bytes with no
+ * newline — each byte resetting the quiet watchdog — cannot grow the buffer until the tick
+ * timeout (4 h by default) exhausts the harness's memory. */
+export const MAX_NATIVE_LINE_CHARS = 16 * 1024 * 1024;
+
 // The seam's adapters. Registering here — where the lookup happens — keeps the registration
 // explicit and lets a test register a fake under its own id.
 registerAgentBackend(piBackend);
@@ -119,8 +127,9 @@ export interface PiRunOptions {
    * raw log, so only the event needs wiring). */
   onToolCallStalled?: (message: string) => void;
   /** Called once per translator warning after the run ends — a native event type the backend
-   * could not map, and a result-less run's `cost_unknown` — so the caller can surface each in
-   * the event feed. A fully-mapped run reports none. */
+   * could not map, and a result-less run's `cost_unknown` — and once mid-run when an over-long
+   * native line (MAX_NATIVE_LINE_CHARS with no newline) is discarded, so the caller can surface
+   * each in the event feed. A fully-mapped run reports none. */
   onAgentWarning?: (warning: string) => void;
   /** Called once per tool call as it starts, with pi's tool name and raw args (see
    * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
@@ -211,7 +220,10 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     let settled = false;
     // The translator's native line buffer: feed the decoder's text through it and only complete
     // lines reach the translator, whose canonical output feeds the parser (and the raw log).
+    // `nativeOverflow` marks a buffered line that passed MAX_NATIVE_LINE_CHARS without a newline:
+    // its remainder is skipped to the next newline so it can never be mistaken for an event.
     let nativeTail = "";
+    let nativeOverflow = false;
 
     const child = spawn(resolved.bin, invocation.args, {
       cwd: opts.cwd,
@@ -276,6 +288,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // run's authoritative result (cost, final text). A genuinely truncated fragment parses as
     // no data (parseJsonObject → []), so this can only recover the last event.
     const feedCanonical = (text: string, final = false) => {
+      // A buffered overflow: discard this line's remainder up to (and including) its newline, so
+      // the stream resynchronizes on the next real event line instead of emitting a truncated one.
+      if (nativeOverflow) {
+        const nl = text.indexOf("\n");
+        if (nl < 0) return;
+        nativeOverflow = false;
+        text = text.slice(nl + 1);
+      }
       nativeTail += text;
       let start = 0;
       for (;;) {
@@ -285,7 +305,17 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         start = nl + 1;
       }
       if (start > 0) nativeTail = nativeTail.slice(start);
-      if (final && nativeTail !== "") {
+      if (nativeTail.length > MAX_NATIVE_LINE_CHARS) {
+        // No newline within the cap: drop the line and warn. On the final flush there is no
+        // remainder to skip, so only the buffer is cleared.
+        nativeTail = "";
+        if (!final) {
+          nativeOverflow = true;
+          opts.onAgentWarning?.(
+            `native output line exceeded ${MAX_NATIVE_LINE_CHARS / (1024 * 1024)} MiB without a newline and was discarded`,
+          );
+        }
+      } else if (final && nativeTail !== "") {
         emitNativeLine(nativeTail);
         nativeTail = "";
       }

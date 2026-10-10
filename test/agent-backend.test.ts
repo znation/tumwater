@@ -7,7 +7,7 @@ import {
   registerAgentBackend,
   type AgentBackend,
 } from "../src/agent/agent-backend.js";
-import { runAgent } from "../src/agent/run-agent.js";
+import { runAgent, MAX_NATIVE_LINE_CHARS } from "../src/agent/run-agent.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -49,4 +49,53 @@ test("a backend that returns stdin gets its prompt written to the child and echo
   });
   const content = fs.readFileSync(rawLogFile, "utf8");
   assert.equal(content, `{"type":"tumwater_run","kind":"author","agent":"fake-stdin"}\nstdin-delivered\n`);
+});
+
+test("an over-long native line with no newline is dropped, not buffered without bound", async () => {
+  // A backend that streams bytes without a newline (a runaway tool call dumping binary) would
+  // otherwise grow the native line buffer until the tick timeout — four hours by default — and
+  // can OOM the harness, while every byte resets the quiet watchdog. The cap drops the
+  // never-terminated line and resynchronizes on the next newline: the line after it must still
+  // be translated, no line reaching the translator may exceed the cap, and the drop is warned
+  // about once.
+  const dir = tmpdir();
+  const rawLogFile = path.join(dir, "raw.jsonl");
+  const seen: string[] = [];
+  const warnings: string[] = [];
+  const fake: AgentBackend = {
+    id: "fake-overlong",
+    label: "fake",
+    defaultBin: "fake",
+    binEnv: "TUMWATER_FAKE_BIN",
+    resolveBin: () => ({ bin: "/bin/sh", source: "config" }),
+    invocation: () => ({
+      args: ["-c", `head -c 17000000 /dev/zero | tr '\\0' a; printf '\\nvalid\\n'`],
+      env: process.env,
+    }),
+    translator: () => ({
+      translate: (line) => {
+        seen.push(line);
+        return [line];
+      },
+    }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  await runAgent({
+    cwd: dir,
+    prompt: "p",
+    config: { ...defaultConfig(), agent: "fake-overlong" },
+    sessionDir: path.join(dir, "sessions"),
+    sessionName: "t",
+    rawLogFile,
+    nativeLogFile: path.join(dir, "native.jsonl"),
+    kind: "author",
+    onAgentWarning: (warning) => warnings.push(warning),
+  });
+  assert.ok(seen.includes("valid"), "the line after the over-long one still reaches the translator");
+  assert.ok(
+    seen.every((line) => line.length <= MAX_NATIVE_LINE_CHARS),
+    "no line at or beyond the cap is buffered or translated",
+  );
+  assert.equal(warnings.length, 1, "the discarded line is warned about exactly once");
 });
