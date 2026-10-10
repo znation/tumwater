@@ -40,6 +40,8 @@ the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
 
 ### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
+**Needs review 2026-10-10 by feature: too large for one run**
+
 **Goal.** The same citation invariant as part 1a/5, for every `plans/*.md` file not assigned to
 parts 1a/5–1c/5 and 2a/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
 `plans/commit-bodies.md`, `plans/refusal-and-thrash.md`, `plans/repair-traces.md`,
