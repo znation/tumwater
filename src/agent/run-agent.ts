@@ -261,21 +261,33 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // Quiet watchdog and its stall warning: src/pi/pi-watchdogs.ts.
 
     const onLine = (line: string) => rawLog.stream.write(line + "\n");
+    // Write one complete native line and feed its translation to the parser (which also hands
+    // the canonical lines to onLine for the raw log).
+    const emitNativeLine = (line: string) => {
+      if (!nativeLog.broken) nativeLog.stream.write(line + "\n");
+      for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
+    };
     // Split native stdout into complete lines, translate each, and feed the canonical lines to
     // the parser (which also hands them to onLine for the raw log). A trailing partial native
-    // line stays buffered exactly as the parser's own buffer once held it.
-    const feedCanonical = (text: string) => {
+    // line stays buffered exactly as the parser's own buffer once held it. On the final flush
+    // (`final`), a remaining tail is emitted as one line: a backend may close after flushing a
+    // complete JSON event but not its newline terminator, and dropping that tail loses the
+    // run's authoritative result (cost, final text). A genuinely truncated fragment parses as
+    // no data (parseJsonObject → []), so this can only recover the last event.
+    const feedCanonical = (text: string, final = false) => {
       nativeTail += text;
       let start = 0;
       for (;;) {
         const nl = nativeTail.indexOf("\n", start);
         if (nl < 0) break;
-        const line = nativeTail.slice(start, nl);
+        emitNativeLine(nativeTail.slice(start, nl));
         start = nl + 1;
-        if (!nativeLog.broken) nativeLog.stream.write(line + "\n");
-        for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
       }
       if (start > 0) nativeTail = nativeTail.slice(start);
+      if (final && nativeTail !== "") {
+        emitNativeLine(nativeTail);
+        nativeTail = "";
+      }
     };
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -406,10 +418,11 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     });
 
     child.on("close", (code) => {
-      // Flush any bytes the decoder held back at stream end so a final line is not lost, then
-      // let the translator flush its own pending canonical line(s) — a batching backend's
-      // unclosed last assistant message, which a killed run never closes with a later event.
-      feedCanonical(decoder.end());
+      // Flush any bytes the decoder held back at stream end and any unterminated final line
+      // so the tail is not lost, then let the translator flush its own pending canonical
+      // line(s) — a batching backend's unclosed last assistant message, which a killed run
+      // never closes with a later event.
+      feedCanonical(decoder.end(), true);
       for (const canonical of translator.finalize?.() ?? []) parser.feed(canonical + "\n", onLine);
       const killed = aborted || wd.timedOut || wd.quietKilled;
       const failed =

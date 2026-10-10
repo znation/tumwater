@@ -91,6 +91,37 @@ test("runAgent runs the claude backend on a fake and folds its stream", async ()
   }
 });
 
+test("an unterminated final native line is still translated at stream end", async () => {
+  // A backend may flush a complete JSON event and close without its trailing newline — the
+  // last write landed, but its terminator did not. The native line buffer must feed that tail
+  // at stream end, or the run's authoritative result (cost, final text) is silently dropped
+  // and a successful run looks cost-unknown. The extra script strips the fixture's trailing
+  // newline so the final `result` arrives only when the stream closes.
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay(
+    [
+      claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "s" }),
+      claudeAssistant({ id: "m1", blocks: [claudeText("done")], usage: { input: 10, output: 5 } }),
+      claudeResult({ totalCostUsd: 0.02 }),
+    ],
+    {
+      extraScript: [
+        `printf '%s' "$(cat "$streamFile")" > "$streamFile.trimmed" && mv "$streamFile.trimmed" "$streamFile"`,
+      ],
+    },
+  );
+  try {
+    const run = claudeRun(dir);
+    const result = await runAgent(run);
+    assert.equal(result.costUsd, 0.02, "the unterminated final result is still folded");
+    assert.equal(result.finalText, "done");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
 test("agent: claude with no model resolves the author tier default that reaches --model", async () => {
   // Part 4b/7's config routing, end to end: a config that names only the backend must spawn
   // claude with the default tier's model on the command line.
