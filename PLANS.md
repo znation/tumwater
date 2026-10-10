@@ -400,80 +400,6 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Inspect a loop's notebook and next tick prompt in the TUI (planned 2026-10-09 by plan; sibling of "Inspect a loop's notebook and next prompt in the dashboard drawer")
-
-**Goal.** Viewing a loop's transcript in `tumwater tui` gains a notebook view: `Ctrl+N`
-switches the viewed loop's pane between its live transcript and a read-only snapshot of its
-notebook and next tick's assembled prompt — the same two things the dashboard drawer shows, so
-the terminal and the browser diagnose a quiet, stuck, or oddly-behaving loop the same way.
-
-**Context.** `rolePayload` (src/roles/role-view.ts) already collects both: `note` is the loop's
-notebook read from `roleNotesPath`, and `nextPrompt` is the next tick's assembled prompt through
-the preview seam. The dashboard drawer reaches them through `handleRole` (`GET /api/role`,
-src/gui/gui-endpoints.ts). The TUI does not: `paneBody`'s transcript branch
-(src/ui/tui/tui-pane.ts) only returns `readTranscript`, `TuiView`'s transcript variant
-(src/ui/tui/tui-frame.ts) carries no note flag, and no key in the Ctrl+T cycle's handler
-(src/ui/tui/tui-keys.ts) reaches `rolePayload`. `renderRoleMarkdown` (src/roles/role-render.ts)
-already renders the Notebook and Next tick prompt fenced blocks for `tumwater role <id>`. This is
-an observability gap only — no new collection, scheduling, or state.
-
-**Approach.**
-1. src/roles/role-render.ts: extract the Notebook and Next tick prompt blocks (the two
-   `fencedOrNone` calls plus the "more waits" note) out of `renderRoleMarkdown` into an exported
-   `inspectMarkdownLines(p: RoleViewPayload): string[]`; `renderRoleMarkdown` splices it back at
-   the same position, producing the same lines in the same order.
-2. src/ui/tui/tui-pane.ts: add `noteCache: string | null` to `TuiPaneState`, and an exported
-   `roleInspectMarkdown(root, role): string` that returns
-   `inspectMarkdownLines(rolePayload(root, role)).join("\n")`. In `paneBody`'s transcript branch,
-   when the pane's new `note` flag is set, window `state.noteCache` through the existing
-   `entryBodyWindow(state.paneScroll, eventBudget, width)` (bold lines starting `#`, like the
-   usage/failures panes) instead of `readTranscript`, with emptyNote `(nothing to inspect yet)`.
-3. src/ui/tui/tui-frame.ts: add `note: boolean` to `TuiView`'s transcript variant. `tabStrip`
-   labels that tab `Notebook: <role> (<index>/<count>)` when `note`, else today's `Transcript: …`.
-   `hintLine`'s transcript branch gains `["Ctrl+N", view.note ? "transcript" : "notebook"]`
-   beside the existing per-loop keys.
-4. src/ui/tui/tui-keys.ts: add `let noteMode = false; let noteCache: string | null = null;` and
-   both fields to `TuiKeysState`. A Ctrl+N branch (guarded to a transcript view, out of
-   budget-edit and role-prompt modes) toggles `noteMode`, computes
-   `noteCache = roleInspectMarkdown(root, role)` inside try/catch (`flashError` on a throw, leaving
-   the mode off), nulls it when leaving, and resets `paneScroll = 0` each way. The Ctrl+T handler
-   resets `noteMode = false; noteCache = null` beside its `paneScroll = 0`. The PgUp/PgDn branch
-   pages `noteCache` when `noteMode`, else `paneCache`.
-5. src/ui/tui/tui.tsx: build the transcript pane as `{ kind: "transcript", role, index: view,
-   count: roleIds.length, note: s.noteMode }`.
-6. docs/how-it-works.md's TUI "Operator notes" bullet names `Ctrl+N` beside `Ctrl+R` as the
-   transcript/notebook toggle.
-
-**Files touched.**
-- src/roles/role-render.ts (`inspectMarkdownLines`, `renderRoleMarkdown`)
-- src/ui/tui/tui-pane.ts (`TuiPaneState.noteCache`, `roleInspectMarkdown`, `paneBody`)
-- src/ui/tui/tui-frame.ts (`TuiView`, `tabStrip`, `hintLine`)
-- src/ui/tui/tui-keys.ts (`noteMode`, `noteCache`, Ctrl+N, Ctrl+T, PgUp/PgDn, `state()`)
-- src/ui/tui/tui.tsx (transcript pane)
-- docs/how-it-works.md (Operator notes)
-
-Tests: a case in test/role-view.test.ts for `inspectMarkdownLines` (its two sections and the
-"more waits" line, and that `renderRoleMarkdown` still contains them in place), and a TUI case
-(following the `withTui` pattern of test/tui-role-prompt.test.ts) that seeds a loop notebook via
-`fs.writeFileSync(roleNotesPath(repo, role), …)` and a queued prompt for that loop.
-
-**Acceptance criteria.**
-- `Ctrl+N` on a loop's transcript replaces the live transcript with a **Notebook** heading and the
-  loop's note, and a **Next tick prompt** heading and that loop's assembled prompt; the tab strip
-  reads `Notebook: <role> (i/n)` and the hint line offers `Ctrl+N transcript`. A loop with no
-  notebook renders the fenced `_(none yet …)_` placeholder from `inspectMarkdownLines`, not the
-  transcript's `(no transcript yet)`.
-- `Ctrl+N` again (or `Ctrl+T`, or `Esc`-free cycling away) restores the live transcript, and the
-  pane's scroll is back at its head.
-- PgUp/PgDn in notebook mode page the assembled text and clamp at both ends, exactly as the
-  usage/failures panes page their Markdown.
-- A `rolePayload` throw on entering notebook mode leaves the transcript shown and flashes
-  `error: <message>`; the TUI does not exit.
-- `renderRoleMarkdown(rolePayload(root, id))`'s output is unchanged by the extraction: the
-  Notebook and Next tick prompt blocks and the "more waits" line appear in the same positions
-  (pinned by the existing test/role-view.test.ts cases and the new `inspectMarkdownLines` case).
-- `npm run test` green.
-
 ### Show backlog entry eligibility holds in the GUI and TUI backlog lists (planned 2026-10-09 by plan; sibling of "Mark why a backlog entry is held in `tumwater backlog`")
 
 **Goal.** The dashboard's backlog panel and the TUI's project-status pane mark each held entry
@@ -603,6 +529,84 @@ and `TickRow` are untouched).
 
 
 ## Done
+
+### Inspect a loop's notebook and next tick prompt in the TUI (planned 2026-10-09 by plan; done 2026-10-09 by feature; sibling of "Inspect a loop's notebook and next prompt in the dashboard drawer")
+
+**Goal.** Viewing a loop's transcript in `tumwater tui` gains a notebook view: `Ctrl+N`
+switches the viewed loop's pane between its live transcript and a read-only snapshot of its
+notebook and next tick's assembled prompt — the same two things the dashboard drawer shows, so
+the terminal and the browser diagnose a quiet, stuck, or oddly-behaving loop the same way.
+
+**Context.** `rolePayload` (src/roles/role-view.ts) already collects both: `note` is the loop's
+notebook read from `roleNotesPath`, and `nextPrompt` is the next tick's assembled prompt through
+the preview seam. The dashboard drawer reaches them through `handleRole` (`GET /api/role`,
+src/gui/gui-endpoints.ts). The TUI does not: `paneBody`'s transcript branch
+(src/ui/tui/tui-pane.ts) only returns `readTranscript`, `TuiView`'s transcript variant
+(src/ui/tui/tui-frame.ts) carries no note flag, and no key in the Ctrl+T cycle's handler
+(src/ui/tui/tui-keys.ts) reaches `rolePayload`. `renderRoleMarkdown` (src/roles/role-render.ts)
+already renders the Notebook and Next tick prompt fenced blocks for `tumwater role <id>`. This is
+an observability gap only — no new collection, scheduling, or state.
+
+**Approach.**
+1. src/roles/role-render.ts: extract the Notebook and Next tick prompt blocks (the two
+   `fencedOrNone` calls plus the "more waits" note) out of `renderRoleMarkdown` into an exported
+   `inspectMarkdownLines(p: RoleViewPayload): string[]`; `renderRoleMarkdown` splices it back at
+   the same position, producing the same lines in the same order.
+2. src/ui/tui/tui-pane.ts: add `noteCache: string | null` to `TuiPaneState`, and an exported
+   `roleInspectMarkdown(root, role): string` that returns
+   `inspectMarkdownLines(rolePayload(root, role)).join("\n")`. In `paneBody`'s transcript branch,
+   when the pane's new `note` flag is set, window `state.noteCache` through the existing
+   `entryBodyWindow(state.paneScroll, eventBudget, width)` (bold lines starting `#`, like the
+   usage/failures panes) instead of `readTranscript`, with emptyNote `(nothing to inspect yet)`.
+3. src/ui/tui/tui-frame.ts: add `note: boolean` to `TuiView`'s transcript variant. `tabStrip`
+   labels that tab `Notebook: <role> (<index>/<count>)` when `note`, else today's `Transcript: …`.
+   `hintLine`'s transcript branch gains `["Ctrl+N", view.note ? "transcript" : "notebook"]`
+   beside the existing per-loop keys.
+4. src/ui/tui/tui-keys.ts: add `let noteMode = false; let noteCache: string | null = null;` and
+   both fields to `TuiKeysState`. A Ctrl+N branch (guarded to a transcript view, out of
+   budget-edit and role-prompt modes) toggles `noteMode`, computes
+   `noteCache = roleInspectMarkdown(root, role)` inside try/catch (`flashError` on a throw, leaving
+   the mode off), nulls it when leaving, and resets `paneScroll = 0` each way. The Ctrl+T handler
+   resets `noteMode = false; noteCache = null` beside its `paneScroll = 0`. The PgUp/PgDn branch
+   pages `noteCache` when `noteMode`, else `paneCache`.
+5. src/ui/tui/tui.tsx: build the transcript pane as `{ kind: "transcript", role, index: view,
+   count: roleIds.length, note: s.noteMode }`.
+6. docs/how-it-works.md's TUI "Operator notes" bullet names `Ctrl+N` beside `Ctrl+R` as the
+   transcript/notebook toggle.
+
+**Files touched.**
+- src/roles/role-render.ts (`inspectMarkdownLines`, `renderRoleMarkdown`)
+- src/ui/tui/tui-pane.ts (`TuiPaneState.noteCache`, `roleInspectMarkdown`, `paneBody`)
+- src/ui/tui/tui-frame.ts (`TuiView`, `tabStrip`, `hintLine`)
+- src/ui/tui/tui-keys.ts (`noteMode`, `noteCache`, Ctrl+N, Ctrl+T, PgUp/PgDn, `state()`)
+- src/ui/tui/tui.tsx (transcript pane)
+- docs/how-it-works.md (Operator notes)
+- test/tui-frame.test.ts (the transcript variant's new `note` field)
+- test/tui-operator-keys.test.ts, test/tui.test.ts (hint-order assertions gain Ctrl+N)
+
+Tests: a case in test/role-view.test.ts for `inspectMarkdownLines` (its two sections and the
+"more waits" line, and that `renderRoleMarkdown` still contains them in place), and TUI cases
+(test/tui-notebook.test.ts, following the `withTui` pattern of test/tui-role-prompt.test.ts)
+that seed a loop notebook via `fs.writeFileSync(roleNotesPath(repo, role), …)` and a queued
+prompt for that loop, pin the notebook/none-yet and toggle-back rendering, and page the body
+with PgUp/PgDn.
+
+**Acceptance criteria.**
+- `Ctrl+N` on a loop's transcript replaces the live transcript with a **Notebook** heading and the
+  loop's note, and a **Next tick prompt** heading and that loop's assembled prompt; the tab strip
+  reads `Notebook: <role> (i/n)` and the hint line offers `Ctrl+N transcript`. A loop with no
+  notebook renders the fenced `_(none yet …)_` placeholder from `inspectMarkdownLines`, not the
+  transcript's `(no transcript yet)`.
+- `Ctrl+N` again (or `Ctrl+T`, or `Esc`-free cycling away) restores the live transcript, and the
+  pane's scroll is back at its head.
+- PgUp/PgDn in notebook mode page the assembled text and clamp at both ends, exactly as the
+  usage/failures panes page their Markdown.
+- A `rolePayload` throw on entering notebook mode leaves the transcript shown and flashes
+  `error: <message>`; the TUI does not exit.
+- `renderRoleMarkdown(rolePayload(root, id))`'s output is unchanged by the extraction: the
+  Notebook and Next tick prompt blocks and the "more waits" line appear in the same positions
+  (pinned by the existing test/role-view.test.ts cases and the new `inspectMarkdownLines` case).
+- `npm run test` green.
 
 ### Mark why a backlog entry is held in `tumwater backlog` (planned 2026-10-09 by plan; done 2026-10-09 by feature)
 

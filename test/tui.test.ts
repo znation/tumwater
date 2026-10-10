@@ -301,7 +301,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures",
     let frame = tui.lastFrame();
     assert.match(frame, /\[Transcript: clean \(1\/1\)\]/);
     // The loop's own keys ride the hint line while its transcript is up.
-    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+P pause\/resume · Ctrl\+W wake · Ctrl\+A abort/);
+    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notebook · Ctrl\+P pause\/resume/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
     assert.doesNotMatch(frame, /Build a thing/); // …but never the user's tick prompt
 

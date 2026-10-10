@@ -29,6 +29,33 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
   return [`## ${label}`, "", fence, text.replace(/\n+$/, ""), fence, ""];
 }
 
+/** The Notebook and Next tick prompt blocks and the "more waits" disclosure, as Markdown
+ * lines — the read-only inspection the TUI's notebook view and `tumwater role <id>` share,
+ * so the terminal and the CLI show one loop's notebook and assembled prompt identically.
+ * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
+ * full document cannot drift. */
+export function inspectMarkdownLines(p: RoleViewPayload): string[] {
+  const lines: string[] = [];
+  lines.push(
+    ...fencedOrNone(
+      "Notebook",
+      p.note,
+      "none yet — the role's own earlier ticks write it, and the director has none",
+    ),
+  );
+  lines.push(...fencedOrNone("Next tick prompt", p.nextPrompt, "nothing to run this tick"));
+  // tick-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
+  // waiting the block above shows only the oldest — say so, so the count line and the
+  // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
+  if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
+    const more = p.inboxCount - 1;
+    lines.push(
+      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${more} more ${agree(more, "waits", "wait")})_`,
+    );
+  }
+  return lines;
+}
+
 /** The provider/model wiring as one readable token — `provider/model` when both are named,
  * `model` alone when only the model is (the join simply drops unset halves) — shared by the
  * main line and the budget-fallback line, so the two render the same wiring the same way. */
@@ -75,22 +102,6 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
       "none — the director is driven by its queued prompts, not a find text",
     ),
   );
-  lines.push(
-    ...fencedOrNone(
-      "Notebook",
-      p.note,
-      "none yet — the role's own earlier ticks write it, and the director has none",
-    ),
-  );
-  lines.push(...fencedOrNone("Next tick prompt", p.nextPrompt, "nothing to run this tick"));
-  // tick-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
-  // waiting the block above shows only the oldest — say so, so the count line and the
-  // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
-  if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
-    const more = p.inboxCount - 1;
-    lines.push(
-      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${more} more ${agree(more, "waits", "wait")})_`,
-    );
-  }
+  lines.push(...inspectMarkdownLines(p));
   return lines.join("\n").trimEnd();
 }

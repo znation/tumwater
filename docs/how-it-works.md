@@ -284,7 +284,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   cycles Activity, each loop's Transcript, Backlog, Usage, and Failures.
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
   toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
-  its backoff, and `Ctrl+R` opens the role-prompt editor that queues a prompt for that loop's
+  its backoff, `Ctrl+N` switches the pane between the live transcript and a read-only view of
+  the loop's notebook and next tick's assembled prompt (the same two things the dashboard
+  drawer shows; the tab strip reads Notebook and PgUp/PgDn page it), and `Ctrl+R` opens the
+  role-prompt editor that queues a prompt for that loop's
   next tick (Enter sends it; Esc or `Ctrl+R` again cancels and restores the draft). The prompt
   line names who Enter sends to, and Up/Down recall this session's submitted prompts — director
   and role alike — readline-style, with a half-typed draft saved and restored around the walk;

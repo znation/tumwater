@@ -11,6 +11,8 @@ import { readEvents } from "../../events/event-read.js";
 import { formatEvent } from "../../events/event-format.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../../backlog/backlog.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
+import { rolePayload } from "../../roles/role-view.js";
+import { inspectMarkdownLines } from "../../roles/role-render.js";
 import { eventTone, toneLine, transcriptTone, type TuiView } from "./tui-frame.js";
 
 /** The slice of the keypress handler's state (TuiKeys.state(), src/ui/tui/tui-keys.ts) the
@@ -20,7 +22,17 @@ interface TuiPaneState {
   selectedEntry: number | null;
   entryScroll: number;
   paneCache: string | null;
+  /** The notebook view's rendered Markdown (roleInspectMarkdown), computed once on
+   * Ctrl+N entry like paneCache; null when the live transcript is shown. */
+  noteCache: string | null;
   paneScroll: number;
+}
+
+/** One loop's notebook and next tick prompt, rendered as the same Markdown the TUI's notebook
+ * view windows: inspectMarkdownLines over the loop's rolePayload. Split out of the keypress
+ * handler so the Ctrl+N branch can catch a collector throw and flash it. */
+export function roleInspectMarkdown(root: string, role: string): string {
+  return inspectMarkdownLines(rolePayload(root, role)).join("\n");
 }
 
 /** The pane's body lines and the note a short body is replaced with (tui.tsx's frame
@@ -46,6 +58,15 @@ export function paneBody(
 ): TuiPaneBody {
   const { root, width, eventBudget, entryBudget, state } = opts;
   if (pane.kind === "transcript") {
+    // The notebook view (Ctrl+N) windows the cached inspection Markdown exactly like the
+    // usage/failures panes, headings bold; the live transcript keeps the tail.
+    if (pane.note) {
+      const win = entryBodyWindow(state.noteCache ?? "", state.paneScroll, eventBudget, width);
+      return {
+        body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+        emptyNote: "(nothing to inspect yet)",
+      };
+    }
     return {
       body: readTranscript(root, pane.role, eventBudget).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
       emptyNote: "(no transcript yet)",

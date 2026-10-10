@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { rolePayload } from "../src/roles/role-view.js";
-import { renderRoleMarkdown } from "../src/roles/role-render.js";
+import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -170,6 +170,33 @@ test("with several prompts queued, the next-tick block discloses that only the o
     md,
     /_\(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; 1 more waits?\)_/,
   ); // tick-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
+});
+
+test("inspectMarkdownLines carries the notebook and next-tick blocks renderRoleMarkdown splices in place", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "feature");
+  fs.mkdirSync(path.dirname(notes), { recursive: true });
+  fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
+  enqueueRolePrompt(dir, "feature", "cover the empty-input case");
+  enqueueRolePrompt(dir, "feature", "also test the NaN path");
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  const lines = inspectMarkdownLines(p);
+  // The Notebook block is verbatim and fenced, then the Next tick prompt block, then the
+  // "more waits" disclosure when several prompts are queued.
+  assert.deepEqual(lines.slice(0, 5), ["## Notebook", "", "```", "the scheduler lives in fleet.ts", "```"]);
+  assert.ok(lines.includes("## Next tick prompt"));
+  assert.match(
+    lines.join("\n"),
+    /_\(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; 1 more waits?\)_/,
+  );
+  // The extraction is in place: the full document still shows Find text before Notebook
+  // before Next tick prompt, with the same fenced notebook body.
+  const md = renderRoleMarkdown(p);
+  const findAt = md.indexOf("## Find text");
+  const notebookAt = md.indexOf("## Notebook");
+  const nextAt = md.indexOf("## Next tick prompt");
+  assert.ok(findAt >= 0 && notebookAt > findAt && nextAt > notebookAt);
+  assert.match(md, /## Notebook\n\n```\nthe scheduler lives in fleet\.ts\n```/);
 });
 
 test("unset things render as explicit placeholder lines, not omissions", () => {

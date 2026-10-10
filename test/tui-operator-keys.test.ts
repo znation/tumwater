@@ -24,7 +24,7 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
-    assert.match(tui.lastFrame(), /Ctrl\+P pause\/resume · Ctrl\+W wake · Ctrl\+A abort/); // header hint
+    assert.match(tui.lastFrame(), /Ctrl\+N notebook · Ctrl\+P pause\/resume · Ctrl\+W wake/); // header hint (Ctrl+A clips at 100 cols)
 
     tui.key(undefined, "p", { ctrl: true });
     assert.deepEqual(pausedRoles(repo), ["clean"]);

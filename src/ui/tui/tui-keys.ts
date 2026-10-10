@@ -30,6 +30,7 @@ import {
   settlePromptRecall,
 } from "./tui-prompt-history.js";
 import { labeledBacklogEntries, moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
+import { roleInspectMarkdown } from "./tui-pane.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 
 /** How long a TUI flash notice stays visible (ms). */
@@ -58,6 +59,12 @@ interface TuiKeysState {
   selectedEntry: number | null;
   entryScroll: number;
   paneCache: string | null;
+  /** Whether the viewed loop's pane shows its notebook (Ctrl+N) instead of the transcript —
+   * true only on a transcript view. */
+  noteMode: boolean;
+  /** The notebook view's rendered Markdown, computed once on Ctrl+N entry and windowed by
+   * paneBody; null when the live transcript is shown. */
+  noteCache: string | null;
   paneScroll: number;
   eventBudget: number;
   entryBudget: number;
@@ -160,8 +167,15 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // collectReport/collectFailureReport tail-scan events.jsonl, so they must not run on every
   // second's re-render — those only re-window this string.
   let paneCache: string | null = null;
+  // Ctrl+N toggles the viewed loop's pane between its live transcript and a read-only
+  // notebook view (its note and next tick's prompt). Like paneCache, noteCache is computed
+  // once on entry and only re-windowed each frame; both reset when the mode changes or the
+  // view cycles.
+  let noteMode = false;
+  let noteCache: string | null = null;
   // The within-body scroll offset (line index of the window head) shared by the two Markdown
-  // panes — PgDn/PgUp there. Reset to the head whenever the view is entered, like entryScroll.
+  // panes and the notebook view — PgDn/PgUp there. Reset to the head whenever the view is
+  // entered, like entryScroll.
   let paneScroll = 0;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
@@ -323,12 +337,43 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
+    if (key.ctrl && key.name === "n") {
+      // Ctrl+N toggles the viewed loop's pane between its live transcript and its notebook
+      // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI"). Guarded to a
+      // transcript view and out of budget-edit and role-prompt modes, the same way the
+      // per-loop controls below are; everywhere else the key falls through to applyKey.
+      if (budgetMode || rolePromptFor || roleIds.length === 0 || view < 1 || view > roleIds.length) {
+        deps.requestRender();
+        return;
+      }
+      const role = roleIds[view - 1]!; // defined: view is clamped inside the transcript range
+      if (noteMode) {
+        noteMode = false;
+        noteCache = null;
+      } else {
+        // rolePayload reads the notebook and assembles the next tick's prompt off disk; a
+        // throw leaves the transcript shown (the mode stays off) and flashes the reason
+        // instead of escaping the handler and killing the TUI.
+        try {
+          noteCache = roleInspectMarkdown(root, role);
+          noteMode = true;
+        } catch (err) {
+          noteCache = null;
+          flashError(err);
+        }
+      }
+      paneScroll = 0; // either way the pane starts at its head
+      deps.requestRender();
+      return;
+    }
     if (key.ctrl && key.name === "t") {
       // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
       // never strands the editor with its pre-filled cap in the prompt line. Role-prompt
       // mode composes the same way: cycling away restores the saved director draft.
       exitBudgetMode();
       exitRolePromptMode();
+      noteMode = false; // a cycle away leaves notebook mode and drops its snapshot
+      noteCache = null;
       view = (view + 1) % (roleIds.length + 4); // events → each loop's transcript → project status → usage report → failures → events
       selectedEntry = null; // leaving a view drops any entry selection…
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -352,6 +397,15 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       const count = flat().length;
       selectedEntry = moveEntrySelection(count, selectedEntry, arrow);
       entryScroll = 0; // a newly opened entry starts at its body's head
+      deps.requestRender();
+      return;
+    }
+    if (page !== null && noteMode) {
+      // Within-body scroll in the notebook view (a transcript view): PgDn/PgUp page the
+      // cached inspection Markdown, clamped at both ends, exactly like the usage/failures
+      // panes below.
+      const total = (noteCache ?? "").split("\n").length;
+      paneScroll = stepEntryScroll(paneScroll, total, eventBudget, page);
       deps.requestRender();
       return;
     }
@@ -510,6 +564,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         selectedEntry,
         entryScroll,
         paneCache,
+        noteMode,
+        noteCache,
         paneScroll,
         eventBudget,
         entryBudget,

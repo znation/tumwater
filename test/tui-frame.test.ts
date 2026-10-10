@@ -87,7 +87,8 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
 
 test("the tab strip names every view and brackets the current one", () => {
   assert.equal(plain(tabStrip({ kind: "activity" }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14 }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true }, 200)), "Activity  [Notebook: qa (3/14)]  Backlog  Usage  Failures   Ctrl+T next");
   const usage = tabStrip({ kind: "usage" }, 200);
   assert.deepEqual(usage.filter((s) => s.tone === "brand").map((s) => s.text), ["[Usage]"], "only the current view is bright");
   assert.ok(displayWidth(plain(tabStrip({ kind: "backlog" }, 20))) <= 20);
@@ -96,15 +97,22 @@ test("the tab strip names every view and brackets the current one", () => {
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null) => plain(hintLine(view, { budget, rolePromptFor }, 300));
   assert.equal(hint({ kind: "activity" }), "Enter send · ↑↓ history · Ctrl+T next view · Ctrl+B daily cap · Ctrl+C interrupt director · Ctrl+D quit");
-  assert.match(hint({ kind: "transcript", role: "qa", index: 1, count: 2 }), /^Enter send · ↑↓ history · Ctrl\+R prompt qa · Ctrl\+P pause\/resume · Ctrl\+W wake · Ctrl\+A abort/);
+  assert.equal(
+    hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false }),
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit",
+  );
+  assert.equal(
+    hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true }),
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit",
+  ); // the toggle names the way back
   assert.match(hint({ kind: "backlog" }), /↑↓ open entries · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures" }), /PgUp\/PgDn scroll/);
   assert.equal(hint({ kind: "activity" }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
-  assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2 }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
+  assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
     { kind: "activity" } as const,
-    { kind: "transcript", role: "qa", index: 1, count: 2 } as const,
+    { kind: "transcript", role: "qa", index: 1, count: 2, note: false } as const,
     { kind: "backlog" } as const,
     { kind: "usage" } as const,
     { kind: "failures" } as const,

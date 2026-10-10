@@ -151,7 +151,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // height-budget math is the same in every view.
     const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
     const pane: TuiView = role
-      ? { kind: "transcript", role, index: view, count: roleIds.length }
+      ? { kind: "transcript", role, index: view, count: roleIds.length, note: s.noteMode }
       : view === roleIds.length + 1 ? { kind: "backlog" }
         : view === roleIds.length + 2 ? { kind: "usage" }
           : view === roleIds.length + 3 ? { kind: "failures" }
