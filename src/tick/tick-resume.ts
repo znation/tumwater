@@ -95,13 +95,18 @@ export function planTickStart(opts: {
   const resumable = resumePending
     ? agentSessionResumable(dir, { kind: "author", agent })
     : false;
-  let resumableSession = resumable;
-  // A newest line of another kind or another agent is not ours to continue. When our backend
-  // cannot resume it either, the interrupted run's uncommitted edits still deserve a handoff
-  // rather than the fresh path's worktree reset. A missing transcript (claude) is not a
-  // handoff: there is no session left to continue, so the worktree resets as today.
-  const handoff =
-    latest !== null && !(latest.kind === "author" && latest.agent === agent) && !resumable;
+  const resumableSession = resumable;
+  // A newest line our backend cannot resume is not ours to continue: another kind's or
+  // another agent's session, OR our own author line whose session the backend no longer holds
+  // (a `--resume` that answered "No conversation found" mid-run, leaving `resumeMissing`, or a
+  // pruned session dir). In every such case the interrupted run's uncommitted edits still
+  // deserve a handoff rather than the fresh path's worktree reset: the next tick runs a FRESH
+  // session over the kept worktree, carrying the assembled tick prompt plus the handoff
+  // bridge (plans/agent-backends.md "Sessions"). The failed `resumeMissing` run arms
+  // `resumePending` from the verdict (its error turn carries no assistant content), so the
+  // very next tick lands here with the worktree intact. A dir with no ledger line at all is
+  // not a handoff — there is no recorded interrupted session to carry forward.
+  const handoff = latest !== null && !resumable;
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
   const pendingResumeCause = s.resumeCause;
   s.resumePending = false;

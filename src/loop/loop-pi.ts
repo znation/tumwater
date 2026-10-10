@@ -162,8 +162,12 @@ export class LoopPi {
    * Retry-After hint, when sent, is waited out first — capped, so one provider's generosity
    * cannot eat the tick's own run budget). A harness-killed or quiet-killed run never takes
    * the transient-retry path: its session is intact but resuming it would just re-hit
-   * whatever hung, burning another full quiet timeout. Extracted verbatim from runRolePi so
-   * the rule lives in one place
+   * whatever hung, burning another full quiet timeout. A run whose `--resume` target the
+   * backend no longer holds (`PiRunResult.resumeMissing`) is not retried here: continuing is
+   * impossible and this layer has no fresh tick prompt to hand a new session, so the failed
+   * run is returned and its kept worktree resumes as a `handoff` on the next tick
+   * (src/tick/tick-resume.ts).
+   * Extracted verbatim from runRolePi so the rule lives in one place
    * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
    */
   private async runWithTransientRetry(

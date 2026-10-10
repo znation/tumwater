@@ -5,13 +5,18 @@ import path from "node:path";
 import { planTickStart } from "../src/tick/tick-resume.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import type { LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { sessionDir } from "../src/paths.js";
-import { recordSession } from "../src/agent/session-ledger.js";
+import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
+import { runAgent } from "../src/agent/run-agent.js";
+import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
+import { defaultConfig } from "../src/config/config.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
+import { fakeClaudeReplay } from "./fakes/fake-claude.js";
+import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
 
 // The resume guard dispatches to the registered backend, so this process must register the two
@@ -214,7 +219,12 @@ test("a claude author resumes its id even when a newer gate line shares the dir"
   }
 });
 
-test("a claude resume with no transcript resets fresh, not a handoff", () => {
+// plans/agent-backends.md "Sessions", PLANS.md part 3d: a `--resume` whose id no longer has
+// a transcript fails with `resumeMissing`; the verdict keeps the worktree and arms
+// `resumePending`, so the next tick sees our own author line as unresumable. That is a
+// handoff, not a reset: the interrupted edits survive into a FRESH session that carries the
+// assembled tick prompt plus the bridge.
+test("a claude author whose transcript is gone handoffs over the kept worktree", () => {
   const root = tmpdir();
   const restoreHome = setEnv("HOME", tmpdir());
   try {
@@ -229,10 +239,82 @@ test("a claude resume with no transcript resets fresh, not a handoff", () => {
     });
     const p = plan(root, s, { agent: "claude" });
     assert.ok(p);
-    assert.equal(p.resuming, false);
-    assert.equal(p.handoff, false, "no session is left to continue, so the worktree resets");
-    assert.equal(p.prompt, "assembled tick prompt");
+    assert.equal(p.resuming, false, "there is no session left to continue");
+    assert.equal(p.handoff, true, "the interrupted edits deserve a handoff, not a reset");
+    assert.equal(p.resumeCause, "handoff");
+    assert.match(p.prompt, /assembled tick prompt/, "the handoff carries the assembled task");
+    assert.match(p.prompt, /uncommitted edits are in your worktree/);
   } finally {
+    restoreHome();
+  }
+});
+
+// PLANS.md part 3d: the resume-missing run itself, not just the hand-constructed state. A
+// real fake-claude `--resume` run that answers "No conversation found" yields
+// `resumeMissing`; fed through resolveTickVerdict against a dirty worktree, the failed turn
+// must arm `resumePending`; the next tick then hands off over the kept worktree instead of
+// resetting it. This is the verdict half the part-3d acceptance criterion calls out.
+test("a fake-claude resumeMissing run arms resumePending, and the next tick hands off", async () => {
+  const { root, wt } = await initializedWorktree("feature");
+  const cwd = fs.realpathSync(wt);
+  const logs = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([
+    claudeInit({ sessionId: "gone" }),
+    claudeResult({ isError: true, text: "No conversation found with session ID gone" }),
+  ]);
+  try {
+    // A recorded claude author lets the run resume by id; the fake replays the "no
+    // conversation" error a pruned transcript would produce.
+    withClaudeAuthor(root, cwd, "c1");
+    const run = await runAgent({
+      cwd,
+      prompt: "p",
+      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5" },
+      sessionDir: sessionDir(root, "feature"),
+      sessionName: "t",
+      rawLogFile: path.join(logs, "raw.jsonl"),
+      nativeLogFile: path.join(logs, "native.jsonl"),
+      kind: "author",
+      continueSession: true,
+    });
+    assert.equal(run.resumeMissing, true, "the translator parsed the resume-missing result");
+    assert.equal(run.ok, false);
+    assert.equal(run.producedAssistantContent, false, "the error turn carries no content");
+
+    // The interrupted tick's edits are on disk, so the verdict keeps the worktree.
+    fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
+    const s = freshLoopState("feature");
+    const outcome = await resolveTickVerdict({
+      root,
+      wt,
+      role: "feature",
+      mainBranch: "main",
+      state: s,
+      pending: new PendingPrompt(root, "feature"),
+      turns: 1,
+      userPrompt: null,
+      pi: run,
+      flow: null,
+      warn: () => {},
+      merge: async () => "changed" as const,
+      finishAbortedTick: async () => ({ result: "aborted" as const }),
+    });
+    assert.equal(outcome?.result, "error", "a failed run with no content is an error outcome");
+    assert.equal(s.resumePending, true, "the failed dirty resume armed the next resume");
+
+    // The transcript is gone (the resume-missing cause), so the next tick cannot continue it:
+    // it fresh-starts over the kept worktree with the handoff bridge.
+    const recorded = readSessions(sessionDir(root, "feature")).at(-1)!;
+    fs.rmSync(claudeTranscriptPath(cwd, recorded.id));
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, false, "the lost session is not resumable");
+    assert.equal(p.handoff, true, "the kept worktree is handed off, not reset");
+    assert.equal(p.resumeCause, "handoff");
+    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+  } finally {
+    fake.restore();
     restoreHome();
   }
 });

@@ -6,30 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 3d/7: `resumeMissing` resumes once as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c3/7 landed)
-
-Design: plans/agent-backends.md ("Sessions").
-
-**Approach.**
-1. When a run ends with `PiRunResult.resumeMissing` (part 3a), `runWithTransientRetry`
-   (src/loop/loop-pi.ts) retries once with `continueSession` unset and the `handoff` cause from
-   part 2/7: `buildHandoffPrompt` (src/prompt/prompt-followup.ts) carries the bridge text, and
-   the worktree is left as is, so the retry's fresh session still sees the interrupted run's
-   uncommitted edits.
-2. The retry follows the existing transient-retry shape (warn, fold the failed attempt, run the
-   fresh handoff), and the `resume` event reports the `handoff` cause.
-
-**Files touched.**
-- src/loop/loop-pi.ts
-- test/loop-pi.test.ts or test/loop-interrupted.test.ts
-
-**Acceptance criteria.**
-- A fake-claude run whose `--resume` id has no transcript yields `resumeMissing`, and the loop
-  retries once fresh with the handoff bridge prompt; the worktree's uncommitted edits are still
-  present for the retry.
-- A run that does not report `resumeMissing` is not retried.
-- `npm run test` green.
-
 ### Agent backends, part 4/7: `agent` / `agents` config, selector routing, per-tier claude defaults, doctor and labels (planned 2026-10-09 by operator; requires part 3d/7 landed)
 
 Design: plans/agent-backends.md ("Config", "Every seam, checked" — doctor, startup and status
@@ -535,8 +511,9 @@ as having no session (which would reset the worktree and lose the interrupted ru
    (src/review/review.ts) — the original three-guard list missed review.ts, whose guards would
    otherwise read a claude gate run as having no session.
 6. **Tests.** `test/tick-resume.test.ts` (a claude author resumes when its transcript exists,
-   resets fresh — not a handoff — when it does not, resumes its id past a newer gate line, and
-   hands off when the only ledger line names another agent), `test/review-followup.test.ts`
+   resumes its id past a newer gate line, and hands off when the newest line names another
+   agent or its own transcript is gone — part 3d widened the latter from a worktree reset),
+   `test/review-followup.test.ts`
    (a claude gate session resumes without a pi session file), and the adapter's `resumable`
    predicate in `test/claude-run.test.ts`. The entry named `test/loop-interrupted.test.ts`; the
    decision it targets is pinned directly in tick-resume.test.ts because planTickStart owns it
@@ -551,12 +528,46 @@ as having no session (which would reset the worktree and lose the interrupted ru
 **Acceptance criteria:**
 - With `config.agent = "claude"` and a transcript present for the newest author ledger line,
   `planTickStart` sets `resuming: true` and the tick's slot is kept (`keep`); with the transcript
-  absent it does not resume and the worktree is reset as today. A newest line naming another
-  agent still hands off.
+  absent it does not resume but hands off over the kept worktree (part 3d superseded the reset).
+  A newest line naming another agent still hands off.
 - A claude `requestFollowUp` and a claude review follow-up pass `--resume <recorded id>`; a pi
   session dir still uses pi's `--continue` exactly as today.
 - A ledger line whose cwd differs from the requested cwd is not resumable.
 - The project's check passes.
+
+### Agent backends, part 3d/7: `resumeMissing` resumes as a `handoff` (planned 2026-10-09 by plan; split from part 3/7; requires part 3c3/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("Sessions").
+
+**Approach.**
+1. When a `--resume` run ends with `PiRunResult.resumeMissing` (part 3a), its error turn carries
+   no assistant content, so `resolveTickVerdict` (src/tick/tick-verdict.ts) keeps the worktree and
+   arms `resumePending` exactly as for any failed dirty run.
+2. `planTickStart` (src/tick/tick-resume.ts) then sees the newest author ledger line as not
+   resumable (`agentSessionResumable`, part 3c3/7 — its transcript is gone) and hands off
+   instead of resetting: a FRESH session over the kept worktree whose prompt is
+   `buildHandoffPrompt` (src/prompt/prompt-followup.ts) over the assembled tick prompt, and the
+   `resume` event reports the `handoff` cause. The pre-3d rule only handed off for a newest
+   line of another kind or agent; it now hands off for any newest line the run's own backend
+   cannot resume, which is exactly the `resumeMissing` case.
+3. The retry is deliberately NOT done inside `runWithTransientRetry` (src/loop/loop-pi.ts):
+   every resume that can report `resumeMissing` runs a resume bridge or a follow-up prompt, not
+   the tick prompt `buildHandoffPrompt` needs, so a fresh session there would get no task. The
+   next tick is the first point the assembled tick prompt (including a reclaimed per-role
+   request) is available, and the pinned slot keeps the interrupted edits until then.
+
+**Files touched.**
+- src/tick/tick-resume.ts
+- test/tick-resume.test.ts
+
+**Acceptance criteria.**
+- A fake-claude run whose `--resume` id has no transcript yields `resumeMissing`; driven
+  through `resolveTickVerdict` against a dirty worktree, the failed turn arms `resumePending`,
+  and the next `planTickStart` hands off — a fresh session over the kept worktree with the
+  assembled tick prompt plus the handoff bridge — rather than resetting.
+- A newest author line whose session is resumable still resumes; a dir with no ledger line
+  still falls back to a fresh tick.
+- `npm run test` green.
 
 ### Agent backends, part 3c2/7: the claude native log and translator warnings (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 3c/7; requires part 3c1/7 landed; done 2026-10-09 by feature)
 
