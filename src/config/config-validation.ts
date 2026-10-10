@@ -1,4 +1,5 @@
 import {
+  AGENT_KEYS,
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
   CHECK_KEYS,
@@ -20,6 +21,7 @@ import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { parseModelSelector } from "./model-selector.js";
+import { HARNESS_CLAUDE_FLAGS } from "../agent/claude/claude-args.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,
@@ -119,7 +121,7 @@ function checkPerRoleMap(
  * applyConfigRequest) — the shape that actually runs, so cross-field rules that depend on
  * defaults are judged here, where both sides of the comparison are always present.
  */
-export function validateConfig(raw: unknown, label = "tumwater.json"): void {
+export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = false): void {
   if (!isJsonObject(raw)) {
     throw new Error(`${label} must be a JSON object (got ${typeName(raw)})`);
   }
@@ -179,6 +181,51 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
       const why = HARNESS_PI_FLAGS.get(arg);
       if (why) problems.push(`piArgs[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
     });
+  }
+  // Agent backends (plans/agent-backends.md "Config"): each entry is an object with an
+  // optional non-empty `bin` string and an optional array-of-strings `args`. A passthrough arg
+  // that repeats a flag the backend's own harness invocation sets is appended last and wins,
+  // so it silently overrides the harness — refused here for the two backends whose reserved
+  // sets are known (claude-args.ts HARNESS_CLAUDE_FLAGS, config-schema.ts HARNESS_PI_FLAGS).
+  checkObjectSection(r, "agents", problems, (o) => {
+    for (const [id, entry] of Object.entries(o)) {
+      const prefix = `agents.${id}`;
+      if (!isJsonObject(entry)) {
+        problems.push(`${prefix} must be an object with optional bin and args (got ${show(entry)})`);
+        continue;
+      }
+      checkKnownKeys(entry, AGENT_KEYS, prefix, problems);
+      checkString(entry, `${prefix}.`, "bin", false);
+      checkStringArray(entry, `${prefix}.`, "args");
+      if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
+      (entry.args as unknown[]).forEach((arg, i) => {
+        if (typeof arg !== "string") return; // Already reported by checkStringArray.
+        // Match the flag itself even when it carries its value as `--flag=value`, exactly as
+        // claudeArgs's own reserved-flag screen does.
+        const flag = arg.split("=", 1)[0] as string;
+        const why = id === "claude" ? HARNESS_CLAUDE_FLAGS.has(flag) ? "it is harness-managed" : undefined : id === "pi" ? HARNESS_PI_FLAGS.get(flag) : undefined;
+        if (why) problems.push(`${prefix}.args[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
+      });
+    }
+  });
+  // Legacy back-compat (plans/agent-backends.md "Back-compat"): a file must not spell one pi
+  // field both ways. This is a property of the FILE's own keys — the merged config always
+  // carries a default `piArgs`, so only the raw pass (rawFile) can tell an explicit legacy
+  // value from the default. The effective value resolves through config-views.ts
+  // resolvedAgentConfig; a load-time mirror into `agents` would instead leak a duplicate
+  // spelling into every later config write.
+  if (rawFile && isJsonObject(r.agents)) {
+    const pi = r.agents.pi;
+    if (isJsonObject(pi)) {
+      if (r.agentBin !== undefined && pi.bin !== undefined)
+        problems.push(
+          "agentBin and agents.pi.bin set the same value — keep one (agents.pi.bin is the current spelling; agentBin is its legacy alias)",
+        );
+      if (r.piArgs !== undefined && pi.args !== undefined)
+        problems.push(
+          "piArgs and agents.pi.args set the same value — keep one (agents.pi.args is the current spelling; piArgs is its legacy alias)",
+        );
+    }
   }
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
   checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);

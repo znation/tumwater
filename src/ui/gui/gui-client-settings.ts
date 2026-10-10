@@ -18,16 +18,22 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["maxDailyCostUsd", "Daily spend cap (USD)"],
     ["quietHours", "Quiet hours"],
     ["notify", "Notify hook"],
+    ["agents", "Agent backends (JSON)"],
   ];
   // One row per key: the current value into an inline field (esc'd, like every rendered
   // value on the page), Save submits the row's form. A null (unset) key renders empty —
   // saving empty then sets the literal empty string, which the per-key validators and
-  // validateConfig judge like the CLI's own empty-string set.
+  // validateConfig judge like the CLI's own empty-string set. An object value (the agents
+  // section) renders as compact JSON so it can round-trip through the field's text.
+  function settingsFieldValue(v) {
+    if (v === null || v === undefined) return "";
+    return typeof v === "object" ? JSON.stringify(v) : String(v);
+  }
   function renderSettings(d) {
     return SETTINGS_KEYS.map((k) =>
       "<form class='settings-row' data-key='" + k[0] + "'>" +
       "<label for='set-" + k[0] + "'>" + esc(k[1]) + "<span class='settings-key'>" + k[0] + "</span></label>" +
-      "<input class='field' id='set-" + k[0] + "' value='" + esc(d[k[0]] === null || d[k[0]] === undefined ? "" : String(d[k[0]])) + "'>" +
+      "<input class='field' id='set-" + k[0] + "' value='" + esc(settingsFieldValue(d[k[0]])) + "'>" +
       "<button type='submit' class='btn btn-sm'>Save</button>" +
       "</form>").join("");
   }
@@ -61,8 +67,13 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   async function saveSetting(form) {
     const key = form.dataset.key;
     const input = form.querySelector("input");
+    // JSON-or-literal, matching tumwater config set: a field holding 30 or an agents
+    // object sends the parsed value; anything else (a model selector like gpt-5) sends the
+    // literal string. Without the parse an object field would arrive as a quoted string.
+    let value;
+    try { value = JSON.parse(input.value); } catch (e) { value = input.value; }
     try {
-      const d = await postJson("/api/config-set", { key: key, value: input.value });
+      const d = await postJson("/api/config-set", { key: key, value: value });
       showFlash(d && d.oldValue === null ? "Saved " + key + " (was unset)" : "Saved " + key);
     } catch (e) {
       showFlash("error: " + (e && e.message ? e.message : String(e)));

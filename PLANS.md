@@ -6,47 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 4a/7: the `agents` config section, legacy mapping, reserved flags and writers (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7, which feature judged too large for one run; requires part 3d/7 landed)
-
-Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors", "Back-compat").
-
-Stores the backend section only; routing lands in part 4b/7, so this part adds no seam behavior.
-
-**Approach.**
-1. **Schema.** Add `agents?: Record<string, { bin?: string; args?: string[] }>` to
-   src/config/config-schema.ts, beside the existing `agentBin`/`piArgs`. `defaultConfig()` in
-   src/config/config.ts gains an empty `agents` map, and a loaded config resolves
-   `agents.pi.bin`/`agents.pi.args` from legacy `agentBin`/`piArgs` when the new form is
-   absent, so every existing config keeps its value.
-2. **Validation.** src/config/config-validation.ts (with the helpers in config-field-checks.ts)
-   accepts an `agents` entry only as an object with a non-empty `bin` string and a string `args`
-   array; setting both spellings of one field (`agentBin` and `agents.pi.bin`, `piArgs` and
-   `agents.pi.args`) is an error; an `agents.claude.args` element repeating a flag in
-   `HARNESS_CLAUDE_FLAGS` (already exported by src/agent/claude/claude-args.ts) errors exactly
-   as `piArgs` already errors against `HARNESS_PI_FLAGS`.
-3. **Writers.** `agents.<id>.bin` and `agents.<id>.args` join `EDITABLE_CONFIG_KEYS`
-   (src/config/config-editable-keys.ts) and config-write.ts's merge logic (a dotted key merges
-   one entry, as `maxDailyCostUsdPerRole.<id>` does today); the GUI settings mirror
-   (src/ui/gui/gui-client-settings.ts) shows them. Writers emit only the new form.
-4. **Examples.** src/config/config-example.ts and tumwater.example.json show `agents` and note
-   that `agentBin`/`piArgs` are its legacy spelling.
-
-**Files touched.** src/config/config-schema.ts, config-validation.ts, config-field-checks.ts,
-config-write.ts, config-editable-keys.ts, config.ts, config-example.ts;
-src/ui/gui/gui-client-settings.ts; tumwater.example.json.
-
-**Acceptance criteria.**
-- **Legacy.** A config with `agentBin` + `piArgs` and no `agents` resolves those values under
-  `agents.pi`; the pi backend's resolved bin and argv stay byte-identical to before.
-- **Both forms.** Setting `agentBin` and `agents.pi.bin`, or `piArgs` and `agents.pi.args`, is a
-  validation error.
-- **Reserved.** `agents.claude.args: ["--model", "x"]` is a validation error naming the flag.
-- **Writers.** `tumwater config set agents.claude.args '["--verbose"]'` writes the array and
-  `tumwater config set agents.claude.bin /opt/claude` the string (each merges one entry);
-  `config unset` removes them.
-- **Inert.** No seam reads `agents` yet: selection and spawning are unchanged.
-- `npm run test` green.
-
 ### Agent backends, part 4b/7: `agent`, selector routing and per-tier claude defaults (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4a/7 landed)
 
 Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors";
@@ -546,6 +505,56 @@ unchanged (`collectFleetChanges`, `renderFleetChange`, and `TickRow` are untouch
 
 ## Done
 
+### Agent backends, part 4a/7: the `agents` config section, legacy mapping, reserved flags and writers (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7, which feature judged too large for one run; requires part 3d/7 landed; done 2026-10-09 by feature)
+
+Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors", "Back-compat").
+
+Stores the backend section only; routing lands in part 4b/7, so this part adds no seam behavior.
+
+**Approach.**
+1. **Schema.** `agents?: Record<string, { bin?: string; args?: string[] }>` sits in
+   src/config/config-schema.ts beside `agentBin`/`piArgs` (with an `AgentConfig` type and
+   `AGENT_KEYS`), and `defaultConfig()` in src/config/config.ts gains an empty `agents` map.
+   The effective `agents.pi` reads the legacy `agentBin`/`piArgs` through config-views.ts's pure
+   `resolvedAgentConfig` — read, not written back into `config.agents`, because a load-time
+   mirror would leak a duplicate spelling into every later config write that re-serializes the
+   merged config.
+2. **Validation.** src/config/config-validation.ts (with the helpers in config-field-checks.ts)
+   accepts an `agents` entry only as an object with an optional non-empty `bin` string and an
+   optional string `args` array; setting both spellings of one field (`agentBin` and
+   `agents.pi.bin`, `piArgs` and `agents.pi.args`) is an error on the raw-file pass;
+   `agents.claude.args` and `agents.pi.args` elements that repeat a harness flag
+   (`HARNESS_CLAUDE_FLAGS`, exported by src/agent/claude/claude-args.ts, and `HARNESS_PI_FLAGS`)
+   error exactly as `piArgs` does, naming the flag.
+3. **Writers.** `agents.<id>.bin` and `agents.<id>.args` join config-write.ts's dotted-key merge
+   logic (one field at a time, as `maxDailyCostUsdPerRole.<id>` merges one entry); the new-form
+   pi setters drop the legacy alias and a legacy `agentBin`/`piArgs` set drops the matching new
+   field, so a file never holds both. `EDITABLE_CONFIG_KEYS` gains the whole `agents` section,
+   which the GUI settings mirror (src/ui/gui/gui-client-settings.ts) edits as JSON.
+4. **Examples.** tumwater.example.json shows `agents`; the schema and resolver doc comments note
+   that `agentBin`/`piArgs` are its legacy spelling.
+
+**Files touched.** src/config/config-schema.ts, config-validation.ts, config-write.ts,
+config-editable-keys.ts, config.ts, config-views.ts, config-example.ts;
+src/cli/config-commands.ts; src/agent/claude/claude-args.ts;
+src/ui/gui/gui-client-settings.ts; tumwater.example.json; test/config-validation.test.ts,
+test/config-write.test.ts, test/config-views.test.ts, test/gui-client-settings.test.ts,
+test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- **Legacy.** A config with `agentBin` + `piArgs` and no `agents` resolves those values under
+  `agents.pi` through `resolvedAgentConfig`; the pi backend's resolved bin and argv stay
+  byte-identical to before (the seams still read `agentBin`/`piArgs`).
+- **Both forms.** Setting `agentBin` and `agents.pi.bin`, or `piArgs` and `agents.pi.args`, is a
+  load-time validation error (the raw pass — the merged config always carries a default
+  `piArgs`, so only the file's own keys can tell an explicit legacy value from the default).
+- **Reserved.** `agents.claude.args: ["--model", "x"]` is a validation error naming the flag.
+- **Writers.** `tumwater config set agents.claude.args '["--debug"]'` writes the array and
+  `tumwater config set agents.claude.bin /opt/claude` the string (each merges one field);
+  `config unset` removes them.
+- **Inert.** No seam reads `agents` yet: selection and spawning are unchanged.
+- `npm run test` green.
+
 ### Scope the usage report to one role: `tumwater report --role <id>` (planned 2026-10-09 by plan; done 2026-10-09 by feature; completes Stage 2 of docs/feature-per-role-spending.md; independent of the Agent backends series)
 
 **Goal.** `tumwater report --role <id> [--days N]` and `tumwater report --role <id>
@@ -739,6 +748,7 @@ a log with no completed ticks shows `(no ticks yet)`.
 - `tumwater history`, `history --json`, and the GUI History view are unchanged (their renderers
 and `TickRow` are untouched).
 - `npm run test` green.
+
 
 ### Inspect a loop's notebook and next tick prompt in the TUI (planned 2026-10-09 by plan; done 2026-10-09 by feature; sibling of "Inspect a loop's notebook and next prompt in the dashboard drawer")
 

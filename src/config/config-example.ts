@@ -38,7 +38,7 @@ export function seedConfig(root: string): TumwaterConfig {
   const template = parseExampleTemplate(root);
   if (template === undefined || template.problem !== undefined) return base;
   try {
-    validateConfig(template.raw, EXAMPLE_CONFIG_BASENAME);
+    validateConfig(template.raw, EXAMPLE_CONFIG_BASENAME, true);
   } catch {
     return base;
   }
@@ -57,7 +57,7 @@ export function exampleConfigProblem(root: string): string | null {
   const { raw, problem } = template;
   if (problem !== undefined) return problem;
   try {
-    validateConfig(raw, EXAMPLE_CONFIG_BASENAME);
+    validateConfig(raw, EXAMPLE_CONFIG_BASENAME, true);
   } catch (err) {
     return errorMessage(err);
   }

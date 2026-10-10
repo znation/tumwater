@@ -3,7 +3,7 @@
  * resolves to, and which timeout a reviewer run gets. No I/O and no caching — the
  * persistence side (defaults, loading, saving, the role-selection helpers) lives in
  * config.ts, the write side in config-write.ts. */
-import { MODEL_TIERS, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
+import { MODEL_TIERS, type AgentConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
 import { formatModelSelector, parseModelSelector, type ModelSelector } from "./model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
@@ -17,6 +17,21 @@ import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fall
  * names the agent backend (plans/agent-backends.md); it is absent until part 4/7 adds the
  * selector, and the runner defaults an absent value to `"pi"`. */
 export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & { model?: string; agent?: string };
+
+/** The effective `agents.<id>` entry as a run sees it (plans/agent-backends.md "Back-compat"):
+ * the file's own entry, with the legacy top-level `agentBin`/`piArgs` read as the pi backend's
+ * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy
+ * values back into `config.agents`, so a config write that re-serializes the merged config
+ * cannot leak a second spelling into the file (which validateConfig would then reject).
+ * Part 4c consumes this to pick the binary and passthrough argv; part 4a only defines it. */
+export function resolvedAgentConfig(
+  config: Pick<TumwaterConfig, "agents" | "agentBin" | "piArgs">,
+  id: string,
+): AgentConfig {
+  const entry = config.agents?.[id];
+  if (id !== "pi") return { ...entry };
+  return { bin: entry?.bin ?? config.agentBin, args: entry?.args ?? config.piArgs };
+}
 
 /** True when `s` names one of the three tiers — the form `roles.<id>.model` /
  * `review.model` may take to point at that tier of the top-level `model` map. */

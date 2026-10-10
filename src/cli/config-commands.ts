@@ -77,11 +77,15 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
         ? (record[parsed.map] as Record<string, unknown> | undefined)?.[parsed.role]
         : parsed.kind === "tier"
           ? modelTierMap(record.model)[parsed.tier] // a string is shorthand for { default }
-          : parsed.kind === "role"
-            ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+          : parsed.kind === "agent"
+            ? (record.agents as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
                 parsed.field
               ]
-            : record[k];
+            : parsed.kind === "role"
+              ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+                  parsed.field
+                ]
+              : record[k];
     sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
     return;
   }

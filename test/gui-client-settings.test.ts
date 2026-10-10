@@ -27,20 +27,22 @@ function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
   const { renderSettings } = settingsScope();
-  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, quietHours: null, notify: undefined });
-  // Exactly the six curated keys, each with its row, field, and Save button.
-  for (const key of ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify"]) {
+  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, quietHours: null, notify: undefined, agents: { pi: { bin: "pi" } } });
+  // Exactly the curated keys, each with its row, field, and Save button.
+  for (const key of ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify", "agents"]) {
     assert.match(html, new RegExp(`data-key='${key}'`));
     assert.match(html, new RegExp(`id='set-${key}'`));
   }
-  assert.equal((html.match(/<form class='settings-row'/g) || []).length, 6);
-  assert.equal((html.match(/type='submit'/g) || []).length, 6);
+  assert.equal((html.match(/<form class='settings-row'/g) || []).length, 7);
+  assert.equal((html.match(/type='submit'/g) || []).length, 7);
   // Values are escaped; null and undefined render as an empty field.
   assert.match(html, /value='a&amp;b'/);
   assert.match(html, /id='set-model' value='gpt-5'/);
   assert.match(html, /id='set-maxDailyCostUsd' value='30'/);
   assert.match(html, /id='set-quietHours' value=''/);
   assert.match(html, /id='set-notify' value=''/);
+  // An object value renders as compact JSON (esc'd), so it can round-trip through the field.
+  assert.match(html, /id='set-agents' value='\{&quot;pi&quot;:\{&quot;bin&quot;:&quot;pi&quot;\}\}'/);
 });
 
 test("fetchSettings builds the panel and fills it from GET /api/config; a failure renders the error panel", async () => {
@@ -85,6 +87,17 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
   await saveSetting(form);
   assert.deepEqual(posts, [{ path: "/api/config-set", body: { key: "model", value: "gpt-5" } }]);
   assert.deepEqual(flashes, ["Saved model (was unset)"]);
+  // A JSON object field (agents) posts the parsed object, not its text.
+  let agentBody: unknown;
+  const { saveSetting: saveAgents } = settingsScope({
+    postJson: async (_path: string, body: unknown) => {
+      agentBody = body;
+      return { ok: true, key: "agents", value: "ok", oldValue: null };
+    },
+    showFlash: () => {},
+  });
+  await saveAgents({ dataset: { key: "agents" }, querySelector: () => ({ value: '{"pi":{"bin":"pi"}}' }) });
+  assert.deepEqual(agentBody, { key: "agents", value: { pi: { bin: "pi" } } });
   // A server-side refusal: the flash is the error pattern, with the server's message.
   const { saveSetting: saveFail } = settingsScope({
     postJson: async () => {

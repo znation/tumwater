@@ -6,6 +6,7 @@
  * model derivations in config-views.ts. */
 import fs from "node:fs";
 import {
+  AGENT_KEYS,
   modelTierMap,
   ROLE_ENTRY_KEYS,
   TIER_MAP_KEYS,
@@ -21,7 +22,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
-import { loadConfig, parseJsonConfig } from "./config.js";
+import { loadConfig, parseJsonConfig, collapseAgentAliases } from "./config.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
@@ -97,12 +98,15 @@ function writeConfigMutation(
       } catch (err) {
         return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
       }
-      const candidate = mutate(cfg);
+      const mutated = mutate(cfg);
       // An unset that finds nothing to remove returns the loaded config unchanged. Write nothing:
       // re-serializing the merged config would reformat tumwater.json (defaults expanded) and
       // break the no-op's "changes nothing" contract. The bytes stay identical; validation of an
       // already-validated config is unnecessary.
-      if (candidate === cfg) return { ok: true };
+      if (mutated === cfg) return { ok: true };
+      // Collapse legacy/new pi spellings before writing so a merged config (which always
+      // carries the default piArgs) never lands both forms in the file.
+      const candidate = collapseAgentAliases(mutated);
       try {
         validateConfig(candidate); // throws listing every problem — nothing is written on failure
       } catch (err) {
@@ -143,7 +147,7 @@ const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const
  * `model.` sections. The generic dotted-shape error suggests against these so a typo'd head
  * (`modle.small`, `maxDailyCostUsdPerRoll.feature`) gets the same did-you-mean the sibling
  * unknown-key errors attach. */
-const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model"] as const;
+const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model", "agents"] as const;
 
 /** A parsed config key: a bare top-level key (whole-value semantics, unchanged), a dotted
  * per-role map entry, a dotted role-entry field, or the error a malformed dotted shape
@@ -154,6 +158,7 @@ type ParsedConfigKey =
   | { kind: "map"; map: (typeof DOTTED_MAP_KEYS)[number]; role: string }
   | { kind: "tier"; map: "model"; tier: ModelTier }
   | { kind: "role"; id: string; field: string }
+  | { kind: "agent"; id: string; field: "bin" | "args" }
   | { kind: "error"; error: string };
 
 /** Split a config key into its write/get shape: `foo` is top-level,
@@ -170,6 +175,17 @@ export function parseConfigKey(key: string): ParsedConfigKey {
     return { kind: "map", map: first as (typeof DOTTED_MAP_KEYS)[number], role: second };
   if (parts.length === 3 && first === "roles" && second !== undefined && second !== "" && third !== undefined && third !== "")
     return { kind: "role", id: second, field: third };
+  // `agents.<id>.<field>` names one field of one agent backend's entry (the way
+  // `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
+  // which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named.
+  if (parts.length === 3 && first === "agents" && second !== undefined && second !== "" && third !== undefined) {
+    if ((AGENT_KEYS as readonly string[]).includes(third))
+      return { kind: "agent", id: second, field: third as "bin" | "args" };
+    return {
+      kind: "error",
+      error: `unknown agent field "${third}" for agents.${second} (valid fields: ${AGENT_KEYS.join(", ")})${typoSuffix(third, AGENT_KEYS)}`,
+    };
+  }
   // `model.<tier>` names one entry of the tier model map — the way `roles.<id>.model`
   // names one role field, `maxDailyCostUsdPerRole.<role>` names one map entry. The tier
   // must be a real tier: `config set model.turbo x` would otherwise write a dead map key
@@ -288,6 +304,25 @@ export function setConfigKey(
         oldValue = existing[parsed.tier];
         return { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
       }
+      if (parsed.kind === "agent") {
+        // Merge one field of one backend's entry, preserving the other field and the other
+        // backends. validateConfig in writeConfigMutation owns the value type, so a bad
+        // value fails there and nothing is written.
+        const agents = { ...(record.agents as Record<string, Record<string, unknown>> | undefined) };
+        const entry = { ...(agents[parsed.id] ?? {}) };
+        oldValue = entry[parsed.field];
+        entry[parsed.field] = value;
+        agents[parsed.id] = entry;
+        const next = { ...cfg, agents } as unknown as TumwaterConfig;
+        // Writers keep one spelling: the new pi form drops its legacy alias so the file can
+        // never hold both (validateConfig's raw pass rejects a file that does).
+        if (parsed.id === "pi") {
+          const nextRecord = next as unknown as Record<string, unknown>;
+          if (parsed.field === "bin") delete nextRecord.agentBin;
+          else delete nextRecord.piArgs;
+        }
+        return next;
+      }
       const existing = record.roles?.[parsed.id] ?? {};
       oldValue = existing[parsed.field];
       const roles = {
@@ -330,7 +365,28 @@ export function setConfigKey(
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
     oldValue = (cfg as unknown as Record<string, unknown>)[key];
-    return { ...cfg, [key]: value };
+    const next = { ...cfg, [key]: value } as unknown as TumwaterConfig;
+    // Writers keep one spelling: a whole-section `agents` set (the GUI Save path) drops the
+    // legacy aliases the new pi form now carries, so the file can never hold both.
+    if (key === "agents" && isJsonObject(value)) {
+      const pi = isJsonObject(value.pi) ? value.pi : undefined;
+      const record = next as unknown as Record<string, unknown>;
+      if (pi?.bin !== undefined) delete record.agentBin;
+      if (pi?.args !== undefined) delete record.piArgs;
+      return next;
+    }
+    // Writers keep one spelling: a legacy top-level set drops the matching agents.pi field, so
+    // the file can never hold both (validateConfig's raw pass rejects a file that does).
+    if (key === "agentBin" || key === "piArgs") {
+      const record = next as unknown as { agents?: Record<string, Record<string, unknown>> };
+      const agents = { ...(record.agents ?? {}) };
+      const entry = { ...(agents.pi ?? {}) };
+      delete entry[key === "agentBin" ? "bin" : "args"];
+      if (Object.keys(entry).length === 0) delete agents.pi;
+      else agents.pi = entry;
+      return { ...next, agents } as unknown as TumwaterConfig;
+    }
+    return next;
   });
   if (!result.ok) return result;
   return { ok: true, value, oldValue };
@@ -419,6 +475,23 @@ export function unsetConfigKey(
       if (Object.keys(next).length === 0) return without(record, "model") as unknown as TumwaterConfig;
       return { ...cfg, model: next } as unknown as TumwaterConfig;
     }
+    if (parsed.kind === "agent") {
+      // Presence is judged against the FILE, so unsetting a field only the default (or the
+      // legacy alias's resolved view) carries is a no-op success. The entry and the `agents`
+      // section are dropped when they empty, so the file never keeps an empty object.
+      const rawAgents = isJsonObject(raw.agents) ? raw.agents : {};
+      const rawEntryCandidate = rawAgents[parsed.id];
+      const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
+      if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
+      oldValue = rawEntry[parsed.field];
+      const agents = { ...(record.agents as Record<string, Record<string, unknown>> | undefined) };
+      const entry = { ...(agents[parsed.id] ?? {}) };
+      delete entry[parsed.field];
+      if (Object.keys(entry).length === 0) delete agents[parsed.id];
+      else agents[parsed.id] = entry;
+      if (Object.keys(agents).length === 0) return without(record, "agents") as unknown as TumwaterConfig;
+      return { ...cfg, agents } as unknown as TumwaterConfig;
+    }
     const rawRolesCandidate = raw.roles;
     const rawRoles = isJsonObject(rawRolesCandidate) ? rawRolesCandidate : {};
     const rawEntryCandidate = rawRoles[parsed.id];
@@ -506,7 +579,14 @@ export function applyConfigRequest(
       for (const c of current.customLoops) {
         if (!requestedNames.has(c.name)) delete roles[c.name];
       }
-      const candidate: TumwaterConfig = { ...current, customLoops: loops as TumwaterConfig["customLoops"], roles };
+      // Collapse legacy/new pi spellings before writing so a merged config (which always
+      // carries the default piArgs) never lands both forms in the file — the next load's raw
+      // pass rejects a file holding both `piArgs` and `agents.pi.args`.
+      const candidate = collapseAgentAliases({
+        ...current,
+        customLoops: loops as TumwaterConfig["customLoops"],
+        roles,
+      });
       validateConfig(candidate); // throws listing every problem — nothing is written on failure
       writeJsonAtomic(configPath(root), candidate, true);
       applied = candidate.customLoops.map((c) => c.name);

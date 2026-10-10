@@ -1,5 +1,5 @@
 {
-  "piArgs": [],
+  "agents": { "pi": { "args": [] } },
   "minTickIntervalSeconds": 20,
   "landBatchMax": 3,
   "logMaxBytes": 16777216,

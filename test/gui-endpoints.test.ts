@@ -302,7 +302,7 @@ function serveConfigSet(root: string, body: unknown) {
   return captureJson((res) => handleConfigSet(fakeReq(JSON.stringify(body)), res, root));
 }
 
-test("handleConfig returns exactly the six curated keys, resolved values with null for unset", async () => {
+test("handleConfig returns exactly the curated keys, resolved values with null for unset", async () => {
   const root = tmpdir();
   writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customLoops: [{ name: "watch", task: "watch" }] });
   const { captured, data } = await serveConfig(root);
@@ -317,6 +317,8 @@ test("handleConfig returns exactly the six curated keys, resolved values with nu
   // maxDailyCostUsd resolves to loadConfig's default cap (50) when the file does not set it.
   assert.equal(cfg.maxDailyCostUsd, 50);
   assert.equal(cfg.notify, null);
+  // agents resolves to the default empty map when the file names none.
+  assert.deepEqual(cfg.agents, {});
   // customLoops is deliberately not served: the panel's reach is the curated set.
   assert.equal("customLoops" in cfg, false);
 });

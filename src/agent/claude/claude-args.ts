@@ -21,9 +21,10 @@ import path from "node:path";
  * the harness's own copy, and claude's argument parser is last-wins — so it would silently
  * override the isolation flags, the session choice, or the model the harness resolved. Each is
  * rejected by claudeArgs with the offending arg named. This is exactly the design's reserved
- * set (plans/agent-backends.md "Config"); part 4/7 mirrors this set in config validation, so a
- * value that passes validation is never accepted by validation and then thrown here. */
-const HARNESS_CLAUDE_FLAGS = new Set([
+ * set (plans/agent-backends.md "Config"); config validation (config-validation.ts) mirrors this
+ * set for `agents.claude.args`, so a value that passes validation is never accepted by
+ * validation and then thrown here. */
+export const HARNESS_CLAUDE_FLAGS: ReadonlySet<string> = new Set([
   "-p",
   "--print",
   "--output-format",

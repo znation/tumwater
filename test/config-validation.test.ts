@@ -321,6 +321,72 @@ test("validateConfig rejects piArgs entries that repeat a harness-managed flag",
   );
 });
 
+test("validateConfig validates the agents section: entry shapes and reserved flags", () => {
+  // Valid shapes: an entry may set bin, args, or both; the empty map is the default.
+  assert.doesNotThrow(() => validateConfig(defaultConfig()));
+  assert.doesNotThrow(() => validateConfig({ agents: {} }));
+  assert.doesNotThrow(() => validateConfig({ agents: { pi: { bin: "/opt/pi" } } }));
+  assert.doesNotThrow(() => validateConfig({ agents: { claude: { args: ["--debug"] } } }));
+  assert.doesNotThrow(() =>
+    validateConfig({ agents: { claude: { bin: "claude", args: ["--debug", "--extra"] } } }),
+  );
+
+  // Shape errors, each naming where the problem is.
+  assert.match(validationError({ agents: "pi" }), /agents must be an object/);
+  assert.match(validationError({ agents: { pi: "pi" } }), /agents\.pi must be an object with optional bin and args/);
+  assert.match(
+    validationError({ agents: { pi: { binary: "pi" } } }),
+    /unknown key "binary" in agents\.pi \(valid keys: bin, args\)/,
+  );
+  assert.match(
+    validationError({ agents: { pi: { bin: "" } } }),
+    /agents\.pi\.bin must not be empty \(got ""\)/,
+  );
+  assert.match(
+    validationError({ agents: { pi: { args: "--verbose" } } }),
+    /agents\.pi\.args must be an array of strings/,
+  );
+  assert.match(
+    validationError({ agents: { pi: { args: ["--verbose", ""] } } }),
+    /agents\.pi\.args\[1\] must not be blank/,
+  );
+
+  // Reserved flags: claude's harness-managed set and pi's (via its legacy alias shape) both
+  // refuse a passthrough that would be appended last and silently win.
+  assert.match(
+    validationError({ agents: { claude: { args: ["--model", "x"] } } }),
+    /agents\.claude\.args\[0\] "--model" duplicates a flag the harness sets/,
+  );
+  assert.match(
+    validationError({ agents: { claude: { args: ["--effort=low"] } } }),
+    /agents\.claude\.args\[0\] "--effort=low" duplicates a flag the harness sets/,
+  );
+  assert.match(
+    validationError({ agents: { pi: { args: ["--mode", "text"] } } }),
+    /agents\.pi\.args\[0\] "--mode" duplicates a flag the harness sets/,
+  );
+  // A non-conflicting extra passes for both backends.
+  assert.doesNotThrow(() =>
+    validateConfig({ agents: { claude: { args: ["--verbose-extra"] }, pi: { args: ["--no-skills"] } } }),
+  );
+});
+
+test("a file may not spell one pi field both ways: agentBin/agents.pi.bin and piArgs/agents.pi.args", () => {
+  // The alias rule is a property of the file's own keys, so it fires on load (the raw
+  // pass) — the merged config always carries a default piArgs, which is why validateConfig's
+  // own rawFile flag gates it rather than the merged pass.
+  const both = tmpdir();
+  writeConfig(both, { agentBin: "/opt/pi", agents: { pi: { bin: "/other/pi" } } });
+  assert.throws(() => loadConfig(both), /agentBin and agents\.pi\.bin set the same value/);
+  const bothArgs = tmpdir();
+  writeConfig(bothArgs, { piArgs: ["--a"], agents: { pi: { args: ["--b"] } } });
+  assert.throws(() => loadConfig(bothArgs), /piArgs and agents\.pi\.args set the same value/);
+  // One spelling alone loads fine, and the legacy pair still resolves through the helper.
+  const legacy = tmpdir();
+  writeConfig(legacy, { agentBin: "/opt/pi", piArgs: ["--a"] });
+  assert.doesNotThrow(() => loadConfig(legacy));
+});
+
 test("validateConfig rejects exemption patterns that can never match a repo-relative path", () => {
   // isExemptPath matches repo-relative git paths, so an absolute pattern, a "./" prefix, a
   // ".." segment, or a trailing "/" matches nothing — the diff it was meant to exempt is

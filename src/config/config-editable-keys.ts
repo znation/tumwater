@@ -12,4 +12,14 @@
  * (ui/gui/gui-client-settings.ts's SETTINGS_KEYS), a manual copy; the GET /api/config test
  * pins the served key set to this list.
  */
-export const EDITABLE_CONFIG_KEYS = ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify"] as const;
+export const EDITABLE_CONFIG_KEYS = [
+  "provider",
+  "model",
+  "fallback",
+  "maxDailyCostUsd",
+  "quietHours",
+  "notify",
+  // The per-backend section (plans/agent-backends.md, part 4a/7): the whole `agents` object is
+  // edited here as JSON. The CLI's dotted `agents.<id>.bin`/`.args` merge one field at a time.
+  "agents",
+] as const;

@@ -202,6 +202,13 @@ export interface TumwaterConfig {
    * triple, and the session resume/name flags) — pi's parser is last-wins, so a repeat would
    * silently override the harness; validateConfig rejects the collision. */
   piArgs: string[];
+  /** Per-agent-backend overrides (plans/agent-backends.md "Config"): the binary and extra
+   * argv each backend runs, keyed by the reserved agent id (`pi`, `claude`). Part 4a stores
+   * the section only — routing and the seams land in 4b–4c, so nothing reads it yet. The
+   * effective pi entry resolves `agentBin`/`piArgs` as its `bin`/`args` when the new form
+   * leaves a field absent (config-views.ts resolvedAgentConfig); a file may not set both
+   * spellings of one field. `defaultConfig()` seeds an empty map. */
+  agents?: Record<string, AgentConfig>;
   /** Max pi runs in flight at once across all loops, landings included: every landing vet
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
@@ -355,6 +362,7 @@ export const TOP_LEVEL_KEYS = [
   "thinking",
   "baseBranch",
   "agentBin",
+  "agents",
   "check",
   "piArgs",
   "maxConcurrent",
@@ -389,6 +397,20 @@ export const TOP_LEVEL_KEYS = [
 ];
 
 export const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
+
+/** One agent backend's tumwater.json entry (plans/agent-backends.md "Config"): the binary
+ * to spawn and the extra argv appended after the harness's own flags. Every field is
+ * optional, so an entry may override only one of them. */
+export interface AgentConfig {
+  /** The backend binary; absent leaves the backend's own default. */
+  bin?: string;
+  /** Extra argv appended last, like piArgs; absent means none. */
+  args?: string[];
+}
+
+/** The keys an `agents.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
+ * field (`agents.claude.binary`) is a load error rather than a silently inert entry. */
+export const AGENT_KEYS = ["bin", "args"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];

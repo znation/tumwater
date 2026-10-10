@@ -65,6 +65,10 @@ export function defaultConfig(): ResolvedModelConfig {
   roles.organize = { enabled: true, minTickIntervalSeconds: 3600 };
   return {
     piArgs: [],
+    // Agent backends (plans/agent-backends.md, part 4a/7): empty until a file names one.
+    // Keeping the map always present means read sites need no `?? {}`; the legacy
+    // agentBin/piArgs still feed the pi seam directly until part 4c.
+    agents: {},
     maxConcurrent: 6,
     // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
     // common case (a few roles land in the same poll) while the worst case stays bounded.
@@ -151,6 +155,14 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     idleBackoff: { ...base.idleBackoff, ...(cfg.idleBackoff ?? {}) },
     review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
+    // Clone each backend entry (and its args array) so the result owns its data like every
+    // other section. The legacy agentBin/piArgs stay beside it; part 4c resolves between them.
+    agents: Object.fromEntries(
+      Object.entries(cfg.agents ?? base.agents ?? {}).map(([id, a]) => [
+        id,
+        { ...a, ...(a.args ? { args: [...a.args] } : {}) },
+      ]),
+    ),
     // Absent stays absent: no fallback = today's pause behavior.
     ...(cfg.fallbackModel ? { fallbackModel: { ...cfg.fallbackModel } } : {}),
     customLoops: (cfg.customLoops ?? []).map((c) => ({ ...c })),
@@ -195,7 +207,7 @@ export function loadConfig(root: string): TumwaterConfig {
 function loadPresentConfig(file: string): TumwaterConfig {
   const { raw, problem } = parseJsonConfig(file, CONFIG_BASENAME);
   if (problem !== undefined) throw new Error(problem);
-  validateConfig(raw);
+  validateConfig(raw, CONFIG_BASENAME, true); // raw pass owns the file's own legacy-alias rule
   const merged = overlayDefaults(defaultConfig(), raw as Partial<TumwaterConfig>);
   validateConfig(merged);
   return merged;
@@ -236,6 +248,9 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return {
     ...c,
     piArgs: [...c.piArgs],
+    agents: Object.fromEntries(
+      Object.entries(c.agents ?? {}).map(([id, a]) => [id, { ...a, ...(a.args ? { args: [...a.args] } : {}) }]),
+    ),
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
     ...(c.fallbackModel ? { fallbackModel: { ...c.fallbackModel } } : {}),
@@ -274,13 +289,32 @@ export function liveConfig(root: string): TumwaterConfig {
   return loadConfigCached(root).config ?? defaultConfig();
 }
 
+/** Writes emit one spelling per pi field (plans/agent-backends.md "Back-compat"): when the
+ * new `agents.pi` form carries `bin`/`args`, the legacy top-level alias for that field is
+ * dropped from the serialized candidate. A merged config always carries the default `piArgs`,
+ * so without this a whole-config write would put both spellings on disk and the next load's
+ * raw pass would reject the file; a config that uses only the legacy spellings is unchanged. */
+export function collapseAgentAliases(config: TumwaterConfig): TumwaterConfig {
+  const pi = config.agents?.pi;
+  if (pi === undefined) return config;
+  const record = config as unknown as Record<string, unknown>;
+  const dropAgentBin = pi.bin !== undefined && "agentBin" in record;
+  const dropPiArgs = pi.args !== undefined && "piArgs" in record;
+  if (!dropAgentBin && !dropPiArgs) return config;
+  const next: Record<string, unknown> = { ...record };
+  if (dropAgentBin) delete next.agentBin;
+  if (dropPiArgs) delete next.piArgs;
+  return next as unknown as TumwaterConfig;
+}
+
 /** Persist a config after validating it, so an invalid tumwater.json can never be written.
  * Written atomically (writeJsonAtomic, trailing newline — the POSIX-newline convention here
  * and at config-write.ts, the file's other writers): the config-live poller re-reads the file
  * every ~2 s, so a plain overwrite could hand it a torn read mid-write. */
 export function saveConfig(root: string, config: TumwaterConfig): void {
-  validateConfig(config);
-  writeJsonAtomic(configPath(root), config, true);
+  const collapsed = collapseAgentAliases(config);
+  validateConfig(collapsed);
+  writeJsonAtomic(configPath(root), collapsed, true);
 }
 
 /** Canonical serialization for config comparison: object keys are sorted recursively so a mere

@@ -10,6 +10,7 @@ import {
   fallbackRoleConfig,
   fleetModelLabel,
   reviewConfig,
+  resolvedAgentConfig,
   resolveTierFallbacks,
   reviewRunConfig,
   REVIEW_TIMEOUT_S,
@@ -428,6 +429,28 @@ test("fallbackRoleConfig resolves the role's tier pair and is null when it pause
   const none: TumwaterConfig = defaultConfig();
   none.model = "paid/primary";
   assert.equal(fallbackRoleConfig(none, "feature"), null);
+});
+
+test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin/args", () => {
+  // A config with only the legacy spellings resolves them under agents.pi for part 4c's use.
+  const legacy: TumwaterConfig = defaultConfig();
+  legacy.agentBin = "/opt/pi";
+  legacy.piArgs = ["--no-skills"];
+  assert.deepEqual(resolvedAgentConfig(legacy, "pi"), { bin: "/opt/pi", args: ["--no-skills"] });
+  // The new form wins where it is present; a plain default resolves to pi's own binary and
+  // an empty argv, matching the seams' current defaults.
+  const mixed: TumwaterConfig = defaultConfig();
+  mixed.agentBin = "/legacy";
+  mixed.piArgs = ["--legacy"];
+  mixed.agents = { pi: { bin: "/new", args: ["--new"] } };
+  assert.deepEqual(resolvedAgentConfig(mixed, "pi"), { bin: "/new", args: ["--new"] });
+  assert.deepEqual(resolvedAgentConfig(defaultConfig(), "pi"), { bin: undefined, args: [] });
+  // A non-pi backend reads its own entry and never falls back to the pi legacy fields.
+  const claude: TumwaterConfig = defaultConfig();
+  claude.agentBin = "/legacy";
+  claude.agents = { claude: { bin: "claude", args: ["--verbose"] } };
+  assert.deepEqual(resolvedAgentConfig(claude, "claude"), { bin: "claude", args: ["--verbose"] });
+  assert.deepEqual(resolvedAgentConfig(claude, "unknown"), {});
 });
 
 test("applyFallbackModel without a resolved map is unchanged", () => {
