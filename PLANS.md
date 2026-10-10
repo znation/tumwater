@@ -9,6 +9,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires parts 6a/7 and 6b/7 landed)
 
+**Needs review 2026-10-10 by feature: too large for one run**
+
 Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
 
 **Approach.**
