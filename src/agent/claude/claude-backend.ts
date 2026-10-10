@@ -12,8 +12,7 @@
  * than resuming the wrong conversation.
  *
  * Registration lives in src/agent/run-agent.ts beside the pi adapter, so a test can register a
- * fake under its own id. Part 4/7 makes claude selectable from tumwater.json; until then tests
- * drive it by setting `config.agent = "claude"` on a run. */
+ * fake under its own id; a test selects claude by setting `config.agent = "claude"` on a run. */
 
 import fs from "node:fs";
 import os from "node:os";

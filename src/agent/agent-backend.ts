@@ -2,11 +2,11 @@
  * run needs from its backend — how to build the command, how to translate its native stdout
  * into tumwater's canonical event stream, and how to classify its exit. src/agent/run-agent.ts
  * owns everything backend-neutral (spawn, marker, watchdogs, abort, group kill and marker
- * sweep, stderr capture); a backend registered here supplies the rest. Only `pi` is registered
- * in part 1/7 — this module is the plug point the later parts hang claude off.
+ * sweep, stderr capture); a backend registered here supplies the rest. src/agent/run-agent.ts
+ * registers the pi and claude adapters here.
  *
  * The registry is keyed by id and fed by explicit registration (src/agent/run-agent.ts
- * registers the pi adapter at load), so a test can register a fake backend without importing a
+ * registers both adapters at load), so a test can register a fake backend without importing a
  * real one. */
 
 import type { AgentConfig } from "../config/config-schema.js";
@@ -16,7 +16,7 @@ import type { PiRunKind } from "../pi/pi-event-line.js";
 import type { ResolvedAgentBin } from "../pi/pi-bin.js";
 import { hasResumableSession } from "./session-ledger.js";
 
-/** The backend id used when a config names none — the harness's historical, only agent. */
+/** The backend id used when a config names none: pi, the harness's default backend. */
 export const DEFAULT_AGENT = "pi";
 
 /** Backend-neutral description of one run, handed to `invocation`. The runner has already
@@ -151,7 +151,7 @@ export function agentBackend(id: string): AgentBackend | undefined {
  * `opts.kind`: the one resume guard every resume point uses (plans/agent-backends.md
  * "Sessions"), so a claude author or gate run resumes through its ledger id instead of being
  * read as having no session. Falls back to the backend-neutral session-file check when the
- * backend is unregistered or supplies no `resumable` hook — today's pi-only behavior. */
+ * backend is unregistered or supplies no `resumable` hook. */
 export function agentSessionResumable(
   dir: string,
   opts: { kind: string; agent: string; cwd?: string },

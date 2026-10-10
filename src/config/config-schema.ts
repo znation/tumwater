@@ -216,11 +216,12 @@ export interface TumwaterConfig {
    * silently override the harness; validateConfig rejects the collision. */
   piArgs: string[];
   /** Per-agent-backend overrides (plans/agent-backends.md "Config"): the binary and extra
-   * argv each backend runs, keyed by the reserved agent id (`pi`, `claude`). Part 4a stores
-   * the section only — routing and the seams land in 4b–4c, so nothing reads it yet. The
-   * effective pi entry resolves `agentBin`/`piArgs` as its `bin`/`args` when the new form
-   * leaves a field absent (config-views.ts resolvedAgentConfig); a file may not set both
-   * spellings of one field. `defaultConfig()` seeds an empty map. */
+   * argv each backend runs, keyed by the reserved agent id (`pi`, `claude`). Both backends
+   * resolve their binary through resolveAgentBin (pi-bin.ts), which reads this entry's `bin`
+   * via config-views.ts; the claude adapter reads `.args` through that same view. The pi entry
+   * resolves the legacy `agentBin`/`piArgs` as its `bin`/`args` when the new form leaves a
+   * field absent, and a file may not set both spellings of one field. `defaultConfig()` seeds
+   * an empty map. */
   agents?: Record<string, AgentConfig>;
   /** Max pi runs in flight at once across all loops, landings included: every landing vet
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these

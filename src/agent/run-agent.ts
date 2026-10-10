@@ -146,8 +146,8 @@ export interface PiRunOptions {
  * Never throws. */
 export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
-    // A config names no agent yet (part 4/7 adds the selector): default to pi, the historical
-    // backend. An unregistered id also falls back to pi rather than rejecting the tick.
+    // The `agent` selector is optional: default to pi, the historical backend. An unregistered
+    // id also falls back to pi rather than rejecting the tick.
     const backend = agentBackend(opts.config.agent ?? DEFAULT_AGENT) ?? piBackend;
     ensureDir(opts.sessionDir);
     // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'

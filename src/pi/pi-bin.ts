@@ -9,8 +9,8 @@ import { envPath, findOnPath } from "../files/files.js";
  * executability rule the preflight askers share, and the missing-binary wording they quote.
  * The spawn (src/agent/run-agent.ts) resolves through each backend's resolveBin; the startup
  * gate (gates/startup-gate.ts) walks every enabled seam's agent through the same resolution and
- * executability rule, and doctor (doctor/doctor-checks.ts) asks them for pi's binary today (its
- * agent-aware checks are still to come). Each surface quotes this module's wording, so the
+ * executability rule, and doctor (doctor/doctor-checks.ts) asks them for every agent in use
+ * (agentsInUse, the startup gate's rule). Each surface quotes this module's wording, so the
  * executability verdict and the pi text cannot drift between them. Split out of
  * gates/readiness.ts, which keeps the repo preconditions' shared wording: the agent binary is
  * the backends' own concern, so its resolution lives beside the spawn instead of in the gate

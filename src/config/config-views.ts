@@ -29,14 +29,15 @@ export type ResolvedModelConfig = Omit<TumwaterConfig, "model" | "agent"> & {
  * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy
  * values back into `config.agents`, so a config write that re-serializes the merged config
  * cannot leak a second spelling into the file (which validateConfig would then reject).
- * Part 4c reads this to pick the binary and passthrough argv. */
+ * pi-backend.ts and claude-backend.ts read `.bin` through resolveAgentBin (pi-bin.ts);
+ * claude-backend.ts reads `.args` for passthrough argv. */
 export function resolvedAgentConfig(
   config: { agents?: Record<string, AgentConfig>; agentBin?: string; piArgs?: string[] },
   id: string,
 ): AgentConfig {
   const entry = config.agents?.[id];
   // A view must own its array: returning the config's own `args` reference would let a caller
-  // that appends passthrough argv (part 4c) silently mutate the loaded config, breaking the
+  // that appends passthrough argv silently mutate the loaded config, breaking the
   // purity promised above. `args` is the only mutable field, so a sliced copy suffices.
   if (id !== "pi") {
     if (entry === undefined) return {};

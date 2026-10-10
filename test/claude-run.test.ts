@@ -1,8 +1,7 @@
 // The claude backend end to end (plans/agent-backends.md "The seam", "Sessions", PLANS.md
 // "Agent backends, part 3c1/7"): `runAgent` drives the registered claude adapter against a
 // PATH fake, folds its stream exactly as it folds pi's, and records the minted/resumed
-// session id in the ledger. The adapter is not yet selectable from tumwater.json (part 4/7),
-// so these tests set `config.agent = "claude"` directly.
+// session id in the ledger. These tests set `config.agent = "claude"` directly.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

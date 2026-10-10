@@ -2,7 +2,7 @@
  * is today's pi-specific behavior moved behind the `AgentBackend` interface — argv via
  * pi-args, the identity translator (pi's event vocabulary IS the canonical stream), the
  * stderr exit rules, and the model-fallback-clone warning — so src/agent/run-agent.ts stays
- * backend-neutral. Only pi is registered in part 1/7. */
+ * backend-neutral. The claude adapter registers alongside it in src/agent/run-agent.ts. */
 
 import { piArgs } from "./pi-args.js";
 import { resolveAgentBin, type ResolvedAgentBin } from "./pi-bin.js";

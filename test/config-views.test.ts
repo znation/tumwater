@@ -437,7 +437,7 @@ test("fallbackRoleConfig resolves the role's tier pair and is null when it pause
 });
 
 test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin/args", () => {
-  // A config with only the legacy spellings resolves them under agents.pi for part 4c's use.
+  // A config with only the legacy spellings resolves them under agents.pi.
   const legacy: TumwaterConfig = defaultConfig();
   legacy.agentBin = "/opt/pi";
   legacy.piArgs = ["--no-skills"];
@@ -460,7 +460,7 @@ test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin
 
 test("resolvedAgentConfig returns args detached from the config it reads", () => {
   // The view is documented pure: a consumer appending passthrough argv to the returned
-  // `args` (the use part 4c is slated for) must not write back into the loaded config.
+  // `args` must not write back into the loaded config.
   const config: TumwaterConfig = defaultConfig();
   config.piArgs = ["--no-skills"];
   config.agents = { claude: { args: ["--verbose"] } };

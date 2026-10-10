@@ -12,8 +12,9 @@ import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The agent seam (plans/agent-backends.md "The seam"): a registry keyed by id, and a runner
-// that lets a backend deliver the prompt on stdin. Part 1/7 registers only pi; these tests use
-// a fake backend so the neutral runner's stdin path is exercised without a real agent.
+// that lets a backend deliver the prompt on stdin. src/agent/run-agent.ts registers the pi and
+// claude adapters; these tests use a fake backend so the neutral runner's stdin path is
+// exercised without a real agent.
 
 test("the registry returns the registered pi adapter and undefined for an unknown id", () => {
   const pi = agentBackend("pi");

@@ -60,8 +60,8 @@ export function planTickStart(opts: {
    * the tick actually runs on, not the role's primary. */
   tickPrompt: (agent?: string) => string | null;
   /** The backend this tick would run on, for the resume decision: a newest author ledger line
-   * naming another agent hands off instead of resuming. Defaults to pi (the only backend until
-   * part 4/7 makes the choice configurable). */
+   * naming another agent hands off instead of resuming. Defaults to pi, the historical
+   * backend. */
   agent?: string;
 }): TickStartPlan | null {
   const s = opts.state;
@@ -97,7 +97,7 @@ export function planTickStart(opts: {
   // Our backend decides whether the newest session of this kind is actually resumable: pi
   // continues the newest FILE in the dir (only a newest author line for pi is safe), while
   // claude resumes an id (safe across a newer gate line). A backend with no `resumable` hook
-  // falls back to the session-file check (the historical pi-only behavior).
+  // falls back to the backend-neutral session-file check.
   const resumable = resumePending && !resumeMissing
     ? agentSessionResumable(dir, { kind: "author", agent })
     : false;
