@@ -74,12 +74,12 @@ test("a transient timeout that also hits the harness timeout is not retried", as
       const log = piLogPath(repo, "clean");
       for (let k = 1; await waitForLogLines(log, "predict stream timed out", k, () => settled); k++) clock.advance(3_000);
       const outcome = await tick;
-      // The shim's error line is one real progress event inside the quiet window, so the
-      // deadline fired on a "progressing" run: the timeout now resumes it like a quiet kill
-      // instead of discarding (BUGS.md 2026-09-29). The pinned property is the one below —
-      // still exactly one pi invocation, the harness timeout suppressing the transient retry.
-      assert.equal(outcome.result, "quiet_killed");
-      assert.match(runner.state.lastError ?? "", /timed out/);
+      // The shim's error line is one real progress event, but none lands within the final
+      // `progressWindowMs` before the deadline, so the timeout discards instead of resuming
+      // (BUGS.md 2026-10-09). The pinned property is the one below — still exactly one pi
+      // invocation, the harness timeout suppressing the transient retry.
+      assert.equal(outcome.result, "error");
+      assert.match(runner.state.lastError ?? "", /^timed out/);
       // Exactly one pi invocation: the harness timeout suppresses the transient retry.
       assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
     },

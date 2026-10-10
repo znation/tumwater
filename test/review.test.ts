@@ -655,11 +655,13 @@ test("a progressing timeout says the next attempt continues this review, not 'pr
   // gate could not honor before (BUGS.md 2026-09-30). The session file must exist for the
   // promise to be one the next attempt can keep (TOUCH_SESSION).
   const { root, wt } = await gateFixture();
-  // One structured event (progress) then stall: the review deadline fires on a run still
-  // making progress, so runPi emits its progressing-timeout text.
-  await withPi(`${TOUCH_SESSION}\nprintf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`, async () => {
+  // Keeps speaking progress events through the doubled deadline, so the review is still
+  // making progress when killed and runPi emits its progressing-timeout text.
+  await withPi(
+    `${TOUCH_SESSION}\nprintf '%s\n' '${assistantLine("reading the diff…")}'\nwhile true; do sleep 0.05; echo '${assistantLine("still reading")}'; done`,
+    async () => {
       const config = defaultConfig();
-      config.review.timeoutSeconds = 2;
+      config.review.timeoutSeconds = 1;
       const state = freshLoopState(ROLE);
       const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
       assert.equal(result.decision, "failed");
@@ -681,9 +683,9 @@ test("a progressing timeout with no session to resume records a from-scratch re-
   // that leaves no session file must not record a marker the next review silently declines, so
   // the recorded failure says it re-reviews from scratch — the promise and the behavior agree.
   const { root, wt } = await gateFixture();
-  await withPi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`, async () => {
+  await withPi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nwhile true; do sleep 0.05; echo '${assistantLine("still reading")}'; done`, async () => {
       const config = defaultConfig();
-      config.review.timeoutSeconds = 2;
+      config.review.timeoutSeconds = 1;
       const state = freshLoopState(ROLE);
       const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
       assert.equal(result.decision, "failed");
@@ -701,8 +703,9 @@ test("a progressing timeout leaves a resume marker and the next review continues
   const { root, wt, head } = await gateFixture();
   const flags = path.join(tmpdir(), "review-resume-flags");
   const calls: Array<{ sessionDir: string; continueSession?: boolean; prompt: string }> = [];
-  // The first run (no --continue) makes progress then stalls into a progressing timeout; the
-  // second run (--continue) approves, proving the timed-out session was continued.
+  // The first run (no --continue) keeps making progress and is killed by the extended
+  // progressing timeout; the second run (--continue) approves, proving the timed-out
+  // session was continued.
   await withPi(
     [
       TOUCH_SESSION,
@@ -712,11 +715,11 @@ test("a progressing timeout leaves a resume marker and the next review continues
       `  exit 0`,
       `fi; done`,
       `printf '%s\\n' '${assistantLine("reading the diff…")}'`,
-      `exec sleep 60`,
+      `while true; do sleep 0.05; echo '${assistantLine("still reading")}'; done`,
     ].join("\n"),
     async () => {
       const config = defaultConfig();
-      config.review.timeoutSeconds = 2;
+      config.review.timeoutSeconds = 1;
       const state = freshLoopState(ROLE);
       const firstCtx = gateCtx(root, wt, 1);
       const first = await reviewAheadOfMain({ ...firstCtx, config }, state);

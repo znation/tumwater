@@ -308,13 +308,18 @@ test("a timed-out tick reports an error and never commits partial work", async (
 
 test("a tick timeout that fires on a run still making progress is resumed like a quiet kill (regression)", async () => {
   const repo = await initializedRepo();
-  // Speaks one real progress event, writes an edit, then runs on silently past the deadline:
-  // a slow run. Contrast the zero-byte fixture above, whose timeout still discards.
+  // Writes an edit and keeps speaking progress events through the deadline: a slow run that
+  // is still progressing, not one whose last progress predates the final `progressWindowMs`.
+  // Contrast the zero-byte fixture above, whose timeout still discards.
   await withPi(
-    [`printf '%s\\n' '${assistantLine("still working")}'`, `echo partial > partial.txt`, `exec sleep 30`].join("\n"),
+    [
+      `printf '%s\\n' '${assistantLine("still working")}'`,
+      `echo partial > partial.txt`,
+      `while true; do sleep 0.1; printf '%s\\n' '${assistantLine("still working")}'; done`,
+    ].join("\n"),
     async () => {
       const config = defaultConfig();
-      config.tickTimeoutSeconds = 1;
+      config.tickTimeoutSeconds = 2;
       const runner = makeLoopRunner(repo, "improve", config);
       const before = mainSha(repo);
       const outcome = await runner.tick();

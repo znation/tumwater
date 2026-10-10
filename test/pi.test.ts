@@ -172,6 +172,11 @@ test("a gate run that stopped progressing before its deadline is not extended", 
       clock.advance(2_500); // past the 1 s checkpoint AND the base 2 s deadline
       const result = await run;
       assert.equal(result.timedOut, true, "a run that stalled keeps the base bound");
+      assert.equal(
+        result.timedOutProgressing,
+        false,
+        "a run whose progress stopped before the checkpoint is not progressing, even though the quiet window is longer than the tick budget",
+      );
       assert.match(result.errorMessage ?? "", /timed out after 2s/);
       assert.doesNotMatch(result.errorMessage ?? "", /after 4s/);
     },

@@ -35,8 +35,9 @@ interface PiWatchdogs {
   /** The wall-clock budget the deadline actually used: the base budget, doubled when a
    * progressing gate run took its one extension. Feeds the kill message's seconds. */
   readonly timeoutBudgetMs: number;
-  /** The deadline fired on a run still making progress — same window the quiet watchdog
-   * honors, so the two watchdogs agree on what a healthy run looks like (BUGS.md 2026-09-29). */
+  /** The deadline fired on a run still making progress — the same `progressWindowMs` the
+   * extension test uses, so the kill's classification matches the extension decision even
+   * when the quiet window is longer than the tick budget (BUGS.md 2026-09-29, 2026-10-09). */
   readonly timedOutProgressing: boolean;
   /** The quiet watchdog killed the run as hung. */
   readonly quietKilled: boolean;
@@ -78,12 +79,22 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   const progressWindowMs =
     deps.quietMs > 0 ? Math.min(deps.quietMs, deps.tickTimeoutMs / 2) : deps.tickTimeoutMs / 2;
   let checkpointProgress = 0;
-  const checkpoint = setTimeout(
-    () => {
-      checkpointProgress = deps.progressCount();
-    },
-    Math.max(0, deps.tickTimeoutMs - progressWindowMs),
-  );
+  // Arm (or re-arm) the checkpoint `progressWindowMs` before the upcoming deadline: the
+  // progress count at that instant is the bar a run must beat to count as progressing. One
+  // checkpoint covers the extension test and the kill's classification, so the two cannot
+  // disagree, and re-arming it for the extended deadline keeps the bar at `progressWindowMs`
+  // before whichever deadline finally fires.
+  let checkpoint: ReturnType<typeof setTimeout>;
+  const armCheckpoint = (deadlineMs: number) => {
+    clearTimeout(checkpoint);
+    checkpoint = setTimeout(
+      () => {
+        checkpointProgress = deps.progressCount();
+      },
+      Math.max(0, deadlineMs - progressWindowMs),
+    );
+  };
+  armCheckpoint(deps.tickTimeoutMs);
 
   let extended = false;
   let timeoutBudgetMs = deps.tickTimeoutMs;
@@ -92,16 +103,19 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
     if (deps.extendOnProgress && !extended && deps.progressCount() > checkpointProgress) {
       extended = true;
       timeoutBudgetMs = deps.tickTimeoutMs * 2;
+      armCheckpoint(deps.tickTimeoutMs); // the extended deadline gets its own progress window
       timeout = setTimeout(fireDeadline, deps.tickTimeoutMs); // one more slice; the next firing is final
       return;
     }
     timedOut = true;
     // A deadline that fires on a run still making progress killed a slow run, not a hung
-    // one: "recent progress" is the same window the quiet watchdog itself honors, so the
-    // two watchdogs agree on what a healthy run looks like (BUGS.md 2026-09-29). A run
-    // with no progress event at all — never emitted a byte, or bytes without one structured
-    // event — keeps today's discard path: it has not demonstrably begun.
-    timedOutProgressing = deps.progressCount() > 0 && Date.now() - lastProgressAt <= deps.quietMs;
+    // one: "recent progress" is progress since the checkpoint `progressWindowMs` before this
+    // deadline — the same window the extension test uses, so the kill's classification
+    // cannot contradict the extension decision when the quiet window is longer than the tick
+    // budget (BUGS.md 2026-09-29, 2026-10-09). A run with no progress event at all — never
+    // emitted a byte, or bytes without one structured event — keeps today's discard path: it
+    // has not demonstrably begun.
+    timedOutProgressing = deps.progressCount() > 0 && deps.progressCount() > checkpointProgress;
     deps.kill();
   };
   timeout = setTimeout(fireDeadline, deps.tickTimeoutMs);
