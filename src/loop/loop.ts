@@ -11,6 +11,7 @@ import { LoopPi } from "./loop-pi.js";
 import {
   configForRole,
   fallbackRoleConfig,
+  seamHoldKey,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -200,9 +201,12 @@ export class LoopRunner {
     return configForRole(this.config, this.role);
   }
 
-  /** The provider `runConfig(now)` resolves to; the hold and start passes read only this. */
+  /** The seam key `runConfig(now)` resolves to (config-views.ts seamHoldKey): the agent id
+   * for a non-pi backend (claude seams carry no pi provider), else the pi provider. The hold
+   * and start passes read only this, so a claude seam is gated by a `claude` hold and pi's
+   * default seams (undefined) are not. */
   runProvider(now: number): string | undefined {
-    return this.runConfig(now).provider;
+    return seamHoldKey(this.runConfig(now));
   }
 
   /** The signal every pi run of the current tick watches: harness shutdown OR a per-tick user

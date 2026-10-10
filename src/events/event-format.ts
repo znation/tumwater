@@ -4,7 +4,7 @@ import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fle
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { textOr } from "../text/text.js";
-import { formatTimestamp } from "../text/datetime.js";
+import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 
@@ -56,6 +56,14 @@ function gigabytes(v: unknown): string {
  * episode's and the restart's minute counts. */
 function minutes(ms: unknown): number {
   return Math.round(Number(finiteNumber(ms, 0)) / 60_000);
+}
+
+/** `, resets HH:MM` for a subscription-window event carrying resetsAt, or "" when the field is
+ * absent or non-numeric (a torn line, or a window the account did not stamp) — the same
+ * corrupt-field rule the other optional-field renderers apply. */
+function windowResetPhrase(e: HarnessEvent): string {
+  const at = finiteNumber(e.resetsAt, null);
+  return at === null ? "" : `, resets ${formatTime(new Date(at))}`;
 }
 
 /** The backend a hold event names, rendered as " at <provider>" when one is configured
@@ -337,6 +345,17 @@ export function eventMessage(e: HarnessEvent): string {
         return `backend hold lifted (${backendKindPhrase(e.kind)})${providerAt(e)} — role loops on ${providerScope(e)} tick again`;
       return `429 hold lifted${providerAt(e)} — role loops on ${providerScope(e)} tick again`;
     }
+    case "claude_window_warning":
+      // Routine-with-explanation, like rate_limit_hold — no warning prefix: the account is
+      // telling us the window is filling, not failing. It names the window and when it resets.
+      return `claude subscription window ${textOr(e.windowType)} near its limit${windowResetPhrase(e)} — subscription claude seams keep ticking`;
+    case "claude_window_limited":
+      // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
+      // harness handling the account's own throttle. Names the window, the reset, and which
+      // seams stop, so the operator knows why claude held and what keeps running.
+      return `claude subscription window ${textOr(e.windowType)} rejected — claude seams start nothing new${windowResetPhrase(e)} (director keeps running)`;
+    case "claude_window_reset":
+      return `claude subscription window reset — claude seams tick again`;
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;

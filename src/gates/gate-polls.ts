@@ -39,7 +39,8 @@ import {
   sampleFreeBytes,
   type DiskGateState,
 } from "./disk-gate.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold, pollClaudeWindowWarning, type HoldInputs } from "../fleet/fleet-polls.js";
+import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { ReclaimController } from "../fleet/reclaim.js";
 import type { FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../fleet/error-storm.js";
@@ -87,6 +88,10 @@ export interface FleetGateStates {
   /** The disk floor's cross-poll hold (plans/disk-floor.md, part 1/4). */
   disk: DiskGateState;
   fleetHold: ReadonlyMap<string | undefined, FleetHold>;
+  /** The subscription usage window's once-per-window warning memory (fleet/fleet-polls.ts
+   * pollClaudeWindowWarning): the `type:resetsAt` key whose `claude_window_warning` was
+   * logged, null before any. The hold itself rides `fleetHold`. */
+  claudeWindowWarned: string | null;
   errorStorm: ErrorStorm;
   failureSpread: FailureSpread;
 }
@@ -105,6 +110,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     quiet: newQuietHoursGateState(),
     disk: newDiskGateState(),
     fleetHold: new Map(),
+    claudeWindowWarned: null,
     errorStorm: ERROR_STORM_QUIET,
     failureSpread: FAILURE_SPREAD_QUIET,
   };
@@ -431,7 +437,16 @@ export function pollFleetGates(
   // provider, lifted holds kept keyed for their relapse memory but never reading as held —
   // and the permit-time closures read the LATEST poll's map there, so a waiter granted its
   // permit after a later poll sees that poll's world.
-  states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(runners), now);
+  const claudeAccount = readClaudeAccount(root, now);
+  states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(runners), now, claudeAccount);
+  // The subscription usage window's warning is observational (the hold above is the gate): the
+  // first allowed_warning logs once per window, and the memory lives beside the holds map.
+  states.claudeWindowWarned = pollClaudeWindowWarning(
+    root,
+    states.claudeWindowWarned,
+    claudeAccount,
+    now,
+  );
 
   // Fleet-wide error-storm warning (src/fleet/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"

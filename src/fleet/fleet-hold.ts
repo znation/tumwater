@@ -65,7 +65,7 @@ export const HOLD_RELAPSE_MS = 5 * 60_000;
  * imported as a type rather than re-spelled, so the classifier's kind list and the hold's
  * stay one list by construction: a kind the classifier starts producing is holdable without
  * a second edit here, and the two spellings cannot drift apart. */
-export type HoldKind = "rate-limit" | BackendFailureKind;
+export type HoldKind = "rate-limit" | BackendFailureKind | "subscription-window";
 
 /** One role's most recent pi run that ended on a provider failure (LoopRunner.lastRateLimit
  * for the "rate-limit" kind, LoopRunner.lastBackendFailure for the backend kinds). Only the
@@ -78,10 +78,17 @@ export interface HoldObservation {
    * reviewer's provider must not stop authors on a healthy one, so observations count
    * together only when both provider AND kind match. */
   provider?: string;
-  /** Which failure the run ended on — the field the storm test groups by. */
+  /** Which failure the run ended on — the field the storm test groups by. The
+   * "subscription-window" kind is the account-level throttle beside the per-role storm: a
+   * provider-wide hold `resetsAt` places regardless of how many roles have failed. */
   kind: HoldKind;
   /** Epoch ms the run ended on the failure. */
   at: number;
+  /** A subscription-window observation only: the account's own window type (`five_hour`,
+   * plus any longer window) and the epoch ms it resets at, so the hold can name and lift at
+   * the right deadline. Absent for failure observations. */
+  windowType?: string;
+  resetsAt?: number;
   /** The provider's Retry-After hint from that run's error text, when it sent one. Only the
    * rate-limit kind carries one; backend kinds leave it undefined, and the hold math gives
    * them the base. */
@@ -159,15 +166,35 @@ export function fleetHold(
 ): FleetHold {
   if (prev.until !== null) {
     if (now < prev.until) return prev;
-    // kind and provider stay: the next storm's relapse test compares against the hold that
-    // just ended.
-    return {
+    // The deadline passed: re-open, keeping provider/kind/escalation as the next storm's
+    // relapse memory, then fall through so a still-rejected subscription window (or a storm
+    // whose observations survived) holds again on this very poll rather than leaving one poll
+    // open. kind and provider stay because the next storm's relapse test compares against the
+    // hold that just ended.
+    prev = {
       provider: prev.provider,
       until: null,
       kind: prev.kind,
       roles: [],
       escalation: prev.escalation,
       reopenedAt: now,
+    };
+  }
+  // A rejected subscription usage window is the account-level throttle: it holds every seam on
+  // its provider until `resetsAt`, whatever the role count — the one observation kind the
+  // per-role storm rule below does not gate. Overage is real money and never holds (the run
+  // continues into paid overflow); a window with no future `resetsAt` holds nothing.
+  const window = observations.find(
+    (o) => o.kind === "subscription-window" && (o.resetsAt ?? 0) > now,
+  );
+  if (window !== undefined) {
+    return {
+      provider: window.provider,
+      until: window.resetsAt!,
+      kind: "subscription-window",
+      roles: [],
+      escalation: 0,
+      reopenedAt: prev.reopenedAt,
     };
   }
   const recent = observations.filter(

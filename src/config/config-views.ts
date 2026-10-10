@@ -288,6 +288,16 @@ export function agentQualifiedSelector(cfg: {
   return cfg.agent && cfg.agent !== "pi" ? `${cfg.agent}/${base}` : base;
 }
 
+/** The key a resolved seam's fleet hold is filed under and the scheduler checks a role
+ * against: a non-pi backend's own id (claude seams carry no pi provider), else the pi
+ * provider (undefined for pi's own default). The failure hold and the subscription-window
+ * hold both key on this, so a hold and the roles it gates cannot drift two ways. */
+export function seamHoldKey(
+  cfg: Pick<ResolvedModelConfig, "agent" | "provider">,
+): string | undefined {
+  return cfg.agent !== undefined && cfg.agent !== "pi" ? cfg.agent : cfg.provider;
+}
+
 /** The fleet's model wiring as one human-readable label, for the live-reload `model_changed`
  * event: null when no tier resolves to a model (pi's own default), the single selector when
  * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…`

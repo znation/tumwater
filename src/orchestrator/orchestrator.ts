@@ -9,7 +9,7 @@ import {
 } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { modelPairName } from "../budget/budget.js";
-import { roleSeamTier, reviewRunConfig } from "../config/config-views.js";
+import { roleSeamTier, reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs, plannedPlans } from "../backlog/backlog.js";
@@ -398,9 +398,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // gateStates.fleetHold, so they re-derive from the LATEST poll's map, not this snapshot.
       const fleetHeldNow = () => heldProviders(gateStates.fleetHold);
       const reviewHeldNow = () =>
-        liveConfig.review.enabled && fleetHeldNow().has(reviewRunConfig(liveConfig).provider);
+        liveConfig.review.enabled && fleetHeldNow().has(seamHoldKey(reviewRunConfig(liveConfig)));
       const reviewHeld =
-        liveConfig.review.enabled && fleetHeldProviders.has(reviewRunConfig(liveConfig).provider);
+        liveConfig.review.enabled && fleetHeldProviders.has(seamHoldKey(reviewRunConfig(liveConfig)));
       const roleProviders = new Map(runners.map((r) => [r.role, r.runProvider(now)]));
 
       // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state

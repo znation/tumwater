@@ -116,8 +116,10 @@ provider names a backend id (`claude/claude-opus-5-5`) always routes there. A cl
 cost comes from the CLI's own price table. A run paid by a claude.ai subscription is exempt
 from the daily dollar cap: its API-equivalent cost is tracked as notional spend and shown on
 its own line in `tumwater report`, never in the cap; a run billed to an API key — or one that
-saw `isUsingOverage` — counts against the cap like a priced pi model. The subscription
-usage-window throttle and display are not implemented yet (parts 6c–6e/7 in PLANS.md). See
+saw `isUsingOverage` — counts against the cap like a priced pi model. A rejected claude.ai
+subscription usage window holds subscription claude seams until it resets (a first
+`allowed_warning` is logged too); the window's display and resume-across-a-hold are not
+implemented yet (parts 6d–6e/7 in PLANS.md). See
 [docs/backends.md](docs/backends.md) for requirements and a worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see

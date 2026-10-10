@@ -17,6 +17,7 @@ import {
   resolveTierFallbacks,
   reviewRunConfig,
   REVIEW_TIMEOUT_S,
+  seamHoldKey,
   tierModel,
   type TierFallback,
   type TierFallbackMap,
@@ -550,6 +551,15 @@ test("a mixed fallback under agent: claude runs on pi while the primary stays cl
   assert.equal(fb?.agent, "pi", "a non-agent provider runs on pi");
   assert.equal(fb?.provider, "omlx");
   assert.equal(fb?.model, "Qwen3.8-27B-MLX");
+});
+
+test("seamHoldKey keys a claude seam by its agent and a pi seam by its provider", () => {
+  // A claude seam carries no pi provider, so its hold key is the backend id — the one key the
+  // scheduler and pollFleetHold both read. A pi seam keeps its provider, and pi's own default
+  // (no provider at all) keys undefined.
+  assert.equal(seamHoldKey({ agent: "claude", provider: undefined }), "claude");
+  assert.equal(seamHoldKey({ agent: "pi", provider: "omlx" }), "omlx");
+  assert.equal(seamHoldKey({ agent: "pi", provider: undefined }), undefined);
 });
 
 test("agentQualifiedSelector names a non-pi backend as the selector namespace", () => {

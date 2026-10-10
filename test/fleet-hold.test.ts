@@ -177,3 +177,30 @@ test("a storm that outlasts every re-open escalates to the cap and stays there",
   const min = 60_000;
   assert.deepEqual(lengths, [1 * min, 2 * min, 4 * min, 8 * min, 15 * min, 15 * min, 15 * min]);
 });
+
+test("a rejected subscription window holds its provider until resetsAt, whatever the role count", () => {
+  const resetsAt = T0 + 3_600_000;
+  // One observation, no second role: the window is the account-level throttle, not a storm.
+  const window: HoldObservation = {
+    role: "claude",
+    provider: "claude",
+    kind: "subscription-window",
+    at: T0,
+    windowType: "five_hour",
+    resetsAt,
+  };
+  const held = fleetHold(FLEET_OPEN, [window], T0);
+  assert.equal(held.until, resetsAt);
+  assert.equal(held.kind, "subscription-window");
+  assert.equal(held.provider, "claude");
+  assert.deepEqual(held.roles, []);
+  // Held until its own deadline, then re-opens by itself.
+  assert.equal(fleetHold(held, [window], resetsAt - 1), held);
+  assert.equal(fleetHold(held, [window], resetsAt).until, null);
+  // A window already reset holds nothing, and neither does a missing resetsAt.
+  assert.equal(fleetHold(FLEET_OPEN, [{ ...window, resetsAt: T0 - 1 }], T0).until, null);
+  assert.equal(
+    fleetHold(FLEET_OPEN, [{ role: "claude", provider: "claude", kind: "subscription-window", at: T0 }], T0).until,
+    null,
+  );
+});

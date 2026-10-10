@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, type FleetHold } from "../src/fleet/fleet-hold.js";
-import { pollFleetHold, type HoldInputs } from "../src/fleet/fleet-polls.js";
+import { pollFleetHold, claudeWindowObservation, pollClaudeWindowWarning, type HoldInputs } from "../src/fleet/fleet-polls.js";
+import type { ClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -243,4 +244,114 @@ test("a lifted provider's hold stays in the map with its relapse memory but stop
   assert.equal(holds.get("P")!.escalation, 1);
   assert.equal(holds.get("P")!.until, lifted.reopenedAt! + 2_000 + HOLD_BASE_MS * 2);
   assert.deepEqual([...heldProviders(holds)], ["P"]);
+});
+
+// The subscription usage window (plans/agent-backends.md §8, PLANS.md part 6c/7): the
+// account reader's answer becomes one provider-`claude` hold observation, and the poll's
+// crossing events are the window's own (claude_window_limited/reset), once per window.
+
+/** A persisted account state as 6a's reader returns it: subscription by default, one
+ * `five_hour` window at `status` resetting at `resetsAt`. */
+function account(
+  over: Partial<ClaudeAccount> = {},
+  window: { status: string; resetsAt?: number; isUsingOverage?: boolean } = {
+    status: "rejected",
+    resetsAt: T0 + 3_600_000,
+  },
+): ClaudeAccount {
+  return {
+    billing: "subscription",
+    observedAt: T0,
+    windows: { five_hour: { ...window, observedAt: T0 } },
+    ...over,
+  };
+}
+
+function windowEvents(root: string) {
+  return readEvents(root).filter(
+    (e) =>
+      e.type === "claude_window_warning" ||
+      e.type === "claude_window_limited" ||
+      e.type === "claude_window_reset",
+  );
+}
+
+test("claudeWindowObservation: a rejected subscription window holds; API billing, overage, and a past reset do not", () => {
+  assert.equal(claudeWindowObservation(null, T0), null, "no account is today's behavior");
+  const obs = claudeWindowObservation(account(), T0)!;
+  assert.equal(obs.provider, "claude");
+  assert.equal(obs.kind, "subscription-window");
+  assert.equal(obs.windowType, "five_hour");
+  assert.equal(obs.resetsAt, T0 + 3_600_000);
+  // Over the API, the subscription window is not the throttle; an overage window is paid
+  // overflow (never a hold); a window already reset holds nothing.
+  assert.equal(claudeWindowObservation(account({ billing: "api" }), T0), null);
+  assert.equal(
+    claudeWindowObservation(account({}, { status: "rejected", resetsAt: T0 + 3_600_000, isUsingOverage: true }), T0),
+    null,
+  );
+  assert.equal(claudeWindowObservation(account({}, { status: "rejected", resetsAt: T0 - 1 }), T0), null);
+  // The furthest reset among several rejected windows is the deadline the fleet waits out.
+  const twoWindow = account();
+  twoWindow.windows.seven_day = { status: "rejected", resetsAt: T0 + 7_200_000, observedAt: T0 };
+  assert.equal(claudeWindowObservation(twoWindow, T0)!.resetsAt, T0 + 7_200_000);
+});
+
+test("pollFleetHold holds provider claude until resetsAt and logs claude_window_limited once, reset once", () => {
+  const root = tmpdir("tumwater-fleet-polls-");
+  const resetsAt = T0 + 3_600_000;
+  const acct = account({}, { status: "rejected", resetsAt });
+  // A pi seam and an API claude seam share this poll; the subscription hold gates only claude.
+  const holds = pollFleetHold(root, new Map(), [runner("feature", { provider: "openai" })], T0, acct);
+  assert.notEqual(holds.get("claude")!.until, null);
+  assert.equal(holds.get("claude")!.until, resetsAt);
+  assert.equal(holds.get("claude")!.kind, "subscription-window");
+  assert.deepEqual([...heldProviders(holds)], ["claude"], "only the claude provider is held");
+  let events = windowEvents(root);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.type, "claude_window_limited");
+  assert.equal(events[0]!.windowType, "five_hour");
+  assert.equal(events[0]!.resetsAt, resetsAt);
+
+  // Many polls across the one window: held, silent, and still standing.
+  const mid = pollFleetHold(root, holds, [], resetsAt - 1_000, acct);
+  assert.equal(mid.get("claude")!.until, resetsAt);
+  assert.equal(windowEvents(root).length, 1, "no repeat while held");
+
+  // Over the API no hold is placed at all.
+  const api = tmpdir("tumwater-fleet-polls-");
+  const apiHolds = pollFleetHold(api, new Map(), [], T0, account({ billing: "api" }));
+  assert.equal(apiHolds.get("claude")?.until ?? null, null, "API-billed claude seams tick");
+  assert.equal(windowEvents(api).length, 0);
+
+  // At resetsAt the hold lifts by itself and the reset is logged once.
+  const open = pollFleetHold(root, mid, [], resetsAt, acct);
+  assert.equal(open.get("claude")!.until, null);
+  events = windowEvents(root);
+  assert.equal(events.filter((e) => e.type === "claude_window_reset").length, 1);
+  assert.equal(events.filter((e) => e.type === "claude_window_limited").length, 1);
+});
+
+test("pollClaudeWindowWarning logs the first allowed_warning once per window", () => {
+  const root = tmpdir("tumwater-fleet-polls-");
+  const resetsAt = T0 + 3_600_000;
+  const acct = account({}, { status: "allowed_warning", resetsAt });
+  const key = pollClaudeWindowWarning(root, null, acct, T0);
+  assert.equal(key, `five_hour:${resetsAt}`);
+  const warnings = () => readEvents(root).filter((e) => e.type === "claude_window_warning");
+  assert.equal(warnings().length, 1);
+  assert.equal(warnings()[0]!.windowType, "five_hour");
+  assert.equal(warnings()[0]!.resetsAt, resetsAt);
+  // The same window on later polls is not re-announced…
+  assert.equal(pollClaudeWindowWarning(root, key, acct, T0 + 1_000), key);
+  assert.equal(warnings().length, 1, "once per window, not per poll");
+  // …while the next window's warning is its own crossing.
+  const next = account({}, { status: "allowed_warning", resetsAt: resetsAt + 3_600_000 });
+  const nextKey = pollClaudeWindowWarning(root, key, next, T0 + 1_000);
+  assert.notEqual(nextKey, key);
+  assert.equal(warnings().length, 2);
+  // API billing and no account warn nothing.
+  const api = tmpdir("tumwater-fleet-polls-");
+  assert.equal(pollClaudeWindowWarning(api, null, account({ billing: "api" }), T0), null);
+  assert.equal(windowEvents(api).length, 0);
 });

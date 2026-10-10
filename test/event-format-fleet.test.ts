@@ -10,6 +10,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatEvent } from "../src/events/event-format.js";
+import { formatTime } from "../src/text/datetime.js";
 
 // The daily cost budget's transition events (plans/daily-cost-budget.md): routine state
 // changes like counters_reset — plain lines carrying the spend and cap that triggered them,
@@ -358,4 +359,36 @@ test("formatEvent renders the disk-floor events' GB fields one-decimal and never
   assert.match(torn, /disk low — 0\.0 GB free on the worktrees volume \(floor 0\.0 GB\)/, `torn disk low line: ${torn}`);
   const tornReclaim = formatEvent({ ts: 0, loop: "harness", type: "disk_reclaim", freedGB: "x", freeGB: null } as never);
   assert.match(tornReclaim, /freed 0\.0 GB from \?; 0\.0 GB free now/, `torn disk reclaim line: ${tornReclaim}`);
+});
+
+// The subscription usage-window events (plans/agent-backends.md §8, PLANS.md part 6c/7): the
+// account's own throttle lines, routine-with-explanation like the failure holds. The reset
+// stamp renders local HH:MM:SS through the shared formatTime; a torn line without resetsAt
+// omits the clause rather than printing NaN.
+test("formatEvent renders the subscription-window warning, limited, and reset lines", () => {
+  const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
+  const clock = formatTime(new Date(resetsAt));
+  const warning = formatEvent({
+    ts: 0, loop: "harness", type: "claude_window_warning", windowType: "five_hour", resetsAt,
+  } as never);
+  assert.match(
+    warning,
+    new RegExp(`harness\\s+claude subscription window five_hour near its limit, resets ${clock} — subscription claude seams keep ticking`),
+    `warning line: ${warning}`,
+  );
+  const limited = formatEvent({
+    ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour", resetsAt,
+  } as never);
+  assert.match(
+    limited,
+    new RegExp(`harness\\s+claude subscription window five_hour rejected — claude seams start nothing new, resets ${clock} \\(director keeps running\\)`),
+    `limited line: ${limited}`,
+  );
+  assert.ok(!limited.includes("warning"), "a routine hold is not a warning");
+  const reset = formatEvent({ ts: 0, loop: "harness", type: "claude_window_reset" } as never);
+  assert.match(reset, /harness\s+claude subscription window reset — claude seams tick again/, `reset line: ${reset}`);
+
+  // A torn limited line with no resetsAt drops the clause instead of rendering NaN.
+  const torn = formatEvent({ ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour" } as never);
+  assert.ok(!torn.includes("resets"), `torn limited line: ${torn}`);
 });

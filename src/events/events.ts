@@ -83,6 +83,9 @@ export interface HarnessEvent {
     | "slot_wait" // a pooled worktree lease waited SLOT_WAIT_EVENT_MS or more for a free slot; carries role, purpose, waitedMs, slots and pinned — the signal to raise worktreeSlots (plans/worktree-pool.md, part 5/5)
     | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/fleet/fleet-hold.ts); role loops on that provider — every role when the reviewer's is hit — start nothing new until it re-opens; carries kind, roles, holdMs, escalation, and provider when one is configured
     | "rate_limit_resumed" // one provider's hold (429 or backend-failure kind) reached its deadline; roles on that provider tick again; carries the ended hold's kind, and provider when one is configured
+    | "claude_window_warning" // the claude.ai subscription usage window first reported allowed_warning; carries the window type and its resetsAt when reported; once per window, observational (it gates nothing)
+    | "claude_window_limited" // a rejected claude.ai subscription window placed the provider-wide hold; claude seams start nothing new until resetsAt; carries the window type and resetsAt; once per window
+    | "claude_window_reset" // the subscription window hold reached resetsAt and lifted; claude seams tick again; once per window
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "config_changed" // a live tumwater.json edit changed other settings (keys)

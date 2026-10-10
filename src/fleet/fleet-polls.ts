@@ -1,6 +1,7 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEventBestEffort } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
+import type { ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -61,8 +62,10 @@ export function pollFleetHold(
   prev: ReadonlyMap<string | undefined, FleetHold>,
   runners: readonly HoldInputs[],
   now: number,
+  account: ClaudeAccount | null = null,
 ): Map<string | undefined, FleetHold> {
-  const observations = holdObservations(runners);
+  const window = claudeWindowObservation(account, now);
+  const observations = window === null ? holdObservations(runners) : [...holdObservations(runners), window];
   const byProvider = groupBy(observations, (o) => o.provider);
   const next = new Map<string | undefined, FleetHold>();
   // Every provider the map already knows, plus every provider this poll observed: a hold
@@ -74,29 +77,101 @@ export function pollFleetHold(
     next.set(provider, pNext);
     const providerFields = provider === undefined ? {} : { provider };
     if (pPrev.until === null && pNext.until !== null) {
-      logEventBestEffort(root, {
-        loop: "harness",
-        type: "rate_limit_hold",
-        ...providerFields,
-        kind: pNext.kind,
-        roles: pNext.roles,
-        holdMs: pNext.until - now,
-        escalation: pNext.escalation,
-      });
+      if (pNext.kind === "subscription-window") {
+        // The subscription window's own crossing event, once per rejected window rather than
+        // once per failure storm. It names the window type and the deadline the hold lifts at.
+        logEventBestEffort(root, {
+          loop: "harness",
+          type: "claude_window_limited",
+          ...providerFields,
+          windowType: window?.windowType,
+          resetsAt: pNext.until,
+        });
+      } else {
+        logEventBestEffort(root, {
+          loop: "harness",
+          type: "rate_limit_hold",
+          ...providerFields,
+          kind: pNext.kind,
+          roles: pNext.roles,
+          holdMs: pNext.until - now,
+          escalation: pNext.escalation,
+        });
+      }
     } else if (pPrev.until !== null && pNext.until === null) {
-      // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
-      // the lift must be able to name what actually ended too — "429 hold lifted" after a
-      // connection-error hold is the same lie the hold line's kind split removed
-      // (BUGS.md 2026-09-29).
-      logEventBestEffort(root, {
-        loop: "harness",
-        type: "rate_limit_resumed",
-        ...providerFields,
-        kind: pNext.kind,
-      });
+      if (pNext.kind === "subscription-window") {
+        logEventBestEffort(root, { loop: "harness", type: "claude_window_reset", ...providerFields });
+      } else {
+        // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
+        // the lift must be able to name what actually ended too — "429 hold lifted" after a
+        // connection-error hold is the same lie the hold line's kind split removed
+        // (BUGS.md 2026-09-29).
+        logEventBestEffort(root, {
+          loop: "harness",
+          type: "rate_limit_resumed",
+          ...providerFields,
+          kind: pNext.kind,
+        });
+      }
     }
   }
   return next;
+}
+
+/** The hold observation one subscription account's usage windows imply, or null: a window
+ * reading `rejected` with no overage and a future `resetsAt` holds every seam on provider
+ * `claude` until the last such deadline — the account-level throttle of plans/agent-backends.md
+ * §8. Only subscription billing produces one: an API-billed run's windows never hold (the plan's
+ * "API claude seams tick"), and a missing account file reads exactly as today's behavior. The
+ * reader has already flipped a past-`resetsAt` window to `reset`, and the `resetsAt > now` guard
+ * here lets the hold lift on its own even from a stale file. */
+export function claudeWindowObservation(
+  account: ClaudeAccount | null,
+  now: number,
+): HoldObservation | null {
+  if (account === null || account.billing !== "subscription") return null;
+  let furthest: { type: string; resetsAt: number } | null = null;
+  for (const [type, w] of Object.entries(account.windows)) {
+    if (w.status !== "rejected" || w.isUsingOverage === true) continue;
+    if (typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
+    if (furthest === null || w.resetsAt > furthest.resetsAt) furthest = { type, resetsAt: w.resetsAt };
+  }
+  if (furthest === null) return null;
+  return {
+    role: "claude",
+    provider: "claude",
+    kind: "subscription-window",
+    at: now,
+    windowType: furthest.type,
+    resetsAt: furthest.resetsAt,
+  };
+}
+
+/** One poll of the subscription-window warning: the first `allowed_warning` window logs
+ * `claude_window_warning` once, and `prevWarnedKey` is the window key (`type:resetsAt`) it was
+ * logged for, so many polls across one window warn once while a later window's warning is its
+ * own crossing. Returns the key to keep; null before any warning and until the first. */
+export function pollClaudeWindowWarning(
+  root: string,
+  prevWarnedKey: string | null,
+  account: ClaudeAccount | null,
+  now: number,
+): string | null {
+  if (account === null || account.billing !== "subscription") return prevWarnedKey;
+  for (const [type, w] of Object.entries(account.windows)) {
+    if (w.status !== "allowed_warning") continue;
+    if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;
+    const key = `${type}:${w.resetsAt ?? ""}`;
+    if (key === prevWarnedKey) return prevWarnedKey;
+    logEventBestEffort(root, {
+      loop: "harness",
+      type: "claude_window_warning",
+      windowType: type,
+      ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt } : {}),
+    });
+    return key;
+  }
+  return prevWarnedKey;
 }
 
 /** One poll of the fleet-wide error-storm warning (src/fleet/error-storm.ts): gather each runner's

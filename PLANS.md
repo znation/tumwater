@@ -44,42 +44,6 @@ src/status/status-data.ts, README.md.
 - With no account file or API billing, free-ness is exactly today's behavior.
 - `npm run test` green.
 
-### Agent backends, part 6c/7: the usage-window hold and its events (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed)
-
-Design: plans/agent-backends.md ("Throttle", "Watchdogs and progress").
-
-Goal: a rejected subscription window holds claude seams until it resets, so the fleet does not
-burn a failed run per loop per poll. Depends on 6a's account state.
-
-**Approach.**
-1. **The hold.** A window reading with `status: "rejected"` and no overage places a
-   provider-`claude` fleet hold until `resetsAt` (src/fleet/fleet-hold.ts and
-   src/fleet/fleet-polls.ts). It joins the existing per-provider holds map, so
-   `heldProviders()` gates scheduling exactly as a failure storm does. It covers subscription
-   claude seams only: pi seams, and API-key claude seams, keep ticking. A rejected run is a
-   transient — nothing is reset.
-2. **Integration.** fleet-polls derives the window observation from the account state (via 6a's
-   reader) alongside the runner failure observations, with the same self-lifting guarantee
-   (a held fleet re-opens when `resetsAt` passes).
-3. **Events (once per window, not per run).** `claude_window_warning` on the first
-   `allowed_warning`, `claude_window_limited` `{type, resetsAt}` when the hold is placed, and
-   `claude_window_reset` when it lifts (src/events/events.ts, src/events/event-format.ts).
-
-**Files touched.** src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts,
-src/agent/claude/claude-account.ts (reader use), src/events/events.ts,
-src/events/event-format.ts.
-
-**Tests.** Cases in test/fleet-hold.test.ts, test/fleet-polls.test.ts; event-format coverage.
-
-**Acceptance criteria.**
-- A `rejected` five-hour reading holds subscription claude seams until `resetsAt` while pi seams
-  and API claude seams tick.
-- Many polls across one rejected window log `claude_window_limited` once and
-  `claude_window_reset` once.
-- A first `allowed_warning` logs `claude_window_warning` once.
-- A window with overage, or after `resetsAt`, places no hold.
-- `npm run test` green.
-
 ### Agent backends, part 6d/7: the usage-window display (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 6a/7 and 6c/7 landed)
 
 Design: plans/agent-backends.md ("Display, in place of the daily spend").
@@ -409,6 +373,52 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Agent backends, part 6c/7: the usage-window hold and its events (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Throttle", "Watchdogs and progress").
+
+Goal: a rejected subscription window holds claude seams until it resets, so the fleet does not
+burn a failed run per loop per poll. Depends on 6a's account state.
+
+**Approach.**
+1. **The hold.** A window reading with `status: "rejected"` and no overage places a
+   provider-`claude` fleet hold until `resetsAt` (src/fleet/fleet-hold.ts and
+   src/fleet/fleet-polls.ts). It joins the existing per-provider holds map, so
+   `heldProviders()` gates scheduling exactly as a failure storm does. It covers subscription
+   claude seams only: pi seams, and API-key claude seams, keep ticking. A rejected run is a
+   transient — nothing is reset.
+2. **Integration.** fleet-polls derives the window observation from the account state (via 6a's
+   reader) alongside the runner failure observations, with the same self-lifting guarantee
+   (a held fleet re-opens when `resetsAt` passes).
+3. **Events (once per window, not per run).** `claude_window_warning` on the first
+   `allowed_warning`, `claude_window_limited` `{windowType, resetsAt}` when the hold is placed,
+   and `claude_window_reset` when it lifts (src/events/events.ts, src/events/event-format.ts).
+   The field is `windowType` because the event's own `type` names the event.
+
+**Files touched.** src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts,
+src/agent/claude/claude-account.ts (reader use), src/config/config-views.ts,
+src/loop/loop.ts, src/orchestrator/orchestrator.ts, src/gates/gate-polls.ts,
+src/events/events.ts, src/events/event-format.ts, README.md.
+
+**Landed note.** The hold is keyed by the seam hold key (config-views.ts seamHoldKey): a non-pi
+backend keys by its agent id (configForRole clears a claude seam's pi provider), so claude seams
+share the `claude` hold and pi's default seams (undefined) stay clear. LoopRunner.runProvider and
+the reviewer's held-provider reads now use it, so claude failure storms also key `claude`
+rather than undefined. The once-per-window warning memory lives in FleetGateStates beside the
+holds map.
+
+**Tests.** Cases in test/fleet-hold.test.ts, test/fleet-polls.test.ts, test/event-format-fleet.test.ts,
+test/config-views.test.ts.
+
+**Acceptance criteria.**
+- A `rejected` five-hour reading holds subscription claude seams until `resetsAt` while pi seams
+  and API claude seams tick.
+- Many polls across one rejected window log `claude_window_limited` once and
+  `claude_window_reset` once.
+- A first `allowed_warning` logs `claude_window_warning` once.
+- A window with overage, or after `resetsAt`, places no hold.
+- `npm run test` green.
 
 ### Agent backends, part 6a/7: the claude account state and notional spend (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 4a/7, 4b/7 and 4e/7 landed; done 2026-10-10 by feature)
 
