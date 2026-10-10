@@ -1,6 +1,6 @@
 import path from "node:path";
 import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
-import { isJsonObject } from "../files/json-object.js";
+import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { landQueueDir } from "../paths.js";
@@ -98,7 +98,12 @@ const entryCache = new Map<string, StatKeyedValue<LandingEntry>>();
  * Checking only `role` and `sha` left the `as LandingEntry` cast unsound: a foreign file that
  * happened to carry those two fields was handed downstream with `tick` and `summary`
  * undefined, which surface as bogus session names (`tumwater-<role>-undefined-review`) and
- * `undefined` in the reviewer's prompt. Optional fields are checked only when present. */
+ * `undefined` in the reviewer's prompt. Optional fields are checked only when present.
+ *
+ * The three numeric fields go through nonNegativeNumber, not a bare `typeof === "number"`:
+ * JSON's `1e999` parses to Infinity, so a hand-edited file could carry a non-finite tick or
+ * enqueuedAt past a typeof check, and both feed plumbing downstream (session names, queue
+ * ordering, the status payload). */
 function isPriorReview(v: unknown): v is PriorReview {
   if (!isJsonObject(v)) return false;
   return (
@@ -114,12 +119,12 @@ function isLandingEntry(v: unknown): v is LandingEntry {
   return (
     typeof e.role === "string" &&
     typeof e.sha === "string" &&
-    typeof e.tick === "number" &&
+    nonNegativeNumber(e.tick, null) !== null &&
     typeof e.summary === "string" &&
-    typeof e.enqueuedAt === "number" &&
+    nonNegativeNumber(e.enqueuedAt, null) !== null &&
     (e.body === undefined || typeof e.body === "string") &&
     (e.highFriction === undefined || typeof e.highFriction === "boolean") &&
-    (e.revisionRound === undefined || typeof e.revisionRound === "number") &&
+    (e.revisionRound === undefined || nonNegativeNumber(e.revisionRound, null) !== null) &&
     (e.priorReview === undefined || isPriorReview(e.priorReview))
   );
 }

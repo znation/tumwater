@@ -123,6 +123,29 @@ test("an entry missing a required field is skipped like a torn one", () => {
   );
 });
 
+test("a required numeric field that is not finite is skipped like a torn one", () => {
+  const repo = makeRepo();
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  const dir = landQueueDir(repo);
+  // JSON's 1e999 parses to Infinity, which a bare `typeof === "number"` accepts: the tick
+  // would name a `tumwater-feature-Infinity-review` session and enqueuedAt would feed queue
+  // arithmetic. All required fields but the non-finite ones are present, so only the numeric
+  // guard can reject it. JSON.stringify would turn Infinity into null, so the raw text is written.
+  const partial = path.join(dir, "0000000000-000000-1.json");
+  fs.writeFileSync(
+    partial,
+    '{"role": "feature", "sha": "b".repeat(40), "tick": 1e999, "summary": "x", "enqueuedAt": 1e999}',
+  );
+  assert.equal(queueDepth(repo), 2, "depth counts files, not parseable entries");
+  assert.equal(headLanding(repo), null, "the non-finite head holds the slot without throwing");
+  assert.equal(staleHeadFile(repo), partial, "the drain is told to drop it");
+  assert.deepEqual(
+    queuedLandings(repo).map((e) => e.role),
+    ["improve"],
+    "the real entry still surfaces",
+  );
+});
+
 test("staleHeadFile names the unreadable head for the drain to drop, null otherwise", () => {
   const repo = makeRepo();
   assert.equal(staleHeadFile(repo), null, "an empty queue has no stale head");
