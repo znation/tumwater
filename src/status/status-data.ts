@@ -31,7 +31,7 @@ import {
 } from "../fleet/orchestrator-info.js";
 import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
 import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
-import { roleCapPaused } from "../gates/role-cap-gates.js";
+import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { queuedLandings } from "../landing/landing-queue.js";
 
@@ -144,13 +144,14 @@ export interface StatusSnapshot {
    * set): an idle loop in this set also reads `paused`, the same cell as under the fleet
    * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
   pausedRoles: string[];
-  /** The roles the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle loop
+  /** The loop ids the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle loop
    * in this set reads `cap paused`, its own spend state — more specific than the fleet's
-   * `budget paused`. Computed with roleCapPaused against the caps of the same
-   * last-known-good config that produced the loop list (a transiently broken tumwater.json
-   * degrades with the whole config, like `quietHours`), so the verdict an operator sees is
-   * the scheduler's — the fleet budget gate's rule. The director is exempt, exactly as the
-   * gate exempts it (role-cap-gates.ts). Always present, empty when none — the `pausedRoles`
+   * `budget paused`. Computed with the gate's own grouped verdict (roleCapVerdicts): instance
+   * loop ids share their base role's cap and its SUMMED spend, and the director is exempt,
+   * exactly as the scheduler's gate groups and exempts them (role-cap-gates.ts). Uses the caps
+   * of the same last-known-good config that produced the loop list (a transiently broken
+   * tumwater.json degrades with the whole config, like `quietHours`), so the verdict an
+   * operator sees is the scheduler's. Always present, empty when none — the `pausedRoles`
    * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
@@ -183,10 +184,13 @@ export interface StatusSnapshot {
    * it. Always present, empty when none — the `capPaused` shape. Fresh per poll, like
    * `capPaused`. */
   budgetPausedRoles: string[];
-  /** The roles the per-role quiet-hours window holds (`quietHoursPerRole`): keyed by role
-   * id to that role's window string as written (trimmed by quietHoursStatus's parser rule —
-   * the schedule as written, not a reformat). An idle loop in this map reads the fleet
-   * gate's own quiet wording, scoped to its window — `quiet until <end>`. Computed with
+  /** The roles the per-role quiet-hours window holds (`quietHoursPerRole`): keyed by LOOP
+   * id (`feature-2`, so loopPhase's `[s.role]` lookup finds the row) to that role's window
+   * string as written (trimmed by quietHoursStatus's parser rule — the schedule as written,
+   * not a reformat). The window is looked up by BASE role, exactly as the scheduler's own
+   * gate does (gate-polls.ts's roleQuietHeld): config keys are base role ids, so an
+   * instance loop reads its base's window. An idle loop in this map reads the fleet gate's
+   * own quiet wording, scoped to its window — `quiet until <end>`. Computed with
    * roleQuietHold against the same last-known-good config as `capPaused` (a transiently
    * broken tumwater.json degrades with the whole config), the director exempt exactly as
    * the scheduler's gate exempts it. Empty when no per-role window holds anyone — the
@@ -454,9 +458,9 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     },
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
-    capPaused: loops
-      .filter((l) => l.role !== DIRECTOR_ROLE && roleCapPaused(l, cfg.maxDailyCostUsdPerRole?.[l.role]))
-      .map((l) => l.role),
+    capPaused: [...roleCapVerdicts(loops.map((l) => ({ role: l.role, state: l })), cfg.maxDailyCostUsdPerRole, now).values()]
+      .filter((v) => v.over)
+      .flatMap((v) => v.roleIds),
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
     // gate folds, over the same event log, so the dashboards show the hold the scheduler
     // enforces. `landings` is the one land-queue snapshot read above, so in-flight maintenance
@@ -487,8 +491,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // not holding (roleQuietHold true implies a parseable, non-empty string there).
     roleQuietPaused: Object.fromEntries(
       loops
-        .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, l.role, new Date()))
-        .map((l) => [l.role, cfg.quietHoursPerRole?.[l.role] ?? ""]),
+        .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, baseRoleOf(l.role), new Date()))
+        .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
     ),
     pausedUntil: fleetPause?.until,
     pauseReason: fleetPause?.reason,

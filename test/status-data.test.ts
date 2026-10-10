@@ -84,6 +84,28 @@ test("snapshot lists one row per loop id for a multi-instance role (part 5b/7)",
   assert.equal(ids.includes("feature-2"), true);
 });
 
+// Per-role quiet hours key config by BASE role (gate-polls.ts's roleQuietHeld resolves an
+// instance through baseRoleOf), so the snapshot must resolve the window the same way while
+// keying the map by the loop id loopPhase looks up — otherwise feature-2 reads queued while
+// the scheduler holds it.
+test("snapshot resolves a per-role quiet window through the base role for instances", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  // A window that holds right now wherever the suite runs: start at the current minute and
+  // end one minute earlier (wrapping midnight), so `now` is always inside the half-open range.
+  const now = new Date();
+  const at = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const window = `${at(now)}-${at(new Date(now.getTime() - 60_000))}`;
+  const config = loadConfig(repo);
+  config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
+  config.quietHoursPerRole = { feature: window };
+  saveConfig(repo, config);
+
+  const paused = snapshot(repo).roleQuietPaused;
+  assert.equal(paused.feature, window);
+  assert.equal(paused["feature-2"], window, "the instance inherits its base role's window");
+});
+
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -312,6 +334,29 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
   saveConfig(repo, cfg);
   snap = snapshot(repo);
   assert.deepEqual(snap.capPaused, []);
+});
+
+// The gate groups instance loop ids under their base role and sums their spend
+// (role-cap-gates.ts), so `capPaused` must list every instance whose base group crossed the
+// cap, not only the instance whose own spend did — otherwise `feature-2` reads queued while
+// the scheduler holds it beside `feature`.
+test("snapshot resolves a per-role cap through the base role and its summed instance spend", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cap paused instances snapshot test");
+  const cfg = loadConfig(repo);
+  cfg.roles.feature = { ...(cfg.roles.feature ?? { enabled: true }), instances: 2 };
+  cfg.maxDailyCostUsdPerRole = { feature: 1 };
+  saveConfig(repo, cfg);
+
+  // Neither instance is over alone ($0.60 each); together they cross the $1 base cap.
+  for (const id of ["feature", "feature-2"]) {
+    const st = freshLoopState(id);
+    recordDailyCost(st, 0.6);
+    saveLoopState(repo, st);
+  }
+
+  const snap = snapshot(repo);
+  assert.deepEqual(snap.capPaused, ["feature", "feature-2"], "the summed base group holds both instances");
 });
 
 // The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable free

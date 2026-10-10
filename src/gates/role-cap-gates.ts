@@ -52,6 +52,46 @@ export function roleCapPaused(
   return dailyCost(state, now) >= cap;
 }
 
+/** One base role's grouped verdict: whether its summed spend has reached its cap, the summed
+ * figure itself, and the loop ids the group holds. */
+interface RoleCapVerdict {
+  over: boolean;
+  spentUsd: number;
+  roleIds: string[];
+}
+
+/** The grouped, stateless per-role cap verdict — the single definition the scheduler's gate
+ * (`pollRoleCapGate`) and the snapshot's `capPaused` observer (src/status/status-data.ts) both
+ * fold, so the hold an operator sees cannot diverge from the one the scheduler enforces.
+ * Instance loop ids share their base role's cap and its SUMMED spend (`feature` and `feature-2`
+ * at $0.60 each cross a `maxDailyCostUsdPerRole.feature` cap of $1 together), and the director
+ * is exempt. Keyed by base role in first-appearance order; each entry carries the group's loop
+ * ids so a caller can log the base (the gate) or flatten the ids (the observer). */
+export function roleCapVerdicts(
+  runners: readonly CapObservation[],
+  caps: Record<string, number> | undefined,
+  now: number,
+): Map<string, RoleCapVerdict> {
+  const groups = new Map<string, CapObservation[]>();
+  for (const r of runners) {
+    const base = baseRoleOf(r.role);
+    if (base === DIRECTOR_ROLE) continue;
+    const members = groups.get(base);
+    if (members) members.push(r);
+    else groups.set(base, [r]);
+  }
+  const verdicts = new Map<string, RoleCapVerdict>();
+  for (const [base, members] of groups) {
+    const cap = caps?.[base];
+    const spentUsd = members.reduce((sum, m) => sum + dailyCost(m.state, now), 0);
+    // Stamp the summed figure as today so roleCapPaused applies its own cap comparison
+    // unchanged — spent already counts only the members' current-day windows.
+    const over = roleCapPaused({ dayCostUsd: spentUsd, dayStamp: todayStamp(now) }, cap, now);
+    verdicts.set(base, { over, spentUsd, roleIds: members.map((m) => m.role) });
+  }
+  return verdicts;
+}
+
 /** The gate's cross-poll memory: the roles logged as paused at the last poll. In memory only,
  * like every gate state. */
 export interface RoleCapGateState {
@@ -77,35 +117,29 @@ export function pollRoleCapGate(
   caps: Record<string, number> | undefined,
   now: number,
 ): ReadonlySet<string> {
-  // Instance loop ids share their base role's cap and its summed spend: `feature` and
-  // `feature-2` at $0.60 each cross a `maxDailyCostUsdPerRole.feature` cap of $1 together.
-  // Grouping is keyed by base role; the returned set holds the paused loop ids so the
-  // scheduler can keep checking `capPaused.has(runner.role)` unchanged.
-  const groups = new Map<string, CapObservation[]>();
-  for (const r of runners) {
-    const base = baseRoleOf(r.role);
-    if (base === DIRECTOR_ROLE) continue;
-    const members = groups.get(base);
-    if (members) members.push(r);
-    else groups.set(base, [r]);
-  }
+  // Grouping and the verdict itself live in roleCapVerdicts, shared with the snapshot's
+  // `capPaused` observer (src/status/status-data.ts) so the two cannot diverge. The returned
+  // set holds the paused loop ids so the scheduler can keep checking `capPaused.has(runner.role)`
+  // unchanged.
+  const verdicts = roleCapVerdicts(runners, caps, now);
   const paused = new Set<string>();
   const overBases = new Set<string>();
-  for (const [base, members] of groups) {
-    const cap = caps?.[base];
-    const spent = members.reduce((sum, m) => sum + dailyCost(m.state, now), 0);
-    // Stamp the summed figure as today so roleCapPaused applies its own cap comparison
-    // unchanged — spent already counts only the members' current-day windows.
-    const over = roleCapPaused({ dayCostUsd: spent, dayStamp: todayStamp(now) }, cap, now);
+  for (const [base, verdict] of verdicts) {
     const was = state.prev.has(base);
-    if (over && !was) {
-      logEventBestEffort(root, { loop: "harness", type: "role_cap_paused", role: base, spentUsd: spent, capUsd: cap });
-    } else if (!over && was) {
+    if (verdict.over && !was) {
+      logEventBestEffort(root, {
+        loop: "harness",
+        type: "role_cap_paused",
+        role: base,
+        spentUsd: verdict.spentUsd,
+        capUsd: caps?.[base],
+      });
+    } else if (!verdict.over && was) {
       logEventBestEffort(root, { loop: "harness", type: "role_cap_resumed", role: base });
     }
-    if (over) {
+    if (verdict.over) {
       overBases.add(base);
-      for (const m of members) paused.add(m.role);
+      for (const id of verdict.roleIds) paused.add(id);
     }
   }
   state.prev = overBases;
