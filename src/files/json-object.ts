@@ -31,17 +31,22 @@ export function stringList(value: unknown): string[] {
 /** Read an untrusted JSON field that should be a number, returning `fallback` when it is
  * absent, not a number, or not finite (NaN/±Infinity poison arithmetic and comparisons: a
  * NaN costUsd makes every budget-cap comparison false, so the cap never trips) — the one
- * home of the "the field is the number or it is nothing" read. The exact call sites:
- * event-read.ts's eventTick (tick → 0), eventUsage (tokens, costUsd → 0), eventDayKey (ts →
- * null), tickStartMap and tickSpanMs (both ts → null); event-format.ts's gigabytes (v → 0),
- * minutes (ms → 0), and the
- * build_stale/restart renderers (aheadCommits and
- * abortedTicks → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
+ * home of the "the field is the number or it is nothing" read. The call sites, by the
+ * fallback each passes: event-read.ts's eventTick (tick → 0), eventUsage (tokens, costUsd →
+ * 0), eventDayKey (ts → null), tickStartMap and tickSpanMs (both ts → null);
+ * event-format.ts's elapsed (ms → null), gigabytes (v → 0), minutes (ms → 0), and the
+ * build_stale, slot_wait, restart, and permit_reserve renderers (aheadCommits, waitedMs,
+ * abortedTicks, reserve → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
- * failure/failure-state-change.ts's build_stale aheadCommits → 0; this file's own
- * nonNegativeNumber (how budget's spend reads, loop-state's healNumber, tick-usage's counters,
- * pi-stream's usageNumber, and time-spend's tickDurationMs reach it); and
- * test/test-runner.ts's orderByDuration cost (→ Infinity, the "no recorded duration" marker). */
+ * failure/failure-state-change.ts's model_fallback_ended (durationMs → 0) and build_stale
+ * renderer (aheadCommits → 0); gates/maintenance-quota.ts's foldLine and seed (ev.ts → null);
+ * fleet/orchestrator-info.ts's isFiniteNumber (v → undefined); fleet/fleet-state.ts's
+ * standingMarker, pausedRoles, and standingRolesUntil (until → undefined);
+ * operator/operator-requests.ts's consumeWakeRequest (notBeforeMs → undefined);
+ * git/slots-state.ts's readSlotRecord (pinnedAt, lastReleasedAt → null); git/worktree-use.ts's
+ * readWorktreeRecord (lastUsedAt, reclaimedAt → undefined); this file's own nonNegativeNumber
+ * (whose call sites are enumerated below); and test/test-runner.ts's
+ * orderByDuration cost (→ Infinity, the "no recorded duration" marker). */
 export function finiteNumber<T>(value: unknown, fallback: T): number | T {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -50,14 +55,17 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * when it is absent, not a number, not finite, or negative — finiteness plus the >= 0 floor,
  * the shared base of every "a count or amount is unusable, read the fallback" site. A negative
  * amount is as poisonous as NaN: it runs a spend total backwards and makes every `>= cap`
- * comparison false, so the daily budget's safety valve would never trip. The call sites:
- * budget/budget.ts's spendNumber (dayCostUsd/usd → 0), loop/loop-state.ts's healNumber (every
- * numeric LoopState field → 0), tick/tick-usage.ts's counter (each persisted usage count → 0),
- * pi/pi-stream.ts's usageNumber (one wire usage number → 0), ui/progress-data.ts's message_end
- * read (totalTokens → the previous context, output and its peak floor → 0), and
- * time-spend.ts's tickDurationMs
- * (an event's durationMs → null, the "no own duration" marker); and agent/claude/claude-stream.ts's
- * canonicalUsage (each wire usage number → 0) and its retry/rate-limit/result reads (attempt,
+ * comparison false, so the daily budget's safety valve would never trip. The call sites, by
+ * the fallback each passes: budget/budget.ts's spendNumber (dayCostUsd/usd → 0),
+ * loop/loop-state.ts's healNumber (every numeric LoopState field → 0),
+ * tick/tick-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
+ * (one wire usage number → 0), ui/progress-data.ts's message_end read (totalTokens → the
+ * previous context, output and its peak floor → 0), time-spend.ts's tickDurationMs (an event's
+ * durationMs → null, the "no own duration" marker), pi-extension/context-budget.ts's
+ * contextNote (usedTokens, usedWindow → null), pi-extension/context-shake.ts's percentOf
+ * (tokens, contextWindow → null), landing/landing-queue.ts's isLandingEntry (tick, enqueuedAt,
+ * revisionRound → null); and agent/claude/claude-stream.ts's canonicalUsage (each wire usage
+ * number → 0) and its result/retry/rate-limit reads (api_error_status, attempt,
  * maxAttempts, error_status, resetsAt, utilization, total_cost_usd → undefined). */
 export function nonNegativeNumber<T>(value: unknown, fallback: T): number | T {
   const n = finiteNumber(value, fallback);
