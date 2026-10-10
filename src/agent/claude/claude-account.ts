@@ -116,7 +116,7 @@ export function readClaudeAccount(root: string, now = Date.now()): ClaudeAccount
   if (isJsonObject(doc.windows)) {
     for (const [type, value] of Object.entries(doc.windows)) {
       const window = readWindow(value, observedAt, now);
-      if (window !== undefined) windows[type] = window;
+      if (window !== undefined) setWindow(windows, type, window);
     }
   }
   return {
@@ -146,6 +146,15 @@ function readWindow(value: unknown, fileObservedAt: number, now: number): Claude
   return window;
 }
 
+/** Store one window under its `rateLimitType`. A plain `windows[type] = window` loses a type of
+ * `__proto__`: the assignment hits Object.prototype's setter and rewrites the map's prototype
+ * instead of adding an own entry, so the window vanishes from every `Object.entries`/`values`
+ * reader (the display, the hold, and accountUsesOverage). Defining the own property keeps even
+ * that key — the same inherited-key guard claude-stream's TOOL_NAMES lookup uses. */
+function setWindow(windows: Record<string, ClaudeWindow>, type: string, window: ClaudeWindow): void {
+  Object.defineProperty(windows, type, { value: window, enumerable: true, writable: true, configurable: true });
+}
+
 /** Overwrite the account file with `account`, creating the state directory. The orchestrator's
  * one writer; a failure to write is the caller's to handle (best-effort at the tick boundary).
  * Written through writeJsonAtomic (tmp + rename): a crash or ENOSPC mid-write leaves the
@@ -169,7 +178,7 @@ export function observeClaudeAccount(
   const reported = run.rateWindows ?? [];
   if (billing === undefined || (run.billing === undefined && reported.length === 0)) return existing;
   const windows: Record<string, ClaudeWindow> = { ...(existing?.windows ?? {}) };
-  for (const w of reported) windows[w.type] = windowFromRun(w, now);
+  for (const w of reported) setWindow(windows, w.type, windowFromRun(w, now));
   const account: ClaudeAccount = {
     billing,
     ...(existing?.subscriptionType !== undefined ? { subscriptionType: existing.subscriptionType } : {}),

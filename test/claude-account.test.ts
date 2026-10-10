@@ -118,6 +118,24 @@ test("observeClaudeAccount updates only the reported window, keeping the other",
   assert.equal(read?.windows.seven_day?.status, "rejected", "the untouched window is kept");
 });
 
+test("observeClaudeAccount keeps a window whose type is a prototype key", () => {
+  // `rateLimitType` is external claude input, and a plain `windows[type] = window` with the key
+  // `__proto__` rewrites the map's prototype instead of adding an own entry: the window then
+  // vanishes from every Object.entries/values reader, and JSON.stringify drops it from the file.
+  const root = tmpdir();
+  const out = observeClaudeAccount(root, {
+    billing: "subscription",
+    rateWindows: [{ type: "__proto__", status: "rejected", resetsAt: 9_000 }],
+  }, 1_000);
+
+  assert.equal(Object.hasOwn(out!.windows, "__proto__"), true, "the window is an own entry, not the map's prototype");
+  assert.deepEqual(out!.windows["__proto__"], { status: "rejected", resetsAt: 9_000_000, observedAt: 1_000 });
+
+  const read = readClaudeAccount(root, 1_000);
+  assert.equal(Object.hasOwn(read!.windows, "__proto__"), true, "the reader keeps it too");
+  assert.equal(read?.windows["__proto__"]?.status, "rejected");
+});
+
 test("writeClaudeAccount: a write that fails mid-way leaves the previous reading whole", (t) => {
   // The persisted billing/window cache is rewritten after every run that reports one. A plain
   // overwrite that dies partway (ENOSPC, EIO, a killed orchestrator) left a torn file, which
