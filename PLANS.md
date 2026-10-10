@@ -313,71 +313,6 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Scope the failure digest to one role: `tumwater report --failures --role <id>` (planned 2026-10-10 by plan; sibling of the landed "Scope the usage report to one role: `tumwater report --role <id>`"; independent of the Agent backends series)
-
-**Goal.** `tumwater report --failures --role <id> [--days N]` and `tumwater report --failures
---role <id> --since <duration>` (text and `--json`) show only that role group's failure evidence —
-its outcome rows, current-vs-preceding deltas, time/spend and loss causes, error/warning/
-rejection/review-failure clusters, landings, and state changes — so an operator can diagnose one
-loop without reading the fleet's digest. Today the combination is rejected as rival shapes
-(src/report/report.ts: `failRivalShapes("report --role", "--failures", ...)`), the deferred half
-of the landed usage-report scoping plan. Out of scope: the GUI `/api/failures` view and the TUI
-Failures pane, which stay fleet-wide.
-
-**Approach.**
-1. **Collector scope.** In src/failure/failure-data.ts give `collectFailureReport(root, days,
-   role?)`, `collectFailureReportSince(root, sinceMs, role?)`, and the shared
-   `assembleFailureReport` an optional `role`. One internal helper (e.g. `scopeToRole(events,
-   base)`) keeps events whose `baseRoleOf(eventRole(ev)) === base`, so instance ids (`feature-2`)
-   fold into their group exactly as `report --role` and the per-role cap do. Apply it to the
-   `current` and `prior` partitions and to the `allEvents` array the loss-cause fold reads, so
-   every section derived from them narrows. Keep the unfiltered read's first event for
-   `oldestEventDate`/window completeness (thread it through the `window` argument) so a scoped
-   `partial` line still names log retention, not the role's own first event.
-2. **Data shape and cache.** Add `role?: string` to `FailureReportData`, set to the base role.
-   The day collector's `failureDigestCache` key is `${root}\u0000${days}`; append the base role so a
-   scoped and a fleet digest cannot collide (the `--since` collector is not memoized).
-3. **CLI.** In src/report/report.ts read `--role` through the existing `parseRoleScope`,
-   delete the `--failures` rival-shape guard, and pass the role to both collectors (day and
-   `--since`, text and `--json`). src/cli.ts's `case "report"` already admits `ROLE_FLAG` and
-   `--failures`, so no gate change is needed.
-4. **Render.** In src/failure/failure-render.ts `renderFailureMarkdown`, print a `role: <base>`
-   line under the window line when `data.role` is set (mirroring report-render.ts's role line);
-   when scoped, retitle the `## Fleet state changes` section to `## State changes` so it does not
-   claim fleet scope. Section titles otherwise stay fleet-neutral.
-5. **Docs.** src/cli/help.ts adds `--role <id>` to the `--failures` stanzas for both `--days` and
-   `--since`; README.md's report row drops the "not combinable with `--failures`" clause and
-   states that `--role` scopes the failure digest too.
-
-**Files touched.**
-- src/failure/failure-data.ts (optional `role`; `scopeToRole`; cache key; `FailureReportData.role`)
-- src/failure/failure-render.ts (`role` line; scoped state-changes heading)
-- src/report/report.ts (`parseRoleScope`; remove `failRivalShapes`; pass role)
-- src/cli/help.ts (usage)
-- README.md (report row wording)
-
-Tests: test/failure-render.test.ts — a two-role fixture (e.g. `feature` and `qa` tick_end,
-warnings, a rejection, a landed merge) collected with `role: "qa"` prints only `qa`'s outcome,
-delta, time-spend, cluster, landing and state-change lines and carries the `role: qa` header,
-while the same fixture with no role still shows both roles; an instance id (`feature-2`) scopes
-with its base `feature`; a role with no events reports the empty window. test/report.test.ts —
-`runCli(root, "report", "--failures", "--role", "qa")` succeeds (no rival-shape error) and names
-`qa`; the `--json` payload carries `"role": "qa"`; `--role bogus` still fails with the shared
-unknown-role message; `report --help` names the combination.
-
-**Acceptance criteria.**
-- `tumwater report --failures --role qa` (text) prints `role: qa` under the window line and shows
-  only `qa`'s rows in Outcome by role, Deltas, Time and spend, loss causes, error clusters, and
-  landings; the state-changes section is titled `## State changes`.
-- `tumwater report --failures --role qa --since 90m` does the same over the trailing window, and
-  `--json` carries `"role": "qa"`.
-- `tumwater report --failures` without `--role` is unchanged — the existing failure-render and
-  failure-time-spend tests pass without edits — and the GUI/TUI failure surfaces are untouched.
-- `--role bogus` fails with the shared unknown-role message; `report --role qa --failures` no
-  longer fails as rival shapes; `tumwater help report` documents the combination; README no
-  longer says it is rejected.
-- `npm run test` green.
-
 ### A numbered read half for `tumwater plan`/`bug`: `--list` (planned 2026-10-10 by plan; independent of the Agent backends series; sibling of the landed `tumwater plan --edit/--cancel` and `tumwater bug --edit/--cancel`)
 
 **Goal.** `tumwater plan --list [--json]` and `tumwater bug --list [--json]` list the entries their
@@ -485,6 +420,76 @@ Acceptance criteria.
 
 
 ## Done
+
+### Scope the failure digest to one role: `tumwater report --failures --role <id>` (planned 2026-10-10 by plan; sibling of the landed "Scope the usage report to one role: `tumwater report --role <id>`"; independent of the Agent backends series; done 2026-10-10 by feature)
+
+**Goal.** `tumwater report --failures --role <id> [--days N]` and `tumwater report --failures
+--role <id> --since <duration>` (text and `--json`) show only that role group's failure evidence —
+its outcome rows, current-vs-preceding deltas, time/spend and loss causes, error/warning/
+rejection/review-failure clusters, landings, and state changes — so an operator can diagnose one
+loop without reading the fleet's digest. Today the combination is rejected as rival shapes
+(src/report/report.ts: `failRivalShapes("report --role", "--failures", ...)`), the deferred half
+of the landed usage-report scoping plan. Out of scope: the GUI `/api/failures` view and the TUI
+Failures pane, which stay fleet-wide.
+
+**Approach.**
+1. **Collector scope.** In src/failure/failure-data.ts give `collectFailureReport(root, days,
+   role?)`, `collectFailureReportSince(root, sinceMs, role?)`, and the shared
+   `assembleFailureReport` an optional `role`. One internal helper `scopeToRole(events, base)`
+   keeps events whose `baseRoleOf(eventRole(ev)) === base` — and, for the role-scoped harness
+   transitions that log loop `harness` and name the affected role in `role` (a role pause, its
+   streak breaker, its cap), whose `baseRoleOf(ev.role) === base` — so instance ids (`feature-2`)
+   fold into their group exactly as `report --role` and the per-role cap do, and a scoped digest
+   keeps the transitions that explain why the loop stopped. Apply it to the `current` and `prior`
+   partitions and to the `allEvents` array the loss-cause fold reads, so every section derived
+   from them narrows. Keep the unfiltered read's first event for `oldestEventDate`/window
+   completeness (passed alongside `window`) so a scoped `partial` line still names log retention,
+   not the role's own first event.
+2. **Data shape and cache.** Add `role?: string` to `FailureReportData`, set to the base role.
+   The day collector's `failureDigestCache` key is `${root}\u0000${days}`; append the base role so a
+   scoped and a fleet digest cannot collide (the `--since` collector is not memoized).
+3. **CLI.** In src/report/report.ts read `--role` through the existing `parseRoleScope`,
+   delete the `--failures` rival-shape guard, and pass the role to both collectors (day and
+   `--since`, text and `--json`). src/cli.ts's `case "report"` already admits `ROLE_FLAG` and
+   `--failures`, so no gate change is needed.
+4. **Render.** In src/failure/failure-render.ts `renderFailureMarkdown`, print a `role: <base>`
+   line under the window line when `data.role` is set (mirroring report-render.ts's role line);
+   when scoped, retitle the `## Fleet state changes` section to `## State changes` so it does not
+   claim fleet scope. Section titles otherwise stay fleet-neutral.
+5. **Docs.** src/cli/help.ts adds `--role <id>` to the `--failures` stanzas for both `--days` and
+   `--since`; README.md's report row drops the "not combinable with `--failures`" clause and
+   states that `--role` scopes the failure digest too.
+
+**Files touched.**
+- src/failure/failure-data.ts (optional `role`; `scopeToRole`; cache key; `FailureReportData.role`)
+- src/failure/failure-render.ts (`role` line; scoped state-changes heading)
+- src/report/report.ts (`parseRoleScope`; remove `failRivalShapes`; pass role)
+- src/cli/help.ts (usage)
+- README.md (report row wording)
+
+Tests: test/failure-render.test.ts — a two-role fixture (`feature` and `qa` tick_end, warnings, a
+rejection, a landed merge, and a `role_streak_paused`/`role_cap_paused` pair on loop `harness`)
+collected with `role: "qa"` prints only `qa`'s outcome, delta, time-spend, cluster, landing and
+state-change lines and carries the `role: qa` header with the `## State changes` heading, while
+the same fixture with no role still shows both roles and `## Fleet state changes`; an instance id
+(`feature-2`) scopes with its base `feature`; a role with no events reports the empty window; a
+scoped partial window names the whole log's oldest event, not the role's first. test/report.test.ts
+— `runCli(root, "report", "--failures", "--role", "qa")` succeeds (no rival-shape error) and names
+`qa`; the `--json` payload carries `"role": "qa"`; `--role bogus` still fails with the shared
+unknown-role message; `report --help` names the combination.
+
+**Acceptance criteria.**
+- `tumwater report --failures --role qa` (text) prints `role: qa` under the window line and shows
+  only `qa`'s rows in Outcome by role, Deltas, Time and spend, loss causes, error clusters, and
+  landings; the state-changes section is titled `## State changes`.
+- `tumwater report --failures --role qa --since 90m` does the same over the trailing window, and
+  `--json` carries `"role": "qa"`.
+- `tumwater report --failures` without `--role` is unchanged — the existing failure-render and
+  failure-time-spend tests pass without edits — and the GUI/TUI failure surfaces are untouched.
+- `--role bogus` fails with the shared unknown-role message; `report --role qa --failures` no
+  longer fails as rival shapes; `tumwater help report` documents the combination; README no
+  longer says it is rejected.
+- `npm run test` green.
 
 ### Warn before a loop reaches its own daily cap: the `role_cap_warning` event (planned 2026-10-09 by plan; independent of the Agent backends series; done 2026-10-10 by feature)
 
@@ -808,8 +813,10 @@ commits, so an operator running per-role caps (`maxDailyCostUsdPerRole`, already
 see where one role's spend went without eyeballing the fleet's per-role lines. This is the last
 unlanded piece of docs/feature-per-role-spending.md's Stage 2: the per-role cap and the
 dashboard's per-role cost already exist; only the scoped report is missing. Explicitly out of
-scope here: scoping the failure digest (`--failures` stays fleet-wide and is rejected with
-`--role`) and the dashboard/TUI report views, which keep their fleet-wide data.
+scope here: scoping the failure digest and the dashboard/TUI report views, which keep their
+fleet-wide data. The failure digest was scoped separately by the entry "Scope the failure
+digest to one role: `tumwater report --failures --role <id>`" (done 2026-10-10), which removed
+the `--role`/`--failures` rival-shape rejection.
 
 **Approach.**
 1. **Per-role output tokens.** In src/report/report-data.ts `foldUsageEvent`'s `tick_end`
@@ -829,8 +836,9 @@ landing slot, and backlog tallies are day-granular file dates with no role). Bot
 src/gui/gui-endpoints.ts) pass no third argument and are unchanged.
 3. **CLI.** src/report/report.ts calls `parseRoleScope(root, args)` (src/cli/cli-args.ts — the
 existing read-only role-id validator, custom loops included) and passes it to the collectors;
-`--role` with `--failures` fails through the existing `failRivalShapes` wording (usage-report
-scoping only). src/cli.ts's `case "report"` `rejectUnknownArgs` spec gains `ROLE_FLAG`;
+`--role` with `--failures` failed through the existing `failRivalShapes` wording (usage-report
+scoping only) at the time; the failure-digest scoping entry removed that guard on 2026-10-10.
+src/cli.ts's `case "report"` `rejectUnknownArgs` spec gains `ROLE_FLAG`;
 src/cli/help.ts adds `[--role <id>]` to the `--days` and `--since` stanzas.
 4. **Render.** In src/report/report-render.ts, when `data.role` is set: print a `role: <id>` line
 under the window line; pass an empty tail to `totalsLine` in `renderReportMarkdown` so the fleet
@@ -851,7 +859,8 @@ Tests: test/report-data.test.ts — scoped day and `--since` collectors over a t
 fixture without `role` still totalling all roles; test/report.test.ts — the scoped render omits
 the backlog tail and prints the scope note, `runCli(root, "report", "--role", "feature")` prints
 only that role, `--role bogus` fails with the shared unknown-role message, `--role feature
---failures` fails as rival shapes, a trailing `--role` names the missing-value error, and
+--failures` failed as rival shapes at the time (that guard was removed 2026-10-10 when the
+failure digest gained `--role`), a trailing `--role` names the missing-value error, and
 `report --help` names the flag.
 
 **Acceptance criteria.**
@@ -863,7 +872,8 @@ runs and backlog tallies are omitted; no landing-share line prints.
 `--json` carries `"role": "feature"`.
 - `tumwater report` (text and `--json`) without `--role` is unchanged — every existing
 report-data and report render test passes without edits.
-- `tumwater report --role feature --failures` fails with a rival-shape error naming both flags;
+- `tumwater report --role feature --failures` failed with a rival-shape error naming both flags
+at the time (the guard was removed 2026-10-10 when the failure digest gained `--role`);
 `--role bogus` fails with the shared unknown-role message; `tumwater help report` names `--role`.
 - `npm run test` green.
 

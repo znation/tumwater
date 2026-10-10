@@ -17,11 +17,9 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
   const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
-  // --role scopes the usage report only (day and --since); the failure digest is fleet-wide,
-  // so the combination is a rival shape rather than a silently ignored flag.
+  // --role scopes both report shapes: the usage report (day and --since) and the failure
+  // digest, whose day and --since collectors take the same optional base role.
   const role = parseRoleScope(root, args);
-  if (role !== null && args.includes("--failures"))
-    failRivalShapes("report --role", "--failures", "the failure digest is fleet-wide");
   if (ms !== null) {
     // --days is still a rival shape: it counts whole local days, while --since totals a trailing
     // window. --failures is not a rival anymore — the digest has a windowed-since collector that
@@ -30,7 +28,7 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     if (args.includes("--days"))
       failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
     if (args.includes("--failures")) {
-      const digest = collectFailureReportSince(root, ms);
+      const digest = collectFailureReportSince(root, ms, role ?? undefined);
       if (args.includes("--json")) sayJson(digest);
       else say(renderFailureMarkdown(digest));
       return;
@@ -56,7 +54,7 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   // stable data shape, so the machine-readable form is the data itself, not a re-parse of the
   // Markdown (the old "clustered narrative with no agreed shape" refusal is retired).
   if (args.includes("--failures") && args.includes("--json")) {
-    sayJson(collectFailureReport(root, days));
+    sayJson(collectFailureReport(root, days, role ?? undefined));
     return;
   }
   if (args.includes("--json")) {
@@ -65,7 +63,7 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   }
   say(
     args.includes("--failures")
-      ? renderFailureMarkdown(collectFailureReport(root, days))
+      ? renderFailureMarkdown(collectFailureReport(root, days, role ?? undefined))
       : renderReportMarkdown(collectReport(root, days, role ?? undefined)),
   );
 }

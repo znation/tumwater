@@ -484,9 +484,22 @@ test("tumwater report --role scopes the report, scopes --since/--json, and valid
   assert.notEqual(bogus.code, 0);
   assert.match(bogus.out, /unknown role: bogus/);
 
-  const rival = await runCli(root, "report", "--role", "feature", "--failures");
-  assert.notEqual(rival.code, 0);
-  assert.match(rival.out, /report --role cannot be combined with --failures/);
+  // --role now scopes the failure digest too: the old rival-shape rejection is retired.
+  const scopedFailures = await runCli(root, "report", "--role", "feature", "--failures");
+  assert.equal(scopedFailures.code, 0);
+  assert.match(scopedFailures.out, /^role: feature$/m);
+  const failuresJson = JSON.parse(
+    (await runCli(root, "report", "--failures", "--role", "feature", "--json")).out,
+  ) as { role?: string };
+  assert.equal(failuresJson.role, "feature");
+
+  const scopedSince = await runCli(root, "report", "--failures", "--role", "feature", "--since", "6h");
+  assert.equal(scopedSince.code, 0);
+  assert.match(scopedSince.out, /^role: feature$/m);
+
+  const bogusFailures = await runCli(root, "report", "--failures", "--role", "bogus");
+  assert.notEqual(bogusFailures.code, 0);
+  assert.match(bogusFailures.out, /unknown role: bogus/);
 
   const trailing = await runCli(root, "report", "--role");
   assert.notEqual(trailing.code, 0);

@@ -39,12 +39,13 @@ Usage:
                                    tokens, cost, and commits (landing runs and backlog tallies
                                    omitted); --json prints machine-readable usage data — the
                                    collector's own payload, not the Markdown render
-  tumwater report --failures [--days N] [--since <duration>] [--json]
+  tumwater report --failures [--days N] [--since <duration>] [--role <id>] [--json]
                                    Markdown failure digest — tick outcomes, deltas,
                                    clustered errors, and fleet state changes (default
-                                   14 days); --since windows the digest over a trailing
+                                   14 days); --role <id> scopes the digest to one loop's
+                                   rows; --since windows the digest over a trailing
                                    span (capped at 7d)
-  tumwater report --failures --since <duration> [--json]
+  tumwater report --failures --since <duration> [--role <id>] [--json]
                                    The failure digest over a trailing window, compared
                                    against the equal-length window before it
   tumwater report --since <duration> [--role <id>] [--json]

@@ -136,6 +136,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       ? `window: last ${durationLabel(data.sinceMs)} (since ${formatTimestamp(new Date(data.fromIso!).getTime())}) · ${data.ticks} ticks`
       : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
   );
+  if (data.role !== undefined) lines.push(`role: ${data.role}`);
   if (data.emptyLog) lines.push("no events retained");
   else if (!data.hasEvents) {
     lines.push(
@@ -151,7 +152,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   // line) and a truncated one must not look the same.
   if (data.stateChanges.length > 0) {
     lines.push("");
-    lines.push("## Fleet state changes");
+    // A scoped digest retitles the section: its transitions are the named role's, so the
+    // fleet-wide "Fleet" claim would overreach.
+    lines.push(data.role !== undefined ? "## State changes" : "## Fleet state changes");
     for (const s of data.stateChanges) {
       lines.push(`- ${stateChangeStamp(s.ts)} ${roleCell(s.role)} — ${s.description}`);
     }

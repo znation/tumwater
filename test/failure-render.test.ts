@@ -821,3 +821,94 @@ test("a log without prompt-token fields renders no prompt section", () => {
   assert.deepEqual(data.promptStats, []);
   assert.doesNotMatch(renderFailureMarkdown(data), /Prompt tokens by role/);
 });
+
+test("collectFailureReport scopes every section to one base role", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0, 9), loop: "qa", type: "tick_end", result: "error", error: "qa boom" },
+    { ts: at(0, 10), loop: "feature", type: "warning", message: "feature warn" },
+    { ts: at(0, 10), loop: "qa", type: "warning", message: "qa warn" },
+    { ts: at(0, 11), loop: "feature", type: "review_rejected", reasons: ["feature rejection"] },
+    { ts: at(0, 11), loop: "qa", type: "review_rejected", reasons: ["qa rejection"] },
+    { ts: at(0, 12), loop: "feature", type: "merged", commit: "aaaaaaa", summary: "land feature" },
+    { ts: at(0, 12), loop: "qa", type: "merged", commit: "bbbbbbb", summary: "land qa" },
+    // The role-scoped harness transitions log with loop "harness" and name the affected role:
+    // a scoped digest keeps the named role's and drops the other's.
+    { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "qa", streak: 3 },
+    { ts: at(0, 13), loop: "harness", type: "role_cap_paused", role: "feature", spentUsd: 1.5, capUsd: 1.5 },
+  ]);
+
+  const fleet = collectFailureReport(root, 1);
+  assert.equal(fleet.role, undefined);
+  assert.deepEqual(fleet.outcomes.map((o) => o.role).sort(), ["feature", "qa"]);
+  assert.match(renderFailureMarkdown(fleet), /## Fleet state changes/);
+
+  const scoped = collectFailureReport(root, 1, "qa");
+  assert.equal(scoped.role, "qa");
+  assert.deepEqual(scoped.outcomes.map((o) => o.role), ["qa"]);
+  assert.deepEqual(scoped.deltas.map((d) => d.role), ["qa"]);
+  assert.deepEqual(scoped.timeSpend.map((r) => r.role), ["qa"]);
+  assert.deepEqual(scoped.warnings.clusters.map((c) => c.roles), [["qa"]]);
+  assert.deepEqual(scoped.errors.clusters.map((c) => c.roles), [["qa"]]);
+  assert.deepEqual(scoped.rejections.clusters.map((c) => c.roles), [["qa"]]);
+  assert.deepEqual(scoped.landed.map((c) => c.commit), ["bbbbbbb"]);
+  assert.deepEqual(scoped.stateChanges.map((s) => s.description), [
+    "role qa paused — 3 ticks failed in a row",
+  ]);
+
+  const md = renderFailureMarkdown(scoped);
+  assert.match(md, /^role: qa$/m);
+  assert.match(md, /^## State changes$/m);
+  assert.ok(!md.includes("## Fleet state changes"), "the scoped heading does not claim fleet scope");
+  assert.match(md, /qa boom/);
+  assert.match(md, /qa warn/);
+  assert.match(md, /role qa paused/);
+  assert.ok(!md.includes("feature warn"), "the other role's clusters are excluded");
+  assert.ok(!md.includes("role feature paused"), "the other role's transitions are excluded");
+  assert.ok(!md.includes("land feature"), "the other role's landings are excluded");
+});
+
+test("a scoped digest folds an instance id into its base role group", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0, 9), loop: "feature-2", type: "tick_end", result: "error", error: "sibling boom" },
+    { ts: at(0, 9), loop: "qa", type: "tick_end", result: "changed" },
+  ]);
+  const data = collectFailureReport(root, 1, "feature-2");
+  assert.equal(data.role, "feature");
+  assert.deepEqual(data.outcomes.map((o) => o.role).sort(), ["feature", "feature-2"]);
+  assert.deepEqual(data.errors.clusters.map((c) => c.roles), [["feature-2"]]);
+  assert.ok(!renderFailureMarkdown(data).includes("qa"), "the unrelated role is excluded");
+});
+
+test("a scoped digest for a role with no events reports the empty window", () => {
+  const root = tmpdir();
+  // A pre-window event proves the log's coverage so the empty line is "no events in the last
+  // …" rather than the empty-log wording.
+  writeEvents(root, [
+    { ts: at(10), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+  ]);
+  const data = collectFailureReport(root, 1, "qa");
+  assert.equal(data.role, "qa");
+  assert.deepEqual(data.outcomes, []);
+  assert.equal(data.hasEvents, false);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^role: qa$/m);
+  assert.match(md, /^no events in the last /m);
+  assert.ok(!md.includes("## State changes"), "no transitions renders no section");
+});
+
+test("a scoped partial window names the log's retention date, not the role's own first event", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(5), loop: "feature", type: "tick_end", result: "error", error: "feature boom" },
+    { ts: at(0), loop: "qa", type: "tick_end", result: "error", error: "qa boom" },
+  ]);
+  const data = collectFailureReport(root, 5, "qa");
+  assert.equal(data.partial, true);
+  assert.equal(data.oldestEventDate, dayKey(at(5)), "the retention date is the whole log's oldest event");
+  assert.ok(data.oldestEventDate !== dayKey(at(0)), "not the scoped role's own first event");
+});
