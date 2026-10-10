@@ -2346,149 +2346,24 @@ Fix: `mainCheckForPoll` grows its tail (×4 from 200, capped at `MAIN_CHECK_SCAN
 - **Fixed:** 2026-09-28, regression tests in `test/build-check.test.ts` (a late merge-scope timeout is retried once and a clean retry's verdict stands; a late timeout on both attempts rejects unverified, without the red-build prefix; the existing on-time-timeout test now also pins that no retry is owed).
 - **Validation gap:** no-fake — confirming the distinction needed a clock fixture that did not exist for this scope: a Date-only mock that jumps the wall clock while the real deadline timer runs (the 2026-09-21 pin had it only at the gate scope), and a fully mocked clock silently makes every deadline fire on time, testing the wrong case while looking green.
 
-### A markdown-decorated negation reads as a genuine refusal: `TUMWATER_REFUSED: **none**` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+- A markdown-decorated negation reads as a genuine refusal: `TUMWATER_REFUSED: **none**` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28; commit e4b4f9f8; gap: unclear-invariant)
 
-- **Symptom:** a work-completed reply whose sentinel reason is wrapped in markdown emphasis or
-  code spans — `**none**`, `` `n/a` `` — is classified as a deliberate refusal; the tick's
-  committed, tested change is discarded exactly like the bare-`none` destruction of 2026-09-23
-  and the punctuated-`None.` destruction of the same morning.
-- **Reproduce:** `isNegatedRefusal("**none**")` returned `false` (scratch node run against the
-  built `dist/src/reply-contract.js` before the fix); the negation tests listed plain,
-  parenthesized, and punctuated shapes only.
-- **Cause:** the guard's normalizations stripped brackets and trailing sentence punctuation but
-  never markdown emphasis (`*`, `_`, backticks), so a decorated token stayed unequal to
-  `none`/`n/a` and the negation regex unmatched. Decoration also nests inside the brackets
-  (`(**None**) — nothing refused`), so edge-only bracket stripping left the inner `)` wedged
-  against the token.
-- **Fix:** compose the normalizations into one pipeline — decoration (`*_~\`` → space), then
-  trailing sentence marks, then every bracket run → space — each seeing the last's output;
-  brackets become spaces, not deletions, so `(no)ne` cannot collapse into `none`. A real reason
-  under emphasis (`**it would delete user data**`) still refuses.
-- **Fixed:** 2026-09-28, regression tests in `test/reply-contract.test.ts` (first landing of
-  this fix was rejected in review for a comment claiming more than the code did — the composed
-  shape now actually negates, verified by execution).
-- **Validation gap:** unclear-invariant (closest tag — the missing piece was really an untested
-  shape) — the suite pinned the plain, punctuated, and parenthesized negation shapes, but the
-  invariant that formatting on the token is not part of the reason was never stated, so the
-  decorated form only surfaced through a scratch repro against the built code.
+- The gate's flake re-run verified a tree whose memory-bound assertion had just failed: `server retained ~1.1MB of a rejected body` in test/gui-server.test.ts measures whole-process heap, so a real transient retention and ordinary host noise are indistinguishable and both pass (found by telemetry loop 2026-09-28, fixed 2026-09-28; commit 13337c66; gap: no-observability)
 
-### The gate's flake re-run verified a tree whose memory-bound assertion had just failed: `server retained ~1.1MB of a rejected body` in test/gui-server.test.ts measures whole-process heap, so a real transient retention and ordinary host noise are indistinguishable and both pass (found by telemetry loop 2026-09-28, fixed 2026-09-28)
+- A negated refusal with trailing sentence punctuation reads as a genuine refusal: `TUMWATER_REFUSED: None.` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28; commit 71e1e554; gap: unclear-invariant)
 
-- **Symptom:** the gate's pre-check failed the "oversized prompt bodies stop buffering at the cap
-  (no unbounded growth)" test, the one immediate re-run passed, and the tree was verified with no
-  fix run — an intermittent memory-invariant violation was waved through as weather, untrustworthy
-  in both directions: host noise can fail a clean tree, and a re-run can pass a retaining one.
-- **Cause:** the assertion measured a whole-process `heapUsed` delta across one gc'd 300 ms
-  settle window — and `globalThis.gc` is a no-op without `--expose-gc`, so the delta counted
-  garbage and every unrelated allocation on the shared host too; it said nothing about the rejected
-  body's own bytes, which is the invariant it claimed to pin.
-- **Fix:** made the invariant directly observable — `readBody` in src/gui/gui-endpoints.ts now
-  tracks the wire bytes it holds (new exported `bufferedBodyBytes()`, zeroed at every settle;
-  `MAX_BODY_BYTES` exported too), and the test asserts during the full 4MB upload that the
-  counter never exceeds the cap plus one chunk and is 0 once the upload drains, instead of a
-  process-wide heap delta. Simulating the retention regression fails the rewritten test in ~50 ms,
-  so a retained buffer is distinguishable from host noise by construction.
-- **Fixed:** 2026-09-28, regression tests in `test/gui-server.test.ts`.
-- **Validation gap:** no-observability — the invariant (buffered bytes capped, then released at
-  rejection) had no observable: the only check measured whole-process heap, so real retention and
-  host noise were indistinguishable and a pass confirmed nothing; the fix had to add a
-  buffered-bytes counter before the gap was confirmable at all.
+- A rejection note rides every later prompt undated: a `reject` in `lastReview` is injected verbatim until some future landing overwrites it, so an objection main has since satisfied keeps telling the author to address a verdict that no longer holds (found by telemetry loop 2026-09-25, fixed 2026-09-28; commit 66afeacd; gap: real-run-needed)
 
-### A negated refusal with trailing sentence punctuation reads as a genuine refusal: `TUMWATER_REFUSED: None.` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+- A suite that a fleet runs inherits the operator's `TUMWATER_PI_BIN`, which outranks the fake pis the suite puts on PATH: every fake-pi test spawns the agent binary it names (found 2026-09-28, fixed 2026-09-28; commit bbaa679d; gap: no-observability)
 
-- **Symptom:** a work-completed reply whose sentinel line carries a sentence mark after the
-  negation — `None.`, `N/A.`, `(none).` — is classified as a deliberate refusal; the tick's
-  committed, tested change is discarded exactly like the bare-`none` destruction of 2026-09-23.
-- **Reproduce:** `isNegatedRefusal("None.")` returned `false` (scratch node run against
-  `src/verdict/reply-contract.ts` before the fix); the negation test listed unpunctuated shapes only.
-- **Cause:** the negation guard compared exact tokens (`none`, `n/a`, parenthesized, dash-appended)
-  without stripping trailing sentence punctuation, so a period left the token unequal and the
-  negation regex unmatched.
-- **Fix:** strip trailing punctuation (`.,!;:?!*`) from both the raw and unwrapped reason before
-  the token comparison; a real reason with a period (`Nothing here was refused.`) still refuses.
-- **Fixed:** 2026-09-28, regression tests in `test/reply-contract.test.ts`.
-- **Validation gap:** unclear-invariant — the suite pinned the negation shapes by example, but
-  whether sentence punctuation after `none` still negates was unspecified, so the invariant had to
-  be reconstructed (punctuation is not an objection) before the gap was confirmable.
-
-### A rejection note rides every later prompt undated: a `reject` in `lastReview` is injected verbatim until some future landing overwrites it, so an objection main has since satisfied keeps telling the author to address a verdict that no longer holds (found by telemetry loop 2026-09-25, fixed 2026-09-28)
-
-**Symptom:** This tick's telemetry prompt carries "Your previous change was rejected in review: 1. md-only BUGS.md edit moves … to Fixed, but none of the symbols its Fix paragraph names exist on this tree: setLandingStage — land the fix in the same commit, or keep the bug Open until the code exists". That verdict was true when issued — `setLandingStage` entered main with 127157a4 (2026-09-24 01:32), after the rejected edit was gated — and became false half an hour later. The note carries no date, so telling stale from live took archaeology: the symbol's introduction commit from `git log -S`, plus the digest's outcome table (5 telemetry ticks today, none of them the editing tick) to establish the rejection predates the digest's window. The digest correctly reports telemetry rejections 0 today — the event is out of its 1-day window — so the undated note is the only trace of the stale verdict, and nothing else names it.
-
-**Why the response is wrong:** The rejection is recorded with its time (`state.lastReview = { verdict, reasons, head, at: Date.now() }` in src/review/review.ts's reject path), but `buildRejectedReviewNote` (src/gates/gate-prompts.ts) renders only the reasons, and src/tick/tick-prompt.ts injects it whenever `lastReview.verdict === "reject"`. A `reject` persists until overwritten: the approve/failed paths set `lastReview` only on model-reviewed landings, while the md-only exempt fast path (the very kind of change this note is about) never touches it — so the note rode ~37 hours and at least 6 telemetry prompts across two later filings, repeatedly instructing the author to "address the objections" to an objection main had already answered. An author that obeys literally re-does work against a moving target or "takes a different approach" from a stale objection.
-
-**Reproduce:** Reject any role's md-only BUGS.md edit through the false-fix check while the named symbol is genuinely absent from the tree; let another loop land that symbol on main; every later prompt of the rejected role (until one of its changes goes through a model review) still carries the rejection undated, with no hint that main moved past it.
-
-**Expected:** The injected note carries the rejection's timestamp (and head), e.g. "Your previous change was rejected in review (2026-09-24 01:20):", so the author can weigh it against main's current state instead of treating it as fresh. A stricter variant re-runs the deterministic check the rejection came from (`falseFixReason` for md-only objections) at injection time and annotates objections that no longer reproduce.
-
-**Suspected cause:** `buildRejectedReviewNote(reasons)` takes only the reasons array (src/gates/gate-prompts.ts); the `at` and `head` fields sit on `state.lastReview` unused, and nothing revalidates the note against main before injecting it.
-
-**Fix:** `buildRejectedReviewNote` now takes the whole `lastReview` record, not just its reasons: when `at` is recorded it renders "Your previous change was rejected in review (2026-09-24 01:20:32, head 8b58124):", naming the reviewed head in short form, and with neither field it degrades to the previous undated shape (src/gates/gate-prompts.ts). src/tick/tick-prompt.ts passes `state.lastReview` through instead of slicing out the reasons. Pinned by test/gate-prompts.test.ts (the dated shape with head, the degraded shape without) and test/tick-prompt.test.ts (the assembled next-tick prompt carries the date and head); the two orchestrator-level rejection tests (test/loop-3.test.ts, test/loop-4.test.ts) now assert the dated prefix. Full suite: 1873 pass, 0 fail.
-
-**Validation gap:** real-run-needed — the note-shape unit test pinned the builder from reasons alone and stayed green while the bug rode live prompts, so confirming staleness took a real fleet run's prompt chain (37 hours of undated rides) plus `git log -S` archaeology to date the objection against main's history.
-
-### A suite that a fleet runs inherits the operator's `TUMWATER_PI_BIN`, which outranks the fake pis the suite puts on PATH: every fake-pi test spawns the agent binary it names (found 2026-09-28, fixed 2026-09-28)
-
-**Symptom:** On 2026-09-28 a scratch `tumwater run --once --role clean` was started with `TUMWATER_PI_BIN` pointing at a Node pi stand-in. The tick's baseline check failed with an ENOENT on a test's prompts.log and reported "main f5a30628 is red". The stand-in had been invoked 150 times as author and 128 times as reviewer, all from the suite's temp dirs, and it recursed into further suite runs. With the stand-in first on PATH instead, the same tick ran clean. plans/portability.md makes `TUMWATER_PI_BIN` a supported way to point a fleet at a wrapper around pi. A real fleet started that way would therefore run the suite's fake-pi tests against the real agent: real model calls from tests (PRINCIPLES.md), real spend, a failed gate and a red main.
-
-**Reproduce:** `TUMWATER_PI_BIN=<a script that logs its cwd and exits 1> node dist/src/test-runner.js pi.test loop-pi`. Before this fix, 30 of 70 tests failed and the script ran 36 times from test temp dirs. The same run without the variable passes 70/70. A direct `node --test dist/test/pi.test.js dist/test/loop-pi.test.js` under the same export fails the same way.
-
-**Cause:** resolveAgentBin (src/pi/pi.ts) resolves `TUMWATER_PI_BIN` → `agentBin` → `"pi"`, so the variable beats PATH. The suite installs every fake pi by prepending PATH, through fakePi in test/fakes/fake-pi.ts; fakePiIdle, recordingFakePi and the reviewerPi scripts all go through it. runPi and runScriptGroup start pi and the build check with the harness's own environment, so every tool call and every build check inherits the operator's export. suiteEnv (src/test-runner.ts) then built the suite's environment by adding to process.env and never removed anything from it. A suite run by hand never has the variable, which is why only suites a fleet started failed. Agents also run test files directly with `node --test`, which bypasses the runner entirely. That was 42 of the 236 test invocations in the fleet's retained pi logs, and it included fake-pi files: orchestrator-2.e2e (8 times), the lander files, pi and review.
-
-**Fix:** suiteEnv now drops the harness's own variables from the suite's environment. `TUMWATER_PI_BIN` goes, and so does `SUPERVISED_ENV` (`TUMWATER_SUPERVISED`). The supervisor sets that marker for the orchestrator child, and a `tumwater run` that inherits it skips its supervisor half. No test depended on the marker: the full suite passes with it set, because test/helpers/cli-harness.ts already drops it from every CLI child. It is the same fleet-only difference, though, so it goes too. test/fakes/fake-pi.ts also deletes an inherited `TUMWATER_PI_BIN` when it loads, which covers a file run directly with `node --test`. Every test that can spawn pi, in-process or through a CLI `run`, imports that module. Tests of the variable itself (pi.test.ts, doctor.test.ts, startup-gate.test.ts, cli.test.ts) set it explicitly and are unchanged. NODE_OPTIONS is kept on purpose. The harness's LaunchServices preload there only changes where process.title is stored, the suite's assertions about it hold either way, and it also carries the operator's own Node flags. After the fix, the reproduction passes with no failures both through the runner and through a direct `node --test`, and the stand-in never runs. The full suite (1,870 pass) and the e2e tier (77 pass) also pass with the stand-in in `TUMWATER_PI_BIN`, the marker set and the preload inherited, and the stand-in never runs. A direct `node --test` over every test file under the same export never runs it either; its one failure is the doctor check under Remaining. Pinned by test/test-runner.test.ts (suiteEnv drops both variables and passes the rest through) and test/fake-pi.test.ts (a child that imports the helpers with the variable exported no longer sees it).
-
-**Remaining:** A file that does not import test/fakes/fake-pi.ts still sees the variable when it is run directly with `node --test`. Today such files only resolve or report the binary and never spawn it: with the variable exported, doctor.test.ts fails one default-source check instead. A new variable that the harness honors has to be dropped in suiteEnv too.
-
-**Validation gap:** no-observability — closest fit: the only trace was a red baseline with an ENOENT on a test's prompts.log, nothing records which binary a test's pi spawn actually ran, and a suite run by hand never has the variable, so seeing it took a real tick under the export and the stand-in's own invocation count; once suspected, a filtered runner run with a logging stand-in in `TUMWATER_PI_BIN` confirmed it offline in seconds.
-
-### Every npm and pi process the fleet starts on macOS leaks a launchservicesd Mach port, until the kernel kills launchservicesd and the GUI session wedges (found 2026-09-28, fixed 2026-09-28)
-
-**Symptom:** On 2026-09-25 the Mac running the fleet (macOS 26.6.2) wedged: apps could not be quit, Finder disappeared, and it needed a forced power-off. The unified log shows launchservicesd leaking Mach ports for twelve days. The "Excessive number of mach_ports for launchservicesd" fault first appeared on Sep 13 at ~28.7K ports. The count grew fastest on heavy fleet and test-suite days: about +27K per day on Sep 21–22, +38K on Sep 23, and +75K in the 10 h before the failure. At 09:57:23 on Sep 25 the kernel killed launchservicesd with termination reason (30, 267967, 9), where namespace 30 is OS_REASON_PORT_SPACE. A node crash report from that minute shows `node::ProcessTitleSetter → uv_set_process_title → _LSApplicationCheckIn`, and Force Quit listed "pi", "npm run test" and "npm run build" as apps.
-
-**Reproduce:** Still leaks on macOS 27.0. Read the count with `top -l 1 -stats pid,command,ports | grep launchservicesd`. Then 200 runs of `node -e 'process.title="x"'` add ~200 ports, and they are still there a minute later; 200 runs of `node -e 0` leave the count flat. Before this fix, one `npm test` added +142 ports (276 check-ins in the unified log). One real `tumwater run --once --role clean` tick added +420 (830 check-ins). That tick had the baseline check, an author run whose tool call ran `npm test`, the gate check and a review.
-
-**Cause:** Assigning `process.title` in Node calls libuv's uv_set_process_title. On macOS that registers the process with LaunchServices (`_LSApplicationCheckIn`). launchservicesd keeps one port for each process that ever checked in, and never frees it when the process exits: one port per process, however many times the title is set. npm sets its title in every run and pi sets one at startup. tumwater's own code never does, and neither do tsc, the node:test workers or the CLI children. A logging preload attributed all 276 check-ins of a suite run to 138 npm processes. One was the outer `npm test`. The other 137 came from build-check tests that go through runBuildCheck → runScriptGroup → `npm run <script>`: lander-restack, lander-bisect and review (26 each), build-check and main-baseline (17 each), loop-2 (8), lander (7), and loop-4, merge and redeploy (3 each). A fleet tick runs the suite about three times, plus two pi processes, which is exactly the 830. From events.jsonl and the pi sessions, Sep 21–23 comes to about 42–60K npm + pi processes a day. The observed growth was +27–38K. The estimate assumes today's 137 inner npm processes per suite run, which is probably high for those dates. On Sep 24 the fleet was nearly idle, and the count still grew +9.7K from hand-run suites.
-
-**Fix:** src/process/process.ts `NO_LAUNCH_SERVICES_CHECK_IN` is a NODE_OPTIONS `--import=data:` preload that replaces `process.title` with a plain accessor, so an assignment only stores the string. `withoutLaunchServicesCheckIn` appends it to the env on macOS, once. runPi uses it, which covers pi and every tool call, and so does runScriptGroup, which covers every build check and every npm a suite's build-check tests start. The preload has to be an accessor: an `Object.defineProperty` with `value` goes through Node's native setter, so the process checks in by itself. The first version of this fix made that mistake and made every Node process check in. The preload is inline rather than a file, so a rebuild or swap of dist/ cannot leave NODE_OPTIONS naming a missing module. Measured after the fix: `npm test` produced 2 check-ins from one process, the outer npm (−4 ports). The same tick produced 0 check-ins (−3). Suite wall time was 20.6–20.8 s against 20.9–21.1 s, and one npm start 88 ms against 94 ms. src/doctor/doctor-launch-services.ts adds doctor's `mach ports` line, and src/process/launch-services.ts a daemon fleet's `LaunchServicesWatch`. The watch takes one `top` sample every 15 minutes. It logs a harness warning at 100K ports and again every 50K, days before the ~268K kill. Pinned by test/process.test.ts, where the preload must keep a title out of `ps` and the `value` variant fails; test/pi.test.ts; test/launch-services.test.ts; and test/launch-services.e2e.test.ts.
-
-**Remaining:** An npm that a person or another tool runs directly still checks in once, before any tumwater code runs: 1 port per `npm test` instead of 138. Only a restart resets launchservicesd, because it is a system daemon; logging out does not. A managed project whose toolchain runs Node older than 18.18 would reject `--import` in NODE_OPTIONS.
-
-**Validation gap:** real-run-needed — the leak lives in a system daemon that nothing tumwater reads, so confirming it took bounded real runs on macOS with the port count read from `top` and the check-ins from the unified log; offline, the suite can only pin the mechanism, a title kept out of `ps`.
+- Every npm and pi process the fleet starts on macOS leaks a launchservicesd Mach port, until the kernel kills launchservicesd and the GUI session wedges (found 2026-09-28, fixed 2026-09-28; commit c3f67e90; gap: real-run-needed)
 
 
-### A role prompt's over-cap rejection names the director's prefill whatever loop it targets: `tumwater prompt --role qa` past DIRECTOR_PROMPT_MAX_CHARS fails with "it rides into the director tick's prefill" (found by bugfix loop 2026-09-25, fixed 2026-09-25)
+- A role prompt's over-cap rejection names the director's prefill whatever loop it targets: `tumwater prompt --role qa` past DIRECTOR_PROMPT_MAX_CHARS fails with "it rides into the director tick's prefill" (found by bugfix loop 2026-09-25, fixed 2026-09-25; commit f5a30628; gap: no-observability)
 
-**Symptom:** submit an over-long prompt to any role loop (`tumwater prompt --role qa`, or the GUI/TUI per-row prompt bar): the rejection correctly refuses to queue it, but the message tells the operator the text "rides into the director tick's prefill" — the wrong loop. The operator trimming the text is pointed at a queue that was never involved.
+- A fresh operator wake does not exempt a due maintenance tick from need-based deferral: `tumwater wake --role clean` on an idle loop is silently deferred for up to DEFER_MAX_MS (found by bugfix loop 2026-09-25, fixed 2026-09-25; commit 66c27c22; gap: no-fake)
 
-**Reproduce:** `tumwater prompt --role qa "$(python3 -c 'print("x"*50000)')"` → the thrown message names the director.
-
-**Cause:** `promptLengthProblem` (src/inbox/inbox.ts) hardcoded "the director tick's prefill" when the cap was shared with the per-role queues (PLANS.md "Per-role prompts 1/2"); neither it nor the GUI's shared `requirePromptText` validator takes the target loop.
-
-**Fix:** `promptLengthProblem(text, role)` interpolates the target loop into the reason (`the ${role} tick's prefill`), defaulting to the director so every existing caller and the director-path wording are unchanged; `submitRolePrompt` passes its role and the GUI's `requirePromptText` takes the role its endpoint validated (`/api/prompt-role` after `rejectBadRole`, so the name is always a real loop).
-
-**Validation gap:** no-observability — closest fit: the failure leaves a trace (a wrong 400/throw message), but the suite's only over-cap assertion checked a `prefill` substring on the director path, so no check ever observed which loop the message names and the miswording passed every run; the regression test now pins the target loop's name and the director word's absence.
-
-### A fresh operator wake does not exempt a due maintenance tick from need-based deferral: `tumwater wake --role clean` on an idle loop is silently deferred for up to DEFER_MAX_MS (found by bugfix loop 2026-09-25, fixed 2026-09-25)
-
-**Symptom:** `tumwater wake --role clean` on a maintenance loop whose last tick found nothing: the wake clears backoff and pulls `nextRunAt` to now, `isEligible` returns due (reason `scheduled`, via the `wokenAt` min-gap exemption) — and then the orchestrator's need-based deferral block defers the tick anyway: `deferTick` sees `lastResult === "no_change"`, a `lastMainHead` set by the just-ended tick, and no work landed since it, so the tick waits until work lands or DEFER_MAX_MS (3 h) expires. The operator's explicit "try again now" is silently ignored, the same no-feedback failure the wake-vs-min-gap fix (2026-09-25) removed from the gap gate. Discovered while validating the mid-tick wake fix: the e2e's woken `clean` tick was due on every poll yet never ran.
-
-**Cause:** `deferTick` predates the wake lever and keys only on need (backlog, landed work, `lastResult`); a fresh `wokenAt` is exactly the explicit-demand signal `isEligible` already uses for the min-gap exemption, but the deferral predicate never consults it.
-
-**Fix:** `deferTick` (src/scheduling/scheduling.ts) returns false when `s.wokenAt` is newer than `s.lastTickEndedAt` — the same predicate isEligible's min-gap exemption keys on, so the two gates now agree on what an operator wake means. An operator wake is a demand, not idle maintenance: it runs even with the backlog open, the way the director's `inbox` reason already skips deferral. A wake older than the last tick's end was already consumed by the tick that ran after it, so that state keeps deferring as idle maintenance; `restoreMidTickWake`'s floored stamp keeps the demand armed across the end-save, so the post-tick wake tick runs too.
-
-**Validation gap:** no-fake — closest fit: no shim was missing, but no existing test seeded the fresh-wake state (`wokenAt` newer than `lastTickEndedAt`) `deferTick` had never seen; the suite's wake tests stop at isEligible's min-gap exemption and its deferTick tests seed only idle states, so the interaction had no fixture until this run's regression test built it with the real `clearBackoff`.
-
-### A plain `tumwater wake --role` consumed while the target's tick is in flight is still clobbered by that tick's end-save, so the "try again now" demand silently waits out the whole interval (found by bugfix loop 2026-09-25, fixed 2026-09-25)
-
-**Symptom:** `tumwater wake --role qa` lands while qa's tick is running (no queued prompt — the queue-due-ness fix does not cover this): `requestWake` stamps the state file, `consumeWakeRequest` applies `r.wake()` to the in-memory state, but the in-flight tick's end-save stays authoritative — `applyTickOutcome` re-stamps `lastTickEndedAt` past `wokenAt` and schedules `nextRunAt` a fresh interval out, so the wake is gone: qa sleeps out its remaining two-hour clock with no feedback. The 2026-09-25 wake-clobber fix recorded this residual as "an operator can simply wake again"; a wake is the operator's liveness lever during exactly the long-tick stalls where re-typing it blind is the worst workaround.
-
-**Reproduce:** Unit-level: a qa state with `lastTickStartedAt = now - 2 s`, `running`, `nextRunAt = start + 2 h`; stamp a mid-tick wake (`Object.assign(s, clearBackoff(s, start + 1 s))`, what `r.wake()` does to the shared state), then run `applyTickOutcome(s, cfg, "qa", { result: "no_change" })` — `isEligible`'s inputs now read `wokenAt < lastTickEndedAt` and a fresh-gap `nextRunAt`, so the loop is not due for a full interval despite the wake one second into the tick.
-
-**Cause:** Same race the wake-clobber fix identified — wake-stamping cannot survive a concurrent tick's end-save by construction — but the prompt side got a durable record (the queue file) while the prompt-less wake was left to the clobber. The demand needs to survive the end-save itself: the tick knows a wake arrived mid-flight because `wokenAt` is stamped past its own `lastTickStartedAt` on the shared state object.
-
-**Fix:** New `state.ts` `restoreMidTickWake(s)`, called by `LoopRunner.tick()`'s end-save after `applyTickOutcome`: when `wokenAt` is stamped after the tick's start (and no `resumePending` deliberate wait is set), it re-applies `clearBackoff` — backoff cleared, `nextRunAt` now, `wokenAt` floored just past the new `lastTickEndedAt` so `isEligible`'s min-gap exemption re-arms even on a same-millisecond stamp. A wake older than the tick's start was already honored by the tick that ran (self-clearing holds), and a cut-off/aborted outcome's `resumePending` keeps its deliberate one-interval resume wait — a mid-tick wake does not shortcut it.
-
-**Validation gap:** no-fake — confirming it deterministically needed a fixture that stamps a mid-tick wake against a running tick's timeline (past `lastTickStartedAt`, ahead of the end-save's `lastTickEndedAt`) and then runs the real `applyTickOutcome`, which neither the existing wake tests (they seed hour-old ticks that dodge the race) nor any unit test built; the live race is timing-shaped and the fixed wake-clobber entry's own repro stopped at the prompt side.
+- A plain `tumwater wake --role` consumed while the target's tick is in flight is still clobbered by that tick's end-save, so the "try again now" demand silently waits out the whole interval (found by bugfix loop 2026-09-25, fixed 2026-09-25; commit 3d23d863; gap: no-fake)
 
 - A wake consumed while the target's tick is in flight is clobbered by that tick's end-save, so a prompt enqueued mid-tick waits out a full fresh min-gap despite the `p:N` marker (found by bugfix loop 2026-09-25, fixed 2026-09-25; commit 85a02a94; gap: no-fake)
 - An operator wake cannot pull a slow-clock loop in: `isEligible`'s min-gap check gates every reason, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake silently do nothing for the rest of the interval the loop ticked inside (found by bugfix loop 2026-09-25, fixed 2026-09-25; commit 1ed2ecaf; gap: no-fake)
