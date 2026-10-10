@@ -1,100 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-// The tick_end/tick_start fixture builders' single home is the shared test-fake catalog
-// (test/fakes/log.ts, PLANS.md 2026-10-04); aliased here so the call sites read as before.
-import { tickEnd as endEvent, tickStart as startEvent } from "./fakes/log.js";
 import { initProject } from "../src/init/init.js";
-import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history/history-data.js";
+import { readTickRows, HISTORY_MAX_TICKS } from "../src/history/history-data.js";
 import { displayWidth } from "../src/text/text-width.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
-// The `history` command: the tickRows collector's pairing/filtering/bounding as unit cases,
-// plus CLI smoke runs over a seeded event log — the pattern test/cli-logs.test.ts uses.
-
-test("tickRows pairs each tick_end with its tick_start for the duration", () => {
-  const rows = tickRows(
-    [
-      startEvent({ ts: 1000, loop: "feature", tick: 1 }),
-      endEvent({ ts: 46_000, loop: "feature", tick: 1, summary: "tidy up" }),
-    ],
-    20,
-    null,
-  );
-  assert.equal(rows.length, 1);
-  const row = rows[0]!;
-  assert.equal(row.loop, "feature");
-  assert.equal(row.tick, 1);
-  assert.equal(row.result, "changed");
-  assert.equal(row.durationMs, 45_000); // 45s, not 46s: measured from the start event.
-  assert.equal(row.detail, "tidy up");
-});
-
-test("tickRows renders no duration when the tick's start is outside the scanned window", () => {
-  // A skipped tick never logs tick_start; log rotation can drop an older start too. Neither
-  // may claim a duration.
-  const rows = tickRows([endEvent({ ts: 5000, tick: 2, result: "skipped" })], 20, null);
-  assert.equal(rows[0]!.durationMs, null);
-  assert.equal(rows[0]!.result, "skipped");
-});
-
-test("tickRows returns the newest limit rows, newest first, and filters by role", () => {
-  const events = [
-    startEvent({ ts: 1000, loop: "feature", tick: 1 }),
-    endEvent({ ts: 2000, loop: "feature", tick: 1 }),
-    endEvent({ ts: 3000, loop: "clean", tick: 1, result: "no_change" }),
-    endEvent({ ts: 4000, loop: "feature", tick: 2, result: "error", error: "boom" }),
-    endEvent({ ts: 5000, loop: "feature", tick: 3, result: "no_change" }),
-  ];
-  assert.deepEqual(
-    tickRows(events, 2, null).map((r) => [r.loop, r.tick, r.result]),
-    [
-      ["feature", 3, "no_change"],
-      ["feature", 2, "error"],
-    ],
-  );
-  // The error row's detail is the error; the summary-less no_change row has none.
-  const all = tickRows(events, 20, null);
-  assert.equal(all[1]!.detail, "boom");
-  assert.equal(all[0]!.detail, "");
-  // --role narrows to one loop, ends and starts alike: the clean tick vanishes, and feature's
-  // durations still pair.
-  const scoped = tickRows(events, 20, "clean");
-  assert.deepEqual(scoped.map((r) => [r.loop, r.tick]), [["clean", 1]]);
-  const feature = tickRows(events, 20, "feature");
-  assert.equal(feature.length, 3);
-  assert.equal(feature[2]!.durationMs, 1000); // tick 1 still paired within the scoped window.
-});
-
-test("tickRows shows tokens and cost only when the event carries them", () => {
-  const withUsage = tickRows(
-    [endEvent({ ts: 1000, tick: 1, tokens: 1234, costUsd: 0.5 })],
-    20,
-    null,
-  )[0]!;
-  assert.equal(withUsage.usage, "1234 tok · $0.50");
-  const bare = tickRows([endEvent({ ts: 1000, tick: 1 })], 20, null)[0]!;
-  assert.equal(bare.usage, "");
-  const zero = tickRows([endEvent({ ts: 1000, tick: 1, tokens: 0, costUsd: 0 })], 20, null)[0]!;
-  assert.equal(zero.usage, "");
-});
-
-test("tickRows collapses and truncates the detail to keep the row one line", () => {
-  const rows = tickRows(
-    [endEvent({ ts: 1000, tick: 1, summary: "wrapped  across\nmany   lines" })],
-    20,
-    null,
-  );
-  assert.equal(rows[0]!.detail, "wrapped across many lines");
-  const long = tickRows([endEvent({ ts: 1000, tick: 1, summary: "x".repeat(200) })], 20, null);
-  assert.ok(long[0]!.detail.length < 200);
-  assert.ok(long[0]!.detail.endsWith("…"));
-});
-
-// --- CLI smoke runs ---
+// The `history` command end-to-end: CLI smoke runs over a seeded event log — the pattern
+// test/cli-logs.test.ts uses. The tickRows collector's own unit cases live beside readTickRows
+// in test/history-data.test.ts.
 
 async function seededHistoryRepo(): Promise<string> {
   const repo = makeRepo();
