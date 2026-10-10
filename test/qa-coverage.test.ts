@@ -66,6 +66,39 @@ test("recordFlow replaces a flow's previous entry rather than appending", () => 
   });
 });
 
+test("recordFlow and readQaCoverage keep a flow named __proto__", () => {
+  const root = tmpdir();
+  // A qa model's FLOW line names the flow, so the name crosses an external boundary. A plain
+  // `coverage[flow] = entry` (or `out[name] = entry`) with the key `__proto__` hits
+  // Object.prototype's setter and rewrites the map's prototype instead of adding an own entry,
+  // losing the flow from every reader and from the persisted JSON.
+  recordFlow(root, "__proto__", "passed", undefined, NOW);
+  const coverage = readQaCoverage(root);
+  assert.ok(Object.hasOwn(coverage, "__proto__"), "the flow is an own entry, not the map's prototype");
+  assert.deepEqual(Object.getOwnPropertyDescriptor(coverage, "__proto__")?.value, {
+    lastRunAt: NOW,
+    result: "passed",
+  });
+  const file = JSON.parse(fs.readFileSync(qaCoveragePath(root), "utf8")) as { flows: unknown };
+  assert.ok(Object.hasOwn(file.flows as object, "__proto__"), "the persisted file keeps the flow");
+});
+
+test("readQaCoverage reads a persisted flow named __proto__", () => {
+  const root = tmpdir();
+  fs.mkdirSync(`${root}/.tumwater/state`, { recursive: true });
+  fs.writeFileSync(
+    qaCoveragePath(root),
+    JSON.stringify({ flows: { ["__proto__"]: { lastRunAt: NOW, result: "bug", summary: "boom" } } }),
+  );
+  const coverage = readQaCoverage(root);
+  assert.ok(Object.hasOwn(coverage, "__proto__"), "the flow is an own entry");
+  assert.deepEqual(Object.getOwnPropertyDescriptor(coverage, "__proto__")?.value, {
+    lastRunAt: NOW,
+    result: "bug",
+    summary: "boom",
+  });
+});
+
 test("readQaCoverage treats missing, torn, and wrong-shaped files as no data", () => {
   const root = tmpdir();
   assert.deepEqual(readQaCoverage(root), {}, "missing file");
