@@ -87,6 +87,29 @@ test("an edit tool call maps to edit, carries the path alias, and pins firstEdit
   assert.equal(start.args.file_path, "/wt/a.ts", "the original input is preserved");
 });
 
+test("a native tool name colliding with an Object.prototype key still maps by name", () => {
+  // The tool-name table is a plain object, so a lookup by a name like "constructor" or
+  // "__proto__" returns the inherited property (a function or object) instead of falling back
+  // to the lower-cased native name; JSON.stringify then drops or corrupts the canonical
+  // event's toolName. The translator's contract is forward-compatible with arbitrary names
+  // (MCP servers name their own tools), so the lookup must own-property-check like claude-args
+  // does for EFFORT_BY_THINKING.
+  const names = ["constructor", "toString", "hasOwnProperty", "__proto__"];
+  const { canonical } = fold([
+    claudeAssistant({
+      id: "msg-1",
+      blocks: names.map((n, i) => claudeToolUse(`t${i}`, n, { command: `run ${n}` })),
+      usage: { output: 1 },
+    }),
+    claudeToolResult("t0"),
+    claudeResult({ totalCostUsd: 0.01 }),
+  ]);
+  const starts = canonical
+    .filter((l) => JSON.parse(l).type === "tool_execution_start")
+    .map((l) => JSON.parse(l).toolName);
+  assert.deepEqual(starts, names.map((n) => n.toLowerCase()));
+});
+
 test("classifies API errors from the result's structured signals", () => {
   const cases: Array<{
     name: string;

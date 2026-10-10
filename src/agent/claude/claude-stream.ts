@@ -91,10 +91,15 @@ function canonicalBlock(block: Json): Json | undefined {
       const args: Json = { ...input };
       if (typeof input.file_path === "string") args.path = input.file_path;
       const name = str(block.name) ?? "";
+      // Own-property test, not a bare index: a tool name like `constructor`, `toString`, or
+      // `__proto__` would otherwise inherit a function (or Object.prototype) from the table's
+      // prototype chain and bypass the lower-cased fallback — JSON.stringify then drops the
+      // canonical event's toolName or turns it into an empty object. The same guard claude-args
+      // applies to EFFORT_BY_THINKING.
       return {
         type: "toolCall",
         id: str(block.id) ?? "",
-        name: TOOL_NAMES[name] ?? name.toLowerCase(),
+        name: Object.hasOwn(TOOL_NAMES, name) ? (TOOL_NAMES[name] as string) : name.toLowerCase(),
         arguments: args,
       };
     }
