@@ -24,12 +24,11 @@ import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { fakePiIdle } from "./fakes/fake-pi.js";
+import { withIdlePi } from "./fakes/fake-pi.js";
 
 test("once: an idle fleet exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {
   const repo = await makeFastRepo("once exit contract test", ["clean", "dry"]);
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "a once round never reports a restart");
     assert.ok(exit.settled instanceof Map, "once mode returns the settle-reasons map, not the bare daemon shape");
@@ -38,9 +37,7 @@ test("once: an idle fleet exits on its own, ticks each role exactly once, and re
     assert.equal(exit.ticksRun?.get("dry"), 1, "dry ticked once in the round");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "clean's persisted state agrees with the round's count");
     assert.equal(loadLoopState(repo, "dry").ticks, 1, "dry's persisted state agrees with the round's count");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: startup removes a legacy _land-<role> checkout left by a pre-pool build", async () => {
@@ -48,13 +45,10 @@ test("once: startup removes a legacy _land-<role> checkout left by a pre-pool bu
   const legacy = path.join(repo, ".tumwater", "worktrees", "_land-feature");
   await ensureDetachedWorktree(repo, legacy, "main");
   assert.ok(fs.existsSync(legacy), "the legacy checkout is seeded");
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     await onceRound(repo);
     assert.equal(fs.existsSync(legacy), false, "startup removed the legacy lander checkout");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: startup retires a legacy role worktree now that ticks lease pooled slots", async () => {
@@ -62,13 +56,10 @@ test("once: startup retires a legacy role worktree now that ticks lease pooled s
   const legacy = path.join(repo, ".tumwater", "worktrees", "clean");
   await ensureDetachedWorktree(repo, legacy, "main");
   assert.ok(fs.existsSync(legacy), "the legacy role checkout is seeded");
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     await onceRound(repo);
     assert.equal(fs.existsSync(legacy), false, "startup retired the legacy role checkout");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: a scoped --role run leaves another role's pending resume alone", async () => {
@@ -83,8 +74,7 @@ test("once: a scoped --role run leaves another role's pending resume alone", asy
   writeSlotsState(repo, {
     slots: [{ dir: featureSlot, lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: 1 }],
   });
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     await onceRound(repo, "clean");
     assert.ok(fs.existsSync(legacy), "a scoped run retired another role's legacy checkout");
     assert.equal(slotForDir(repo, legacy)?.pinnedFor, "dry", "the legacy dir lost its pin");
@@ -93,25 +83,20 @@ test("once: a scoped --role run leaves another role's pending resume alone", asy
       "feature",
       "a scoped run cleared another role's pin",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: a per-role-paused loop settles as paused and runs no tick", async () => {
   const repo = await makeFastRepo("once paused settle test", ["clean"]);
   pauseRole(repo, "clean");
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the loop's round answer, not silence");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the paused loop ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "nothing ticked past the fresh state");
     assert.deepEqual(eventsOfType(repo, "tick_start"), [], "no tick started behind the pause");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: a role in error backoff settles as backoff and runs no tick", async () => {
@@ -126,23 +111,19 @@ test("once: a role in error backoff settles as backoff and runs no tick", async 
     backoffSeconds: 30,
     nextRunAt: Date.now() + 60_000,
   });
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "backoff", "the backoff is the loop's round answer");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the backing-off loop ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "nothing ticked past the seeded history");
     assert.deepEqual(eventsOfType(repo, "tick_start"), [], "no tick started behind the backoff");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: the director with an empty inbox settles as idle and runs no tick", async () => {
   const repo = await makeFastRepo("once director idle test", ["director"]);
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(
@@ -153,16 +134,13 @@ test("once: the director with an empty inbox settles as idle and runs no tick", 
     assert.equal(exit.ticksRun?.get("director"), 0, "the director ran no tick with nothing queued");
     assert.equal(loadLoopState(repo, "director").ticks, 0, "nothing ticked past the fresh state");
     assert.deepEqual(eventsOfType(repo, "tick_start"), [], "no tick started for the idle director");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("once: a queued per-role prompt makes its loop due on its own and logs the wake", async () => {
   const repo = await makeFastRepo("once inbox wake test", ["clean"]);
   submitRolePrompt(repo, "clean", "a queued demand");
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("clean"), 1, "the queued prompt makes the loop due without the clock");
@@ -171,7 +149,5 @@ test("once: a queued per-role prompt makes its loop due on its own and logs the 
     const wake = eventsOfType(repo, "wake").find((e) => e.loop === "clean");
     assert.ok(wake, "the demand is announced with a wake event, not a silent start");
     assert.equal(wake?.reason, "inbox");
-  } finally {
-    restore();
-  }
+  });
 });
