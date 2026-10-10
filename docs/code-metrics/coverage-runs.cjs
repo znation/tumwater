@@ -16,7 +16,8 @@
 // author of the TS line it starts on. Per run, per scope (all of src/, core = src/ without
 // src/ui/, ui): covered / total for lines, branches, functions. Across runs: mean, sample standard
 // deviation, min, max. Lines — whose identity (file, line) is fixed by the source maps — also get
-// an envelope: covered in every run (the stable floor) vs covered in at least one run (the ceiling);
+// an envelope: covered in every run (the stable floor) vs covered in at least one run
+// (the ceiling);
 // the gap between them is coverage that depends on timing.
 const fs = require("fs");
 const path = require("path");
@@ -96,7 +97,8 @@ for (const s of Object.keys(SCOPES)) {
     summary.split[s][a] = { lines: get("lc", "l"), branches: get("bc", "b"), functions: get("fc", "fn") };
   }
 }
-// line envelope per author and scope over the passing runs: covered in all of them / in at least one
+// line envelope per author and scope over the passing runs: covered in all of them /
+// in at least one
 const lineRuns = new Map(); // "file:line" → number of passing runs that covered it
 const fileLines = new Map(); // file → covered-line count per passing run
 for (const k of okRuns) {

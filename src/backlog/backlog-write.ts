@@ -124,7 +124,8 @@ function sectionNoun(sectionTitle: string): string {
 }
 
 /** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
- * cancel and a landing's working-tree fast-forward cannot each clobber the other's read-modify-write. */
+ * cancel and a landing's working-tree fast-forward cannot each clobber the other's
+ * read-modify-write. */
 function removeEntry(
   root: string,
   fileName: string,

@@ -69,7 +69,8 @@ function metrics(M, keep, fnKeep, { whole = false, testRatio = true } = {}) {
   };
 }
 
-/** Decision points by kind per 1000 production code lines, from tokens (`?:` ternaries excluded). */
+/** Decision points by kind per 1000 production code lines, from tokens (`?:` ternaries
+ * excluded). */
 function decisionKinds(M, keep) {
   const c = { "??": 0, "&&": 0, "||": 0, if: 0, loops: 0, case: 0, catch: 0, "?.": 0 };
   let code = 0;

@@ -11,8 +11,9 @@
 // Merging across processes: every process that loaded a script reports its own block ranges, and V8
 // drops a nested range whose count equals its parent's. So a range counts as covered when, in ANY
 // process, the innermost range containing it has a count > 0.
-//   lines     — v8-to-istanbul / c8 semantics: a JS line takes the count of the innermost range that
-//               fully contains its trimmed extent; a TS line is covered if any JS line mapped to it is.
+//   lines     — v8-to-istanbul / c8 semantics: a JS line takes the count of the
+//               innermost range that fully contains its trimmed extent; a TS line is covered
+//               if any JS line mapped to it is.
 //   branches  — node's --experimental-test-coverage semantics: every range of a block-coverage
 //               function (function bodies included) is a branch.
 //   functions — every function range except the module's own.

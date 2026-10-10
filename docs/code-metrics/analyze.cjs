@@ -43,9 +43,11 @@ function fnName(n, sf) {
   return "<anonymous>";
 }
 
-// McCabe: 1 + if/?:/for/for-in/for-of/while/do/case/catch/&&/||/??/logical-assign (lizard/ESLint-classic).
+// McCabe: 1 + if/?:/for/for-in/for-of/while/do/case/catch/&&/||/??/logical-assign
+// (lizard/ESLint-classic).
 // Cognitive (SonarSource, approximated): structural +1 (+nesting) for if/?:/switch/loops/catch;
-// +1 for else / else-if (no nesting); +1 per run of like logical operators; nested fns raise nesting.
+// +1 for else / else-if (no nesting); +1 per run of like logical operators; nested fns raise
+// nesting.
 function analyzeFunction(fn, sf) {
   let cc = 1, cog = 0, maxDepth = 0;
   const body = fn.body;
@@ -184,7 +186,8 @@ for (const f of files) {
     const lineAt = (n) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line;
     rec.tokens = lc.tokens.map((t) => [t.kind, t.text, t.line]);
     const hv = halstead(lc.tokens); rec.halsteadVolume = hv.volume;
-    // type-escape hatches and markers, per file and per line (the per-line lists feed the author split)
+    // type-escape hatches and markers, per file and per line (the per-line lists feed the
+    // author split)
     let anyCount = 0, asCount = 0, nonNull = 0, classes = 0, exportsN = 0, interfaces = 0, typeAliases = 0;
     const jsdocTokens = (text.match(/\/\*\*/g) || []).length;
     rec.jsdoc = jsdocTokens;
