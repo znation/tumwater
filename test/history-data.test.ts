@@ -252,12 +252,65 @@ test("a queued tick resolves to its change's landing outcome — landed or land_
   ]);
   const { rows } = readTickRowsSince(root, TWO_HOURS, null);
   // Each queued row joins its OWN change: the newest land_queued at or before its tick_end,
-  // then the first same-sha landing outcome after that pin — never the other tick's.
+  // then the FINAL same-sha landing outcome after that pin — never the other tick's.
   assert.deepEqual(
     rows.map((r) => [r.tick, r.result, r.detail]),
     [
       [2, "merge_conflict", "work two"],
       [1, "changed", "work one"],
+    ],
+  );
+});
+
+test("a queued tick resolves past a rebased retriable failure to the recovery's landed verdict (BUGS.md 2026-10-10)", () => {
+  const root = tmpdir();
+  const t = (mins: number) => Date.now() - mins * MIN;
+  // A retriable landing failure (merge_blocked) keeps the pin. When main moved first, the
+  // vet's syncPinToMain rebased the ref before the gate, so recovery re-enqueues the REBASED
+  // sha (sha2) while the failed attempt logged its authored sha (sha1), and the recovery's
+  // `landed` logs sha2. The authoring tick's row must read the FINAL outcome ("changed"),
+  // not latch sha1's first, non-terminal failure.
+  writeEvents(root, [
+    { ts: t(50), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: t(49), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: t(48), loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "work one" },
+    { ts: t(40), loop: "feature", type: "land_failed", commit: "sha1", result: "merge_blocked" },
+    { ts: t(30), loop: "feature", type: "tick_start", tick: 2 },
+    { ts: t(29), loop: "feature", type: "land_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
+    { ts: t(28), loop: "feature", type: "tick_end", tick: 2, result: "queued", summary: "recovered leftover work from feature: work one" },
+    { ts: t(20), loop: "feature", type: "landed", commit: "sha2", result: "changed" },
+  ]);
+  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  assert.deepEqual(
+    rows.map((r) => [r.tick, r.result]),
+    [
+      [2, "changed"],
+      [1, "changed"],
+    ],
+  );
+});
+
+test("a retriable failure keeps its verdict while its recovery pin is still pending (BUGS.md 2026-10-10)", () => {
+  const root = tmpdir();
+  const t = (mins: number) => Date.now() - mins * MIN;
+  // The rebased recovery pin is enqueued but has no outcome yet, so the last verdict visible
+  // for the authoring change is still its retriable failure — the row keeps it (the behavior
+  // before the chain fix), not the recovery's raw "queued".
+  writeEvents(root, [
+    { ts: t(50), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: t(49), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: t(48), loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "work one" },
+    { ts: t(40), loop: "feature", type: "land_failed", commit: "sha1", result: "merge_blocked" },
+    { ts: t(30), loop: "feature", type: "tick_start", tick: 2 },
+    { ts: t(29), loop: "feature", type: "land_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
+    { ts: t(28), loop: "feature", type: "tick_end", tick: 2, result: "queued", summary: "recovered leftover work from feature: work one" },
+  ]);
+  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  assert.deepEqual(
+    rows.map((r) => [r.tick, r.result]),
+    [
+      [2, "queued"],
+      [1, "merge_blocked"],
     ],
   );
 });

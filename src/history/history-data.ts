@@ -110,16 +110,25 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
  * tick's land_queued pin and that pin's landed/land_failed outcome (both from the
  * bucketLandingEvents maps, oldest-first per loop). The claim cursor `claimTop` (mutated in
  * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin
- * at or before its end, so several queued ticks cannot claim one pin. `joinStarts` maps
- * loop#tick to its tick_start's ts; when `floorTs` (a since-window's cutoff, null in the
- * count view) sits after that start, the row's join evidence is not whole in the windowed
- * read and the row keeps its raw "queued" label (null). A MISSING start needs no guard — it
- * joins, because rotation drops a prefix, so every pin older than the lost start is lost with
- * it and nothing can be mis-claimed (and a skipped tick has no start at all but is never
- * queued). A landing with no outcome event in the join set also keeps the raw label: the
- * conservative fallback for a verdict simply not visible here. Returns the outcome's result
- * text and the landed sha, or null to keep the raw label. Pure apart from the cursor it
- * owns. */
+ * at or before its end, so several queued ticks cannot claim one pin. Within that pin's
+ * change the row takes the LAST landing attempt's verdict, not the first: a retriable result
+ * (RETRIABLE_LANDING_RESULTS: review_error, merge_conflict, merge_blocked) keeps the pin and
+ * leftover recovery re-enqueues it for another attempt, so a later recovery pin — and its
+ * landed/land_failed — owns the real verdict. When main moved before the retry the vet's
+ * syncPinToMain rebased the ref (landing-core.ts), so the recovery pin carries the rebased sha
+ * while each attempt's own landed/land_failed logs its entry's authored sha (landing-slot.ts's
+ * entry.sha): the attempts' shas differ, so the walk follows the pin sequence (isRecoveryPin),
+ * not sha equality alone. It stops at a pin that is not a recovery re-enqueue — a fresh change
+ * after a conflict-cap discard — so the row never credits a different change's verdict
+ * (BUGS.md 2026-10-10). `joinStarts` maps loop#tick to its tick_start's ts; when `floorTs` (a
+ * since-window's cutoff, null in the count view) sits after that start, the row's join
+ * evidence is not whole in the windowed read and the row keeps its raw "queued" label (null).
+ * A MISSING start needs no guard — it joins, because rotation drops a prefix, so every pin
+ * older than the lost start is lost with it and nothing can be mis-claimed (and a skipped
+ * tick has no start at all but is never queued). A landing with no outcome event in the join
+ * set also keeps the raw label: the conservative fallback for a verdict simply not visible
+ * here. Returns the outcome's result text and the landed sha, or null to keep the raw label.
+ * Pure apart from the cursor it owns. */
 export function resolveQueuedResult(
   end: HarnessEvent,
   landQueuedByLoop: Map<string, HarnessEvent[]>,
@@ -138,17 +147,46 @@ export function resolveQueuedResult(
   while (top >= 0 && queuedList[top]!.ts > end.ts) top--;
   if (top < 0) return null;
   claimTop.set(end.loop, top - 1);
-  const claimed = queuedList[top]!;
-  const sha = String(claimed.commit ?? "");
-  const outcome = (outcomeByLoop.get(end.loop) ?? []).find(
-    (o) => o.ts >= claimed.ts && String(o.commit ?? "") === sha,
-  );
-  if (!outcome) return null;
-  const result = String(outcome.result ?? (outcome.type === "landed" ? "changed" : ""));
-  // The claimed pin and its outcome ride the result so a caller correlating sibling evidence
-  // (the failure digest's review-failure message) can key on THIS landing attempt's position,
-  // not a sha that a pre-review rebase may have moved (BUGS.md 2026-10-10).
-  return result ? { result, sha, pin: claimed, outcome } : null;
+  const outcomes = outcomeByLoop.get(end.loop) ?? [];
+  // One change can span several pins: a retriable landing failure keeps the pin and leftover
+  // recovery re-enqueues the ref for another attempt, so walk forward while the next pin is a
+  // recovery re-enqueue and resolve to the last attempt's verdict. `findLast` picks the newest
+  // same-sha outcome so an un-rebased retry (recovery re-enqueues the identical sha, logged by
+  // both pins) does not re-match the first attempt's outcome inside the recovery pin's walk.
+  // The returned pin/outcome ride the result so a caller correlating sibling evidence (the
+  // failure digest's review-failure message) can key on THIS attempt's position, not a sha a
+  // pre-review rebase may have moved (BUGS.md 2026-10-10).
+  let idx = top;
+  let resolved: { result: string; sha: string; pin: HarnessEvent; outcome: HarnessEvent } | null = null;
+  for (;;) {
+    const pin = queuedList[idx]!;
+    const outcome = outcomes.findLast(
+      (o) => o.ts >= pin.ts && String(o.commit ?? "") === String(pin.commit ?? ""),
+    );
+    // No outcome on the tick's own pin: nothing visible yet, so keep the raw label. No outcome
+    // on a recovery pin the walk reached: the previous attempt's non-terminal verdict is still
+    // the last one visible, so return it rather than the raw label.
+    if (!outcome) return resolved;
+    const result = String(outcome.result ?? (outcome.type === "landed" ? "changed" : ""));
+    if (!result) return resolved;
+    const verdict = { result, sha: String(pin.commit ?? ""), pin, outcome };
+    // A landing or a rejection ends the change (the pin is discarded, so no recovery pin can
+    // follow); any other verdict kept the pin, and the walk continues only if the next pin is
+    // the recovery re-enqueue that kept it. Otherwise this attempt's verdict is the final one
+    // visible.
+    const terminal = result === "changed" || result === "rejected";
+    if (terminal || !isRecoveryPin(queuedList[idx + 1])) return verdict;
+    resolved = verdict;
+    idx += 1;
+  }
+}
+
+/** True when a pin re-enqueues the previous attempt's kept pin rather than starting a fresh
+ * change. `recoverLeftover` (src/loop/leftover.ts) is the one `land_queued` producer whose
+ * summary starts with this label, so a fresh change's pin after a conflict-cap discard ends
+ * `resolveQueuedResult`'s walk. */
+function isRecoveryPin(pin: HarnessEvent | undefined): boolean {
+  return pin !== undefined && String(pin.summary ?? "").startsWith("recovered leftover work from ");
 }
 
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as

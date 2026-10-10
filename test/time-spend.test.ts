@@ -157,6 +157,27 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
   assert.equal(lossCausesHidden, 0, "both merge causes are owned, not hidden");
 });
 
+test("a queued tick that failed retriably, was rebased, and recovered into a landing prices into the landed cell (BUGS.md 2026-10-10)", () => {
+  // A first merge_blocked keeps the pin; the vet had already rebased the ref to sha2, so
+  // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.
+  // The authoring tick's span must price under `landed`, with no loss cause, rather than
+  // latch the retriable failure and burn agent-hours into the error cell.
+  const queued = ev({ ts: 100, loop: "feature", tick: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const { timeSpend, lossCauses } = timeAndSpend(
+    [queued],
+    [
+      queued,
+      ev({ ts: 95, loop: "feature", type: "land_queued", commit: "sha1" }),
+      ev({ ts: 120, loop: "feature", type: "land_failed", commit: "sha1", result: "merge_blocked" }),
+      ev({ ts: 150, loop: "feature", type: "land_queued", commit: "sha2", summary: "recovered leftover work from feature" }),
+      ev({ ts: 180, loop: "feature", type: "landed", commit: "sha2", result: "changed" }),
+    ],
+  );
+  assert.deepEqual(timeSpend[0]!.classes.landed, { ticks: 1, ms: 5000, costUsd: 0.25 });
+  assert.deepEqual(timeSpend[0]!.classes.error, { ticks: 0, ms: 0, costUsd: 0 });
+  assert.deepEqual(lossCauses, []);
+});
+
 test("an error cluster pools its members' time across roles and its example rides lastSeen", () => {
   const events = [
     ev({ loop: "qa", ts: 100, result: "error", error: "pi exited 1: boom 3", durationMs: 1000 }),
