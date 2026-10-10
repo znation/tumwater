@@ -176,7 +176,7 @@ The claude translator:
 | --- | --- |
 | `system/init` | `session` (`cwd`, `id` = session_id) then `agent_start` — progress-data anchors on `session` |
 | `assistant` events sharing a `message.id` | **one** `message_end` once the id changes (or on `user`/`result`): content blocks merged in order (`text`, `thinking`, `tool_use`→`toolCall` with `name` lower-cased and mapped: Bash→bash, Read→read, Edit/MultiEdit→edit, Write→write, Glob/Grep kept lower-cased; `arguments` = `input` plus a `path` alias of `file_path`). Usage taken once: `input`=input_tokens, `cacheRead`=cache_read_input_tokens, `cacheWrite`=cache_creation_input_tokens, `output`, `totalTokens`=their sum. `cost.total` = 0 (see `run_cost`) |
-| each `tool_use` block | `tool_execution_start` (`toolCallId`, `toolName`, `args`) emitted when its message closes |
+| each `tool_use` block | `tool_execution_start` (`toolCallId`, `toolName`, `args`) emitted as soon as the block is folded, before the tool runs (so an open-call tracker can see the call while it runs) |
 | `user` `tool_result` block | `tool_execution_end` (`toolCallId`, `isError`) |
 | `system/api_retry` | `auto_retry_start` (`attempt`, `maxAttempts`, `errorMessage` built from `error_status`/`error`) — the transcript already renders it |
 | `system/compact_boundary` | `compaction_start` (→ `compacted`) |

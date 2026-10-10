@@ -59,6 +59,25 @@ test("split-block assistant events fold to one message_end with usage counted on
   assert.ok(!translator.warnings().includes("cost_unknown"), "a result supplies the cost");
 });
 
+test("a tool_use block opens the canonical call while claude runs the tool, before its result", () => {
+  // The open-call trackers (runPi's stall warning, the dashboard flag) can only judge a call
+  // while it is open. claude emits the assistant tool_use message before it runs the tool and
+  // the user tool_result only after, so the translator must open the canonical call at the
+  // former; emitting it only at the closing user event would show start and end together and
+  // leave the call invisible for the whole run (plans/agent-backends.md "Watchdogs and
+  // progress").
+  const translator = claudeTranslator();
+  const parser = new PiStreamParser();
+  const feed = (line: string): void => {
+    for (const canonical of translator.translate(line)) parser.feed(canonical + "\n");
+  };
+  feed(claudeAssistant({ id: "m1", blocks: [claudeToolUse("t1", "Bash", { command: "sleep 999" })], stopReason: "tool_use" }));
+  assert.equal(parser.openToolCalls.length, 1, "the call is open while the tool runs");
+  assert.equal(parser.openToolCalls[0]?.command, "sleep 999", "the raw command rides the open call");
+  feed(claudeToolResult("t1"));
+  assert.equal(parser.openToolCalls.length, 0, "the tool result closes it");
+});
+
 test("a run with no result keeps cost 0 and reports cost_unknown", () => {
   const { parser, translator } = fold([
     claudeAssistant({ id: "msg-1", blocks: [claudeText("hi")], usage: { input: 4, output: 2 } }),

@@ -50,6 +50,12 @@ export interface LiveProgress {
   openToolCalls?: OpenToolCall[];
   /** What the loop is working on: first assistant text of the current run (~60 chars). */
   currentWork?: string;
+  /** The agent backend that ran this run, from the `tumwater_run` marker
+   * (plans/agent-backends.md). Undefined for a legacy log with no marker — treated as pi, the
+   * historical backend. The stall classifier reads it: claude never sends content updates, so
+   * every claude tool call waits out the buffered wall-clock threshold instead of the silence
+   * threshold. */
+  agent?: string;
   /** ms since pi last emitted anything (from file mtime). */
   quietMs: number;
   /** The first open tool call that has been silent for at least the configured stall
@@ -138,7 +144,7 @@ function workItemFromContent(content: unknown): string | undefined {
  * the single definition of "fresh": first observation and rotation seed from it (withTail),
  * and a `session` event restores exactly it (feedLine) — so adding a field to LiveProgress
  * updates both places automatically instead of drifting apart. */
-function freshProgress(quietMs: number): LiveProgress {
+function freshProgress(quietMs: number, agent?: string): LiveProgress {
   return {
     turns: 0,
     toolCalls: 0,
@@ -151,6 +157,7 @@ function freshProgress(quietMs: number): LiveProgress {
     // every read, never folded from lines.
     openToolCalls: undefined,
     currentWork: undefined,
+    agent,
     quietMs,
   };
 }
@@ -294,10 +301,14 @@ export function stalledToolLabel(
   open: LiveProgress["openToolCalls"],
   now = Date.now(),
   stallMs = defaultConfig().toolCallStallSeconds * 1000,
+  agent?: string,
 ): string | undefined {
   if (!open || stallMs <= 0) return undefined;
   for (const call of open) {
-    if (commandBuffersOutput(call.command || call.label)) {
+    // claude never sends content-bearing tool updates, so silence is expected for every call
+    // and only the wall-clock duration can show a hang (plans/agent-backends.md "Watchdogs and
+    // progress"); pi keeps the per-command classification.
+    if (agent === "claude" || commandBuffersOutput(call.command || call.label)) {
       if (now - call.lastActivityAt >= bufferedCommandStallMs(stallMs)) return call.label;
       continue;
     }
@@ -323,7 +334,9 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
     // session with no such marker falls back to the cwd test.
     if (!tail.kindFromMarker) tail.cur = event.cwd === gateCwd ? "gate" : "author";
     tail.kindFromMarker = false;
-    tail[tail.cur] = freshProgress(tail[tail.cur].quietMs);
+    // Keep the marker's agent across the session reset: the marker precedes the session, so
+    // the agent it named belongs to this run.
+    tail[tail.cur] = freshProgress(tail[tail.cur].quietMs, tail[tail.cur].agent);
     return;
   }
   if (event.type === "tumwater_run") {
@@ -337,12 +350,12 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
       // the previous run.
       tail.cur = kind;
       tail.kindFromMarker = true;
-      tail[kind] = freshProgress(tail[kind].quietMs);
+      tail[kind] = freshProgress(tail[kind].quietMs, event.agent);
     } else if (event.label === "review") {
       // Legacy log (no kind): a label-only marker still flips the demux to gate before its
       // session event, exactly as before this change.
       tail.cur = "gate";
-      tail.gate = freshProgress(tail.gate.quietMs);
+      tail.gate = freshProgress(tail.gate.quietMs, event.agent);
     }
     return;
   }
@@ -375,7 +388,7 @@ export function readLiveProgress(root: string, role: string, kind: ProgressRunKi
   // recomputed on every read with the configured threshold. A call already open when this
   // observer first saw the log stamps "now" at seed, so it cannot be flagged retroactively;
   // the mtime-based "no pi output" flag covers late observers.
-  progress.stalledTool = stalledToolLabel(progress.openToolCalls, Date.now(), toolCallStallMs(root));
+  progress.stalledTool = stalledToolLabel(progress.openToolCalls, Date.now(), toolCallStallMs(root), progress.agent);
   // Copy the open-call entries: feedLine mutates the stored tail value in place — an
   // un-copied collection would alias one mutable structure across every frame ever returned
   // AND with the live tail state.

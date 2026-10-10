@@ -17,6 +17,11 @@ interface PiWatchdogDeps {
   tickTimeoutMs: number;
   quietMs: number;
   stallMs: number;
+  /** The run's agent backend id (plans/agent-backends.md "Watchdogs and progress"): claude
+   * never emits content-bearing tool updates, so every open call gets the buffered wall-clock
+   * threshold instead of the silence threshold; pi keeps its per-command classification.
+   * Absent means pi, the historical default. */
+  agent?: string;
   /** Give the deadline one extension when a progress event landed within the last
    * `progressWindowMs` of the base budget (the gate's fresh-session reviewer and conflict
    * resolver; authoring runs resume next tick and keep one deadline). */
@@ -187,7 +192,11 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
                 // silence, named as the evidence. The call's full raw command is
                 // classified, never its display label: the label truncates at 32 chars,
                 // so an operator past that point would be invisible there.
-                if (commandBuffersOutput(call.command || call.label)) {
+                // claude never sends content updates, so silence carries no hang signal for
+                // ANY of its calls — every one is judged by the buffered wall-clock threshold
+                // (plans/agent-backends.md "Watchdogs and progress"); pi keeps its per-command
+                // classification, where only a piped or redirected command is buffered.
+                if (deps.agent === "claude" || commandBuffersOutput(call.command || call.label)) {
                   const openMs = Date.now() - call.lastActivityAt;
                   const bufferedStallMs = bufferedCommandStallMs(deps.stallMs);
                   if (openMs >= bufferedStallMs) {

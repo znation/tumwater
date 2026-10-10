@@ -12,6 +12,8 @@ import {
 import { piLogPath, worktreePath, worktreesDir } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { assistantLine, kindMarker } from "./fixtures/pi-events.js";
+import { claudeAssistant, claudeToolUse } from "./fixtures/claude-events.js";
+import { claudeTranslator } from "../src/agent/claude/claude-stream.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 
@@ -562,6 +564,47 @@ test("a piped call is flagged past the buffered wall-clock threshold, not the si
     0,
   );
   assert.equal(stalledToolLabel(both.openToolCalls, now + 301_000), "bash find / -name x");
+});
+
+test("a claude call is flagged at the buffered threshold and carries the marker's agent", () => {
+  const now = Date.now();
+  // The marker's agent reaches the accumulator (readLiveProgress reads it into LiveProgress),
+  // and a claude call — which never receives content updates, buffered or not — is classified
+  // by the buffered wall-clock threshold (plans/agent-backends.md "Watchdogs and progress").
+  const root = tmpdir();
+  const file = piLogPath(root, "clean");
+  // The start line comes from the real translator, so the flag is exercised on the canonical
+  // event claude actually produces while a tool runs, not a hand-written one.
+  const canonicalStart = claudeTranslator().translate(
+    claudeAssistant({ blocks: [claudeToolUse("t1", "Bash", { command: "sleep 999" })], stopReason: "tool_use" }),
+  );
+  assert.equal(canonicalStart.length, 1, "the translator emits the open call at the tool_use block");
+  writeLogLines(file, [
+    JSON.stringify({ type: "tumwater_run", kind: "author", agent: "claude" }),
+    SESSION,
+    ...canonicalStart,
+  ]);
+  const p = readLiveProgress(root, "clean");
+  assert.equal(p?.agent, "claude", "the marker's agent lands on LiveProgress");
+  assert.equal(
+    stalledToolLabel(p?.openToolCalls, now + 301_000, 300_000, p?.agent),
+    undefined,
+    "past toolCallStallSeconds but short of the buffered floor is not a claude stall",
+  );
+  assert.equal(
+    stalledToolLabel(p?.openToolCalls, now + 601_000, 300_000, p?.agent),
+    "bash sleep 999",
+    "past the buffered wall-clock floor it is a claude stall",
+  );
+  // The same unbuffered command on a pi (or marker-less) run keeps the silence threshold.
+  assert.equal(
+    stalledToolLabel(
+      [{ id: "c1", label: "bash sleep 999", command: "sleep 999", lastActivityAt: now }],
+      now + 301_000,
+      300_000,
+    ),
+    "bash sleep 999",
+  );
 });
 
 test("toolCallStallMs resolves the configured threshold, defaulting to five minutes", () => {

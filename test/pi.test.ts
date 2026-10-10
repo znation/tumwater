@@ -9,8 +9,11 @@ import {
   TRANSIENT_PI_CRASH,
   runPi,
 } from "../src/pi/pi.js";
+import { PiStreamParser } from "../src/pi/pi-stream.js";
+import { claudeTranslator } from "../src/agent/claude/claude-stream.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process/process.js";
 import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
+import { startPiWatchdogs } from "../src/pi/pi-watchdogs.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
@@ -19,6 +22,7 @@ import { logFlagsTo, readRunLines, withPi } from "./fakes/fake-pi.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
+import { claudeAssistant, claudeToolUse } from "./fixtures/claude-events.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 import { runPiFixture, runFakePi, runPiVerified } from "./helpers/pi-run-harness.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
@@ -416,6 +420,59 @@ test("a piped command open past the buffered wall-clock threshold warns even tho
   });
   assert.equal(result.quietKilled, true, "the kill remains the quiet watchdog's");
   assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
+});
+
+test("a claude call driven through the translator waits out the buffered threshold while a pi call warns at the silence threshold", async (t) => {
+  // claude never sends content-bearing tool updates, so silence carries no hang signal for
+  // any of its calls: each is judged by the buffered threshold
+  // (plans/agent-backends.md "Watchdogs and progress"). The claude call comes from the real
+  // translator → parser path, so the test also proves claude's call is observable while the
+  // tool runs, not just that the classification branch works on a fabricated call. A bare
+  // `sleep` is an unbuffered shape on pi, where silence stays meaningful. Driving
+  // startPiWatchdogs alone isolates the classification from the spawn; the deadline's real
+  // setTimeout sits an hour out, so only the mocked stall interval fires.
+  const clock = watchdogClock(t);
+  const claudeWarnings: string[] = [];
+  const piWarnings: string[] = [];
+  const translator = claudeTranslator();
+  const parser = new PiStreamParser();
+  for (const canonical of translator.translate(
+    claudeAssistant({ id: "m1", blocks: [claudeToolUse("t1", "Bash", { command: "sleep 999" })], stopReason: "tool_use" }),
+  ))
+    parser.feed(canonical + "\n");
+  assert.equal(parser.openToolCalls.length, 1, "the translator opened the claude call");
+  // One fixed open-call entry: a fresh `lastActivityAt` on every read would chase the clock
+  // and never stall.
+  const piOpenCall = [{ id: "c2", label: "bash sleep 999", command: "sleep 999", lastActivityAt: Date.now() }];
+  const claudeWd = startPiWatchdogs({
+    progressCount: () => parser.progressCount,
+    openToolCalls: () => parser.openToolCalls,
+    tickTimeoutMs: 3_600_000,
+    quietMs: 0,
+    stallMs: 300_000,
+    agent: "claude",
+    kill: () => {},
+    onToolCallStalled: (message) => claudeWarnings.push(message),
+  });
+  const piWd = startPiWatchdogs({
+    progressCount: () => parser.progressCount,
+    openToolCalls: () => piOpenCall,
+    tickTimeoutMs: 3_600_000,
+    quietMs: 0,
+    stallMs: 300_000,
+    agent: "pi",
+    kill: () => {},
+    onToolCallStalled: (message) => piWarnings.push(message),
+  });
+  clock.advance(301_000); // past toolCallStallSeconds (300 s), short of the buffered floor (max(2×300s, 10m) = 600 s)
+  assert.deepEqual(claudeWarnings, [], "a claude call past toolCallStallSeconds is not yet stalled");
+  assert.equal(piWarnings.length, 1, "a pi unbuffered call still warns at toolCallStallSeconds");
+  assert.match(piWarnings[0] ?? "", /^tool call stalled: bash sleep 999 — no output for \d+[sm]$/);
+  clock.advance(300_000); // now 601 s, past the buffered floor
+  assert.equal(claudeWarnings.length, 1, "the claude call warns once past the buffered threshold");
+  assert.match(claudeWarnings[0] ?? "", /^tool call stalled: bash sleep 999 — no exit for 10m$/);
+  claudeWd.stop();
+  piWd.stop();
 });
 
 test("no stall warning when the tool call ends before the threshold", async () => {

@@ -259,6 +259,9 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       tickTimeoutMs: opts.config.tickTimeoutSeconds * 1000,
       quietMs: opts.config.quietTimeoutSeconds * 1000,
       stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
+      // The run's backend id: claude never sends content updates, so the watchdog judges its
+      // every open call by the buffered wall-clock threshold (plans/agent-backends.md).
+      agent: backend.id,
       // The gate's fresh-session runs (reviewer and conflict resolver) get one deadline
       // extension while they are still making progress: a large diff's review otherwise
       // times out mid-verification and the next attempt re-reads it from scratch

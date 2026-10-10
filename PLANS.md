@@ -7,37 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 7b/7: the claude tool-call stall threshold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7c/7; independent of the citation-sweep series)
-
-Design: plans/agent-backends.md "Watchdogs and progress". Sibling 7a/7 wires the API cap and
-its handback; this part touches neither budget nor argv.
-
-**Goal.** A claude tool call that sends no content update is judged stalled at
-`bufferedCommandStallMs`, not `toolCallStallSeconds`, so long verification commands stop crying
-wolf (BUGS.md 2026-09-28's lesson); pi keeps today's per-command classification.
-
-**Approach.** The run's backend is already known on both surfaces: runAgent holds `backend.id`
-(src/agent/run-agent.ts) and the `tumwater_run` marker already carries `agent`, which
-src/ui/progress-data.ts reads into `LiveProgress` (`agent?: string`).
-- runPi's warning: `createWatchdogs` (src/pi/pi-watchdogs.ts) — its openToolCalls loop currently
-calls `commandBuffersOutput(call.command || call.label)` to pick the buffered threshold. Add the
-run's backend id to the watchdog deps; when it is `"claude"`, take the `bufferedCommandStallMs`
-branch for every open call.
-- progress-data's flag: `stalledToolLabel` (src/ui/progress-data.ts) does the same classification
-for the role's state cell; give it the current run's `agent` (from the marker already stored on
-`LiveProgress`, defaulting to pi when no marker precedes the run) and apply the same rule, so the
-state cell and the event feed agree on "stalled".
-
-**Files touched.** src/pi/pi-watchdogs.ts, src/ui/progress-data.ts, src/agent/run-agent.ts (feed
-the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
-
-**Acceptance criteria.**
-- A claude Bash call open longer than `toolCallStallSeconds` but shorter than
-`bufferedCommandStallMs` raises no stall warning on either surface.
-- The same call open past `bufferedCommandStallMs` raises the stall warning on both surfaces.
-- A pi non-buffered call still warns at `toolCallStallSeconds`.
-- `npm run test` green.
-
 ### Finish the stale code-path citation sweep, part 5a/5: `plans/agent-backends.md` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/agent-backends.md` — the largest
@@ -277,6 +246,42 @@ existing deep-equal against `collectReport(repo, 14)`).
 - The options follow the fleet's role list (custom loops included), refreshed while the view is
   open, and a persisted role the fleet no longer lists falls back to `All loops`.
 - `npm run test` is green.
+
+### Agent backends, part 7b/7: the claude tool-call stall threshold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7c/7; independent of the citation-sweep series; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md "Watchdogs and progress". Sibling 7a/7 wires the API cap and
+its handback; this part touches neither budget nor argv.
+
+**Goal.** A claude tool call that sends no content update is judged stalled at
+`bufferedCommandStallMs`, not `toolCallStallSeconds`, so long verification commands stop crying
+wolf (BUGS.md 2026-09-28's lesson); pi keeps today's per-command classification.
+
+**Approach.** The run's backend is already known on both surfaces: runAgent holds `backend.id`
+(src/agent/run-agent.ts) and the `tumwater_run` marker carries `agent`, which
+src/ui/progress-data.ts reads into `LiveProgress` (`agent?: string`).
+- The claude stream must actually expose the call while the tool runs:
+`claudeTranslator` (src/agent/claude/claude-stream.ts) now emits a canonical
+`tool_execution_start` the moment a `tool_use` block is folded, not at the later `tool_result`
+(the two previously arrived together, so no open-call tracker ever saw a claude call).
+- runPi's warning: `startPiWatchdogs` (src/pi/pi-watchdogs.ts) — its openToolCalls loop currently
+calls `commandBuffersOutput(call.command || call.label)` to pick the buffered threshold. The
+deps carry the run's backend id; when it is `"claude"`, every open call takes the
+`bufferedCommandStallMs` branch.
+- progress-data's flag: `stalledToolLabel` (src/ui/progress-data.ts) does the same classification
+for the role's state cell; it reads the current run's `agent` off `LiveProgress` (set from the
+marker, preserved across the run's `session` reset, defaulting to pi when no marker precedes the
+run) and applies the same rule, so the state cell and the event feed agree on "stalled".
+
+**Files touched.** src/pi/pi-watchdogs.ts, src/ui/progress-data.ts, src/agent/run-agent.ts (feed
+the backend id), src/agent/claude/claude-stream.ts (open the call at the `tool_use` block).
+Tests: test/pi.test.ts, test/progress.test.ts, test/claude-stream.test.ts.
+
+**Acceptance criteria.**
+- A claude Bash call open longer than `toolCallStallSeconds` but shorter than
+`bufferedCommandStallMs` raises no stall warning on either surface.
+- The same call open past `bufferedCommandStallMs` raises the stall warning on both surfaces.
+- A pi non-buffered call still warns at `toolCallStallSeconds`.
+- `npm run test` green.
 
 ### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 

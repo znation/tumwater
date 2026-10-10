@@ -157,14 +157,16 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
   const seen = new Set<string>();
   const warnings = new Set<string>();
 
-  /** Emit the pending assistant message (if any) as ONE canonical `message_end`, followed by
-   * a `tool_execution_start` per tool call in order — the design emits a call's start when its
-   * message closes, not when the block streams. */
+  /** Emit the pending assistant message (if any) as ONE canonical `message_end`. Tool calls
+   * open separately, the moment their `tool_use` block is folded (see `startToolCall`): claude
+   * emits the assistant message before it runs the tool, and the `tool_result` only after, so
+   * opening the call here at message close would expose it to the open-call trackers only when
+   * the closing `user` event carries the result — never while the tool is actually running. */
   const flush = (): string[] => {
     const message = pending;
     if (!message) return [];
     pending = undefined;
-    const out = [
+    return [
       JSON.stringify({
         type: "message_end",
         message: {
@@ -175,19 +177,19 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         },
       }),
     ];
-    for (const block of message.content) {
-      if (block.type !== "toolCall") continue;
-      out.push(
-        JSON.stringify({
-          type: "tool_execution_start",
-          toolCallId: block.id,
-          toolName: block.name,
-          args: block.arguments,
-        }),
-      );
-    }
-    return out;
   };
+
+  /** One canonical `tool_execution_start`, emitted as soon as a `tool_use` block is folded —
+   * while claude is still running the tool, before the `tool_result` arrives. The open-call
+   * trackers (runPi's stall warning, the dashboard flag) only see a call while it is open, so
+   * this is what lets them judge a claude call by its duration instead of its silence. */
+  const startToolCall = (block: Json): string =>
+    JSON.stringify({
+      type: "tool_execution_start",
+      toolCallId: block.id,
+      toolName: block.name,
+      args: block.arguments,
+    });
 
   const record = (kind: string): void => {
     if (seen.has(kind)) return;
@@ -248,7 +250,9 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         for (const raw of blocks) {
           if (!isJsonObject(raw)) continue;
           const block = canonicalBlock(raw);
-          if (block) pending.content.push(block);
+          if (!block) continue;
+          pending.content.push(block);
+          if (block.type === "toolCall") out.push(startToolCall(block));
         }
         // Usage repeats on every event of the same message; the last read wins and is counted
         // once because the fold emits one message_end per id.
