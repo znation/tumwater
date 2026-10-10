@@ -213,6 +213,55 @@ test("a review_error landing prices its authoring hours under the matching revie
   assert.match(md, /timed out after 900s .*\(bugfix\)/, `the loss row names the review failure: ${md}`);
 });
 
+test("a rebased review_error landing prices under its review_failed message, not the placeholder", () => {
+  // BUGS.md 2026-10-10: every vet rebases its pin onto main before the gate (syncPinToMain),
+  // so `review_failed` records the rebased head while `land_queued`/`land_failed` keep the
+  // authored sha. Matching the event on exact sha missed every rebased vet — the common case on
+  // a busy fleet — and priced the span under the anonymous `(no error text recorded)` placeholder
+  // even though the digest's review-failure section held the message. The arm now keys on the
+  // landing attempt (the claimed pin and its outcome), not the sha.
+  const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
+  writeEvents(root, [
+    { ts: at(0, 9), loop: "bugfix", type: "land_queued", commit: head("a"), summary: "fix a thing" },
+    { ts: at(0, 10), loop: "bugfix", type: "tick_end", tick: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 },
+    // The rebased head B is what the reviewer failed; the pin and the outcome still name A.
+    { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("b"),
+      message: "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review" },
+    { ts: at(0, 12), loop: "bugfix", type: "land_failed", commit: head("a"), result: "review_error", durationMs: 60_000 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
+  assert.ok(loss, `the rebased review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(loss?.ticks, 1);
+  assert.equal(loss?.ms, 3_600_000);
+  assert.match(loss?.example ?? "", /^timed out after 900s/, `the message labels the span, not the placeholder: ${JSON.stringify(loss)}`);
+  assert.notEqual(loss?.example, "(no error text recorded)");
+});
+
+test("a rebased review-rejected landing names its reason, not an empty example", () => {
+  // The sibling of the review_error arm: the same pre-review rebase moves `review_rejected.head`
+  // off the authored sha while `land_queued`/`land_failed` keep it, so exact-sha equality left
+  // the review-rejected cause with no reason. The arm now keys on the claimed pin and its
+  // outcome, the landing attempt. The existing rejected fixture uses head === commit, which
+  // matches the old filter and hid this.
+  const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
+  writeEvents(root, [
+    { ts: at(0, 9), loop: "coverage", type: "land_queued", commit: head("a"), summary: "fix a thing" },
+    { ts: at(0, 10), loop: "coverage", type: "tick_end", tick: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
+    // The rebased head B is what the reviewer rejected; the pin and the outcome still name A.
+    { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("b"), reasons: ["too big"] },
+    { ts: at(0, 12), loop: "coverage", type: "land_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const loss = data.lossCauses.find((c) => c.kind === "review-rejected");
+  assert.ok(loss, `the rebased rejection owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(loss?.ticks, 1);
+  assert.equal(loss?.ms, 3_600_000);
+  assert.equal(loss?.example, "too big", `the reason labels the cause: ${JSON.stringify(loss)}`);
+});
+
 test("a main_red tick prices its red-main cause into the loss ranking, not only the error clusters", () => {
   // BUGS.md 2026-10-07: a `main_red` tick is error-class, but the loss fold's CLUSTERED_RESULTS
   // missed it, so its hours landed in the error-class cell and in the digest's error clusters

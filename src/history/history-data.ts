@@ -127,7 +127,7 @@ export function resolveQueuedResult(
   claimTop: Map<string, number>,
   joinStarts: Map<string, number>,
   floorTs: number | null,
-): { result: string; sha: string } | null {
+): { result: string; sha: string; pin: HarnessEvent; outcome: HarnessEvent } | null {
   if (floorTs !== null) {
     const startTs = joinStarts.get(`${end.loop}#${end.tick}`);
     if (startTs !== undefined && startTs < floorTs) return null;
@@ -145,7 +145,10 @@ export function resolveQueuedResult(
   );
   if (!outcome) return null;
   const result = String(outcome.result ?? (outcome.type === "landed" ? "changed" : ""));
-  return result ? { result, sha } : null;
+  // The claimed pin and its outcome ride the result so a caller correlating sibling evidence
+  // (the failure digest's review-failure message) can key on THIS landing attempt's position,
+  // not a sha that a pre-review rebase may have moved (BUGS.md 2026-10-10).
+  return result ? { result, sha, pin: claimed, outcome } : null;
 }
 
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as

@@ -158,7 +158,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
   // history rows. tickEvents is oldest-first, hence the backward walk.
   const claimTop = new Map<string, number>();
-  const resolved = new Map<HarnessEvent, { result: string; sha: string }>();
+  const resolved = new Map<HarnessEvent, NonNullable<ReturnType<typeof resolveQueuedResult>>>();
   for (let i = tickEvents.length - 1; i >= 0; i--) {
     const ev = tickEvents[i]!;
     if (ev.result !== "queued") continue;
@@ -168,7 +168,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   for (const ev of tickEvents) {
     let cls = OUTCOME_CLASS[ev.result as TickResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
-    let resolvedOutcome: { result: string; sha: string } | null = null;
+    let resolvedOutcome: NonNullable<ReturnType<typeof resolveQueuedResult>> | null = null;
     if (ev.result === "queued") {
       resolvedOutcome = resolved.get(ev) ?? null;
       if (resolvedOutcome) {
@@ -189,7 +189,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     // Loss causes: a clustered failure's cluster owns its time, a no_change's role does, and
     // a landing-gate rejection prices its authoring span under a per-role cause of its own —
     // unrepresentable as an error cluster, since the land_failed event carries no message;
-    // the example is the matching review_rejected's first reason, the same change by sha.
+    // the example is the matching review_rejected's first reason, matched by landing attempt.
     let key: string | null = null;
     let kind: LossDraft["kind"] = "error-cluster";
     let example = "";
@@ -207,8 +207,13 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
       key = `review-rejected\u0000${role}`;
       kind = "review-rejected";
+      // Match the landing ATTEMPT, not the pin's sha: every vet rebases its pin onto main
+      // before the gate (syncPinToMain), so `review_rejected.head` is the rebased commit while
+      // `land_queued` keeps the authored one — exact-sha equality names no reason for a rebased
+      // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
+      // claimed pin and its outcome, the window no other attempt can occupy.
       const rej = (rejectedByLoop.get(role) ?? [])
-        .filter((r) => String(r.head ?? "") === resolvedOutcome!.sha)
+        .filter((r) => r.ts >= resolvedOutcome!.pin.ts && r.ts <= resolvedOutcome!.outcome.ts)
         .at(-1);
       const reasons = stringList(rej?.reasons);
       example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
@@ -217,10 +222,15 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // the pin was kept and re-queued, and the matching `review_failed` event carries the
       // message the review-failure section already clusters. Price the authoring span under
       // that cluster's key — a review timeout pools into the shared `timed out after <dur>`
-      // cause via poolTimeoutKey — and fall back to the shared placeholder when no event for
-      // this loop+sha is visible, so the span is itemized rather than hidden.
+      // cause via poolTimeoutKey — and fall back to the shared placeholder when no event is
+      // visible, so the span is itemized rather than hidden. The match keys on the landing
+      // ATTEMPT, not the pin's sha: every vet rebases its pin onto main before the gate
+      // (syncPinToMain), so `review_failed.head` is the rebased commit while `land_queued`
+      // keeps the authored one — exact-sha equality missed every rebased vet (BUGS.md
+      // 2026-10-10). The review failure for this attempt is the one that falls inside the
+      // claimed pin and its outcome, the window no other attempt can occupy.
       const failed = (reviewFailedByLoop.get(role) ?? [])
-        .filter((r) => String(r.head ?? "") === resolvedOutcome!.sha)
+        .filter((r) => r.ts >= resolvedOutcome!.pin.ts && r.ts <= resolvedOutcome!.outcome.ts)
         .at(-1);
       const text = errorTextOrPlaceholder(failed?.message);
       key = poolTimeoutKey(normalizeClusterKey(text));
