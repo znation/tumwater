@@ -24,6 +24,7 @@ import { GUI_CLIENT_REPORT_JS } from "./gui-client-report.js";
 import { GUI_CLIENT_SETTINGS_JS } from "./gui-client-settings.js";
 import { GUI_CLIENT_SOUND_JS } from "./gui-client-sound.js";
 import { ICON_PATHS } from "./gui-icons.js";
+import { ACTIVE_PHASE_PREFIXES } from "../status-model.js";
 
 /** The client's opening: escaping and the guarded API helpers every call goes through. Kept
  * free of DOM access so tests can run it with only a stubbed fetch. */
@@ -167,12 +168,13 @@ const FORMAT_JS = String.raw`  // format:start
   };
   // human-seconds-fmt:end
   // active-phase-fmt:start
-  // A PERMIT-HOLDING loop in flight — status-model.ts's isActivePhase: its phase starts with
-  // working, reviewing, or landing. One home for the three prefixes fmtNextRun shares with the
-  // shared loop-rank rules (status-model.ts's LOOP_RANK_RULES, whose rank-0 rule tests this
-  // predicate); the running director's own director-working label is checked beside it rather
-  // than folded in, because it holds no permit (BUGS.md 2026-10-06).
-  const isActivePhase = (phase) => phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
+  // A PERMIT-HOLDING loop in flight — status-model.ts's isActivePhase. The three prefixes are
+  // interpolated from status-model.ts's ACTIVE_PHASE_PREFIXES (String.raw still substitutes),
+  // so this copy cannot drift from the server's; the running director's own director-working
+  // label is checked beside it rather than folded in, because it holds no permit (BUGS.md
+  // 2026-10-06).
+  const ACTIVE_PHASE_PREFIXES = ${JSON.stringify(ACTIVE_PHASE_PREFIXES)};
+  const isActivePhase = (phase) => ACTIVE_PHASE_PREFIXES.some((p) => phase.startsWith(p));
   // active-phase-fmt:end
   // last-tick-fmt:start
   // The absolute local time of a tick end with its age ("14:32:05 · 3m ago"), prefixed MM-DD

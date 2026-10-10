@@ -300,6 +300,12 @@ export function loopRowCells(
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
 
+/** The phase prefixes that make a loop a permit holder — working, reviewing, landing. The
+ * browser dashboard (gui-client.ts) interpolates this list into its isActivePhase, exactly as
+ * gui-client-model.ts interpolates LOOP_RANK_RULES, so the two dashboards cannot disagree
+ * about which phases are in flight. */
+export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "landing"] as const;
+
 /** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
  * against maxConcurrent? The three labels come from loopPhase: `working …`, `reviewing …`,
  * and the marker-driven `landing …` (merge queue 4/5) — a vetted change waiting for the merge
@@ -312,7 +318,7 @@ export function loopRowCells(
  * key off the running set, which also includes the director: the GUI derives it from the
  * rendered phase (gui-client-loops.ts/drawer's phaseInfo.live). */
 export function isActivePhase(phase: string): boolean {
-  return phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
+  return ACTIVE_PHASE_PREFIXES.some((p) => phase.startsWith(p));
 }
 
 /** A loop's rank in the rendered tables, from its phase label (loopPhase): -1 a RUNNING
