@@ -113,9 +113,13 @@ export function planTickStart(opts: {
   // assistant content), so the very next tick lands here with the worktree intact. A dir with
   // no ledger line at all is not a handoff — there is no recorded interrupted session to carry
   // forward.
-  const handoff = latest !== null && !resumable;
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
   const pendingResumeCause = s.resumeCause;
+  // A budget-capped API claude run is a handback onto the fallback seam: the kept worktree must
+  // survive, but the next run is a FRESH session — the fallback seam may be a different backend,
+  // and claude keeps no flags across `--resume` (plans/agent-backends.md §7, part 7a/7).
+  const budgetCapped = pendingResumeCause === "budget-capped";
+  const handoff = (latest !== null && !resumable) || budgetCapped;
   s.resumePending = false;
   s.resumeCause = undefined;
   s.resumeMissing = undefined;
@@ -125,7 +129,9 @@ export function planTickStart(opts: {
   // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
   // path's reset below.
   const resumeBlocked = s.phase === "review";
-  const resuming = resumableSession && !resumeBlocked;
+  // A budget-capped handback never resumes the session whose seam the cap moved off of, even
+  // when its transcript is still resumable: it hands off instead.
+  const resuming = resumableSession && !resumeBlocked && !budgetCapped;
   const handingOff = handoff && !resumeBlocked;
   // Reclaim the prompt the interrupted tick re-queued for its resume (src/inbox/pending-prompt.ts):
   // the resumed session still owns that request in its context, so this tick's bookkeeping
@@ -138,16 +144,24 @@ export function planTickStart(opts: {
   // bridge then warns against re-running it unchanged) or on the tick deadline while still
   // making progress (the bridge asks for the smallest finish against the same limit); a
   // cut-off streak means the last run ran out of context and pi compacted the session (the
-  // bridge asks for the smallest finish); otherwise a shutdown/crash. A handoff names itself.
+  // bridge asks for the smallest finish); otherwise a shutdown/crash. A handoff names itself,
+  // except a budget-capped one, which names the cap that ended the run.
   const resumeCause: ResumeCause = handingOff
-    ? "handoff"
+    ? budgetCapped
+      ? "budget-capped"
+      : "handoff"
     : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
   let prompt: string | null;
   if (resuming) {
     prompt = buildResumePrompt(opts.role, resumeCause, agent);
   } else {
     const assembled = opts.tickPrompt(agent);
-    prompt = assembled === null ? null : handingOff ? buildHandoffPrompt(opts.role, assembled) : assembled;
+    prompt =
+      assembled === null
+        ? null
+        : handingOff
+          ? buildHandoffPrompt(opts.role, assembled, resumeCause)
+          : assembled;
   }
   if (prompt === null) return null;
   // The raw user prompt a director tick is executing (null for role loops), so an

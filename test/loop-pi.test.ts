@@ -8,6 +8,9 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { fakeClaudeReplay, readRunBlocks } from "./fakes/fake-claude.js";
@@ -100,6 +103,13 @@ function recordingFakePi(
 
 function runArgs(argsFile: string): string[] {
   return fs.readFileSync(argsFile, "utf8").trimEnd().split("\n");
+}
+
+/** The value following `flag` in a recorded argv block, or undefined when the flag is absent. */
+function flagValue(argv: string, flag: string): string | undefined {
+  const parts = argv.split("\n");
+  const i = parts.indexOf(flag);
+  return i === -1 ? undefined : parts[i + 1];
 }
 
 test("runRolePi runs a fresh named session and folds one usage into the tick", async () => {
@@ -931,6 +941,116 @@ test("a subscription claude rejected window earns no within-run retry", async ()
     assert.equal(readRunBlocks(fake.argvFile).length, 1, "one attempt, no retry");
     assert.deepEqual(sleeps, [], "no wait is spent on a retry the window would reject anyway");
     assert.equal(usage.length, 1, "one foldUsage for the one attempt");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+// PLANS.md "Agent backends, part 7a/7": the caller computes `--max-budget-usd` from the
+// remaining fleet budget and the role's own remaining cap, and only for an API-billed
+// non-director claude authoring run. These tests pin the argv the real adapter builds.
+test("an API-billed claude authoring run carries the remaining fleet budget as --max-budget-usd", async () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })]);
+  try {
+    writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
+    saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 12 });
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    config.maxDailyCostUsd = 15;
+    const { loopPi } = makeHost(root, config);
+    const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "3");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a per-role cap lowers the claude run's --max-budget-usd below the fleet's remaining", async () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })]);
+  try {
+    writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
+    saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 1.5 });
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    config.maxDailyCostUsd = 15;
+    config.maxDailyCostUsdPerRole = { feature: 2 };
+    const { loopPi } = makeHost(root, config);
+    const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "0.5");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+// PLANS.md "Agent backends, part 7a/7", objection 1: the per-role cap is keyed by BASE role
+// and sums the whole instance group's spend, matching the scheduler's role-cap gate. A
+// `feature-2` run must see `maxDailyCostUsdPerRole.feature`, not a nonexistent `feature-2` key.
+test("a per-role cap sums a multi-instance role's spend and keys on the base role", async () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })]);
+  try {
+    writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
+    saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 0.6 });
+    saveLoopState(root, { ...freshLoopState("feature-2"), dayStamp: todayStamp(), dayCostUsd: 0.6 });
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    config.maxDailyCostUsd = 15;
+    config.maxDailyCostUsdPerRole = { feature: 2 };
+    config.roles.feature = { enabled: true, instances: 2 };
+    const { loopPi } = makeHost(root, config, "feature-2");
+    const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-2-author");
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    // 2 − (0.6 + 0.6): the group's summed spend, below the fleet's remaining 13.8.
+    assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "0.8");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a subscription account and the director both pass no --max-budget-usd", async () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([
+    claudeInit({ sessionId: "c1" }),
+    claudeResult({ totalCostUsd: 0.01 }),
+    claudeInit({ sessionId: "c2" }),
+    claudeResult({ totalCostUsd: 0.01 }),
+  ]);
+  try {
+    saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 12 });
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    config.maxDailyCostUsd = 15;
+
+    writeClaudeAccount(root, { billing: "subscription", observedAt: Date.now(), windows: {} });
+    const { loopPi } = makeHost(root, config);
+    const subscriptionRun = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
+    assert.equal(subscriptionRun.ok, true, `${subscriptionRun.errorMessage}`);
+
+    writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
+    const { loopPi: directorPi } = makeHost(root, config, DIRECTOR_ROLE);
+    const directorRun = await directorPi.runAuthoringPi(root, "work", "tumwater-director-1");
+    assert.equal(directorRun.ok, true, `${directorRun.errorMessage}`);
+
+    const blocks = readRunBlocks(fake.argvFile);
+    assert.equal(blocks.length, 2);
+    assert.equal(flagValue(blocks[0]!, "--max-budget-usd"), undefined, "subscription runs are exempt");
+    assert.equal(flagValue(blocks[1]!, "--max-budget-usd"), undefined, "the director is exempt");
   } finally {
     fake.restore();
     restoreHome();

@@ -7,56 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 7a/7: API per-run cap and the `budgetCapped` handback (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7b/7 and 7c/7; independent of the citation-sweep series)
-
-Design: plans/agent-backends.md "Billing" (API runs) and §10. Siblings: 7b/7 wires the claude
-stall threshold, 7c/7 adds the opt-in smoke script; this part touches neither.
-
-**Goal.** An API-billed, non-director claude run can never overshoot the daily cap, and a run
-cut off by `error_max_budget_usd` keeps its worktree and resumes as a `handoff`.
-
-**Approach.**
-- Thread the cap to the argv. `ClaudeArgOptions.maxBudgetUsd` and the `--max-budget-usd` builder
-already exist in src/agent/claude/claude-args.ts; the missing links are the carrier and the
-caller. Add an optional `maxBudgetUsd` to `PiRunOptions` (src/pi/pi.ts) and to `AgentRunSpec`
-(src/agent/agent-backend.ts), and have `claudeBackend.invocation`
-(src/agent/claude/claude-backend.ts) forward it. Compute the value in the authoring-call wiring
-that already holds `root`, the role, and the live loop states — `LoopPi.loopPiOpts`
-(src/loop/loop-pi.ts) fed from the tick wiring (src/loop/loop-tick.ts) — using
-`readClaudeAccount(root)` (src/agent/claude/claude-account.ts) and `fleetDailyCost` / `dailyCost`
-(src/budget/budget.ts). Pass a cap only when the resolved backend is claude and the account
-reports `billing: "api"`; it is `maxDailyCostUsd − fleetDailyCost`, lowered to the role's
-remaining `maxDailyCostUsdPerRole[role] − dailyCost(roleState)` when that key is set. The
-director (`DIRECTOR_ROLE`) and subscription-billed runs pass none.
-- Handle the cap hit. `PiRunResult.budgetCapped` is already set by the claude translator
-(src/agent/claude/claude-stream.ts, `error_max_budget_usd`). Nothing consumes it today. On an
-authoring result with `budgetCapped`, keep the worktree and set `state.resumePending` with a new
-`resumeCause` (e.g. `"budget-capped"`) added beside the existing union in
-src/loop/loop-state.ts and src/tick/tick-outcome.ts. `planTickStart` (src/tick/tick-resume.ts)
-only considers a handoff when `resumePending` is set, so this is what makes the next tick resume
-rather than reset the worktree; the handoff then gets the revision/conflict notes, no re-apply,
-the leased slot, and the same loop id, exactly as the part 3/7 handoffs do. The existing
-`budget-resumed` cause (src/loop/loop-recovery.ts, the mid-tick budget reopen) is unchanged; the
-bridge prompt names the new cause distinctly.
-- A run with no `result` records cost 0 and logs `cost_unknown`: confirm the translator/run-agent
-already emit it (parts 3 and 6a) and add only the missing wiring if a gap is found — do not
-rewrite it.
-
-**Files touched.** src/pi/pi.ts, src/agent/agent-backend.ts,
-src/agent/claude/claude-backend.ts, src/loop/loop-pi.ts, src/loop/loop-tick.ts,
-src/loop/loop-state.ts, src/tick/tick-outcome.ts, src/tick/tick-resume.ts. Tests:
-test/claude-args.test.ts and a loop test for `budgetCapped` → handoff.
-
-**Acceptance criteria.**
-- On API billing, with $12 of a $15 fleet cap spent and no per-role cap, an authoring claude
-run's argv carries `--max-budget-usd 3`; a subscription-billed run's and the director's argv
-carry no `--max-budget-usd`.
-- With `maxDailyCostUsdPerRole[role] = 2` and $1.50 of the role's spend, the argv carries
-`--max-budget-usd 0.5` (the role's remaining is lower than the fleet's remaining).
-- A `budgetCapped` authoring result sets `resumePending` and leaves the worktree edits in place;
-the next tick runs as `handoff` with the budget-capped cause.
-- `npm run test` green.
-
 ### Agent backends, part 7b/7: the claude tool-call stall threshold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7c/7; independent of the citation-sweep series)
 
 Design: plans/agent-backends.md "Watchdogs and progress". Sibling 7a/7 wires the API cap and
@@ -304,6 +254,64 @@ the sweep, so the inventory step carries most of the work.
 - For each split module cited in the named section, the module named beside a symbol exports it
   (checked against the module's export list).
 - `npm run test` is green.
+
+### Agent backends, part 7a/7: API per-run cap and the `budgetCapped` handback (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7b/7 and 7c/7; independent of the citation-sweep series; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md "Billing" (API runs) and §10. Siblings: 7b/7 wires the claude
+stall threshold, 7c/7 adds the opt-in smoke script; this part touches neither.
+
+**Goal.** An API-billed, non-director claude run can never overshoot the daily cap, and a run
+cut off by `error_max_budget_usd` keeps its worktree and resumes as a `handoff`.
+
+**Approach.**
+- Thread the cap to the argv. `ClaudeArgOptions.maxBudgetUsd` and the `--max-budget-usd` builder
+already exist in src/agent/claude/claude-args.ts; the missing links are the carrier and the
+caller. Add an optional `maxBudgetUsd` to `PiRunOptions` (src/pi/pi.ts) and to `AgentRunSpec`
+(src/agent/agent-backend.ts), and have `claudeBackend.invocation`
+(src/agent/claude/claude-backend.ts) forward it. Compute the value in the authoring-call wiring
+that already holds `root`, the role, and the live loop states — `LoopPi.loopPiOpts`
+(src/loop/loop-pi.ts) fed from the tick wiring (src/loop/loop-tick.ts) — using
+`readClaudeAccount(root)` (src/agent/claude/claude-account.ts) and `fleetDailyCost` / `dailyCost`
+(src/budget/budget.ts). Pass a cap only when the resolved backend is claude and the account
+reports `billing: "api"`; it is `maxDailyCostUsd − fleetDailyCost`, lowered to the role's
+remaining `maxDailyCostUsdPerRole[role] − dailyCost(roleState)` when that key is set. The
+director (`DIRECTOR_ROLE`) and subscription-billed runs pass none.
+- Handle the cap hit. `PiRunResult.budgetCapped` is already set by the claude translator
+(src/agent/claude/claude-stream.ts, `error_max_budget_usd`). Nothing consumes it today. On an
+authoring result with `budgetCapped`, keep the worktree and set `state.resumePending` with a new
+`resumeCause` (e.g. `"budget-capped"`) added beside the existing union in
+src/loop/loop-state.ts and src/tick/tick-outcome.ts. `planTickStart` (src/tick/tick-resume.ts)
+only considers a handoff when `resumePending` is set, so this is what makes the next tick resume
+rather than reset the worktree; the handoff then gets the revision/conflict notes, no re-apply,
+the leased slot, and the same loop id, exactly as the part 3/7 handoffs do. The existing
+`budget-resumed` cause (src/loop/loop-recovery.ts, the mid-tick budget reopen) is unchanged; the
+bridge prompt names the new cause distinctly.
+- A run with no `result` records cost 0 and logs `cost_unknown`: confirm the translator/run-agent
+already emit it (parts 3 and 6a) and add only the missing wiring if a gap is found — do not
+rewrite it.
+
+**Files touched.** src/pi/pi.ts, src/agent/agent-backend.ts,
+src/agent/claude/claude-backend.ts, src/loop/loop-pi.ts, src/loop/loop-tick.ts,
+src/loop/loop-state.ts, src/tick/tick-outcome.ts, src/tick/tick-resume.ts. Tests:
+test/claude-args.test.ts and a loop test for `budgetCapped` → handoff.
+
+**Acceptance criteria.**
+- On API billing, with $12 of a $15 fleet cap spent and no per-role cap, an authoring claude
+run's argv carries `--max-budget-usd 3`; a subscription-billed run's and the director's argv
+carry no `--max-budget-usd`.
+- With `maxDailyCostUsdPerRole[role] = 2` and $1.50 of the role's spend, the argv carries
+`--max-budget-usd 0.5` (the role's remaining is lower than the fleet's remaining).
+- A `budgetCapped` authoring result sets `resumePending` and leaves the worktree edits in place;
+the next tick runs as `handoff` with the budget-capped cause.
+- `npm run test` green.
+
+**Landed 2026-10-10 by feature.** `PiRunOptions` lives in src/agent/run-agent.ts (src/pi/pi.ts
+re-exports the type), and the budget-capped verdict arm is in src/tick/tick-verdict.ts rather
+than the plan-named src/loop/loop-tick.ts; the cap is computed in `LoopPi.loopPiOpts` from
+the persisted loop states, and the forced handoff lives in src/tick/tick-resume.ts. The per-role cap is keyed by BASE role
+(`baseRoleOf`) and sums the instance group's spend, matching the scheduler gate's
+`roleCapVerdicts` (src/gates/role-cap-gates.ts) and the base-role keys config validation
+enforces; the plan's `maxDailyCostUsdPerRole[role]` shorthand means that base-role key.
 
 ### Finish the stale code-path citation sweep, part 2a/5: `plans/portability.md`, part 5/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 

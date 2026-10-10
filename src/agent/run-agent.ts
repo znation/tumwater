@@ -140,6 +140,10 @@ export interface PiRunOptions {
    * review, landing, and conflict-resolution runs leave it unset, so the tool never registers
    * there (src/pi-extension/role-notes.ts). Undefined: no notebook. */
   notesPath?: string;
+  /** The remaining daily budget this run may spend, in USD, when the caller can cap it
+   * (plans/agent-backends.md §7): the claude backend forwards it as `--max-budget-usd`, and
+   * backends with no such flag ignore it. Undefined means no per-run cap. */
+  maxBudgetUsd?: number;
 }
 
 /** Run the configured agent backend non-interactively in a worktree and distill the result.
@@ -187,6 +191,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       agentBin: resolved.bin,
       runMarker,
       notesPath: opts.notesPath,
+      ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
     });
     // Record the run in the session ledger before its spawn, so a later resume can pick the
     // newest session of its own kind instead of whatever file is newest in the dir. The id is

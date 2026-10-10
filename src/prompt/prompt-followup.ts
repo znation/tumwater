@@ -18,10 +18,11 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * deadline killed a still-making-progress run, the budget gate reopened mid-run and the
  * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30), the
  * subscription usage window rejected the run and the fleet held claude seams until it reset
- * (plans/agent-backends.md §8, part 6e), or the newest author session belongs to another agent
- * (plans/agent-backends.md "Sessions") — a handoff runs a fresh session over the interrupted
- * run's uncommitted worktree. */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit";
+ * (plans/agent-backends.md §8, part 6e), the run hit its per-run budget cap and the worktree
+ * hands off to the fallback seam (plans/agent-backends.md §7, part 7a/7), or the newest author
+ * session belongs to another agent (plans/agent-backends.md "Sessions") — a handoff runs a
+ * fresh session over the interrupted run's uncommitted worktree. */
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped";
 
 /** The shared closing paragraph of the four resume bridges that hand the same task back
  * unchanged (restart, hung-tool, budget-resumed, rate-limit): finish or redo what you started
@@ -91,9 +92,19 @@ ${REPLY_ENDINGS}`;
  * the full assembled tick prompt, plus the one fact a fresh session cannot know: an interrupted
  * run's uncommitted edits are sitting in the worktree. The worktree is NOT reset for a handoff,
  * so the bridge must send the new run to `git diff` before it starts its own work. */
-export function buildHandoffPrompt(roleId: string, tickPrompt: string): string {
-  return `${tickPrompt}\n\nAn earlier run of the "${roleId}" loop on another model was interrupted; its
+export function buildHandoffPrompt(
+  roleId: string,
+  tickPrompt: string,
+  cause: ResumeCause = "handoff",
+): string {
+  const note =
+    cause === "budget-capped"
+      ? `An earlier API-billed claude run of the "${roleId}" loop hit its per-run budget cap before it
+could finish; its uncommitted edits are in your worktree — review \`git diff\`, then finish or
+discard them. This run starts on the seam the daily budget left you.`
+      : `An earlier run of the "${roleId}" loop on another model was interrupted; its
 uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them.`;
+  return `${tickPrompt}\n\n${note}`;
 }
 
 /** The one-turn follow-up sent into a tick's OWN session (--continue) when the run changed files

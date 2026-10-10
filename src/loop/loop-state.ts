@@ -84,9 +84,11 @@ export interface LoopState {
    * reopened and the in-flight fallback tick was handed back to the primary model
    * (PLANS.md 2026-09-30); "rate-limit" when a subscription claude usage window rejected the
    * run, so the bridge names the held window rather than a restart (plans/agent-backends.md
-   * part 6e). Cleared with resumePending at tick start; absent for restart/cut-off
-   * resumes, whose causes are derived. */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit";
+   * part 6e); "budget-capped" when an API-billed claude run hit its per-run `--max-budget-usd`
+   * cap, so the next tick hands the kept worktree off to the fallback seam (part 7a/7).
+   * Cleared with resumePending at tick start; absent for restart/cut-off resumes, whose causes
+   * are derived. */
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped";
   /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure

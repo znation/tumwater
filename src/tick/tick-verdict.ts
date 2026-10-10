@@ -131,6 +131,22 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     return { result: "error", resumeCause: "rate-limit" };
   }
 
+  // An API-billed claude run cut off at its per-run `--max-budget-usd` cap is a budget
+  // handback, not a failed tick: the remaining daily budget is spent, so the run stopped with
+  // its session and worktree edits intact. Keep both and let the next tick hand off over the
+  // kept worktree (plans/agent-backends.md §7, part 7a/7); the cap is what keeps one runaway
+  // run from overshooting the daily cap. `aborted` is the budget-handback result
+  // (src/loop/loop-recovery.ts) and schedules the resume promptly.
+  if (!pi.ok && ctx.role !== DIRECTOR_ROLE && pi.budgetCapped) {
+    s.lastError = pi.errorMessage ?? "claude per-run budget cap reached";
+    // Arm the resume here rather than in applyTickOutcome: the lease release reads
+    // `resumePending` as soon as the tick returns (runTickInLeasePhase), before
+    // applyTickOutcome runs, so without this the slot is detached and the edits are lost.
+    s.resumePending = true;
+    ctx.pending.requeueForResume(s, ctx.userPrompt);
+    return { result: "aborted", resumeCause: "budget-capped" };
+  }
+
   // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
   // and any note it left are the run's verdict — classify what it left behind
   // (src/verdict/refusal.ts).

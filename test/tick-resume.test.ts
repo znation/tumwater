@@ -596,3 +596,58 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
     restoreHome();
   }
 });
+
+// PLANS.md part 7a/7: an API-billed claude run cut off at its per-run `--max-budget-usd` cap
+// keeps its worktree and session and hands off to the fallback seam. The handoff is forced even
+// when the capped session's transcript is still resumable, because the fallback may be a
+// different backend and claude keeps no flags across --resume.
+test("a budgetCapped claude run keeps the worktree and hands off to the fallback", async () => {
+  const { root, wt } = await initializedWorktree("feature");
+  const cwd = fs.realpathSync(wt);
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    withClaudeAuthor(root, cwd, "c1");
+    fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
+    const s = freshLoopState("feature");
+    const outcome = await resolveTickVerdict({
+      root,
+      wt,
+      role: "feature",
+      mainBranch: "main",
+      state: s,
+      pending: new PendingPrompt(root, "feature"),
+      turns: 1,
+      userPrompt: null,
+      pi: piRunResult({
+        ok: false,
+        budgetCapped: true,
+        errorMessage: "Reached maximum budget",
+        producedAssistantContent: true,
+      }),
+      flow: null,
+      warn: () => {},
+      merge: async () => "changed" as const,
+      finishAbortedTick: async () => ({ result: "aborted" as const }),
+    });
+    // A budget cap is a handback, not a failed tick: the verdict arms the resume before the
+    // lease release reads it, and nothing resets the kept edits.
+    assert.equal(outcome?.result, "aborted", "a cap ends the tick as an interruption");
+    assert.equal(s.resumePending, true, "the verdict arms the next resume before the lease pins the slot");
+    assert.equal(slotPinnedForResume(s, outcome), true, "the lease keeps the worktree for the resume");
+    applyTickOutcome(s, defaultConfig(), "feature", outcome!);
+    assert.equal(s.resumeCause, "budget-capped", "the resume names the cap");
+    assert.equal(fs.readFileSync(path.join(wt, "wip.txt"), "utf8"), "half-done\n", "the edits survive");
+
+    // The claude session is still resumable (its transcript exists), yet the cap forces a fresh
+    // session over the kept worktree: a handoff, not a resume.
+    assert.ok(fs.existsSync(claudeTranscriptPath(cwd, "c1")), "the capped session's transcript lingers");
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, false, "a budget-capped session is not resumed");
+    assert.equal(p.handoff, true, "the kept worktree is handed off");
+    assert.equal(p.resumeCause, "budget-capped");
+    assert.match(p.prompt, /per-run budget cap/);
+  } finally {
+    restoreHome();
+  }
+});

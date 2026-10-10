@@ -6,7 +6,10 @@ import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
-import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
+import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
+import { dailyCost, fleetDailyCost } from "../budget/budget.js";
+import { loadLoopState } from "./loop-state.js";
+import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { buildStageFixPrompt } from "../gates/gate-prompts.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -30,6 +33,43 @@ const RATE_LIMIT_NO_HINT_RETRY_S = Math.round(HOLD_BASE_MS / 1000);
 /** The retry's pause on the real clock; tests inject host.sleep and never reach this. */
 function sleepFor(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/** The `--max-budget-usd` cap for one API-billed claude authoring run (plans/agent-backends.md
+ * §7): the remaining fleet budget (`maxDailyCostUsd` − today's fleet spend), lowered to the
+ * base role's own remaining cap when `maxDailyCostUsdPerRole` names it. The cap map and its
+ * spend are keyed by BASE role, exactly as the scheduler's role-cap gate reads them
+ * (src/gates/role-cap-gates.ts: `baseRoleOf` groups `feature`/`feature-2` and sums the
+ * group's spend), so instance loop ids share their base's cap instead of silently falling
+ * through to the fleet budget. Returns undefined — no cap — for the director, a non-claude
+ * seam, an account that is not API-billed, a disabled cap (0), or no remaining budget at all
+ * (a non-positive cap is dropped by the argv builder). Spend is read from the persisted loop
+ * states: each role's daily window is what the budget gate and the dashboards sum, and this
+ * runs before the authoring run records its own cost. */
+function authoringBudgetCap(
+  root: string,
+  role: string,
+  cfg: TumwaterConfig,
+  agent: string,
+): number | undefined {
+  if (role === DIRECTOR_ROLE || agent !== "claude") return undefined;
+  if (readClaudeAccount(root)?.billing !== "api") return undefined;
+  const now = Date.now();
+  const states = loopIds(cfg).map((r) => loadLoopState(root, r));
+  let cap = cfg.maxDailyCostUsd - fleetDailyCost(states, now);
+  const base = baseRoleOf(role);
+  const perRole = cfg.maxDailyCostUsdPerRole?.[base];
+  if (perRole !== undefined && perRole > 0) {
+    const members = states.filter((s) => baseRoleOf(s.role) === base);
+    const spent =
+      members.length > 0
+        ? members.reduce((sum, s) => sum + dailyCost(s, now), 0)
+        : dailyCost(loadLoopState(root, role), now);
+    cap = Math.min(cap, perRole - spent);
+  }
+  // Round the subtraction's floating-point residue off so the argv carries a clean number.
+  cap = Math.round(cap * 1e6) / 1e6;
+  return cap > 0 ? cap : undefined;
 }
 
 /** What the extracted pi-run plumbing needs from its owning loop. The loop supplies live
@@ -86,9 +126,14 @@ export class LoopPi {
     // config is the default for every other caller. Resolved once here so the native-log path
     // names the same agent the run actually uses.
     const resolved = config ?? configForRole(this.host.config(), this.host.role);
+    const maxBudgetUsd =
+      kind === "author"
+        ? authoringBudgetCap(this.host.root, this.host.role, this.host.config(), resolved.agent ?? "pi")
+        : undefined;
     return {
       cwd: wt,
       prompt,
+      ...(maxBudgetUsd !== undefined ? { maxBudgetUsd } : {}),
       // Every run names its kind explicitly; the marker it writes is the dashboards' demux
       // key, so parts 2/5 and 4/5 may put author and gate runs in the same worktree.
       kind,

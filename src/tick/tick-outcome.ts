@@ -79,9 +79,12 @@ export interface TickOutcome {
    * "timeout" bridge, which asks for the smallest finish against the same limit); an aborted
    * tick handed back at budget_resumed (PLANS.md 2026-09-30) carries "budget-resumed", whose
    * bridge says the run moved back to the primary model; a subscription claude usage-window
-   * rejection carries "rate-limit", whose bridge names the held window (part 6e). Set only by
-   * those outcomes; every other resume cause is derived from state (cut-off streak, restart). */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit";
+   * rejection carries "rate-limit", whose bridge names the held window (part 6e); an
+   * API-billed claude run cut off at its per-run budget cap ends `aborted` with
+   * "budget-capped", whose handoff carries the kept worktree to the fallback (part 7a/7). Set
+   * only by those outcomes; every other resume cause is derived from state (cut-off streak,
+   * restart). */
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped";
   /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the land
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the tick as no evidence about the backend. */

@@ -155,6 +155,9 @@ export const claudeBackend: AgentBackend = {
       // owns the view so a caller cannot mutate the loaded config through the returned array.
       args: resolvedAgentConfig(run.config, "claude").args,
       prompt: run.prompt,
+      // The caller computes the remaining daily budget for an API-billed claude run and the
+      // adapter forwards it; a subscription run or the director passes none (part 7a/7).
+      ...(run.maxBudgetUsd !== undefined ? { maxBudgetUsd: run.maxBudgetUsd } : {}),
       // claude does not load the bundled pi extensions, so a run carrying a notebook gets the
       // role_notes MCP server instead. Passed on EVERY claude invocation that carries a
       // notebook — fresh or resumed, a transient retry, a SUMMARY follow-up — because claude
