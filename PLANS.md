@@ -59,100 +59,197 @@ cap), plus prompt snapshot cases for both dialects.
   intact.
 - `npm run test` green.
 
-### Agent backends, part 6/7: subscription billing — exempt from the cap, throttled and displayed by the usage window (planned 2026-10-09 by operator; requires parts 4a/7, 4b/7 and 4e/7 landed)
-
-**Needs review 2026-10-10 by feature: too large for one run**
+### Agent backends, part 6a/7: the claude account state and notional spend (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 4a/7, 4b/7 and 4e/7 landed)
 
 Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
-window").
+window", "Testing").
 
-Operator decision 2026-10-09: a run paid by a claude.ai subscription does not count against the
-daily dollar cap. The five-hour window is its only throttle, and the TUI/GUI show that window
-instead of the daily spend. API-key runs keep today's spending rules.
+Goal: detect whether a claude run is paid by a claude.ai subscription or an API key, persist
+that answer, and keep subscription cost out of the daily dollar budget. This is the foundation
+the sibling 6b/7–6e/7 parts read; it changes no scheduling, badge, or display behavior on its own.
 
 **Approach.**
 1. **Account state.** Add src/agent/claude/claude-account.ts, which reads and writes
    `.tumwater/state/claude-account.json`:
-   - `{billing, subscriptionType, observedAt, windows: {<rateLimitType>: {status, resetsAt,
-     utilization?, overageStatus, isUsingOverage, observedAt}}}`;
-   - the startup gate seeds it from `claude auth status` plus `ANTHROPIC_API_KEY`;
-   - runAgent overwrites it from each claude result's `billing` and `rateWindows`;
-   - readers treat a window past its `resetsAt` as reset.
-2. **Spend.**
-   - A subscription run without `usedOverage` folds its cost into a new `notionalCostUsd`
-     (src/tick/tick-usage.ts, landing-slot.ts, landing-core.ts), never into `recordDailyCost` or
-     the per-role spend.
-   - A run with `usedOverage`, or with `billing: "api"`, folds its cost into `costUsd` as today.
-   - `tick_end` gains `notionalCostUsd` and `billing`.
-3. **Free-ness.** The claude backend's `pricing.pairFree` returns true while the account state's
-   billing is `subscription`, so the following happens with no budget-gate changes:
-   - `applyFallbackModel` leaves subscription seams alone at the cap;
-   - a subscription claude `fallback` is accepted;
-   - `fleetModelsFree` turns true when every seam is subscription claude.
-4. **Hold.**
-   - A window reading with `status: "rejected"` and no overage places a provider-`claude` fleet
-     hold until `resetsAt` (src/fleet/fleet-hold.ts, fleet-polls.ts). It covers subscription
-     claude seams only.
-   - Events, each logged once per window: `claude_window_warning`, `claude_window_limited`
-     {type, resetsAt} and `claude_window_reset` (src/events/events.ts, event-format.ts).
-5. **Display.**
-   - Add a `claudeWindow` block to the status payload (src/status/status-data.ts,
-     src/ui/status-payload.ts) with the most constrained window and the full list.
-   - The budget badge (src/ui/badges.ts), the TUI budget line and the GUI budget tile
-     (gui-client-*) follow the design's table:
-     - **subscription only:** the window replaces the daily spend, e.g. "Claude 5h · 64% · resets
-       14:30" (the status word when no `utilization`), amber at `allowed_warning`, red "held
-       until 14:30" at `rejected`, and an "overage" marker;
-     - **mixed:** both lines, with the daily spend covering priced seams only;
-     - **no subscription:** unchanged.
-   - `tumwater role <id>` shows the billing line.
-   - `tumwater report` shows notional spend on its own line, outside the total.
-6. **Docs.** README: billing detection, the window display, and overage counting as real spend.
+   `{billing, subscriptionType, observedAt, windows: {<rateLimitType>: {status, resetsAt,
+   utilization?, overageStatus, isUsingOverage, observedAt}}}`. Export the `ClaudeAccount`,
+   `ClaudeBilling` and `ClaudeWindow` types plus a reader that treats a window past its
+   `resetsAt` as reset (and an `observedAt`-less file as absent). Only the orchestrator process
+   writes it.
+2. **Seeding.** src/gates/startup-gate.ts seeds it before the first run from `claude auth status`
+   (`authMethod: "claude.ai"`, `subscriptionType`) plus the presence of `ANTHROPIC_API_KEY`
+   (which claude prefers when set); doctor mirrors the same read.
+3. **Per-run observation.** src/agent/run-agent.ts overwrites the billing and the newest reading
+   per `rateLimitType` from each run result's `billing` and `rateWindows` (already carried on
+   `PiRunResult` in src/pi/pi-run-result.ts), stamping `observedAt`.
+4. **Spend.** src/tick/tick-usage.ts folds a subscription run's `costUsd` into a new
+   `notionalCostUsd` and never calls `recordDailyCost`; an API run, or a run that saw
+   `isUsingOverage` at any point, folds its cost into `costUsd` as today (its cost is real
+   money). `tick_end` gains `notionalCostUsd` and `billing` (src/events/events.ts and
+   event-format.ts, following the omit-when-zero convention the other usage fields use).
+5. **Report.** src/report/report-data.ts prints notional spend on its own line ("claude
+   subscription, API-equivalent: $X"), never in the total.
+6. **Docs.** README: billing detection and overage counting as real spend.
 
-**Interactions (resume across a usage-window hold).** Added 2026-10-09 by operator.
-- **Hold mid-run.** A subscription claude run cut off by a `rejected` window keeps its
-  worktree. After `resetsAt`, the run resumes with `--resume <same id>`; it is not a handoff,
-  because the agent did not change and 6/7 never moves subscription seams to the fallback.
-- **Resume state.** Confirm the run's outcome sets `resumePending`. A rate-limit end that
-  currently routes to a fresh tick would reset the worktree and lose the edits.
-- **Test.** An interrupted fake-claude author tick, a hold, then a reset produces one resume with
-  the same session id, with edits intact.
-- **Overage and API billing.** When overage or API billing does move a seam to its fallback, the
-  4/7 handoff rules apply unchanged.
+**Files touched.** src/agent/claude/claude-account.ts (new), src/agent/run-agent.ts,
+src/gates/startup-gate.ts, src/doctor/doctor-model-checks.ts, src/tick/tick-usage.ts,
+src/events/events.ts, src/events/event-format.ts, src/report/report-data.ts, README.md.
 
-**Files touched.**
-- src/agent/claude/claude-account.ts (new), src/agent/claude/claude-backend.ts
-- src/agent/run-agent.ts
-- src/tick/tick-usage.ts, src/tick/tick-finalize.ts
-- src/landing/landing-slot.ts, src/landing/landing-core.ts
-- src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts
-- src/events/events.ts, src/events/event-format.ts
-- src/status/status-data.ts, src/ui/status-payload.ts, src/ui/badges.ts,
-  src/ui/status-render.ts, src/ui/gui/gui-client-*.ts
-- src/roles/role-render.ts, src/report/report-data.ts
-- src/gates/startup-gate.ts
-- README.md
-
-Tests:
-- test/claude-account.test.ts
-- cases in test/tick-usage.test.ts, test/fleet-hold.test.ts, test/tui-budget.test.ts, the GUI
-  budget-tile tests and test/report.test.ts
+**Tests.** test/claude-account.test.ts (new); cases in test/tick-usage.test.ts,
+test/report.test.ts.
 
 **Acceptance criteria.**
-- **Exempt.** With `maxDailyCostUsd: 15` and subscription billing, ten fake-claude ticks costing
-  $3 each leave the daily spend at $0. No seam moves to its fallback, and `tumwater report`
-  shows "$30.00 notional".
-- **Overage.** The same ticks with `isUsingOverage: true` count $30 against the cap, and the cap
-  moves them to the fallback.
-- **API.** With `apiKeySource: "ANTHROPIC_API_KEY"`, the costs count against the cap exactly
-  as a priced pi model's do.
-- **Hold.** A `rejected` five-hour reading holds subscription claude seams until `resetsAt`,
-  while pi seams tick. It logs `claude_window_limited` once and `claude_window_reset` once.
-- **Display.** An all-subscription fleet's TUI and GUI show the window line and no daily-spend
-  line. A mixed fleet shows both. A pi-only fleet's rendering is byte-identical to before.
+- With `maxDailyCostUsd: 15` and subscription billing, ten fake-claude ticks costing $3 each
+  leave the daily spend at $0, and `tumwater report` shows "$30.00 notional".
+- The same ticks with `isUsingOverage: true` count $30 against the cap.
+- With `apiKeySource: "ANTHROPIC_API_KEY"`, costs count against the cap exactly as a priced pi
+  model's do, and the report's notional line stays at $0.
+- A window whose `resetsAt` has passed reads as reset; an absent account file reads as no
+  subscription.
 - `npm run test` green.
 
-### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires part 6/7 landed)
+### Agent backends, part 6b/7: subscription free-ness and the cap exemption (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed)
+
+Design: plans/agent-backends.md ("Free-ness", "Every seam, checked").
+
+Goal: a subscription claude seam is free money, so the daily cap never moves it to a fallback
+and an all-subscription fleet resolves as free. Depends on 6a's account state.
+
+**Approach.**
+1. **Free predicate.** Today `piPairFree` (src/pi/pi-models.ts) refuses any non-pi backend
+   (`isAgentId(provider)`), and `fleetModelsFree`/`fallbackModelFree` judge every pair through
+   it. Extend those predicates to take a `ClaudeAccount | null` (the shape 6a defines) and treat
+   a `claude/<id>` seam as free while its billing is `subscription`; keep the rule centralized
+   in src/pi/pi-models.ts rather than adding a per-backend pricing hook, so the badge, the gate,
+   and the config pricing view keep judging pairs with one predicate.
+2. **Callers follow.** src/gates/budget-gates.ts's `pairFreeAt`, the pricing view in
+   src/config/config-views.ts, and src/status/status-data.ts's `fleetModelsFree` /
+   `fallbackModelFree` / seam-free read all go through that predicate unchanged, so
+   `applyFallbackModel` leaves subscription seams alone at the cap, a subscription claude pair
+   is accepted as a budget `fallback` for a paid pi primary, and `fleetModelsFree` turns true
+   when every seam is subscription claude (which 6d renders as the window badge).
+3. **Docs.** README states that a subscription claude model is free and so is never moved to a
+   budget fallback.
+
+**Files touched.** src/pi/pi-models.ts, src/gates/budget-gates.ts, src/config/config-views.ts,
+src/status/status-data.ts, README.md.
+
+**Tests.** Cases in test/pi-models.test.ts, test/budget-gates.test.ts, test/config-views.test.ts.
+
+**Acceptance criteria.**
+- With the cap reached and account billing `subscription`, a subscription claude seam stays
+  put while a priced pi seam moves to its fallback.
+- A subscription claude pair is accepted as a budget `fallback` for a priced pi primary.
+- `fleetModelsFree` is true when every seam is subscription claude and false when one seam is
+  API-billed claude.
+- With no account file or API billing, free-ness is exactly today's behavior.
+- `npm run test` green.
+
+### Agent backends, part 6c/7: the usage-window hold and its events (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed)
+
+Design: plans/agent-backends.md ("Throttle", "Watchdogs and progress").
+
+Goal: a rejected subscription window holds claude seams until it resets, so the fleet does not
+burn a failed run per loop per poll. Depends on 6a's account state.
+
+**Approach.**
+1. **The hold.** A window reading with `status: "rejected"` and no overage places a
+   provider-`claude` fleet hold until `resetsAt` (src/fleet/fleet-hold.ts and
+   src/fleet/fleet-polls.ts). It joins the existing per-provider holds map, so
+   `heldProviders()` gates scheduling exactly as a failure storm does. It covers subscription
+   claude seams only: pi seams, and API-key claude seams, keep ticking. A rejected run is a
+   transient — nothing is reset.
+2. **Integration.** fleet-polls derives the window observation from the account state (via 6a's
+   reader) alongside the runner failure observations, with the same self-lifting guarantee
+   (a held fleet re-opens when `resetsAt` passes).
+3. **Events (once per window, not per run).** `claude_window_warning` on the first
+   `allowed_warning`, `claude_window_limited` `{type, resetsAt}` when the hold is placed, and
+   `claude_window_reset` when it lifts (src/events/events.ts, src/events/event-format.ts).
+
+**Files touched.** src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts,
+src/agent/claude/claude-account.ts (reader use), src/events/events.ts,
+src/events/event-format.ts.
+
+**Tests.** Cases in test/fleet-hold.test.ts, test/fleet-polls.test.ts; event-format coverage.
+
+**Acceptance criteria.**
+- A `rejected` five-hour reading holds subscription claude seams until `resetsAt` while pi seams
+  and API claude seams tick.
+- Many polls across one rejected window log `claude_window_limited` once and
+  `claude_window_reset` once.
+- A first `allowed_warning` logs `claude_window_warning` once.
+- A window with overage, or after `resetsAt`, places no hold.
+- `npm run test` green.
+
+### Agent backends, part 6d/7: the usage-window display (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 6a/7 and 6c/7 landed)
+
+Design: plans/agent-backends.md ("Display, in place of the daily spend").
+
+Goal: the TUI, GUI, `tumwater status` and `tumwater role <id>` show the subscription window in
+place of (or alongside) the daily spend. Depends on 6a's account state and reads 6c's held
+state for the "held until" wording.
+
+**Approach.**
+1. **Status payload.** src/status/status-data.ts gains a `claudeWindow` block (the most
+   constrained window plus the full list), carried through src/ui/status-payload.ts.
+2. **Rendering, following the design table.**
+   - **subscription only:** the window replaces the daily spend, e.g.
+     "Claude 5h · 64% · resets 14:30" (the status word when no `utilization`), amber at
+     `allowed_warning`, red with "claude seams held until 14:30" at `rejected`, and an "overage"
+     marker while `isUsingOverage`.
+   - **mixed:** both lines, with the daily spend covering priced seams only.
+   - **none:** unchanged.
+   The single preformatted budget fragment lives in src/ui/badges.ts (`budgetBadge`), which both
+   dashboards already render through src/ui/status-payload.ts; the GUI sidebar tile that lists
+   every window is src/ui/gui/gui-client-fleet.ts.
+3. **Role view.** src/roles/role-render.ts shows "billing: subscription (5h window)" or
+   "billing: API" for a claude seam.
+4. **Docs.** README: the window display.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/badges.ts,
+src/ui/gui/gui-client-fleet.ts, src/roles/role-render.ts, README.md.
+
+**Tests.** Cases in test/tui-budget.test.ts, test/gui-client-fleet.test.ts,
+test/status-data.test.ts, and test/role-view.test.ts.
+
+**Acceptance criteria.**
+- An all-subscription fleet's TUI and GUI show the window line and no daily-spend line.
+- A mixed fleet shows both lines, the daily spend covering priced seams only.
+- A pi-only fleet's rendering is byte-identical to before.
+- `tumwater role <id>` names the billing for a claude seam.
+- `npm run test` green.
+
+### Agent backends, part 6e/7: resume across a usage-window hold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6c/7 landed)
+
+Design: plans/agent-backends.md ("Interactions (resume across a usage-window hold)").
+
+Goal: a subscription claude run cut off by a rejected window keeps its worktree and resumes with
+the same session id after `resetsAt`, instead of a fresh tick resetting the worktree and losing
+its edits. Depends on 6c's hold.
+
+**Approach.**
+1. **Resume state.** The rate-limit end's outcome must set `state.resumePending` (src/tick/
+   tick-apply.ts's `applyTickOutcome` and src/tick/tick-verdict.ts already own the flag), so
+   src/tick/tick-resume.ts's `planTickStart` treats the next run as a resume rather than a fresh
+   tick. If the end currently routes to a fresh tick, that is the bug this fixes.
+2. **Resume, not handoff.** After `resetsAt`, the run resumes with `--resume <same id>` through
+   src/loop/loop-tick.ts; it is not a handoff, because the agent did not change and 6b never
+   moves subscription seams to the fallback. Nothing re-applies a note.
+3. **Overage and API billing.** When overage or API billing does move a seam to its fallback,
+   the 4/7 handoff rules apply unchanged.
+
+**Files touched.** src/tick/tick-apply.ts, src/tick/tick-verdict.ts, src/tick/tick-resume.ts,
+src/loop/loop-tick.ts, src/agent/run-agent.ts.
+
+**Tests.** A case in test/tick-resume.test.ts using fake-claude.
+
+**Acceptance criteria.**
+- An interrupted fake-claude author tick, a hold, then a reset produces one resume with the same
+  session id, with the worktree edits intact.
+- The resume's cause is named (not a plain fresh tick).
+- `npm run test` green.
+
+### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires parts 6a/7 and 6b/7 landed)
 
 Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
 
