@@ -533,6 +533,52 @@ test("abort --role settles a vetted change whose pin is already gone without thr
     restore();
   }
 });
+
+test("an aborted vetted change settles despite an unwritable state file: no throw, entry dropped, pin discarded", async () => {
+  const root = makeRepo();
+  const shas = await queueChanges(root, ["alpha", "beta"]);
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
+  pipeline.merge = busySlot(); // both changes vet and then wait for the merge slot
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitFor(() => pipeline.vetted.has("alpha") && pipeline.vetted.has("beta"), "both changes to be vetted", 30_000);
+
+    // The abort's outcome write hits an unwritable state file: the state path becomes a
+    // non-empty directory, so writeJsonAtomic's rename fails (EISDIR) — the shape an ENOSPC or
+    // an immutable state path takes. settleAbortedVetted runs in the poll body with nothing to
+    // guard it, so a throw here would end the fleet, and the operator's abort must still drop
+    // the change and its pin rather than leave it to be re-vetted and landed next poll.
+    const stateFile = statePath(root, "alpha");
+    fs.rmSync(stateFile, { recursive: true, force: true });
+    fs.mkdirSync(stateFile, { recursive: true });
+    fs.writeFileSync(path.join(stateFile, "keep"), "");
+
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableLandings(pipeline));
+    await settleAbortedVetted(root, pipeline); // must resolve, not reject out of the poll
+
+    assert.ok(!pipeline.vetted.has("alpha"), "the aborted entry left the pipeline");
+    assert.deepEqual(
+      queuedLandingFiles(root).map((q) => q.entry.role),
+      ["beta"],
+      "alpha's queue entry dropped with its abort; beta still waits, vetted",
+    );
+    assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha's pin was discarded");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta, "beta's pin was untouched");
+    assert.ok(
+      readEvents(root).some(
+        (e) => e.type === "warning" && /the aborted landing for alpha could not be settled/.test(String(e.message)),
+      ),
+      "the failed state write is warned about, not swallowed",
+    );
+  } finally {
+    await bg.stop();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
 test("a vetted change merges while an earlier queue entry is still in review", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];

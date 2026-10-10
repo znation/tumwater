@@ -1,6 +1,6 @@
 import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
 import { removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
-import { queuedLandingFiles } from "./landing-queue.js";
+import { dropLanding, queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { saveLoopState } from "../loop/loop-state.js";
@@ -40,12 +40,25 @@ export async function drainLandings(ctx: LandingPipelineContext, p: LandingPipel
  * does — "aborted" written back, entry dropped, pin discarded (the deliberate stop throws the
  * committed work away). The scheduler runs it every poll right after consuming the requests,
  * held or not: a restart hold that skipped it would hand the flagged change, pin intact, to
- * the next generation to land. */
+ * the next generation to land.
+ *
+ * Unlike a vet or a merge, this settles in the poll body with nothing to guard it: a throw out
+ * of the outcome write — an unwritable state file — would end the fleet's run. It must also
+ * never leave the deliberately aborted change queued (an abandoned queue file would be
+ * re-vetted and landed next poll, against the operator's intent) or keep its pin. So a failed
+ * write is reported and the abort honored by hand: queue file and marker dropped, pin
+ * discarded. */
 export async function settleAbortedVetted(root: string, p: LandingPipeline): Promise<void> {
   for (const [role, v] of [...p.vetted]) {
     if (!v.userAborted) continue;
     p.vetted.delete(role);
-    await settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
+    try {
+      await settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
+    } catch (err) {
+      warnEventBestEffort(root, "harness", `the aborted landing for ${role} could not be settled: ${errorMessage(err)}`);
+      dropLanding(v.file);
+      removeLandingChange(root, role);
+    }
     await discardPinnedRefs(root, [role]);
   }
 }
