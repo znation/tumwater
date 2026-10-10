@@ -187,6 +187,33 @@ test("a slot record's non-finite timestamps read as absent, not as a stuck pin",
   assert.equal(record?.lastReleasedAt, null);
 });
 
+test("a slot record's non-finite lease numbers read as no lease", () => {
+  const root = makeRepo();
+  const badSince = slotWorktreePath(root, 1);
+  const badPid = slotWorktreePath(root, 2);
+  const good = slotWorktreePath(root, 3);
+  mkdirSync(join(root, ".tumwater", "state"), { recursive: true });
+  // A hand edit's `1e999` parses to Infinity and a bare `typeof === "number"` let it through:
+  // a non-finite owner pid would read as a live lease to `tumwater diff`/the dashboard, which
+  // resolve a role's checkout from slots.json without running the pool's clearDeadLeases. Each
+  // unusable number makes the whole claim incomplete, so the slot frees; a healthy lease beside
+  // them still surfaces. Written raw because JSON.stringify turns Infinity into null.
+  writeFileSync(
+    slotsStatePath(root),
+    `{"slots":[` +
+      `{"dir":${JSON.stringify(badSince)},"lease":{"role":"feature","purpose":"tick",` +
+      `"since":1e999,"pid":1234},"pinnedFor":null,"lastRole":null,"lastReleasedAt":null},` +
+      `{"dir":${JSON.stringify(badPid)},"lease":{"role":"clean","purpose":"tick",` +
+      `"since":1,"pid":1e999},"pinnedFor":null,"lastRole":null,"lastReleasedAt":null},` +
+      `{"dir":${JSON.stringify(good)},"lease":{"role":"bugfix","purpose":"tick",` +
+      `"since":1,"pid":4321},"pinnedFor":null,"lastRole":null,"lastReleasedAt":null}]}`,
+  );
+  const slots = readSlotsState(root).slots;
+  assert.equal(slots[0]?.lease, null, "a non-finite since reads as no lease");
+  assert.equal(slots[1]?.lease, null, "a non-finite pid reads as no lease");
+  assert.equal(slots[2]?.lease?.role, "bugfix", "a healthy lease beside them still surfaces");
+});
+
 test("release removes idle unpinned slots when worktreeSlots shrank", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 3 });

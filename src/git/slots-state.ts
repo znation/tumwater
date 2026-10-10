@@ -8,7 +8,7 @@
  * writes it from the CLI process while the orchestrator may be leasing from its own. */
 
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { finiteNumber, isJsonObject } from "../files/json-object.js";
+import { finiteNumber, isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { slotsLockPath, slotsStatePath, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "./worktree.js";
@@ -67,14 +67,17 @@ export function readSlotsState(root: string): SlotsState {
 /** True when a persisted `lease` is a complete claim: role string, purpose, since, and owner
  * pid. Anything less cannot name a live owner, so it reads as no lease and the pool frees the
  * slot — without this, clearDeadLeases read `.pid` off an undefined lease and threw
- * `Cannot read properties of undefined` straight into the pool's claim. */
+ * `Cannot read properties of undefined` straight into the pool's claim. The two numbers go
+ * through nonNegativeNumber, not a bare `typeof`: a hand edit's `1e999` parses to Infinity and
+ * would pass, and a non-finite owner pid looks live to the cross-process readers
+ * (roleWorktreeDir, status-data) that do not run the pool's own clearDeadLeases. */
 function isSlotLease(value: unknown): value is SlotLease {
   return (
     isJsonObject(value) &&
     typeof value.role === "string" &&
     (value.purpose === "tick" || value.purpose === "vet") &&
-    typeof value.since === "number" &&
-    typeof value.pid === "number"
+    nonNegativeNumber(value.since, null) !== null &&
+    nonNegativeNumber(value.pid, null) !== null
   );
 }
 
