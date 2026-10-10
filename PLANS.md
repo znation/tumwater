@@ -378,6 +378,74 @@ unknown-role message; `report --help` names the combination.
   longer says it is rejected.
 - `npm run test` green.
 
+### A numbered read half for `tumwater plan`/`bug`: `--list` (planned 2026-10-10 by plan; independent of the Agent backends series; sibling of the landed `tumwater plan --edit/--cancel` and `tumwater bug --edit/--cancel`)
+
+**Goal.** `tumwater plan --list [--json]` and `tumwater bug --list [--json]` list the entries their
+`--edit <n>` / `--cancel <n>` flags address, each numbered 1..N with its eligibility hold mark, so
+an operator can see the position a command takes instead of counting `### ` headings by eye. Today
+the help says `--cancel <n>` / `--edit <n>` target "the Nth entry … as `tumwater backlog` lists
+it", but `tumwater backlog` prints no numbers (src/backlog/backlog-render.ts); `tumwater prompt
+--list` and `tumwater questions` are already numbered, so plan/bug are the one operator queue
+whose read half hides its positions. Additive only: `tumwater backlog` and its renderer stay
+unchanged.
+
+**Approach.**
+1. **Shared lister.** In src/backlog/backlog-write.ts add `listAndAnnounce(root, args, command,
+   fileName, sectionTitle)`, modeled on `cancelAndAnnounce`: consume one boolean `--list` (repeats
+   refused with `rejectRepeatFlag`), one `--json`, tolerate `--help`/`-h`, and refuse every other
+   token (positional or flag) through `rejectUnknownArgs`. No wake and no `requireReadyRepo` gate,
+   matching the read-only `tumwater backlog` / `tumwater questions` precedent.
+2. **Numbered view.** For plans read `plannedPlanEntries(root)`, for bugs `openBugEntries(root)`
+   (backlog.ts), pair them with `backlogHolds(root).plans` / `.bugs` (backlog-eligibility.ts,
+   already the parallel verdict array `tumwater backlog` renders), and build
+   `{ position: i + 1, title, body, hold }`. These are the same entries, in the same order,
+   that `locateEntry`/`actionableEntryRanges` number for `--edit`/`--cancel`, so one fixture can
+   pin that a `--list` position and a `--cancel` position name the same entry. Prose prints a
+   header line `planned features in PLANS.md:` (or `open bugs in BUGS.md:`) then
+   `${n}. ${title}${holdMark(hold)}` per entry — `holdMark` (already imported by the renderer)
+   keeps the marks byte-identical to `tumwater backlog` — and `no planned features` / `no open
+   bugs` on an empty or missing file, exit 0, like `openQuestionList`'s `no open questions`.
+   `--json` prints `{ entries: [{ position, title, body, hold }] }`, the questions --json shape
+   (src/cli/question-commands.ts) with `hold` the serialized `EntryHold` (null when eligible).
+3. **Dispatch.** In src/cli.ts, in `case "bug"` and `case "plan"`, intercept
+   `args.includes("--list")` before the `--edit`/`--cancel`/file branches and call the shared
+   lister with the section (`Open`/`BUGS.md`, `Planned`/`PLANS.md`). `--list` is flag-shaped and
+   today merely rejected, so the addition takes no existing invocation.
+4. **Docs.** src/cli/help.ts gains a `tumwater plan --list [--json]` stanza and a `tumwater bug
+   --list [--json]` stanza, each naming the file/section and pointing at `--edit`/`--cancel`;
+   README.md's prompt-table row mentions the numbered read half beside `--cancel`/`--edit`,
+   mirroring how it describes `tumwater prompt --list` and `tumwater questions`.
+
+**Files touched.**
+- src/backlog/backlog-write.ts (`listAndAnnounce`; imports `plannedPlanEntries`, `openBugEntries`,
+  `backlogHolds`, `holdMark`)
+- src/cli.ts (the two `--list` interceptions)
+- src/cli/help.ts (two stanzas)
+- README.md (prompt-table wording)
+
+Tests: test/backlog-write.test.ts — a fixture with two planned entries (one eligible, one
+`requires X` blocked) and two open bugs (one refused): `plan --list` prints `1. …` / `2. … [blocked:
+requires X]`, `bug --list` prints the refused bug's `[refused]`; `--json` carries positions
+`[1,2]`, verbatim bodies, and the same `hold` values; `plan --cancel 2` removes exactly the
+entry `plan --list` numbered 2, and `plan --edit 1` rewrites the one numbered 1; an empty section
+prints the "no …" line and exits 0; a missing file too; `plan --list extra` and `plan --list
+--bogus` fail naming the argument, and repeated `--list`/`--json` fail; `tumwater help plan` and
+`help bug` name `--list`.
+
+**Acceptance criteria.**
+- `tumwater plan --list` prints PLANS.md `## Planned` entries numbered 1..N in file order, each
+  title verbatim plus its `[refused]`/`[needs review]`/`[needs replan]`/`[blocked: requires …]`
+  mark exactly as `tumwater backlog` renders it; eligible entries carry no mark.
+- `tumwater bug --list` does the same for BUGS.md `## Open`; both `--json` forms print
+  `{ entries: [{ position, title, body, hold }] }` with bodies verbatim.
+- A position printed by `--list` is the same entry `--cancel <n>` removes and `--edit <n>`
+  rewrites (pinned by one fixture), for both plan and bug.
+- An empty or missing section prints the command's `no …` line and exits 0; a positional or
+  unknown flag beside `--list`, or a repeated `--list`/`--json`, fails naming the argument.
+- `tumwater backlog`, its Markdown render, and its `--json` payload are unchanged — the existing
+  backlog-render tests pass without edits.
+- `npm run test` green.
+
 ### Finish the stale code-path citation sweep across `plans/*.md` (planned 2026-10-10 by organize)
 
 Goal. Every path-shaped token in the plan documents names a path that exists in the tree, every
