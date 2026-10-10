@@ -141,6 +141,22 @@ function locateEntry(
   return entry;
 }
 
+/** The shared read half of the two in-place entry rewrites (remove and edit): resolve the
+ * file, read it — an absent file is an empty section, never a seed, since cancel removes and
+ * edit rewrites but neither writes scaffolding — locate the nth actionable entry, and split
+ * the text into the lines the splice operates on. */
+function readEntryLines(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  n: number,
+): { file: string; lines: string[]; entry: ActionableEntryRange } {
+  const file = path.join(root, fileName);
+  const md = readTextIfExists(file) ?? "";
+  const entry = locateEntry(md, fileName, sectionTitle, n);
+  return { file, lines: md.split("\n"), entry };
+}
+
 /** The section-remove entry point, the appendEntry analogue: the same cross-process lock, so a
  * cancel and a landing's working-tree fast-forward cannot each clobber the other's
  * read-modify-write. */
@@ -169,11 +185,7 @@ function removeEntryLocked(
   sectionTitle: string,
   n: number,
 ): { file: string; title: string } {
-  const file = path.join(root, fileName);
-  // An absent file is an empty section, never a seed: cancel removes, it never writes scaffolding.
-  const md = readTextIfExists(file) ?? "";
-  const entry = locateEntry(md, fileName, sectionTitle, n);
-  const lines = md.split("\n");
+  const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
   // The range's end is the 1-based line before the next heading (the separating blank line at a
   // well-formed section); start-1/end-1 are its 0-based bounds, and the length is end-start+1.
   lines.splice(entry.start - 1, entry.end - entry.start + 1);
@@ -216,11 +228,7 @@ function editEntryLocked(
   title: string,
   body: string,
 ): { file: string; title: string } {
-  const file = path.join(root, fileName);
-  // An absent file is an empty section, never a seed: edit rewrites, it never writes scaffolding.
-  const md = readTextIfExists(file) ?? "";
-  const entry = locateEntry(md, fileName, sectionTitle, n);
-  const lines = md.split("\n");
+  const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
   const metaText = headingMetadata(lines, entry.start - 1).text;
   const stamp = metaText.slice(stripEntryStamp(metaText).length);
   // rest starts at the line after the range's last line: for a well-formed section that is the
