@@ -84,6 +84,8 @@ cap), plus prompt snapshot cases for both dialects.
 
 ### Agent backends, part 6/7: subscription billing — exempt from the cap, throttled and displayed by the usage window (planned 2026-10-09 by operator; requires parts 4a/7, 4b/7 and 4e/7 landed)
 
+**Needs review 2026-10-10 by feature: too large for one run**
+
 Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
 window").
 
