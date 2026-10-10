@@ -171,6 +171,10 @@ Boundaries:
 - Never edit the initial prompt block in ${briefFile} (between the tumwater:prompt markers).
 - PRINCIPLES.md holds this project's design principles; only the director and steward roles may
   edit it. Treat it as read-only — to object to a principle, record the objection in PLANS.md.
+- docs/invariants.md states each subsystem's guarantees, pinned to the test that enforces them.
+  Read the matching section before you reconstruct what the code you are changing is supposed
+  to guarantee; when a landing adds or changes a guarantee, update the register in the same
+  commit.
 
 When to ask, when to refuse:
 - When a fork in the road is genuinely the user's call (product direction, an irreversible
