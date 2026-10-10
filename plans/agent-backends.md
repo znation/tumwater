@@ -148,7 +148,7 @@ The pi adapter wraps today's code byte-for-byte:
 - `piArgs` with its `-e` extensions
 - the identity translator
 - `hasResumableSession`
-- `pi-models.ts` pricing
+- `src/pi/pi-models.ts` pricing
 - `pi auth check`
 
 ### 2. Canonical event stream: translate, don't teach every reader
@@ -234,8 +234,9 @@ Routing a selector to a backend:
      one model everywhere.
    - The defaults are full ids, not the `sonnet`/`opus`/`haiku` aliases: an alias floats with
      claude releases, while event labels and cost history should name what actually ran.
-   - The defaults live in the pure config layer (`AGENT_DEFAULT_MODELS` in
-     src/config/model-selector.ts), not in `defaultConfig()`. That keeps `model` absent from
+   - The defaults live in the pure config layer: `routeModel`
+     (src/config/model-selector.ts) reads them from the private `AGENT_DEFAULT_MODELS` table, not
+     from `defaultConfig()`. That keeps `model` absent from
      configs that never set it, and lets the routing helper resolve a tier default without
      importing the runtime backend registry.
 
@@ -277,7 +278,7 @@ the session was started in. Each `SessionStore` writes a small ledger,
   pi's.
 - **Cross-backend continuation** (budget handback, model fallback, operator `agent` change
   between a shutdown and its resume):
-  - Today `tick-resume.ts` falls back to a *fresh* tick, which resets the worktree and throws
+  - Today `src/tick/tick-resume.ts` falls back to a *fresh* tick, which resets the worktree and throws
     away the interrupted run's uncommitted edits.
   - Instead, add a `handoff` resume cause: a fresh session on the new backend, the worktree left
     as is, and a bridge prompt. The bridge is the tick prompt plus: "an earlier run on another
@@ -334,14 +335,14 @@ Environment, layered on today's (`TUMWATER_RUN`, `NODE_OPTIONS` preload, noteboo
 | bounded-output (head+tail at 12k/16k + full-output file) | Claude Code truncates Bash output and spills large results to a file it names. Not needed; the prompt bullet that promises tumwater's marker becomes dialect text |
 | context-shake (pi `context_edit` at 70/85%) | Not needed: claude auto-compacts (→ `compacted`), window 1M |
 | context-budget (50/70/85% notes) | Dropped for claude in this series. Possible later via a `--settings` PostToolUse hook |
-| role-notes (`role_notes` tool) | **A tiny stdio MCP server shipped in dist** (`src/agent/mcp/role-notes-server.ts`) passed via `--mcp-config` only when `TUMWATER_NOTES_PATH` is set; same 4 KB cap and atomic write, sharing `role-notes.ts`'s write function. Tool name `mcp__tumwater__role_notes`. MCP rather than "edit this file": the notebook lives under `.tumwater/`, which the prompts forbid touching, and every future agent CLI speaks MCP |
+| role-notes (`role_notes` tool) | **A tiny stdio MCP server shipped in dist** (`src/agent/mcp/role-notes-server.ts`) passed via `--mcp-config` only when `TUMWATER_NOTES_PATH` is set; same 4 KB cap and atomic write, sharing `writeRoleNote` (src/agent/role-notes-write.ts). Tool name `mcp__tumwater__role_notes`. MCP rather than "edit this file": the notebook lives under `.tumwater/`, which the prompts forbid touching, and every future agent CLI speaks MCP |
 
-`PromptDialect` carries the only backend-specific prompt text:
+`PromptDialect` (src/prompt/dialect.ts) carries the only backend-specific prompt text:
 
-- the notes tool's name (`ROLE_NOTES_INSTRUCTION`, src/prompt/prompt.ts:220)
-- the read tool's range parameters (`CONTEXT_BUDGET_RULE`, prompt.ts:47; claude's Read also
-  takes `offset`/`limit`)
-- the oversized-output bullet (prompt.ts:57-59)
+- the notes tool's name (`roleNotesInstruction`, src/prompt/prompt.ts)
+- the read tool's range parameters (`CONTEXT_BUDGET_RULE`, src/prompt/prompt.ts; claude's Read
+  also takes `offset`/`limit`)
+- the oversized-output bullet (`PI_DIALECT` / `CLAUDE_DIALECT`, src/prompt/dialect.ts)
 
 Everything else in the prompts already speaks in shell commands and "tool calls".
 
@@ -472,18 +473,18 @@ model's minimum CLI version (`minVersion`), which matters doubly because fleet r
 | qa | same + `extractFlow(finalText)` | none (finalText from the merged last message). Its background servers (`gui &`) are still caught by the marker sweep; claude's own background tasks are disabled |
 | SUMMARY / stage-fix follow-ups | `requestFollowUp`, `continueSession` | `--resume <ledger id>`, same cwd by construction |
 | Transient retry | `runWithTransientRetry` | the same; claude's own `api_retry` happens first, so the harness retry sees fewer transients |
-| Resume after shutdown, quiet-kill, timeout-while-progressing, cut-off, error-dirty | tick-resume.ts | ledger-based resumability; `handoff` when cross-backend or cross-slot |
-| Budget handback / model fallback | loop.ts, model-fallback.ts | `handoff` instead of a lossy fresh tick when backends differ |
-| Reviewer (+ VERDICT recovery, no-rerun nudge) | `runGatePi`, `review-followup.ts` | suite-rerun detection works via the `Bash`→`bash` mapping. Reviewer on claude, authors on pi is a supported mix |
+| Resume after shutdown, quiet-kill, timeout-while-progressing, cut-off, error-dirty | src/tick/tick-resume.ts | ledger-based resumability; `handoff` when cross-backend or cross-slot |
+| Budget handback / model fallback | src/loop/loop.ts, src/loop/model-fallback.ts | `handoff` instead of a lossy fresh tick when backends differ |
+| Reviewer (+ VERDICT recovery, no-rerun nudge) | `LoopPi.runGatePi` (src/loop/loop-pi.ts), src/review/review-followup.ts | suite-rerun detection works via the `Bash`→`bash` mapping. Reviewer on claude, authors on pi is a supported mix |
 | Conflict resolver, refusal-note resolver | `runLandingPi`, `runRolePi` | ledger `kind` keeps their sessions from shadowing the author's |
-| Doctor | doctor-model-checks.ts, doctor-checks.ts | per used agent: binary resolvable; claude `auth status` loggedIn (with the scrubbed env) and its billing (subscription type, or API key); installed CLI ≥ every configured claude model's `minVersion`; claude selectors skip models.json lookup; a pi provider named `claude` warns |
-| Startup gate | startup-gate.ts | checks the binary of every agent any resolved seam uses, not only pi's |
+| Doctor | src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts | per used agent: binary resolvable; claude `auth status` loggedIn (with the scrubbed env) and its billing (subscription type, or API key); installed CLI ≥ every configured claude model's `minVersion`; claude selectors skip models.json lookup; a pi provider named `claude` warns |
+| Startup gate | src/gates/startup-gate.ts | checks the binary of every agent any resolved seam uses, not only pi's |
 | Status, TUI, GUI, events | role-view, status-data, badges, event-format | "pi default" → "`<agent>` default"; `tick_start`/`review_start` `model` selectors carry the agent (`claude/claude-sonnet-5-5`); the window replaces or joins the daily spend (§8) |
 | Reports | report-data, history-data | subscription runs' cost appears as notional, never in spend totals (§7) |
 
 ## Testing
 
-- `test/fakes/fake-claude.ts`, the twin of fake-pi.ts:
+- `test/fakes/fake-claude.ts`, the twin of test/fakes/fake-pi.ts:
   - a PATH shim named `claude` that replays canned stream-json
   - records argv **and stdin** per run
   - creates the transcript file under a temp `HOME` so resume checks pass
@@ -502,7 +503,7 @@ model's minimum CLI version (`minVersion`), which matters doubly because fleet r
     `claude-account.json` gained a window reading when the billing is subscription
   - one call each on the three default models, so a CLI too old for one fails here and not in
     the fleet
-- `test-runner.ts` also strips `TUMWATER_CLAUDE_BIN`, `CLAUDECODE` and `CLAUDE_CODE_*` from the
+- `test/test-runner.ts` also strips `TUMWATER_CLAUDE_BIN`, `CLAUDECODE` and `CLAUDE_CODE_*` from the
   suite environment, so the suite behaves the same when launched from inside Claude Code.
 
 ## Risks
