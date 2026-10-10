@@ -57,22 +57,35 @@ const probe = (...args) => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function gh(args) {
+/** Run `gh` and classify why it did not answer, so the strict `gh()` (release path, dies) and
+ * the tolerant `ghSoft()` (`--status`, reports) share one spawn and one set of causes. Returns
+ * `{ kind: "ran", stdout }` on a clean exit, else `{ kind: "missing" }` (not installed),
+ * `{ kind: "spawn-error", message }`, `{ kind: "killed", signal }`, or `{ kind: "nonzero" }`.
+ * A spawn failure that is not "not installed" (EACCES on a non-executable gh, EMFILE under
+ * load) or a gh killed by a signal must read as its own cause, not as "no run yet": reading
+ * either as "no run yet" would stall the release for five minutes and then report the
+ * misleading "CI never started". */
+function ghSpawn(args) {
   const out = spawnSync("gh", args, { cwd: root, encoding: "utf8" });
-  if (out.error?.code === "ENOENT") die("`gh` is not on PATH — install the GitHub CLI to cut releases.");
-  // A spawn failure that is not "not installed" (EACCES on a non-executable gh, EMFILE under
-  // load) leaves status null, as does a gh killed by a signal. Reading either as "no run yet"
-  // would stall the release for five minutes and then report the misleading "CI never started";
-  // name the real cause instead.
-  if (out.error) die(`could not run \`gh\` (${out.error.message}) — check that the GitHub CLI is installed and executable.`);
-  if (out.status === null) die(`\`gh\` was killed by ${out.signal ?? "an unknown signal"}`);
-  if (out.status !== 0) return null; // e.g. no run yet for this commit
+  if (out.error?.code === "ENOENT") return { kind: "missing" };
+  if (out.error) return { kind: "spawn-error", message: out.error.message };
+  if (out.status === null) return { kind: "killed", signal: out.signal ?? "an unknown signal" };
+  if (out.status !== 0) return { kind: "nonzero" };
+  return { kind: "ran", stdout: out.stdout };
+}
+
+function gh(args) {
+  const r = ghSpawn(args);
+  if (r.kind === "missing") die("`gh` is not on PATH — install the GitHub CLI to cut releases.");
+  if (r.kind === "spawn-error") die(`could not run \`gh\` (${r.message}) — check that the GitHub CLI is installed and executable.`);
+  if (r.kind === "killed") die(`\`gh\` was killed by ${r.signal}`);
+  if (r.kind === "nonzero") return null; // e.g. no run yet for this commit
   try {
-    return JSON.parse(out.stdout);
+    return JSON.parse(r.stdout);
   } catch {
     // gh can exit 0 with non-JSON on stdout (a warning, a version that changed its output);
     // a raw SyntaxError here would name neither the command nor the text it choked on.
-    die(`gh ${args.join(" ")} exited 0 but printed non-JSON — run it by hand to see why:\n${out.stdout.trim().slice(0, 500)}`);
+    die(`gh ${args.join(" ")} exited 0 but printed non-JSON — run it by hand to see why:\n${r.stdout.trim().slice(0, 500)}`);
   }
 }
 
@@ -81,15 +94,13 @@ function gh(args) {
  * stays "no run yet", matching the strict gh(). The release path keeps strict gh(), which
  * dies. */
 function ghSoft(args) {
-  const out = spawnSync("gh", args, { cwd: root, encoding: "utf8" });
-  if (out.error?.code === "ENOENT") return { error: "`gh` is not on PATH" };
-  // Any other spawn failure (EACCES, EMFILE) or a signal termination must read as its own
-  // cause, not as "no run yet for HEAD" — the same masking gh() above now refuses.
-  if (out.error) return { error: `could not run \`gh\` (${out.error.message})` };
-  if (out.status === null) return { error: `\`gh\` was killed by ${out.signal ?? "an unknown signal"}` };
-  if (out.status !== 0) return { run: null };
+  const r = ghSpawn(args);
+  if (r.kind === "missing") return { error: "`gh` is not on PATH" };
+  if (r.kind === "spawn-error") return { error: `could not run \`gh\` (${r.message})` };
+  if (r.kind === "killed") return { error: `\`gh\` was killed by ${r.signal}` };
+  if (r.kind === "nonzero") return { run: null };
   try {
-    return { run: latestRun(JSON.parse(out.stdout)) };
+    return { run: latestRun(JSON.parse(r.stdout)) };
   } catch {
     return { error: "gh returned non-JSON output" };
   }
