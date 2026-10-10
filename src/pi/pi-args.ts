@@ -1,7 +1,7 @@
 /** Building the pi command line for one tick — pure argv construction with no subprocess or
- * file I/O. Split out of pi.ts, which keeps the child-process integration (runPi) and the
- * run's result types; test/pi-args.test.ts pins how config and session choices shape the
- * command line. */
+ * file I/O. Split out of pi.ts; the child-process integration (runPi) now lives in
+ * src/agent/run-agent.ts and the run's result types in src/pi/pi-run-result.ts, while
+ * test/pi-args.test.ts pins how config and session choices shape the command line. */
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,9 +19,9 @@ export function bundledExtensionPaths(): string[] {
   );
 }
 
-/** The fields of PiRunOptions (src/pi/pi.ts) that piArgs reads, plus the resolved agent
- * binary. Declared standalone rather than as a Pick of PiRunOptions so this module stays
- * cycle-free from pi.ts, which imports piArgs back for the spawn. */
+/** The fields of PiRunOptions (src/agent/run-agent.ts) that piArgs reads, plus the resolved
+ * agent binary. Declared standalone rather than as a Pick of PiRunOptions so this module stays
+ * cycle-free from pi-backend.ts, which imports piArgs back for the command line. */
 interface PiArgOptions {
   /** The role/reviewer/fallback-resolved config view (configForRole, reviewRunConfig,
    * applyFallbackModel): its `model` is the concrete selector id — a tier map must be

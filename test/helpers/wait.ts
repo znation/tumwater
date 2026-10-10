@@ -73,14 +73,15 @@ export function within(p: Promise<unknown>, ms = 1_000): Promise<boolean> {
   });
 }
 
-/** Put runPi's watchdog (src/pi/pi.ts: the quiet kill and the stall warning) on logical time for
- * the rest of test `t`. The watchdog is a setInterval that reads Date.now(), and open tool
- * calls are stamped with Date.now() (pi-event-line.ts); both become node:test mock timers,
- * started at the real current time. setTimeout stays real, so everything else a run or tick
- * does — spawns, git, locks, the tick timeout — keeps the wall clock. `timeouts: true` puts
- * setTimeout on the same clock, for a test of the tick timeout itself; it is safe only on a
- * path with no other timer to wait out (no contended lock, no rate-limit wait, no build
- * check). The wait helpers here poll on a real timer captured at load, so they work either way.
+/** Put runPi's watchdog (src/pi/pi-watchdogs.ts: the quiet kill and the stall warning) on
+ * logical time for the rest of test `t`. The watchdog is a setInterval that reads Date.now(),
+ * and open tool calls are stamped with Date.now() (pi-event-line.ts); both become node:test
+ * mock timers, started at the real current time. setTimeout stays real, so everything else a
+ * run or tick does — spawns, git, locks, the tick timeout — keeps the wall clock.
+ * `timeouts: true` puts setTimeout on the same clock, for a test of the tick timeout itself;
+ * it is safe only on a path with no other timer to wait out (no contended lock, no
+ * rate-limit wait, no build check). The wait helpers here poll on a real timer captured at
+ * load, so they work either way.
  *
  * The test moves the watchdog's time with `advance(ms)` at the points it chooses — once the
  * run's raw log shows what it is waiting on (waitForLogLines) — and every check due in that

@@ -100,8 +100,8 @@ export function runMarker(label = "review"): string {
   return JSON.stringify({ type: "tumwater_run", label });
 }
 
-/** A harness-written run marker as src/pi/pi.ts now stamps it — the run's kind, plus its label
- * when it has one (a review run carries both). */
+/** A harness-written run marker as src/agent/run-agent.ts now stamps it — the run's kind, plus
+ * its label when it has one (a review run carries both). */
 export function kindMarker(kind: "author" | "gate", label?: string): string {
   return JSON.stringify(label ? { type: "tumwater_run", kind, label } : { type: "tumwater_run", kind });
 }

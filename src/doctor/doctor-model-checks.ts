@@ -186,8 +186,9 @@ export async function piProviderAuth(
  * (BUGS.md 2026-10-06). When one of
  * PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is set the check also reports that tumwater
  * does not read it — the variables are oh-my-pi's, pi ignores them, and with omp as
- * `agentBin` they still reach omp through the inherited environment (src/pi/pi.ts) — pointing
- * at the tier keys that do the same job (`model.small` / `model.strong`). `auth` is
+ * `agentBin` they still reach omp through the inherited environment (src/pi/pi-backend.ts,
+ * built on src/process/run-marker.ts's agentBaseEnv) — pointing at the tier keys that do the
+ * same job (`model.small` / `model.strong`). `auth` is
  * injectable so tests need no pi on PATH; `env` so the PI_* branches stay hermetic. */
 export async function checkTierModels(
   root: string,

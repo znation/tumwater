@@ -109,10 +109,10 @@ test("a storm that switches cause is a new episode", () => {
 });
 
 test("the progressing timeout shape pools with the plain one into one storm", () => {
-  // src/pi/pi.ts emits two tick-timeout messages: the plain one and the still-making-progress
-  // variant (session and worktree preserved for resume). Both point at the same knob, so the
-  // reducer pools them under one cause — a mixed fleet must not split 2/2 into two
-  // sub-threshold clusters and stay quiet while the fleet is melting down.
+  // src/agent/run-agent.ts emits two tick-timeout messages: the plain one and the
+  // still-making-progress variant (session and worktree preserved for resume). Both point at the
+  // same knob, so the reducer pools them under one cause — a mixed fleet must not split 2/2 into
+  // two sub-threshold clusters and stay quiet while the fleet is melting down.
   const progressing = "timed out after 1800s while still making progress — session and worktree edits preserved for resume";
   const mixed = errorStorm(ERROR_STORM_QUIET, [
     obs("clean", 3, progressing),

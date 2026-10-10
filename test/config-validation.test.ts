@@ -121,7 +121,7 @@ test("selector strings that parse to an empty provider or model half are rejecte
 });
 
 test("model-triple fields reject empty strings but instructions may be empty", () => {
-  // pi.ts skips an empty provider/model/thinking when it builds its flags, so a blank value
+  // pi-args.ts skips an empty provider/model/thinking when it builds its flags, so a blank value
   // is silently ignored and the fleet quietly uses pi's default — reject it instead. This
   // covers the top level and the per-role overrides; review and fallbackModel have their own
   // tests above.
@@ -299,7 +299,7 @@ test("validateConfig rejects blank string-array entries and names their position
 });
 
 test("validateConfig rejects piArgs entries that repeat a harness-managed flag", () => {
-  // pi.ts appends config.piArgs AFTER its own flags and pi's parser is last-wins, so a
+  // pi-args.ts appends config.piArgs AFTER its own flags and pi's parser is last-wins, so a
   // repeated flag silently overrides the harness: `--mode text` makes every tick's stream
   // unparseable and `--model` spends on a model tumwater.json never named. Reject the
   // collision and point at the setting that owns it.
@@ -380,7 +380,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
       validationError({ review: { [key]: 7 } }),
       new RegExp(`review\\.${key} must be a string \\(got 7\\)`),
     );
-    // pi.ts skips an empty value when it builds its flags, so an empty override would be
+    // pi-args.ts skips an empty value when it builds its flags, so an empty override would be
     // silently ignored and the reviewers would quietly use the top-level model.
     assert.match(
       validationError({ review: { [key]: "" } }),
@@ -730,9 +730,9 @@ test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INT
 
 test("duration-seconds fields reject values whose milliseconds overflow node's timer range", () => {
   // BUGS.md 2026-10-03: the seconds rules admitted any finite number, so a one-zero typo
-  // (`{"tickTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/pi/pi.ts — and node's
-  // setTimeout/setInterval clamp a delay that does not fit in a signed 32-bit integer down
-  // to 1ms (verified: a setTimeout(1e300*1000) fired ~2ms later), killing every pi run the
+  // (`{"tickTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/agent/run-agent.ts — and
+  // node's setTimeout/setInterval clamp a delay that does not fit in a signed 32-bit integer
+  // down to 1ms (verified: a setTimeout(1e300*1000) fired ~2ms later), killing every pi run the
   // moment it started. All seconds fields that feed a ×1000 duration share one bound:
   // 2147483 seconds × 1000 stays inside setTimeout's 2^31−1 ms range.
   const MAX_DURATION_SECONDS = 2147483;

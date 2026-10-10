@@ -4,8 +4,8 @@
  * probe's runMarkers check and doctor's orphan judgment), and the sweep that SIGTERMs
  * this run's leftovers whatever process group they ended up in. Split out of
  * process-table.ts — which keeps the doctor-facing probe interface and the ps/lsof/top
- * parsing it is made of — because this half serves pi.ts's run stamping and the exit
- * sweep, and shares none of the probe's table-parsing concerns; the probe reads marks
+ * parsing it is made of — because this half serves src/agent/run-agent.ts's run stamping and
+ * the exit sweep, and shares none of the probe's table-parsing concerns; the probe reads marks
  * through the same parsers exported here. */
 
 import crypto from "node:crypto";

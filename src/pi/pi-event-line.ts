@@ -1,6 +1,7 @@
 /** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or file
- * I/O. Split out of pi.ts — which keeps the child-process integration (runPi) and whose
- * PiStreamParser in pi-stream.ts folds those lines into a run result — because these are shared
+ * I/O. Split out of pi.ts, whose child-process integration (runPi) now lives in
+ * src/agent/run-agent.ts and whose PiStreamParser in pi-stream.ts folds those lines into a run
+ * result — because these are shared
  * by every observer that folds raw pi log lines into per-type state (src/ui/progress-data.ts's live
  * tail, transcript.ts's renderer), and those display modules should not import from the subprocess
  * layer for a pure parse: the same separation reply-contract.ts gives the sentinel/verdict text. */
@@ -8,12 +9,12 @@
 import { isJsonObject, parseJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 
-/** Which kind of pi run a raw-log `tumwater_run` marker names (src/pi/pi.ts writes it): the
- * tick's own authoring run ("author") or the review/landing gate's run ("gate"). A role's
- * one log interleaves both, and the dashboards demultiplex them by this field rather than by
- * the run's worktree path (plans/worktree-pool.md part 1/5). Declared in this pure module so
- * both the subprocess layer (pi.ts) and the display layer (progress-data.ts) can name it
- * without importing each other. */
+/** Which kind of pi run a raw-log `tumwater_run` marker names (src/agent/run-agent.ts writes
+ * it): the tick's own authoring run ("author") or the review/landing gate's run ("gate"). A
+ * role's one log interleaves both, and the dashboards demultiplex them by this field rather
+ * than by the run's worktree path (plans/worktree-pool.md part 1/5). Declared in this pure
+ * module so both the subprocess layer (src/agent/run-agent.ts) and the display layer
+ * (progress-data.ts) can name it without importing each other. */
 export type PiRunKind = "author" | "gate";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
@@ -57,9 +58,9 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
 
 /** True when a tool_execution_update's partialResult carries new output content. bash emits one
  * empty-content update right after start, and only updates with real text prove the command is
- * alive — so stalled-tool-call tracking (src/pi/pi.ts's warning, src/ui/progress-data.ts's flag)
- * moves its clock on these alone: a content-free keepalive must not mask a hang, exactly as
- * message_update deltas cannot reset the quiet watchdog. */
+ * alive — so stalled-tool-call tracking (src/pi/pi-watchdogs.ts's warning,
+ * src/ui/progress-data.ts's flag) moves its clock on these alone: a content-free keepalive must
+ * not mask a hang, exactly as message_update deltas cannot reset the quiet watchdog. */
 export function toolUpdateHasContent(partialResult: unknown): boolean {
   if (!isJsonObject(partialResult)) return false;
   const content = partialResult.content;
@@ -72,25 +73,26 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
 
 /** One tool call started but not yet ended — keyed by pi's toolCallId, with a short human
  * label and the wall-clock time of its start or last content-bearing update. The shared shape
- * behind both open-call trackers: runPi's stall warning (src/pi/pi.ts) and the dashboards' live
- * flag (src/ui/progress-data.ts). */
+ * behind both open-call trackers: runPi's stall warning (src/pi/pi-watchdogs.ts) and the
+ * dashboards' live flag (src/ui/progress-data.ts). */
 export interface OpenToolCall {
   id: string;
   label: string;
   /** The call's full raw command text (bash-like args only; unset for other tools). The
-   * label is surface text truncated for display, so anything that inspects the command's
-   * shape — the stall warning's buffered-output check (src/pi/pi.ts) — reads this instead:
-   * a redirect beyond the label's truncation point would otherwise be invisible. */
+   * label is surface text truncated for display, so anything that inspects the command's shape —
+   * the stall warning's buffered-output check (src/pi/pi-watchdogs.ts) — reads this instead: a
+   * redirect beyond the label's truncation point would otherwise be invisible. */
   command?: string;
   /** Epoch ms when the call started or last received a content-bearing update. */
   lastActivityAt: number;
 }
 
 /** The call's full raw command text from a tool-execution event's args (bash-like tools name
- * it `command`, some `cmd`; other tools yield ""). The two open-call trackers (src/pi/pi.ts's
- * stall warning, src/ui/progress-data.ts's dashboard flag) store this beside the display label
- * because anything that inspects the command's shape must see the raw text: the label
- * truncates at 32 chars, so an operator past that point would be invisible there. */
+ * it `command`, some `cmd`; other tools yield ""). The two open-call trackers
+ * (src/pi/pi-watchdogs.ts's stall warning, src/ui/progress-data.ts's dashboard flag) store this
+ * beside the display label because anything that inspects the command's shape must see the raw
+ * text: the label truncates at 32 chars, so an operator past that point would be invisible
+ * there. */
 export function toolCallCommand(args: unknown): string {
   if (!isJsonObject(args)) return "";
   if (typeof args.command === "string") return args.command;

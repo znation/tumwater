@@ -18,9 +18,9 @@ test("isNothingToDo detects the sentinel", () => {
 });
 
 // The TUMWATER_REFUSED line blocks a PLANS.md/BUGS.md entry and routes a tick to handleRefusal
-// (plans/refusal-and-thrash.md), so its detection semantics are load-bearing: pi.ts's boolean
-// scan is deliberately loose (whole-reply includes), while the REASON extraction is anchored at
-// line start so prose that merely mentions the sentinel cannot set it.
+// (plans/refusal-and-thrash.md), so its detection semantics are load-bearing: pi-stream.ts's
+// boolean scan is deliberately loose (whole-reply includes), while the REASON extraction is
+// anchored at line start so prose that merely mentions the sentinel cannot set it.
 
 test("extractRefusal returns the trimmed reason from a line-start sentinel", () => {
   const text = `I will not force this plan.\n${REFUSED_SENTINEL}: it would delete user data\nSUMMARY: refused`;

@@ -498,9 +498,10 @@ test("feed skips blank and whitespace-only lines without delivering them to onLi
 });
 
 test("content-free tool_execution_updates do not count as progress (no keepalive reset of the hang watchdog)", () => {
-  // progressCount drives runPi's quiet watchdog (src/pi/pi.ts allowedSilenceMs): a zombie stream
-  // that emits periodic content-free tool_execution_update keepalives must not reset it, the
-  // same rule message_update deltas already obey. Only a content-bearing update counts.
+  // progressCount drives runPi's quiet watchdog (src/pi/pi-watchdogs.ts's allowedSilenceMs): a
+  // zombie stream that emits periodic content-free tool_execution_update keepalives must not
+  // reset it, the same rule message_update deltas already obey. Only a content-bearing update
+  // counts.
   const parser = new PiStreamParser();
   const line = (event: Record<string, unknown>) => JSON.stringify(event) + "\n";
   parser.feed(

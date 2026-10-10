@@ -582,7 +582,7 @@ test("fallbackModel is an optional validated key, absent by default", () => {
   );
   assert.match(validationError({ fallbackModel: "omlx" }), /fallbackModel must be an object/);
   assert.match(validationError({ fallbackModel: { model: 7 } }), /fallbackModel\.model must be a string/);
-  // An empty string names nothing either: pi.ts skips it and fallbackPair drops it, so the
+  // An empty string names nothing either: pi-args.ts skips it and fallbackPair drops it, so the
   // fallback would never engage despite the section passing the shape checks.
   assert.match(
     validationError({ fallbackModel: { provider: "" } }),

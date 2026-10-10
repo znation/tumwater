@@ -32,8 +32,8 @@ export function parseJsonConfig(
  * defaults for concurrency, timeouts, log size, retention, thrash detection, idle backoff,
  * self-redeploy, and review settings. The return type is the resolved view (config-views.ts): a
  * freshly defaulted config has no model map to resolve — only a loaded file can carry one — so
- * every call site that hands a default into a pi run (pi.ts, tests) satisfies ResolvedModelConfig
- * directly. */
+ * every call site that hands a default into a pi run (run-agent.ts's PiRunOptions, tests)
+ * satisfies ResolvedModelConfig directly. */
 export function defaultConfig(): ResolvedModelConfig {
   const roles: Record<string, RoleConfig> = {};
   for (const id of allRoleIds()) roles[id] = { enabled: true };

@@ -10,8 +10,9 @@ import { describeToolCall } from "../text/phrases.js";
 import { isJsonObject, nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
- * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi,
- * hasResumableSession, and the stderr crash signature) — so the parser can be unit-tested and
+ * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
+ * and the stderr crash signature) now lives in src/agent/run-agent.ts,
+ * src/agent/session-ledger.ts, and src/pi/pi-backend.ts — so the parser can be unit-tested and
  * reasoned about without spawning a process, the same separation pi-event-line.ts gives the
  * per-line parse and reply-contract.ts the sentinel/verdict text. */
 
@@ -238,9 +239,9 @@ export function backendKind(text: string): BackendFailureKind {
 }
 
 /** The backend-failure kind `text` names, or undefined when it names none — the stderr
- * classifier (src/pi/pi.ts's close handler) needs "no match" distinct from backendKind's
- * "model-load" default. Gated by TRANSIENT_BACKEND, so a text the event path ignores is
- * ignored on stderr too. Pure; exported for src/pi/pi.ts's close handler. */
+ * classifier (src/pi/pi-backend.ts's classifyExit) needs "no match" distinct from
+ * backendKind's "model-load" default. Gated by TRANSIENT_BACKEND, so a text the event path
+ * ignores is ignored on stderr too. Pure; exported for pi-backend.ts's classifyExit. */
 export function matchBackendFailure(text: string): BackendFailureKind | undefined {
   return TRANSIENT_BACKEND.test(text) ? backendKind(text) : undefined;
 }

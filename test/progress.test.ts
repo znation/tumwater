@@ -262,7 +262,8 @@ test("the harness's review label line routes following lines to the gate accumul
   writeLogLines(file, [
       SESSION,
       assistantLine("author", { tokens: 100 }),
-      // src/pi/pi.ts writes the harness's label line before the reviewer's session event.
+      // src/agent/run-agent.ts writes the harness's label line before the reviewer's session
+      // event.
       JSON.stringify({ type: "tumwater_run", label: "review" }),
       assistantLine("reviewer", { tokens: 200 }),
     ]);

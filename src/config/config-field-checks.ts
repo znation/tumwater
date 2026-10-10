@@ -141,9 +141,9 @@ export function checkKnownRoleId(
 }
 
 /** Validate one string field when present. `allowEmpty` defaults true; the model-triple fields
- * pass false — pi.ts skips an empty value when it builds its flags, so `"provider": ""` would
- * be silently ignored and the fleet would quietly fall back to pi's default — and an empty
- * `fallbackModel` field makes fallbackPair drop it, so the fallback never engages. */
+ * pass false — pi-args.ts skips an empty value when it builds its flags, so `"provider": ""`
+ * would be silently ignored and the fleet would quietly fall back to pi's default — and an
+ * empty `fallbackModel` field makes fallbackPair drop it, so the fallback never engages. */
 export function checkStringField(
   problems: string[],
   obj: Record<string, unknown>,
@@ -251,8 +251,8 @@ export function checkBooleanField(
 }
 
 /** Validate one array-of-strings field when present. A blank entry has no valid meaning and
- * would otherwise be silently inert: pi.ts passes every `piArgs` element straight to pi's CLI,
- * where an empty string is read as an empty user MESSAGE (pi's args parser pushes any
+ * would otherwise be silently inert: pi-args.ts passes every `piArgs` element straight to pi's
+ * CLI, where an empty string is read as an empty user MESSAGE (pi's args parser pushes any
  * non-flag token, "" included, as a message), and isExemptPath skips a blank
  * `review.exemptPaths` entry so it never matches anything. Its message names the position
  * so one edit removes it. */

@@ -2,11 +2,11 @@
  * TUMWATER_NOTHING_TO_DO sentinel a loop emits when it found nothing to do, the
  * TUMWATER_REFUSED line a loop emits when it declines its task, and the review gate's VERDICT
  * line. This module owns both halves of that contract: the constants and detection the harness
- * uses to parse pi's replies — so the subprocess layer (pi.ts) and the review gate (review.ts)
- * detect it without reaching into prompt construction, and the verdict line's shape lives in
- * exactly one place instead of drifting between detector and parser — and the prompt-side prose
- * constants (the shared closing rules and the claims rules) that tell pi what to emit, so the
- * instructions and the detectors cannot drift apart. */
+ * uses to parse pi's replies — so the run's stream parser (pi-stream.ts) and the review gate
+ * (review.ts) detect it without reaching into prompt construction, and the verdict line's shape
+ * lives in exactly one place instead of drifting between detector and parser — and the
+ * prompt-side prose constants (the shared closing rules and the claims rules) that tell pi what
+ * to emit, so the instructions and the detectors cannot drift apart. */
 
 /** The claim-discipline rules every authoring run carries, stated just before the reply contract
  * they govern. Written against the budgeted model's review record (GLM-5.3-Flash, 2026-09-25..
@@ -41,8 +41,8 @@ change rejected; a small, correct change is welcome:
  * instructs it). */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
-/** True when `text` declares there was nothing to do (pi.ts's stream parser scans every
- * assistant message, so a declaration in an intermediate turn survives). */
+/** True when `text` declares there was nothing to do (src/pi/pi-stream.ts's stream parser scans
+ * every assistant message, so a declaration in an intermediate turn survives). */
 export function isNothingToDo(text: string): boolean {
   return text.includes(NOTHING_TO_DO);
 }
@@ -208,16 +208,17 @@ export function extractFlow(text: string): FlowResult | null {
 // whitespace is tolerated exactly like labeledLine (the REFUSED/SUMMARY/WHY/RISK/VERIFIED/FLOW
 // family): a reviewer who nests or indents the final line must not fail the whole review as
 // "no parseable verdict" while an identically indented refusal would still count. One source
-// of truth, two derived regexes — stateless detection for pi.ts's per-message scan, and a
-// global one for verdictLines's extraction, which review-verdict.ts's parseVerdict consumes
-// (matchAll clones it internally, so sharing is safe).
+// of truth, two derived regexes — stateless detection for src/pi/pi-stream.ts's per-message
+// scan, and a global one for verdictLines's extraction, which review-verdict.ts's parseVerdict
+// consumes (matchAll clones it internally, so sharing is safe).
 const VERDICT_LINE_SOURCE = "^[ \\t]*VERDICT:\\s*(approve|reject)\\b";
 const VERDICT_LINE = new RegExp(VERDICT_LINE_SOURCE, "m");
 const VERDICT_LINES = new RegExp(VERDICT_LINE_SOURCE, "gm");
 
-/** True when `text` carries a parseable verdict line (pi.ts's stream parser records the
- * last assistant message carrying one as the run's verdictText). Line-anchored with leading
- * horizontal whitespace allowed, like every other labeled field in the reply contract. */
+/** True when `text` carries a parseable verdict line (src/pi/pi-stream.ts's stream parser
+ * records the last assistant message carrying one as the run's verdictText). Line-anchored
+ * with leading horizontal whitespace allowed, like every other labeled field in the reply
+ * contract. */
 export function hasVerdictLine(text: string): boolean {
   return VERDICT_LINE.test(text);
 }

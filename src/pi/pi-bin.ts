@@ -6,9 +6,9 @@ import { envPath, findOnPath } from "../files/files.js";
 /** Which agent binary the harness spawns and where that value came from — the resolution
  * precedence TUMWATER_PI_BIN → config.agentBin → "pi" (plans/portability.md §5/7), the
  * executability rule the preflight askers share, and the missing-binary wording they quote.
- * The spawn (pi.ts's runPi) resolves through this module, and the two askers — the startup
- * gate (gates/startup-gate.ts) and doctor (doctor/doctor-checks.ts) — ask the same questions
- * here, so no surface can disagree about which pi runs or how a missing one reads.
+ * The spawn (src/agent/run-agent.ts's runPi) resolves through this module, and the two askers —
+ * the startup gate (gates/startup-gate.ts) and doctor (doctor/doctor-checks.ts) — ask the same
+ * questions here, so no surface can disagree about which pi runs or how a missing one reads.
  * Split out of gates/readiness.ts, which keeps the repo preconditions' shared wording: the
  * agent binary is pi's own concern, so its resolution lives beside the spawn instead of in
  * the gate layer, and pi.ts no longer reaches up into gates/. */
@@ -28,9 +28,10 @@ export interface ResolvedAgentBin {
 }
 
 /** The operator-facing name of each source, as it appears in failure text and doctor's
- * report. Exported so pi.ts's spawn errors and doctor's checks quote the same string.
- * `binEnv` is the environment variable a backend reads (pi's TUMWATER_PI_BIN by default;
- * claude's adapter passes TUMWATER_CLAUDE_BIN), so a claude spawn error names its own var. */
+ * report. Exported so src/agent/run-agent.ts's spawn errors and doctor's checks quote the same
+ * string. `binEnv` is the environment variable a backend reads (pi's TUMWATER_PI_BIN by
+ * default; claude's adapter passes TUMWATER_CLAUDE_BIN), so a claude spawn error names its own
+ * var. */
 export function agentBinSourceLabel(source: AgentBinSource, binEnv = "TUMWATER_PI_BIN"): string {
   switch (source) {
     case "env":

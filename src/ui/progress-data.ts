@@ -18,9 +18,9 @@ import { statRoleLog, readCompleteLines, type TailState, withTail } from "../fil
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
  * the one `piLogPath` file — the authoring tick's run in its own worktree, and the review
  * gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
- * `_land-<role>` lander worktree). Every run
- * starts with the harness's `tumwater_run` marker (src/pi/pi.ts), written before pi spawns so
- * it precedes pi's first `session` event; a kind-bearing marker names the run's kind, and a
+ * `_land-<role>` lander worktree). Every run starts with the harness's `tumwater_run` marker
+ * (src/agent/run-agent.ts), written before pi spawns so it precedes pi's first `session`
+ * event; a kind-bearing marker names the run's kind, and a
  * session no kind-bearing marker preceded falls back to the legacy `cwd` test (the worktree
  * the session's `cwd` names). The reader keeps one accumulator per run kind
  * (readLiveProgress's `kind`), so a gate run starting mid-tick resets only the gate's counts,
@@ -158,9 +158,10 @@ function freshProgress(quietMs: number): LiveProgress {
 /** The event types feedLine acts on — everything else (streaming deltas, turn/agent
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
- * here too. `tumwater_run` is the harness's own marker (src/pi/pi.ts), read for its run kind:
- * a kind-bearing marker flips the demux and starts that accumulator fresh before its `session`
- * event lands, and a legacy label-only marker ("review") still flips the demux to gate. */
+ * here too. `tumwater_run` is the harness's own marker (src/agent/run-agent.ts), read for its
+ * run kind: a kind-bearing marker flips the demux and starts that accumulator fresh before
+ * its `session` event lands, and a legacy label-only marker ("review") still flips the demux
+ * to gate. */
 const PROGRESS_TYPES = new Set([
   "session",
   "tumwater_run",
@@ -206,10 +207,10 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
       if (label) progress.lastTool = label;
       // Track the open call for the stall flag — pi runs a message's tool calls concurrently
       // by default, so several can be open at once and end in completion order. The state
-      // machine is shared with runPi's warning (pi.ts); only the fallback label differs here.
-      // The full raw command rides along because the flag classifies the command's shape,
-      // and describeToolCall's label truncates at 32 chars — an operator past that point
-      // would be invisible there.
+      // machine is shared with runPi's stall warning (src/pi/pi-watchdogs.ts); only the
+      // fallback label differs here. The full raw command rides along because the flag
+      // classifies the command's shape, and describeToolCall's label truncates at 32 chars —
+      // an operator past that point would be invisible there.
       applyToolExecutionEvent(
         progress.openToolCalls ??= [],
         event.type,
@@ -351,9 +352,10 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
 /** Live progress for one of a loop's pi run kinds (`author` — the in-flight tick's run in
  * the role's own worktree, the default; `gate` — the review gate's runs in a leased pool
  * slot, what the reviewing cell shows), or null when there is no log yet. The raw log is
- * append-only while pi runs and every run starts with a `tumwater_run` marker (src/pi/pi.ts),
- * so after seeding from the tail window once we only read and parse bytes appended since the
- * last poll — observers that call this every second (TUI, GUI) stop rescanning up to TAIL_BYTES
+ * append-only while pi runs and every run starts with a `tumwater_run` marker
+ * (src/agent/run-agent.ts), so after seeding from the tail window once we only read and parse
+ * bytes appended since the last poll — observers that call this every second (TUI, GUI) stop
+ * rescanning up to TAIL_BYTES
  * of JSON per role per poll. */
 export function readLiveProgress(root: string, role: string, kind: ProgressRunKind = "author"): LiveProgress | null {
   const log = statRoleLog(tails, root, role);
