@@ -1,6 +1,6 @@
 /** The per-pane body builder for the TUI's render (extracted from src/ui/tui/tui.tsx): which
  * lines fill the lower pane for the view the frame shows — transcript, backlog, usage,
- * failures, or activity. Pure with respect to terminal state: it reads the root's files
+ * failures, history, or activity. Pure with respect to terminal state: it reads the root's files
  * (transcript, events, PLANS.md/BUGS.md/QUESTIONS.md) and the keypress handler's view
  * state, and returns composed StatusLines plus the empty-pane note; src/ui/tui/tui.tsx owns
  * the terminal lifecycle and the frame assembly around it. */
@@ -103,9 +103,19 @@ export function paneBody(
       emptyNote: "(no events yet)",
     };
   }
+  if (pane.kind === "history") {
+    // historyPaneText returns "" when the log holds no completed ticks; return no lines
+    // (rather than windowing an empty string, which entryBodyWindow replaces with its
+    // "no details" placeholder) so the frame prints the pane's own empty note instead.
+    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+    return {
+      body: win.lines.map((l) => toneLine(l, width)),
+      emptyNote: "(no ticks yet)",
+    };
+  }
   if (pane.kind === "usage" || pane.kind === "failures") {
-    // The Markdown `tumwater report` prints, windowed like backlog entry mode. The cache is
-    // set on view entry by the Ctrl+T handler, so this only re-windows a string.
+    // The Markdown `tumwater report`/`report --failures` prints, windowed like backlog entry
+    // mode. The cache is set on view entry by the Ctrl+T handler, so this only re-windows a string.
     const win = entryBodyWindow(state.paneCache ?? "", state.paneScroll, eventBudget, width);
     return {
       body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),

@@ -1,0 +1,55 @@
+/** `historyPaneText` (src/ui/tui/tui-history.ts): the TUI's History pane body. Pure over the
+ * TickRow[] that history-data.ts already resolved, so these tests seed rows directly and pin
+ * the one-line-per-row rendering — every field present, the null-duration dash, the omitted
+ * empty usage/detail, and the no-rows empty string. */
+import test from "node:test";
+import assert from "node:assert/strict";
+import { historyPaneText } from "../src/ui/tui/tui-history.js";
+import { paneBody } from "../src/ui/tui/tui-pane.js";
+import type { TickRow } from "../src/history/history-data.js";
+
+function row(over: Partial<TickRow> = {}): TickRow {
+  return {
+    ts: 0,
+    time: "14:03",
+    loop: "feature",
+    tick: 7,
+    result: "changed",
+    durationMs: 90_000,
+    tokens: 0,
+    costUsd: 0,
+    usage: "$0.42",
+    detail: "Add the history pane",
+    ...over,
+  };
+}
+
+test("a seeded row renders its time, loop, tick, result, duration, usage, and detail", () => {
+  assert.equal(historyPaneText([row()]), "14:03  feature #7  changed  90s  $0.42  Add the history pane");
+});
+
+test("a null duration renders the em dash the CLI table uses", () => {
+  assert.equal(historyPaneText([row({ durationMs: null, usage: "", detail: "" })]), "14:03  feature #7  changed  —");
+});
+
+test("an empty usage and an empty detail are omitted, not left as gaps", () => {
+  assert.equal(historyPaneText([row({ usage: "", detail: "kept" })]), "14:03  feature #7  changed  90s  kept");
+  assert.equal(historyPaneText([row({ usage: "$0.42", detail: "" })]), "14:03  feature #7  changed  90s  $0.42");
+});
+
+test("rows render newest-first, one line each, and no rows is the empty string", () => {
+  const rows = [row({ tick: 8, time: "14:05" }), row({ tick: 7, time: "14:03" })];
+  assert.equal(historyPaneText(rows), "14:05  feature #8  changed  90s  $0.42  Add the history pane\n14:03  feature #7  changed  90s  $0.42  Add the history pane");
+  assert.equal(historyPaneText([]), "");
+});
+
+test("an empty history pane falls back to the no-ticks note, not entryBodyWindow's placeholder", () => {
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, paneScroll: 0 };
+  const empty = paneBody({ kind: "history" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(empty.body, []);
+  assert.equal(empty.emptyNote, "(no ticks yet)");
+
+  const rows = paneBody({ kind: "history" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: historyPaneText([row()]) } });
+  assert.equal(rows.body.length, 1);
+  assert.equal(rows.emptyNote, "(no ticks yet)");
+});

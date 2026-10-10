@@ -3,6 +3,8 @@ import { renderReportMarkdown } from "../../report/report-render.js";
 import { REPORT_DEFAULT_DAYS } from "../../events/event-window.js";
 import { collectFailureReport } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
+import { HISTORY_DEFAULT_TICKS, readTickRows } from "../../history/history-data.js";
+import { historyPaneText } from "./tui-history.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../../fleet/fleet-state.js";
@@ -152,7 +154,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     flashMessage(`error: ${errorMessage(err)}`);
   };
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
-  // status (planned features + open bugs + open questions), then the usage report — Ctrl+T.
+  // status (planned features + open bugs + open questions), then the usage report, the failure
+  // digest, and the completed-tick history — Ctrl+T.
   let view = 0;
   // The project-status pane's entry selection (null = list mode): the flat index of the
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
@@ -162,10 +165,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // entry's body — PgDn/PgUp in project-status entry mode. Reset whenever the selection
   // changes or clears, so every newly opened entry starts at its head.
   let entryScroll = 0;
-  // The Markdown panes' (usage report, failures) rendered bodies, computed once per activation:
-  // the Ctrl+T handler sets it when cycling into either pane and nulls it on leaving.
-  // collectReport/collectFailureReport tail-scan events.jsonl, so they must not run on every
-  // second's re-render — those only re-window this string.
+  // The Markdown/row panes' (usage report, failures, history) rendered bodies, computed once
+  // per activation: the Ctrl+T handler sets it when cycling into one and nulls it on leaving.
+  // collectReport/collectFailureReport tail-scan events.jsonl and readTickRows reads the log,
+  // so they must not run on every second's re-render — those only re-window this string.
   let paneCache: string | null = null;
   // Ctrl+N toggles the viewed loop's pane between its live transcript and a read-only
   // notebook view (its note and next tick's prompt). Like paneCache, noteCache is computed
@@ -374,7 +377,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       exitRolePromptMode();
       noteMode = false; // a cycle away leaves notebook mode and drops its snapshot
       noteCache = null;
-      view = (view + 1) % (roleIds.length + 4); // events → each loop's transcript → project status → usage report → failures → events
+      view = (view + 1) % (roleIds.length + 5); // events → each loop's transcript → project status → usage report → failures → history → events
       selectedEntry = null; // leaving a view drops any entry selection…
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
       paneScroll = 0; // the Markdown panes always re-enter at their head
@@ -385,7 +388,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           ? renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS))
           : view === roleIds.length + 3
             ? renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS))
-            : null;
+            : view === roleIds.length + 4
+              ? historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null))
+              : null;
       deps.requestRender();
       return;
     }
@@ -548,7 +553,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       currentBudgetFree = budgetFree;
       roleIds = roles;
       directorInFlight = directorRunning;
-      view = Math.min(view, roleIds.length + 3); // clamp a stale index if roles changed
+      view = Math.min(view, roleIds.length + 4); // clamp a stale index if roles changed
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
       eventBudget = evBudget;

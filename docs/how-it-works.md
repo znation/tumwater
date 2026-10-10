@@ -284,7 +284,7 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   spend cap, quiet hours, the notify hook) with inline Save buttons that write through the same
   path `tumwater config set` uses.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
-  cycles Activity, each loop's Transcript, Backlog, Usage, and Failures.
+  cycles Activity, each loop's Transcript, Backlog, Usage, Failures, and History.
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
   toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
   its backoff, `Ctrl+N` switches the pane between the live transcript and a read-only view of

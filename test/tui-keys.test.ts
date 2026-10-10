@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
-import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 
@@ -123,6 +123,34 @@ test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body
   keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().selectedEntry, null, "cycling away drops the selection");
   assert.ok(renders() > 0);
+});
+
+test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the tick rows", () => {
+  const root = makeRoot();
+  // Twelve completed ticks so the history pane's rows overflow the pane budget and page.
+  writeEvents(
+    root,
+    Array.from({ length: 12 }, (_, i) => ({
+      ts: 1_700_000_000_000 + i * 60_000,
+      loop: "feature",
+      type: "tick_end",
+      tick: i + 1,
+      result: "changed",
+    })),
+  );
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(5, 4);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage → failures → history
+  assert.equal(keys.state().view, 4, "History is the last view (roleIds.length + 4)");
+  assert.match(keys.state().paneCache ?? "", /feature #12/, "the newest tick's row is cached for the pane");
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().paneScroll, 5, "PgDn advances the history window by the event budget");
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().paneScroll, 0, "PgUp clamps back to the head");
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "cycling past History wraps to Activity");
+  assert.equal(keys.state().paneCache, null, "leaving History drops its cache");
 });
 
 test("a flash notice expires on the injected clock", () => {
