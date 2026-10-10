@@ -420,7 +420,7 @@ export const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
  * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
 export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
-/** pi flags the harness passes itself (src/pi/pi.ts's piArgs: `--print --mode json
+/** pi flags the harness passes itself (src/pi/pi-args.ts's piArgs: `--print --mode json
  * --session-dir …`, the provider/model/thinking triple, and the session resume/name flags).
  * A piArgs entry equal to one of these is appended AFTER the harness's own copy, and pi's
  * argument parser is last-wins — so it silently overrides the harness: `--mode text` makes

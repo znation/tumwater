@@ -201,8 +201,8 @@ test("conflict, landing, and review runs carry no notebook", async () => {
   const restore = envRecordingFakePi(env);
   try {
     const { loopPi } = makeHost(root);
-    // The landing merge's conflict resolver reaches pi through runRolePi (loop.ts's MergeContext);
-    // landing and gate runs have their own entry points.
+    // The landing merge's conflict resolver reaches pi through runRolePi
+    // (landing-merge.ts's MergeContext); landing and gate runs have their own entry points.
     await loopPi.runRolePi(root, "resolve the conflict", "tumwater-feature-1-conflict");
     await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-1-conflict");
     await loopPi.runGatePi({

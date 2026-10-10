@@ -351,10 +351,11 @@ export function buildRejectedReviewNote(review: {
 }
 
 /** The note injected into a role's tick prompt when its rejected change has been re-applied to
- * current main as uncommitted edits (plans/revise-rejected.md, loop.ts's applyRevision): this
- * tick's one task is to revise the change already in the worktree, not author a new one. The
- * prior objections are numbered so the author can work through them; a revision round past the
- * first also reaches here. A pure function so its shape is pinned in tests. */
+ * current main as uncommitted edits (plans/revise-rejected.md, loop/revision.ts's
+ * applyRevision): this tick's one task is to revise the change already in the worktree, not
+ * author a new one. The prior objections are numbered so the author can work through them; a
+ * revision round past the first also reaches here. A pure function so its shape is pinned in
+ * tests. */
 export function buildRevisionNote(
   review: { reasons: string[] },
   round: number,

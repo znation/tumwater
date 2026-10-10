@@ -141,9 +141,10 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
 
 test("the director's tick starts immediately while every maxConcurrent slot is busy", async () => {
   // The director never queues behind the author semaphore: a user prompt starts right away
-  // even when all slots are held (orchestrator.ts's usesSlot — only role ticks acquire). With
-  // one permit and clean's tick holding it for ~5s, the director's run must begin while clean
-  // is still in flight — its concurrency sample reads 2, proof it took no permit.
+  // even when all slots are held (orchestrator-launch.ts's usesSlot — only role ticks
+  // acquire). With one permit and clean's tick holding it for ~5s, the director's run must
+  // begin while clean is still in flight — its concurrency sample reads 2, proof it took no
+  // permit.
   const repo = makeRepo();
   await initProject(repo, "director bypasses the slot cap");
   const cfg = fastConfig(["clean", "director"]);
