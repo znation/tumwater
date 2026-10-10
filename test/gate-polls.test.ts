@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 
 import { defaultConfig } from "../src/config/config.js";
@@ -425,4 +426,25 @@ test("pollFleetGates publishes the measured disk state for observers", () => {
   assert.deepEqual(readDisk(), { freeGB: 100, holdGB: 10, reclaimGB: 40, held: false });
   pollFleetGates(states, { ...ctx, sampleFree: () => null });
   assert.equal(readDisk(), undefined, "an unmeasurable volume publishes nothing");
+});
+
+// The orchestrator's poll loop has no catch, and pollFleetGates publishes build/budget/disk
+// changes to the info file on most polls. An unwritable state dir (ENOSPC, EACCES, the path
+// replaced by a directory) must degrade that published snapshot, not throw out of the poll and
+// end the fleet. Pinned with the info path made a directory, so the atomic writer's rename
+// onto it cannot succeed.
+test("pollFleetGates: an unwritable orchestrator info file warns instead of throwing", () => {
+  const root = tmpdir("gate-polls-info-unwritable-");
+  const config = defaultConfig();
+  fs.mkdirSync(orchestratorStatePath(root), { recursive: true });
+  const states = newFleetGateStates(config);
+  const poll = pollFleetGates(states, {
+    root,
+    runners: [],
+    liveConfig: config,
+    modelsPath: path.join(root, "models.json"),
+    now: Date.now(),
+    info: { pid: process.pid, startedAt: 0, roles: [] } satisfies OrchestratorInfo,
+  });
+  assert.ok(poll.pausedRoles, "the poll still returns its verdicts");
 });

@@ -4,6 +4,8 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { pidAlive } from "../process/process.js";
 import { orchestratorStatePath } from "../paths.js";
+import { warnEventBestEffort } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving the
  * fleet, since when, with which roles, and what its most recent poll published about the world
@@ -184,6 +186,22 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
  * torn body that readOrchestratorInfo reports as no running orchestrator. */
 export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): void {
   writeJsonAtomic(orchestratorStatePath(root), info);
+}
+
+/** Publish the info file for a caller on a path that must not throw — the orchestrator's
+ * catch-less poll loop, whose build/budget/disk updates run every couple of seconds. The info
+ * file is an observation surface, not fleet state: an unwritable state dir (ENOSPC, EACCES, the
+ * path replaced by a directory) must degrade the published snapshot, not end the fleet. The
+ * failure is reported as a best-effort warning; the caller keeps polling and the field is
+ * retried the next time its value changes. Startup's first write stays strict
+ * (writeOrchestratorInfo): it is what refuses a second fleet, so a repo that cannot publish it
+ * must fail fast rather than boot. */
+export function writeOrchestratorInfoBestEffort(root: string, info: OrchestratorInfo): void {
+  try {
+    writeOrchestratorInfo(root, info);
+  } catch (err) {
+    warnEventBestEffort(root, "harness", `could not publish orchestrator info: ${errorMessage(err)}`);
+  }
 }
 
 /** True when the recorded orchestrator's pid is still alive (see pidAlive). Callers that have

@@ -49,7 +49,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
 import { logEventBestEffort } from "../events/events.js";
-import { assignInfoFieldIfChanged, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { assignInfoFieldIfChanged, writeOrchestratorInfoBestEffort, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost budget
@@ -230,7 +230,7 @@ export function pollFleetGates(
   const demotionsChanged = assignInfoFieldIfChanged(info, "fallbackDemotions", demotions);
   const engagedChanged = assignInfoFieldIfChanged(info, "fallbackDemoted", engagedDemotion);
   const budgetChanged = assignInfoFieldIfChanged(info, "budget", budget);
-  if (demotionsChanged || engagedChanged || budgetChanged) writeOrchestratorInfo(root, info);
+  if (demotionsChanged || engagedChanged || budgetChanged) writeOrchestratorInfoBestEffort(root, info);
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
@@ -394,7 +394,7 @@ export function pollFleetGates(
           held: diskHeld,
           ...(ctx.reclaim?.lastReclaim ? { lastReclaim: ctx.reclaim.lastReclaim } : {}),
         };
-  if (assignInfoFieldIfChanged(info, "disk", disk)) writeOrchestratorInfo(root, info);
+  if (assignInfoFieldIfChanged(info, "disk", disk)) writeOrchestratorInfoBestEffort(root, info);
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier
