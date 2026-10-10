@@ -1,9 +1,15 @@
-/** The loop wiring of the model-fallback state machine (PLANS.md "Model failure fallback,
- * part 1/2"): consecutive provider-class failures trip the episode and the next tick runs the
- * role's tier fallback pair, a clean probe tick after the cooldown returns to the primary and
- * emits the ended event, and a role with no fallback configured never trips. The regression
- * tests at the bottom pin the review's objections: only the AUTHORING run of a tick is
- * evidence, and a tick that never invoked pi is no probe. */
+/** The model-fallback state machine, tested at both levels.
+ *
+ * The whole-tick loop-wiring tests first (PLANS.md "Model failure fallback, part 1/2"):
+ * consecutive provider-class failures trip the episode and the next tick runs the role's tier
+ * fallback pair, a clean probe tick after the cooldown returns to the primary and emits the
+ * ended event, and a role with no fallback configured never trips. The regression tests in the
+ * middle pin the review's objections: only the AUTHORING run of a tick is evidence, and a tick
+ * that never invoked pi is no probe.
+ *
+ * The FOLD tests at the very bottom unit-test src/loop/loop-fallback.ts's
+ * foldModelFallbackPhase directly — the started/ended event payloads and the clear-on-config-drop
+ * paths only exercised indirectly by the whole-tick loop runner tests above. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -17,6 +23,13 @@ import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { transientErrorText } from "./fakes/transient.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
+import type { LoopState } from "../src/loop/loop-state.js";
+import type { ModelFallbackState } from "../src/loop/model-fallback.js";
+import type { ResolvedModelConfig } from "../src/config/config-views.js";
+import type { PiRunResult } from "../src/pi/pi-run-result.js";
+import type { FallbackRunContext } from "../src/loop/loop-tick.js";
+import { foldModelFallbackPhase } from "../src/loop/loop-fallback.js";
+import { readEvents } from "../src/events/event-read.js";
 
 /** A fake pi that records each run's --provider/--model flags then fails the run with an
  * HTTP 503 backend error. `server` is a backend kind the transient retry does NOT cover, so
@@ -269,4 +282,153 @@ test("an unwritable events feed cannot reject a tick — its fallback verdict st
   });
   assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded despite the dead feed");
   assert.equal(loadLoopState(repo, "clean").running, false, "the end-of-tick save ran");
+});
+
+// --- foldModelFallbackPhase unit tests ------------------------------------------------------
+
+const pair = (provider: string, model: string): ResolvedModelConfig =>
+  ({ provider, model } as unknown as ResolvedModelConfig);
+
+const PRIMARY = pair("anthropic", "claude-primary");
+const FALLBACK = pair("groq", "llama-free");
+
+/** The extra fields the two fallback events carry (HarnessEvent's index signature types them
+ * `unknown`); narrowed here so the assertions read as the event's own payload. */
+interface FallbackEvent {
+  ts: number;
+  loop: string;
+  type: string;
+  provider?: string;
+  model?: string;
+  reason?: string;
+  durationMs?: number;
+}
+
+function onlyEvent(root: string): FallbackEvent {
+  const events = readEvents(root) as unknown as FallbackEvent[];
+  assert.equal(events.length, 1, "exactly one event on the feed");
+  const ev = events[0];
+  assert.ok(ev);
+  return ev;
+}
+
+const answered = { ok: true } as PiRunResult;
+const rateLimited = { ok: false, transientRateLimit: true } as PiRunResult;
+const abortEvidence = { ok: false, aborted: true, transientRateLimit: true } as PiRunResult;
+
+const preTrip = (failures: number): ModelFallbackState => ({
+  failures,
+  since: 0,
+  probeAt: 0,
+  cooldownMs: 0,
+  reason: "server",
+});
+const inFallback: ModelFallbackState = {
+  failures: 0,
+  since: 1_000,
+  probeAt: 9_000_000,
+  cooldownMs: 300_000,
+  reason: "rate-limit",
+};
+
+function harness(prior?: ModelFallbackState): {
+  root: string;
+  state: LoopState;
+  saves: number;
+  fold(fallback: ResolvedModelConfig | null, probe: boolean, pi: PiRunResult): void;
+} {
+  const root = tmpdir();
+  const state = { modelFallback: prior } as unknown as LoopState;
+  const out = {
+    root,
+    state,
+    saves: 0,
+    fold(fallback: ResolvedModelConfig | null, probe: boolean, pi: PiRunResult): void {
+      foldModelFallbackPhase(
+        { root, role: "feature", state, save: () => void out.saves++ },
+        { fallback, probe, primary: PRIMARY } satisfies FallbackRunContext,
+        pi,
+      );
+    },
+  };
+  return out;
+}
+
+test("no pair and no episode: the fold touches neither state nor feed", () => {
+  const h = harness(undefined);
+  h.fold(null, false, answered);
+  assert.equal(h.state.modelFallback, undefined);
+  assert.equal(h.saves, 0);
+  assert.deepEqual(readEvents(h.root), []);
+});
+
+test("dropping the pair clears a persisted pre-trip count with no ended event", () => {
+  const h = harness(preTrip(2));
+  h.fold(null, false, answered);
+  assert.equal(h.state.modelFallback, undefined, "the stale count does not outlive the config");
+  assert.equal(h.saves, 1, "the clear is persisted");
+  assert.deepEqual(readEvents(h.root), [], "a pre-trip state has no episode to end");
+});
+
+test("dropping the pair ends an active episode, naming the primary and its duration", () => {
+  const h = harness(inFallback);
+  const before = Date.now();
+  h.fold(null, false, answered);
+  const ended = onlyEvent(h.root);
+  assert.equal(ended.type, "model_fallback_ended");
+  assert.equal(ended.loop, "feature");
+  assert.equal(ended.provider, "anthropic");
+  assert.equal(ended.model, "claude-primary");
+  assert.ok((ended.durationMs ?? 0) >= before - 1_000, "duration is measured from the episode start");
+  assert.equal(h.state.modelFallback, undefined);
+  assert.equal(h.saves, 1);
+});
+
+test("dropping the pair keeps an active episode when the run is inconclusive", () => {
+  const h = harness(inFallback);
+  h.fold(null, false, abortEvidence);
+  assert.equal(h.state.modelFallback, inFallback, "an aborted run is no evidence about the primary");
+  assert.equal(h.saves, 0);
+  assert.deepEqual(readEvents(h.root), []);
+});
+
+test("the third provider failure starts the episode and logs the started event", () => {
+  const h = harness(preTrip(2));
+  h.fold(FALLBACK, false, rateLimited);
+  const started = onlyEvent(h.root);
+  assert.equal(started.type, "model_fallback_started");
+  assert.equal(started.loop, "feature");
+  assert.equal(started.provider, "groq", "the event names the pair ticks will run on");
+  assert.equal(started.model, "llama-free");
+  assert.equal(started.reason, "rate-limit");
+  assert.ok((h.state.modelFallback?.since ?? 0) > 0, "the episode is in fallback");
+  assert.equal(h.saves, 1);
+});
+
+test("a successful probe ends the episode and logs the ended event", () => {
+  const h = harness(inFallback);
+  h.fold(FALLBACK, true, answered);
+  const ended = onlyEvent(h.root);
+  assert.equal(ended.type, "model_fallback_ended");
+  assert.equal(ended.provider, "anthropic");
+  assert.equal(ended.model, "claude-primary");
+  assert.equal(h.state.modelFallback, undefined, "the primary is trusted again");
+  assert.equal(h.saves, 1);
+});
+
+test("a fallback tick (not a probe) leaves the episode and state untouched", () => {
+  const h = harness(inFallback);
+  h.fold(FALLBACK, false, rateLimited);
+  assert.equal(h.state.modelFallback, inFallback);
+  assert.equal(h.saves, 0);
+  assert.deepEqual(readEvents(h.root), []);
+});
+
+test("a pre-trip provider failure persists the running count with no event", () => {
+  const h = harness(undefined);
+  h.fold(FALLBACK, false, rateLimited);
+  assert.equal(h.state.modelFallback?.failures, 1, "one failure is counted but does not trip");
+  assert.equal(h.state.modelFallback?.since, 0);
+  assert.equal(h.saves, 1, "the running count is persisted");
+  assert.deepEqual(readEvents(h.root), [], "no episode started");
 });
