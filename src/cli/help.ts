@@ -71,7 +71,7 @@ Usage:
                                    section. Dotted keys (maxDailyCostUsdPerRole.feature
                                    1.5, roles.qa.model x) merge one entry into the existing
                                    map or role entry; bare keys replace the whole value
-  tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>] [--json]
+  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--json]
                                    Show (and follow) harness events; --since shows the
                                    events of the past window (capped at 7d); --grep shows
                                    only events whose type or rendered line matches,
@@ -79,7 +79,7 @@ Usage:
                                    the printed rows); --json prints each event as one
                                    JSON object per line (NDJSON) — the raw event objects
                                    as stored in the log, instead of the rendered text
-  tumwater logs --role <id> [-f] [-n N] [--prompt]
+  tumwater logs --role <id> [-f/--follow] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
   tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--json]

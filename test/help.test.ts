@@ -67,6 +67,11 @@ test("multi-form commands yield every usage form in their topic", () => {
   assert.match(prompt, /prompt <text\.\.\.>/);
   assert.match(prompt, /prompt --list/);
   assert.match(prompt, /prompt --cancel <n>/);
+  // logs accepts -f and its --follow alias (cli.ts's [-f, --follow] spec), so both usage
+  // forms name both spellings.
+  const logs = helpTopic("logs")!;
+  assert.match(logs, /logs \[-f\/--follow\]/);
+  assert.match(logs, /logs --role <id> \[-f\/--follow\]/);
 });
 
 test("helpTopic returns null for an unknown command", () => {
