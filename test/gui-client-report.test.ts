@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
+import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The report tab's hover chip (gui-client-report.ts's report-tip region) runs in the
 // browser, so it is exercised here through the same regex-extract + new Function seam as
@@ -157,4 +158,25 @@ test("the report hover chip is created once and lives outside #report", () => {
     chips,
     "the chip lives on document.body, outside the re-rendered #report",
   );
+});
+
+test("reportRoleOptions renders All loops plus one escaped option per role, order preserved", () => {
+  // The Loop picker's options are the pure half of the Usage/Failures role scope: the fleet
+  // list comes from /api/status's loops, custom loops included, so a role name can carry HTML
+  // metacharacters and must be escaped in both the option's value and its label.
+  const { reportRoleOptions } = clientScope<{ reportRoleOptions(roles?: string[]): string }>(
+    ["format", "report-role"],
+    ["reportRoleOptions"],
+  );
+  assert.equal(reportRoleOptions([]), "<option value=''>All loops</option>", "no roles leaves only the fleet-wide option");
+  assert.equal(
+    reportRoleOptions(["feature", "bugfix"]),
+    "<option value=''>All loops</option>" +
+      "<option value='feature'>feature</option>" +
+      "<option value='bugfix'>bugfix</option>",
+    "one option per role, in the order given",
+  );
+  const hostile = reportRoleOptions(["<b>x</b>"]);
+  assert.doesNotMatch(hostile, /<b>x<\/b>/, "raw HTML in a role name is not rendered");
+  assert.match(hostile, /<option value='&lt;b&gt;x&lt;\/b&gt;'>&lt;b&gt;x&lt;\/b&gt;<\/option>/, "value and label are escaped");
 });

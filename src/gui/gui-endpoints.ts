@@ -104,19 +104,28 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
   sendJson(res, 200, await collectRoleChange(root, role));
 }
 
-/** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as
- * JSON — the dashboard's report tab renders it. The days window follows windowDays. Reads
- * files directly, so it works whether or not the fleet is running. */
+/** Handle GET /api/report?days=N[&role=<id>]: the usage report data (collectReport's
+ * ReportData) as JSON — the dashboard's report tab renders it. The days window follows
+ * windowDays. An absent role is the fleet-wide report exactly as before; a present one is a
+ * filter, validated through rejectBadRole (unknown, including the empty string → 400 naming
+ * the valid ids) and handed to collectReport's role scope. Reads files directly, so it works
+ * whether or not the fleet is running. */
 export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  sendJson(res, 200, collectReport(root, windowDays(q)));
+  const role = q.get("role");
+  if (role !== null && rejectBadRole(root, res, role)) return;
+  sendJson(res, 200, collectReport(root, windowDays(q), role ?? undefined));
 }
 
-/** Handle GET /api/failures?days=N: the same bounded Markdown failure digest the telemetry
- * loop feeds on and `tumwater report --failures` prints, as JSON ({ markdown }) — the
+/** Handle GET /api/failures?days=N[&role=<id>]: the same bounded Markdown failure digest the
+ * telemetry loop feeds on and `tumwater report --failures` prints, as JSON ({ markdown }) — the
  * dashboard's failures tab renders it. The days window follows windowDays (so it can never
- * drift from /api/report's). Reads files directly, so it works with no fleet running. */
+ * drift from /api/report's). role rides the same absent-fleet / present-filter rule as
+ * handleReport: absent → the fleet digest, present → validated and scoped. Reads files
+ * directly, so it works with no fleet running. */
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q))) });
+  const role = q.get("role");
+  if (role !== null && rejectBadRole(root, res, role)) return;
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), role ?? undefined)) });
 }
 
 /** Handle GET /api/history?role=<id>&n=N: the per-tick rows readTickRows derives from the

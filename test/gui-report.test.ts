@@ -61,6 +61,17 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
   assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
 
+  // A role scope serves the scoped collector's payload (role field, only that role's maps,
+  // zeroed backlog tallies); unknown and empty roles are the shared 400.
+  const rf = await fetch(base + "/api/report?role=feature");
+  assert.equal(rf.status, 200);
+  assert.deepEqual(await rf.json(), collectReport(repo, 14, "feature"), "?role scopes /api/report");
+  const rbad = await fetch(base + "/api/report?role=bogus");
+  assert.equal(rbad.status, 400, "an unknown role is a 400, not a scope");
+  assert.match(((await rbad.json()) as { error: string }).error, /unknown role "bogus" \(valid ids: /);
+  const rempty = await fetch(base + "/api/report?role=");
+  assert.equal(rempty.status, 400, "an empty role is present-but-unknown, not fleet-wide");
+
   // days follows windowDays's rule via WINDOW_DAY_CASES: missing or non-decimal → default,
   // out-of-range clamped — never an error.
   for (const [q, expected] of WINDOW_DAY_CASES) {
@@ -94,6 +105,16 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
   assert.match(d.markdown, /^# tumwater failure digest/, "the tab renders the digest's heading first");
 
+  // A role scope serves the scoped digest (its role line included); unknown and empty roles
+  // are the shared 400.
+  const rf = await fetch(base + "/api/failures?role=feature");
+  assert.equal(rf.status, 200);
+  const scoped = ((await rf.json()) as { markdown: string }).markdown;
+  assert.equal(scoped, renderFailureMarkdown(collectFailureReport(repo, 14, "feature")), "?role scopes /api/failures");
+  assert.match(scoped, /^role: feature$/m, "the scoped digest names its role");
+  assert.equal((await fetch(base + "/api/failures?role=bogus")).status, 400);
+  assert.equal((await fetch(base + "/api/failures?role=")).status, 400);
+
   // days follows the same windowDays rule as /api/report (WINDOW_DAY_CASES): compare each
   // against the digest rendered for the clamped count.
   for (const [q, expected] of WINDOW_DAY_CASES) {
@@ -110,8 +131,8 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   // Both views have a container and a sidebar link; the window pickers choose the days.
   assert.match(GUI_PAGE, /<section id="report" class="view" aria-label="Usage" hidden><\/section>/);
   assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
-  assert.match(GUI_PAGE, /endpoint: \(days\) => "\/api\/report\?days=" \+ days/);
-  assert.match(GUI_PAGE, /endpoint: \(days\) => "\/api\/failures\?days=" \+ days/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role\) => "\/api\/report\?days=" \+ days \+ \(role \? "&role=" \+ encodeURIComponent\(role\) : ""\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role\) => "\/api\/failures\?days=" \+ days \+ \(role \? "&role=" \+ encodeURIComponent\(role\) : ""\)/);
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   // The fleet view's "today" tiles read a one-day report, refreshed on new events.
@@ -303,6 +324,7 @@ test("the lazily built Usage/Failures heads carry their blurbs — a dropped blu
       markActive: () => {},
       recall: () => null,
       store: () => {},
+      lastStatus: null,
       // The fetch itself rejects: the head is built before the body renders, so the assertion
       // sees the lazy-built head while the failure path exercises errorPanel wiring too.
       getJson: async () => { throw new Error("/api/report failed: HTTP 503"); },
@@ -355,6 +377,7 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
     markActive: () => {},
     recall: () => null,
     store: () => {},
+    lastStatus: null,
     getJson: async () => report,
     errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
     clickClosest: () => null,
@@ -373,4 +396,58 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
   assert.match(els.usagebody!.innerHTML, /2026-10-01 → 2026-10-07/);
   assert.ok(els.usagebody!.innerHTML.includes(SPARSE_WINDOW_NOTE),
     "the sparse-window sentence is the shared constant, not a re-typed copy");
+});
+
+test("the scoped Usage render drops the fleet-only tiles and prints the scope line", async () => {
+  // The Usage summary must not present the fleet-wide backlog tallies as the scoped role's:
+  // when the payload carries a role, the Features done/Bugs fixed tiles stay out and one scope
+  // line names the role and the omission. Both the whole report blob (the sparse-window test's
+  // seam) and the scoped/unscoped payloads run here so the fleet-wide render is checked too.
+  const day = {
+    date: "2026-10-07", tokensOut: 100, ticksByRole: { feature: 1 }, costByRole: { feature: 0.01 },
+    commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0,
+  };
+  const totals = { tokensOut: 100, ticks: 1, commits: 1, costUsd: 0.01, featuresDone: 2, bugsFixed: 3, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 };
+  const window = { days: 7, from: "2026-10-01", to: "2026-10-07", series: [day], totals, coversFullWindow: true };
+
+  const runWith = async (payload: unknown): Promise<string> => {
+    const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(): void }> = {};
+    for (const id of ["report", "usagebody", "usagewindow", "failures", "failbody", "failwindow", "usagerole", "failrole"]) {
+      els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
+    }
+    const inject = {
+      document: { getElementById: (id: string) => els[id] ?? null },
+      $: (id: string) => els[id] ?? null,
+      markActive: () => {},
+      recall: () => null,
+      store: () => {},
+      lastStatus: { loops: [{ role: "feature" }, { role: "bugfix" }] },
+      getJson: async () => payload,
+      errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
+      clickClosest: () => null,
+      renderMarkdown: (md: string) => md,
+      icon: iconStub,
+      plural: (n: number, one: string) => `${n} ${one}`,
+      workSplit: (t: { workCommits?: number; maintenanceCommits?: number }) => `${t.workCommits ?? 0} work / ${t.maintenanceCommits ?? 0} maintenance`,
+      fmtTokens: (n: number) => String(n),
+      fmtUsd: (n: number) => "$" + n.toFixed(2),
+    };
+    const keys = Object.keys(inject);
+    const run = new Function(...keys, `${[ESC_LINE, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+      ...args: unknown[]
+    ) => { fetchReport(throttled?: boolean): Promise<void> };
+    await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
+    return els.usagebody!.innerHTML;
+  };
+
+  const scoped = await runWith({ ...window, role: "feature" });
+  assert.match(scoped, /Loop scope: feature/, "the scoped render names the role");
+  assert.match(scoped, /landing runs and backlog tallies .* are fleet-wide and omitted/, "and states the omission");
+  assert.doesNotMatch(scoped, /Features done/, "the fleet-only backlog tiles stay out");
+  assert.doesNotMatch(scoped, /Bugs fixed/);
+
+  const fleet = await runWith(window);
+  assert.match(fleet, /Features done/, "the fleet-wide render keeps the backlog tiles");
+  assert.match(fleet, /Bugs fixed/);
+  assert.doesNotMatch(fleet, /Loop scope:/, "and prints no scope line");
 });

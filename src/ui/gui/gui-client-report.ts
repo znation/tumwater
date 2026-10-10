@@ -1,14 +1,16 @@
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
  * totals (each with its per-day average) over four daily bar charts — landed commits, ticks by
  * loop, output tokens, spend by loop — with gridlines, a scale, and one shared color per loop;
- * a window picker switches between 7, 14, 30, and 90 days. Failures renders the failure digest
- * (/api/failures, the Markdown `tumwater report --failures` prints) through the page's
- * Markdown renderer, over the same kind of window picker. Both fetch when their view opens,
- * on Refresh, and — Usage only, throttled — when new events arrive while it is open. The chart
- * builders are pure (report-chart region) and the hover chip is one shared element
- * (report-tip region); both are exercised in isolation by the tests. Spliced into
- * gui-client.ts's script, reaching its helpers (esc, getJson, icon, fmtTokens, fmtUsd,
- * renderMarkdown) through that concatenation. */
+ * a window picker switches between 7, 14, 30, and 90 days and a Loop picker scopes the report
+ * to one loop group (`?role=`, the browser twin of `tumwater report --role`). Failures renders
+ * the failure digest (/api/failures, the Markdown `tumwater report --failures` prints) through
+ * the page's Markdown renderer, over the same kind of window and Loop pickers. Both fetch when
+ * their view opens, on Refresh, and — Usage only, throttled — when new events arrive while it
+ * is open. The chart builders are pure (report-chart region), the hover chip is one shared
+ * element (report-tip region), and the Loop picker's options are pure (report-role region);
+ * all are exercised in isolation by the tests. Spliced into gui-client.ts's script, reaching
+ * its helpers (esc, getJson, icon, fmtTokens, fmtUsd, renderMarkdown) through that
+ * concatenation. */
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 
 export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
@@ -180,20 +182,47 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return [
       tile("Commits landed", "merge", String(t.commits), "≈ " + (t.commits / days).toFixed(1),
         " · " + workSplit(t)),
-      tile("Features done", "plan", String(t.featuresDone), "≈ " + (t.featuresDone / days).toFixed(1)),
-      tile("Bugs fixed", "bug", String(t.bugsFixed), "≈ " + (t.bugsFixed / days).toFixed(1)),
+      // A role scope has no backlog tallies: features/bugs come from day-granular backlog-file
+      // dates that carry no role, so the scoped collector zeroes them and the tiles stay out —
+      // the Usage render's scope line states the omission instead.
+      ...(data.role ? [] : [
+        tile("Features done", "plan", String(t.featuresDone), "≈ " + (t.featuresDone / days).toFixed(1)),
+        tile("Bugs fixed", "bug", String(t.bugsFixed), "≈ " + (t.bugsFixed / days).toFixed(1)),
+      ]),
       tile("Ticks", "refresh", String(t.ticks), "≈ " + Math.round(t.ticks / days)),
       tile("Output tokens", "bars", fmtTokens(t.tokensOut), "≈ " + fmtTokens(Math.round(t.tokensOut / days))),
       tile("Spent", "dollar", fmtUsd(t.costUsd), "≈ " + fmtUsd(t.costUsd / days)),
     ].join("");
   }
 
+  // report-role:start
+  // The Loop picker's options: the fleet-wide "All loops" empty option plus one option per
+  // role, in the fleet's own order. Role names are dynamic (custom loops) and the custom-loop
+  // charset admits HTML metacharacters, so the value and label are escaped. Pure, so a test
+  // can drive it without a DOM.
+  function reportRoleOptions(roles) {
+    return "<option value=''>All loops</option>" +
+      (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
+  }
+  // Repaint both report views' Loop pickers from a status payload: each view's persisted
+  // choice is kept while the fleet still lists it and falls back to All loops otherwise. The
+  // views are defined below; the boot poll and each fetch call this once they exist.
+  function syncReportRoles(d) {
+    for (const view of [usage, failures]) view.syncRoles(d);
+  }
+  // report-role:end
+
   // view-scaffold:start
   // The window pickers' choices and the views' shared head (title, blurb, picker, Refresh).
-  function viewHead(title, blurb, pickerId, choices, current, refreshId) {
-    // A dropped blurb renders as no subtitle at all, never the string "undefined".
+  function viewHead(title, blurb, pickerId, choices, current, refreshId, rolePickerId) {
+    // A dropped blurb renders as no subtitle at all, never the string "undefined". The Loop
+    // picker rides the toolbar when the view has one (the shared Usage/Failures shape); the
+    // options are filled by syncRoles from the fleet's role list.
+    const rolePicker = rolePickerId
+      ? "<label><span class='sr-only'>Loop</span><select class='field' id='" + rolePickerId + "' data-role='1'><option value=''>All loops</option></select></label>"
+      : "";
     return "<div class='view-head'><div><h1>" + esc(title) + "</h1>" +
-      (blurb ? "<p>" + esc(blurb) + "</p>" : "") + "</div><div class='toolbar'>" +
+      (blurb ? "<p>" + esc(blurb) + "</p>" : "") + "</div><div class='toolbar'>" + rolePicker +
       "<div class='seg' id='" + pickerId + "'>" + choices.map((n) => "<button type='button' data-days='" + n + "' class='" +
         (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + "</div>" +
       "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
@@ -207,25 +236,55 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // views differ only in endpoint, body renderer, and titles.
   function windowView(o) {
     let days = Number(recall(o.key)) || o.defaultDays;
+    // The persisted Loop scope for this view: "" is the fleet-wide report. Only a view that
+    // configured a rolePickerId reads it, so a view without a picker never touches storage.
+    let role = o.roleKey ? recall(o.roleKey) || "" : "";
+    let rolesKey = "";
     let fetchedAt = 0;
+    // Keep this view's Loop picker in step with the fleet's role list (custom loops included):
+    // rebuild only when the list changes, keep the persisted choice while it is still listed,
+    // and fall back to All loops when the fleet has dropped it.
+    function syncRoles(d) {
+      if (!o.rolePickerId || !d) return;
+      const select = $(o.rolePickerId);
+      if (!select) return;
+      const roles = (d.loops || []).map((l) => l.role);
+      const key = roles.join(",");
+      if (key === rolesKey) return;
+      rolesKey = key;
+      select.innerHTML = reportRoleOptions(roles);
+      select.value = roles.includes(role) ? role : "";
+      if (select.value !== role) {
+        role = select.value;
+        store(o.roleKey, role);
+      }
+    }
     async function fetchView(throttled) {
       if (throttled && Date.now() - fetchedAt < 60000) return;
       fetchedAt = Date.now();
       const panel = $(o.panelId);
       if (!panel.dataset.built) {
         panel.dataset.built = "1";
-        panel.innerHTML = viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId) +
+        panel.innerHTML = viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId, o.rolePickerId) +
           "<div id='" + o.bodyId + "'><div class='empty'>Loading…</div></div>";
       }
       markActive($(o.pickerId), "days", days);
+      syncRoles(lastStatus);
       try {
-        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days)));
+        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days, role)));
       } catch (e) {
         // Name the view, status, and server error rather than a bare "unavailable".
         $(o.bodyId).innerHTML = errorPanel(o.errorTitle, e, "card empty");
       }
     }
     function wireClicks(container) {
+      if (o.rolePickerId) container.addEventListener("change", (ev) => {
+        const select = clickClosest(ev, "select[data-role]");
+        if (!select) return;
+        role = select.value;
+        store(o.roleKey, role);
+        fetchView();
+      });
       container.addEventListener("click", (ev) => {
         const b = clickClosest(ev, "[data-days]");
         if (b) {
@@ -237,26 +296,26 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         if (clickClosest(ev, "#" + o.refreshId)) fetchView();
       });
     }
-    return { fetch: fetchView, wireClicks };
+    return { fetch: fetchView, wireClicks, syncRoles };
   }
 
   const usage = windowView({
     panelId: "report", title: "Usage", bodyId: "usagebody",
     blurb: "What the fleet produced and what it cost, per day and per loop.",
     pickerId: "usagewindow", choices: [7, 14, 30, 90], refreshId: "usagerefresh",
-    key: "usage-days", defaultDays: 14, errorTitle: "Usage report unavailable",
-    endpoint: (days) => "/api/report?days=" + days,
+    key: "usage-days", defaultDays: 14, roleKey: "usage-role", rolePickerId: "usagerole",
+    errorTitle: "Usage report unavailable",
+    endpoint: (days, role) => "/api/report?days=" + days + (role ? "&role=" + encodeURIComponent(role) : ""),
     render: (d) => {
       const block = (title, svg) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
         "</h2><span class='muted'>per day</span></header><div class='chart'>" + svg + "</div></section>";
-      return "<div class='stats six'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
+      // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
+      // CLI's --role report. The fleet-wide render is unchanged.
+      return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) + "</div>" +
-        // The truncation note rides the window caption, hedged the same way the CLI and TUI
-        // renders phrase it: covered is false only when the oldest retained event lies inside
-        // the window, so the sentence stays true whenever it prints. The sentence itself is
-        // interpolated from SPARSE_WINDOW_NOTE (events/event-window.ts), the one home shared
-        // with the CLI and TUI renders, so this copy cannot drift from theirs.
+        (d.role ? "<p class='muted scope-note'>Loop scope: " + esc(d.role) +
+          " · landing runs and backlog tallies (features done / bugs fixed) are fleet-wide and omitted.</p>" : "") +
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +
           (!d.coversFullWindow ? " · " + ${JSON.stringify(SPARSE_WINDOW_NOTE)} : "") + "</p>" : "");
     },
@@ -266,8 +325,9 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     panelId: "failures", title: "Failures", bodyId: "failbody",
     blurb: "What went wrong, where, and how often — the digest the telemetry loop reads.",
     pickerId: "failwindow", choices: [7, 14, 30], refreshId: "failrefresh",
-    key: "fail-days", defaultDays: 14, errorTitle: "Failure digest unavailable",
-    endpoint: (days) => "/api/failures?days=" + days,
+    key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
+    errorTitle: "Failure digest unavailable",
+    endpoint: (days, role) => "/api/failures?days=" + days + (role ? "&role=" + encodeURIComponent(role) : ""),
     render: (d) => {
       // The view head already titles the page, so the digest's own "# …" heading is dropped.
       const md = String(d.markdown || "").replace(/^# .*\n+/, "");

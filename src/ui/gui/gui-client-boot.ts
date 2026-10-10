@@ -162,6 +162,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       renderComposer(d);
       if (activeView === "fleet") renderFleet(d);
       if (activeView === "history") syncHistoryRoles(d);
+      // Keep the Usage/Failures Loop pickers in step with the fleet while either is open.
+      if (activeView === "usage" || activeView === "failures") syncReportRoles(d);
       const items = d.eventItems || [];
       const last = items[items.length - 1];
       const key = last ? last.ts + ":" + last.type + ":" + last.loop : "";
