@@ -10,7 +10,6 @@
  * distinct free slots and a call with none free registers an in-process waiter. A release wakes
  * the waiters, which re-decide; `signal` aborts a waiter. */
 
-import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, slotCount } from "../config/config.js";
 import { worktreesDir, slotWorktreePath } from "../paths.js";
@@ -21,6 +20,7 @@ import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
+import { subdirectoryNames } from "../files/files.js";
 
 /** A live lease as callers see it: the slot directory, the one-shot release, and whether the
  * slot's existing checkout was kept as-is. */
@@ -361,19 +361,12 @@ export async function retireLegacyRoleWorktrees(
   configured: readonly string[],
 ): Promise<void> {
   const dir = worktreesDir(root);
-  let names: string[] = [];
-  try {
-    names = fs
-      .readdirSync(dir, { withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isDirectory() && entry.name !== DIRECTOR_ROLE && !entry.name.startsWith("_"),
-      )
-      .map((entry) => entry.name);
-  } catch {
-    // No worktrees dir yet (a fleet that has not started): nothing to migrate, but the pin
-    // retirement pass below still runs over whatever slots.json holds.
-  }
+  // A missing worktrees dir (a fleet that has not started) yields no names to migrate; the pin
+  // retirement pass below still runs over whatever slots.json holds.
+  const names = subdirectoryNames(
+    dir,
+    (name) => name !== DIRECTOR_ROLE && !name.startsWith("_"),
+  );
   const configuredSet = new Set(configured);
   const toRemove = new Set<string>();
   updateSlotsState(root, (state) => {

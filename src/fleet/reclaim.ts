@@ -8,13 +8,13 @@
  * The candidate list and the guard that keeps a clean off the primary checkout live here; the
  * in-use half lives in src/git/worktree-use.ts and the hold half in src/gates/disk-gate.ts. */
 
-import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
 import { logEventBestEffort } from "../events/events.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gate.js";
+import { subdirectoryNames } from "../files/files.js";
 import {
   claimForReclaim,
   isReclaimInProgress,
@@ -60,16 +60,9 @@ export function reclaimCandidates(
   now = Date.now(),
   opts: { seed?: boolean } = {},
 ): ReclaimCandidate[] {
-  let names: string[];
-  try {
-    names = fs
-      .readdirSync(worktreesDir(root), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && !RESERVED_WORKTREES.has(entry.name))
-      .map((entry) => entry.name);
-  } catch {
-    return []; // no worktrees dir yet (a fleet that has not started)
-  }
   const dir = worktreesDir(root);
+  // A missing worktrees dir (a fleet that has not started) yields no candidates.
+  const names = subdirectoryNames(dir, (name) => !RESERVED_WORKTREES.has(name));
   // Seed never-seen worktrees as used-now under the cross-process lock, and remember which of
   // this pass's names that covered so they stay out of it. A later pass (or a restart) then sees
   // them; the lock keeps a concurrent orchestrator release from losing the seeding (or vice

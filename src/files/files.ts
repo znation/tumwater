@@ -221,6 +221,23 @@ export function walkFiles(
   }
 }
 
+/** Immediate subdirectory names under `dir`, in readdir order; `[]` when the directory is
+ * missing or unreadable. `keep`, when given, filters by name. The worktree-root scans — the
+ * doctor's leftover-checkout report, the pool's legacy-`<role>` retirement, reclaim's candidate
+ * pass, and the pre-pool `_land-*` removal — all read a directory's immediate subdirectories
+ * with the same walk-and-swallow error policy, so it lives here once. (walkFiles above is the
+ * recursive, file-only sibling.) */
+export function subdirectoryNames(dir: string, keep?: (name: string) => boolean): string[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return []; // Missing or unreadable — no data.
+  }
+  const names = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  return keep ? names.filter(keep) : names;
+}
+
 /** Write `data` — UTF-8 text or raw bytes — to `file` via a tmp file + rename, so a concurrent
  * reader of the same path sees either the old (absent) or the new content, never a partial
  * write: the prompt-inbox queue files (inbox.ts's enqueueRolePrompt) are written by one process

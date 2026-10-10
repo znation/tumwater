@@ -11,7 +11,7 @@ import { detectBuildCheck } from "../build/build-check-detect.js";
 import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
-import { envPath, findOnPath } from "../files/files.js";
+import { envPath, findOnPath, subdirectoryNames } from "../files/files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
 import {
@@ -320,16 +320,8 @@ const PIN_STALE_MS = 24 * 60 * 60 * 1000;
  * dedicated `director`, `_slot-<n>`, `_merge`, `_main`, `_gate-main` and `_build` checkouts are
  * expected and never reported. An unreadable worktrees dir means nothing to report. */
 function leftoverWorktreeDirs(root: string): string[] {
-  let names: string[];
-  try {
-    names = fs
-      .readdirSync(worktreesDir(root), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-  } catch {
-    return [];
-  }
-  return names.filter(
+  return subdirectoryNames(
+    worktreesDir(root),
     (name) => name !== DIRECTOR_ROLE && !(name.startsWith("_") && !name.startsWith("_land-")),
   );
 }

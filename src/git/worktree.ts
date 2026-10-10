@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
 import { branchExists, resolveGitDir } from "./git.js";
-import { pruneOldDirectory, removeTree } from "../files/files.js";
+import { pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
 
@@ -134,15 +134,8 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
  * dead-registration fallback), then one prune registers the vanished checkouts. */
 export async function removeLegacyLandWorktrees(root: string): Promise<void> {
   const dir = worktreesDir(root);
-  let names: string[];
-  try {
-    names = fs
-      .readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith("_land-"))
-      .map((entry) => entry.name);
-  } catch {
-    return; // no worktrees dir yet (a fleet that has not started)
-  }
+  // A missing worktrees dir (a fleet that has not started) yields no names to remove.
+  const names = subdirectoryNames(dir, (name) => name.startsWith("_land-"));
   for (const name of names) await removeWorktreeDir(root, path.join(dir, name));
   if (names.length > 0) await gitTry(root, "worktree", "prune");
 }
