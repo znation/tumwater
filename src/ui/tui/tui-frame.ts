@@ -2,7 +2,7 @@
  * header (fleet-alerts.ts's fleetAlerts — the dashboard's alert banners, one line each); the view
  * tab strip; the per-view key hints; the prompt line's target; and the tones of activity and
  * transcript lines. The TUI shares the dashboard's vocabulary — the same view names (Activity,
- * Transcript, Backlog, Usage, Failures, History), the same alert wording, the same status colors — drawn
+ * Transcript, Backlog, Usage, Failures, History, Pending), the same alert wording, the same status colors — drawn
  * in the terminal's base colors, so they follow its theme. */
 import type { HarnessEvent } from "../../events/events.js";
 import { clipSpans, type StatusLine, type StatusSpan } from "../status-render.js";
@@ -50,15 +50,16 @@ export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3
 }
 
 /** Which pane the TUI shows: the activity feed, one loop's transcript, the backlog, the usage
- * report, the failure digest, or the completed-tick history — the dashboard's views, in the
- * order Ctrl+T cycles them. */
+ * report, the failure digest, the completed-tick history, or the pending-change roster — the
+ * dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =
   | { kind: "activity" }
   | { kind: "transcript"; role: string; index: number; count: number; note: boolean }
   | { kind: "backlog" }
   | { kind: "usage" }
   | { kind: "failures" }
-  | { kind: "history" };
+  | { kind: "history" }
+  | { kind: "pending" };
 
 /** The pane's tab strip: every view by name, the current one bracketed (and bright), so the
  * Ctrl+T cycle can be seen rather than remembered. */
@@ -70,6 +71,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
     ["usage", "Usage"],
     ["failures", "Failures"],
     ["history", "History"],
+    ["pending", "Pending"],
   ];
   const spans: StatusSpan[] = [];
   tabs.forEach(([kind, label], i) => {
@@ -89,7 +91,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
     keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "transcript" : "notebook"], ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "usage" || view.kind === "failures" || view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "usage" || view.kind === "failures" || view.kind === "history" || view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {

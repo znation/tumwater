@@ -149,8 +149,68 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   keys.handleKey(undefined, { name: "pageup" });
   assert.equal(keys.state().paneScroll, 0, "PgUp clamps back to the head");
   keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "cycling past History wraps to Activity");
-  assert.equal(keys.state().paneCache, null, "leaving History drops its cache");
+  assert.equal(keys.state().view, 5, "Pending follows History (roleIds.length + 5)");
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "cycling past Pending wraps to Activity");
+  assert.equal(keys.state().paneCache, null, "leaving History and Pending drops the cache");
+});
+
+test("the Pending pane caches the rendered fleet roster when collectPending resolves, and a cycle away drops it", async () => {
+  const root = makeRoot();
+  const fleet = {
+    mainBranch: "main",
+    roles: [
+      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, commits: [], dirtyFiles: [] },
+      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, commits: [], dirtyFiles: ["a.ts"] },
+    ],
+  };
+  let resolvePending!: (view: typeof fleet) => void;
+  const pending = new Promise<typeof fleet>((resolve) => (resolvePending = resolve));
+  let renders = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => (renders += 1),
+    now: () => 0,
+    collectPending: () => pending,
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  assert.equal(keys.state().paneCache, null, "the cache stays empty until the collector resolves");
+  const before = renders;
+
+  resolvePending(fleet);
+  await pending;
+  assert.equal(
+    keys.state().paneCache,
+    "feature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
+    "the pane caches renderFleetChange's roster text",
+  );
+  assert.ok(renders > before, "a resolution repaints the pane");
+});
+
+test("a Pending collector resolution after the operator cycled away does not cache onto the new view", async () => {
+  const root = makeRoot();
+  const fleet = { mainBranch: "main", roles: [] };
+  let resolveLate!: (view: typeof fleet) => void;
+  let renders = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => (renders += 1),
+    now: () => 0,
+    collectPending: () => new Promise<typeof fleet>((resolve) => (resolveLate = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away before it resolves
+  assert.equal(keys.state().view, 0);
+  resolveLate(fleet);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, null, "a late resolution does not cache onto Activity");
 });
 
 test("a flash notice expires on the injected clock", () => {

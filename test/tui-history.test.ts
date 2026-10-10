@@ -53,3 +53,15 @@ test("an empty history pane falls back to the no-ticks note, not entryBodyWindow
   assert.equal(rows.body.length, 1);
   assert.equal(rows.emptyNote, "(no ticks yet)");
 });
+
+test("a null pending cache holds the loading note, and a resolved roster windows its text", () => {
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
+  const loading = paneBody({ kind: "pending" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(loading.body, []);
+  assert.equal(loading.emptyNote, "(loading pending changes…)");
+
+  const roster = "feature: 2 commits ahead of main\nclean: 1 uncommitted file ahead of main";
+  const resolved = paneBody({ kind: "pending" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: roster } });
+  assert.equal(resolved.body.map((l) => l.map((s) => s.text).join("")).join("\n"), roster);
+  assert.equal(resolved.emptyNote, "(loading pending changes…)");
+});

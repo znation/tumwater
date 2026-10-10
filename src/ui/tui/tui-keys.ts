@@ -5,6 +5,8 @@ import { collectFailureReport } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
 import { HISTORY_DEFAULT_TICKS, readTickRows } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
+import { collectFleetChanges, type FleetChangeView } from "../../change/change-data.js";
+import { renderFleetChange } from "../../change/change-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../../fleet/fleet-state.js";
@@ -47,6 +49,9 @@ interface TuiKeysDeps {
   requestRender(): void;
   /** Injectable clock for the flash expiry; production uses Date.now. */
   now?(): number;
+  /** The Pending pane's async collector; production uses change-data's collectFleetChanges.
+   * Injectable so tests can resolve a fixed roster without git plumbing. */
+  collectPending?(root: string): Promise<FleetChangeView>;
 }
 
 /** The state render reads back each frame: the prompt line, the modes it names in the hint
@@ -107,6 +112,7 @@ export interface TuiKeys {
 export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
+  const collectPending = deps.collectPending ?? collectFleetChanges;
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // tui-backlog.ts's one definition, shared with the render so stale-selection clamping cannot
   // drift.
@@ -155,7 +161,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   };
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
   // status (planned features + open bugs + open questions), then the usage report, the failure
-  // digest, and the completed-tick history — Ctrl+T.
+  // digest, the completed-tick history, and the pending-change roster — Ctrl+T.
   let view = 0;
   // The project-status pane's entry selection (null = list mode): the flat index of the
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
@@ -377,20 +383,41 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       exitRolePromptMode();
       noteMode = false; // a cycle away leaves notebook mode and drops its snapshot
       noteCache = null;
-      view = (view + 1) % (roleIds.length + 5); // events → each loop's transcript → project status → usage report → failures → history → events
+      view = (view + 1) % (roleIds.length + 6); // events → each loop's transcript → project status → usage report → failures → history → pending → events
       selectedEntry = null; // leaving a view drops any entry selection…
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
       paneScroll = 0; // the Markdown panes always re-enter at their head
       // Compute the pane's Markdown once per activation (this handler renders immediately), and
       // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
-      paneCache =
-        view === roleIds.length + 2
-          ? renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS))
-          : view === roleIds.length + 3
-            ? renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS))
-            : view === roleIds.length + 4
-              ? historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null))
-              : null;
+      if (view === roleIds.length + 2) {
+        paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS));
+      } else if (view === roleIds.length + 3) {
+        paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS));
+      } else if (view === roleIds.length + 4) {
+        paneCache = historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
+      } else if (view === roleIds.length + 5) {
+        // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
+        // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
+        // Guard on the view we entered from: an operator who cycled away must not have this
+        // resolution overwrite the pane they moved to. The default collector degrades rather
+        // than throws, so the rejection arm only covers an injected seam (or an unexpected throw).
+        const entered = view;
+        paneCache = null;
+        void collectPending(root).then(
+          (fleet) => {
+            if (view !== entered) return;
+            paneCache = renderFleetChange(fleet);
+            deps.requestRender();
+          },
+          (err: unknown) => {
+            if (view !== entered) return;
+            flashError(err);
+            deps.requestRender();
+          },
+        );
+      } else {
+        paneCache = null;
+      }
       deps.requestRender();
       return;
     }
@@ -553,7 +580,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       currentBudgetFree = budgetFree;
       roleIds = roles;
       directorInFlight = directorRunning;
-      view = Math.min(view, roleIds.length + 4); // clamp a stale index if roles changed
+      view = Math.min(view, roleIds.length + 5); // clamp a stale index if roles changed
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
       eventBudget = evBudget;
