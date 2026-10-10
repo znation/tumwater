@@ -304,43 +304,132 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep across `plans/*.md` (planned 2026-10-10 by organize)
+### Finish the stale code-path citation sweep, part 1/5: `plans/portability.md`, parts 1/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 2/5–5/5)
 
-**Needs review 2026-10-10 by feature: too large for one run**
+**Goal.** Every path-shaped token in this part's plan-document sections names a path that exists
+in the tree, every `<path>:<line>` names a line the file actually has, and a module that has
+since split names the module that owns the symbol beside the citation. A reader who follows the
+citation reaches the code it describes. The plans were audited before the landing, pi-facade,
+config, loop, and events splits, so today a citation names a module that no longer exists or a
+line past the file's end; the 2026-10-10 review of `plans/portability.md` named three remaining
+classes — a helper pinned to the wrong landing module, a build-scope call pinned to a stale
+module, and line pins past the file's end.
 
-Goal. Every path-shaped token in the plan documents names a path that exists in the tree, every
-`<path>:<line>` names a line the file actually has, and a module that has since split names the
-module that owns the symbol beside the citation. A reader who follows a plan's citation reaches
-the code it describes.
+**Scope.** `plans/portability.md` sections "1/7 — GitHub Actions CI and a publishable npm
+package", "2/7 — Resolve the repo root, and target any branch", "3/7 — Harness-mediated config
+writes: take custom loops off the commit path", "4a/7 — Seed an untracked config from a tracked
+template", "4b/7 — Untrack this repo's own config without deleting it", and "4c/7 — Move README's
+rig notes into docs/backends.md". Disjoint from parts 2/5–5/5, so the parts land cleanly in any
+order.
 
-Cost it removes. The plans were audited before the landing, pi-facade, config, loop, and events
-splits, so today a citation either names a module that no longer exists or a line past the file's
-end. The organize loop has repaired one file per tick, and review keeps finding the pass
-incomplete: the 2026-10-10 review of `plans/portability.md` named three remaining classes — a
-helper pinned to the wrong landing module, a build-scope call pinned to a stale module, and line
-pins past the file's end. This lands the sweep as one coherent change instead of another partial
-pass.
-
-Target structure / method.
-1. Inventory: scan every `plans/*.md` for path-shaped tokens and keep the ones whose path is
-   absent from the tree; separately list every `<path>:<line>` whose line is past the file's end.
+**Method (parts 2/5–5/5 apply this same four-step method to their own scope).**
+1. Inventory: scan the scope for path-shaped tokens and keep the ones whose path is absent from
+   the tree; separately list every `<path>:<line>` whose line is past the file's end. A clean
+   inventory over the scope is the acceptance check.
 2. Split-aware map: for each moved module, name the one current module that owns the cited
-   symbol. A module that split into a facade plus implementations needs a per-citation symbol
-   check, never a blanket rename.
+   symbol — the root modules that moved into their own directory keep their file name, so
+   `src/config/config.ts`, `src/loop/loop.ts`, `src/pi/pi.ts`, `src/git/git.ts`,
+   `src/orchestrator/orchestrator.ts`, and `src/config/config-validation.ts` are the owners,
+   while the `types`, `state`, and `merge` modules split into per-topic files — but a module
+   that split into a facade plus
+   implementations needs a per-citation symbol check, never a blanket rename. `git log
+   --diff-filter=R --name-status` and `grep -rn <symbol> src` locate the owner.
 3. Rewrite rule: replace the path with its current module and drop the old `:line` pin, keeping
    the symbol name in the surrounding prose. A path alone is honest; a stale number is not.
 4. Historical audits: a dated "Verified as written" paragraph is a snapshot at the commit its
    heading names. Keep that commit reference; reword its line pins to symbol names rather than
    asserting a current line.
 
-Files touched. `plans/portability.md` first (the file this sweep's review named), then every
-other `plans/*.md` the inventory flags. No source or test change.
+**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
 
-Acceptance criteria.
-- The inventory over every `plans/*.md` reports no cited path absent from the tree.
-- No `<path>:<line>` names a line past that file's end.
-- For each split module, the module named beside a symbol exports it (checked against the
-  module's export list).
+**Acceptance criteria.**
+- The inventory over the named sections reports no cited path absent from the tree.
+- No `<path>:<line>` in the named sections names a line past that file's end.
+- For each split module cited in the named sections, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 2/5: `plans/portability.md`, parts 5/7–7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+
+**Goal.** The same citation invariant as part 1/5, for `plans/portability.md`'s "5/7 — Make the
+agent binary configurable", "6/7 — Make the project's verification command configurable", and
+"7/7 — Adopt an existing repository without hijacking its README" sections.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1/5, applied to these sections. Its `5/7` and `6/7` prose is the densest source of line pins
+past a file's end, and `7/7` cites the config and merge splits.
+
+**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named sections reports no cited path absent from the tree.
+- No `<path>:<line>` in the named sections names a line past that file's end.
+- For each split module cited in the named sections, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+
+**Goal.** The same citation invariant as part 1/5, for the plan documents that cite the config
+and model splits: `plans/daily-cost-budget.md`, `plans/fallback-model.md`, and
+`plans/model-tiers.md`.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1/5, applied to these three files. Their absent paths are the `types`, `config`, `loop`,
+`orchestrator`, `pi`, `state`, and `status` module moves, so the split-aware map is exercised
+across several owners.
+
+**Files touched.** Those three `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these three files reports no cited path absent from the tree.
+- No `<path>:<line>` in these three files names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 4/5: the observer, QA, questions, review, and steward plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+
+**Goal.** The same citation invariant as part 1/5, for `plans/observer-roles.md`,
+`plans/qa-role.md`, `plans/questions-outbox.md`, `plans/review-gate.md`, and
+`plans/steward-role.md`.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1/5, applied to these five files. Their absent paths are the `loop`, `types`, `config`,
+`orchestrator`, `state`, `questions`, and `status-render` module moves, and
+`plans/observer-roles.md` also carries one out-of-range pin.
+
+**Files touched.** Those five `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these five files reports no cited path absent from the tree.
+- No `<path>:<line>` in these five files names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+
+**Goal.** The same citation invariant as part 1/5, for every `plans/*.md` file not assigned to
+parts 1/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
+`plans/commit-bodies.md`, `plans/refusal-and-thrash.md`, `plans/repair-traces.md`,
+`plans/telemetry-role.md`, and `plans/user-defined-loops.md`; the rest
+(`plans/disk-floor.md`, `plans/merge-queue.md`, `plans/parallel-work-instances.md`,
+`plans/principles.md`, `plans/revise-rejected.md`, `plans/work-ratio.md`,
+`plans/worktree-pool.md`) are inventoried too, so a later move there is caught rather than
+missed.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1/5, applied to this scope. `plans/repair-traces.md` and `plans/telemetry-role.md` carry the
+out-of-range pins here; `plans/telemetry-role.md` also cites the `failure-report` module split.
+
+**Files touched.** `plans/*.md` files not assigned to parts 1/5–4/5. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over this scope reports no cited path absent from the tree.
+- No `<path>:<line>` in this scope names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
 - `npm run test` is green.
 
 ### Role-scoped Usage and Failures views in the dashboard (planned 2026-10-10 by plan; independent of the Agent backends series; sibling of the landed `tumwater report --role <id>` and `tumwater report --failures --role <id>`; completes the CLI's role scope on the dashboard's two report tabs)
