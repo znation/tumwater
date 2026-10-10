@@ -457,6 +457,23 @@ test("renderBacklogIndexBlock marks a held entry as blocked, refused or needing 
   assert.match(block, /- 9-10: Review one \[needs review\]/);
 });
 
+test("renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is unlanded", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Base, part 1/2: x (planned 2026-10-01)\nbody\n## Done\n_None._\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    "# Bugs\n## Open\n### Bug (reported 2026-10-02; requires Base 1/2 landed)\nrepro\n## Fixed\n_None._\n",
+  );
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  // The eligibility gate (eligibleEntries) and `tumwater backlog`'s holds judge a bug against
+  // the still-planned set too, so the prompt index must word the same hold: a bugfix loop must
+  // not read this entry as eligible.
+  assert.match(block, /BUGS\.md ## Open\n- 3-4: Bug \[blocked: requires Base 1\/2\]/);
+});
+
 test("renderBacklogIndexBlock re-reads a backlog file whose stat changed", () => {
   const dir = tmpdir();
   const bugs = path.join(dir, "BUGS.md");

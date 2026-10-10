@@ -6,6 +6,7 @@ import { BACKLOG_FILES, fenceTracker, headingMetadata, parseEntryDetails, sectio
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import { entryHold, holdMark } from "./backlog-eligibility.js";
+import { plannedPlanEntries } from "./backlog.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -327,27 +328,43 @@ const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
   { file: "QUESTIONS.md", section: "Open" },
 ];
 
-/** One index file's rendered section lines, cached per file stat (stat-cache.cachedByStat):
- * both branches of every tick prompt render this block, and the backlog files — BUGS.md above
- * all, since its closed history grows without bound — change only at a landing. An unchanged
- * file then costs one stat per tick instead of a full read, a split into lines, and a
- * section walk proportional to the whole file. The value is the section's `file ## section`
- * header plus one line per entry, or `[]` when the section holds none; keyed by the file path
- * so distinct roots never collide. Bounded inside cachedByStat. */
-const indexSectionCache = new Map<string, StatKeyedValue<string[]>>();
+/** One actionable entry as the index renders it: the 1-based range the loop reads, the
+ * verbatim heading, and the body a hold note is read from. Cached per file stat
+ * (stat-cache.cachedByStat): both branches of every tick prompt render this block, and the
+ * backlog files — BUGS.md above all, since its closed history grows without bound — change only
+ * at a landing. An unchanged file then costs one stat per tick instead of a full read, a split
+ * into lines, and a section walk proportional to the whole file. The eligibility mark is applied
+ * after the cache, against the section-independent prerequisite set; the cache is keyed by the
+ * file path so distinct roots never collide, and bounded inside cachedByStat. */
+interface IndexEntry {
+  start: number;
+  end: number;
+  title: string;
+  body: string;
+}
+
+/** Per-file cache of the parsed actionable entries (indexSectionCache). */
+const indexSectionCache = new Map<string, StatKeyedValue<IndexEntry[]>>();
 
 /** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
  * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
  * checkout `root`. Replaces the per-tick `grep -n '^##'` heading map, whose pattern also matched
  * every `###` title in BUGS.md's closed history and so re-sent ~108 KB on every turn (BUGS.md
  * 2026-10-06). A missing or unreadable file contributes no sections; undefined when no section
- * has entries, so an empty backlog leaves the prompt unchanged. The per-file section lines are
- * stat-cached (indexSectionCache), so an unchanged backlog file is not re-read or re-walked. */
+ * has entries, so an empty backlog leaves the prompt unchanged. The per-file actionable entries
+ * are stat-cached (indexSectionCache), so an unchanged backlog file is not re-read or re-walked. */
 export function renderBacklogIndexBlock(root: string): string | undefined {
+  // The still-planned set every section's holds are judged against. A prerequisite clause rides
+  // in the entry heading, and the eligibility gate (backlog-eligibility.ts's eligibleEntries)
+  // and `tumwater backlog`'s holds read it for BUGS.md's Open entries too, so the same set must
+  // reach this block's Open section as well — otherwise a held bug reads as eligible here while
+  // the gate skips it. plannedPlanEntries is stat-cached by sectionEntries, so an unchanged
+  // PLANS.md costs one stat per call.
+  const planned = plannedPlanEntries(root);
   const listed: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {
     const full = path.join(root, file);
-    const lines = cachedByStat(
+    const entries = cachedByStat(
       indexSectionCache,
       full,
       full,
@@ -355,28 +372,26 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
         // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
         const md = readTextOrNull(full);
         if (md === null) return null; // Unreadable: nothing to cache for this stat.
-        const entries = actionableEntryRanges(md, section);
-        if (entries.length === 0) return [];
+        const ranges = actionableEntryRanges(md, section);
+        if (ranges.length === 0) return [];
         const lines = md.split(/\r?\n/);
-        // A prerequisite clause lives in the heading, and only a Planned entry can name one, so
-        // the Planned section holds its own reference set; the other sections have no series.
-        const planned = section === "Planned" ? parseEntryDetails(md, section) : [];
-        return [
-          `${file} ## ${section}`,
-          // A hold rides in the entry heading or body, not the index; reading both here lets the
-          // mark reach both loops without either parsing the file. The body slice is the lines
-          // after the heading through the last body line, so a note is found whether it sits
-          // first or last (the heading is at 1-based line e.start).
-          ...entries.map((e) => {
-            const body = lines.slice(e.start, e.end).join("\n");
-            const mark = holdMark(entryHold({ title: e.title, body }, planned));
-            return `- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}`;
-          }),
-        ];
+        // The body slice is the lines after the heading through the last body line, so a note
+        // is found whether it sits first or last (the heading is at 1-based line e.start).
+        return ranges.map((e) => ({
+          start: e.start,
+          end: e.end,
+          title: e.title,
+          body: lines.slice(e.start, e.end).join("\n"),
+        }));
       },
       (v) => v.slice(), // A copy: callers may treat the result as their own.
     );
-    if (lines) listed.push(...lines);
+    if (entries === null || entries.length === 0) continue;
+    listed.push(`${file} ## ${section}`);
+    for (const e of entries) {
+      const mark = holdMark(entryHold({ title: e.title, body: e.body }, planned));
+      listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}`);
+    }
   }
   if (listed.length === 0) return undefined;
   return `Actionable backlog — each entry with the 1-based line range it occupies in its file.
