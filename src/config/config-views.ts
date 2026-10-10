@@ -574,9 +574,9 @@ function freeRoleModels(
  * role overrides (`roles.<id>.model: "strong"`) are kept since the map now serves the tier
  * itself. The director's exemption lives in the gates (roleForConfig), not here. A
  * subscription claude seam is never moved (`free`): the gate passes one predicate over the
- * resolved seam, so a free tier keeps its own primary in the map, a free role keeps its own
- * override, and a free reviewer keeps its own model — while every priced seam still lands on its
- * tier's fallback pair. */
+ * resolved seam, so a free tier keeps its own primary in the map — with the ambient thinking
+ * level it resolved with — a free role keeps its own override, and a free reviewer keeps its own
+ * model, while every priced seam still lands on its tier's fallback pair. */
 export function applyFallbackModel(
   config: TumwaterConfig,
   resolved?: TierFallbackMap,
@@ -593,11 +593,22 @@ export function applyFallbackModel(
         : undefined;
     const model: Partial<Record<ModelTier, string>> = {};
     for (const tier of MODEL_TIERS) {
-      // A free seam keeps the tier's own primary selector: the top-level form carries the
-      // backend namespace a resolved seam has already cleared.
-      if (free?.(withModelOverrides(config, tier, {}))) {
+      // A free seam keeps the tier's own primary selector — the backend namespace a resolved
+      // seam has cleared, plus the ambient thinking level `topTierSelector` alone omits. A moved
+      // seam gets its pair selector, which already carries that ambient level.
+      const seam = withModelOverrides(config, tier, {});
+      if (free?.(seam)) {
         const own = topTierSelector(config, tier);
-        if (own !== undefined) model[tier] = formatModelSelector(own);
+        if (own !== undefined)
+          model[tier] = formatModelSelector({ ...own, thinking: own.thinking ?? config.thinking });
+        // A tier with no top-level selector — `agent: "claude"` riding its agent default —
+        // has no own selector to carry the level, so name the routed default plus it.
+        else if (seam.model !== undefined)
+          model[tier] = formatModelSelector({
+            provider: seam.provider,
+            model: seam.model,
+            thinking: seam.thinking,
+          });
         continue;
       }
       const sel = selectorOf(resolved[tier]);

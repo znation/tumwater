@@ -432,6 +432,41 @@ test("applyFallbackModel keeps a free seam while moving a priced one", () => {
   assert.equal(configForRole(plain, "feature").provider, "free");
 });
 
+test("applyFallbackModel keeps a free seam's ambient thinking level", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = { default: "claude/claude-sonnet-5-5", strong: "paid/gpt-x" };
+  config.thinking = "high";
+  config.fallback = "free/qwen-free";
+  config.review = { ...config.review, enabled: true, model: "claude/claude-sonnet-5-5" };
+  config.roles.feature = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
+  const resolved = resolveTierFallbacks(config, () => true);
+  const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
+  // The kept free tier carries the ambient thinking level in its selector; its roles inherit it,
+  // exactly as they did before the cap. A moved seam still drops the top-level thinking field
+  // (the existing test above pins `out.thinking === undefined`), though its pair selector already
+  // folded the ambient level in.
+  assert.equal(tierModel(out, "default")?.thinking, "high");
+  assert.equal(configForRole(out, "feature").thinking, "high");
+});
+
+test("applyFallbackModel keeps a free agent-default tier's ambient thinking", () => {
+  // `agent: "claude"` with no top-level `model`: each seam rides its agent's tier default
+  // (sonnet/haiku/opus), and the ambient thinking level applies to all of them. A free seam has
+  // no own selector to carry the level, so the kept tier must name the routed default plus it.
+  const config: TumwaterConfig = defaultConfig();
+  config.agent = "claude";
+  config.thinking = "high";
+  config.fallback = "free/qwen-free";
+  const resolved = resolveTierFallbacks(config, () => true);
+  const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
+  assert.equal(configForRole(out, "feature").model, "claude-sonnet-5-5");
+  assert.equal(configForRole(out, "feature").thinking, "high");
+  assert.equal(configForRole(out, "readme").model, "claude-haiku-5-5");
+  assert.equal(configForRole(out, "readme").thinking, "high");
+  assert.equal(configForRole(out, "plan").thinking, "high");
+  assert.equal(reviewConfig(out).thinking, "high");
+});
+
 test("fallbackRoleConfig resolves the role's tier pair and is null when it pauses", () => {
   const config: TumwaterConfig = defaultConfig();
   config.model = "paid/primary";
