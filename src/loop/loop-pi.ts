@@ -192,8 +192,7 @@ export class LoopPi {
       (pi.transientServerTimeout ||
         pi.transientPiCrash ||
         pi.transientRateLimit ||
-        (pi.transientBackend &&
-          (pi.backendKind === "stream-severed" || pi.backendKind === "timeout"))) &&
+        this.retryCoversBackendKind(pi)) &&
       !pi.ok
     ) {
       this.host.warn(
@@ -236,27 +235,48 @@ export class LoopPi {
       const retry = await runPi({ ...opts, continueSession: true });
       this.warnFallbackClone(retry);
       if (foldFinal) fold(retry);
+      this.warnBackendKindFloor(retry);
       return retry;
     }
-    // The backend-kind floor (BUGS.md 2026-09-29): a failed run of a backend kind the retry
-    // does not cover (connection down, 5xx, model load) still warns — parity with the 429
-    // branch above, so any episode is visible from the feed alone instead of living only in
-    // per-tick error events an operator must aggregate by hand. The fleet-wide hold
-    // (src/fleet/fleet-hold.ts) and the storm alarms judge the spread; this line is the per-run
-    // floor under them, not a retry: a dead backend is not something an immediate re-run beats.
-    if (
-      !pi.ok &&
-      !pi.aborted &&
-      !pi.timedOut &&
-      !pi.quietKilled &&
-      pi.transientBackend
-    ) {
-      this.host.warn(
-        `provider backend failure (${backendKindPhrase(pi.backendKind)}) — the transient retry does not cover this kind; the fleet-wide hold watches for a storm`,
-      );
-    }
+    this.warnBackendKindFloor(pi);
     if (foldFinal) fold(pi);
     return pi;
+  }
+
+  /** The backend-kind floor (BUGS.md 2026-09-29): a failed run that ended on a
+   * provider-backend failure (connection down, 5xx, model load) still warns — parity with
+   * the 429 branch above, so any episode is visible from the feed alone instead of living
+   * only in per-tick error events an operator must aggregate by hand. The fleet-wide hold
+   * (src/fleet/fleet-hold.ts) and the storm alarms judge the spread; this line is the per-run
+   * floor under them, not a retry: a dead backend is not something an immediate re-run beats.
+   * Applied to whichever run is returned (BUGS.md 2026-10-09): the retry's returned run is a
+   * second, independent run the retry predicate was never applied to, so a retry that dies
+   * on an uncovered kind must warn exactly as a first attempt does. A run the retry predicate
+   * DID admit on a backend kind (stream-severed/timeout) is excluded, so the warning's "does
+   * not cover this kind" stays true and a retry failing on a covered kind emits no such line
+   * (BUGS.md 2026-10-09 review). */
+  private warnBackendKindFloor(run: PiRunResult): void {
+    if (
+      !run.ok &&
+      !run.aborted &&
+      !run.timedOut &&
+      !run.quietKilled &&
+      run.transientBackend &&
+      !this.retryCoversBackendKind(run)
+    ) {
+      this.host.warn(
+        `provider backend failure (${backendKindPhrase(run.backendKind)}) — the transient retry does not cover this kind; the fleet-wide hold watches for a storm`,
+      );
+    }
+  }
+
+  /** Whether the one bounded transient retry admits `run` on its backend-kind alone: the
+   * stream-severed and request-timeout kinds, whose first-attempt warning says "retrying the
+   * pi run once". The floor's other backend kinds (connection/5xx/model-load) are exactly the
+   * ones this excludes. Shared by the retry predicate above and the floor, so the two cannot
+   * drift on which kinds the retry covers. */
+  private retryCoversBackendKind(run: PiRunResult): boolean {
+    return run.transientBackend && (run.backendKind === "stream-severed" || run.backendKind === "timeout");
   }
 
   /** One warning per run whose model id pi could not resolve exactly (BUGS.md 2026-10-06):
