@@ -95,8 +95,8 @@ type GateOutcome =
   | { kind: "result"; result: TickResult; discarded?: true };
 
 /** The identity every gate invocation needs from its caller — landing-batch.ts's BatchContext
- * (and LanderContext) satisfies it, so the gate never hand-assembles a nine-field argument
- * object. */
+ * (and LanderContext) satisfies it, so the gate never hand-assembles its ReviewContext
+ * argument object. */
 interface ReviewGateContext extends GateRunsPi, LandingScopeContext {}
 
 /** Rebase a pinned change in its leased pool slot `wt` (checked out detached at `req.sha`) onto
@@ -125,7 +125,7 @@ export async function syncPinToMain(
   return { ...req, sha: syncedHead };
 }
 
-/** The ten-field ReviewContext for judging landing request `req` in worktree `wt` — the single
+/** The ReviewContext for judging landing request `req` in worktree `wt` — the single
  * home of that argument object, shared by reviewPinnedChange's pinned vet and
  * landApprovedChange's re-review of a resolved conflict (its recheckResolved callback), so the
  * two gate invocations cannot drift on which fields the reviewer sees. Both callers' contexts
