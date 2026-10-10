@@ -1491,18 +1491,18 @@ only ever been pointed at repos it created itself.
   writes to the resolved file.
 - src/init/init.ts — `--adopt` and automatic adoption; today's README-without-markers error becomes
   that path plus one informational line; `--dry-run`; the trimmed PRINCIPLES template.
-- src/cli/cli-args.ts — `parseInitArgs` gains `--adopt` and `--dry-run`.
-- src/roles/roles.ts + src/prompt/prompt.ts — the readme role's instructions and the orientation rules name
+- src/cli/cli-command-args.ts — `parseInitArgs` gains `--adopt` and `--dry-run`.
+- src/roles/role-catalog.ts + src/prompt/prompt.ts — the readme role's instructions and the orientation rules name
   "the project brief (`TUMWATER.md`, or `README.md` in repos tumwater created)" instead of
   README.md.
-- src/doctor/doctor.ts — report which file holds the brief.
+- src/doctor/doctor-checks.ts — report which file holds the brief.
 - Tests: test/init.test.ts (adopt against a repo with its own README and PLANS.md; `--dry-run`
   writes nothing and exits 0; a tumwater-created repo still round-trips through README.md),
   test/brief.test.ts (resolution order; a `TUMWATER.md` wins over a marked README),
   test/prompt.test.ts (the resolved brief file is what the prompt names), test/doctor.test.ts.
 
-**Files touched.** src/paths.ts, src/brief.ts, src/init/init.ts, src/cli/cli-args.ts, src/roles/roles.ts,
-src/prompt/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/brief.test.ts, test/prompt.test.ts,
+**Files touched.** src/paths.ts, src/brief.ts, src/init/init.ts, src/cli/cli-command-args.ts, src/roles/role-catalog.ts,
+src/prompt/prompt.ts, src/doctor/doctor-checks.ts, test/init.test.ts, test/brief.test.ts, test/prompt.test.ts,
 test/doctor.test.ts.
 
 **Acceptance criteria.**
@@ -1520,37 +1520,36 @@ is four landings behind at `8fd6a85`, and none of the landings since touches an 
 Every anchor verified on this tree; three files are missing from the Files-touched list, one
 claim is wrong, and eight implementation questions the write left open are pinned below.**
 
-Verified as written: `src/brief.ts` is 47 lines — `PROMPT_START`/`PROMPT_END` exported (lines
-7–8), `STATUS_START`/`STATUS_END` module-private (10–11), `readmeTemplate(projectName,
-initialPrompt)` (15) and `readInitialPrompt(root)` (38), the latter reading only
-`path.join(root, "README.md")` and searching the close marker only after the open one.
-`readInitialPrompt` has exactly two production call sites — `src/loop.ts:145` (feeding both
-`buildTickPrompt` and `buildDirectorPrompt`) and `src/init/init.ts:99` — plus test imports, so the
-resolution change is contained. `src/init/init.ts`: `initProject(root, initialPrompt)` at 86; the
-README-without-markers guard at 99–104 throws; `write()` (create-if-absent) at 112;
-`ensureGitignore` (66); `saveConfig` only when `configPath` is absent; the `created` list drives
-`git add`/commit and `cmdInit`'s output (`src/cli.ts:95–108`). `src/cli/cli-args.ts`:
-`parseInitArgs(args): string` at 112 rejects every `--` token except `--file` (114–116), and the
-no-`--file` path returns `args.join(" ")` at 135 — free-form prompt text. `src/prompt/prompt.ts`:
-`COMMON_RULES` (52) names README.md at 56 ("First read README.md in full") and 85 ("Never edit
-the initial prompt block in README.md"), and is embedded by BOTH `buildTickPrompt` (172) and
-`buildDirectorPrompt` (221); `TickPromptInput` is at 142, `buildTickPrompt` at 163, and
-`buildDirectorPrompt(userPrompt, initialPrompt, principles)` is the shape `loop.ts:154` calls.
-`src/roles/roles.ts`: `readme.find` names README.md and the status markers at 108; `plan.find` says
-"its initial prompt in README.md" at 94. `src/doctor/doctor.ts`: checks are an array in `runDoctor` (203)
-with `checkInit` at 207; `renderDoctor` pads the name column to 12 (222–224). Tests:
-`test/brief.test.ts` (78 lines, every case through a `writeReadme` helper that writes README.md),
-`test/init.test.ts` (116; the refusal test at 67, the PRINCIPLES seed assertions at 32–42),
-`test/cli-args.test.ts` (341), `test/doctor.test.ts`, `test/prompt.test.ts`. Capability absence
-re-confirmed: `grep -rn 'TUMWATER.md\|briefFile\|briefCandidate\|--adopt\|--dry-run' src/` is empty.
+Verified as written: `src/brief.ts` holds `PROMPT_START`/`PROMPT_END` exported,
+`STATUS_START`/`STATUS_END` module-private, `readmeTemplate(projectName, initialPrompt)` and
+`readInitialPrompt(root)`, the latter reading only `path.join(root, "README.md")` and searching
+the close marker only after the open one. The per-tick prompt reads the brief through `readBrief`
+(`src/tick/tick-prompt.ts`), and `src/init/init.ts` reads it through `readInitialPrompt` — plus
+test imports, so the resolution change is contained. `src/init/init.ts`: `initProject(root,
+initialPrompt)`; the README-without-markers guard throws; `write()` (create-if-absent);
+`ensureGitignore`; `saveConfig` only when `configPath` is absent; the `created` list drives
+`git add`/commit and `cmdInit`'s output (`src/cli.ts`). `src/cli/cli-command-args.ts`:
+`parseInitArgs(args)` rejects every `--` token except `--file`, and the no-`--file` path returns
+`args.join(" ")` — free-form prompt text. `src/prompt/prompt.ts`: `commonRules` names the brief
+("First read the project brief (README.md) in full" and "Never edit the initial prompt block in
+README.md"), and is embedded by BOTH `buildTickPrompt` and `buildDirectorPrompt`;
+`TickPromptInput`, `buildTickPrompt`, and `buildDirectorPrompt(userPrompt, initialPrompt,
+principles)` is the shape `src/tick/tick-prompt.ts` calls. `src/roles/role-catalog.ts`:
+`readme.find` names README.md and the status markers; `plan.find` says "its initial prompt in
+README.md". `src/doctor/doctor-checks.ts`: `checkInit`; `runDoctor` composes the checks array in
+`src/doctor/doctor.ts`; `renderDoctor` (`src/doctor/doctor-render.ts`) pads the name column.
+Tests: `test/brief.test.ts` (every case through a `writeReadme` helper that writes README.md),
+`test/init.test.ts` (the refusal test, the PRINCIPLES seed assertions), `test/cli-args.test.ts`,
+`test/doctor.test.ts`, `test/prompt.test.ts`. Capability absence re-confirmed: `grep -rn
+'TUMWATER.md\|briefFile\|briefCandidate\|--adopt\|--dry-run' src/` is empty.
 
 Corrections (pinned in place):
 1. **`parseInitArgs` gains the flags and must stop baking them into the prompt.** Its own doc
-   comment (109–111) exists to keep a misspelled flag out of the injected prompt, yet the
+   comment exists to keep a misspelled flag out of the injected prompt, yet the
    no-`--file` path joins *every* token: `tumwater init --adopt "brief"` would embed "--adopt
    brief". Pinned: `--adopt` and `--dry-run` are boolean flags, each at most once, stripped from
    the text before the join; the return type becomes `{ prompt: string; adopt: boolean; dryRun:
-   boolean }` and `cmdInit` destructures. The `--file` path's `failStrayArg` (100) claimed set
+   boolean }` and `cmdInit` destructures. The `--file` path's `failStrayArg` claimed set
    widens from `{fileFlag, fileFlag+1}` to those plus every boolean occurrence, so `--file` +
    booleans combine while any other token still fails by name; a duplicate boolean fails by name;
    single-dash positionals stay prompt content.
@@ -1558,35 +1557,36 @@ Corrections (pinned in place):
    director.** `COMMON_RULES` is one constant used by both builders, so it cannot keep naming
    README.md once an adopted repo's brief is TUMWATER.md. Pinned: `TickPromptInput` gains
    `briefFile?: string` and `buildDirectorPrompt` gains a trailing `briefFile?: string`;
-   `loop.ts`'s `tickPrompt()` computes `const brief = briefFile(this.root) ?? "README.md"` once
-   (line 145 region) and passes it to BOTH branches. `COMMON_RULES` becomes
-   `commonRules(briefFile: string)` with lines 56 and 85 interpolating it; the fallback keeps a
+   the tick prompt (`src/tick/tick-prompt.ts`) computes `const brief = briefFile(this.root) ??
+   "README.md"` once and passes it to BOTH branches. `COMMON_RULES` becomes
+   `commonRules(briefFile: string)` with the README references interpolating it; the fallback keeps a
    tumwater-created repo's prompts byte-identical, so every existing `test/prompt.test.ts` pin
-   holds. Line 56 gains the README caveat (an adopted repo's own README is its real
+   holds. The rule gains the README caveat (an adopted repo's own README is its real
    documentation): "read the project brief (`<briefFile>`) in full, plus QUESTIONS.md when
    present, and README.md too when the brief is not itself README.md". `readme.find`
-   (roles.ts:108) and `plan.find` (roles.ts:94) drop their hardcoded README.md and point at "the
-   project brief named in your prompt".
+   (src/roles/role-catalog.ts) and `plan.find` (src/roles/role-catalog.ts) drop their hardcoded
+   README.md and point at "the project brief named in your prompt".
 3. **Resolution lives in `readInitialPrompt`/`briefFile`, and the status markers need no export.**
    Pinned: `briefCandidates(root)` (pure, `src/paths.ts`) returns `["TUMWATER.md", "README.md"]`;
    `readInitialPrompt(root)` returns the first candidate whose marker block parses; new
    `briefFile(root): string | null` returns the marked candidate or null. The write's Files bullet
    claim ("the status markers become exported so the readme role writes to the resolved file") is
    wrong and is dropped: the readme role writes through pi, and nothing in `src/` reads the status
-   markers (`grep -rn 'STATUS_START\|tumwater:status' src/` names only brief.ts) —
-   `readmeTemplate` already embeds them into whichever file, so `briefTemplate` is dropped and
-   `readmeTemplate` is reused verbatim for `TUMWATER.md`.
+   markers for its own state (`grep -rn 'STATUS_START\|tumwater:status' src/` names only brief.ts and
+   `src/roles/role-catalog.ts`'s readme instructions). `readmeTemplate` already embeds the
+   markers into whichever file; the adopt path wraps the same managed sections in `briefTemplate`
+   (`src/brief.ts`), so no marker needs a new reader.
 4. **A fresh repo still gets README.md; `TUMWATER.md` is the adoption-only path.** To keep the
    compatibility path meaningful and fresh behavior unchanged, `write("README.md",
-   readmeTemplate(...))` stays exactly as today when neither candidate is marked (`test/init.test.ts:14`
+   readmeTemplate(...))` stays exactly as today when neither candidate is marked (`test/init.test.ts`
    keeps passing). The adopt path (README.md present without markers, or `--adopt`) writes
-   `TUMWATER.md` with `readmeTemplate(...)`, leaves README.md byte-identical, and creates only the
+   `TUMWATER.md` with `briefTemplate(...)`, leaves README.md byte-identical, and creates only the
    missing backlog files. `--adopt` against an already-marked brief is today's "already
    initialized; nothing to do". Edge case pinned: a marker-less `TUMWATER.md` is never overwritten
    (`write` is create-if-absent) and, when no marked brief exists anywhere, init fails with an
    actionable message naming the `TUMWATER.md` markers — generalizing today's README guard rather
    than running every loop blind.
-5. **An existing test asserts the old hard failure and must invert.** `test/init.test.ts:67`
+5. **An existing test asserts the old hard failure and must invert.** `test/init.test.ts`
    ("initProject refuses to drop the initial prompt when README has no tumwater markers") pins
    `assert.rejects(…, /tumwater:prompt/)`. Automatic adoption turns that into: README.md
    byte-identical, `TUMWATER.md` created, `readInitialPrompt(repo)` round-trips from TUMWATER.md,
@@ -1605,16 +1605,17 @@ Corrections (pinned in place):
    beats big and half-done: one focused change per tick.", and a language-neutral rewrite of the
    size rule — "Keep each file focused on one responsibility, and small enough to read in one
    sitting." The preamble gains "This list is a starting point: the director and steward own it
-   and will tune it to this project." `test/init.test.ts:32`'s two regexes both survive; it gains
+   and will tune it to this project." `test/init.test.ts`'s two regexes both survive; it gains
    an assertion that the ~500-line wording is gone and the starting-point sentence is present.
 8. **Doctor's brief line pinned.** New `checkBrief(root)` immediately after `init` in
    `runDoctor`'s array (name "brief" fits the 12-char column): `ok <file>` when `briefFile` is
    non-null, `fail no project brief (run tumwater init)` when it is null — which is exactly why
-   `briefFile` returns null rather than falling back (loop.ts owns the fallback).
+   `briefFile` returns null rather than falling back (the tick prompt owns the fallback).
 
 Sizing: unchanged in kind, ~40 lines over the write's estimate (the `briefFile` threading through
-loop.ts/prompt.ts, the flag plumbing in cli-args.ts/cli.ts, the dry-run branch in init.ts). Files
-touched gains `src/loop.ts`, `src/cli.ts`, and `test/cli-args.test.ts`; `briefTemplate` is dropped.
+`src/tick/tick-prompt.ts` and `src/prompt/prompt.ts`, the flag plumbing in
+`src/cli/cli-command-args.ts` and `src/cli.ts`, the dry-run branch in `src/init/init.ts`). Files
+touched gains `src/tick/tick-prompt.ts`, `src/cli.ts`, and `test/cli-args.test.ts`.
 Still one run, no design question left open.
 
 **Refined 2026-09-23 (plan loop) — 7/7 re-audited against main `e6a4228` (the README's own stamp;
@@ -1624,49 +1625,47 @@ corrected (brief.ts grew, and `readInitialPrompt` gained a length cap the resolu
 not disturb); one new pre-adopt validation step named; two test anchors re-pinned.**
 
 Verified as written:
-- `src/brief.ts` is now 60 lines (was 47): since the audit it gained the exported
-  `INITIAL_PROMPT_MAX_CHARS = 4096` (:12) and a truncation backstop inside `readInitialPrompt`
-  (:58–60) — a hand-edited README with an over-long prompt truncates with a visible note instead
+- `src/brief.ts` grew since the audit: it gained the exported
+  `INITIAL_PROMPT_MAX_CHARS = 4096` and a truncation backstop inside `readInitialPrompt` —
+  a hand-edited README with an over-long prompt truncates with a visible note instead
   of injecting unbounded text into every tick. The resolution change needs no new seam: both
   candidates share the same two markers, and the candidate parse + trim + cap all stay inside
   `readInitialPrompt`; `briefFile(root)` only names which file owns the marked section. The
-  end-marker-after-open ordering guard (:49–52) applies verbatim to whichever candidate parses.
-- `src/init/init.ts` is now 163 lines: `InitResult` :84 (still no adopt/dryRun fields),
-  `initProject(root, initialPrompt)` :95, the pure-validation preamble :99–117 now includes — new
-  since the audit — the over-long-prompt reject (:114–117), which adoption keeps unchanged; the
-  README-without-markers guard is :118–122, its message built from `PROMPT_START`/`PROMPT_END`;
-  `git init -b main` :128 with the now-superseded `init.defaultBranch` comment at :125–127; the
-  `write` create-if-absent helper ~:135; `ensureGitignore` :75; the commit path :151–160.
-- `src/cli.ts` (381 lines): `root = process.cwd()` :187; `cmdInit` :102 (still
+  end-marker-after-open ordering guard applies verbatim to whichever candidate parses.
+- `src/init/init.ts`: `InitResult` (still no adopt/dryRun fields),
+  `initProject(root, initialPrompt)`, the pure-validation preamble now includes — new
+  since the audit — the over-long-prompt reject, which adoption keeps unchanged; the
+  README-without-markers guard, its message built from `PROMPT_START`/`PROMPT_END`;
+  `git init -b main` with the now-superseded `init.defaultBranch` comment; the
+  `write` create-if-absent helper; `ensureGitignore`; the commit path.
+- `src/cli.ts`: `root = process.cwd()`; `cmdInit` (still
   `parseInitArgs(args)` returning a bare string); its hardcoded `initialized a new git repository
-  on branch main` :110; `cmdRun` :116; the `run` case's `rejectUnknownArgs("run", args, [])` :193
-  with `cmdRun(root)` :194; the `gui` valued-flag spec :201–205 (the idiom unchanged); the help
-  block's `run` line :52.
-- `src/cli/cli-args.ts` (182 lines): `parseInitArgs` :115, shape unchanged — the `--file`-only rule
-  (:117–118), the duplicate check (:123), `failStrayArg` (:126) — correction 1 lands as written.
-- `src/prompt/prompt.ts` (442 lines): `COMMON_RULES` :53, naming README.md at :57 and :86;
-  `TickPromptInput` :144; `buildTickPrompt` :169 (embeds COMMON_RULES :180);
-  `buildDirectorPrompt` :185 (embeds :232). `test/prompt.test.ts:525` pins
-  `/First read README\.md in full/` — correction 2's byte-identical fallback
-  (`briefFile(this.root) ?? "README.md"`) keeps it green; the file gains one adopted-brief
-  variant whose prompt names TUMWATER.md instead.
-- `src/roles/roles.ts` (412 lines): `plan.find` names "its initial prompt in README.md" at :135;
-  `readme.find` :151 names README.md and the status markers. Correction 2's rewrite of both holds.
-- `src/loop.ts` (818 lines): `readInitialPrompt(this.root)` :160 and the
-  `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :169 — correction 2's
-  `const brief = briefFile(this.root) ?? "README.md"` computes beside :160 and feeds both branches.
-- `src/doctor/doctor.ts` (268 lines): `checkInit` :99; `runDoctor` :237 with the checks array :243
-  (`checkInit` entry :247); the name column is `padEnd(12)` :265 — correction 8's `checkBrief`
-  slot holds.
-- Tests re-pinned: `test/init.test.ts` is 166 lines; the old-failure test ("initProject refuses
-  to drop the initial prompt when README has no tumwater markers") is now :108–113 (correction 5
+  on branch main`; `cmdRun`; the `run` case's `rejectUnknownArgs("run", args, [])`
+  with `cmdRun(root)`; the `gui` valued-flag spec (the idiom unchanged); the help
+  block's `run` line.
+- `src/cli/cli-command-args.ts`: `parseInitArgs`, shape unchanged — the `--file`-only rule,
+  the duplicate check, `failStrayArg` — correction 1 lands as written.
+- `src/prompt/prompt.ts`: `commonRules`, naming the brief; `TickPromptInput`;
+  `buildTickPrompt` (embeds `commonRules`); `buildDirectorPrompt` (embeds it).
+  `test/prompt.test.ts` pins `/First read the project brief \(README\.md\) in full/` —
+  correction 2's byte-identical fallback (`briefFile(this.root) ?? "README.md"`) keeps it green;
+  the file gains one adopted-brief variant whose prompt names TUMWATER.md instead.
+- `src/roles/role-catalog.ts`: `plan.find` names "its initial prompt in README.md";
+  `readme.find` names README.md and the status markers. Correction 2's rewrite of both holds.
+- `src/tick/tick-prompt.ts`: `readBrief(root)` and the
+  `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call — correction 2's
+  `const brief = briefFile(this.root) ?? "README.md"` computes beside it and feeds both branches.
+- `src/doctor/doctor-checks.ts`: `checkInit`; `src/doctor/doctor.ts`: `runDoctor` with the checks
+  array (the `checkInit` entry); the name column is padded by `renderDoctor`
+  (`src/doctor/doctor-render.ts`) — correction 8's `checkBrief` slot holds.
+- Tests re-pinned: `test/init.test.ts`; the old-failure test ("initProject refuses
+  to drop the initial prompt when README has no tumwater markers") (correction 5
   inverts it); the PRINCIPLES-seed assertions ("seeds PRINCIPLES.md with positive starter
-  principles") are :33–44 (correction 7's added assertions join them). `test/brief.test.ts` is
-  94 lines, every case through the `writeReadme` helper (:14) — it gains the resolution-order
-  cases.
+  principles") (correction 7's added assertions join them). `test/brief.test.ts`, every case
+  through the `writeReadme` helper — it gains the resolution-order cases.
 - Capability absence re-confirmed: `grep -rn 'TUMWATER.md\|briefFile\|briefCandidate\|--adopt\|--dry-run\|adopt:\|dryRun' src/` is empty.
 
-One claim corrected: the 09-18 note's "src/brief.ts is 47 lines" and its implication that
+One claim corrected: the 09-18 note's line-count claim and its implication that
 `readInitialPrompt` returns the raw prompt — it now caps at `INITIAL_PROMPT_MAX_CHARS`, so an
 adopted repo's `TUMWATER.md` gets the same backstop protection with zero additional code.
 
@@ -1675,76 +1674,76 @@ Sizing unchanged. No design question remains open.
 **Refined 2026-09-24 (plan loop) — 7/7 re-audited against main `af5dbae` (the README's stamp is
 behind at `0733811`). Two days and ~79 landings after the 2026-09-23 audit — the largest gap of
 any re-audit in the series — and the surface moved materially: `--branch` now exists on init
-(cli-args.ts, cli.ts, init.ts), init's prompt became optional on a re-seed (`59bba02`), and 4a/7's
-config seeding is live in the same function this entry rewrites. The design holds unchanged;
-every drifted anchor is re-pinned below and the flag/signature corrections are restated against
-the new shape.**
+(src/cli/cli-command-args.ts, src/cli.ts, src/init/init.ts), init's prompt became optional on a
+re-seed (`59bba02`), and 4a/7's config seeding is live in the same function this entry rewrites.
+The design holds unchanged; every drifted anchor is re-pinned below and the flag/signature
+corrections are restated against the new shape.**
 
 Verified as written:
-- `src/brief.ts` (60 lines) is functionally unchanged: `PROMPT_START`/`PROMPT_END` :7–8,
-  `INITIAL_PROMPT_MAX_CHARS` :15 (was :12 — its doc comment grew), the end-marker-after-start
-  ordering guard :51, the cap check :54, the truncation backstop :59 (was :58–60). Same two
+- `src/brief.ts` is functionally unchanged: `PROMPT_START`/`PROMPT_END`,
+  `INITIAL_PROMPT_MAX_CHARS` (its doc comment grew), the end-marker-after-start
+  ordering guard, the cap check, the truncation backstop. Same two
   markers, same parse-trim-cap shape — `briefCandidates` resolution needs no new seam here.
-- `src/prompt/prompt.ts` (442→473): `COMMON_RULES` :53 still names README.md at :57 and :86 — both pins
-  identical to the 09-23 audit; `TickPromptInput` :144; `buildTickPrompt` :169 embedding
-  COMMON_RULES at :180; `buildDirectorPrompt` :185 embedding at :239 (was :232).
-- `src/roles/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.
-- `test/brief.test.ts` (94): the `writeReadme` helper :14 — unchanged.
-- Doctor's name column is still `padEnd(12)` (src/doctor/doctor.ts:317), so correction 8's "brief" name
-  fits.
+- `src/prompt/prompt.ts`: `commonRules` still names the brief — both references
+  identical to the 09-23 audit; `TickPromptInput`; `buildTickPrompt` embedding
+  `commonRules`; `buildDirectorPrompt` embedding it.
+- `src/roles/role-catalog.ts`: `plan.find` and `readme.find` — both references identical.
+- `test/brief.test.ts`: the `writeReadme` helper — unchanged.
+- The doctor's name column is padded by `renderDoctor` (src/doctor/doctor-render.ts), so
+  correction 8's "brief" name fits.
 - Capability absence re-confirmed: `grep -rn 'TUMWATER\.md\|briefFile\|briefCandidate\|--adopt\|
 dryRun' src/` is empty.
 
 Corrections re-pinned against the new shape:
 1. **`parseInitArgs` already returns an object — correction 1's target moved.** It now returns
-   `{ prompt: string; branch: string | null }` (src/cli/cli-args.ts:127; was a bare string), the
-   allowed double-dash set is `--file` + `--branch` (:128–133) with a per-flag once-check
-   (:135–136), the `--branch` pair is claimed beside `--file`'s (:142–144) and skipped in the
-   no-flag join (:200–204), and cmdInit destructures `{ prompt, branch }` (src/cli.ts:130). The
+   `{ prompt: string; branch: string | null }` (src/cli/cli-command-args.ts; was a bare string), the
+   allowed double-dash set is `--file` + `--branch` with a per-flag once-check, the `--branch`
+   pair is claimed beside `--file`'s and skipped in the
+   no-flag join, and cmdInit destructures `{ prompt, branch }` (src/cli.ts). The
    plumbing correction 1 wants is therefore an extension of code that now exists: `--adopt` and
    `--dry-run` (valueless) join the allowed set, the once-checks, the `--file` claimed list, and
    the join skip; the return type becomes `{ prompt; branch; adopt; dryRun }` and cmdInit
-   destructures four fields. The doc comment's misspelled-flag rationale (:119–126) is unchanged
+   destructures four fields. The doc comment's misspelled-flag rationale is unchanged
    and covers the new flags.
-2. **`initProject` gained a third positional, `branch?: string`** (src/init/init.ts:106), and
-   `InitResult` (:92) now also carries `branch: createdBranch` (:193). Correction 6's `opts`
+2. **`initProject` gained a third positional, `branch?: string`** (src/init/init.ts), and
+   `InitResult` now also carries `branch: createdBranch`. Correction 6's `opts`
    parameter therefore lands as the FOURTH positional: `initProject(root, initialPrompt, branch?,
-   opts?: { adopt?: boolean; dryRun?: boolean })` — cmdInit's call (src/cli.ts:131) gains the opts
+   opts?: { adopt?: boolean; dryRun?: boolean })` — cmdInit's call (src/cli.ts) gains the opts
    argument and nothing else moves. Correction 6's `dryRun` field joins the existing four.
 3. **The prompt became optional on a re-seed (`59bba02`), and it composes with adoption.**
-   init.ts's validation preamble (:112–131) now makes the prompt optional when the README already
-   carries the markers (:118–123 — a fresh clone, or a checkout that lost its now-untracked
+   init.ts's validation preamble now makes the prompt optional when the README already
+   carries the markers (a fresh clone, or a checkout that lost its now-untracked
    tumwater.json, re-seeds with a bare `tumwater init`), while a prompt GIVEN with a marker-less
-   README still hard-fails (:137–141, message :139). Under resolution over `briefCandidates`, both
+   README still hard-fails. Under resolution over `briefCandidates`, both
    rules read the marked brief wherever it lives: a bare re-seed works against a marked
    `TUMWATER.md` unchanged, and correction 4's marker-less failure keeps covering the
-   no-marked-brief-anywhere case — including the new `!prompt` path (:121–123), whose message
+   no-marked-brief-anywhere case — including the new `!prompt` path, whose message
    stays as-is (a brief-less repo does need a prompt). No design change; the implementer must
    apply candidate resolution to BOTH guards, not only the README one.
-4. **4a/7's seeding is live inside the function this entry rewrites** (:168–171:
-   `if (!fs.existsSync(configPath(root))) { saveConfig(root, seedConfig(root)); … }`), so the
+4. **4a/7's seeding is live inside the function this entry rewrites**
+   (`if (!fs.existsSync(configPath(root))) { saveConfig(root, seedConfig(root)); … }`), so the
    adopt path's "create tumwater.json" criterion is already the create-if-absent rule 4a/7
-   landed, and the commit path excludes the config from the pathspec (:176–190, the
+   landed, and the commit path excludes the config from the pathspec (the
    `committable` filter — an adopted repo that only gains a config reports it and stays
    uncommitted, exactly as today). The adopt path reuses all of it unchanged.
-5. **Line anchors re-pinned.** src/init/init.ts (163→194): branch-precedence block :144–154 (the
+5. **Line anchors re-pinned.** `src/init/init.ts`: branch-precedence block (the
    `init.defaultBranch` preference the 09-23 audit called a superseded comment is now implemented
    code — no interaction beyond `git init -b <preferred>` staying where the adopt path reuses
-   it); the `write` create-if-absent helper :159. src/cli.ts (381→418): `cmdInit` :129 (was
-   :102), its `initialized a new git repository on branch ${result.branch}` :137 (was :110),
-   `cmdRun` :143, the run case's `rejectUnknownArgs` :230 (now declaring the `--branch`
-   valued-flag spec) and `cmdRun(root, args)` :231. src/loop.ts (818→748, the LoopRunner pi-run
-   plumbing moved to src/loop-pi.ts): `readInitialPrompt(this.root)` :174 (was :160), the
-   `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :183 (was :169) —
-   correction 2's `const brief = briefFile(this.root) ?? "README.md"` computes beside :174 and
-   feeds both branches. src/doctor/doctor.ts (268→320): `checkInit` :133 (was :99), `runDoctor` :281
-   (was :237), the checks array :295 with the `init` entry :298 — correction 8's `checkBrief`
-   slots immediately after it (the array has since gained `fallback` :299 and `build` :305;
-   brief sits between init and fallback). Tests: `test/init.test.ts` (166→272 — the re-seed and
+   it); the `write` create-if-absent helper. `src/cli.ts`: `cmdInit`, its
+   `initialized a new git repository on branch ${result.branch}`,
+   `cmdRun`, the run case's `rejectUnknownArgs` (now declaring the `--branch`
+   valued-flag spec) and `cmdRun(root, args)`. `src/tick/tick-prompt.ts` (the LoopRunner pi-run
+   plumbing moved to `src/loop/loop-pi.ts`): `readBrief(root)`, the
+   `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call —
+   correction 2's `const brief = briefFile(this.root) ?? "README.md"` computes beside it and
+   feeds both branches. `src/doctor/doctor-checks.ts`: `checkInit`; `src/doctor/doctor.ts`:
+   `runDoctor`, the checks array with the `init` entry — correction 8's `checkBrief`
+   slots immediately after it (the array has since gained `fallback` and `build`;
+   brief sits between init and fallback). Tests: `test/init.test.ts` (the re-seed and
    `--branch` tests joined): the old-failure test "initProject refuses to drop the initial prompt
-   when README has no tumwater markers" is now :118 (correction 5 inverts it), the PRINCIPLES-seed
-   test :34 (correction 7's added assertions join it); `test/prompt.test.ts`'s
-   `/First read README\.md in full/` pin is :571 (was :525).
+   when README has no tumwater markers" (correction 5 inverts it), the PRINCIPLES-seed
+   test (correction 7's added assertions join it); `test/prompt.test.ts`'s
+   `/First read the project brief \(README\.md\) in full/` pin.
 
 Sizing unchanged. No design question remains open.
 

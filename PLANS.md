@@ -121,24 +121,6 @@ test` stays green on a machine with no claude installed.
 landing commit body.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 2c/5: `plans/portability.md`, part 7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "7/7 — Adopt an
-existing repository without hijacking its README" section.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to this section. It cites the config and merge splits, so the split-aware map
-and its per-citation symbol check carry most of the work.
-
-**Files touched.** `plans/portability.md` (only the named section). No source or test change.
-
-**Acceptance criteria.**
-- The inventory over the named section reports no cited path absent from the tree.
-- No `<path>:<line>` in the named section names a line past that file's end.
-- For each split module cited in the named section, the module named beside a symbol exports it
-  (checked against the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for the plan documents that cite the config
@@ -279,6 +261,24 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Finish the stale code-path citation sweep, part 2c/5: `plans/portability.md`, part 7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "7/7 — Adopt an
+existing repository without hijacking its README" section.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to this section. It cites the config and merge splits, so the split-aware map
+and its per-citation symbol check carry most of the work.
+
+**Files touched.** `plans/portability.md` (only the named section). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named section reports no cited path absent from the tree.
+- No `<path>:<line>` in the named section names a line past that file's end.
+- For each split module cited in the named section, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
 
 ### Finish the stale code-path citation sweep, part 2b/5: `plans/portability.md`, part 6/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 
