@@ -6,13 +6,14 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 import { displayWidth } from "../src/text/text-width.js";
 
-// The rendering half of `tumwater history` (history.ts) had no direct tests: the
-// history-data.test.ts slice covers the row collector, and gui-endpoints covers its JSON
-// payload, but the CLI table renderer — column alignment, the grep haystack, the empty-log
-// and no-match prose, the --since/--json surface, and the rival-flag failures — went
-// unmeasured. These tests call cmdHistory directly, in-process, the way
-// log-commands-views.test.ts drives cmdLogs: stdout captured, fail() branches caught via
-// the exit stub. Pure in-process awaits only (the command only reads the event log).
+// The direct in-process views of `tumwater history` (history.ts): cmdHistory driven the way
+// log-commands-views.test.ts drives cmdLogs — stdout captured, fail() branches caught via the
+// exit stub, no spawned child. The history-data.test.ts slice covers the row collector, and
+// gui-endpoints covers its JSON payload; the same renderer is also measured end-to-end by the
+// spawned-CLI runs in cli-history.test.ts and cli-history-filtering.test.ts (alignment, the
+// grep haystack, the empty-log and no-match prose, the --since/--json surface, the rival-flag
+// failures), so these tests pin those behaviors one layer down instead of spending a full CLI
+// spawn on each. Pure in-process awaits only (the command only reads the event log).
 
 const NOW = Date.now();
 
