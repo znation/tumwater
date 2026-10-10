@@ -231,18 +231,13 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         sawActivity = true;
         const message = isJsonObject(event.message) ? event.message : {};
         const id = str(message.id) ?? `anon-${anonymous++}`;
+        // A new id flushes the open message; a continuing one flushes nothing. Either way the
+        // fresh or open pending then folds this event's content, usage, and stop reason the
+        // same way — that shared fold is why both branches live on one path.
+        let out: string[] = [];
         if (!pending || pending.id !== id) {
-          const out = flush();
+          out = flush();
           pending = { id, content: [], usage: canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined) };
-          const blocks = Array.isArray(message.content) ? message.content : [];
-          for (const raw of blocks) {
-            if (!isJsonObject(raw)) continue;
-            const block = canonicalBlock(raw);
-            if (block) pending.content.push(block);
-          }
-          const stopReason = str(message.stop_reason);
-          if (stopReason !== undefined) pending.stopReason = stopReason;
-          return out;
         }
         const blocks = Array.isArray(message.content) ? message.content : [];
         for (const raw of blocks) {
@@ -255,7 +250,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         pending.usage = canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined);
         const stopReason = str(message.stop_reason);
         if (stopReason !== undefined) pending.stopReason = stopReason;
-        return [];
+        return out;
       }
       case "user": {
         const out = flush();
