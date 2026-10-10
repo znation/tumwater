@@ -327,6 +327,24 @@ export async function fileAndAnnounce(
   if (!json) say(wake);
 }
 
+/** The one home of an operator-filed entry's shape — the pairing fileBug and filePlan both
+ * perform: stamp the entry, build the `### <title> (<stamp>)` heading, append it under the
+ * section through appendEntry, and return the FiledEntry the confirmation prints. fileBug files
+ * under BUGS.md's `## Open` with no body; filePlan under PLANS.md's `## Planned` with the
+ * folded body. */
+function appendOperatorEntry(
+  root: string,
+  fileName: string,
+  template: string,
+  sectionTitle: string,
+  title: string,
+  body: string,
+): FiledEntry {
+  const stamp = operatorStamp();
+  appendEntry(root, fileName, template, sectionTitle, `### ${title} (${stamp})`, body);
+  return { file: fileName, title, stamp };
+}
+
 /** `tumwater bug "<symptom>"`: append one `### <symptom> (reported by the operator <date>)`
  * entry to BUGS.md's `## Open`. The symptom is operator prose, so it folds to one line
  * (collapseWhitespace, the questions answer precedent) — a multi-line raw text could carry
@@ -335,10 +353,7 @@ export async function fileAndAnnounce(
 export function fileBug(root: string, rawText: string, usage: string): FiledEntry {
   const symptom = collapseWhitespace(rawText);
   if (symptom === "") fail(`bug needs a symptom: ${usage}`);
-  const stamp = operatorStamp();
-  const heading = `### ${symptom} (${stamp})`;
-  appendEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", heading, "");
-  return { file: "BUGS.md", title: symptom, stamp };
+  return appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", symptom, "");
 }
 
 /** `tumwater plan "<title>" [body...]`: append one `### <title> (reported by the operator
@@ -349,11 +364,7 @@ export function fileBug(root: string, rawText: string, usage: string): FiledEntr
 export function filePlan(root: string, rawTitle: string, rawBody: string, usage: string): FiledEntry {
   const title = collapseWhitespace(rawTitle);
   if (title === "") fail(`plan needs a title: ${usage}`);
-  const body = collapseWhitespace(rawBody);
-  const stamp = operatorStamp();
-  const heading = `### ${title} (${stamp})`;
-  appendEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", heading, body);
-  return { file: "PLANS.md", title, stamp };
+  return appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", title, collapseWhitespace(rawBody));
 }
 
 /** `tumwater bug --cancel <n>`: remove the nth entry from BUGS.md's `## Open`, as
