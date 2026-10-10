@@ -2,10 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   backlogLines,
+  backlogMarks,
   entryBodyWindow,
+  labeledBacklogEntries,
   moveEntrySelection,
   stepEntryScroll,
 } from "../src/ui/tui/tui-backlog.js";
+import { paneBody } from "../src/ui/tui/tui-pane.js";
+import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 
 test("backlogLines renders subheaders with counts, entries in order", () => {
   assert.deepEqual(backlogLines(["plan A"], ["bug B"], []), [
@@ -127,4 +131,92 @@ test("stepEntryScroll is a no-op when the body fits its budget", () => {
   assert.equal(stepEntryScroll(0, 3, 5, "down"), 0);
   assert.equal(stepEntryScroll(2, 3, 5, "up"), 0); // even a stale offset resets to the head
   assert.equal(stepEntryScroll(9, 0, 4, "down"), 0); // an empty body has no window at all
+});
+
+// Eligibility holds beside the backlog title (PLANS.md "Show backlog entry eligibility holds in
+// the GUI and TUI backlog lists"): the list and entry modes show the same mark `tumwater
+// backlog` prints, and an eligible entry stays unmarked.
+
+test("backlogMarks carries each plan's and bug's hold parallel to its entry, empty when eligible", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: [
+        "### Base, part 1/2: x (planned 2026-10-01)",
+        "",
+        "Body.",
+        "",
+        "### Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed)",
+        "",
+        "Body.",
+        "",
+        "### Refused one (planned 2026-10-03)",
+        "",
+        "**Refused 2026-10-04 by feature: not worth it**",
+      ].join("\n"),
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(dir, "BUGS.md", [
+    { heading: "## Open", body: "### Live bug (reported 2026-10-01)\n\nRepro." },
+    { heading: "## Fixed" },
+  ]);
+  assert.deepEqual(backlogMarks(dir), {
+    plans: ["", " [blocked: requires Base 1/2]", " [refused]"],
+    bugs: [""],
+  });
+});
+
+test("labeledBacklogEntries labels every row with its section and its eligibility mark", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### Base, part 1/2: x (planned 2026-10-01)\n\nBody.\n\n### Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed)\n\nBody.",
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(dir, "BUGS.md", [
+    { heading: "## Open", body: "### Live bug (reported 2026-10-01)\n\nRepro." },
+    { heading: "## Fixed" },
+  ]);
+  writeBacklogFile(dir, "QUESTIONS.md", [
+    { heading: "## Open", body: "### Q1: which?" },
+    { heading: "## Answered" },
+  ]);
+  assert.deepEqual(
+    labeledBacklogEntries(dir).map((e) => ({ label: e.label, mark: e.mark, title: e.title })),
+    [
+      { label: "plan", mark: "", title: "Base, part 1/2: x (planned 2026-10-01)" },
+      { label: "plan", mark: " [blocked: requires Base 1/2]", title: "Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed)" },
+      { label: "bug", mark: "", title: "Live bug (reported 2026-10-01)" },
+      { label: "question", mark: "", title: "Q1: which?" },
+    ],
+  );
+});
+
+test("paneBody's backlog list and entry mode show the same eligibility mark beside the title", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### Base, part 1/2: x (planned 2026-10-01)\n\nBody.\n\n### Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed)\n\nBody.",
+    },
+    { heading: "## Done" },
+  ]);
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
+  const opts = { root: dir, width: 300, eventBudget: 20, entryBudget: 5 };
+  const listText = paneBody({ kind: "backlog" }, { ...opts, state }).body.map((l) => l.map((s) => s.text).join(""));
+  assert.ok(
+    listText.includes("Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed) [blocked: requires Base 1/2]"),
+    "the list row carries the mark beside the title",
+  );
+  assert.ok(listText.includes("Base, part 1/2: x (planned 2026-10-01)"), "the eligible row is unmarked");
+
+  const header = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 1 } }).body[0]!;
+  assert.equal(
+    header.map((s) => s.text).join(""),
+    "plan: Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed) [blocked: requires Base 1/2]",
+  );
 });

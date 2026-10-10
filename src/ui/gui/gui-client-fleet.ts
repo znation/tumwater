@@ -252,11 +252,17 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'>Cancel</button></div>").join("");
     } else {
       const open = openEntryKey();
+      // The eligibility holds beside the title, from the payload's parallel arrays (indexed by
+      // the same tab position the click sends): empty for eligible rows so their markup is
+      // unchanged, and the Questions tab carries no holds.
+      const holds = key === "plans" ? (d.planHolds || []) : key === "bugs" ? (d.bugHolds || []) : [];
       html = list.map((title, i) => {
         const t = splitTitle(title);
+        const mark = holds[i] || "";
         return "<div class='list-item t-" + tone + (open === key + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon(ic) + "</span>" +
           "<button type='button' class='li-open backloglink' data-file='" + key + "' data-index='" + i + "'><span class='li-title'>" + esc(t.title) + "</span>" +
-          (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") + "</button>" +
+          (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") +
+          (mark ? "<span class='li-meta'>" + esc(mark.trim()) + "</span>" : "") + "</button>" +
           (key === "questions" ? "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + i + "'>Answer</button>" : "") + "</div>";
       }).join("");
     }

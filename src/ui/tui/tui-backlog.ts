@@ -4,6 +4,7 @@ import {
   plannedPlanEntries,
   type BacklogEntry,
 } from "../../backlog/backlog.js";
+import { entryHold, holdMark } from "../../backlog/backlog-eligibility.js";
 import { clipToWidth } from "../../text/text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui/tui.tsx): the three-section backlog body
@@ -13,15 +14,28 @@ import { clipToWidth } from "../../text/text-width.js";
  * self-contained concern sharing no line-editor or key-handling state. Pure, so it is
  * unit-testable without a TTY. */
 
+/** The eligibility mark (holdMark) for each planned plan and open bug, two arrays parallel to
+ * the entries `/api/status` and the TUI list carry: the same entryHold decision `tumwater
+ * backlog` renders, so the TUI (both list and entry mode) shows the hold beside the title.
+ * Questions carry no holds. */
+export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
+  const planned = plannedPlanEntries(root);
+  return {
+    plans: planned.map((e) => holdMark(entryHold(e, planned))),
+    bugs: openBugEntries(root).map((e) => holdMark(entryHold(e, planned))),
+  };
+}
+
 /** The project-status pane's flat entry list (plans, then bugs, then questions), each labeled
- * with its section, read fresh — the one definition shared by the keypress handlers and the
- * render (src/ui/tui/tui-keys.ts, src/ui/tui/tui-pane.ts), so stale-selection clamping cannot
- * drift. */
-export function labeledBacklogEntries(root: string): Array<{ label: string } & BacklogEntry> {
+ * with its section and carrying its eligibility mark (empty for an eligible entry), read fresh
+ * — the one definition shared by the keypress handlers and the render (src/ui/tui/tui-keys.ts,
+ * src/ui/tui/tui-pane.ts), so stale-selection clamping cannot drift. */
+export function labeledBacklogEntries(root: string): Array<{ label: string; mark: string } & BacklogEntry> {
+  const marks = backlogMarks(root);
   return [
-    ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),
-    ...openBugEntries(root).map((e) => ({ label: "bug", ...e })),
-    ...openQuestionEntries(root).map((e) => ({ label: "question", ...e })),
+    ...plannedPlanEntries(root).map((e, i) => ({ label: "plan", mark: marks.plans[i] ?? "", ...e })),
+    ...openBugEntries(root).map((e, i) => ({ label: "bug", mark: marks.bugs[i] ?? "", ...e })),
+    ...openQuestionEntries(root).map((e) => ({ label: "question", mark: "", ...e })),
   ];
 }
 

@@ -10,7 +10,7 @@ import { readTranscript } from "../transcript.js";
 import { readEvents } from "../../events/event-read.js";
 import { formatEvent } from "../../events/event-format.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../../backlog/backlog.js";
-import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
+import { backlogLines, backlogMarks, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
 import { eventTone, toneLine, transcriptTone, type TuiView } from "./tui-frame.js";
@@ -79,13 +79,16 @@ export function paneBody(
     const planEntries = plannedPlanEntries(root);
     const bugEntries = openBugEntries(root);
     const questionEntries = openQuestionEntries(root);
+    // The eligibility marks beside each title in both modes: the same entryHold verdict
+    // `tumwater backlog` renders, so the TUI reader sees why an entry is skipped.
+    const marks = backlogMarks(root);
     const flat = state.selectedEntry === null ? [] : labeledBacklogEntries(root);
     const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
     if (sel === null) {
       // List mode (and a stale selection with no entries left falls back to it): section
       // headings stand out, empty sections read dim.
       return {
-        body: backlogLines(planEntries.map((e) => e.title), bugEntries.map((e) => e.title), questionEntries.map((e) => e.title))
+        body: backlogLines(planEntries.map((e, i) => e.title + (marks.plans[i] ?? "")), bugEntries.map((e, i) => e.title + (marks.bugs[i] ?? "")), questionEntries.map((e) => e.title))
           .slice(0, eventBudget)
           .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
         emptyNote: "(no events yet)",
@@ -96,7 +99,7 @@ export function paneBody(
     const e = flat[sel]!;
     const win = entryBodyWindow(e.body, state.entryScroll, entryBudget, width);
     return {
-      body: [toneLine(`${e.label}: ${e.title}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))],
+      body: [toneLine(`${e.label}: ${e.title}${e.mark}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))],
       emptyNote: "(no events yet)",
     };
   }

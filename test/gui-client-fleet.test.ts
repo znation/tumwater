@@ -62,6 +62,42 @@ test("the other backlog tabs render unchanged alongside the queued age", () => {
   assert.doesNotMatch(html, /· queued/);
 });
 
+// Every tab's rows carry the same markup as before when an entry is eligible: the hold tag
+// (PLANS.md "Show backlog entry eligibility holds in the GUI and TUI backlog lists") rides
+// beside the title only when the payload's parallel planHolds/bugHolds names one.
+
+test("the Plans and Bugs tabs append each held entry's eligibility tag beside its title", () => {
+  const base = { questions: [], plans: [], bugs: [], planHolds: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+  const plans = backlogScope("plans");
+  plans.scope.renderBacklog({
+    ...base,
+    plans: ["Worktree pool, part 3/5: second step (planned 2026-10-01)"],
+    planHolds: [" [blocked: requires Worktree pool 2/5]"],
+  });
+  const plansHtml = plans.panels["backlog"] ?? "";
+  assert.match(
+    plansHtml,
+    /li-title'>Worktree pool, part 3\/5: second step<\/span><span class='li-meta'>planned 2026-10-01<\/span><span class='li-meta'>\[blocked: requires Worktree pool 2\/5\]<\/span>/,
+    "the tag rides beside the title/meta",
+  );
+  // The click still addresses the entry by tab and index, not by the mark.
+  assert.match(plansHtml, /data-file='plans' data-index='0'/);
+
+  const bugs = backlogScope("bugs");
+  bugs.scope.renderBacklog({ ...base, bugs: ["A dead bug (reported 2026-10-01)"], bugHolds: [" [refused]"] });
+  const bugsHtml = bugs.panels["backlog"] ?? "";
+  assert.match(bugsHtml, /li-title'>A dead bug<\/span><span class='li-meta'>reported 2026-10-01<\/span><span class='li-meta'>\[refused\]<\/span>/);
+});
+
+test("an eligible Plans row is byte-identical whether or not the payload carries holds", () => {
+  const payload = { questions: [], plans: ["Ready (planned 2026-10-01)"], bugs: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+  const withHolds = backlogScope("plans");
+  withHolds.scope.renderBacklog({ ...payload, planHolds: [""] });
+  const without = backlogScope("plans");
+  without.scope.renderBacklog(payload);
+  assert.equal(withHolds.panels["backlog"], without.panels["backlog"]);
+});
+
 // The "In flight" stat tile counts the running set, not just the permit holders: a running
 // director is genuinely in flight though it holds no maxConcurrent permit, so the tile must
 // not read 0 beside a live Director row (BUGS.md 2026-10-06).

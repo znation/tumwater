@@ -208,6 +208,62 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
   assert.deepEqual(payload.bugs, ["A routine merge conflict logs a warning (reported 2026-08-25)"]);
 });
 
+// The eligibility holds beside those titles (PLANS.md "Show backlog entry eligibility holds in
+// the GUI and TUI backlog lists"): planHolds/bugHolds are index-for-index parallel, with an
+// eligible entry rendered as the empty string so a client appends a present-or-empty mark.
+
+test("status payload carries planHolds and bugHolds parallel to plans and bugs", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui backlog holds test");
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: [
+        "### Worktree pool, part 2/5: first step (planned 2026-10-01)",
+        "",
+        "Body.",
+        "",
+        "### Worktree pool, part 3/5: second step (planned 2026-10-01; requires part 2/5 landed)",
+        "",
+        "Body.",
+        "",
+        "### Ship it (planned 2026-10-01)",
+        "",
+        "**Refused 2026-10-02 by feature: not worth it**",
+        "",
+        "### A ready one (planned 2026-10-01)",
+        "",
+        "Body.",
+      ].join("\n"),
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(repo, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: "### Live bug (reported 2026-10-01)\n\nRepro.\n\n### Dead bug (reported 2026-10-01)\n\n**Refused 2026-10-02 by bugfix: not reproducible**",
+    },
+    { heading: "## Fixed" },
+  ]);
+  const payload = statusPayload(repo) as { plans: string[]; bugs: string[]; planHolds: string[]; bugHolds: string[] };
+  assert.deepEqual(payload.plans, [
+    "Worktree pool, part 2/5: first step (planned 2026-10-01)",
+    "Worktree pool, part 3/5: second step (planned 2026-10-01; requires part 2/5 landed)",
+    "Ship it (planned 2026-10-01)",
+    "A ready one (planned 2026-10-01)",
+  ]);
+  assert.equal(payload.planHolds.length, payload.plans.length, "one hold per plan");
+  assert.deepEqual(payload.planHolds, [
+    "",
+    " [blocked: requires Worktree pool 2/5]",
+    " [refused]",
+    "",
+  ]);
+  assert.deepEqual(payload.bugs, ["Live bug (reported 2026-10-01)", "Dead bug (reported 2026-10-01)"]);
+  assert.equal(payload.bugHolds.length, payload.bugs.length, "one hold per bug");
+  assert.deepEqual(payload.bugHolds, ["", " [refused]"]);
+});
+
 // Open questions (QUESTIONS.md) drive the dashboard's `questions: N` header badge and its
 // open-questions panel section — both derived client-side from the payload's list.
 

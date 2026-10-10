@@ -400,67 +400,6 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Show backlog entry eligibility holds in the GUI and TUI backlog lists (planned 2026-10-09 by plan; sibling of "Mark why a backlog entry is held in `tumwater backlog`")
-
-**Goal.** The dashboard's backlog panel and the TUI's project-status pane mark each held entry
-beside its title with the same `[blocked: requires …]`, `[refused]`, `[needs review]`, or
-`[needs replan]` tag `tumwater backlog` prints, so an operator watching the dashboards reads why
-a plan or bug is skipped instead of inferring it from its heading text — the terminal and the
-browser show the same thing both read in `tumwater backlog`.
-
-**Context.** `entryHold`, `holdMark` and `backlogHolds` (src/backlog/backlog-eligibility.ts)
-are the one decision every surface should share; today only the CLI uses them (`cli-query-
-commands.ts` spreads `backlogHolds` into `backlogPayload`). `statusPayload`
-(src/ui/status-payload.ts) exposes bare `plans`/`bugs` title arrays, so the GUI list
-(`renderBacklog`, src/ui/gui/gui-client-fleet.ts) prints `splitTitle(title).title` unmarked. The
-TUI backlog pane (`paneBody`'s backlog branch, src/ui/tui/tui-pane.ts) and its helpers
-(`labeledBacklogEntries`, `backlogLines`, src/ui/tui/tui-backlog.ts) read
-`plannedPlanEntries`/`openBugEntries` and print `e.title` unmarked in both list and entry mode.
-No new collection or state: the marks are already computed from the headings.
-
-**Approach.**
-1. src/ui/status-payload.ts: read `backlogHolds(root)` once and add two arrays parallel to
-today's `plans` and `bugs` — `planHolds: string[]` and `bugHolds: string[]`, each
-`holdMark(holds.plans[i])`/`holdMark(holds.bugs[i])` (empty string when eligible). The arrays
-stay aligned because `backlogHolds` and `plannedPlans`/`openBugs` both walk the same
-`sectionEntries` file order.
-2. src/ui/gui/gui-client-fleet.ts `renderBacklog`: for the plans and bugs tabs, read the
-matching `d.planHolds`/`d.bugHolds` entry and, when non-empty, append
-`<span class='li-meta'>` + `esc(mark.trim())` inside the entry's `<button class='li-open
-backloglink'>` after the title span — the title/meta split and the click's `data-file` /
-`data-index` are unchanged, and the questions tab carries no holds.
-3. src/ui/tui/tui-backlog.ts: add an exported `backlogMarks(root): { plans: string[]; bugs: string[] }`
-that maps `plannedPlanEntries`/`openBugEntries` through
-`holdMark(entryHold(e, plannedEntries))` exactly as `backlogHolds` does; give each
-`labeledBacklogEntries` row a `mark: string` field from it (empty for questions).
-`backlogLines` keeps its `string[]` signature and tests.
-4. src/ui/tui/tui-pane.ts backlog branch: pass `entry.title + marks.plans[i]` (and the bug
-equivalent) into `backlogLines` for list mode, and `${e.label}: ${e.title}${e.mark}` for the
-entry-mode header line, so both modes read the mark.
-
-**Files touched.**
-- src/ui/status-payload.ts (`planHolds`, `bugHolds`)
-- src/ui/gui/gui-client-fleet.ts (`renderBacklog`)
-- src/ui/tui/tui-backlog.ts (`backlogMarks`, `labeledBacklogEntries`)
-- src/ui/tui/tui-pane.ts (`paneBody` backlog branch)
-
-Tests: a case in test/status-payload.test.ts seeding PLANS.md/BUGS.md with a blocked and a
-refused entry and asserting `planHolds`/`bugHolds` align with `plans`/`bugs`; a case in
-test/gui-client-fleet.test.ts rendering `renderBacklog` with `planHolds` and asserting the tag
-rides beside the title while an eligible row is byte-identical to today's; cases in
-test/tui-backlog.test.ts for `backlogMarks` and the entry-mode header line.
-
-**Acceptance criteria.**
-- `GET /api/status` returns `planHolds` and `bugHolds` parallel index-for-index with `plans`
-  and `bugs`; an eligible entry's mark is the empty string.
-- The GUI Plans/Bugs tabs show `[blocked: requires …]` beside a blocked entry's title and the
-  refusal/needs-review/needs-replan tags beside those, with eligible rows and the Questions tab
-  unchanged; clicking a held row still opens its entry by index.
-- The TUI backlog list and entry mode show the same mark beside the same title, and an eligible
-  entry's line is unchanged.
-- `tumwater backlog` output is unchanged (the mark functions are untouched).
-- `npm run test` green.
-
 ### A History view in `tumwater tui` matching `tumwater history` (planned 2026-10-09 by plan)
 
 **Goal.** `Ctrl+T` in `tumwater tui` gains a fleet-wide **History** pane showing the completed-tick
@@ -595,6 +534,67 @@ report-data and report render test passes without edits.
 
 
 ## Done
+
+### Show backlog entry eligibility holds in the GUI and TUI backlog lists (planned 2026-10-09 by plan; done 2026-10-09 by feature; sibling of "Mark why a backlog entry is held in `tumwater backlog`")
+
+**Goal.** The dashboard's backlog panel and the TUI's project-status pane mark each held entry
+beside its title with the same `[blocked: requires …]`, `[refused]`, `[needs review]`, or
+`[needs replan]` tag `tumwater backlog` prints, so an operator watching the dashboards reads why
+a plan or bug is skipped instead of inferring it from its heading text — the terminal and the
+browser show the same thing both read in `tumwater backlog`.
+
+**Context.** `entryHold`, `holdMark` and `backlogHolds` (src/backlog/backlog-eligibility.ts)
+are the one decision every surface should share; today only the CLI uses them (`cli-query-
+commands.ts` spreads `backlogHolds` into `backlogPayload`). `statusPayload`
+(src/ui/status-payload.ts) exposes bare `plans`/`bugs` title arrays, so the GUI list
+(`renderBacklog`, src/ui/gui/gui-client-fleet.ts) prints `splitTitle(title).title` unmarked. The
+TUI backlog pane (`paneBody`'s backlog branch, src/ui/tui/tui-pane.ts) and its helpers
+(`labeledBacklogEntries`, `backlogLines`, src/ui/tui/tui-backlog.ts) read
+`plannedPlanEntries`/`openBugEntries` and print `e.title` unmarked in both list and entry mode.
+No new collection or state: the marks are already computed from the headings.
+
+**Approach.**
+1. src/ui/status-payload.ts: read `backlogHolds(root)` once and add two arrays parallel to
+today's `plans` and `bugs` — `planHolds: string[]` and `bugHolds: string[]`, each
+`holdMark(holds.plans[i])`/`holdMark(holds.bugs[i])` (empty string when eligible). The arrays
+stay aligned because `backlogHolds` and `plannedPlans`/`openBugs` both walk the same
+`sectionEntries` file order.
+2. src/ui/gui/gui-client-fleet.ts `renderBacklog`: for the plans and bugs tabs, read the
+matching `d.planHolds`/`d.bugHolds` entry and, when non-empty, append
+`<span class='li-meta'>` + `esc(mark.trim())` inside the entry's `<button class='li-open
+backloglink'>` after the title span — the title/meta split and the click's `data-file` /
+`data-index` are unchanged, and the questions tab carries no holds.
+3. src/ui/tui/tui-backlog.ts: add an exported `backlogMarks(root): { plans: string[]; bugs: string[] }`
+that maps `plannedPlanEntries`/`openBugEntries` through
+`holdMark(entryHold(e, plannedEntries))` exactly as `backlogHolds` does; give each
+`labeledBacklogEntries` row a `mark: string` field from it (empty for questions).
+`backlogLines` keeps its `string[]` signature and tests.
+4. src/ui/tui/tui-pane.ts backlog branch: pass `entry.title + marks.plans[i]` (and the bug
+equivalent) into `backlogLines` for list mode, and `${e.label}: ${e.title}${e.mark}` for the
+entry-mode header line, so both modes read the mark.
+
+**Files touched.**
+- src/ui/status-payload.ts (`planHolds`, `bugHolds`)
+- src/ui/gui/gui-client-fleet.ts (`renderBacklog`)
+- src/ui/tui/tui-backlog.ts (`backlogMarks`, `labeledBacklogEntries`)
+- src/ui/tui/tui-pane.ts (`paneBody` backlog branch)
+
+Tests: a case in test/status-payload.test.ts seeding PLANS.md/BUGS.md with a blocked and a
+refused entry and asserting `planHolds`/`bugHolds` align with `plans`/`bugs`; a case in
+test/gui-client-fleet.test.ts rendering `renderBacklog` with `planHolds` and asserting the tag
+rides beside the title while an eligible row is byte-identical to today's; cases in
+test/tui-backlog.test.ts for `backlogMarks` and the entry-mode header line.
+
+**Acceptance criteria.**
+- `GET /api/status` returns `planHolds` and `bugHolds` parallel index-for-index with `plans`
+  and `bugs`; an eligible entry's mark is the empty string.
+- The GUI Plans/Bugs tabs show `[blocked: requires …]` beside a blocked entry's title and the
+  refusal/needs-review/needs-replan tags beside those, with eligible rows and the Questions tab
+  unchanged; clicking a held row still opens its entry by index.
+- The TUI backlog list and entry mode show the same mark beside the same title, and an eligible
+  entry's line is unchanged.
+- `tumwater backlog` output is unchanged (the mark functions are untouched).
+- `npm run test` green.
 
 ### Inspect a loop's notebook and next tick prompt in the TUI (planned 2026-10-09 by plan; done 2026-10-09 by feature; sibling of "Inspect a loop's notebook and next prompt in the dashboard drawer")
 
