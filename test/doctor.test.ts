@@ -40,7 +40,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "brief", "bootstrap", "fallback", "tier models", "claude auth", "claude version", "pi binary", "claude transcripts", "state dir", "merge lock", "worktree pool", "work instances", "disk space", "project check", "fix claims", "stranded plans", "backlog headings", "build", "orphans", "mach ports"],
+    ["node", "git binary", "repo", "init", "brief", "bootstrap", "fallback", "tier models", "claude auth", "claude version", "agent binary", "claude transcripts", "state dir", "merge lock", "worktree pool", "work instances", "disk space", "project check", "fix claims", "stranded plans", "backlog headings", "build", "orphans", "mach ports"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -62,7 +62,7 @@ test("runDoctor counts failures in the verdict — plural and singular", async (
   assert.equal(report.verdict, "3 problems");
   assert.deepEqual(
     report.checks.filter((c) => c.level === "fail").map((c) => c.name),
-    ["git binary", "init", "pi binary"],
+    ["git binary", "init", "agent binary"],
   );
 
   // A ready repo whose PATH has git but no pi: exactly one problem (singular).
@@ -202,7 +202,7 @@ test("doctor runs outside a git repo — reports every problem instead of gating
   assert.match(r.stdout, /ok\s+git binary/);
   assert.match(r.stdout, /fail\s+repo\s+not a git repository/);
   assert.match(r.stdout, /fail\s+init\s+not initialized/);
-  assert.match(r.stdout, /fail\s+pi binary\s+pi not found on PATH/);
+  assert.match(r.stdout, /fail\s+agent binary\s+pi not found on PATH/);
   assert.match(r.stdout, /ok\s+state dir/);
   assert.match(r.stdout, /ok\s+merge lock/);
   assert.match(r.stdout, /warn\s+project check/);
@@ -237,7 +237,7 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
       /ok\s+git binary/,
       /ok\s+repo\s+repo at \S+ — on branch main/,
       /ok\s+init/,
-      /ok\s+pi binary/,
+      /ok\s+agent binary/,
       /ok\s+state dir/,
       /warn\s+merge lock\s+stale — will be broken on next merge/,
       /warn\s+project check/,

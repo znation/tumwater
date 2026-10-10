@@ -170,6 +170,21 @@ test("checkAgentBinary falls back to the default when tumwater.json is malformed
   assert.match(out.detail, /pi$/);
 });
 
+// A claude-only fleet must not fail on a missing pi: the check follows the enabled seams'
+// agents (the startup gate's agentsInUse), not always pi.
+test("checkAgentBinary checks the enabled seams' agents, not always pi", () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+
+  const present = checkAgentBinary(root, fakeBins("claude"));
+  assert.equal(present.level, "ok");
+  assert.match(present.detail, /claude/);
+
+  const missing = checkAgentBinary(root, "");
+  assert.equal(missing.level, "fail");
+  assert.match(missing.detail, /claude not found/);
+});
+
 test("checkRepo reports not-a-repo, no-commits-yet, and detached HEAD as distinct failures", async () => {
   const notRepo = await checkRepo(tmpdir());
   assert.equal(notRepo.level, "fail");

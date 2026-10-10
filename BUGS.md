@@ -14,6 +14,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `checkAgentBinary` always checks pi, so a claude-only fleet fails doctor on a missing pi it never spawns (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
+
+- **Symptom:** `checkAgentBinary` (`src/doctor/doctor-checks.ts`) always resolved the pi binary (`resolveAgentBin(config ?? {})`), ignoring the configured `agent`. The startup gate walks every enabled seam's agent (`agentsInUse`, `src/gates/startup-gate.ts`), so with `agent: "claude"` and no pi installed the gate admits the fleet while `tumwater doctor` reports `fail pi binary  pi not found on PATH` — a false failure for a binary no enabled seam spawns.
+- **Reproduce:** The added `test/doctor-checks.test.ts` case "checkAgentBinary checks the enabled seams' agents, not always pi" writes `{ agent: "claude" }` and passes a PATH holding only a fake `claude`; on main it failed with `'fail' !== 'ok'` (the check resolved pi). After the fix it is `ok` naming claude, and an empty PATH fails naming `claude not found`.
+- **Cause:** the check hard-coded the pi resolution instead of asking which agents the enabled seams use, diverging from the startup gate — the drift the two surfaces' shared `findAgentBinary` rule exists to prevent.
+- **Fix:** the check now walks `agentsInUse(config)` (newly exported from startup-gate.ts) and resolves/tests each agent through the same `resolveAgentBin`/`findAgentBinary`; it fails on the first missing binary with that agent's own `agentMissingMessage`, and the existing single-agent `checkAgentBinary` tests still assert the same exact detail strings. A non-pi source label now names that agent's own `TUMWATER_<ID>_BIN`/`agents.<id>.bin` via a shared `agentBinSourceLabelFor` helper. The doctor row is renamed "pi binary" → "agent binary" to match.
+
+**Validation gap:** unclear-invariant — the suite pinned only pi configs, so confirming the bug meant reconstructing that doctor's binary check must follow the same `agentsInUse` rule as the startup gate.
+
 ### `overlayDefaults` still seeds a custom loop named after an Object.prototype key, so `loopIds` silently drops it (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
 
 - **Symptom:** `overlayDefaults` (`src/config/config.ts`) seeds each `customLoops` name into `roles` with `if (!merged.roles[c.name]) merged.roles[c.name] = { enabled: true }`. Custom names are validated only by charset (`/^[a-z0-9][a-z0-9_-]{0,31}$/`, config-validation.ts); of `Object.prototype`'s own keys only the all-lowercase `constructor` passes that regex, and it collides. The inherited function is truthy, the seed is skipped, and the custom loop never becomes an own key of `config.roles`, so `Object.entries`/`loopIds` (src/roles/loop-ids.ts) never create a runner for it: the loop is accepted by validation and then silently never runs.

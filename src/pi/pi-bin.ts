@@ -71,7 +71,7 @@ export function agentMissingMessage(resolved: ResolvedAgentBin, agent: string): 
   if (resolved.source === "default") {
     return `${agent} not found on PATH — install it or add its bin directory to your PATH`;
   }
-  const from = agentBinSourceLabel(resolved.source, agentBinEnv(agent), agentBinConfigKey(agent));
+  const from = agentBinSourceLabelFor(agent, resolved.source);
   return `${agent} not found — resolved "${resolved.bin}" from ${from} is not an executable — install it or point ${from} at a working ${agent} binary`;
 }
 
@@ -86,6 +86,16 @@ function agentBinEnv(agent: string): string {
  * non-pi failure never names pi's key. */
 export function agentBinConfigKey(agent: string): string {
   return agent === "pi" ? "agentBin" : `agents.${agent}.bin`;
+}
+
+/** The source label for one agent's resolved binary, deriving the env var and config key from
+ * the agent id when the caller has no backend defaults in hand. pi keeps its pinned legacy
+ * wording; any other agent names its own `TUMWATER_<ID>_BIN` and `agents.<id>.bin`. One home
+ * for the convention agentMissingMessage and doctor's ok detail both read. */
+export function agentBinSourceLabelFor(agent: string, source: AgentBinSource): string {
+  return agent === "pi"
+    ? agentBinSourceLabel(source)
+    : agentBinSourceLabel(source, agentBinEnv(agent), agentBinConfigKey(agent));
 }
 
 /** Is the resolved agent binary executable right now? Returns the usable path, or null when

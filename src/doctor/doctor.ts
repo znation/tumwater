@@ -70,7 +70,7 @@ export async function runDoctor(
     { name: "tier models", ...(await checkTierModels(root)) },
     { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },
     { name: "claude version", ...(await checkClaudeVersion(root, pathEnv)) },
-    { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
+    { name: "agent binary", ...checkAgentBinary(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", ...checkClaudeTranscripts(config) },
     { name: "state dir", ...checkStateDir(root) },

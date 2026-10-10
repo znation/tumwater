@@ -30,7 +30,7 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
 } from "../gates/readiness.js";
-import { agentBinSourceLabel, findAgentBinary, piMissingMessage, resolveAgentBin } from "../pi/pi-bin.js";
+import { agentBinSourceLabelFor, agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
@@ -39,6 +39,7 @@ import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
+import { agentsInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse } from "./doctor-model-checks.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
@@ -218,27 +219,50 @@ export function checkBootstrap(
   };
 }
 
-/** Agent binary (plans/portability.md §5/7) — resolves TUMWATER_PI_BIN → agentBin → "pi"
- * through the same resolveAgentBin the spawn uses, so doctor and the harness can never
- * disagree about which pi runs (a malformed tumwater.json resolves to defaults; checkInit
- * reports the config problem separately). Executability is pi/pi-bin.ts's shared
- * findAgentBinary — the same bare-name PATH lookup, path-shaped accessSync(X_OK) rule, and
- * null-on-unusable verdict the startup gate asks — so doctor cannot pass a binary the gate
- * would reject. resolveAgentBin normalizes path-shaped values against the process cwd at
- * resolution time, so what doctor tests is exactly what spawns. The ok detail names the
- * resolved path AND its source whenever the value is not the PATH default, so a configured
- * binary is never mistaken for the ambient one; the check label stays "pi binary". */
+/** Resolve and test ONE agent's binary: the ok detail names the resolved path and its source
+ * whenever the value is not the PATH default, so a configured binary is never mistaken for the
+ * ambient one; a missing one fails with that agent's own message, so a wrong claude path never
+ * reads as a missing pi. */
+function agentBinaryCheck(
+  config: Parameters<typeof resolveAgentBin>[0],
+  agent: string,
+  pathEnv: string,
+): CheckOutcome {
+  const resolved = resolveAgentBin(config, agent);
+  const found = findAgentBinary(resolved, pathEnv);
+  if (!found) return { level: "fail", detail: agentMissingMessage(resolved, agent) };
+  if (resolved.source === "default") return { level: "ok", detail: found };
+  const from = agentBinSourceLabelFor(agent, resolved.source);
+  return { level: "ok", detail: `${found} — resolved from ${from}` };
+}
+
+/** Agent binary (plans/portability.md §5/7) — every agent an enabled seam resolves to
+ * (agentsInUse, the startup gate's rule), resolved through the same resolveAgentBin the spawn
+ * uses, so doctor and the harness can never disagree about which binary runs (a malformed
+ * tumwater.json resolves to the pi default; checkInit reports the config problem separately).
+ * Executability is pi/pi-bin.ts's shared findAgentBinary — the same bare-name PATH lookup,
+ * path-shaped accessSync(X_OK) rule, and null-on-unusable verdict the startup gate asks — so
+ * doctor cannot pass a binary the gate would reject. resolveAgentBin normalizes path-shaped
+ * values against the process cwd at resolution time, so what doctor tests is exactly what
+ * spawns. A claude-only fleet checks claude, not pi. The check fails on the first missing
+ * binary, naming its agent; an ok detail joins each agent's resolved path and source. */
 export function checkAgentBinary(
   root: string,
   pathEnv: string = envPath(),
 ): CheckOutcome {
   const { config } = loadConfigSafe(root);
-  const resolved = resolveAgentBin(config ?? {});
-  const found = findAgentBinary(resolved, pathEnv);
-  if (!found) return { level: "fail", detail: piMissingMessage(resolved) };
-  if (resolved.source === "default") return { level: "ok", detail: found };
-  const from = agentBinSourceLabel(resolved.source);
-  return { level: "ok", detail: `${found} — resolved from ${from}` };
+  const agents = config !== undefined ? agentsInUse(config) : ["pi"];
+  const checks = agents.map((agent) => ({
+    agent,
+    outcome: agentBinaryCheck(config ?? {}, agent, pathEnv),
+  }));
+  const failed = checks.find(({ outcome }) => outcome.level === "fail");
+  if (failed) return failed.outcome;
+  if (checks.length === 1) return checks[0]!.outcome;
+  return {
+    level: "ok",
+    detail: checks.map(({ agent, outcome }) => `${agent}: ${outcome.detail}`).join("; "),
+  };
 }
 
 /** The total bytes under one directory tree, counted iteratively and skipping unreadable

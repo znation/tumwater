@@ -85,9 +85,9 @@ export async function runStartupCheck(
 
 /** Every agent backend an enabled seam resolves to: the top-level `agent` plus each enabled
  * loop's configForRole view and, when the review gate is on, the reviewer's view
- * (reviewConfig). One list the startup gate walks to check each agent's binary, so a claude
- * route the harness would spawn is checked exactly like pi. */
-function agentsInUse(config: TumwaterConfig): string[] {
+ * (reviewConfig). One list the startup gate and doctor's binary check share, so a claude route
+ * the harness would spawn is checked exactly like pi on both surfaces. */
+export function agentsInUse(config: TumwaterConfig): string[] {
   const agents = new Set<string>([config.agent ?? "pi"]);
   for (const id of loopIds(config)) agents.add(configForRole(config, id).agent ?? "pi");
   if (config.review.enabled) agents.add(reviewConfig(config).agent ?? "pi");
