@@ -25,6 +25,19 @@ test("formatEvent renders the budget warning with the spend phrase and the still
   assert.match(warned, /harness\s+budget warning — \$40\.01 of \$50\.00 of the daily cap spent; the gate is still open/);
 });
 
+test("formatEvent renders the per-role cap warning naming the role and that it keeps ticking", () => {
+  const warned = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "role_cap_warning",
+    role: "docs",
+    spentUsd: 0.85,
+    capUsd: 1,
+  } as never);
+  assert.match(warned, /harness\s+role docs at \$0\.85 of \$1\.00 of its daily cap — it keeps ticking/);
+  assert.match(warned, /raise or remove the cap in tumwater\.json before it pauses/);
+});
+
 test("formatEvent renders the budget transition events plainly with spend and cap", () => {
   const paused = formatEvent({
     ts: 0,

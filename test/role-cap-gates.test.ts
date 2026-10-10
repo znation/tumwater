@@ -149,6 +149,78 @@ test("pollRoleCapGate: the director never enters the set, and the set is exactly
   assert.ok(!paused.has("tests"));
 });
 
+test("pollRoleCapGate: an 80% crossing logs one role_cap_warning and stays unpaused", () => {
+  const root = tmpdir("role-cap-warn-");
+  const state = newRoleCapGateState();
+  const s = overCapState("docs", 0.5);
+  const runners = [{ role: "docs", state: s }];
+  const caps = { docs: 1 };
+
+  // Below the band: nothing.
+  assert.equal(pollRoleCapGate(root, state, runners, caps, Date.now()).size, 0);
+  assert.equal(readEvents(root, 100).length, 0, "below 80% logs nothing");
+
+  // Cross 80% but stay under the cap: one warning, no pause.
+  recordDailyCost(s, 0.3); // $0.80 of a $1.00 cap
+  assert.equal(pollRoleCapGate(root, state, runners, caps, Date.now()).size, 0, "a warning does not pause");
+  const warnings = readEvents(root, 100).filter((e) => e.type === "role_cap_warning");
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0]!.loop, "harness");
+  assert.equal(warnings[0]!.role, "docs");
+  assert.equal(warnings[0]!.spentUsd, 0.8);
+  assert.equal(warnings[0]!.capUsd, 1);
+  assert.equal(
+    readEvents(root, 100).filter((e) => e.type === "role_cap_paused").length,
+    0,
+    "no role_cap_paused while still under the cap",
+  );
+
+  // Staying in the band logs nothing more: the event is edge-triggered.
+  pollRoleCapGate(root, state, runners, caps, Date.now());
+  assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_warning").length, 1);
+});
+
+test("pollRoleCapGate: the warning re-arms after a dip below 80%", () => {
+  const root = tmpdir("role-cap-warn-rearm-");
+  const state = newRoleCapGateState();
+  const runners = [{ role: "docs", state: overCapState("docs", 0.85) }];
+
+  pollRoleCapGate(root, state, runners, { docs: 1 }, Date.now());
+  // A raised cap drops the same spend below the band, then the old cap re-crosses it.
+  pollRoleCapGate(root, state, runners, { docs: 2 }, Date.now());
+  pollRoleCapGate(root, state, runners, { docs: 1 }, Date.now());
+  assert.equal(
+    readEvents(root, 100).filter((e) => e.type === "role_cap_warning").length,
+    2,
+    "a dip below the band re-arms the warning",
+  );
+});
+
+test("pollRoleCapGate: a poll jumping straight to the cap logs only role_cap_paused", () => {
+  const root = tmpdir("role-cap-warn-jump-");
+  const state = newRoleCapGateState();
+  const runners = [{ role: "docs", state: overCapState("docs", 1) }];
+
+  const paused = pollRoleCapGate(root, state, runners, { docs: 1 }, Date.now());
+  assert.deepEqual([...paused], ["docs"]);
+  assert.deepEqual(readEvents(root, 100).map((e) => e.type), ["role_cap_paused"]);
+});
+
+test("pollRoleCapGate: instances warn as one group against the base cap", () => {
+  const root = tmpdir("role-cap-warn-instances-");
+  const state = newRoleCapGateState();
+  const runners = [
+    { role: "feature", state: overCapState("feature", 0.4) },
+    { role: "feature-2", state: overCapState("feature-2", 0.4) },
+  ];
+
+  assert.equal(pollRoleCapGate(root, state, runners, { feature: 1 }, Date.now()).size, 0);
+  const warnings = readEvents(root, 100).filter((e) => e.type === "role_cap_warning");
+  assert.equal(warnings.length, 1, "the summed group warns once");
+  assert.equal(warnings[0]!.role, "feature", "the warning names the base role");
+  assert.equal(warnings[0]!.spentUsd, 0.8);
+});
+
 test("pollRoleCapGate: no caps configured logs nothing and returns the empty set", () => {
   const root = tmpdir("role-cap-off-");
   const state = newRoleCapGateState();

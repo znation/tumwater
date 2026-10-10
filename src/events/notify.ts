@@ -10,7 +10,7 @@ import { childEnv } from "../process/process.js";
  * push channel beside the pull-based dashboards and `tumwater logs`.
  *
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
- * only sees events THIS process logs. All eight allowlisted types are logged by the
+ * only sees events THIS process logs. All nine allowlisted types are logged by the
  * orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
  * role-cap-gates.ts and disk-gate.ts, landing-slot.ts, landing-questions.ts,
  * src/redeploy/redeployer.ts), so nothing
@@ -23,6 +23,7 @@ import { childEnv } from "../process/process.js";
  * (the exact line `tumwater logs` renders, via formatEvent). */
 export const NOTIFY_EVENT_TYPES = [
   "budget_warning", // daily spend crossed 80% of the cap, gate still open — time to raise it or fix the fallback before the page below
+  "role_cap_warning", // one role's own daily spend crossed 80% of its cap, still ticking — time to raise it before the page below
   "budget_paused", // spend cap hit with no usable free fallback — role loops are stopped
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks

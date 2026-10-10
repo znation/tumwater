@@ -22,12 +22,13 @@
  * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure verdict and the
  * edge-triggered bookkeeping live here so they are unit-testable without a fleet, and this
  * module owns the only event emission — the orchestrator's poll owns only the wiring. The
- * in-memory `prev` set is the whole cross-poll memory: a restart with a still-over-cap role
- * re-logs one `role_cap_paused` on the first poll (the durable-cause honest report the
- * streak-gate doc accepts). */
+ * in-memory `prev` and `warned` sets are the whole cross-poll memory: a restart with a
+ * still-over-cap role re-logs one `role_cap_paused` on the first poll, and a role already past
+ * 80% re-logs one `role_cap_warning` (the durable-cause honest report the streak-gate doc
+ * accepts). */
 
 import type { LoopState } from "../loop/loop-state.js";
-import { dailyCost, todayStamp } from "../budget/budget.js";
+import { budgetWarning, dailyCost, todayStamp } from "../budget/budget.js";
 import { logEventBestEffort } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -92,16 +93,18 @@ export function roleCapVerdicts(
   return verdicts;
 }
 
-/** The gate's cross-poll memory: the roles logged as paused at the last poll. In memory only,
- * like every gate state. */
+/** The gate's cross-poll memory: the roles logged as paused at the last poll, and the base
+ * roles already warned in the current 80% band. In memory only, like every gate state. */
 export interface RoleCapGateState {
   prev: Set<string>;
+  warned: Set<string>;
 }
 
 /** A fresh gate state: nothing seen yet, so an already-over-cap role logs exactly one
- * `role_cap_paused` on the first poll after a restart — the honest report of a durable cause. */
+ * `role_cap_paused`, and an already-past-80% role one `role_cap_warning`, on the first poll
+ * after a restart — the honest report of a durable cause. */
 export function newRoleCapGateState(): RoleCapGateState {
-  return { prev: new Set() };
+  return { prev: new Set(), warned: new Set() };
 }
 
 /** Step the gate by one orchestrator poll. Per runner (the director exempt, like every
@@ -136,6 +139,26 @@ export function pollRoleCapGate(
       });
     } else if (!verdict.over && was) {
       logEventBestEffort(root, { loop: "harness", type: "role_cap_resumed", role: base });
+    }
+    // The 80% early warning (PLANS.md 2026-10-09), the per-role twin of the fleet's
+    // budget_warning and edge-triggered with the same reset-on-below: crossing the threshold
+    // while still under the cap logs one role_cap_warning, a dip back under re-arms it. Warn
+    // only while the cap is open — a poll that jumps straight to the cap already logs its own
+    // role_cap_paused, so the warning never doubles the page on the poll the cap is reached.
+    const cap = caps?.[base];
+    const warn =
+      !verdict.over && cap !== undefined && budgetWarning({ spentUsd: verdict.spentUsd, capUsd: cap });
+    if (warn && !state.warned.has(base)) {
+      logEventBestEffort(root, {
+        loop: "harness",
+        type: "role_cap_warning",
+        role: base,
+        spentUsd: verdict.spentUsd,
+        capUsd: cap,
+      });
+      state.warned.add(base);
+    } else if (!warn) {
+      state.warned.delete(base);
     }
     if (verdict.over) {
       overBases.add(base);

@@ -359,7 +359,72 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Warn before a loop reaches its own daily cap: the `role_cap_warning` event (planned 2026-10-09 by plan; independent of the Agent backends series)
+### Pause and resume the whole fleet from `tumwater tui`: the `Ctrl+F` toggle (planned 2026-10-10 by plan; independent of the Agent backends series)
+
+**Goal.** `Ctrl+F` in `tumwater tui` toggles the fleet pause through the same
+`pauseFleet`/`resumeFleet` marker writers `tumwater pause`/`resume` and the dashboard's
+`/api/pause` call, so an operator watching the terminal can hold or release the whole fleet
+without a second terminal. Today the TUI shows the fleet-pause alert (`fleetAlerts`' `paused`
+entry, src/ui/fleet-alerts.ts) and offers the per-loop `Ctrl+P`, but no key writes the fleet
+marker; the GUI already has a pause control and its alert carries a Resume action the TUI
+cannot offer.
+
+**Context.** src/ui/tui/tui-keys.ts's `createTuiKeys` already imports `pausedRoles`/`pauseRole`/
+`resumeRole` from src/fleet/fleet-state.ts, where `pauseFleet`, `resumeFleet` and the reader
+`isFleetPaused` live as the single marker writers shared by src/operator/operator-commands.ts's
+`cmdPause`/`cmdResume` and src/gui/gui-endpoint-commands.ts's `/api/pause` — so the TUI cannot
+drift on marker format or idempotence. Confirmation wording reuses the shared base lines
+`fleetPausePhrase()`/`fleetResumePhrase()` (src/text/phrases.ts), which the event feed and the
+failure digest already share. `Ctrl+F` is free: the handler's only ctrl keys are D, C, B, P, A,
+W, R, N and T.
+
+**Approach.**
+1. src/ui/tui/tui-keys.ts: import `isFleetPaused`, `pauseFleet`, `resumeFleet` from
+   src/fleet/fleet-state.ts and `fleetPausePhrase`, `fleetResumePhrase` from src/text/phrases.ts.
+   Add a `Ctrl+F` branch after the `Ctrl+B` branch and before the per-loop-controls branch,
+   guarded `!budgetMode && !rolePromptFor` so it never fires while an editor holds the prompt
+   line (the same inertness the per-loop keys have): read `const paused = isFleetPaused(root)`;
+   when paused call `resumeFleet(root)` and flash
+   `changed ? fleetResumePhrase() : "fleet was not paused"`; otherwise call `pauseFleet(root)`
+   and flash `changed ? fleetPausePhrase() : "fleet is already paused"`. Wrap it in the same
+   `try`/`catch` → `flashError` other disk-writing branches use, then `deps.requestRender()` so
+   the next frame's `fleetAlerts` shows or drops the pause alert.
+2. src/ui/tui/tui-frame.ts: the Activity/default `hintLine` branch gains `["Ctrl+F", "pause fleet"]`
+   after `["Ctrl+B", "daily cap"]`.
+3. docs/how-it-works.md's Operator notes TUI bullet: name `Ctrl+F` as the fleet pause/resume
+   toggle (in-flight ticks finish; the director keeps running), mirroring the pause alert's
+   detail line.
+
+**Files touched.**
+- src/ui/tui/tui-keys.ts (`createTuiKeys`'s dispatch)
+- src/ui/tui/tui-frame.ts (`hintLine`)
+- test/tui-operator-keys.test.ts, test/tui-frame.test.ts
+- docs/how-it-works.md
+
+Tests: test/tui-operator-keys.test.ts (the operator-controls topic slice, which already imports
+`pauseFleet`/`pausedRoles` and builds its fake TTY with `makeTuiRepo`/`withTui`) — `Ctrl+F` makes
+`isFleetPaused(repo)` true and flashes `fleet paused — role loops stop starting new ticks`, the
+frame then matches `/The fleet is paused/`; a second `Ctrl+F` clears it (`isFleetPaused` false)
+and flashes `fleet resumed — role loops tick again`; while budget-edit mode or role-prompt mode
+holds the line, `Ctrl+F` writes no marker. test/tui-frame.test.ts's Activity hint assertion gains
+`Ctrl+F pause fleet`.
+
+**Acceptance criteria.**
+- `Ctrl+F` toggles the fleet pause marker through `pauseFleet`/`resumeFleet`; no new state is
+  introduced — the presence of the existing marker is what the scheduler, `tumwater status` and
+  the GUI read.
+- The flash carries the shared `fleetPausePhrase`/`fleetResumePhrase` wording; a toggle that
+  changes nothing flashes the `already paused`/`was not paused` line, the CLI's changed-state
+  contract.
+- The next render shows the fleet-pause alert when the marker is set and drops it when lifted;
+  the per-loop `Ctrl+P` and its fleet-pause interplay note are unchanged.
+- `Ctrl+F` is inert while the budget editor or the role-prompt editor holds the prompt line.
+- docs/how-it-works.md names the key, and `npm run test` is green.
+
+
+## Done
+
+### Warn before a loop reaches its own daily cap: the `role_cap_warning` event (planned 2026-10-09 by plan; independent of the Agent backends series; done 2026-10-10 by feature)
 
 **Goal.** A loop whose local-day spend crosses 80% of its own `maxDailyCostUsdPerRole` cap logs
 one `role_cap_warning` event while it is still ticking, so the configured `notify` hook can page
@@ -426,71 +491,6 @@ the cap, and that the loop keeps ticking. test/notify.test.ts — extend the pin
 - `tumwater logs` renders the event naming the role, its spend against its cap, and that the loop
   keeps ticking; `NOTIFY_EVENT_TYPES` includes it; docs/how-it-works.md names the per-role warning.
 - `npm run test` green.
-
-### Pause and resume the whole fleet from `tumwater tui`: the `Ctrl+F` toggle (planned 2026-10-10 by plan; independent of the Agent backends series)
-
-**Goal.** `Ctrl+F` in `tumwater tui` toggles the fleet pause through the same
-`pauseFleet`/`resumeFleet` marker writers `tumwater pause`/`resume` and the dashboard's
-`/api/pause` call, so an operator watching the terminal can hold or release the whole fleet
-without a second terminal. Today the TUI shows the fleet-pause alert (`fleetAlerts`' `paused`
-entry, src/ui/fleet-alerts.ts) and offers the per-loop `Ctrl+P`, but no key writes the fleet
-marker; the GUI already has a pause control and its alert carries a Resume action the TUI
-cannot offer.
-
-**Context.** src/ui/tui/tui-keys.ts's `createTuiKeys` already imports `pausedRoles`/`pauseRole`/
-`resumeRole` from src/fleet/fleet-state.ts, where `pauseFleet`, `resumeFleet` and the reader
-`isFleetPaused` live as the single marker writers shared by src/operator/operator-commands.ts's
-`cmdPause`/`cmdResume` and src/gui/gui-endpoint-commands.ts's `/api/pause` — so the TUI cannot
-drift on marker format or idempotence. Confirmation wording reuses the shared base lines
-`fleetPausePhrase()`/`fleetResumePhrase()` (src/text/phrases.ts), which the event feed and the
-failure digest already share. `Ctrl+F` is free: the handler's only ctrl keys are D, C, B, P, A,
-W, R, N and T.
-
-**Approach.**
-1. src/ui/tui/tui-keys.ts: import `isFleetPaused`, `pauseFleet`, `resumeFleet` from
-   src/fleet/fleet-state.ts and `fleetPausePhrase`, `fleetResumePhrase` from src/text/phrases.ts.
-   Add a `Ctrl+F` branch after the `Ctrl+B` branch and before the per-loop-controls branch,
-   guarded `!budgetMode && !rolePromptFor` so it never fires while an editor holds the prompt
-   line (the same inertness the per-loop keys have): read `const paused = isFleetPaused(root)`;
-   when paused call `resumeFleet(root)` and flash
-   `changed ? fleetResumePhrase() : "fleet was not paused"`; otherwise call `pauseFleet(root)`
-   and flash `changed ? fleetPausePhrase() : "fleet is already paused"`. Wrap it in the same
-   `try`/`catch` → `flashError` other disk-writing branches use, then `deps.requestRender()` so
-   the next frame's `fleetAlerts` shows or drops the pause alert.
-2. src/ui/tui/tui-frame.ts: the Activity/default `hintLine` branch gains `["Ctrl+F", "pause fleet"]`
-   after `["Ctrl+B", "daily cap"]`.
-3. docs/how-it-works.md's Operator notes TUI bullet: name `Ctrl+F` as the fleet pause/resume
-   toggle (in-flight ticks finish; the director keeps running), mirroring the pause alert's
-   detail line.
-
-**Files touched.**
-- src/ui/tui/tui-keys.ts (`createTuiKeys`'s dispatch)
-- src/ui/tui/tui-frame.ts (`hintLine`)
-- test/tui-operator-keys.test.ts, test/tui-frame.test.ts
-- docs/how-it-works.md
-
-Tests: test/tui-operator-keys.test.ts (the operator-controls topic slice, which already imports
-`pauseFleet`/`pausedRoles` and builds its fake TTY with `makeTuiRepo`/`withTui`) — `Ctrl+F` makes
-`isFleetPaused(repo)` true and flashes `fleet paused — role loops stop starting new ticks`, the
-frame then matches `/The fleet is paused/`; a second `Ctrl+F` clears it (`isFleetPaused` false)
-and flashes `fleet resumed — role loops tick again`; while budget-edit mode or role-prompt mode
-holds the line, `Ctrl+F` writes no marker. test/tui-frame.test.ts's Activity hint assertion gains
-`Ctrl+F pause fleet`.
-
-**Acceptance criteria.**
-- `Ctrl+F` toggles the fleet pause marker through `pauseFleet`/`resumeFleet`; no new state is
-  introduced — the presence of the existing marker is what the scheduler, `tumwater status` and
-  the GUI read.
-- The flash carries the shared `fleetPausePhrase`/`fleetResumePhrase` wording; a toggle that
-  changes nothing flashes the `already paused`/`was not paused` line, the CLI's changed-state
-  contract.
-- The next render shows the fleet-pause alert when the marker is set and drops it when lifted;
-  the per-loop `Ctrl+P` and its fleet-pause interplay note are unchanged.
-- `Ctrl+F` is inert while the budget editor or the role-prompt editor holds the prompt line.
-- docs/how-it-works.md names the key, and `npm run test` is green.
-
-
-## Done
 
 ### A Pending view in `tumwater tui` matching `tumwater diff` (planned 2026-10-10 by plan; sibling of the just-landed "A History view in `tumwater tui`"; independent of the Agent backends series; done 2026-10-10 by feature)
 

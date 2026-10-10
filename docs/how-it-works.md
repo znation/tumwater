@@ -140,6 +140,9 @@ discards a role's in-flight landing.
   reached its cap starts no new ticks until the next local day or a live edit raises/removes
   the cap. In-flight ticks finish and the director is exempt; a per-role cap never engages the
   fallback, and the other roles, the fleet-wide cap, and its fallback demotion are untouched.
+  Before that, the loop logs one `role_cap_warning` event when its own spend crosses the same
+  fixed 80% while it is still ticking — re-armed when spend falls back below — so a configured
+  notify command can page the operator while there is still room to raise the cap.
 - `fallback` names a free model that role loops switch to at the cap instead of stopping (the
   legacy `fallbackModel` object still parses). Each seam runs its tier's resolved fallback: the
   tier's own entry, else the nearest other tier's own fallback (small → default → strong;
