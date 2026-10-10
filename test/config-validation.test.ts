@@ -373,6 +373,12 @@ test("validateConfig validates the agents section: entry shapes and reserved fla
     validationError({ agents: { claude: { args: ["--effort=low"] } } }),
     /agents\.claude\.args\[0\] "--effort=low" duplicates a flag the harness sets/,
   );
+  // The flags claudeArgs appends after the model are reserved too: an overdrawn
+  // `--append-system-prompt-file` would replace the harness's AGENTS.md on the last-wins parse.
+  assert.match(
+    validationError({ agents: { claude: { args: ["--append-system-prompt-file", "/evil"] } } }),
+    /agents\.claude\.args\[0\] "--append-system-prompt-file" duplicates a flag the harness sets/,
+  );
   assert.match(
     validationError({ agents: { pi: { args: ["--mode", "text"] } } }),
     /agents\.pi\.args\[0\] "--mode" duplicates a flag the harness sets/,

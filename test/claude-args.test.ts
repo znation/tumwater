@@ -106,4 +106,9 @@ test("claudeArgs rejects an unknown thinking level, including Object.prototype k
 test("claudeArgs rejects a passthrough arg that repeats a harness flag", () => {
   assert.throws(() => claudeArgs(opts({ args: ["--model=x"] })), /repeats a harness flag/);
   assert.throws(() => claudeArgs(opts({ args: ["-p"] })), /repeats a harness flag/);
+  // Every flag claudeArgs itself emits is reserved, including the ones the builder appends
+  // after the model: a passthrough repeating `--append-system-prompt-file` is appended last
+  // and claude is last-wins, so it would silently replace the harness's AGENTS.md.
+  assert.throws(() => claudeArgs(opts({ args: ["--append-system-prompt-file", "/evil"] })), /repeats a harness flag/);
+  assert.throws(() => claudeArgs(opts({ args: ["--exclude-dynamic-system-prompt-sections"] })), /repeats a harness flag/);
 });

@@ -42,6 +42,8 @@ export const HARNESS_CLAUDE_FLAGS: ReadonlySet<string> = new Set([
   "--strict-mcp-config",
   "--mcp-config",
   "--disable-slash-commands",
+  "--exclude-dynamic-system-prompt-sections",
+  "--append-system-prompt-file",
   "--max-budget-usd",
 ]);
 
