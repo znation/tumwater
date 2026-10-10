@@ -23,6 +23,30 @@ import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, withPi } from "./fake
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
+/** One "improve" tick against a fake pi that writes `partial.txt` then hangs: wait for the
+ * edit to land, abort the tick, and assert it settled as `"aborted"`. The fake pi is stopped
+ * before return, so the caller can install its next one. The abort waits for the edit rather
+ * than a fixed timer: under parallel load a timer can fire before the fake pi even starts,
+ * leaving no edits for the following run to keep. */
+async function abortHungImproveTick(repo: string): Promise<void> {
+  const restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  try {
+    const controller = new AbortController();
+    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      controller.abort(); // don't leave the hung fake pi running after a wait timeout
+      throw err;
+    }
+    controller.abort();
+    assert.equal((await tick).result, "aborted");
+  } finally {
+    restore();
+  }
+}
+
 test("a tick cut off at the context ceiling warns, skips backoff, and resumes", async () => {
   const repo = await initializedRepo();
   // Replays the observed incident: mid-run text, then a thinking-only final message
@@ -110,24 +134,9 @@ test("an aborted tick lands nothing, does not back off, and marks itself resumab
 test("a resumed tick continues the interrupted session and keeps the worktree edits", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  // First run: leaves a half-done edit, then hangs until the shutdown abort kills it.
-  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  await abortHungImproveTick(repo);
+  let restore = () => {};
   try {
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    // Abort only once the half-done edit has landed: a fixed timer can fire before the
-    // fake pi even starts under parallel load, leaving no edits for the resume to keep.
-    const tick = runner.tick();
-    try {
-      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    } catch (err) {
-      controller.abort(); // don't leave the hung fake pi running after a wait timeout
-      throw err;
-    }
-    controller.abort();
-    assert.equal((await tick).result, "aborted");
-    restore();
-
     // The aborted run's pi session is on disk (the fake pi writes none, so seed one).
     fs.mkdirSync(sessionDir(repo, "improve"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(repo, "improve"), "interrupted.jsonl"), "{}\n");
@@ -164,22 +173,9 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
 test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  // First run: leaves a half-done edit, then hangs until the shutdown abort kills it.
-  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  await abortHungImproveTick(repo);
+  let restore = () => {};
   try {
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.tick();
-    try {
-      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    } catch (err) {
-      controller.abort(); // don't leave the hung fake pi running after a wait timeout
-      throw err;
-    }
-    controller.abort();
-    assert.equal((await tick).result, "aborted");
-    restore();
-
     // The aborted run wrote its own pi session and ledger line; append a NEWER author line for
     // another agent. The newest author session is now not this tick's to --continue.
     const dir = sessionDir(repo, "improve");
@@ -229,21 +225,9 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
 test("a cross-agent handoff over an interrupted revision keeps its edits and carries the round", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  await abortHungImproveTick(repo);
+  let restore = () => {};
   try {
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.tick();
-    try {
-      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    } catch (err) {
-      controller.abort();
-      throw err;
-    }
-    controller.abort();
-    assert.equal((await tick).result, "aborted");
-    restore();
-
     // The rejected diff adds the very path the kept edit left untracked, so a re-apply
     // collides and resets the worktree — the exact regression this test pins.
     const sha = pinOffMain(
@@ -300,21 +284,9 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
 // way — re-applying collides with the kept edits, fails, and resets them.
 test("a cross-agent handoff does not re-apply a pending conflict hand-back", async () => {
   const repo = await initializedRepo();
-  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  await abortHungImproveTick(repo);
+  let restore = () => {};
   try {
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.tick();
-    try {
-      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    } catch (err) {
-      controller.abort();
-      throw err;
-    }
-    controller.abort();
-    assert.equal((await tick).result, "aborted");
-    restore();
-
     const sha = pinOffMain(
       repo,
       (d) => fs.writeFileSync(path.join(d, "partial.txt"), "handed back\n"),
@@ -365,21 +337,9 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
 test("a cross-agent handoff re-sends an already-applied landing hand-back note", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  await abortHungImproveTick(repo);
+  let restore = () => {};
   try {
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.tick();
-    try {
-      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    } catch (err) {
-      controller.abort();
-      throw err;
-    }
-    controller.abort();
-    assert.equal((await tick).result, "aborted");
-    restore();
-
     const sha = pinOffMain(
       repo,
       (d) => fs.writeFileSync(path.join(d, "partial.txt"), "handed back\n"),
@@ -428,21 +388,9 @@ test("a cross-agent handoff re-sends an already-applied landing hand-back note",
 test("a cross-agent handoff over an applied revision conflict carries both notes", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
-  let restore = fakePi(`echo partial > partial.txt\nexec sleep 30`);
+  await abortHungImproveTick(repo);
+  let restore = () => {};
   try {
-    const controller = new AbortController();
-    const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.tick();
-    try {
-      await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
-    } catch (err) {
-      controller.abort();
-      throw err;
-    }
-    controller.abort();
-    assert.equal((await tick).result, "aborted");
-    restore();
-
     const sha = pinOffMain(
       repo,
       (d) => fs.writeFileSync(path.join(d, "partial.txt"), "rejected\n"),
