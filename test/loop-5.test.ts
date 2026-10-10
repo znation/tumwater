@@ -15,10 +15,9 @@ import { refSha } from "../src/git/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
+import { queueDepth } from "../src/landing/landing-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
@@ -203,49 +202,7 @@ test("a user-abort mid-review discards the committed work too", async () => {
   // loop level an aborted landing KEEPS the pin — the drain adds the deliberate-stop ref
   // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
   // retry rides the pin, never the queue.
-  await withPi(
-    [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-    async () => {
-      const controller = new AbortController();
-      try {
-        enqueuePrompt(repo, "ship the hello file");
-        const runner = makeLoopRunner(repo, "director");
-        const outcome = await runner.tick();
-        assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
-        const head = headLanding(repo);
-        assert.ok(head, "the landing is queued");
-        const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-        // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
-        await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
-        controller.abort();
-        assert.equal(await landing, "aborted", "a mid-review abort is an abort, not a failed review");
-
-        // Fail closed: nothing merged — the role worktree is clean at main AND the pin survives
-        // the abort at this level for next-start recovery; a deliberate user stop discards the
-        // ref, and that deletion is the DRAIN's job (pinned in the orchestrator tests, which run
-        // the full loop with its userAborted flag). The queue entry is dropped either way.
-        assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
-        const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
-        assert.ok(pinned.length === 40, "the pin survived the aborted landing");
-        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
-        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");
-
-        // The tick COMPLETED (it committed and enqueued), so the prompt is consumed, not
-        // re-queued — the work's recovery is the pin, not a fresh prompt run.
-        assert.equal(inboxSize(repo), 0);
-        const s = loadLoopState(repo, "director");
-        assert.equal(s.lastResult, "aborted");
-        assert.ok(!s.resumePending, "the director never resumes an author session");
-        assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
-      } finally {
-        controller.abort(); // kill the hung reviewer before PATH is restored
-      }
-    },
-  );
+  await runAbortedDirectorLanding(repo);
 });
 
 test("a failing director tick re-queues the user prompt (regression)", async () => {

@@ -16,14 +16,13 @@ import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { setRef } from "../src/git/git.js";
-import { loadLoopState } from "../src/loop/loop-state.js";
 import { ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
 import { landHead, landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -43,7 +42,6 @@ async function pinLeftover(
   return sha;
 }
 import { conflictingMainEdit, firstRunThenIdle, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
-import { waitForFile } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./fixtures/pi-events.js";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
 // and its landing leaves the pin on disk (the branch is already reset to main). The next tick
@@ -539,48 +537,5 @@ test("a shutdown mid-landing fails closed: the pinned commit survives for next-s
   // VERDICT): hang until the abort kills it — simulating Ctrl+C while the LANDING is under
   // review. Since merge queue 3/5 the gate runs in the landing, not the tick, so the
   // shutdown hits the landing's signal — the same wiring the orchestrator's pipeline uses.
-  await withPi(
-    [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-    async () => {
-      const controller = new AbortController();
-      try {
-        enqueuePrompt(repo, "ship the hello file");
-        const runner = makeLoopRunner(repo, "director");
-        const outcome = await runner.tick();
-        assert.equal(outcome.result, "queued", "the tick ends at the pin; the landing runs after");
-        const head = headLanding(repo);
-        assert.ok(head, "the landing is queued");
-        const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-        // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
-        await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
-        controller.abort();
-        assert.equal(await landing, "aborted", "a mid-review shutdown is an abort, not a failed review");
-
-        // Fail closed: nothing merged — the role worktree is clean at main and the commit survives
-        // in its landing pin for the next start's leftover recovery. The queue entry itself is
-        // dropped after the outcome: recovery rides the pin, never the queue.
-        assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
-        const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
-        assert.ok(pinned.length === 40, "the pin survived the abort");
-        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
-        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");
-
-        // The prompt was consumed by the COMPLETED tick (it committed and enqueued) — the work's
-        // recovery is the pin, not a re-queued prompt. The state shows the aborted landing.
-        assert.equal(inboxSize(repo), 0);
-        const s = loadLoopState(repo, "director");
-        assert.equal(s.lastResult, "aborted");
-        assert.ok(!s.resumePending, "the director does not resume an author session");
-        assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
-      } finally {
-        // Kill any in-flight fake pi BEFORE PATH is restored: an orphaned run spawned after
-        // restore would resolve `pi` to a later test's fake (or the real one) and corrupt it.
-        controller.abort();
-      }
-    },
-  );
+  await runAbortedDirectorLanding(repo);
 });

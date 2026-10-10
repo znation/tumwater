@@ -5,15 +5,22 @@
  * scripts these fixtures install come from fake-commands.ts. */
 import fs from "node:fs";
 import path from "node:path";
+import assert from "node:assert/strict";
 import { defaultConfig } from "../../src/config/config.js";
 import { LoopRunner } from "../../src/loop/loop.js";
-import { freshLoopState, saveLoopState } from "../../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "../fakes/fake-commands.js";
 import { ensureParentDir } from "../../src/files/files.js";
 import { readSlotsState, updateSlotsState } from "../../src/git/slots-state.js";
-import { worktreePath } from "../../src/paths.js";
+import { landingRefName, worktreePath } from "../../src/paths.js";
+import { headLanding, queueDepth } from "../../src/landing/landing-queue.js";
+import { enqueuePrompt, inboxSize } from "../../src/inbox/inbox.js";
+import { landHead } from "./orchestrator-fixtures.js";
+import { withPi } from "../fakes/fake-pi.js";
+import { assistantLine } from "./pi-events.js";
+import { waitForFile } from "../helpers/wait.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a
@@ -44,6 +51,57 @@ export function roleWt(root: string, role: string): string {
   const released = slots.find((slot) => slot.lease === null && slot.lastRole === role);
   if (released !== undefined) return released.dir;
   return worktreePath(root, role);
+}
+
+/** Drive a director tick whose landing review is aborted once the vet's pooled checkout
+ * appears: the tick commits and pins (result "queued"), the landing runs under its own
+ * AbortSignal, and the abort kills the hung reviewer (the fake pi script loops on the
+ * VERDICT review prompt and sleeps). Asserts the fail-closed shape a shutdown and
+ * `tumwater abort` share at the loop level — nothing merged, the pin survives for next-start
+ * recovery, the queue entry is dropped, and the completed tick consumed the prompt — so the
+ * user-abort (loop-5.test.ts) and shutdown (loop-leftover-recovery.test.ts) tests state only
+ * their framing. Only meaningful for a director tick, whose landing carries the review. */
+export async function runAbortedDirectorLanding(repo: string): Promise<void> {
+  await withPi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
+      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'`,
+      `echo hello > hello.txt`,
+    ].join("\n"),
+    async () => {
+      const controller = new AbortController();
+      try {
+        enqueuePrompt(repo, "ship the hello file");
+        const runner = makeLoopRunner(repo, "director");
+        const outcome = await runner.tick();
+        assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
+        const head = headLanding(repo);
+        assert.ok(head, "the landing is queued");
+        const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
+        // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
+        await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
+        controller.abort();
+        assert.equal(await landing, "aborted", "a mid-review abort is an abort, not a failed review");
+
+        // Fail closed: nothing merged — the role worktree is clean at main and the pin survives
+        // the abort for next-start recovery. The queue entry is dropped; the prompt was consumed
+        // by the completed tick, so recovery rides the pin, never a re-queued prompt.
+        assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
+        const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
+        assert.ok(pinned.length === 40, "the pin survived the aborted landing");
+        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
+        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");
+        assert.equal(inboxSize(repo), 0);
+        const s = loadLoopState(repo, "director");
+        assert.equal(s.lastResult, "aborted");
+        assert.ok(!s.resumePending, "the director never resumes an author session");
+        assert.ok(s.nextRunAt > Date.now(), "recovery runs at the role's normal cadence");
+      } finally {
+        // Kill any in-flight fake pi before PATH is restored.
+        controller.abort();
+      }
+    },
+  );
 }
 
 /** Register an existing checkout as a slot pinned for `role`: the shape an interrupted tick
