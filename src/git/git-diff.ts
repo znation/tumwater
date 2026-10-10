@@ -6,6 +6,21 @@ import { changeBaseRev, gitLines } from "./git.js";
 import { gitTry } from "./git-run.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 
+/** Git's C-quoting short escapes (its `sq_lookup` table) and the byte each decodes to. The
+ * mapping was a nine-case switch that repeated `bytes += …; break;` per entry; keeping it as
+ * data lets the decoder below handle the octal and literal fallbacks in one place. */
+const C_QUOTE_ESCAPES: Record<string, string> = {
+  n: "\n",
+  t: "\t",
+  r: "\r",
+  a: "\x07",
+  b: "\x08",
+  f: "\x0c",
+  v: "\x0b",
+  "\\": "\\",
+  '"': '"',
+};
+
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
  * characters (control characters, quotes, non-ASCII under core.quotePath) and escapes them —
  * the decoded form is what callers pass back to git as a real path. Unquoted paths pass through.
@@ -30,47 +45,20 @@ export function unquotePorcelainPath(p: string): string {
     }
     i++;
     const e = p.charAt(i);
-    switch (e) {
-      case "n":
-        bytes += "\n";
-        break;
-      case "t":
-        bytes += "\t";
-        break;
-      case "r":
-        bytes += "\r";
-        break;
-      case "a":
-        bytes += "\x07";
-        break;
-      case "b":
-        bytes += "\x08";
-        break;
-      case "f":
-        bytes += "\x0c";
-        break;
-      case "v":
-        bytes += "\x0b";
-        break;
-      case "\\":
-        bytes += "\\";
-        break;
-      case '"':
-        bytes += '"';
-        break;
-      default:
-        // Octal escape \NNN (the remaining control characters); anything else is kept literally.
-        if (e >= "0" && e <= "7") {
-          const chunk = p.slice(i, i + 3);
-          if (/^[0-7]{3}$/.test(chunk)) {
-            bytes += String.fromCharCode(Number.parseInt(chunk, 8));
-            i += 2;
-          } else {
-            bytes += e;
-          }
-        } else {
-          bytes += e;
-        }
+    const short = C_QUOTE_ESCAPES[e];
+    if (short !== undefined) {
+      bytes += short;
+    } else if (e >= "0" && e <= "7") {
+      // Octal escape \NNN (the remaining control characters); anything else is kept literally.
+      const chunk = p.slice(i, i + 3);
+      if (/^[0-7]{3}$/.test(chunk)) {
+        bytes += String.fromCharCode(Number.parseInt(chunk, 8));
+        i += 2;
+      } else {
+        bytes += e;
+      }
+    } else {
+      bytes += e;
     }
   }
   return Buffer.from(bytes, "latin1").toString("utf8");
