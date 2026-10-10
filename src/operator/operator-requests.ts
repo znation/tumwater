@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { LoopRunner } from "../loop/loop.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEvent, warnEvent, warnEventBestEffort } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -86,6 +86,20 @@ function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): v
   }
 }
 
+/** Report one role's failed state save for a consumed request, best-effort. These consumers run
+ * inside the orchestrator's catch-less poll loop, so an unwritable state file (ENOSPC, EACCES,
+ * the path replaced by a directory) must not throw out of the poll and end the fleet — the very
+ * disk pressure the fleet guards against would otherwise crash it. The caller has already applied
+ * the in-memory side effect where it can (a live runner), and a runnerless role's file keeps its
+ * previous content, so the warning is what names the un-persisted change. */
+function warnStatePersistFailed(root: string, role: string, err: unknown): void {
+  warnEventBestEffort(
+    root,
+    "harness",
+    `could not persist ${role}'s state for an operator request: ${errorMessage(err)}`,
+  );
+}
+
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI zeroed the
  * state files only when no fleet was running; this zeroes the affected runners' in-memory
  * copies (which then re-save), or their next tick's save would resurrect the pre-reset values,
@@ -95,10 +109,27 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = resetRequestPath(root);
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
-  for (const r of affected) r.resetCounters();
+  for (const r of affected) {
+    try {
+      r.resetCounters();
+    } catch (err) {
+      warnStatePersistFailed(root, r.role, err);
+    }
+  }
+  // A runner's reset already applied in memory (resetCounters mutates then saves), so it counts
+  // as applied; a runnerless role is reached only through its file, so it counts only when the
+  // save succeeded — a failed one is named by its warning, never claimed by the summary event.
   const runnerless = runnerlessTargets(root, markerFile, runners);
-  for (const role of runnerless) saveLoopState(root, zeroCounters(loadLoopState(root, role)));
-  const applied = [...affected.map((r) => r.role), ...runnerless];
+  const runnerlessReset: string[] = [];
+  for (const role of runnerless) {
+    try {
+      saveLoopState(root, zeroCounters(loadLoopState(root, role)));
+      runnerlessReset.push(role);
+    } catch (err) {
+      warnStatePersistFailed(root, role, err);
+    }
+  }
+  const applied = [...affected.map((r) => r.role), ...runnerlessReset];
   if (applied.length > 0) {
     const [only] = applied;
     // One role → filed under that loop; several → one harness-level event listing them.
@@ -136,11 +167,21 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
   for (const r of affected) {
-    r.wake();
+    try {
+      r.wake();
+    } catch (err) {
+      warnStatePersistFailed(root, r.role, err);
+      continue; // warn stands in for the wake event; nothing persisted to celebrate
+    }
     logRequestEvent(root, { loop: r.role, type: "wake", reason: "operator" });
   }
   for (const role of runnerlessTargets(root, markerFile, runners)) {
-    saveLoopState(root, clearBackoff(loadLoopState(root, role), Date.now()));
+    try {
+      saveLoopState(root, clearBackoff(loadLoopState(root, role), Date.now()));
+    } catch (err) {
+      warnStatePersistFailed(root, role, err);
+      continue;
+    }
     logRequestEvent(root, { loop: role, type: "wake", reason: "operator" });
   }
   removeQuiet(markerFile);

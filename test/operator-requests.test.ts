@@ -376,6 +376,41 @@ test("consumeAbortRequests keeps a marker whose abort side effect throws, withou
   assert.equal(good.aborts, 1);
 });
 
+test("consumeResetRequest survives an unwritable runnerless state file instead of ending the poll", () => {
+  const root = tmpdir();
+  // The state path exists (so the runnerless branch reaches it) but is a directory, so the
+  // atomic write's rename onto it fails: the same shape an unwritable state file takes.
+  fs.mkdirSync(statePath(root, "docs"), { recursive: true });
+  writeMarker(resetRequestPath(root), { roles: ["docs"] });
+  assert.doesNotThrow(() => consumeResetRequest(root, []));
+  assert.equal(fs.existsSync(resetRequestPath(root)), false, "the consumed marker is still removed");
+  assert.equal(eventsOfType(root, "warning").length, 1, "the failed save is reported, not swallowed");
+});
+
+test("consumeWakeRequest survives an unwritable runnerless state file", () => {
+  const root = tmpdir();
+  fs.mkdirSync(statePath(root, "docs"), { recursive: true });
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["docs"] });
+  assert.doesNotThrow(() => consumeWakeRequest(root, []));
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false, "the consumed marker is still removed");
+  assert.equal(eventsOfType(root, "warning").length, 1);
+  assert.equal(eventsOfType(root, "wake").length, 0, "a failed save logs no wake event for an unwoken role");
+});
+
+test("consumeWakeRequest keeps a live runner whose wake save fails from skipping later ones", () => {
+  const root = tmpdir();
+  const bad = fakeRunner("coverage");
+  bad.wake = () => {
+    throw new Error("ENOSPC");
+  };
+  const good = fakeRunner("clean");
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["coverage", "clean"] });
+  assert.doesNotThrow(() => consumeWakeRequest(root, asRunners(bad, good)));
+  assert.equal(good.wakes, 1, "the role after the failed one is still woken");
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false);
+  assert.equal(eventsOfType(root, "warning").length, 1);
+});
+
 test("consumeReclaimRequest arms one manual pass and removes the marker", () => {
   const root = tmpdir();
   const marker = reclaimRequestPath(root);
