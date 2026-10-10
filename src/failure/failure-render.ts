@@ -185,8 +185,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
 
   // The same ticks priced by what they cost, so a 30-minute timeout outranks ten 200-ms
   // errors that the Outcome table above weighs equally. Two parts: the role × class table of
-  // hours and dollars, then the top loss causes by time (an error cluster, or a role's
-  // no_change total — the quiet loss no cluster names). Grows only with the role catalog
+  // hours and dollars, then the top loss causes by time (an error cluster, a role's
+  // no_change total — the quiet loss no cluster names, a review-rejected authoring span, or a
+  // merge-conflict/merge-blocked authoring span). Grows only with the role catalog
   // (fixed by config) and the LOSS_TOP cut, so the byte bound argued above holds.
   lines.push("");
   lines.push("## Time and spend by outcome");
@@ -215,7 +216,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
             ? `no_change on ${roleCell(c.roles[0] ?? "?")}`
             : c.kind === "review-rejected"
               ? `review-rejected authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
-              : `${c.example} (${roleList(c.roles)})`;
+              : c.kind === "merge-conflict" || c.kind === "merge-blocked"
+                ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+                : `${c.example} (${roleList(c.roles)})`;
         lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "tick")}: ${cause}`);
       }
       // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that

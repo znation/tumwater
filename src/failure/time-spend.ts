@@ -55,11 +55,12 @@ export interface TimeSpendRow {
 /** One ranked loss cause (PLANS.md, time-and-spend plan): an error cluster — the digest's
  * own clustering, applied to the ticks that burned time — a role's total "no_change" spend,
  * the quiet loss no cluster names, or a role's total authoring spend on changes the landing
- * gate rejected (BUGS.md 2026-09-30). `example` is the newest verbatim occurrence for a
- * cluster (the one at lastSeen, BUGS.md 2026-09-30) or a review-rejected cause's newest
- * rejection reason, "" for a no_change cause. */
+ * gate rejected (BUGS.md 2026-09-30), or a landing that failed to merge (BUGS.md 2026-10-10).
+ * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
+ * 2026-09-30), a review-rejected cause's newest rejection reason, the shared no-text
+ * placeholder for a merge failure, or "" for a no_change cause. */
 export interface LossCause {
-  kind: "error-cluster" | "no_change" | "review-rejected";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked";
   roles: string[]; // unique, sorted
   example: string;
   ticks: number;
@@ -78,16 +79,17 @@ const LOSS_TOP = 5;
 
 /** The raw results whose loss attributes to a cluster — an error, an abort, a quiet kill, or
  * a red-main skip, each carrying its own message on the tick_end (main_red's is the
- * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). Other
- * error-class results (merge_conflict, …) price into the table's error-class column but carry
- * no message here; the queued→review_error join below owns its span through the matching
- * `review_failed` event's message, and the rest stay out of the loss ranking rather than
- * impersonating a cause they cannot name. */
+ * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). A queued
+ * tick's landing outcomes are owned by the joins below instead: review_error through its
+ * matching `review_failed` message, review-rejected through its review reasons, and
+ * merge_conflict/merge_blocked by the result itself (BUGS.md 2026-10-10). (A raw
+ * `user_aborted` tick_end is also error-class but is not in this set, so it stays out of the
+ * ranking.) */
 const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed", "main_red"]);
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {
-  kind: "error-cluster" | "no_change" | "review-rejected";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked";
   roles: Set<string>;
   lastSeen: number;
   example: string;
@@ -223,6 +225,19 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       const text = errorTextOrPlaceholder(failed?.message);
       key = poolTimeoutKey(normalizeClusterKey(text));
       example = truncateExample(text);
+    } else if (
+      ev.result === "queued" &&
+      (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
+    ) {
+      // The landing failed to merge (a conflict, or a blocked fast-forward/rebase): this
+      // authoring span burned. The `land_failed` event carries no message — writeLandingOutcome
+      // logs only result/commit/durationMs/usage — so the cause is named by its own result and
+      // takes the shared no-text placeholder, the same fallback a message-less aborted tick_end
+      // uses, rather than dropping a span the error-class cell already priced (BUGS.md
+      // 2026-10-10).
+      key = `${resolvedOutcome.result}\u0000${role}`;
+      kind = resolvedOutcome.result === "merge_conflict" ? "merge-conflict" : "merge-blocked";
+      example = errorTextOrPlaceholder(undefined);
     }
     if (key === null) continue;
     let draft = losses.get(key);

@@ -7,8 +7,8 @@ import type { HarnessEvent } from "../src/events/events.js";
 // per-role × outcome-class table and the loss-cause ranking. These tests pin the rules the
 // digest's numbers live on — the result→class mapping, the duration source chain (own
 // durationMs, then the tick_start pairing, then 0), the queued→landing-outcome join, and the
-// loss-cause keys (error cluster, per-role no_change, per-role review-rejected) with their
-// newest-wins example and the top-5 cap.
+// loss-cause keys (error cluster, per-role no_change, per-role review-rejected, and per-role
+// merge-conflict/merge-blocked) with their newest-wins example and the top-5 cap.
 
 function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
   return { ts: 1000, loop: "coverage", type: "tick_end", ...extra } as HarnessEvent;
@@ -126,6 +126,35 @@ test("a queued tick with no visible landing outcome keeps the conservative queue
   );
   assert.deepEqual(timeSpend[0]!.classes.landed, { ticks: 1, ms: 1000, costUsd: 0 });
   assert.deepEqual(lossCauses, []);
+});
+
+test("a queued tick whose landing failed to merge owns a cause named by its result", () => {
+  // BUGS.md 2026-10-10: the queued→landing join repriced merge_conflict/merge_blocked authoring
+  // spans into the error-class cell but gave them no loss cause, so those hours were owned by
+  // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
+  // taking the shared no-text placeholder because land_failed carries no message.
+  const conflict = ev({ ts: 100, tick: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const blocked = ev({ ts: 100, loop: "feature", tick: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
+  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(
+    [conflict, blocked],
+    [
+      conflict,
+      blocked,
+      ev({ ts: 95, type: "land_queued", commit: "abc1234" }),
+      ev({ ts: 90, loop: "feature", type: "land_queued", commit: "def5678" }),
+      ev({ ts: 120, type: "land_failed", commit: "abc1234", result: "merge_conflict" }),
+      ev({ ts: 120, loop: "feature", type: "land_failed", commit: "def5678", result: "merge_blocked" }),
+    ],
+  );
+  assert.deepEqual(timeSpend.map((r) => [r.role, r.classes.error]), [
+    ["feature", { ticks: 1, ms: 6000, costUsd: 0.1 }],
+    ["coverage", { ticks: 1, ms: 5000, costUsd: 0.25 }],
+  ]);
+  assert.deepEqual(lossCauses, [
+    { kind: "merge-blocked", roles: ["feature"], example: "(no error text recorded)", ticks: 1, ms: 6000, costUsd: 0.1 },
+    { kind: "merge-conflict", roles: ["coverage"], example: "(no error text recorded)", ticks: 1, ms: 5000, costUsd: 0.25 },
+  ]);
+  assert.equal(lossCausesHidden, 0, "both merge causes are owned, not hidden");
 });
 
 test("an error cluster pools its members' time across roles and its example rides lastSeen", () => {

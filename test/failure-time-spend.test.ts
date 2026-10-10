@@ -113,9 +113,26 @@ test("a review-rejected change's authoring hours price into error-class, not lan
     { roles: ["coverage"], example: "too big", ticks: 1, ms: 3_600_000, costUsd: 1.0 },
     "the rejection ranks as its own cause, exemplified by the review_rejected reason",
   );
-  assert.equal(data.lossCauses.some((c) => c.roles.includes("organize")), false, "a merge conflict is no review-rejection cause");
+  assert.equal(
+    data.lossCauses.some((c) => c.kind === "review-rejected" && c.roles.includes("organize")),
+    false,
+    "a merge conflict is no review-rejection cause",
+  );
+  const conflict = data.lossCauses.find((c) => c.kind === "merge-conflict");
+  assert.deepEqual(
+    conflict && {
+      roles: conflict.roles,
+      example: conflict.example,
+      ticks: conflict.ticks,
+      ms: conflict.ms,
+      costUsd: conflict.costUsd,
+    },
+    { roles: ["organize"], example: "(no error text recorded)", ticks: 1, ms: 1_200_000, costUsd: 0.3 },
+    "the merge conflict's authoring span owns a cause named by its result (BUGS.md 2026-10-10)",
+  );
   const md = renderFailureMarkdown(data);
   assert.match(md, /review-rejected authoring on coverage — too big/);
+  assert.match(md, /merge-conflict authoring on organize/);
   assert.match(md, /\| coverage \| — \| — \| 1\.0 h · \$1\.00 \|/);
 });
 

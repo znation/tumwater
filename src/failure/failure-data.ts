@@ -107,7 +107,7 @@ export interface FailureReportData {
   outcomes: OutcomeRow[];
   deltas: DeltaRow[];
   timeSpend: TimeSpendRow[]; // per role × outcome class: ticks, summed wall-clock ms, cost
-  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change and review-rejected roles
+  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change, review-rejected and merge-conflict/merge-blocked authoring
   lossCausesHidden: number; // distinct causes the LOSS_TOP cut dropped — the render marks the cut
   promptStats: PromptStatRow[]; // per-role prompt-token medians, empty when no tick_end carries them
   errors: ClusterSection;
