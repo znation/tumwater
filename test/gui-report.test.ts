@@ -231,6 +231,41 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/);
   assert.equal(parseRects(chartCostByRole(hostile)).length, 0, "a day without spend renders no cost segments");
 });
+test("the Usage charts count a loop named after an Object.prototype key", () => {
+  type Builders = {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+  };
+  const { reportRoleOrder, chartTicksByRole } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole"],
+  );
+  // "constructor" is admitted by the custom-loop charset and collides with an
+  // Object.prototype key; day 2 gives it spend but no ticks, so its ticksByRole read is absent.
+  const mkDay = (date: string, ticksByRole: Record<string, number>, costByRole: Record<string, number>): ReportDay => ({
+    date, tokensOut: 0, ticksByRole, costByRole, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+  });
+  const data: ReportData = {
+    days: 2, from: "2026-09-01", to: "2026-09-02",
+    series: [
+      mkDay("2026-09-01", { constructor: 5 }, { constructor: 0.1 }),
+      mkDay("2026-09-02", {}, { constructor: 0.2 }),
+    ],
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
+  };
+
+  const order = reportRoleOrder(data);
+  const entry = order.find(([role]) => role === "constructor");
+  assert.ok(entry, "a constructor-named loop appears in the role order");
+  assert.equal(typeof entry![1], "number", "its window total is a number, not the inherited function");
+  assert.equal(entry![1], 5);
+  // Day 2 has no ticks for it: the absent read must be 0, never the inherited function, so no
+  // segment is fabricated and no coordinate is NaN.
+  const svg = chartTicksByRole(data);
+  assert.ok(!svg.includes("NaN"), "an absent role reads as 0, not Object.prototype's function");
+  assert.match(svg, /style='background:#6366f1'><\/span>constructor<\/span>/, "the loop gets a legend entry");
+});
 test("the dashboard page abbreviates millions with M, in lockstep with compactTokens", async () => {
   // Regression (2026-09-20): the page's own fmtTokens copy stopped at `k`, so the loop
   // table's generated/peak-ctx cells and the report summary's output-tokens block rendered

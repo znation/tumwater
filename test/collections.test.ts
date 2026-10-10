@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getOrCreate, groupBy, rankCountEntries } from "../src/collections.js";
+import { addTo, getOrCreate, groupBy, rankCountEntries } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the fleet hold, and the error-storm reducer. Those paths already cover it end to
@@ -85,4 +85,19 @@ test("rankCountEntries accepts a Map and leaves the input unmutated", () => {
     ["budget", 5],
   ]);
   assert.notEqual(ranked, counts);
+});
+
+// addTo seeds a missing key at `amount`, so its read must be an OWN property: the custom-loop
+// name charset (/^[a-z0-9][a-z0-9_-]{0,31}$/) admits "constructor", which collides with an
+// Object.prototype key. A bare `record[key] ?? 0` would read the inherited function, store
+// `function Object() { [native code] }5`, and every later sum (roleSum, report totals) would
+// concatenate strings instead of adding numbers (BUGS.md 2026-10-10, the record-counter
+// sibling of the overlayDefaults prototype-key fix).
+test("addTo counts a key that collides with an Object.prototype name", () => {
+  const counts: Partial<Record<string, number>> = {};
+  const key = "constructor";
+  addTo(counts, key, 5);
+  addTo(counts, key, 2);
+  assert.equal(typeof counts["constructor"], "number", "the stored value stays a number");
+  assert.equal(counts["constructor"], 7);
 });

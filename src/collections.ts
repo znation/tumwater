@@ -49,13 +49,19 @@ export function increment<K>(map: Map<K, number>, key: K): void {
  * usage report's window role totals (report-render.ts), and its per-day fold's tick and cost
  * tallies (report-data.ts), so those sites cannot drift on how a missing key is seeded. The
  * test duration reporter (test/test-durations-reporter.ts) keeps its own copy: it imports no
- * tumwater module by design, since node --test loads it into its own parent process. */
+ * tumwater module by design, since node --test loads it into its own parent process.
+ *
+ * The seed reads an OWN property (Object.hasOwn), not a bare `record[key] ?? 0`: the
+ * custom-loop name charset admits "constructor", an Object.prototype key, whose inherited
+ * function would otherwise be the seed — storing `function Object() …5` and turning every
+ * later `roleSum`/report total into string concatenation (BUGS.md 2026-10-10). */
 export function addTo<K extends string>(
   record: Partial<Record<K, number>>,
   key: K,
   amount: number,
 ): void {
-  record[key] = (record[key] ?? 0) + amount;
+  const current = Object.hasOwn(record, key) ? record[key] : 0;
+  record[key] = (current ?? 0) + amount;
 }
 
 /** One deterministic ranking rule: count descending, then key ascending, so equal counts always

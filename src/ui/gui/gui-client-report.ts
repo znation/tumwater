@@ -19,11 +19,14 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   // Window totals per role — ticks desc, then name — so the legend and the stack order match
   // the Markdown report's "Ticks by role" line. Roles that only spent (no ticks) still count.
+  // Reads and seeds use Object.hasOwn: the custom-loop name charset admits "constructor", an
+  // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
+  // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
   function reportRoleOrder(data) {
     const byRole = {};
     for (const d of data.series) {
-      for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (byRole[role] || 0) + n;
-      for (const role of Object.keys(d.costByRole || {})) if (!(role in byRole)) byRole[role] = 0;
+      for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (Object.hasOwn(byRole, role) ? byRole[role] : 0) + n;
+      for (const role of Object.keys(d.costByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
     }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -106,7 +109,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
     const svg = reportSvg(
       data.series,
-      (d) => roles.map(([role], i) => ({ value: d[field][role] || 0, color: colorOf(i), title: d.date + " · " + role + ": " + fmt(d[field][role] || 0) })),
+      (d) => roles.map(([role], i) => {
+        // hasOwn again: an absent role must read 0, not Object.prototype's inherited value.
+        const value = Object.hasOwn(d[field], role) ? d[field][role] : 0;
+        return { value, color: colorOf(i), title: d.date + " · " + role + ": " + fmt(value) };
+      }),
       fmtAxis,
       integer,
     );
