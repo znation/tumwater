@@ -122,11 +122,15 @@ Usage:
                                    the {file, title, stamp} payload as data
   tumwater bug --cancel <n> [--json]
                                    Remove the Nth entry in BUGS.md ## Open (as \`tumwater
-                                   backlog\` lists it); no wake; --json prints {file, title}
+                                   bug --list\` lists it); no wake; --json prints {file, title}
   tumwater bug --edit <n> "<symptom>" [--json]
                                    Replace the Nth entry's text in BUGS.md ## Open in place,
                                    keeping its position and original filing stamp; no wake;
                                    --json prints {file, title}
+  tumwater bug --list [--json]     List the entries in BUGS.md ## Open, numbered (the read
+                                   half of --edit/--cancel), each with its eligibility mark;
+                                   --json prints the {entries} array — position, title, body,
+                                   hold — as data
   tumwater plan "<title>" [body...] [--json]
                                    File a plan request into PLANS.md ## Planned as the operator
                                    (stamped with today's date; the feature loop fleshes the stub
@@ -134,11 +138,15 @@ Usage:
                                    {file, title, stamp} payload as data
   tumwater plan --cancel <n> [--json]
                                    Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
-                                   backlog\` lists it); no wake; --json prints {file, title}
+                                   plan --list\` lists it); no wake; --json prints {file, title}
   tumwater plan --edit <n> "<title>" [body...] [--json]
                                    Replace the Nth entry's heading and body in PLANS.md ##
                                    Planned in place, keeping its position and original stamp;
                                    no wake; --json prints {file, title}
+  tumwater plan --list [--json]    List the entries in PLANS.md ## Planned, numbered (the
+                                   read half of --edit/--cancel), each with its eligibility
+                                   mark; --json prints the {entries} array — position, title,
+                                   body, hold — as data
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data

@@ -37,7 +37,7 @@ import {
   requireReadyRepo,
 } from "./cli/cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./cli/log-commands.js";
-import { bugTitleOf, cancelAndAnnounce, cancelBug, cancelPlan, editAndAnnounce, editBug, editPlan, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
+import { bugTitleOf, cancelAndAnnounce, cancelBug, cancelPlan, editAndAnnounce, editBug, editPlan, fileBug, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
 
 import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
 import { repoToplevel } from "./git/git.js";
@@ -215,6 +215,10 @@ async function main(): Promise<void> {
       break;
     case "bug": {
       const usage = 'tumwater bug "<symptom>"';
+      if (args.includes("--list")) {
+        listAndAnnounce(root, args, "bug", "BUGS.md", "Open");
+        break;
+      }
       if (args.includes("--edit")) {
         await editAndAnnounce(root, args, "bug", (n, positionals) => editBug(root, n, positionals.join(" "), usage));
         break;
@@ -237,6 +241,10 @@ async function main(): Promise<void> {
     }
     case "plan": {
       const usage = 'tumwater plan "<title>" [body...]';
+      if (args.includes("--list")) {
+        listAndAnnounce(root, args, "plan", "PLANS.md", "Planned");
+        break;
+      }
       if (args.includes("--edit")) {
         await editAndAnnounce(root, args, "plan", (n, positionals) =>
           editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),

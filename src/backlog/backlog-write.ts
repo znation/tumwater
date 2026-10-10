@@ -15,6 +15,9 @@ import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
+import { plannedPlanEntries, openBugEntries } from "./backlog.js";
+import { backlogHolds, holdMark } from "./backlog-eligibility.js";
+import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -448,6 +451,67 @@ export async function cancelAndAnnounce(
   const removed = cancel(position);
   if (json) sayJson({ file: removed.file, title: removed.title });
   else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
+}
+
+/** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
+ * operator queue whose `--edit`/`--cancel` flags address entries by position. Reads the same
+ * entries, in the same file order, that locateEntry numbers for `--edit`/`--cancel`, pairs
+ * each with its eligibility hold (backlogHolds), and prints them numbered from 1, or the
+ * command's `no …` line on an empty or missing file. Like `tumwater backlog` and `tumwater
+ * questions` it is read-only: no requireReadyRepo gate and no wake. `--list` and `--json` are
+ * the two booleans this shell consumes (repeats refused), `--help`/`-h` is tolerated, and any
+ * positional or other flag is refused through rejectUnknownArgs. */
+export function listAndAnnounce(
+  root: string,
+  args: string[],
+  command: string,
+  fileName: string,
+  sectionTitle: string,
+): void {
+  let json = false;
+  let list = false;
+  const rest: string[] = [];
+  for (const arg of args) {
+    if (arg === "--list") {
+      rejectRepeatFlag(list, "--list");
+      list = true;
+      continue;
+    }
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg);
+  }
+  // rejectUnknownArgs names a stray positional and an unknown flag with this command's (empty)
+  // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
+  // both consumed above.
+  rejectUnknownArgs(command, rest, []);
+  // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
+  const bugSection = sectionTitle === "Open";
+  const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);
+  const holds = backlogHolds(root);
+  const entryHolds = bugSection ? holds.bugs : holds.plans;
+  if (json) {
+    sayJson({
+      entries: entries.map((entry, i) => ({
+        position: i + 1,
+        title: entry.title,
+        body: entry.body,
+        hold: entryHolds[i] ?? null,
+      })),
+    });
+    return;
+  }
+  const noun = sectionNoun(sectionTitle);
+  if (entries.length === 0) {
+    say(`no ${noun}s`);
+    return;
+  }
+  const numbered = entries.map((entry, i) => `${entry.title}${holdMark(entryHolds[i] ?? null)}`);
+  say(`${noun}s in ${fileName}:\n${numberedList(numbered)}`);
 }
 
 /** The shared shell of the `bug --edit` and `plan --edit` CLI cases, mirroring
