@@ -49,6 +49,22 @@ export interface ClaudeAccount {
   windows: Record<string, ClaudeWindow>;
 }
 
+/** True when a failed run ended on a subscription usage window the account reported as
+ * `rejected` without overage — the signal the fleet hold throttles on (plans/agent-backends.md
+ * §8). Such a run is a transient of the world, not a failure of the session: its session and
+ * worktree edits are kept and resumed after `resetsAt` (part 6e) rather than committed as
+ * partial work or reset. API-billed claude and overage are budget/fallback matters, not a
+ * window hold, so they read false; a pi 429 reports no window and also reads false. */
+export function subscriptionWindowRejected(
+  run: Pick<PiRunResult, "transientRateLimit" | "billing" | "rateWindows">,
+): boolean {
+  return (
+    run.transientRateLimit === true &&
+    run.billing === "subscription" &&
+    (run.rateWindows ?? []).some((w) => w.status === "rejected" && w.isUsingOverage !== true)
+  );
+}
+
 /** Read the persisted account state, or null when it is absent or unreadable. A file without a
  * usable top-level `observedAt` reads as absent (the plan's torn-file rule), and a window whose
  * `resetsAt` is at or before `now` reads back with `status: "reset"` — the reader, not every

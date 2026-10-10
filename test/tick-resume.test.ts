@@ -11,6 +11,8 @@ import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
+import { applyTickOutcome } from "../src/tick/tick-apply.js";
+import { slotPinnedForResume } from "../src/loop/loop-tick.js";
 import { defaultConfig } from "../src/config/config.js";
 import { fallbackRoleConfig } from "../src/config/config-views.js";
 import { piBackend } from "../src/pi/pi-backend.js";
@@ -18,7 +20,7 @@ import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-
 import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakeClaudeReplay } from "./fakes/fake-claude.js";
 import { piRunResult } from "./fakes/fake-pi.js";
-import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
+import { claudeAssistant, claudeInit, claudeRateLimit, claudeResult, claudeToolUse } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
 
 // The resume guard dispatches to the registered backend, so this process must register the two
@@ -513,4 +515,84 @@ test("a resume reclaims its re-queued prompt; a fresh tick clears the stale reco
   assert.equal(freshState.resumePromptFile, undefined);
   assert.deepEqual(queuedRolePrompts(dir, "feature"), ["still queued"]);
   assert.equal(freshPending.get(), null);
+});
+
+// PLANS.md part 6e/7: a subscription claude run cut off by a rejected usage window keeps its
+// session and worktree edits and resumes after the window resets, instead of committing partial
+// work or taking a fresh tick that resets the worktree. The rejected-window reading (not a bare
+// 429) is the signal, so a pi 429 keeps the existing within-run retry.
+test("a subscription claude rejected-window run resumes over the kept worktree once the window resets", async () => {
+  const { root, wt } = await initializedWorktree("feature");
+  const cwd = fs.realpathSync(wt);
+  const logs = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+  const fake = fakeClaudeReplay([
+    claudeInit({ sessionId: "c1", apiKeySource: "none" }),
+    claudeAssistant({ blocks: [claudeToolUse("t1", "Edit", { file_path: "wip.txt" })], stopReason: "tool_use" }),
+    claudeRateLimit({ type: "five_hour", status: "rejected", resetsAt }),
+    claudeResult({ isError: true, apiErrorStatus: 429, text: "Claude usage limit reached" }),
+  ]);
+  try {
+    withClaudeAuthor(root, cwd, "c1");
+    const run = await runAgent({
+      cwd,
+      prompt: "p",
+      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5" },
+      sessionDir: sessionDir(root, "feature"),
+      sessionName: "t",
+      rawLogFile: path.join(logs, "raw.jsonl"),
+      nativeLogFile: path.join(logs, "native.jsonl"),
+      kind: "author",
+      continueSession: true,
+    });
+    assert.equal(run.billing, "subscription");
+    assert.equal(run.transientRateLimit, true, "a rejected window is a transient rate limit");
+    assert.equal(run.ok, false);
+
+    // The interrupted run's half-done edits are on disk and must survive the hold.
+    fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
+    const s = freshLoopState("feature");
+    const outcome = await resolveTickVerdict({
+      root,
+      wt,
+      role: "feature",
+      mainBranch: "main",
+      state: s,
+      pending: new PendingPrompt(root, "feature"),
+      turns: 1,
+      userPrompt: null,
+      pi: run,
+      flow: null,
+      warn: () => {},
+      merge: async () => "changed" as const,
+      finishAbortedTick: async () => ({ result: "aborted" as const }),
+    });
+    assert.equal(outcome?.result, "error", "the window rejection is a hold, not a landing");
+    // The lease release evaluates the pin condition right after the verdict, before
+    // applyTickOutcome runs; if the arm has not armed resumePending by then the slot is
+    // detached and the half-done edits are lost.
+    assert.equal(s.resumePending, true, "the verdict arms the resume before the lease pins the slot");
+    assert.equal(
+      slotPinnedForResume(s, outcome),
+      true,
+      "the lease keeps the slot pinned across the hold",
+    );
+    applyTickOutcome(s, defaultConfig(), "feature", outcome!);
+    assert.equal(s.resumePending, true, "the next eligible tick resumes the session");
+    assert.equal(s.resumeCause, "rate-limit", "the resume names the held window");
+    assert.equal(fs.readFileSync(path.join(wt, "wip.txt"), "utf8"), "half-done\n", "the edits survive");
+
+    // After the hold lifts (resetsAt passes), the same claude session resumes — not a fresh
+    // tick, and not a handoff, since the agent never changed.
+    const p = plan(root, s, { agent: "claude" });
+    assert.ok(p);
+    assert.equal(p.resuming, true, "the same claude session resumes");
+    assert.equal(p.handoff, false);
+    assert.equal(p.resumeCause, "rate-limit");
+    assert.match(p.prompt, /usage window/);
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
 });

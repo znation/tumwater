@@ -258,6 +258,23 @@ export async function runTickPhase(
   return runTickInLeasePhase(ctx, plan, cfg, fallbackCtx);
 }
 
+/** Whether a finished role tick's leased slot must stay pinned for the next tick's resume —
+ * the resume flag a verdict armed inside the tick (`resumePending`), an abort or quiet kill,
+ * or a context cut-off. Exported so a test can evaluate the exact condition the lease release
+ * uses: a resume flag set only later, by applyTickOutcome, is too late to keep the worktree. A
+ * user abort discards its work and is never pinned. */
+export function slotPinnedForResume(
+  state: Pick<LoopState, "resumePending">,
+  outcome: TickOutcome | undefined,
+): boolean {
+  return (
+    state.resumePending === true ||
+    outcome?.result === "aborted" ||
+    outcome?.result === "quiet_killed" ||
+    outcome?.cutOff === true
+  );
+}
+
 /** A non-director tick's whole life on a pooled slot (plans/worktree-pool.md, "Role ticks
  * lease slots"): lease, author on the role's branch, release. The release pins the slot for
  * a tick whose next run resumes (aborted, quiet-killed, cut off, or a failed dirty run),
@@ -286,16 +303,12 @@ async function runTickInLeasePhase(
     outcome = await tickWithWorktreePhase(ctx, plan, cfg, fallbackCtx, lease.dir);
     return outcome;
   } finally {
-    // The next tick resumes when this run aborted, was quiet-killed, or was cut off at the
-    // context ceiling — and `resumePending` covers the error-dirty arm, which sets it inside
-    // the tick (src/tick/tick-verdict.ts). `applyTickOutcome` sets `resumePending` for the
-    // others only after runTick returns, so the outcome only is visible here. A user abort
-    // discards its work and is never pinned.
-    const pin =
-      ctx.state.resumePending === true ||
-      outcome?.result === "aborted" ||
-      outcome?.result === "quiet_killed" ||
-      outcome?.cutOff === true;
+    // The slot is pinned for the next tick's resume when the verdict armed `resumePending`
+    // inside the tick (the error-dirty and rate-limit arms in src/tick/tick-verdict.ts), or
+    // when the outcome is an abort, quiet kill, or context cut-off. applyTickOutcome sets
+    // `resumePending` for the other outcomes only after runTick returns, so those are read off
+    // the outcome here instead.
+    const pin = slotPinnedForResume(ctx.state, outcome);
     // Detach is best-effort so it can never mask the tick's own outcome or error; the release
     // still runs, and the next lease's checkout recovers an undetached branch either way.
     if (!pin) await gitTry(lease.dir, "checkout", "--detach");

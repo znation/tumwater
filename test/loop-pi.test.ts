@@ -10,8 +10,8 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
-import { fakeClaudeReplay } from "./fakes/fake-claude.js";
-import { claudeResult, claudeUnknown } from "./fixtures/claude-events.js";
+import { fakeClaudeReplay, readRunBlocks } from "./fakes/fake-claude.js";
+import { claudeInit, claudeRateLimit, claudeResult, claudeUnknown } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { resolverConfig } from "../src/config/config-views.js";
@@ -902,6 +902,35 @@ test("a claude run keeps its native log and surfaces unmapped-event warnings", a
     const native = fs.readFileSync(nativeLogPath(root, "feature", "claude"), "utf8");
     assert.match(native, /"type":"mystery_event"/, "the native log lands at the role.agent path");
     assert.match(native, /"type":"result"/);
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a subscription claude rejected window earns no within-run retry", async () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const resetsAt = Math.floor(Date.now() / 1000) + 3600;
+  const fake = fakeClaudeReplay([
+    claudeInit({ sessionId: "c1", apiKeySource: "none" }),
+    claudeRateLimit({ type: "five_hour", status: "rejected", resetsAt }),
+    claudeResult({ isError: true, apiErrorStatus: 429, text: "Claude usage limit reached" }),
+  ]);
+  try {
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    const { loopPi, usage, sleeps } = makeHost(root, config);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-1-author");
+    assert.equal(result.ok, false);
+    assert.equal(result.billing, "subscription");
+    assert.equal(result.transientRateLimit, true);
+    // The retry's bounded wait cannot outlast the window hold, so the tick ends after one
+    // attempt and the kept session resumes once the hold lifts (plans/agent-backends.md part 6e).
+    assert.equal(readRunBlocks(fake.argvFile).length, 1, "one attempt, no retry");
+    assert.deepEqual(sleeps, [], "no wait is spent on a retry the window would reject anyway");
+    assert.equal(usage.length, 1, "one foldUsage for the one attempt");
   } finally {
     fake.restore();
     restoreHome();

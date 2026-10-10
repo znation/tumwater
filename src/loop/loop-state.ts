@@ -82,9 +82,11 @@ export interface LoopState {
    * fired on a run still making progress — a slow run, not a failed one — so the bridge asks
    * for the smallest finish against the same limit; "budget-resumed" when the budget gate
    * reopened and the in-flight fallback tick was handed back to the primary model
-   * (PLANS.md 2026-09-30). Cleared with resumePending at tick start; absent for restart/cut-off
+   * (PLANS.md 2026-09-30); "rate-limit" when a subscription claude usage window rejected the
+   * run, so the bridge names the held window rather than a restart (plans/agent-backends.md
+   * part 6e). Cleared with resumePending at tick start; absent for restart/cut-off
    * resumes, whose causes are derived. */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed";
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit";
   /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure

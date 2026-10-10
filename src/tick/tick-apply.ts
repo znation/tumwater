@@ -209,6 +209,15 @@ export function applyTickOutcome(
     // hour-long model runs. backoffSeconds is shared: each ladder advances from the current
     // value, so an error streak capped at the error ceiling never sleeps LESS than the loop
     // already was sleeping, and the idle ladder picks up from there if the failures stop.
+    // A subscription claude usage-window rejection is a transient hold, not a failure of the
+    // session: the fleet hold keeps ticks from starting until `resetsAt` (plans/agent-backends.md
+    // §8, part 6c), and the kept session and worktree edits resume when it lifts (part 6e).
+    // The named cause is what the bridge prompt reads, so it does not tell the session the
+    // harness merely restarted.
+    if (outcome.resumeCause === "rate-limit" && role !== DIRECTOR_ROLE) {
+      s.resumePending = true;
+      s.resumeCause = "rate-limit";
+    }
     scheduleBackoff(s, ERROR_BACKOFF);
   } else if (outcome.cutOff && role !== DIRECTOR_ROLE && s.cutOffStreak <= CUT_OFF_RESUME_LIMIT) {
     // Truncated at the context ceiling, not idle: the hour(s) of work survive in the

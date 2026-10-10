@@ -20,6 +20,7 @@ import { recordFlow } from "./qa-coverage.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
+import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 
 interface TickVerdictContext {
   root: string;
@@ -110,6 +111,24 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // tick retries it. (A killed run's half-done edits are discarded by the reset.)
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };
+  }
+
+  // A subscription claude run the usage window rejected is a hold, not a run failure: the
+  // fleet hold keeps every subscription claude seam from starting until `resetsAt`
+  // (plans/agent-backends.md §8, part 6c), and this run's session and worktree edits must
+  // survive the wait — the next eligible tick resumes them (part 6e) instead of committing
+  // partial work or resetting the worktree to main. The rejected-window reading is the
+  // signal (subscriptionWindowRejected), so a pi 429, an API-billed run, or an overage
+  // window keeps the paths below.
+  if (!pi.ok && ctx.role !== DIRECTOR_ROLE && subscriptionWindowRejected(pi)) {
+    s.lastError = pi.errorMessage ?? "claude subscription usage window rejected";
+    // Arm the resume here rather than in applyTickOutcome: the lease release reads
+    // `resumePending` as soon as the tick returns (runTickInLeasePhase), before
+    // applyTickOutcome runs, so without this the slot is detached and the edits above are
+    // lost. This is the same inline arming the error-dirty arm below does.
+    s.resumePending = true;
+    ctx.pending.requeueForResume(s, ctx.userPrompt);
+    return { result: "error", resumeCause: "rate-limit" };
   }
 
   // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel

@@ -6,6 +6,7 @@ import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
+import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 import { buildStageFixPrompt } from "../gates/gate-prompts.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -193,7 +194,12 @@ export class LoopPi {
         pi.transientPiCrash ||
         pi.transientRateLimit ||
         this.retryCoversBackendKind(pi)) &&
-      !pi.ok
+      !pi.ok &&
+      // A subscription claude usage-window rejection is not the 429 the retry's minute-scale
+      // wait beats: the window resets hours out, so a within-run retry is guaranteed to fail
+      // after burning up to RATE_LIMIT_RETRY_AFTER_CAP_S. The tick ends and the kept session
+      // resumes once the fleet hold lifts (plans/agent-backends.md §8, part 6e).
+      !subscriptionWindowRejected(pi)
     ) {
       this.host.warn(
         pi.transientPiCrash

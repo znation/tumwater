@@ -16,15 +16,17 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
 /** Why a tick is being resumed: a harness restart interrupted it, it ran out of context (the
  * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
  * deadline killed a still-making-progress run, the budget gate reopened mid-run and the
- * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30), or the
- * newest author session belongs to another agent (plans/agent-backends.md "Sessions") — a
- * handoff runs a fresh session over the interrupted run's uncommitted worktree. */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff";
+ * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30), the
+ * subscription usage window rejected the run and the fleet held claude seams until it reset
+ * (plans/agent-backends.md §8, part 6e), or the newest author session belongs to another agent
+ * (plans/agent-backends.md "Sessions") — a handoff runs a fresh session over the interrupted
+ * run's uncommitted worktree. */
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit";
 
-/** The shared closing paragraph of the three resume bridges that hand the same task back
- * unchanged (restart, hung-tool, budget-resumed): finish or redo what you started rather than
- * picking a new one. Kept in one place so the wording cannot drift between causes — the cut-off
- * and timeout bridges deliberately phrase their own finish instructions instead. */
+/** The shared closing paragraph of the four resume bridges that hand the same task back
+ * unchanged (restart, hung-tool, budget-resumed, rate-limit): finish or redo what you started
+ * rather than picking a new one. Kept in one place so the wording cannot drift between causes —
+ * the cut-off and timeout bridges deliberately phrase their own finish instructions instead. */
 const CONTINUE_TASK_BRIDGE = `Continue the SAME task you were working on and finish it. If the work so far turns out to be
 unusable, redo it — but stay on this task rather than picking a new one.`;
 
@@ -63,7 +65,14 @@ is continuing it now. Your worktree is exactly as you left it, and this session 
 you did so far.
 
 ${CONTINUE_TASK_BRIDGE}`
-            : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
+            : cause === "rate-limit"
+              ? `The claude.ai subscription usage window rejected your previous run as the "${roleId}"
+loop before it could finish, so the harness held every subscription claude seam until the window
+reset. Your worktree is exactly as you left it, and this session carries everything you did so
+far. The window has since reset, and the harness is continuing this session now.
+
+${CONTINUE_TASK_BRIDGE}`
+              : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 

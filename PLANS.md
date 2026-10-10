@@ -82,36 +82,6 @@ test/status-data.test.ts, and test/role-view.test.ts.
 - `tumwater role <id>` names the billing for a claude seam.
 - `npm run test` green.
 
-### Agent backends, part 6e/7: resume across a usage-window hold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6c/7 landed)
-
-Design: plans/agent-backends.md ("Interactions (resume across a usage-window hold)").
-
-Goal: a subscription claude run cut off by a rejected window keeps its worktree and resumes with
-the same session id after `resetsAt`, instead of a fresh tick resetting the worktree and losing
-its edits. Depends on 6c's hold.
-
-**Approach.**
-1. **Resume state.** The rate-limit end's outcome must set `state.resumePending` (src/tick/
-   tick-apply.ts's `applyTickOutcome` and src/tick/tick-verdict.ts already own the flag), so
-   src/tick/tick-resume.ts's `planTickStart` treats the next run as a resume rather than a fresh
-   tick. If the end currently routes to a fresh tick, that is the bug this fixes.
-2. **Resume, not handoff.** After `resetsAt`, the run resumes with `--resume <same id>` through
-   src/loop/loop-tick.ts; it is not a handoff, because the agent did not change and 6b never
-   moves subscription seams to the fallback. Nothing re-applies a note.
-3. **Overage and API billing.** When overage or API billing does move a seam to its fallback,
-   the 4/7 handoff rules apply unchanged.
-
-**Files touched.** src/tick/tick-apply.ts, src/tick/tick-verdict.ts, src/tick/tick-resume.ts,
-src/loop/loop-tick.ts, src/agent/run-agent.ts.
-
-**Tests.** A case in test/tick-resume.test.ts using fake-claude.
-
-**Acceptance criteria.**
-- An interrupted fake-claude author tick, a hold, then a reset produces one resume with the same
-  session id, with the worktree edits intact.
-- The resume's cause is named (not a plain fresh tick).
-- `npm run test` green.
-
 ### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires parts 6a/7 and 6b/7 landed)
 
 Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
@@ -437,6 +407,52 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Agent backends, part 6e/7: resume across a usage-window hold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6c/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("The subscription usage window", "Sessions"). The entry's
+"Interactions (resume across a usage-window hold)" heading does not exist in the document; the
+behavior is stated in §8 and §4.
+
+Goal: a subscription claude run cut off by a rejected window keeps its worktree and resumes with
+the same session id after `resetsAt`, instead of a fresh tick resetting the worktree and losing
+its edits. Depends on 6c's hold.
+
+**Approach.**
+1. **Resume state.** The rate-limit end's outcome sets `state.resumePending` (src/tick/
+   tick-verdict.ts sets it inline in the `error` arm, before `applyTickOutcome`; src/tick/
+   tick-apply.ts's `applyTickOutcome` sets it too), so src/tick/tick-resume.ts's
+   `planTickStart` treats the next run as a resume rather than a fresh tick. Because
+   src/loop/loop-tick.ts's `runTickInLeasePhase` reads `resumePending` in its `finally`,
+   before `applyTickOutcome` runs, the inline arming is what keeps the leased slot pinned
+   and the worktree edits intact. `resolveTickVerdict` detects the rejected window through
+   the shared `subscriptionWindowRejected` predicate (src/agent/claude/claude-account.ts) and
+   returns an `error` outcome carrying `resumeCause: "rate-limit"`. The check sits before
+   staging, so a dirty, content-bearing run no longer commits its half-done edits.
+2. **Resume, not handoff.** After `resetsAt`, the run resumes with `--resume <same id>` through
+   src/loop/loop-tick.ts; it is not a handoff, because the agent did not change and 6b never
+   moves subscription seams to the fallback. The named `rate-limit` cause gives the resume bridge
+   its own wording (src/prompt/prompt-followup.ts); nothing re-applies a note.
+3. **No wasted within-run retry.** src/loop/loop-pi.ts's transient retry skips a subscription
+   window rejection: the retry's bounded wait cannot outlast the window, and the fleet hold
+   already defers the tick.
+4. **Overage and API billing.** When overage or API billing does move a seam to its fallback,
+   the 4/7 handoff rules apply unchanged; `subscriptionWindowRejected` reads false for an
+   API-billed or overage run, so those keep the existing paths.
+
+**Files touched.** src/agent/claude/claude-account.ts, src/tick/tick-verdict.ts,
+src/tick/tick-apply.ts, src/tick/tick-outcome.ts, src/loop/loop-state.ts,
+src/loop/loop-tick.ts, src/prompt/prompt-followup.ts, src/loop/loop-pi.ts.
+
+**Tests.** Cases in test/tick-resume.test.ts (the rejected-window verdict, the lease pin
+condition `slotPinnedForResume` evaluated on the post-verdict state, and the next tick's
+resume) and test/loop-pi.test.ts (no within-run retry), both using fake-claude.
+
+**Acceptance criteria.**
+- An interrupted fake-claude author tick, a hold, then a reset produces one resume with the same
+  session id, with the worktree edits intact.
+- The resume's cause is named (not a plain fresh tick).
+- `npm run test` green.
 
 ### Agent backends, part 6c/7: the usage-window hold and its events (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed; done 2026-10-10 by feature)
 
