@@ -32,6 +32,7 @@ import {
   checkModelTripleField,
   checkNumberField,
   checkObjectSection,
+  checkReservedArgs,
   checkStringArrayField,
   checkStringField,
   NON_NEGATIVE,
@@ -182,16 +183,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the
   // position and the flag so one edit removes it.
-  if (Array.isArray(r.piArgs)) {
-    (r.piArgs as unknown[]).forEach((arg, i) => {
-      if (typeof arg !== "string") return; // Already reported by checkStringArray.
-      // Match the flag itself even when it carries its value as `--flag=value`, so the
-      // `--model=other` spelling cannot slip past this screen and be appended last (the same
-      // split the agents.<id>.args and claude screens use).
-      const why = HARNESS_PI_FLAGS.get(arg.split("=", 1)[0] as string);
-      if (why) problems.push(`piArgs[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
-    });
-  }
+  if (Array.isArray(r.piArgs))
+    checkReservedArgs(problems, r.piArgs as unknown[], "piArgs", (flag) =>
+      HARNESS_PI_FLAGS.get(flag),
+    );
   // Agent backends (plans/agent-backends.md "Config"): each entry is an object with an
   // optional non-empty `bin` string and an optional array-of-strings `args`. A passthrough arg
   // that repeats a flag the backend's own harness invocation sets is appended last and wins,
@@ -208,14 +203,15 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkString(entry, `${prefix}.`, "bin", false);
       checkStringArray(entry, `${prefix}.`, "args");
       if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
-      (entry.args as unknown[]).forEach((arg, i) => {
-        if (typeof arg !== "string") return; // Already reported by checkStringArray.
-        // Match the flag itself even when it carries its value as `--flag=value`, exactly as
-        // claudeArgs's own reserved-flag screen does.
-        const flag = arg.split("=", 1)[0] as string;
-        const why = id === "claude" ? HARNESS_CLAUDE_FLAGS.has(flag) ? "it is harness-managed" : undefined : id === "pi" ? HARNESS_PI_FLAGS.get(flag) : undefined;
-        if (why) problems.push(`${prefix}.args[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
-      });
+      checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
+        id === "claude"
+          ? HARNESS_CLAUDE_FLAGS.has(flag)
+            ? "it is harness-managed"
+            : undefined
+          : id === "pi"
+            ? HARNESS_PI_FLAGS.get(flag)
+            : undefined,
+      );
     }
   });
   // Legacy back-compat (plans/agent-backends.md "Back-compat"): a file must not spell one pi

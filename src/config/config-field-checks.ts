@@ -273,3 +273,24 @@ export function checkStringArrayField(
       problems.push(`${prefix}${key}[${blankAt}] must not be blank (got ${show(arr[blankAt])})`);
   });
 }
+
+/** Report every passthrough arg in `args` whose flag the harness sets itself — the one screen
+ * behind both of validateConfig's reserved-flag checks (top-level `piArgs` and each
+ * `agents.<id>.args`). `argsPath` names the array in the message (`piArgs`, `agents.pi.args`),
+ * and `whyFor` resolves the flag's reason against the reserved set it is screened against, or
+ * undefined when the flag is not reserved. The flag is matched even when the arg carries its
+ * value as `--flag=value` (split on the first `=`), so that joined spelling cannot slip past
+ * and be appended last. An arg that is not a string is skipped: checkStringArrayField has
+ * already reported it. */
+export function checkReservedArgs(
+  problems: string[],
+  args: readonly unknown[],
+  argsPath: string,
+  whyFor: (flag: string) => string | undefined,
+): void {
+  args.forEach((arg, i) => {
+    if (typeof arg !== "string") return;
+    const why = whyFor(arg.split("=", 1)[0] as string);
+    if (why) problems.push(`${argsPath}[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
+  });
+}
