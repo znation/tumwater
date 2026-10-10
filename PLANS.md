@@ -6,109 +6,203 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Agent backends, part 4/7: `agent` / `agents` config, selector routing, per-tier claude defaults, doctor and labels (planned 2026-10-09 by operator; requires part 3d/7 landed)
+### Agent backends, part 4a/7: the `agents` config section, legacy mapping, reserved flags and writers (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7, which feature judged too large for one run; requires part 3d/7 landed)
 
-**Needs review 2026-10-09 by feature: too large for one run**
+Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors", "Back-compat").
 
-Design: plans/agent-backends.md ("Config", "Every seam, checked" — doctor, startup and status
-rows).
-
-Makes claude selectable.
+Stores the backend section only; routing lands in part 4b/7, so this part adds no seam behavior.
 
 **Approach.**
-1. **Schema.** Add to src/config/config-schema.ts:
-   - `agent` (`"pi" | "claude"`, default `"pi"`);
-   - `agents.<id>.{bin, args}`;
-   - legacy `agentBin`/`piArgs` read as `agents.pi.*` (both forms → a validation error);
-   - a per-agent reserved-flags set (`HARNESS_CLAUDE_FLAGS`).
-2. **Routing.** src/config/model-selector.ts + config-views.ts (`withModelOverrides`) resolve
-   `agent` per seam:
-   - the provider segment is an agent id → that agent;
-   - any other provider → pi;
-   - a bare id → top-level `agent`;
-   - no `model` key at all → that agent's `defaultModels` for the seam's tier: claude
-     `small` → `claude-haiku-5-5`, `default` → `claude-sonnet-5-5`, `strong` →
-     `claude-opus-5-5`. Once `model` is set, today's tier inheritance applies unchanged.
+1. **Schema.** Add `agents?: Record<string, { bin?: string; args?: string[] }>` to
+   src/config/config-schema.ts, beside the existing `agentBin`/`piArgs`. `defaultConfig()` in
+   src/config/config.ts gains an empty `agents` map, and a loaded config resolves
+   `agents.pi.bin`/`agents.pi.args` from legacy `agentBin`/`piArgs` when the new form is
+   absent, so every existing config keeps its value.
+2. **Validation.** src/config/config-validation.ts (with the helpers in config-field-checks.ts)
+   accepts an `agents` entry only as an object with a non-empty `bin` string and a string `args`
+   array; setting both spellings of one field (`agentBin` and `agents.pi.bin`, `piArgs` and
+   `agents.pi.args`) is an error; an `agents.claude.args` element repeating a flag in
+   `HARNESS_CLAUDE_FLAGS` (already exported by src/agent/claude/claude-args.ts) errors exactly
+   as `piArgs` already errors against `HARNESS_PI_FLAGS`.
+3. **Writers.** `agents.<id>.bin` and `agents.<id>.args` join `EDITABLE_CONFIG_KEYS`
+   (src/config/config-editable-keys.ts) and config-write.ts's merge logic (a dotted key merges
+   one entry, as `maxDailyCostUsdPerRole.<id>` does today); the GUI settings mirror
+   (src/ui/gui/gui-client-settings.ts) shows them. Writers emit only the new form.
+4. **Examples.** src/config/config-example.ts and tumwater.example.json show `agents` and note
+   that `agentBin`/`piArgs` are its legacy spelling.
 
-   It flows through `configForRole`, `reviewRunConfig`, `resolverConfig` and the fallback views.
-3. **Binaries.** src/pi/pi-bin.ts generalizes to `resolveAgentBin(config, agent)` with
-   `TUMWATER_<ID>_BIN` → `agents.<id>.bin` → `defaultBin`. The startup gate and doctor check
-   every agent some enabled seam resolves to.
-4. **Doctor.**
-   - claude: `claude auth status` (scrubbed env) must report `loggedIn`, and doctor prints the
-     billing it implies (subscription type, or API key);
-   - the installed claude version must be at least the claude adapter's `minVersion` for every
-     configured claude model (2.1.280 for the three defaults), and doctor prints it;
-   - claude selectors skip the models.json lookup;
-   - a pi provider named `claude` warns;
-   - the `off`/`minimal` effort clamp is noted;
-   - the total size of claude transcript dirs is reported.
-5. **Pricing.** Route `pairFree`, `fallbackModelFree` and `fleetModelsFree`
-   (src/pi/pi-models.ts) through the backend's `pricing`. In this part, claude selectors are
-   never free; part 6/7 makes subscription billing free.
-6. **Writers.** `tumwater config set agent claude` and `agents.claude.args`; `agent` joins
-   `EDITABLE_CONFIG_KEYS` and the GUI settings mirror. tumwater.example.json and
-   config-example.ts are updated.
-7. **Labels.** "pi default" becomes "`<agent>` default" (role-render.ts, badges.ts,
-   event-format.ts). Model selectors on `tick_start`/`review_start`/status rows carry the agent
-   (`claude/claude-sonnet-5-5`).
-8. **Docs.**
-   - README "Backends": `agent`, routing, the expected-spend note.
-   - docs/backends.md: a claude section.
-   - `Built on pi` → `Built on pi; also runs on Claude Code`.
-
-**Interactions (resume and handoff under routing).** Added 2026-10-09 by operator.
-Routing lets a seam's agent change between an interrupted tick and the next one, through a
-config edit or the budget fallback moving a claude seam to a pi fallback or back.
-`planTickStart` compares the newest author line's `agent` with the tick's `cfg.agent`
-(loop-tick.ts passes it), so that change is a handoff, not a resume. Test, on fake-claude and
-fake-pi:
-- **Fallback flip.** An interrupted claude author tick, with the fallback active on the next
-  tick, runs a fresh pi session in the unreset worktree. Its prompt carries the handoff bridge,
-  the revision note when a revision was in flight, and the hand-back note when one was applied.
-- **Config flip mid-revision.** Changing `agent` from pi to claude while a revision is
-  interrupted does the same. It does not re-cherry-pick the rejected diff.
-- **Mixed seams.** A conflict resolver routed to a different agent than the author writes its
-  line in the author's session dir. The author's next resume is then a handoff even though the
-  author's own agent did not change. This is intended; pin it with a test.
-- **Selectors.** `cfg.agent` must come from the same resolved view the run uses (`configForRole`
-  plus the fallback view). If the resume check reads a different view than the spawn, a fallback
-  tick will `--continue` the wrong backend's session.
-
-**Files touched.**
-- src/config/config-schema.ts, config-validation.ts, config-field-checks.ts, config-write.ts,
-  config-views.ts, model-selector.ts, config-editable-keys.ts, config-example.ts
-- src/ui/gui/gui-client-settings.ts
-- src/pi/pi-bin.ts, src/pi/pi-models.ts
-- src/gates/startup-gate.ts
-- src/doctor/doctor-checks.ts, src/doctor/doctor-model-checks.ts
-- src/roles/role-render.ts, src/ui/badges.ts, src/events/event-format.ts
-- tumwater.example.json, README.md, docs/backends.md
-
-Tests: cases in the config*, model-selector, pi-bin, startup-gate, doctor-model-checks and
-role-view tests.
+**Files touched.** src/config/config-schema.ts, config-validation.ts, config-field-checks.ts,
+config-write.ts, config-editable-keys.ts, config.ts, config-example.ts;
+src/ui/gui/gui-client-settings.ts; tumwater.example.json.
 
 **Acceptance criteria.**
-- **One line.** `{ "agent": "claude" }` runs on fake-claude with:
-  - `--model claude-sonnet-5-5` for author ticks;
-  - `--model claude-opus-5-5` for the reviewer, the plan role and the conflict resolver;
-  - `--model claude-haiku-5-5` for readme.
+- **Legacy.** A config with `agentBin` + `piArgs` and no `agents` resolves those values under
+  `agents.pi`; the pi backend's resolved bin and argv stay byte-identical to before.
+- **Both forms.** Setting `agentBin` and `agents.pi.bin`, or `piArgs` and `agents.pi.args`, is a
+  validation error.
+- **Reserved.** `agents.claude.args: ["--model", "x"]` is a validation error naming the flag.
+- **Writers.** `tumwater config set agents.claude.args '["--verbose"]'` writes the array and
+  `tumwater config set agents.claude.bin /opt/claude` the string (each merges one entry);
+  `config unset` removes them.
+- **Inert.** No seam reads `agents` yet: selection and spawning are unchanged.
+- `npm run test` green.
 
-  `{ "agent": "claude", "model": "claude-sonnet-5-5" }` runs every seam on Sonnet.
-- **Mixed.** `{ "agent": "claude", "fallback": "omlx/Qwen…" }` runs the fallback on fake-pi with
-  `--provider omlx`.
+### Agent backends, part 4b/7: `agent`, selector routing and per-tier claude defaults (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4a/7 landed)
+
+Design: plans/agent-backends.md ("Config: `agent`, `agents`, and backend-namespaced selectors";
+"Decisions" 5).
+
+Goal: claude becomes selectable.
+
+**Approach.**
+1. **`agent`.** Add `agent?: "pi" | "claude"` (default `"pi"`) to src/config/config-schema.ts
+   and `defaultConfig()`.
+2. **Routing.** A pure helper beside `parseModelSelector` in src/config/model-selector.ts
+   resolves a `ModelSelector` plus `agent` to a backend id and, when no model is set, that
+   backend's tier default. `withModelOverrides` in src/config/config-views.ts uses it to set
+   `ResolvedModelConfig.agent`: the provider segment is a registered agent id → that agent; any
+   other provider → pi; a bare id → top-level `agent`; no `model` key at all → `agent`'s
+   `defaultModels[seam tier]`. Once `model` is set, today's tier inheritance is unchanged.
+   `configForRole`, `reviewRunConfig`, `reviewConfig`, `resolverConfig` and the fallback views
+   (`fallbackRoleConfig`) all carry the resolved `agent`.
+3. **Defaults.** `AgentBackend` (src/agent/agent-backend.ts) gains
+   `defaultModels?: Partial<Record<ModelTier, string>>`; the claude adapter
+   (src/agent/claude/claude-backend.ts) supplies `small: claude-haiku-5-5`,
+   `default: claude-sonnet-5-5`, `strong: claude-opus-5-5`. They stay out of `defaultConfig()`, so
+   a config that never set `model` does not grow a model key.
+4. **Free-ness.** `fallbackModelFree` and `fleetModelsFree` (src/pi/pi-models.ts) consult the
+   backend a selector routes to. In this part a claude-routed selector is never free, matching
+   the safe direction `pairFree` already takes for an unresolvable pair; part 6/7 makes
+   subscription billing free.
+
+**Files touched.** src/config/config-schema.ts, model-selector.ts, config-views.ts, config.ts;
+src/agent/agent-backend.ts, src/agent/claude/claude-backend.ts; src/pi/pi-models.ts.
+
+**Acceptance criteria.**
+- **One line.** `{ "agent": "claude" }` runs author ticks on fake-claude with
+  `--model claude-sonnet-5-5`, the reviewer/plan/conflict-resolver with
+  `--model claude-opus-5-5`, and readme with `--model claude-haiku-5-5`;
+  `{ "agent": "claude", "model": "claude-sonnet-5-5" }` puts every seam on Sonnet.
+- **Mixed.** `{ "agent": "claude", "fallback": "omlx/Qwen…" }` runs the fallback on fake-pi
+  with `--provider omlx`.
 - **Per-seam.** `{ "review": { "model": "claude/claude-opus-5-5:high" } }` under `agent: "pi"`
   runs only the reviewer on claude, with `--effort high`.
-- **Legacy.** An existing config with `agentBin` + `piArgs` and no `agent` produces byte-identical
+- **Legacy.** A config with `agentBin` + `piArgs` and no `agent`/`model` produces byte-identical
   pi argv.
-- **Doctor.** Doctor fails "claude auth" when fake `claude auth status` reports
-  `loggedIn: false`. It fails "claude version" when fake `claude --version` reports 2.1.216
-  with Opus configured.
-- **Free-ness.** A claude `fallback` is rejected at runtime as not free, exactly like a priced pi
+- **Free-ness.** A claude-routed `fallback` is rejected as not free, exactly like a priced pi
   pair.
 - `npm run test` green.
 
-### Agent backends, part 5/7: `role_notes` over MCP and the prompt dialect (planned 2026-10-09 by operator; requires part 4/7 landed)
+### Agent backends, part 4c/7: per-agent binary resolution, passthrough args and the startup gate (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires parts 4a/7 and 4b/7 landed)
+
+Design: plans/agent-backends.md ("Config" back-compat; "Every seam, checked" — startup row).
+
+**Approach.**
+1. `resolveAgentBin` in src/pi/pi-bin.ts becomes `resolveAgentBin(config, agent)`:
+   `TUMWATER_<ID>_BIN` env → `config.agents?.[agent]?.bin` (with `agentBin` still read for
+   `pi`) → the backend's `defaultBin`. `AgentBackend.resolveBin` (src/agent/agent-backend.ts)
+   resolves through it.
+2. src/pi/pi-backend.ts and src/agent/claude/claude-backend.ts resolve their own entries, so
+   `agents.pi.bin`/`agents.claude.bin` take effect while `TUMWATER_PI_BIN`/`TUMWATER_CLAUDE_BIN`
+   keep working.
+3. **Passthrough args.** `claudeBackend.invocation` passes `config.agents?.claude?.args` as
+   `claudeArgs`' `args` (the builder already rejects reserved flags); pi keeps reading the
+   resolved `agents.pi.args` as `piArgs`.
+4. **Startup gate.** src/gates/startup-gate.ts checks the binary of every agent that `agent`
+   plus any per-role or `review` selector makes an enabled seam resolve to, through the same
+   `findAgentBinary`.
+
+**Files touched.** src/pi/pi-bin.ts, src/pi/pi-backend.ts, src/agent/agent-backend.ts,
+src/agent/claude/claude-backend.ts, src/gates/startup-gate.ts.
+
+**Acceptance criteria.**
+- `agents.claude.bin` and `TUMWATER_CLAUDE_BIN` each change the binary a claude run spawns;
+  `agents.pi.bin` and legacy `agentBin` resolve the pi binary.
+- `agents.claude.args: ["--verbose"]` reaches fake-claude's recorded argv after the harness
+  flags; a reserved flag in that array fails validation, not the run.
+- The startup gate refuses to boot when an enabled seam's agent binary is missing, and names
+  that agent's binary rather than pi's.
+- `npm run test` green.
+
+### Agent backends, part 4d/7: resume and handoff under routing (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
+
+Design: plans/agent-backends.md ("Sessions"); the original part 4/7 "Interactions" section.
+
+Routing lets a seam's agent change between an interrupted tick and the next one, through a
+config edit or the fallback moving a claude seam to a pi fallback or back.
+
+**Approach.**
+1. `planTickStart` (src/tick/tick-resume.ts), which loop-tick.ts already calls with
+   `agent: cfg.agent ?? DEFAULT_AGENT`, compares the newest session-ledger author line's `agent`
+   with the tick's `agent`; a mismatch plans a `handoff` (fresh session, worktree left as is,
+   `buildHandoffPrompt` from src/prompt/prompt-followup.ts) instead of a resume.
+2. It reads `cfg.agent` from the same resolved view the spawn uses (`configForRole` plus the
+   fallback view), not a separate resolution.
+
+**Files touched.** src/tick/tick-resume.ts, src/loop/loop-tick.ts.
+
+**Acceptance criteria (on fake-pi and fake-claude).**
+- **Fallback flip.** An interrupted claude author tick, with the fallback active on the next
+  tick, runs a fresh pi session in the unreset worktree; its prompt carries the handoff bridge,
+  the revision note when a revision was in flight, and the hand-back note when one was applied.
+- **Config flip mid-revision.** Changing `agent` from pi to claude while a revision is
+  interrupted does the same and does not re-cherry-pick the rejected diff.
+- **Mixed seams.** A conflict resolver routed to a different agent than the author writes its
+  ledger line in the author's session dir; the author's next resume is then a handoff even
+  though its own agent did not change.
+- **Selectors.** The resume check and the spawn read the same `cfg.agent`.
+- `npm run test` green.
+
+### Agent backends, part 4e/7: doctor for claude (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
+
+Design: plans/agent-backends.md ("Sessions" retention; "Every seam, checked" doctor row).
+
+**Approach.** Extend src/doctor/doctor-checks.ts and src/doctor/doctor-model-checks.ts:
+- claude: `claude auth status` under the scrubbed claude env must report `loggedIn`, and doctor
+  prints the billing it implies (subscription type, or API key);
+- the installed `claude --version` must be at least a per-model `minVersion` in the claude
+  adapter (a table added to src/agent/claude/claude-backend.ts; 2.1.280 for the three tier
+  defaults), and doctor prints it;
+- claude selectors skip the models.json lookup in the model sweep;
+- a pi provider named `claude` in the fleet warns (agent ids are reserved);
+- the `off`/`minimal` `--effort` clamp is noted;
+- the total size of claude's transcript dirs is reported.
+
+**Files touched.** src/doctor/doctor-checks.ts, src/doctor/doctor-model-checks.ts,
+src/agent/claude/claude-backend.ts.
+
+**Acceptance criteria.**
+- Doctor fails "claude auth" when fake `claude auth status` reports `loggedIn: false`.
+- It fails "claude version" when fake `claude --version` reports 2.1.216 with Opus configured.
+- A claude-routed config produces no models.json resolution error; a pi provider named `claude`
+  yields a warning.
+- Doctor reports the transcript-dir total size.
+- `npm run test` green.
+
+### Agent backends, part 4f/7: agent labels and docs (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
+
+Design: plans/agent-backends.md ("Every seam, checked" — status/TUI/GUI/events rows).
+
+**Approach.**
+1. **Labels.** "pi default" becomes "`<agent>` default" in src/roles/role-render.ts,
+   src/ui/badges.ts and src/events/event-format.ts. A `tick_start`/`review_start` model
+   selector carries the agent (`claude/claude-sonnet-5-5`); status rows follow.
+2. **Docs.** README "Backends": `agent`, routing, and the expected-spend note;
+   docs/backends.md gains a claude section; the "Built on pi" tagline becomes
+   "Built on pi; also runs on Claude Code".
+
+**Files touched.** src/roles/role-render.ts, src/ui/badges.ts, src/events/event-format.ts;
+README.md, docs/backends.md.
+
+**Acceptance criteria.**
+- With `agent: "claude"` and no `model`, role-render, badges and a `tick_start` event all name
+  `claude default`/`claude/claude-sonnet-5-5`; with `agent: "pi"` the strings stay
+  byte-identical to before.
+- README and docs/backends.md describe `agent`/`agents`, routing, and the spend expectation;
+  docs/backends.md links plans/agent-backends.md.
+- `npm run test` green.
+
+### Agent backends, part 5/7: `role_notes` over MCP and the prompt dialect (planned 2026-10-09 by operator; requires parts 4a/7 and 4b/7 landed)
 
 Design: plans/agent-backends.md ("What the pi extensions did, per backend").
 
@@ -160,7 +254,7 @@ cap), plus prompt snapshot cases for both dialects.
   intact.
 - `npm run test` green.
 
-### Agent backends, part 6/7: subscription billing — exempt from the cap, throttled and displayed by the usage window (planned 2026-10-09 by operator; requires part 4/7 landed)
+### Agent backends, part 6/7: subscription billing — exempt from the cap, throttled and displayed by the usage window (planned 2026-10-09 by operator; requires parts 4a/7, 4b/7 and 4e/7 landed)
 
 Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
 window").
