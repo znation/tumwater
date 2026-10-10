@@ -315,21 +315,24 @@ export function applyLandingOutcome(
       s.nextRunAt = Math.max(s.nextRunAt ?? 0, Date.now() + rung * 1000);
     }
   }
+  // A landing or a rejection is the end of the change's life; a merge_conflict keeps its pin.
+  // The per-change markers below all clear on this one outcome set, so name it once.
+  const changeGone = result === "changed" || result === "rejected";
   // The conflict streak counts failed resolutions of one pinned sha; a landing or a rejection
   // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
   if (result === "merge_conflict") {
     const prior = s.mergeConflicts?.sha === change.sha ? s.mergeConflicts.count : 0;
     s.mergeConflicts = { sha: change.sha, count: prior + 1 };
-  } else if (result === "changed" || result === "rejected") {
+  } else if (changeGone) {
     s.mergeConflicts = undefined;
   }
   // Likewise the red-landing-check streak (keyed by patch-id): its change is gone either way.
-  if (result === "changed" || result === "rejected") s.landingCheckFailures = undefined;
+  if (changeGone) s.landingCheckFailures = undefined;
   // A permanent-reviewer-config hold ends with its pin's life: landed, or rejected away.
-  if (result === "changed" || result === "rejected") s.landingReviewError = undefined;
+  if (changeGone) s.landingReviewError = undefined;
   // A hand-back ends with its change's life too: once the resolved change lands or is rejected,
   // a later change gets its own one-hand-back budget (PLANS.md "Robust conflict landing, part
   // 2/2"). A merge_conflict keeps it, so the resolved change's own cap discard fires.
-  if (result === "changed" || result === "rejected") s.conflictHandback = undefined;
+  if (changeGone) s.conflictHandback = undefined;
   if (result !== "aborted") s.phase = undefined;
 }
