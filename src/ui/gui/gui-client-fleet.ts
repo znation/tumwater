@@ -18,6 +18,12 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   }
   // restart-button:end
   // sidebar:start
+  // A server-rendered badge (badges.ts) leads with its " · " separator; the sidebar strips
+  // that separator for its label cell, and upcases the first character to match the row's
+  // label style. One home for the rule, so the preformatted badges the payload ships to the
+  // sidebar (disk, bootstrap, main check) cannot drift in how the row presents them.
+  const stripBadge = (badge) => String(badge || "").replace(/^ · /, "");
+  const badgeLabel = (badge) => stripBadge(badge).replace(/^./, (c) => c.toUpperCase());
   function renderSidebar(d) {
     const project = $("project");
     const name = d && d.project ? d.project : "";
@@ -54,7 +60,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         const word = c.status === "passed" ? "green" : c.status === "failed" ? "red" : c.status;
         const glyph = c.status === "passed" ? "check" : c.status === "failed" ? "fail" : "info";
         rows += row(tone, icon(glyph),
-          "Main " + word + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
+          "Main " + word + esc(counts), (stripBadge(d.mainCheckBadge) + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
       // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
       // preformatted diskBadge (upcased for the row's label style) — the same facts the
@@ -64,7 +70,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         const held = !!(d.disk && d.disk.held);
         const low = !!(d.disk && !held && d.disk.reclaimGB > 0 && d.disk.freeGB < d.disk.reclaimGB);
         rows += row(held ? "amber" : "blue", icon("info"),
-          esc(String(d.diskBadge).replace(/^ · /, "").replace(/^./, (c) => c.toUpperCase())),
+          esc(badgeLabel(d.diskBadge)),
           held
             ? "Free space is below the " + esc(String(d.disk.holdGB)) + " GB floor, so the fleet starts no new work until it recovers. Build outputs are reclaimed first."
             : low
@@ -87,7 +93,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // header carries, so the surfaces cannot drift.
       if (d.bootstrapBadge) {
         rows += row("blue", icon("info"),
-          esc(String(d.bootstrapBadge).replace(/^ · /, "").replace(/^./, (c) => c.toUpperCase())),
+          esc(badgeLabel(d.bootstrapBadge)),
           "New-project bootstrap — the harness holds maintenance loops until enough plans are done; plan, feature and director keep ticking");
       }
     }
