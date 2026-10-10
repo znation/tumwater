@@ -870,3 +870,50 @@ test("a merge whose events feed is unwritable still lands and reports changed", 
   assert.equal(result, "changed");
   assert.equal(mainSha(root), headSha(wt), "the fast-forward happened despite the broken feed");
 });
+
+test("a duplicate ## Done still blocks the landing when the events feed is unwritable", async () => {
+  // structureBlocked (landing-merge.ts) warns and then RETURNS the block reason; an EISDIR on
+  // that warning must not turn the designed "merge_blocked" into a thrown landing error. Replace
+  // the feed with a directory so the block's append throws while every other file still writes.
+  const { root, wt } = await initializedWorktree();
+  seedFeatureAPlannedToDone(root, wt);
+  const mainBefore = mainSha(root);
+  const { ctx } = makeCtx(root, async (w) => {
+    fs.writeFileSync(
+      path.join(w, "PLANS.md"),
+      "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n\n" +
+        "## Done\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+    );
+    return piResult();
+  });
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "merge_blocked", "the structure block stands despite the broken feed");
+  assert.equal(mainSha(root), mainBefore, "main is untouched");
+});
+
+test("a fix-claim block still blocks the landing when the events feed is unwritable", async () => {
+  // exemptSkipBlockReason (landing-merge.ts) warns for the fix-claim block and then returns it;
+  // the warning is best-effort so the block reason still reaches the lander on a broken feed.
+  const { root, wt } = await initializedWorktree();
+  fs.appendFileSync(
+    wt + "/BUGS.md",
+    "\n### A bug nobody fixed (found by test 2026-10-09)\n\n- Fix: `noSuchHelperFn` handles it.\n",
+  );
+  commitIn(wt, "md-only fix record");
+  fs.writeFileSync(path.join(root, "unrelated.txt"), "main moved\n");
+  commitIn(root, "main moves on");
+  const { ctx } = makeCtx(root);
+  const blocked: string[] = [];
+  ctx.onLandingBlocked = (reason) => blocked.push(reason);
+  const mainBefore = mainSha(root);
+  fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+  const result = await mergeToMain(ctx, wt, "md-only fix record");
+
+  assert.equal(result, "merge_blocked", "the fix-claim block stands despite the broken feed");
+  assert.equal(mainSha(root), mainBefore, "nothing landed");
+  assert.equal(blocked.length, 1, "the lander is still told the block reason for lastError");
+});

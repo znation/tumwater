@@ -7,7 +7,7 @@ import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
 import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
-import { warnEvent, logEvent } from "../events/events.js";
+import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { REVISION_LIMIT } from "../loop/revision.js";
@@ -258,7 +258,7 @@ export async function reviewPinnedChange(
         ...(selector ? { selector } : {}),
         message: state.lastError,
       };
-      warnEvent(
+      warnEventBestEffort(
         root,
         role,
         `review blocked by a permanent provider configuration error${selector ? ` on ${selector}` : ""}: ${gate.detail} — the pinned change is held until the model config changes`,
@@ -327,7 +327,7 @@ async function recordRejectedChange(
   // The next tick gets the plain rejected note, not a revision note; mark it final so that
   // note says the rejected diff is gone rather than inviting another revision.
   if (state.lastReview) state.lastReview.exhausted = true;
-  logEvent(root, { loop: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
+  logEventBestEffort(root, { loop: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
 }
 
 /** Land a head that already passed its OWN gate in its vet — the merge slot's one-change landing

@@ -6,7 +6,7 @@ import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "../src/loop/r
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
 import { vetRequest } from "../src/landing/landing-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
-import { rejectedRefName, landingRefName } from "../src/paths.js";
+import { rejectedRefName, landingRefName, eventsLogPath } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
@@ -195,6 +195,51 @@ test("a rejection of the last allowed revision exhausts it and deletes the rejec
     assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
     assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
     assert.equal(eventsOfType(root, "revision").length, 1, "the exhaustion is logged");
+  });
+});
+
+test("exhausting the last revision still records the outcome when the events feed is unwritable", async () => {
+  // recordRejectedChange (landing-core.ts) deletes the rejected ref and clears the round, then
+  // logs the exhaustion LAST. An EISDIR on that append must not turn the terminal exhaustion
+  // into a thrown vet error after the ref is already gone.
+  await withPi(reviewerPi("VERDICT: reject\n1. still wrong"), async () => {
+    const { root, sha } = await pinnedFixture();
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+    const w = batchWiring(ctx);
+    await setRef(root, rejectedRefName(ROLE), sha);
+    fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
+    fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+    const verdict = await vetRequest(ctx, request(sha, { revisionRound: REVISION_LIMIT }), w);
+
+    assert.equal(verdict.kind, "result");
+    assert.equal(state.revision, undefined, "the round is still cleared");
+    assert.equal(state.lastReview?.exhausted, true, "the final rejection is still marked");
+    assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
+  });
+});
+
+test("a permanent reviewer config error still holds the pin when the events feed is unwritable", async () => {
+  // reviewPinnedChange's configError branch records the hold and then warns; an EISDIR on that
+  // warning must not turn the designed held-pin "review_error" into a thrown vet error.
+  const configErrorPi = `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '400 model_not_supported' >&2; exit 1;; esac; done`;
+  await withPi(configErrorPi, async () => {
+    const { root, sha } = await pinnedFixture();
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+    ctx.config.review.model = "bad/model";
+    const w = batchWiring(ctx);
+    fs.rmSync(eventsLogPath(root), { recursive: true, force: true });
+    fs.mkdirSync(eventsLogPath(root), { recursive: true });
+
+    const verdict = await vetRequest(ctx, request(sha), w);
+
+    assert.equal(verdict.kind, "result");
+    if (verdict.kind !== "result") return;
+    assert.equal(verdict.result, "review_error", "the held pin reports review_error, not a throw");
+    assert.equal(state.landingReviewError?.selector, "bad/model", "the hold still names the selector");
+    assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin is kept for a config change");
   });
 });
 

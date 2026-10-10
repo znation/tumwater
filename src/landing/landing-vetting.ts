@@ -5,7 +5,7 @@ import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
 import { dropLanding, queuedLandingFiles, staleHeadFile, type LandingEntry } from "./landing-queue.js";
-import { warnEvent } from "../events/events.js";
+import { warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { vetRequest, type VetVerdict } from "./landing-batch.js";
 import {
@@ -58,7 +58,7 @@ function dropTornHead(root: string): void {
   const stale = staleHeadFile(root);
   if (!stale) return;
   dropLanding(stale);
-  warnEvent(
+  warnEventBestEffort(
     root,
     "harness",
     `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,

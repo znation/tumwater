@@ -1,5 +1,5 @@
 import { openQuestions } from "../backlog/backlog.js";
-import { logEventBestEffort, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
 import { aheadOfMainFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./landing-diff.js";
@@ -183,7 +183,7 @@ async function structureBlocked(
 ): Promise<string | null> {
   const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
   if (!structure) return null;
-  warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
+  warnEventBestEffort(ctx.root, ctx.role, `landing blocked: ${structure}`);
   return structure;
 }
 
@@ -204,7 +204,7 @@ export async function exemptSkipBlockReason(
   // unexplained merge_blocked retries on the feed (BUGS.md 2026-10-02). The batch stack-skip
   // caller may warn twice for one change (here, then again when the fallback's exempt arm
   // blocks it) — a duplicated line is harmless next to a silent block.
-  if (fix) warnEvent(ctx.root, ctx.role, `landing blocked: ${fix}`);
+  if (fix) warnEventBestEffort(ctx.root, ctx.role, `landing blocked: ${fix}`);
   return fix ?? null;
 }
 

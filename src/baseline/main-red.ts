@@ -5,7 +5,7 @@ import { failureHeadline } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../gates/gate-prompts.js";
-import { logEvent, warnEvent } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
@@ -46,7 +46,11 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
 function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
-  warnEvent(root, "harness", redMainMessage(red, "code merges blocked until main is green"));
+  warnEventBestEffort(
+    root,
+    "harness",
+    redMainMessage(red, "code merges blocked until main is green"),
+  );
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
@@ -59,7 +63,7 @@ function baselineCheckLogger(
   root: string,
   role: string,
 ): (run: BaselineCheckRun) => void {
-  return baselineCheckEventLogger(role, (event) => logEvent(root, event));
+  return baselineCheckEventLogger(role, (event) => logEventBestEffort(root, event));
 }
 
 /** Red-main handoff for the `bugfix` healer (PLANS.md "Red-main handoff"): mainRedGate exempts
@@ -104,7 +108,7 @@ export async function mainRedGate(
   if (baseline.unverified) {
     // The baseline run spanned a host sleep: no verdict about main, nothing cached (BUGS.md
     // 2026-09-30). Warn-and-proceed, like a skip — the sleep is named, not a test failure.
-    warnEvent(
+    warnEventBestEffort(
       root,
       role,
       sleptPhrase("main baseline check", baseline.run?.sleptMs ?? 0, "proceeding with authoring unverified"),
@@ -112,7 +116,7 @@ export async function mainRedGate(
     return null;
   }
   if (baseline.skipReason) {
-    warnEvent(
+    warnEventBestEffort(
       root,
       role,
       buildCheckSkipWarning(

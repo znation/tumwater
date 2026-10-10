@@ -5,7 +5,7 @@ import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons } from "../build/build-check-report.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
-import { logEvent } from "../events/events.js";
+import { logEventBestEffort } from "../events/events.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -91,7 +91,7 @@ async function rejectChange(
   state.unreviewFailures = 0;
   saveLoopState(ctx.root, state);
   await deleteRef(ctx.root, landingRefName(role));
-  logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
+  logEventBestEffort(ctx.root, { loop: role, type: "review_rejected", head, reasons });
   return "rejected";
 }
 

@@ -1,12 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { drainLandings } from "../src/landing/landing-drain.js";
 import { landingTasks } from "../src/landing/landing-pipeline.js";
-import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
+import { enqueueLanding, queueDepth, staleHeadFile } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
+import { eventsLogPath, landQueueDir } from "../src/paths.js";
 import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/landing-fixtures.js";
 import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+
+/** Put a directory where the append-only events log belongs: every logEvent/warnEvent under
+ * `root` throws EISDIR, while every other file under the real root still writes normally. */
+function unwritableEvents(root: string): void {
+  const file = eventsLogPath(root);
+  fs.rmSync(file, { recursive: true, force: true });
+  fs.mkdirSync(file, { recursive: true });
+}
 
 /** First slice of the landing-drain suite (landing-pipeline.test.ts carries the rest, and
  * landing-drain-vetting.test.ts the vet-permit tests) — split so node --test runs the slices in
@@ -27,6 +38,25 @@ test("an empty queue drains nothing", async () => {
   await drainLandings(ctx, pipeline);
   assert.equal(landingTasks(pipeline).length, 0, "no vet and no merge started");
   assert.equal(pipeline.vetting.size, 0);
+});
+
+test("a torn land-queue head is dropped and the drain continues when the events feed is unwritable", async () => {
+  // dropTornHead (landing-vetting.ts) removes the unreadable head and then warns; an EISDIR on
+  // that warning must not reject the whole drain poll, or one torn file plus a full disk stops
+  // every role's queued landing from being vetted. The drop itself still happens.
+  const root = makeRepo();
+  const dir = landQueueDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  const torn = path.join(dir, "0000000000-000000-1.json");
+  fs.writeFileSync(torn, "{ torn mid-write");
+  assert.equal(staleHeadFile(root), torn, "the torn file is the unreadable head");
+  unwritableEvents(root);
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
+
+  await drainLandings(ctx, pipeline);
+
+  assert.equal(staleHeadFile(root), null, "the torn head was dropped despite the broken feed");
+  assert.equal(queueDepth(root), 0, "the drain reached an empty queue rather than aborting");
 });
 
 test("a queued entry whose sha main already holds is dropped without a vet", async () => {

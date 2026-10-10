@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { attributeRedCheck } from "../src/landing/landing-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { refSha, setRef } from "../src/git/git.js";
-import { landingRefName } from "../src/paths.js";
+import { eventsLogPath, landingRefName } from "../src/paths.js";
+import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
@@ -183,6 +185,55 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
     assert.equal(result2, "merge_blocked");
     assert.equal(state2.unreviewFailures, 3, "no strike here either");
     assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref still was not deleted");
+  } finally {
+    restore();
+  }
+});
+
+test("attributeRedCheck still rejects when the events feed is unwritable", async () => {
+  // rejectChange (src/landing/landing-check-failures.ts) writes review_rejected LAST, after
+  // the durable state (recordReview, saveLoopState) and the pin's deletion. An EISDIR on the
+  // feed must not turn the terminal "rejected" into a thrown landing error that leaves the pin
+  // deleted while the caller believes the attribution failed. Seed main's baseline green so
+  // mainTipVerdict is a cache hit and this test isolates rejectChange's own append.
+  const { root } = baselineFixture(ROLE, "attr-green-unwritable");
+  const restore = fakeNpm("echo ok; exit 0");
+  try {
+    noteGreenBaseline(mainSha(root));
+    const file = eventsLogPath(root);
+    fs.rmSync(file, { recursive: true, force: true });
+    fs.mkdirSync(file, { recursive: true });
+
+    const { result } = await attribute(root, "landing check", red());
+
+    assert.equal(result, "rejected", "the deterministic reject stands despite the broken feed");
+    assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was still deleted");
+    assert.equal(loadLoopState(root, ROLE).lastReview?.verdict, "reject", "the rejection was persisted");
+  } finally {
+    restore();
+  }
+});
+
+test("attributeRedCheck still reports main_red when the events feed is unwritable", async () => {
+  // mainTipVerdict's baseline check logs its build_check event and, on a red, the once-per-SHA
+  // warning before it can return the verdict (src/baseline/main-red.ts). Both must be
+  // best-effort: a raw append that throws is caught by verdictAtMainTipIn's own catch, which
+  // downgrades the red to "unavailable" — and an unavailable main rejects the change as if it
+  // had broken the suite, losing the recoverable "not this change's failure" outcome. Seed a red
+  // main so the check runs and both logging sites are reached.
+  const { root } = baselineFixture(ROLE, "attr-red-unwritable");
+  const restore = fakeNpm("echo baseline-failure; exit 1");
+  try {
+    const file = eventsLogPath(root);
+    fs.rmSync(file, { recursive: true, force: true });
+    fs.mkdirSync(file, { recursive: true });
+
+    const { head, state, result } = await attribute(root, "landing check", red());
+
+    assert.equal(result, "main_red", "a broken feed must not attribute main's red to the change");
+    assert.equal(state.lastReview, undefined, "no rejection was recorded against the author");
+    assert.equal(state.unreviewFailures, 3, "the strike count was left untouched");
+    assert.equal(await refSha(root, landingRefName(ROLE)), head, "the pin is kept for recovery");
   } finally {
     restore();
   }
