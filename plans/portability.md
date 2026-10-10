@@ -388,7 +388,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
   `git add -A` means the request never enters a diff, never reaches the review gate, and never
   lands in the project's history (invariant 4). A tick that made no other change ends `no_change`.
 - **Applied atomically to the live config**, reusing `setDailyBudgetUsd`'s existing idiom in
-  src/config.ts — fresh `loadConfig` (bypassing the stat cache, since a writer must see the latest
+  src/config/config-write.ts — fresh `loadConfig` (bypassing the stat cache, since a writer must see the latest
   file), merge only the permitted key, then `writeJsonAtomic`. The orchestrator's ~2 s live reload then
   starts the new loop with no restart and no merge: strictly faster and more reliable than today's
   commit → review → merge → reload chain.
@@ -413,18 +413,18 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
 
 **Approach.**
 - src/paths.ts — `configRequestPath(wt)` = `<wt>/.tumwater-config-request.json`.
-- src/config.ts — `applyConfigRequest(root, wt): { applied: string[]; ignored: string[]; error?: string } | null`
+- src/config/config-write.ts — `applyConfigRequest(root, wt): { applied: string[]; ignored: string[]; error?: string } | null`
   (null when no request exists): read, permit-filter, validate, atomic write, delete. The atomic
   writer already exists and is already shared — `writeJsonAtomic(file, value, trailingNewline)` in
   src/files/json-files.ts, which `setDailyBudgetUsd` was moved onto by 1963677 — so this adds a second
   caller, not a new helper.
-- src/loop.ts — call it in the director tick path between the pi run and `commitAll`; log
+- src/tick/tick-verdict.ts — call it in the director tick path between the pi run and `commitAll`; log
   `config_changed` (applied names) or `warning` (rejected/ignored).
-- src/types.ts — `config_changed` in `HarnessEvent["type"]`; src/events/event-format.ts — one case.
+- src/events/events.ts — `config_changed` in `HarnessEvent["type"]`; src/events/event-format.ts — one case.
 - src/prompt/prompt.ts — replace the director-only "you may edit tumwater.json" exception with the
   request-file contract and a worked example; COMMON_RULES' blanket "never touch the .tumwater
   directory or tumwater.json" now applies to the director too, with no exception.
-- src/config.ts `defaultConfig()` — drop `"tumwater.json"` from `review.exemptPaths`.
+- src/config/config.ts `defaultConfig()` — drop `"tumwater.json"` from `review.exemptPaths`.
 - plans/user-defined-loops.md — supersede the three bullets named above.
 - Tests: test/config.test.ts (permitted key applied; a disallowed key ignored with a warning; an
   invalid candidate leaves the file untouched; the request file is always deleted),
@@ -432,8 +432,9 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
   request never appears in a diff), test/prompt.test.ts (the director prompt names the request
   file and no longer grants a tumwater.json exception), test/event-format.test.ts.
 
-**Files touched.** src/paths.ts, src/config.ts, src/loop.ts, src/types.ts, src/prompt/prompt.ts,
-src/events/event-format.ts, plans/user-defined-loops.md, test/config.test.ts, test/loop.test.ts,
+**Files touched.** src/paths.ts, src/config/config-write.ts, src/tick/tick-verdict.ts,
+src/events/events.ts, src/prompt/prompt.ts, src/events/event-format.ts, plans/user-defined-loops.md,
+test/config.test.ts, test/loop.test.ts,
 test/prompt.test.ts, test/event-format.test.ts.
 
 **Acceptance criteria.**
@@ -455,42 +456,44 @@ behind at `dcce4f2`; this sub-plan's last audit was the series write `1384eeb` o
 oldest in the series, and ~40 landings have happened since). Every anchor verified on this tree;
 one real implementation gap and four seams pinned. Landable after 2/7; no dependency on 4a/7.**
 
-Verified as written: `setDailyBudgetUsd` (src/config.ts:185) is the idiom and it is on
-`writeJsonAtomic` (src/files/json-files.ts:50) — the call is `writeJsonAtomic(file, { ...cfg,
-maxDailyCostUsd: value }, true)` at src/config.ts:200. `defaultConfig().review.exemptPaths` still
-lists `"tumwater.json"` (src/config.ts:61), and this repo's own `tumwater.json` sets no `review`
+Verified as written: `setDailyBudgetUsd` (src/config/config-write.ts) is the idiom and it is on
+`writeJsonAtomic` (src/files/json-files.ts) — the call is `writeJsonAtomic(file, { ...cfg,
+maxDailyCostUsd: value }, true)`. `defaultConfig().review.exemptPaths` then listed
+`"tumwater.json"` (src/config/config.ts), and this repo's own `tumwater.json` sets no `review`
 key, so the default governs and dropping the entry takes effect here. The director-only exception
-is verbatim at src/prompt/prompt.ts:223–226 and the custom-loop routing bullet at src/prompt/prompt.ts:210–215;
-COMMON_RULES' "Never touch the .tumwater directory or tumwater.json" is src/prompt/prompt.ts:84 (resume
-variant :318). `HarnessEvent["type"]` is src/types.ts:258–294 with the index signature, and
-src/events/event-format.ts is a `switch (e.type)` ending at `default:` :156. `validateConfig` is
-exported (src/config-validation.ts:99) and already validates `customLoops` (name regex, collision,
-uniqueness, task cap) at :227–263. `isDirty` is `git status --porcelain` (src/git.ts:185) and
-`commitAll` is `git add -A` (src/git.ts:361); `DIRECTOR_ROLE` is src/roles/roles.ts:11. `.gitignore`
-lists only `.tumwater/`, `node_modules/`, `dist/`, so `.tumwater-config-request.json` at the
-worktree root is NOT ignored — `git status` reports it and `git add -A` stages it.
+was verbatim in src/prompt/prompt.ts and the custom-loop routing bullet beside it;
+COMMON_RULES' "Never touch the .tumwater directory or tumwater.json" lived in src/prompt/prompt.ts,
+in both the tick prompt and its resume variant. `HarnessEvent["type"]` is src/events/events.ts with
+the index signature, and src/events/event-format.ts is a `switch (e.type)` ending at `default:`.
+`validateConfig` is exported (src/config/config-validation.ts) and already validates `customLoops`
+(name regex, collision, uniqueness, task cap). `isDirty` is `git status --porcelain`
+(src/git/git.ts) and `commitAll` is `git add -A` (src/git/git.ts); `DIRECTOR_ROLE` is
+src/roles/roles.ts. `.gitignore` lists only `.tumwater/`, `node_modules/`, `dist/`, so
+`.tumwater-config-request.json` at the worktree root is NOT ignored — `git status` reports it and
+`git add -A` stages it.
 
 Pinned seams (all on this tree):
 
-1. **The consume seam, and why "after the pi run" needs a line.** In `runTick` the pi run is
-   src/loop.ts:591; the branches that follow are `aborted` (:595, returns and discards),
-   `pendingUserPrompt = null` (:596), `quietKilled` (:597), `timedOut` (:606), `refused` (:616,
-   `handleRefusal` → `merge` → `git add -A`), `isDirty` (:629), and `commitAll` (:713). Call
-   `applyConfigRequest(this.root, wt)` immediately after `:596` and before the `quietKilled`
-   branch. Rationale: (a) it must precede `isDirty`, or the untracked request file alone makes the
-   worktree dirty and the tick takes the commit path; (b) it must precede `refused`/`commitAll`
-   because both stage the worktree; (c) placing it after the `aborted` return means a deliberate
-   `tumwater abort` still discards an unfulfilled request (matching abort's "work discarded"),
-   while a quiet-kill/timeout/refusal applies the request pi wrote before returning. The call is
-   guarded by `this.role === DIRECTOR_ROLE`, so role ticks pay one boolean.
-2. **The orphaned `roles.<id>` entry — the plan's one real gap.** `validateConfig` cross-checks
-   every `roles.<id>` key against `allRoleIds()` ∪ the request's `customLoops` names and rejects an
-   id that is neither (src/config-validation.ts:273–278). `loadConfig` seeds `merged.roles[c.name]`
-   for each current custom loop (src/config.ts:98–99), and the merged object is what gets written,
-   so a removal that leaves the old loop's `roles` entry behind fails validation and the removal
-   never applies. `applyConfigRequest` must delete `candidate.roles[name]` for every name in the
-   old `customLoops` array and absent from the request, before validating. Adding a loop needs no
-   roles edit: `loadConfig` seeds it enabled.
+1. **The consume seam, and why "after the pi run" needs a line.** In `runTickPhase`
+   (src/loop/loop-tick.ts) the pi run's verdict branches live in `resolveTickVerdict`
+   (src/tick/tick-verdict.ts); the branches that follow the run are `finishAbortedTickPhase`
+   (aborted, returns and discards; src/loop/loop-recovery.ts), `pending.clear()`, `quietKilled`,
+   `timedOut`, `refused` (`handleRefusal` → merge → `git add -A`), `isDirty`, and `commitAll`.
+   Call `applyConfigRequest(this.root, wt)` immediately after `pending.clear()` and before the
+   `quietKilled` branch. Rationale: (a) it must precede `isDirty`, or the untracked request file
+   alone makes the worktree dirty and the tick takes the commit path; (b) it must precede
+   `refused`/`commitAll` because both stage the worktree; (c) placing it after the `aborted` return
+   means a deliberate `tumwater abort` still discards an unfulfilled request (matching abort's
+   "work discarded"), while a quiet-kill/timeout/refusal applies the request pi wrote before
+   returning. The call is guarded by `this.role === DIRECTOR_ROLE`, so role ticks pay one boolean.
+2. **The orphaned `roles.<id>` entry — the plan's one real gap.** `validateConfig`
+   (src/config/config-validation.ts) cross-checks every `roles.<id>` key against `allRoleIds()` ∪
+   the request's `customLoops` names and rejects an id that is neither. `loadConfig`
+   (src/config/config.ts) seeds `merged.roles[c.name]` for each current custom loop, and the merged
+   object is what gets written, so a removal that leaves the old loop's `roles` entry behind fails
+   validation and the removal never applies. `applyConfigRequest` must delete
+   `candidate.roles[name]` for every name in the old `customLoops` array and absent from the
+   request, before validating. Adding a loop needs no roles edit: `loadConfig` seeds it enabled.
 3. **Validation and deletion.** Build `candidate = { ...loadConfig(root), customLoops:
    request.customLoops }`, strip orphaned role entries (pin 2), then `validateConfig(candidate)`.
    On failure write nothing, log one `warning` naming the problems, and delete the request anyway
@@ -503,10 +506,10 @@ Pinned seams (all on this tree):
    top-level key into `ignored` and drop it before building the candidate, so "accepts
    `customLoops` and nothing else" holds by construction and the warning names the ignored keys.
 5. **The prompt rewrite has two sites, not one.** Replace the exception paragraph
-   (src/prompt/prompt.ts:223–226) with the request-file contract — path,
+   (src/prompt/prompt.ts) with the request-file contract — path,
    `{ "customLoops": [ { name, task } ] }` shape, "write it and stop; the harness consumes and
    deletes it; the array replaces the current one" — and change the routing bullet
-   (src/prompt/prompt.ts:210–215) from "execute it by editing tumwater.json's customLoops array" to
+   (src/prompt/prompt.ts) from "execute it by editing tumwater.json's customLoops array" to
    "write `.tumwater-config-request.json` in your worktree". COMMON_RULES is unchanged: the file
    sits at the worktree root, so both "never touch tumwater.json" and "never write above your
    worktree" still hold and now bind the director too.
@@ -525,62 +528,62 @@ landed feature moved onto this plan's own ground: the live config-change event (
 design holds unchanged; two corrections SHRINK the diff, one new seam is pinned, and every
 drifted line anchor is re-pinned here.**
 
-Verified as written: `defaultConfig().review.exemptPaths` still lists `"tumwater.json"`
-(src/config.ts:69; was :61), and this repo's own tumwater.json sets no `review` key, so the
-default governs. `setDailyBudgetUsd` is still the idiom, now src/config.ts:229 (was :185) with the
-fresh-`loadConfig` + `writeJsonAtomic(file, { ...cfg, ... }, true)` call at :244 (was :200);
-`writeJsonAtomic` is src/files/json-files.ts:51. The director-only exception is src/prompt/prompt.ts:234–236
-(was :223–226) and the custom-loop routing bullet :220 (was :210–215); COMMON_RULES' "Never touch
-the .tumwater directory or tumwater.json" is :85 and the resume variant :329 (were :84/:318).
-`validateConfig` is src/config-validation.ts:156 (was :99); the customLoops entry validation is
-:331–356; the orphaned `roles.<id>` check is :381–387 (was :273–278) — pin 2's real gap still
+Verified as written: `defaultConfig().review.exemptPaths` then listed `"tumwater.json"`
+(src/config/config.ts), and this repo's own tumwater.json sets no `review` key, so the
+default governs. `setDailyBudgetUsd` is still the idiom, now in src/config/config-write.ts, with
+the fresh-`loadConfig` + `writeJsonAtomic(file, { ...cfg, ... }, true)` call;
+`writeJsonAtomic` is src/files/json-files.ts. The director-only exception was in
+src/prompt/prompt.ts and the custom-loop routing bullet beside it; COMMON_RULES' "Never touch
+the .tumwater directory or tumwater.json" lived in the tick prompt and its resume variant there.
+`validateConfig` is src/config/config-validation.ts; the customLoops entry validation and the
+orphaned `roles.<id>` check live there too — pin 2's real gap still
 exists exactly as described. `loadConfig` still seeds `merged.roles[c.name]` per custom loop
-(src/config.ts:107; was :98–99). `DIRECTOR_ROLE` is src/roles/roles.ts:11; `commitAll` is still
-`git add -A` (src/git.ts) and `isDirty` still `git status --porcelain`. paths.ts still has no
-`configRequestPath` (`configPath` is :11). plans/user-defined-loops.md still carries both
-superseded bullets (:52 "commit → review gate → merge → live reload"; :53 the exemptPaths bullet).
+(src/config/config.ts). `DIRECTOR_ROLE` is src/roles/roles.ts; `commitAll` is still
+`git add -A` (src/git/git.ts) and `isDirty` still `git status --porcelain`. src/paths.ts now has
+`configRequestPath` beside `configPath`. plans/user-defined-loops.md still carries both
+superseded bullets ("commit → review gate → merge → live reload"; the exemptPaths bullet).
 All of test/config.test.ts, test/loop.test.ts, test/prompt.test.ts, test/event-format.test.ts
 exist.
 
 Corrections (pinned in place):
 
-1. **`config_changed` already exists — src/types.ts and src/events/event-format.ts LEAVE Files
-   touched.** `HarnessEvent` has `"config_changed"` (src/types.ts:305) and event-format.ts renders
-   it (:133–137). Better still, the applied case needs NO new emission anywhere: the orchestrator's
+1. **`config_changed` already exists — `HarnessEvent` and src/events/event-format.ts LEAVE Files
+   touched.** `HarnessEvent` (src/events/events.ts) has `"config_changed"` and event-format.ts
+   renders it. Better still, the applied case needs NO new emission anywhere: the orchestrator's
    ~2 s reload already diffs the previous live config against the new one and logs one
-   `config_changed` naming the keys (src/orchestrator.ts:341, via `changedConfigKeys`,
-   src/config.ts:196, which names each `roles.<id>` separately) — so once `applyConfigRequest`
-   writes the file, the announcement of what changed is automatic. loop.ts keeps only the rejection
-   path: one `warning` event (the shared `this.warn`, src/loop.ts:110) naming the ignored keys or
+   `config_changed` naming the keys (src/config/config-live.ts, which calls `changedConfigKeys`
+   from src/config/config.ts, naming each `roles.<id>` separately) — so once `applyConfigRequest`
+   writes the file, the announcement of what changed is automatic. src/loop/loop.ts keeps only the
+   rejection path: one `warning` event (the shared `this.warn`) naming the ignored keys or
    the validation problems.
 2. **`saveConfig` is NOT the writer.** The config-change landing also added `saveConfig`
-   (src/config.ts:170, validate-then-write) — tempting as the reuse — but it is a plain
+   (src/config/config.ts, validate-then-write) — tempting as the reuse — but it is a plain
    `fs.writeFileSync`: non-atomic. `applyConfigRequest` keeps `setDailyBudgetUsd`'s shape: fresh
    `loadConfig` (bypass the stat cache — a writer must see the latest file), `validateConfig`, then
    `writeJsonAtomic`, because readers poll the file every ~2 s and two dashboards can save
    concurrently.
-3. **The consume seam re-pinned against today's `runTick`** (src/loop.ts:543). The pi run's branch
-   order is now: `aborted` → `finishAbortedTick` (:658), `pendingUserPrompt = null` (:659),
-   `quietKilled` (:660), `timedOut` (:669), `refused` (:679), `isDirty` (:692), `commitAll` (:780)
-   — were :595/:596/:597/:606/:616/:629/:713. The call site is unchanged in substance: call
-   `applyConfigRequest(this.root, wt)` immediately after :659 and before the `quietKilled` branch,
-   guarded by `this.role === DIRECTOR_ROLE`, for the same three reasons pin 1 of the 2026-09-18
-   note gave (precede `isDirty`'s dirtiness; precede the staging paths; abort still discards).
-4. **New interplay pinned: `requeueUnfulfilledPrompt`.** Since the audit, `quietKilled` and
-   `timedOut` director ticks requeue the prompt to run fresh (src/loop.ts:664/:672). Consuming
+3. **The consume seam re-pinned against today's `runTickPhase`** (src/loop/loop-tick.ts). The pi
+   run's branch order is now: `finishAbortedTickPhase` (aborted; src/loop/loop-recovery.ts),
+   `pending.clear()`, `quietKilled`, `timedOut`, `refused`, `isDirty`, `commitAll`. The call site is
+   unchanged in substance: call `applyConfigRequest(this.root, wt)` immediately after
+   `pending.clear()` and before the `quietKilled` branch, guarded by `this.role === DIRECTOR_ROLE`,
+   for the same three reasons pin 1 of the 2026-09-18 note gave (precede `isDirty`'s dirtiness;
+   precede the staging paths; abort still discards).
+4. **New interplay pinned: the unfulfilled-prompt requeue.** Since the audit, `quietKilled` and
+   `timedOut` director ticks requeue the prompt to run fresh (src/loop/loop-tick.ts). Consuming
    BEFORE those branches remains right: a complete request applies, and the re-run re-writes the
    same request — replace semantics make the double-apply harmless; a torn one fails validation,
    is deleted with a warning, and the re-run starts clean. Consuming AFTER them would LOSE a
    timed-out tick's request outright: its "half-done edits are discarded by the reset"
-   (src/loop.ts:671) deletes the untracked file unread. The `aborted` branch still discards it
-   deliberately (`finishAbortedTick` — work discarded), as pinned in 2026-09-18.
-5. **Drifted pins** are the re-pinned numbers above; nothing else moved materially.
-   test/config.test.ts's exemptPaths assertions (:352–406) keep their shape.
+   deletes the untracked file unread. The `aborted` branch still discards it
+   deliberately (`finishAbortedTickPhase` — work discarded), as pinned in 2026-09-18.
+5. **Drifted pins** are the re-pinned anchors above; nothing else moved materially.
+   test/config.test.ts's exemptPaths assertions keep their shape.
 
 Sizing now, smaller than the 2026-09-18 estimate: config.ts ~55 (the function + the orphan
 strip), loop.ts ~10 (the guarded call + the rejection warning — no event plumbing), prompt.ts ~20,
 paths.ts ~5, tests ~150 across test/config.test.ts, test/loop.test.ts, test/prompt.test.ts.
-src/types.ts and src/events/event-format.ts drop out entirely. One run. No design question remains
+src/events/events.ts and src/events/event-format.ts drop out entirely. One run. No design question remains
 open.
 
 ---
