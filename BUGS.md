@@ -5,6 +5,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+_None yet._
+
 ## Fixed
 
 ### The loss ranking's queued→`rejected` arm matches `review_rejected` by the authored sha, but the vet rebases before rejecting, so a rebased rejection's cause names no reason (found by bugfix loop 2026-10-10 while fixing the sibling `review_error` arm; fixed 2026-10-10 by bugfix loop)
