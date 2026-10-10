@@ -63,12 +63,14 @@ Then, from another terminal:
 | Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes, capped at 90d; add `--reason <text>` on a fleet pause to state why — it shows on `status`, the TUI, and the dashboard), `tumwater wake` (skip backoff; `wake --in 45m` schedules the wake for 45 minutes from now — the marker is written immediately but consumed no earlier than the deadline, like `pause --for`'s auto-resume), `tumwater reclaim [--dry-run]` (drop gitignored build outputs from every harness worktree; `--dry-run` lists the candidates and cleans nothing), `tumwater retire --role <id>` (remove a disabled loop's worktree, branch, and per-role state — use after setting `enabled: false` for that role; `--force` overrides the safety rails), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C), `tumwater reset-counters [--role <id>]` (zero the per-loop counters the dashboards show, starting a fresh observation window — scheduling is untouched) |
 | Audit | `tumwater doctor` (pre-flight; `--json` prints the report as JSON, for scripts), `tumwater report` (usage and cost, with landed commits by role and the work/maintenance split; totals include landing runs — reviewer + conflict resolution), `tumwater report --since <duration>` (totals over a trailing window, capped at 7d; with `--failures`, the failure digest over that window instead), `tumwater report --json` (the `--days`/`--since`/`--failures` reports as JSON, for scripts), `tumwater report --failures` (the failure digest: per-role outcomes, each role's time and spend by outcome, and the top five loss causes ranked by agent-hours, with a marker naming how many were cut; `--since <duration>` windows the digest over a trailing span, capped at 7d, compared against the equal-length window before it) |
 
-`tumwater help` lists every command and flag; `tumwater help <command>` shows one command's usage. `gui --all-interfaces` exposes the dashboard, and
-with it the director prompt, to your whole network, so pair it with `--token <secret>`.
+`tumwater help` lists every command and flag; `tumwater help <command>` shows one command's
+usage. `gui --all-interfaces` exposes the dashboard, and with it the director prompt, to your
+whole network, so pair it with `--token <secret>`.
 
 Settings live in `tumwater.json`: enabled roles, model (either one selector or a map of tiers
-`small`/`default`/`strong` — omitted tiers inherit `default`; per-tier `fallback` overrides may name a
-model or `"pause"`, and a role's `model` may name a tier; see [plans/model-tiers.md](plans/model-tiers.md)),
+`small`/`default`/`strong` — omitted tiers inherit `default`; per-tier `fallback` overrides may
+name a model or `"pause"`, and a role's `model` may name a tier; see
+[plans/model-tiers.md](plans/model-tiers.md)),
 intervals, per-role `instances` (`feature` and `bugfix` may each run 1–8 parallel runners, every one
 with its own branch and state; default 1), the daily spend cap
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
@@ -76,8 +78,8 @@ cap starts no new ticks until the next local day or a live edit), a
 `maintenancePerWorkLanding` ratio (default 2; a rolling 24 h allowance of that many
 code-maintenance landings per feature/bugfix/director landing, plus a floor of 12 — when the
 window reaches it the scheduler holds the enabled maintenance loops until it rolls under, and a
-fresh `tumwater wake <role>` or a queued prompt for one admits a single tick anyway), a nightly `quietHours` window
-(e.g. `"23:00-07:00"` local time) during
+fresh `tumwater wake <role>` or a queued prompt for one admits a single tick anyway), a nightly
+`quietHours` window (e.g. `"23:00-07:00"` local time) during
 which role loops start no new ticks (the director is exempt), with optional per-role windows
 `quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the
 fleet-wide window covers now — a `diskHoldGB` free-space floor (default 10; when the volume
@@ -91,8 +93,8 @@ outputs once it has sat unused that long, whatever the free space; 0 disables), 
 `customLoops`, and an
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak
-breaker trip, a failed landing, a blocked restart, a posted question — the command gets `TUMWATER_EVENT_TYPE`,
-`TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment).
+breaker trip, a failed landing, a blocked restart, a posted question — the command gets
+`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment).
 Edits apply live while the fleet runs.
 From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
 <key>` reads one resolved value, `tumwater config set <key> <value>` writes one top-level

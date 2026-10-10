@@ -16,9 +16,10 @@ supervisor's marker), so a suite a fleet starts sees the same fakes as one run b
 new variable the harness honors there too. The e2e tier stays out of the gating suite because its
 wall-clock waits are not load-proof. Coverage runs go through the runner too (`npm run
 test:coverage`), never raw `node --test` or a tree compiled elsewhere — the fakes resolve their
-shim relative to `dist/` inside the checkout. The root `vitest.config.mjs` is a tripwire, not a config: it makes `npx vitest`
-refuse to start here (BUGS.md 2026-10-05). Non-npm projects can replace the gate's check with
-`check.command` in tumwater.json (`command`, optional `cwd` and `timeoutSeconds`).
+shim relative to `dist/` inside the checkout. The root `vitest.config.mjs` is a tripwire, not a
+config: it makes `npx vitest` refuse to start here (BUGS.md 2026-10-05). Non-npm projects can
+replace the gate's check with `check.command` in tumwater.json (`command`, optional `cwd` and
+`timeoutSeconds`).
 
 Both suite scripts start with `scripts/live-checkout-guard.mjs`, which refuses to run in a
 checkout a live fleet runs from (its `.tumwater/state/orchestrator.json` names a live pid): the
@@ -87,9 +88,10 @@ second. `test/test-runner.ts` sets the environment up for that: it puts the real
 ahead of the xcode-select shim on macOS, turns off git's auto-maintenance and init templates,
 and starts files longest-first by the durations it records in `dist/test/.durations.json`.
 
-- Install a fake command with `writeScript` (test/fakes/fake-commands.ts), never by writing and `chmod`ing a new
-  executable. macOS scans every newly created executable on its first exec (~150 ms, much more
-  under load). `writeScript` symlinks the one committed `test/fixtures/script-shim` instead.
+- Install a fake command with `writeScript` (test/fakes/fake-commands.ts), never by writing and
+  `chmod`ing a new executable. macOS scans every newly created executable on its first exec
+  (~150 ms, much more under load). `writeScript` symlinks the one committed
+  `test/fixtures/script-shim` instead.
 - Put timing on logical time rather than real sleeps. `watchdogClock` drives runPi's quiet
   watchdog, stall warning and (with `timeouts`) tick timeout; `waitForLogLines` waits until the
   run's raw log shows the output the test is about to act on.
@@ -104,16 +106,18 @@ On macOS, a Node process that sets `process.title` registers with LaunchServices
 launchservicesd keeps a Mach port for it after it exits. npm sets a title on every run and pi at
 startup. The kernel kills launchservicesd near 268K ports, and the GUI session wedges until a
 forced power-off (BUGS.md 2026-09-28). The harness starts pi and every build check with
-`withoutLaunchServicesCheckIn` (src/process/process.ts), which covers every process below them. Give any
-new spawn site that starts npm, pi or other title-setting Node programs in bulk the same
+`withoutLaunchServicesCheckIn` (src/process/process.ts), which covers every process below them.
+Give any new spawn site that starts npm, pi or other title-setting Node programs in bulk the same
 `env: withoutLaunchServicesCheckIn(process.env)`. `tumwater doctor` reports the count on its
 `mach ports` line, and a running fleet warns from 100K.
 
 ## Layout
 
-- `src/loop/loop.ts`: the runner class and its lifecycle/public surface. `src/loop/loop-pi.ts` holds its pi-run plumbing, `loop-tick.ts` the tick pipeline phases, `loop-recovery.ts` the abort/pin/recovery phases, and `loop-fallback.ts` the model-fallback fold.
-- `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts` holds its launch pass
-  (admitting due runners to their ticks).
+- `src/loop/loop.ts`: the runner class and its lifecycle/public surface. `src/loop/loop-pi.ts`
+  holds its pi-run plumbing, `loop-tick.ts` the tick pipeline phases, `loop-recovery.ts` the
+  abort/pin/recovery phases, and `loop-fallback.ts` the model-fallback fold.
+- `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
+  holds its launch pass (admitting due runners to their ticks).
 - `src/agent/`: the backend-neutral agent runner (`run-agent.ts` — the spawn, the
   `tumwater_run` marker, watchdogs, abort, group kill and marker sweep, stderr capture, and
   result assembly), the `AgentBackend` seam with its id-keyed registry (`agent-backend.ts`),
@@ -136,8 +140,9 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   truncation, integer parsing) beside the single-format homes split from it: `format.ts`
   (number, money, and hash formats), `datetime.ts` (local date/time and day math), and
   `text-width.ts` (terminal-column geometry). Presentation only; imported by every layer.
-- `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
-  the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection, fast-forward).
+- `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow,
+  on top of the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection,
+  fast-forward).
 - `src/tick/`: the per-tick pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,
   `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,
   `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
@@ -153,9 +158,9 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
   dispatcher, the read-only command bodies in `src/cli/`, and the dashboard transport in
   `src/gui/`; `test/layering.test.ts` pins that importer set.
-- `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`, `tick`, and `report`
-  CLI command bodies, beside the collector modules (`history-data.ts`, `src/tick/tick-detail-data.ts`,
-  `src/report/report-data.ts`) whose payloads they print, `src/cli/log-commands.ts` (the `logs` command body),
-  and `src/cli/cli-query-commands.ts` (the other
-  read-only command bodies).
+- `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`,
+  `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
+  `src/tick/tick-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,
+  `src/cli/log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
+  other read-only command bodies).
 - `test/`: unit tests.
