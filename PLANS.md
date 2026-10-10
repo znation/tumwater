@@ -7,61 +7,118 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires parts 6a/7 and 6b/7 landed)
+### Agent backends, part 7a/7: API per-run cap and the `budgetCapped` handback (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7b/7 and 7c/7; independent of the citation-sweep series)
 
-**Needs review 2026-10-10 by feature: too large for one run**
+Design: plans/agent-backends.md "Billing" (API runs) and §10. Siblings: 7b/7 wires the claude
+stall threshold, 7c/7 adds the opt-in smoke script; this part touches neither.
 
-Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
+**Goal.** An API-billed, non-director claude run can never overshoot the daily cap, and a run
+cut off by `error_max_budget_usd` keeps its worktree and resumes as a `handoff`.
 
 **Approach.**
-1. **Per-run cap.** Every API-billed, non-director claude run gets `--max-budget-usd` = the
-   remaining daily budget (the lower of the fleet's and the role's remaining cap). Billing is
-   read from the account state before the spawn.
-   - `budgetCapped` (from `error_max_budget_usd`) is handled like a budget handback: the
-     worktree is kept, and the next tick runs as `handoff` on the seam's fallback.
-   - A run with no `result` records cost 0 and logs `cost_unknown`.
-2. **Stall threshold.** For claude, src/pi/pi-watchdogs.ts and src/ui/progress-data.ts use
-   `bufferedCommandStallMs` for every open tool call, since claude sends no content updates.
-   They pick the backend from the `tumwater_run` marker's `agent`.
-3. **Smoke script.** `scripts/smoke-claude.mjs` (`npm run smoke:claude`) is opt-in, not part of
-   `npm test`. It runs against a temp git repo:
-   - one call on each default model (Haiku, Sonnet, Opus 5.5), so a CLI too old for one fails
-     here;
-   - a three-turn isolated run, failing if cost exceeds $0.10 (isolation regression);
-   - a `--resume`;
-   - a SIGTERM mid-tool, then a resume;
-   - an unknown-model run, which must classify as `configError`;
-   - a check that the observed `billing` matches `claude auth status`.
+- Thread the cap to the argv. `ClaudeArgOptions.maxBudgetUsd` and the `--max-budget-usd` builder
+already exist in src/agent/claude/claude-args.ts; the missing links are the carrier and the
+caller. Add an optional `maxBudgetUsd` to `PiRunOptions` (src/pi/pi.ts) and to `AgentRunSpec`
+(src/agent/agent-backend.ts), and have `claudeBackend.invocation`
+(src/agent/claude/claude-backend.ts) forward it. Compute the value in the authoring-call wiring
+that already holds `root`, the role, and the live loop states — `LoopPi.loopPiOpts`
+(src/loop/loop-pi.ts) fed from the tick wiring (src/loop/loop-tick.ts) — using
+`readClaudeAccount(root)` (src/agent/claude/claude-account.ts) and `fleetDailyCost` / `dailyCost`
+(src/budget/budget.ts). Pass a cap only when the resolved backend is claude and the account
+reports `billing: "api"`; it is `maxDailyCostUsd − fleetDailyCost`, lowered to the role's
+remaining `maxDailyCostUsdPerRole[role] − dailyCost(roleState)` when that key is set. The
+director (`DIRECTOR_ROLE`) and subscription-billed runs pass none.
+- Handle the cap hit. `PiRunResult.budgetCapped` is already set by the claude translator
+(src/agent/claude/claude-stream.ts, `error_max_budget_usd`). Nothing consumes it today. On an
+authoring result with `budgetCapped`, keep the worktree and set `state.resumePending` with a new
+`resumeCause` (e.g. `"budget-capped"`) added beside the existing union in
+src/loop/loop-state.ts and src/tick/tick-outcome.ts. `planTickStart` (src/tick/tick-resume.ts)
+only considers a handoff when `resumePending` is set, so this is what makes the next tick resume
+rather than reset the worktree; the handoff then gets the revision/conflict notes, no re-apply,
+the leased slot, and the same loop id, exactly as the part 3/7 handoffs do. The existing
+`budget-resumed` cause (src/loop/loop-recovery.ts, the mid-tick budget reopen) is unchanged; the
+bridge prompt names the new cause distinctly.
+- A run with no `result` records cost 0 and logs `cost_unknown`: confirm the translator/run-agent
+already emit it (parts 3 and 6a) and add only the missing wiring if a gap is found — do not
+rewrite it.
 
-**Interactions (`budgetCapped` handback).** Added 2026-10-09 by operator.
-- **Setting up the handoff.** `planTickStart` only considers a handoff when
-  `state.resumePending` is set, so the `budgetCapped` path must set it, with a new
-  `resumeCause` (e.g. `"budget"`, named in the bridge prompt). Otherwise the next tick runs as a
-  fresh tick and resets the worktree, losing the edits.
-- **Notes and guards.** That handoff gets everything a 3/7 handoff gets:
-  - the revision note and the conflict hand-back note;
-  - no re-apply of either;
-  - the leased slot pinned for the resume.
-- **Claims.** With parallel instances, the claim stays with the same loop id.
-- **Test.** A `budgetCapped` claude revision tick with an applied hand-back is followed by a pi
-  fallback tick with both notes and an intact worktree.
-
-**Files touched.**
-- src/agent/claude/claude-args.ts
-- src/loop/loop.ts (handback on `budgetCapped`)
-- src/pi/pi-watchdogs.ts, src/ui/progress-data.ts
-- scripts/smoke-claude.mjs (new), package.json, README.md
-
-Tests: cases in test/pi-watchdogs.test.ts, test/progress.test.ts, test/claude-args.test.ts,
-and a loop test for `budgetCapped` → handoff.
+**Files touched.** src/pi/pi.ts, src/agent/agent-backend.ts,
+src/agent/claude/claude-backend.ts, src/loop/loop-pi.ts, src/loop/loop-tick.ts,
+src/loop/loop-state.ts, src/tick/tick-outcome.ts, src/tick/tick-resume.ts. Tests:
+test/claude-args.test.ts and a loop test for `budgetCapped` → handoff.
 
 **Acceptance criteria.**
-- **Cap math.** On API billing, with $12 of a $15 cap spent, a claude author run gets
-  `--max-budget-usd 3`. The director gets none, and a subscription-billed run gets none.
-- **Stall warning.** A claude Bash call open for longer than `toolCallStallSeconds` but shorter
-  than `bufferedCommandStallMs` raises no stall warning.
-- **Smoke.** `npm run smoke:claude` passes on a logged-in machine. Run it once by hand and record
-  the result in the landing commit body.
+- On API billing, with $12 of a $15 fleet cap spent and no per-role cap, an authoring claude
+run's argv carries `--max-budget-usd 3`; a subscription-billed run's and the director's argv
+carry no `--max-budget-usd`.
+- With `maxDailyCostUsdPerRole[role] = 2` and $1.50 of the role's spend, the argv carries
+`--max-budget-usd 0.5` (the role's remaining is lower than the fleet's remaining).
+- A `budgetCapped` authoring result sets `resumePending` and leaves the worktree edits in place;
+the next tick runs as `handoff` with the budget-capped cause.
+- `npm run test` green.
+
+### Agent backends, part 7b/7: the claude tool-call stall threshold (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7c/7; independent of the citation-sweep series)
+
+Design: plans/agent-backends.md "Watchdogs and progress". Sibling 7a/7 wires the API cap and
+its handback; this part touches neither budget nor argv.
+
+**Goal.** A claude tool call that sends no content update is judged stalled at
+`bufferedCommandStallMs`, not `toolCallStallSeconds`, so long verification commands stop crying
+wolf (BUGS.md 2026-09-28's lesson); pi keeps today's per-command classification.
+
+**Approach.** The run's backend is already known on both surfaces: runAgent holds `backend.id`
+(src/agent/run-agent.ts) and the `tumwater_run` marker already carries `agent`, which
+src/ui/progress-data.ts reads into `LiveProgress` (`agent?: string`).
+- runPi's warning: `createWatchdogs` (src/pi/pi-watchdogs.ts) — its openToolCalls loop currently
+calls `commandBuffersOutput(call.command || call.label)` to pick the buffered threshold. Add the
+run's backend id to the watchdog deps; when it is `"claude"`, take the `bufferedCommandStallMs`
+branch for every open call.
+- progress-data's flag: `stalledToolLabel` (src/ui/progress-data.ts) does the same classification
+for the role's state cell; give it the current run's `agent` (from the marker already stored on
+`LiveProgress`, defaulting to pi when no marker precedes the run) and apply the same rule, so the
+state cell and the event feed agree on "stalled".
+
+**Files touched.** src/pi/pi-watchdogs.ts, src/ui/progress-data.ts, src/agent/run-agent.ts (feed
+the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
+
+**Acceptance criteria.**
+- A claude Bash call open longer than `toolCallStallSeconds` but shorter than
+`bufferedCommandStallMs` raises no stall warning on either surface.
+- The same call open past `bufferedCommandStallMs` raises the stall warning on both surfaces.
+- A pi non-buffered call still warns at `toolCallStallSeconds`.
+- `npm run test` green.
+
+### Agent backends, part 7c/7: the opt-in `smoke:claude` live check (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7b/7; independent of the citation-sweep series)
+
+Design: plans/agent-backends.md "Testing". Siblings 7a/7 and 7b/7 cover the cap and the stall
+threshold; this part is the live check only and changes no production path.
+
+**Goal.** A machine with a logged-in claude can run one opt-in command that exercises the live
+CLI end to end, so a regression the fake shim cannot see fails here by hand and not in the fleet.
+
+**Approach.** Add a new `smoke-claude` Node ESM script under `scripts/` (no dependencies) and a
+`"smoke:claude"` entry in package.json that runs it. The script builds a
+throwaway git repo under `fs.mkdtemp` and drives the real `claude` on PATH, printing a named
+PASS/FAIL per check and exiting nonzero on the first failure:
+- one call on each default model (Haiku, Sonnet, Opus 5.5), so a CLI too old for one fails here;
+- an isolated three-turn run that fails if total cost exceeds $0.10 (the isolation regression);
+- a `--resume` of that session;
+- a SIGTERM mid-tool call followed by a resume;
+- an unknown-model run that must classify as `configError`;
+- a check that the observed `billing` matches `claude auth status`, and that
+`claude-account.json` gained a window reading when the billing is subscription.
+It must not run under `npm test` (it costs money and needs auth): keep the script's own env
+setup, and leave `test-runner.ts`'s `TUMWATER_CLAUDE_BIN`/`CLAUDECODE`/`CLAUDE_CODE_*` stripping
+as is. Document it in README.md as opt-in.
+
+**Files touched.** a new `smoke-claude` script under `scripts/`, package.json, README.md.
+
+**Acceptance criteria.**
+- `npm run smoke:claude` is defined and is referenced nowhere in the `npm test` path; `npm run
+test` stays green on a machine with no claude installed.
+- Each check prints a named PASS/FAIL and the script exits nonzero on failure.
+- On a logged-in machine the script passes; run it once by hand and record the result in the
+landing commit body.
 - `npm run test` green.
 
 ### Finish the stale code-path citation sweep, part 2a/5: `plans/portability.md`, part 5/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
