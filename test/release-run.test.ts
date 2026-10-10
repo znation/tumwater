@@ -10,8 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { headSha, pushedRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { pathPrepend, writeScript } from "./fakes/fake-commands.js";
+import { gitOnlyBinDir, headSha, pushedRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
 
@@ -94,6 +94,28 @@ test("release dies naming the command when gh exits 0 with non-JSON", () => {
     assert.match(r.stderr, /gh run list .* exited 0 but printed non-JSON/);
     assert.match(r.stderr, /not json/, "the refusal quotes the text gh printed");
     assert.doesNotMatch(r.stderr, /SyntaxError/, "the parse error never reaches the operator raw");
+  } finally {
+    restore();
+  }
+});
+
+test("release dies naming a gh it cannot execute instead of waiting for CI that never starts", () => {
+  const { root } = pushedRepo("0.1.0");
+  // The release path's strict gh() must surface an EACCES spawn failure (a non-executable
+  // gh) immediately. Before, status null read as "no run yet" and the release waited out the
+  // five-minute CI-start window before reporting the misleading "CI never started". PATH is
+  // replaced so execvp cannot skip the non-executable gh for a real one further down.
+  const bin = gitOnlyBinDir("release-gh-noexec-");
+  fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(path.join(bin, "gh"), 0o644);
+
+  const restore = pathReplace(bin);
+  try {
+    const r = runRelease(root, []);
+
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /could not run `gh`/);
+    assert.doesNotMatch(r.stderr, /CI never started/, "the real cause replaces the misleading timeout");
   } finally {
     restore();
   }

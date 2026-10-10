@@ -53,6 +53,44 @@ test("--status names the missing gh instead of dying when origin answers but gh 
   }
 });
 
+test("--status names a gh it cannot execute instead of claiming no run", () => {
+  const { root } = pushedRepo();
+  // A gh that exists on PATH but lacks the execute bit makes spawnSync fail with EACCES
+  // (status null, error set). PATH is replaced — not prepended — so execvp cannot skip it
+  // for a real gh further down, and the branch is reached deterministically.
+  const bin = gitOnlyBinDir("release-gh-noexec-");
+  fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(path.join(bin, "gh"), 0o644);
+
+  const restore = pathReplace(bin);
+  try {
+    const r = status(root);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /CI: could not run `gh`/);
+    assert.doesNotMatch(r.stdout, /no run yet for HEAD/, "a spawn failure is not masked as no run");
+  } finally {
+    restore();
+  }
+});
+
+test("--status names a gh killed by a signal instead of claiming no run", () => {
+  const { root } = pushedRepo();
+  // A signalled gh leaves status null with no error property, so it reaches the branch after
+  // the error check. It must report the signal, not fall through to "no run yet for HEAD".
+  const bin = tmpdir("release-gh-signal-");
+  writeScript(path.join(bin, "gh"), "kill -9 $$");
+
+  const restore = pathPrepend(bin);
+  try {
+    const r = status(root);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /CI: `gh` was killed by SIGKILL/);
+    assert.doesNotMatch(r.stdout, /no run yet for HEAD/, "a signal is not masked as no run");
+  } finally {
+    restore();
+  }
+});
+
 test("--status reports the latest CI run from gh's JSON, not the array's last row", () => {
   const { root } = pushedRepo();
   const bin = tmpdir("release-gh-");

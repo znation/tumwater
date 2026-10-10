@@ -60,6 +60,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function gh(args) {
   const out = spawnSync("gh", args, { cwd: root, encoding: "utf8" });
   if (out.error?.code === "ENOENT") die("`gh` is not on PATH — install the GitHub CLI to cut releases.");
+  // A spawn failure that is not "not installed" (EACCES on a non-executable gh, EMFILE under
+  // load) leaves status null, as does a gh killed by a signal. Reading either as "no run yet"
+  // would stall the release for five minutes and then report the misleading "CI never started";
+  // name the real cause instead.
+  if (out.error) die(`could not run \`gh\` (${out.error.message}) — check that the GitHub CLI is installed and executable.`);
+  if (out.status === null) die(`\`gh\` was killed by ${out.signal ?? "an unknown signal"}`);
   if (out.status !== 0) return null; // e.g. no run yet for this commit
   try {
     return JSON.parse(out.stdout);
@@ -70,12 +76,17 @@ function gh(args) {
   }
 }
 
-/** gh for `--status`: the latest run, or the reason gh could not answer (absent from PATH, or
- * output that is not JSON). A non-zero exit stays "no run yet", matching the strict gh(). The
- * release path keeps strict gh(), which dies. */
+/** gh for `--status`: the latest run, or the reason gh could not answer (absent from PATH, a
+ * spawn failure such as a non-executable gh, or output that is not JSON). A non-zero exit
+ * stays "no run yet", matching the strict gh(). The release path keeps strict gh(), which
+ * dies. */
 function ghSoft(args) {
   const out = spawnSync("gh", args, { cwd: root, encoding: "utf8" });
   if (out.error?.code === "ENOENT") return { error: "`gh` is not on PATH" };
+  // Any other spawn failure (EACCES, EMFILE) or a signal termination must read as its own
+  // cause, not as "no run yet for HEAD" — the same masking gh() above now refuses.
+  if (out.error) return { error: `could not run \`gh\` (${out.error.message})` };
+  if (out.status === null) return { error: `\`gh\` was killed by ${out.signal ?? "an unknown signal"}` };
   if (out.status !== 0) return { run: null };
   try {
     return { run: latestRun(JSON.parse(out.stdout)) };
