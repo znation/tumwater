@@ -167,9 +167,7 @@ and a loop test for `budgetCapped` → handoff.
   the result in the landing commit body.
 - `npm run test` green.
 
-### Finish the stale code-path citation sweep, part 1/5: `plans/portability.md`, parts 1/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 2/5–5/5)
-
-**Needs review 2026-10-10 by feature: too large for one run**
+### Finish the stale code-path citation sweep, part 1a/5: `plans/portability.md`, parts 1/7–2/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** Every path-shaped token in this part's plan-document sections names a path that exists
 in the tree, every `<path>:<line>` names a line the file actually has, and a module that has
@@ -181,13 +179,10 @@ classes — a helper pinned to the wrong landing module, a build-scope call pinn
 module, and line pins past the file's end.
 
 **Scope.** `plans/portability.md` sections "1/7 — GitHub Actions CI and a publishable npm
-package", "2/7 — Resolve the repo root, and target any branch", "3/7 — Harness-mediated config
-writes: take custom loops off the commit path", "4a/7 — Seed an untracked config from a tracked
-template", "4b/7 — Untrack this repo's own config without deleting it", and "4c/7 — Move README's
-rig notes into docs/backends.md". Disjoint from parts 2/5–5/5, so the parts land cleanly in any
-order.
+package" and "2/7 — Resolve the repo root, and target any branch". Disjoint from the other
+citation-sweep parts, so the parts land cleanly in any order.
 
-**Method (parts 2/5–5/5 apply this same four-step method to their own scope).**
+**Method (the other citation-sweep parts apply this same four-step method to their own scope).**
 1. Inventory: scan the scope for path-shaped tokens and keep the ones whose path is absent from
    the tree; separately list every `<path>:<line>` whose line is past the file's end. A clean
    inventory over the scope is the acceptance check.
@@ -214,16 +209,51 @@ order.
   (checked against the module's export list).
 - `npm run test` is green.
 
-### Finish the stale code-path citation sweep, part 2/5: `plans/portability.md`, parts 5/7–7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+### Finish the stale code-path citation sweep, part 1b/5: `plans/portability.md`, part 3/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "3/7 —
+Harness-mediated config writes: take custom loops off the commit path" section.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to this section.
+
+**Files touched.** `plans/portability.md` (only the named section). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named section reports no cited path absent from the tree.
+- No `<path>:<line>` in the named section names a line past that file's end.
+- For each split module cited in the named section, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 1c/5: `plans/portability.md`, parts 4a/7–4c/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 1/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "4a/7 — Seed an
+untracked config from a tracked template", "4b/7 — Untrack this repo's own config without
+deleting it", and "4c/7 — Move README's rig notes into docs/backends.md" sections.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these sections.
+
+**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named sections reports no cited path absent from the tree.
+- No `<path>:<line>` in the named sections names a line past that file's end.
+- For each split module cited in the named sections, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 2/5: `plans/portability.md`, parts 5/7–7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Needs review 2026-10-10 by feature: too large for one run**
 
-**Goal.** The same citation invariant as part 1/5, for `plans/portability.md`'s "5/7 — Make the
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "5/7 — Make the
 agent binary configurable", "6/7 — Make the project's verification command configurable", and
 "7/7 — Adopt an existing repository without hijacking its README" sections.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1/5, applied to these sections. Its `5/7` and `6/7` prose is the densest source of line pins
+part 1a/5, applied to these sections. Its `5/7` and `6/7` prose is the densest source of line pins
 past a file's end, and `7/7` cites the config and merge splits.
 
 **Files touched.** `plans/portability.md` (only the named sections). No source or test change.
@@ -235,14 +265,14 @@ past a file's end, and `7/7` cites the config and merge splits.
   (checked against the module's export list).
 - `npm run test` is green.
 
-### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
-**Goal.** The same citation invariant as part 1/5, for the plan documents that cite the config
+**Goal.** The same citation invariant as part 1a/5, for the plan documents that cite the config
 and model splits: `plans/daily-cost-budget.md`, `plans/fallback-model.md`, and
 `plans/model-tiers.md`.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1/5, applied to these three files. Their absent paths are the `types`, `config`, `loop`,
+part 1a/5, applied to these three files. Their absent paths are the `types`, `config`, `loop`,
 `orchestrator`, `pi`, `state`, and `status` module moves, so the split-aware map is exercised
 across several owners.
 
@@ -255,14 +285,14 @@ across several owners.
   the module's export list).
 - `npm run test` is green.
 
-### Finish the stale code-path citation sweep, part 4/5: the observer, QA, questions, review, and steward plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+### Finish the stale code-path citation sweep, part 4/5: the observer, QA, questions, review, and steward plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
-**Goal.** The same citation invariant as part 1/5, for `plans/observer-roles.md`,
+**Goal.** The same citation invariant as part 1a/5, for `plans/observer-roles.md`,
 `plans/qa-role.md`, `plans/questions-outbox.md`, `plans/review-gate.md`, and
 `plans/steward-role.md`.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1/5, applied to these five files. Their absent paths are the `loop`, `types`, `config`,
+part 1a/5, applied to these five files. Their absent paths are the `loop`, `types`, `config`,
 `orchestrator`, `state`, `questions`, and `status-render` module moves, and
 `plans/observer-roles.md` also carries one out-of-range pin.
 
@@ -275,10 +305,10 @@ part 1/5, applied to these five files. Their absent paths are the `loop`, `types
   the module's export list).
 - `npm run test` is green.
 
-### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are parts 1/5–5/5)
+### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
-**Goal.** The same citation invariant as part 1/5, for every `plans/*.md` file not assigned to
-parts 1/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
+**Goal.** The same citation invariant as part 1a/5, for every `plans/*.md` file not assigned to
+parts 1a/5–1c/5 and 2/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
 `plans/commit-bodies.md`, `plans/refusal-and-thrash.md`, `plans/repair-traces.md`,
 `plans/telemetry-role.md`, and `plans/user-defined-loops.md`; the rest
 (`plans/disk-floor.md`, `plans/merge-queue.md`, `plans/parallel-work-instances.md`,
@@ -287,10 +317,10 @@ parts 1/5–4/5. The inventory today flags stale citations in `plans/agent-backe
 missed.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1/5, applied to this scope. `plans/repair-traces.md` and `plans/telemetry-role.md` carry the
+part 1a/5, applied to this scope. `plans/repair-traces.md` and `plans/telemetry-role.md` carry the
 out-of-range pins here; `plans/telemetry-role.md` also cites the `failure-report` module split.
 
-**Files touched.** `plans/*.md` files not assigned to parts 1/5–4/5. No source or test change.
+**Files touched.** `plans/*.md` files not assigned to parts 1a/5–1c/5 and 2/5–4/5. No source or test change.
 
 **Acceptance criteria.**
 - The inventory over this scope reports no cited path absent from the tree.
