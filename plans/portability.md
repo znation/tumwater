@@ -1065,47 +1065,47 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 - **Doctor says when there is no check at all**, at `warn` with the consequence spelled out ("the
   review gate's build pre-check, the red-main baseline, and redeploy's green check are all off").
   This deliberately supersedes `checkBuildCheck`'s 2026-09-05 "none declared is informational"
-  stance (doctor.ts:187): that decision predates non-npm projects being a supported target, when a
+  stance (src/doctor/doctor-checks.ts): that decision predates non-npm projects being a supported target, when a
   warn would have been noise no operator could act on. Once `check.command` exists the warning is
   actionable, so the branch flips to `warn`, its stale comment is rewritten, and doctor's exit code
   is unchanged (warn does not fail — the `checkFallbackModel` precedent). A silently absent safety
   layer is the failure this entry exists to close.
 
 **Approach.**
-- src/types.ts + src/config-validation.ts — `check?: { command: string; cwd?: string; timeoutSeconds?: number }`,
+- src/config/config-schema.ts + src/config/config-validation.ts — `check?: { command: string; cwd?: string; timeoutSeconds?: number }`,
   a `CHECK_KEYS` list, and the `TOP_LEVEL_KEYS` entry.
-- src/build-check/build-check-detect.ts (detection, split out of build-check/build-check.ts by 3261751) — `BuildCheck`
-  (:16) becomes the union `{ kind: "npm"; rootDir; script }` | `{ kind: "command"; command; cwd;
-  timeoutMs }`; `detectBuildCheck(startDir, config?, maxLevels = WALK_UP_LEVELS)` (:103) returns
-  the configured command first and falls back to the existing walk-up; `buildCheckFrom` (:45)
-  stays the npm-only constructor and keeps returning null; `describeCheck(check)` joins this
-  module (pure text beside the union it describes). The module's second export,
-  `resolveFromNodeModules` (:117 — build-stage.ts's compile resolves the project's own tsc with
+- src/build/build-check-detect.ts (detection, split out of src/build/build-check.ts by 3261751) — `BuildCheck`
+  becomes the union `{ kind: "npm"; rootDir; script }` | `{ kind: "command"; command; cwd;
+  timeoutMs }`; `detectBuildCheck(startDir, config?, maxLevels = WALK_UP_LEVELS)` returns
+  the configured command first and falls back to the existing walk-up; `buildCheckFrom`
+  stays the npm-only constructor and keeps returning null; `describeCheck(check)` lives in src/build/build-check-report.ts (the human-facing text beside the union it describes). The module's second export,
+  `resolveFromNodeModules` (build-stage.ts's compile resolves the project's own tsc with
   it), is untouched: a configured command needs no node_modules walk at all.
-- src/build-check/build-check.ts — `runBuildCheck` (:264) dispatches on `kind` with the classification above.
-  `clipBuildTail` (:133) keeps its npm-banner filter and
-  its message-line retention — the error-message line above the ten-line window is kept so
-  `failureHeadline` (:162, moved here from main-red.ts by d39e426) can name the failure — and both
+- src/build/build-check.ts — `runBuildCheck` dispatches on `kind` with the classification above.
+  `clipBuildTail` and `failureHeadline` (src/build/build-check-report.ts; `failureHeadline` moved
+  there from main-red.ts by d39e426) keep the npm-banner filter and
+  message-line retention — the error-message line above the ten-line window is kept so
+  `failureHeadline` can name the failure — and both
   operate on arbitrary output text, so a configured command's output is classified unchanged.
-- src/prompt/prompt.ts — thread `describeCheck` into COMMON_RULES; drop the unconditional node_modules
+- src/prompt/prompt.ts — thread `describeCheck` into commonRules; drop the unconditional node_modules
   sentence.
 - Threading config to `detectBuildCheck` reaches three call sites, not two: `runScopedBuildCheck(root,
-  role, scope, wt, config, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` (build-check/build-check.ts:359) calls
-  `detectBuildCheck(wt)` itself (:366) and serves the `gate` (src/review/review.ts:216 and the post-fix
-  recheck :267), `landing` (src/merge.ts:155) and `batch` (src/landing-batch.ts:229) scopes;
+  role, scope, wt, config, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` (src/build/build-check-scoped.ts) calls
+  `detectBuildCheck(wt)` itself and serves the `gate` (src/review/review-precheck.ts),
+  `landing` (src/landing/landing-merge.ts) and `batch` (src/landing/landing-batch.ts) scopes;
   `checkMainBaseline`
-  (src/baseline/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
+  (src/baseline/main-baseline.ts — its signature grows to `checkMainBaseline(wt, config, onRun?,
   reverifyRed?)`, config required in the 2nd position: detection needs it, and an optional
   trailing parameter would let future callers skip it) calls `detectBuildCheck(wt)` +
-  `runBuildCheck` at :146/:149; and `checkBuildCheck` (src/doctor/doctor.ts:274) calls it at :275. Add the
-  config parameter to all three, plus `config: TumwaterConfig` on `MergeContext` (src/merge.ts:42,
-  set beside `exemptPaths` in the object literal inside `LoopRunner.merge` — src/loop.ts:271;
-  review.ts's GateContext (:90) and landing-batch.ts's BatchContext (:23) already hold it).
+  `runBuildCheck`; and `checkBuildCheck` (src/doctor/doctor-checks.ts) calls it. Add the
+  config parameter to all three, plus `config: TumwaterConfig` on `MergeContext` (src/landing/landing-merge.ts,
+  set beside `exemptPaths` in the object literal inside `LoopRunner.merge` — src/loop/loop.ts;
+  src/review/review.ts's `ReviewContext` and src/landing/landing-batch.ts's BatchContext already hold it).
   `checkMainBaseline`'s three callers
-  thread it too: src/baseline/main-red.ts's `mainRedGate` passes the `cfg` it already loads (:87) at its
-  :89 call, `bugfixMainRedNote` (:68) gains the same `loadConfigCached(root).config ??
-  defaultConfig()` load for its :69 call, and src/redeploy/redeploy.ts's `mainIsGreen(mirrorWt, config,
-  onRun?)` (:431) takes config, with the production wiring at createRedeployer (:456) reading the
+  thread it too: src/baseline/main-red.ts's `mainRedGate` passes the `cfg` it already loads at its
+  call, `bugfixMainRedNote` gains the same `loadConfigCached(root).config ??
+  defaultConfig()` load for its call, and src/baseline/main-baseline.ts's `mainIsGreen(mirrorWt, config,
+  onRun?)` takes config, with the production wiring at createRedeployer (src/redeploy/redeploy.ts) reading the
   live config per call — so src/baseline/main-red.ts and src/redeploy/redeploy.ts join this entry's files.
 - src/doctor/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
   case.
@@ -1119,10 +1119,11 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   check run it), test/main-red.test.ts passes unmodified (neither exported signature changes; the
   internal config load degrades to defaults in a tmp repo), test/doctor.test.ts.
 
-**Files touched.** src/types.ts, src/config-validation.ts, src/build-check/build-check-detect.ts,
-src/build-check/build-check.ts, src/prompt/prompt.ts,
-src/review/review.ts, src/merge.ts, src/landing-batch.ts, src/baseline/main-baseline.ts, src/baseline/main-red.ts, src/redeploy/redeploy.ts,
-src/loop.ts, src/doctor/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
+**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts, src/build/build-check-detect.ts,
+src/build/build-check.ts, src/build/build-check-scoped.ts, src/build/build-check-events.ts, src/build/build-check-report.ts,
+src/prompt/prompt.ts,
+src/review/review-precheck.ts, src/review/review.ts, src/landing/landing-merge.ts, src/landing/landing-batch.ts, src/baseline/main-baseline.ts, src/baseline/main-red.ts, src/redeploy/redeploy.ts,
+src/loop/loop.ts, src/doctor/doctor-checks.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 
 **Acceptance criteria.**
@@ -1150,49 +1151,49 @@ re-verified; the "two-site change"
 claim is now wrong in three ways, and one acceptance criterion contradicts existing merge-scope
 policy. Corrected in place above; the pins follow.**
 
-Verified as written: src/prompt/prompt.ts's node_modules sentence is still lines 74–76 and the vague
-"if it has a build or test command" line 78; `detectBuildCheck` (src/build-check/build-check.ts:114) still
-walks up for `package.json` + `node_modules` and prefers test → typecheck → build via the private
-`buildCheckFrom` (line 71); `BUILD_CHECK_TIMEOUT_MS` is 300_000 (line 140); `BuildCheckOutcome`
-(line 150) keeps `passed|failed|skipped` with `skipReason: "timeout" | "no-npm" | "toolchain"`;
-src/doctor/doctor.ts:145 still calls `detectBuildCheck(root)` directly; `TOP_LEVEL_KEYS`
-(src/config-validation.ts:33) has no `check`, and `checkKnownKeys` (line 136) is the guard that
-rejects unknown keys. Capability absence re-confirmed: `grep -rn '"check"\|check:' src/types.ts
-src/config-validation.ts` finds nothing, and no prompt or template mentions a configured check.
+Verified as written (at `94562d8`): src/prompt/prompt.ts's node_modules sentence and the vague
+"if it has a build or test command" bullet were in `commonRules`; `detectBuildCheck` (src/build/build-check-detect.ts) then
+walked up for `package.json` + `node_modules` and preferred test → typecheck → build via the private
+`buildCheckFrom`; `BUILD_CHECK_TIMEOUT_MS` was 300_000; `BuildCheckOutcome`
+(src/build/build-check.ts) kept `passed|failed|skipped` with `skipReason: "timeout" | "no-npm" | "toolchain"`;
+src/doctor/doctor-checks.ts then called `detectBuildCheck(root)` directly; `TOP_LEVEL_KEYS`
+(src/config/config-schema.ts) had no `check`, and `checkKnownKeys` (src/config/config-field-checks.ts) was the guard that
+rejects unknown keys. Capability absence re-confirmed: `grep -rn '"check"\|check:' src/config/config-schema.ts
+src/config/config-validation.ts` finds nothing, and no prompt or template mentions a configured check.
 
 Corrections (pinned; the three stale spots are already corrected in place):
-1. **`checkMainBaseline` is in src/baseline/main-baseline.ts, not build-check/build-check.ts — and main-red.ts needs
-   no change.** `checkMainBaseline` (src/baseline/main-baseline.ts:137) calls `detectBuildCheck(wt)` +
-   `runBuildCheck(wt, check)` itself (line 159), so it is a third `detectBuildCheck` site the plan
-   must thread; src/baseline/main-red.ts imports only `checkMainBaseline` from it (now line 5; `failureHeadline` comes from
-   build-check/build-check.ts) and
-   passes an `onRun` hook, and src/redeploy/redeploy.ts:469 calls it too. The files bullet now names
+1. **`checkMainBaseline` is in src/baseline/main-baseline.ts, not src/build/build-check.ts — and main-red.ts needs
+   no change.** `checkMainBaseline` (src/baseline/main-baseline.ts) calls `detectBuildCheck(wt)` +
+   `runBuildCheck(wt, check)` itself, so it is a third `detectBuildCheck` site the plan
+   must thread; src/baseline/main-red.ts imports only `checkMainBaseline` from it (`failureHeadline` comes from
+   src/build/build-check-report.ts) and
+   passes an `onRun` hook, and src/baseline/main-baseline.ts's `mainIsGreen` calls it too. The files bullet now names
    `src/baseline/main-baseline.ts` in place of `src/baseline/main-red.ts` and `test/main-baseline.test.ts` in place of
    `test/main-red.test.ts`.
 2. **The threading surface is three `detectBuildCheck` sites plus a new `batch` scope, not
-   "two".** `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` (src/build-check/build-check.ts:302) now
-   serves `gate` (src/review/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376);
-   `BuildCheckScope`/`MERGE_SCOPES` (lines 269/281) postdate the last audit. Config must reach
-   `detectBuildCheck` at src/build-check/build-check.ts:309, src/baseline/main-baseline.ts:159, and src/doctor/doctor.ts:145.
-   Pinned mechanism: add `config` as an explicit parameter to `runScopedBuildCheck` (review.ts and
-   lander.ts already hold it; `MergeContext` does not — add `config: TumwaterConfig` to
-   src/merge.ts:42 and set it beside `exemptPaths` at its construction site, src/loop.ts:230) and
+   "two".** `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` (src/build/build-check-scoped.ts) now
+   serves `gate` (src/review/review-precheck.ts), `landing` (src/landing/landing-merge.ts) and `batch` (src/landing/landing-batch.ts);
+   `BuildCheckScope`/`MERGE_SCOPES` (src/build/build-check-events.ts) postdate the last audit. Config must reach
+   `detectBuildCheck` in src/build/build-check-scoped.ts, src/baseline/main-baseline.ts, and src/doctor/doctor-checks.ts.
+   Pinned mechanism: add `config` as an explicit parameter to `runScopedBuildCheck` (src/review/review-precheck.ts and
+   src/landing/landing-batch.ts already hold it; `MergeContext` does not — add `config: TumwaterConfig` to
+   src/landing/landing-merge.ts and set it beside `exemptPaths` at its construction site, src/loop/loop.ts) and
    to `checkMainBaseline` and `detectBuildCheck`. Prefer this over `loadConfig(root)` inside the
    helper: tests build configs in memory, and a hidden disk read makes detection untestable in
    isolation.
 3. **`detectBuildCheck`'s second positional is `maxLevels`.** `detectBuildCheck(startDir,
    maxLevels = WALK_UP_LEVELS)` already spends its 2nd argument, and four tests pass it there
-   (test/build-check.test.ts:276/287/288, test/review.test.ts:424). Pin the new signature as
+   (test/build-check.test.ts, test/review.test.ts). Pin the new signature as
    `detectBuildCheck(startDir, config?, maxLevels = WALK_UP_LEVELS)` and update those four call
    sites to `(dir, undefined, N)`.
 4. **Configured timeout precedence was unnamed.** `runScopedBuildCheck` takes an explicit
-   `timeoutMs`, and src/review/review.ts:157 passes `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS`
+   `timeoutMs`, and src/review/review-precheck.ts passes `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS`
    — which would override a configured `check.timeoutSeconds`. Pin the order: explicit per-scope
    argument > `check.timeoutSeconds * 1000` > `BUILD_CHECK_TIMEOUT_MS`; `runScopedBuildCheck`'s
    default and main-baseline.ts's `runBuildCheck(wt, check)` call both read the configured value,
    while the review gate's explicit override still wins.
 5. **The "classified skipped" acceptance criterion contradicted merge-scope policy.** A timeout at
-   `landing`/`batch` is remapped to `failed` by `MERGE_SCOPES` (build-check/build-check.ts), with the "the tree
+   `landing`/`batch` is remapped to `failed` by `MERGE_SCOPES` (src/build/build-check-events.ts), with the "the tree
    is unverified" reason and a warning — by design, since a landing check that times out must not
    merge unverified (BUGS.md 2026-09-18). Corrected in place: gate → `skipped` + proceed; landing/
    batch → `failed` + reject, for the configured command exactly as for npm.
@@ -1202,11 +1203,11 @@ Corrections (pinned; the three stale spots are already corrected in place):
    already exists (i.e. after 4a/7), otherwise 4a/7's template carries it. `tumwater.example.json` is
    not added to 6/7's files touched.
 7. **`BuildCheck` is private.** The plan's union replaces the private `interface BuildCheck`
-   (src/build-check/build-check.ts:42, today `{ rootDir; script }`), whose only constructor is `buildCheckFrom`
-   (line 71). Pin: export the union type so `describeCheck` and the tests can name the configured
+   (src/build/build-check-detect.ts, today `{ rootDir; script }`), whose only constructor is `buildCheckFrom`.
+   Pin: export the union type so `describeCheck` and the tests can name the configured
    variant; no other module constructs a `BuildCheck` directly.
 
-Sizing: unchanged apart from the wider threading surface — build-check/build-check.ts ~60 lines (union +
+Sizing: unchanged apart from the wider threading surface — src/build ~60 lines (union +
 `buildCheckFrom` variant + dispatch + `describeCheck`), main-baseline.ts ~5, doctor.ts ~10,
 prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring), config-validation/types
 ~10, tests ~180. One run. No design question remains open.
@@ -1214,44 +1215,44 @@ prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring), config
 **Refined 2026-09-21 (plan loop) — 6/7 re-audited against main `ada3948` (README's stamp is
 behind at `c2ff74b`). This entry carried the series' oldest audit (`94562d8`, 2026-09-18, ~222
 landings back; of the three 09-18-dated entries 6/7's anchor files took by far the most churn —
-~43 commits across its src files, 7 of them in build-check/build-check.ts alone, including three post-audit
+~43 commits across its src files, 7 of them in src/build/build-check.ts alone, including three post-audit
 semantic changes). The design holds unchanged; two seams the 09-18 audit left open are closed
 below, and every drifted line anchor is re-pinned.**
 
-Verified as written: no `check` key exists anywhere in src/types.ts or src/config-validation.ts,
-so the capability is still absent. `src/build-check/build-check.ts` — `BuildCheck` is still the private
-`{ rootDir; script }` interface (:43, was :42), `buildCheckFrom` (:72, was :71, hardened by
-5da2e2c to reject a non-object package.json and a whitespace-only script), `WALK_UP_LEVELS` :54,
-`detectBuildCheck(startDir, maxLevels = WALK_UP_LEVELS)` :130 (was :114), `BUILD_CHECK_TIMEOUT_MS`
-300_000 :156 (was :140), `BuildSkipReason` now a standalone exported type :162 (extracted by
-f4c4d0b, shared with main-baseline.ts's check), `BuildCheckOutcome` :172 (was :150) with the same
-three states and the same timeout-remap policy, `clipBuildTail` :235, `failureHeadline` :255,
-`runBuildCheck(wt, check, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` :269, `BuildCheckScope` :320 /
-`SCOPE_WORDS` :325 / `MERGE_SCOPES` :337 (were :269/:281), `runScopedBuildCheck` :368 (was :302)
-whose internal `detectBuildCheck(wt)` is :375 and `runBuildCheck` :378. The three scopes serve
-`gate` (src/review/review.ts:161, was :157, still passing `ctx.buildCheckTimeoutMs ??
-BUILD_CHECK_TIMEOUT_MS` at :166), `landing` (src/merge.ts:151, unchanged) and `batch`
-(src/lander.ts:394, was :376). `src/prompt/prompt.ts` — COMMON_RULES (:53) still carries the
-unconditional node_modules sentence (:75–77, was 74–76) and the vague "if it has a build or test
-command" bullet (:79, was :78). `src/doctor/doctor.ts` — the direct `detectBuildCheck(root)` call now
-lives in `checkBuildCheck` (:184, was :145) at :185, and its no-check branch still returns `ok`
-(:187). `MergeContext` (src/merge.ts:42) still has no `config`; its single construction site is
-the object literal inside `LoopRunner.merge` at src/loop.ts:257–264 (`exemptPaths` at :261; was
-:230 — loop.ts:297 is the lander's context, which already carries config, and :588 is
-recoverLeftover's). `review.ts` (:61) and `lander.ts` (:50/:71) still hold config.
-maxLevels-as-second-positional test call sites are now test/build-check.test.ts:274/:285/:286 and
-test/review.test.ts:475 (were :276/:287/:288/:424).
+Verified as written (at `ada3948`): no `check` key exists anywhere in src/config/config-schema.ts or src/config/config-validation.ts,
+so the capability is still absent. src/build/build-check-detect.ts — `BuildCheck` is still the private
+`{ rootDir; script }` interface, `buildCheckFrom` (hardened by
+5da2e2c to reject a non-object package.json and a whitespace-only script), `WALK_UP_LEVELS`,
+`detectBuildCheck(startDir, maxLevels = WALK_UP_LEVELS)`, `BUILD_CHECK_TIMEOUT_MS`
+(300_000); src/build/build-check.ts — `BuildSkipReason` now a standalone exported type (extracted by
+f4c4d0b, shared with main-baseline.ts's check), `BuildCheckOutcome` with the same
+three states and the same timeout-remap policy, `runBuildCheck(wt, check, timeoutMs = BUILD_CHECK_TIMEOUT_MS)`;
+src/build/build-check-report.ts — `clipBuildTail`, `failureHeadline`;
+src/build/build-check-events.ts — `BuildCheckScope` /
+`SCOPE_WORDS` / `MERGE_SCOPES`; src/build/build-check-scoped.ts — `runScopedBuildCheck`
+whose internal `detectBuildCheck(wt)` and `runBuildCheck` follow. The three scopes serve
+`gate` (src/review/review-precheck.ts, still passing `ctx.buildCheckTimeoutMs ??
+BUILD_CHECK_TIMEOUT_MS`), `landing` (src/landing/landing-merge.ts) and `batch`
+(src/landing/landing-batch.ts). `src/prompt/prompt.ts` — commonRules still carries the
+unconditional node_modules sentence and the vague "if it has a build or test
+command" bullet. `src/doctor/doctor-checks.ts` — the direct `detectBuildCheck(root)` call now
+lives in `checkBuildCheck`, and its no-check branch still returns `ok`.
+`MergeContext` (src/landing/landing-merge.ts) still has no `config`; its single construction site is
+the object literal inside `LoopRunner.merge` at src/loop/loop.ts (`exemptPaths` there; the lander's context, which already carries config, and recoverLeftover's are elsewhere). `src/review/review.ts` and
+src/landing/landing-batch.ts still hold config.
+maxLevels-as-second-positional test call sites are now in test/build-check.test.ts and
+test/review.test.ts.
 
 Corrections (pinned in place):
 1. **checkMainBaseline's callers must thread config — the 09-18 note's "redeploy needs no
    change beyond what it already hands down" claim is false under the explicit-parameter design.**
    `checkMainBaseline` gained a third parameter, `reverifyRed` (landed by 0394c6d, before that
-   audit, but never pinned), and its three production callers are src/baseline/main-red.ts:69
-   (`bugfixMainRedNote`, which loads no config today — it gains the two-line
-   `loadConfigCached(root).config ?? defaultConfig()` idiom mainRedGate already uses at :87),
-   src/baseline/main-red.ts:89 (`mainRedGate`, passing its existing `cfg`), and src/redeploy/redeploy.ts:438 inside
-   `mainIsGreen` (:432), whose only production wiring is createRedeployer's `mainGreen` dep
-   (:458 — `root` is in closure scope; read the live config per call so a mid-run
+   audit, but never pinned), and its production callers are src/baseline/main-red.ts's
+   `bugfixMainRedNote` (which loads no config today — it gains the two-line
+   `loadConfigCached(root).config ?? defaultConfig()` idiom mainRedGate already uses),
+   src/baseline/main-red.ts's `mainRedGate` (passing its existing `cfg`), and src/baseline/main-baseline.ts's
+   `mainIsGreen` (called from src/redeploy/redeploy.ts), whose only production wiring is createRedeployer's `mainGreen` dep
+   (`root` is in closure scope; read the live config per call so a mid-run
    `check.command` edit applies). Pin the new signatures: `checkMainBaseline(wt, config, onRun?,
    reverifyRed?)` and `mainIsGreen(mirrorWt, config, onRun?)`. The acceptance criterion "its check
    run at the red-main baseline and in redeploy's green check" is exactly what this threading
@@ -1263,13 +1264,13 @@ Corrections (pinned in place):
    entry's `warn` criterion): pre-portability a non-npm target was out of scope, so "none
    declared is informational" was honest; with `check.command` available the warning is
    actionable and its absence is precisely the silently-off safety layer this entry exists to
-   close. The branch at doctor.ts:187 flips to `warn` with the consequence spelled out, the stale
+   close. The branch in src/doctor/doctor-checks.ts's `checkBuildCheck` flips to `warn` with the consequence spelled out, the stale
    comment is rewritten, doctor's exit code stays 0 (warn does not fail), and doctor.test.ts's
    no-check expectation follows. `checkBuildCheck` gains the config parameter runDoctor already
    holds (2/7 lands first and pins runDoctor's single guarded load).
-3. **Post-audit build-check/build-check.ts facts absorbed.** a3ee4d9 gave `clipBuildTail` message-line
+3. **Post-audit build-check facts absorbed.** a3ee4d9 gave `clipBuildTail` message-line
    retention (≤11 lines) so `failureHeadline` names the failing test rather than a stack frame;
-   d39e426 moved `failureHeadline` into build-check/build-check.ts beside it; f4c4d0b extracted the shared
+   d39e426 moved `failureHeadline` into src/build/build-check-report.ts beside it; f4c4d0b extracted the shared
    `BuildSkipReason` type and skip-warning helper. All three are npm-agnostic and untouched by
    this entry's union — the old "`clipBuildTail`'s npm-banner filter stays (harmless elsewhere)"
    phrasing is replaced in the Approach with the fuller statement so an implementer does not
@@ -1278,9 +1279,9 @@ Corrections (pinned in place):
    file list test/main-baseline.test.ts, from the 09-18 swap). Resolved: the red-baseline test
    lives at the checkMainBaseline level in test/main-baseline.test.ts (the changed seam);
    test/main-red.test.ts is out (passes unmodified); test/redeployer.test.ts is in (four
-   `mainIsGreen` call sites at :725/:756/:759/:788 plus one configured-check test).
+   `mainIsGreen` call sites plus one configured-check test).
 
-Sizing now: build-check/build-check.ts ~60 (union + `buildCheckFrom` variant + dispatch + `describeCheck`),
+Sizing now: src/build ~60 (union + `buildCheckFrom` variant + dispatch + `describeCheck`),
 main-baseline.ts ~5, main-red.ts ~3 (the load + two call sites), redeploy.ts ~10 (signature +
 wiring), doctor.ts ~12, prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring),
 config-validation/types ~10, and tests ~230 (mechanical parameter threading across
@@ -1293,64 +1294,64 @@ landed 09-22, 3/7 landed 09-23, and the 09-23 build-fix-on-the-spot feature move
 code after it. The design holds unchanged; one new npm assumption the fix feature introduced
 must join the threading surface (correction 1), and every drifted line anchor is re-pinned.**
 
-Verified as written (capability absence): `grep -n 'check' src/types.ts
-src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old → new, all in the
+Verified as written (capability absence, at `03edeba`): `grep -n 'check' src/config/config-schema.ts
+src/config/config-validation.ts` still finds no `check` key. Re-pinned anchors (old → new, all in the
 09-21 note's terms):
 
-- src/build-check/build-check.ts: `BuildCheck` :44 (was :43), `buildCheckFrom` :73 (was :72),
-  `WALK_UP_LEVELS` :55, `detectBuildCheck(startDir, maxLevels)` :131 (was :130),
-  `BUILD_CHECK_TIMEOUT_MS` 300_000 :157, `BuildSkipReason` :170 (was :162), `BuildCheckOutcome`
-  :180 (was :172), `clipBuildTail` :243 (was :235), `failureHeadline` :272 (was :255),
-  `runBuildCheck(wt, check, timeoutMs = …)` :374 (was :269), `BuildCheckScope` :421 /
-  `SCOPE_WORDS` :426 / `MERGE_SCOPES` :438 (were :320/:325/:337), `runScopedBuildCheck` :469
-  (was :368) whose internal `detectBuildCheck(wt)` is :476 and `runBuildCheck` :479 (were
-  :375/:378). The timeout-remap policy (`MERGE_SCOPES.has(scope)` at :486, the "tree is
-  unverified" reason :487) is unchanged, as is `clipBuildTail`'s message-line retention.
-- The three scopes serve gate (src/review/review.ts:205, was :161, with the
-  `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS` expression at :210), landing
-  (src/merge.ts:151, unchanged), batch (src/lander.ts:447, was :394).
-- NEW gate call site (post-audit feature): the recheck after a spent fix run, src/review/review.ts:256
-  with the same timeout expression at :261. Both gate sites sit inside `reviewBuild` where
-  `config` is already destructured (:158), so they need no extra threading — but the fix prompt
-  they spawn does (correction 1).
-- src/prompt/prompt.ts: `COMMON_RULES` :53, the node_modules sentence :75–77, and the vague "if it has
-  a build or test command" wording is now the Leave-the-project-working bullet at :79
+- src/build/build-check-detect.ts: `BuildCheck`, `buildCheckFrom`, `WALK_UP_LEVELS`,
+  `detectBuildCheck(startDir, maxLevels)`, `BUILD_CHECK_TIMEOUT_MS` (300_000);
+  src/build/build-check.ts: `BuildSkipReason`, `BuildCheckOutcome`,
+  `runBuildCheck(wt, check, timeoutMs = …)`;
+  src/build/build-check-report.ts: `clipBuildTail`, `failureHeadline`;
+  src/build/build-check-events.ts: `BuildCheckScope` /
+  `SCOPE_WORDS` / `MERGE_SCOPES`; src/build/build-check-scoped.ts: `runScopedBuildCheck`
+  whose internal `detectBuildCheck(wt)` and `runBuildCheck` follow. The timeout-remap policy (`MERGE_SCOPES.has(scope)`, the "tree is
+  unverified" reason) is unchanged, as is `clipBuildTail`'s message-line retention.
+- The three scopes serve gate (src/review/review-precheck.ts, with the
+  `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS` expression), landing
+  (src/landing/landing-merge.ts), batch (src/landing/landing-batch.ts).
+- NEW gate call site (post-audit feature): the recheck after a spent fix run, also in src/review/review-precheck.ts.
+  Both gate sites sit inside the shared pre-check where
+  `config` is already destructured, so they need no extra threading — but the fix prompt
+  they spawn did (correction 1).
+- src/prompt/prompt.ts: `commonRules`, the node_modules sentence, and the vague "if it has
+  a build or test command" wording is now the Leave-the-project-working bullet
   (reworded since the audit; the sentence to replace is the same).
-- src/doctor/doctor.ts: `checkBuildCheck(root)` :209 (was :184), its `detectBuildCheck(root)` :210
-  (was :185), the no-check `ok` branch :212 (was :187) with the stale "none declared is
-  informational" comment at :206–208. `runDoctor` :262 loads config once at :267 — the shape
+- src/doctor/doctor-checks.ts: `checkBuildCheck(root)`, its `detectBuildCheck(root)` call,
+  the no-check `ok` branch with the stale "none declared is
+  informational" comment. `runDoctor` loads config once — the shape
   2/7's landed refinement pinned, so the 09-21 note's correction-2 mechanism stands.
-- MergeContext (src/merge.ts:42) still has no `config`; its construction moved to the object
-  literal inside `LoopRunner.merge` (src/loop.ts:269, `exemptPaths` at :275; was :257–264/:261 —
-  c351ae6 moved LoopRunner's pi-run plumbing into src/loop-pi.ts, but `merge` stayed).
-  review.ts holds config (GateContext :88, destructured :158); lander.ts and merge.ts unchanged.
-- src/baseline/main-red.ts: `bugfixMainRedNote` :68 with its `checkMainBaseline` call :69,
-  `mainRedGate` :81 with `loadConfigCached(root).config ?? defaultConfig()` at :87 and its call
-  :89 — all as pinned. src/redeploy/redeploy.ts: `mainIsGreen` :431 (was :432), its
-  `checkMainBaseline(mirrorWt, onRun, true)` :437 (was :438), `createRedeployer` :443 with the
-  `mainGreen` dep :456 (was :458). `checkMainBaseline` (src/baseline/main-baseline.ts:123) is still
-  `(wt, onRun?, reverifyRed = false)` with detect :145 / run :148 — unchanged.
-- maxLevels-as-second-positional test call sites are now test/build-check.test.ts:360/:371/:372
-  (the maxLevels test moved wholesale to :353; was :274/:285/:286) and test/review.test.ts:515
-  (was :475). Four sites, same count.
+- MergeContext (src/landing/landing-merge.ts) still has no `config`; its construction moved to the object
+  literal inside `LoopRunner.merge` (src/loop/loop.ts, `exemptPaths` there —
+  c351ae6 moved LoopRunner's pi-run plumbing into src/loop/loop-pi.ts, but `merge` stayed).
+  src/review/review.ts holds config (destructured in `ReviewContext`); src/landing/landing-batch.ts and src/landing/landing-merge.ts unchanged.
+- src/baseline/main-red.ts: `bugfixMainRedNote` with its `checkMainBaseline` call,
+  `mainRedGate` with `loadConfigCached(root).config ?? defaultConfig()` and its call
+  — all as pinned. src/baseline/main-baseline.ts: `mainIsGreen`, its
+  `checkMainBaseline(mirrorWt, onRun, true)` call; src/redeploy/redeploy.ts: `createRedeployer` with the
+  `mainGreen` dep. `checkMainBaseline` (src/baseline/main-baseline.ts) is still
+  `(wt, onRun?, reverifyRed = false)` — unchanged.
+- maxLevels-as-second-positional test call sites are now in test/build-check.test.ts
+  (the maxLevels test) and test/review.test.ts. Four sites, same count.
 
 Correction (pinned in place):
 1. **The gate's build-fix prompt is an npm assumption the 09-23 fix-on-the-spot feature added.**
-   `buildBuildFixPrompt(roleId, script, reasons)` (src/prompt/prompt.ts:346) interpolates
-   `` `npm run ${script}` `` twice into its text, and src/review/review.ts:235 calls it with
+   `buildBuildFixPrompt(roleId, script, reasons)` (then in src/prompt/prompt.ts; the in-slot fix
+   run was later removed and its prompt replaced by `buildStageFixPrompt(findings)` in src/gates/gate-prompts.ts) interpolated
+   `` `npm run ${script}` `` twice into its text, and the gate called it with
    `check.script` — a field the configured-command variant of the `BuildCheck` union does not
-   have. The rejection reasons are equally npm-shaped: the headline at src/review/review.ts:226–227
-   reads `build check failed (${check.script}): …`. Pin: both take the check's human
+   have. The rejection reasons are equally npm-shaped: the headline then read
+   `build check failed (${check.script}): …`. Pin: both take the check's human
    description instead of a script name — one `describeCheck(check)` string (e.g. "verify with
-   `pytest -q`") replaces `npm run ${script}` in the prompt (including its "Re-run …" rule) and
-   the parenthetical in the reasons headline — and both review.ts sites pass it. The three
-   existing prompt tests (test/prompt.test.ts:316/:331/:341) update mechanically; the fix
+   `pytest -q`") — the substitution `checkFailureReasons`
+   (src/build/build-check-report.ts) implements today. The three
+   existing prompt tests (test/prompt.test.ts) update mechanically; the fix
    prompt's forbid-weakening-a-test wording applies unchanged to any check. The Approach's
-   prompt.ts bullet gains this alongside the COMMON_RULES change (~+8 lines).
+   prompt.ts bullet gains this alongside the commonRules change (~+8 lines).
 
 Everything else in the 09-21 note is re-verified as written — corrections 1–7 stand. Sizing
 now: unchanged from the 09-21 note plus ~8 prompt.ts lines for the fix prompt and its reasons
-headline (build-check/build-check.ts ~60, main-baseline.ts ~5, main-red.ts ~3, redeploy.ts ~10, doctor.ts
+headline (src/build ~60, main-baseline.ts ~5, main-red.ts ~3, redeploy.ts ~10, doctor.ts
 ~12, prompt.ts ~23, review/merge/lander ~10, loop.ts ~2, config-validation/types ~10, tests
 ~240). One run. No design question remains open.
 
@@ -1358,89 +1359,89 @@ headline (build-check/build-check.ts ~60, main-baseline.ts ~5, main-red.ts ~3, r
 matches). This entry had become the stalest audit in the file (03edeba, 2026-09-24 — 95 landings
 back, the widest gap any audit here has bridged), and the surface moved STRUCTURALLY: two
 organize landings split both of this entry's home modules. `3261751` moved check detection out
-of build-check/build-check.ts into src/build-check/build-check-detect.ts, and `7b98130` moved the batch drain out of
-lander.ts into src/landing-batch.ts. The design holds unchanged; the Approach is corrected in place
-above, the Files-touched list swaps lander.ts→landing-batch.ts and adds build-check/build-check-detect.ts, and
+of src/build/build-check.ts into src/build/build-check-detect.ts, and `7b98130` moved the batch drain out of
+lander.ts into src/landing/landing-batch.ts. The design holds unchanged; the Approach is corrected in place
+above, the Files-touched list swaps lander.ts→landing-batch.ts and adds src/build/build-check-detect.ts, and
 the anchors re-pin below. One npm assumption the 09-24 audit missed joins correction 1's
 surface: the gate's SUCCESS-side strings interpolate `npm run ${check.script}` too.**
 
-Verified as written (capability absence): `grep -n 'check' src/types.ts
-src/config-validation.ts` still finds no `check` key (TOP_LEVEL_KEYS config-validation.ts:41,
-checkKnownKeys :120).
+Verified as written (capability absence, at `aa9ab83`): `grep -n 'check' src/config/config-schema.ts
+src/config/config-validation.ts` still finds no `check` key (TOP_LEVEL_KEYS src/config/config-schema.ts,
+checkKnownKeys src/config/config-field-checks.ts).
 
 Re-pinned anchors (09-24 note's terms → today):
 
-- **src/build-check/build-check-detect.ts (new file in this entry; split by 3261751):** `BuildCheck` exported
-  :16 (still `{ rootDir; script }`, the doc comment still says "qualifying package.json +
-  node_modules" — the union replaces it with per-variant docs), `buildCheckFrom` private :45,
-  `WALK_UP_LEVELS` 5 :27, `detectBuildCheck(startDir, maxLevels = WALK_UP_LEVELS)` :103 — plus a
-  second export, `resolveFromNodeModules(startDir, rel, maxLevels)` :117 (used by build-stage.ts's
+- **src/build/build-check-detect.ts (new file in this entry; split by 3261751):** `BuildCheck` exported
+  (still `{ rootDir; script }`, the doc comment still says "qualifying package.json +
+  node_modules" — the union replaces it with per-variant docs), `buildCheckFrom` private,
+  `WALK_UP_LEVELS` 5, `detectBuildCheck(startDir, maxLevels = WALK_UP_LEVELS)` — plus a
+  second export, `resolveFromNodeModules(startDir, rel, maxLevels)` (used by build-stage.ts's
   compile to find the project's own tsc; the configured-command variant does not touch it).
-- **src/build-check/build-check.ts** (398 lines; imports BuildCheck/detectBuildCheck from detect.js :3):
-  `BUILD_CHECK_TIMEOUT_MS` 300_000 :46, `BuildSkipReason` :60, `BuildCheckOutcome` :70,
-  `clipBuildTail` :133, `failureHeadline` :162, `runBuildCheck(wt, check, timeoutMs)` :264 —
-  whose rootDir-resolution comment :261 ("an ancestor of wt by detectBuildCheck construction")
+- **src/build/build-check.ts:** `BUILD_CHECK_TIMEOUT_MS` (defined in src/build/build-check-detect.ts, 300_000),
+  `BuildSkipReason`, `BuildCheckOutcome`,
+  `runBuildCheck(wt, check, timeoutMs)` —
+  whose rootDir-resolution comment ("an ancestor of wt by detectBuildCheck construction")
   must gain the configured variant's own cwd rule (cwd resolved against wt, the worktree, NOT
-  rootDir) — `BuildCheckScope` :311, `SCOPE_WORDS` :316, `MERGE_SCOPES` :328, the timeout-remap
-  (`MERGE_SCOPES.has(scope)` / "tree is unverified") :376–378, `runScopedBuildCheck` :359 with its
-  internal `detectBuildCheck(wt)` :366 and `runBuildCheck` :369. `describeCheck` is pinned into
-  build-check/build-check-detect.ts (pure text beside the union it describes; the module boundary 3261751's
-  header states is "pure filesystem concern" — human-facing text of the check belongs with it).
-- **Gate sites:** src/review/review.ts:216 (pre-check, `ctx.buildCheckTimeoutMs ??
-  BUILD_CHECK_TIMEOUT_MS` at :221) and :267 (post-fix recheck, :272), both inside reviewBuild
-  where ctx already destructures config (GateContext :90).
-- **Landing:** src/merge.ts:155 (was :151). `MergeContext` :42 still has no config; `exemptPaths`
-  :48; constructed in `LoopRunner.merge`'s object literal, exemptPaths at src/loop.ts:271 (the
+  rootDir). **src/build/build-check-scoped.ts:** `runScopedBuildCheck` with its
+  internal `detectBuildCheck(wt)` and `runBuildCheck` calls. **src/build/build-check-events.ts:**
+  `BuildCheckScope`, `SCOPE_WORDS`, `MERGE_SCOPES`, the timeout-remap
+  (`MERGE_SCOPES.has(scope)` / "tree is unverified"). **src/build/build-check-report.ts:**
+  `clipBuildTail`, `failureHeadline`. `describeCheck` lives in
+  src/build/build-check-report.ts (pure text beside the union it describes).
+- **Gate sites:** src/review/review-precheck.ts (the pre-check, with `ctx.buildCheckTimeoutMs ??
+  BUILD_CHECK_TIMEOUT_MS`; the post-fix recheck was later removed with the in-slot fix run), all inside the shared pre-check
+  where ctx already destructures config (`ReviewContext`).
+- **Landing:** src/landing/landing-merge.ts. `MergeContext` still has no config; `exemptPaths`
+  lives there; constructed in `LoopRunner.merge`'s object literal (src/loop/loop.ts; the
   merge() body has since gained the refusal-note branch comment above it — construction
   unchanged).
-- **Batch:** src/landing-batch.ts:229 (was lander.ts:447/:394) — and `BatchContext`
-  (landing-batch.ts:20) ALREADY carries `config: TumwaterConfig` (:23), so the batch site needs NO
+- **Batch:** src/landing/landing-batch.ts — and `BatchContext`
+  ALREADY carries `config: TumwaterConfig`, so the batch site needs NO
   context change; lander.ts drops out of this entry entirely.
-- **Doctor:** `checkBuildCheck(root)` :274 (its `detectBuildCheck(root)` :275, the no-check `ok`
-  branch :277, the stale "None declared is informational" comment :272–273), its array entry at
-  :350; `runDoctor(root, pathEnv)` :327 still loads config once behind a guard (~:330) — the
+- **Doctor:** `checkBuildCheck(root)` (src/doctor/doctor-checks.ts, with its `detectBuildCheck(root)` call, the no-check `ok`
+  branch, the stale "None declared is informational" comment), its array entry there;
+  `runDoctor(root, pathEnv)` still loads config once behind a guard — the
   09-24 pin's shape holds, `checkBuildCheck` gains the config parameter from it.
-- **Fix prompt:** `buildBuildFixPrompt(roleId, script, reasons)` src/prompt/prompt.ts:354 (was :346),
-  npm interpolations :356 and :366; called with `check.script` at review.ts:246; the reasons
-  headline is still built in reviewBuild's failure branch (:226–235 region, failureHeadline at
-  :234). Tests: test/prompt.test.ts:316 (`buildBuildFixPrompt names the role, the failing
-  script…`, pins `/`npm run test`/` at :322) and :331 (the forbid-weakening test) — both update
+- **Fix prompt:** `buildBuildFixPrompt(roleId, script, reasons)` was later replaced by
+  `buildStageFixPrompt(findings)` in src/gates/gate-prompts.ts; the in-slot fix run was
+  removed, and the reasons headline is now built by `checkFailureReasons`
+  (src/build/build-check-report.ts). Tests: test/prompt.test.ts (formerly `buildBuildFixPrompt names the role, the failing
+  script…`) — updated
   mechanically.
-- **Unchanged from the 09-24 pins:** src/baseline/main-red.ts (`bugfixMainRedNote` :68/:69 with its
-  internal load :87 in mainRedGate :81/:89 — verified verbatim), src/baseline/main-baseline.ts
-  (`checkMainBaseline(wt, onRun?, reverifyRed = false)` :123, detect :146, run :149),
-  src/redeploy/redeploy.ts (`mainIsGreen(mirrorWt, onRun?)` :431, its `checkMainBaseline(mirrorWt, onRun,
-  true)` :437, `createRedeployer` :443, mainGreen dep :456). The 09-24 note's correction-2
-  (doctor's no-check branch flips to `warn`) lands against :277 with its comment at :272–273.
-- **Test maxLevels call sites:** test/build-check.test.ts:364 (`detectBuildCheck(deep, 10)`),
-  :371 (`(dir, 3)`), :372 (`(dir, 2)`) and test/review.test.ts:515 (`(start, 2)`, with the
-  no-arg default at :517) — four sites, same count; both files import detectBuildCheck from
-  build-check-detect.js (:11/:7), so the signature change re-pins to the same file.
+- **Unchanged from the 09-24 pins:** src/baseline/main-red.ts (`bugfixMainRedNote` with its
+  internal load in mainRedGate — verified verbatim), src/baseline/main-baseline.ts
+  (`checkMainBaseline(wt, onRun?, reverifyRed = false)`),
+  src/redeploy/redeploy.ts (`createRedeployer`, mainGreen dep). The 09-24 note's correction-2
+  (doctor's no-check branch flips to `warn`) lands in `checkBuildCheck` with its comment.
+- **Test maxLevels call sites:** test/build-check.test.ts (`detectBuildCheck(deep, 10)`,
+  `(dir, 3)`, `(dir, 2)`) and test/review.test.ts (`(start, 2)`, with the
+  no-arg default) — four sites, same count; both files import detectBuildCheck from
+  build-check-detect.js, so the signature change re-pins to the same file.
 
 Correction (extends the 09-24 note's correction 1, pinned in place):
 
 1. **The gate's success strings are the second npm assumption the fix-on-the-spot feature
    added — the 09-24 audit caught the fix prompt but missed these.** `verifiedByHarness` (the
    line named in the reviewer's prompt when the pre-check ran green) interpolates
-   `` `npm run ${check.script}` (the project's declared check) passed `` at BOTH sites:
-   src/review/review.ts:284 (post-fix recheck path) and :296 (first-try path). Pin: same substitution as
+   `` `npm run ${check.script}` (the project's declared check) passed `` at BOTH gate sites,
+   both in src/review/review-precheck.ts. Pin: same substitution as
    the failure side — `describeCheck(check)` replaces the `npm run ${check.script}` fragment
-   (e.g. "`pytest -q` (the project's declared check) passed") at both sites; review.ts needs no
-   extra threading (describeCheck imports from build-check-detect.js).
+   (e.g. "`pytest -q` (the project's declared check) passed") at both sites; the pre-check needs no
+   extra threading (describeCheck imports from src/build/build-check-report.ts).
 
 Everything else in the 09-24 note stands (its corrections 1's failure-side pins are now located
 above; corrections 2–4 and the maxLevels/config-precedence pins are re-verified unchanged).
-Sizing: unchanged apart from the file swap — build-check/build-check-detect.ts ~45 (union + describeCheck +
-config branch), build-check/build-check.ts ~50 (dispatch + cwd rule), main-baseline.ts ~5, main-red.ts ~3,
+Sizing: unchanged apart from the file swap — src/build/build-check-detect.ts ~45 (union + describeCheck +
+config branch), src/build/build-check.ts ~50 (dispatch + cwd rule), main-baseline.ts ~5, main-red.ts ~3,
 redeploy.ts ~10, doctor.ts ~12, prompt.ts ~23, review/merge/landing-batch ~10, loop.ts ~2,
 config-validation/types ~10, tests ~240. One run. No design question remains open.
 
 **Landed 2026-09-25 by feature** (PLANS.md Done has the detail): as designed, plus two
-audit drifts absorbed in place — the batch scope's call site moved to src/landing-batch.ts
+audit drifts absorbed in place — the batch scope's call site moved to src/landing/landing-batch.ts
 since the 09-24 audit, and `checkBuildCheck`'s config parameter is typed structurally
 (`{ check?: … } | null`), doctor passing the whole config it already loads. The 300 s
-default constant moved to build-check/build-check-detect.ts (the command variant resolves its timeoutMs
-there) and is re-exported by build-check/build-check.ts, so every consumer import is unchanged. `npm
+default constant moved to src/build/build-check-detect.ts (the command variant resolves its timeoutMs
+there), so every consumer import resolves to it. `npm
 test` 1401 pass.
 
 ---
