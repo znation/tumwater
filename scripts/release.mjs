@@ -61,7 +61,13 @@ function gh(args) {
   const out = spawnSync("gh", args, { cwd: root, encoding: "utf8" });
   if (out.error?.code === "ENOENT") die("`gh` is not on PATH — install the GitHub CLI to cut releases.");
   if (out.status !== 0) return null; // e.g. no run yet for this commit
-  return JSON.parse(out.stdout);
+  try {
+    return JSON.parse(out.stdout);
+  } catch {
+    // gh can exit 0 with non-JSON on stdout (a warning, a version that changed its output);
+    // a raw SyntaxError here would name neither the command nor the text it choked on.
+    die(`gh ${args.join(" ")} exited 0 but printed non-JSON — run it by hand to see why:\n${out.stdout.trim().slice(0, 500)}`);
+  }
 }
 
 /** gh for `--status`: the latest run, or the reason gh could not answer (absent from PATH, or

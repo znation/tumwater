@@ -80,6 +80,25 @@ test("release refuses to tag when CI is red, leaving no tag on either side", () 
   }
 });
 
+test("release dies naming the command when gh exits 0 with non-JSON", () => {
+  const { root } = pushedRepo("0.1.0");
+  // Exit 0 but print no JSON: the strict gh() on the release path must name the command and
+  // quote what it choked on rather than letting a bare SyntaxError reach the operator.
+  const bin = tmpdir("release-gh-bad-");
+  writeScript(path.join(bin, "gh"), `printf '%s' 'not json'`);
+  const restore = pathPrepend(bin);
+  try {
+    const r = runRelease(root, []);
+
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /gh run list .* exited 0 but printed non-JSON/);
+    assert.match(r.stderr, /not json/, "the refusal quotes the text gh printed");
+    assert.doesNotMatch(r.stderr, /SyntaxError/, "the parse error never reaches the operator raw");
+  } finally {
+    restore();
+  }
+});
+
 // --- bump: the version commit that follows a release -------------------------
 // The bump path stages package.json + package-lock.json and commits them, then pushes with a
 // retry when the fleet moved origin under it. None of it ran before these tests.
