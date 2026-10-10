@@ -22,6 +22,20 @@ const BUGS_BASE = `# Bugs
 **Symptom:** it broke.
 `;
 
+/** A Fixed entry whose `**Fix:**` paragraph names `symbol` — the md-only false-fix fixture. */
+function fixedBug(symbol: string): string {
+  return `# Bugs
+
+## Open
+
+## Fixed
+
+### A bug: details (found by qa 2026-09-30, fixed 2026-10-06)
+
+**Fix:** \`${symbol}\` now does it.
+`;
+}
+
 /** A repo whose main carries `files` (path → content), plus the improve worktree off main. */
 async function repoWith(files: Record<string, string>): Promise<{ root: string; wt: string }> {
   const root = makeRepo();
@@ -37,19 +51,7 @@ async function repoWith(files: Record<string, string>): Promise<{ root: string; 
 
 test("an md-only false-fix edit yields its symbol finding", async () => {
   const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });
-  fs.writeFileSync(
-    path.join(wt, "BUGS.md"),
-    `# Bugs
-
-## Open
-
-## Fixed
-
-### A bug: details (found by qa 2026-09-30, fixed 2026-10-06)
-
-**Fix:** \`missingSymbolXyz\` now does it.
-`,
-  );
+  fs.writeFileSync(path.join(wt, "BUGS.md"), fixedBug("missingSymbolXyz"));
 
   const findings = await stageCheckFindings(wt, "main", EXEMPT);
 
@@ -60,38 +62,14 @@ test("an md-only false-fix edit yields its symbol finding", async () => {
 
 test("the same edit naming a symbol that exists on the tree yields no finding", async () => {
   const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });
-  fs.writeFileSync(
-    path.join(wt, "BUGS.md"),
-    `# Bugs
-
-## Open
-
-## Fixed
-
-### A bug: details (found by qa 2026-09-30, fixed 2026-10-06)
-
-**Fix:** \`seed.txt\` now does it.
-`,
-  );
+  fs.writeFileSync(path.join(wt, "BUGS.md"), fixedBug("seed.txt"));
 
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT), []);
 });
 
 test("the false-fix check is scoped to exempt diffs, as at the gate", async () => {
   const { wt } = await repoWith({ "BUGS.md": BUGS_BASE });
-  fs.writeFileSync(
-    path.join(wt, "BUGS.md"),
-    `# Bugs
-
-## Open
-
-## Fixed
-
-### A bug: details (found by qa 2026-09-30, fixed 2026-10-06)
-
-**Fix:** \`missingSymbolXyz\` now does it.
-`,
-  );
+  fs.writeFileSync(path.join(wt, "BUGS.md"), fixedBug("missingSymbolXyz"));
   // An untracked code file makes the diff non-exempt, so falseFixReason is out of scope.
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
 
