@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
-import { strict as assert } from "node:assert";
+import assert from "node:assert/strict";
 
 test("a test process that used tmpdir() leaves no temp dir behind at exit", () => {
   const fixturesPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "repo-fixtures.js");

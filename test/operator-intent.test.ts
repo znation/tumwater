@@ -70,7 +70,7 @@ test("operator request markers are written atomically (tmp+rename, never a torn 
   // The rename is the last step, so the marker's final content is intact and no tmp remnant
   // is left behind.
   assert.ok(readJsonFile<{ notBeforeMs?: number }>(wakeFile)?.notBeforeMs);
-  assert.strictEqual(fs.readdirSync(path.dirname(wakeFile)).filter((f) => f.includes(".tmp-"))
+  assert.equal(fs.readdirSync(path.dirname(wakeFile)).filter((f) => f.includes(".tmp-"))
     .length, 0);
 });
 

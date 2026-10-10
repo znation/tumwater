@@ -316,7 +316,7 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   const r = await cli(repo, "config");
   assert.equal(r.code, 0);
   const printed = JSON.parse(r.stdout);
-  assert.deepStrictEqual(printed, loadConfig(repo));
+  assert.deepEqual(printed, loadConfig(repo));
   // Role defaults the file never mentions are in the output (the merge is visible, not just
   // pass-through), and the custom loop is merged into roles exactly as the file's own
   // roles-override entries would be.

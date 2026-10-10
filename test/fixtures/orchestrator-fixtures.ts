@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { strict as assert } from "node:assert";
+import assert from "node:assert/strict";
 import { defaultConfig, loadConfig, saveConfig } from "../../src/config/config.js";
 import { initProject } from "../../src/init/init.js";
 import { makeRepo, sh } from "./repo-fixtures.js";

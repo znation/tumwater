@@ -2,7 +2,7 @@
  * server. Socket-level tests start startGui directly; the CLI binary harness lives in
  * cli-harness.ts. */
 import type { Server } from "node:http";
-import { strict as assert } from "node:assert";
+import assert from "node:assert/strict";
 import { startGui } from "../../src/gui/gui-server.js";
 
 /** Start the GUI server on an ephemeral port and return it with its `http://127.0.0.1:<port>`

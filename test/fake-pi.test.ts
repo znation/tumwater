@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { strict as assert } from "node:assert";
+import assert from "node:assert/strict";
 
 test("loading the fake-pi helpers drops an inherited TUMWATER_PI_BIN, so a file run directly with node --test keeps its fakes", () => {
   // BUGS.md 2026-09-28: the variable outranks PATH in resolveAgentBin. The test runner strips it

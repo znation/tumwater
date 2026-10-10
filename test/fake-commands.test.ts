@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "node:test";
-import { strict as assert } from "node:assert";
+import assert from "node:assert/strict";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("a compiled fake-commands copied outside the checkout refuses to import instead of leaving every fake a dangling symlink", () => {

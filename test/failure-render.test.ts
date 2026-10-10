@@ -17,7 +17,7 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
   ]);
   const first = collectFailureReport(root, 1);
   const second = collectFailureReport(root, 1);
-  assert.strictEqual(second, first, "an unchanged log and window return the memoized digest");
+  assert.equal(second, first, "an unchanged log and window return the memoized digest");
   // A changed log — the append below grows the file, changing its identity — must re-derive
   // rather than serve the memo.
   writeEvents(root, [
@@ -25,7 +25,7 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
     { ts: at(0), loop: "bugfix", type: "tick_end", result: "error", error: "boom" },
   ]);
   const third = collectFailureReport(root, 1);
-  assert.notStrictEqual(third, first, "a changed log re-derives the digest");
+  assert.notEqual(third, first, "a changed log re-derives the digest");
   assert.equal(third.ticks, 2, "the re-derived digest sees the appended tick");
 });
 
