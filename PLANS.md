@@ -439,6 +439,72 @@ test/tui-backlog.test.ts for `backlogMarks` and the entry-mode header line.
 - `tumwater backlog` output is unchanged (the mark functions are untouched).
 - `npm run test` green.
 
+### A History view in `tumwater tui` matching `tumwater history` (planned 2026-10-09 by plan)
+
+**Goal.** `Ctrl+T` in `tumwater tui` gains a fleet-wide **History** pane showing the completed-tick
+rows `tumwater history` prints, newest first — the same rows the dashboard's History view renders —
+so the terminal can read each loop's recent results, durations, and usage without leaving the TUI.
+Today `TuiView` (src/ui/tui/tui-frame.ts) has Activity, Transcript, Backlog, Usage and Failures;
+the dashboard's History (and Pending) have no terminal counterpart, so `docs/how-it-works.md`'s
+claim that the TUI "names its views the same way" is not yet true. No new collection:
+`readTickRows` (src/history/history-data.ts) already builds these rows for the CLI and
+`/api/history`; this only renders them.
+
+**Context.** The Usage/Failures panes are the template: their body is a text cache `paneCache`
+computed once per activation by the `Ctrl+T` handler (src/ui/tui/tui-keys.ts) and re-windowed each
+frame by `paneBody` through `entryBodyWindow` (src/ui/tui/tui-pane.ts). History is the same shape,
+with `readTickRows(root, HISTORY_DEFAULT_TICKS, null)` as the per-activation read
+(`HISTORY_DEFAULT_TICKS` is exported from history-data.ts). The CLI's column padding lives in
+src/history/history.ts and is not pulled over: the pane has no full terminal width to align
+against, so its one-line-per-row format is compact and the parity claim is about the rows and
+fields, not byte-identical layout.
+
+**Approach.**
+1. New `tui-history.ts` (in src/ui/tui/): `historyPaneText(rows: readonly TickRow[]): string`,
+one line per row — `time`, `loop #tick`, result, duration, usage, detail — omitting empty
+`usage`/`detail`, rendering `—` for a null `durationMs` (reusing `shortSpanPhrase` from
+src/text/phrases.ts), and `""` for no rows. Result is the `TickRow.result` string verbatim, so
+the pane never reclassifies what history-data.ts resolved.
+2. src/ui/tui/tui-frame.ts: add `{ kind: "history" }` to `TuiView`; append `["history",
+"History"]` to `tabStrip`'s tab list after Failures, so the existing usage/failures indices and
+their tests do not move; give `hintLine` a History branch with the Usage/Failures keys (`Enter
+send · ↑↓ history · PgUp/PgDn scroll · Ctrl+T next view · Ctrl+D quit`).
+3. src/ui/tui/tui-pane.ts: a `pane.kind === "history"` branch that windows `state.paneCache`
+through `entryBodyWindow(state.paneCache ?? "", state.paneScroll, eventBudget, width)` and
+returns `emptyNote: "(no ticks yet)"`; enumerate History in the module's header comment.
+4. src/ui/tui/tui-keys.ts: change the cycle modulus to `roleIds.length + 5`, add the history
+index `roleIds.length + 4` to the `paneCache` ternary (`readTickRows(root,
+HISTORY_DEFAULT_TICKS, null)` → `historyPaneText`), and update the cycle comment. The existing
+PgUp/PgDn condition (`view >= roleIds.length + 2`) and `stepEntryScroll` already page it.
+5. src/ui/tui/tui.tsx: map `view === roleIds.length + 4` to `{ kind: "history" }` in the pane
+assembly.
+6. docs/how-it-works.md's Operator-notes TUI bullet: name History in the `Ctrl+T` cycle.
+
+**Files touched.**
+- `tui-history.ts` (new, in src/ui/tui/)
+- src/ui/tui/tui-frame.ts (`TuiView`, `tabStrip`, `hintLine`)
+- src/ui/tui/tui-pane.ts (`paneBody`)
+- src/ui/tui/tui-keys.ts (cycle modulus, `paneCache`)
+- src/ui/tui/tui.tsx (view mapping)
+- docs/how-it-works.md
+
+Tests: a new `tui-history.test.ts` under test/ for `historyPaneText` (a seeded `TickRow` renders
+every field; a null `durationMs` shows `—`; an empty `usage` is omitted; no rows → `""`); update
+test/tui-frame.test.ts's tab-strip and hint assertions for the new History tab; extend
+test/tui-keys.test.ts's view-cycle test to reach `roleIds.length + 4` and page it.
+
+**Acceptance criteria.**
+- `Ctrl+T` cycles Activity → each loop's Transcript → Backlog → Usage → Failures → History →
+Activity, and the tab strip shows `[History]` last.
+- The History pane shows the newest `HISTORY_DEFAULT_TICKS` completed ticks from
+`readTickRows(root, HISTORY_DEFAULT_TICKS, null)`, one per line: the row's time, `loop #tick`,
+result, duration (or `—`), usage, and detail.
+- PgUp/PgDn page the pane and clamp at both ends, exactly as Usage/Failures page their Markdown;
+a log with no completed ticks shows `(no ticks yet)`.
+- `tumwater history`, `history --json`, and the GUI History view are unchanged (their renderers
+and `TickRow` are untouched).
+- `npm run test` green.
+
 
 ## Done
 
