@@ -37,35 +37,6 @@ src/agent/claude/claude-backend.ts, src/gates/startup-gate.ts.
   that agent's binary rather than pi's.
 - `npm run test` green.
 
-### Agent backends, part 4d/7: resume and handoff under routing (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
-
-Design: plans/agent-backends.md ("Sessions"); the original part 4/7 "Interactions" section.
-
-Routing lets a seam's agent change between an interrupted tick and the next one, through a
-config edit or the fallback moving a claude seam to a pi fallback or back.
-
-**Approach.**
-1. `planTickStart` (src/tick/tick-resume.ts), which loop-tick.ts already calls with
-   `agent: cfg.agent ?? DEFAULT_AGENT`, compares the newest session-ledger author line's `agent`
-   with the tick's `agent`; a mismatch plans a `handoff` (fresh session, worktree left as is,
-   `buildHandoffPrompt` from src/prompt/prompt-followup.ts) instead of a resume.
-2. It reads `cfg.agent` from the same resolved view the spawn uses (`configForRole` plus the
-   fallback view), not a separate resolution.
-
-**Files touched.** src/tick/tick-resume.ts, src/loop/loop-tick.ts.
-
-**Acceptance criteria (on fake-pi and fake-claude).**
-- **Fallback flip.** An interrupted claude author tick, with the fallback active on the next
-  tick, runs a fresh pi session in the unreset worktree; its prompt carries the handoff bridge,
-  the revision note when a revision was in flight, and the hand-back note when one was applied.
-- **Config flip mid-revision.** Changing `agent` from pi to claude while a revision is
-  interrupted does the same and does not re-cherry-pick the rejected diff.
-- **Mixed seams.** A conflict resolver routed to a different agent than the author writes its
-  ledger line in the author's session dir; the author's next resume is then a handoff even
-  though its own agent did not change.
-- **Selectors.** The resume check and the spawn read the same `cfg.agent`.
-- `npm run test` green.
-
 ### Agent backends, part 4e/7: doctor for claude (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
 
 Design: plans/agent-backends.md ("Sessions" retention; "Every seam, checked" doctor row).
@@ -420,6 +391,42 @@ Acceptance criteria.
 
 
 ## Done
+
+### Agent backends, part 4d/7: resume and handoff under routing (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Sessions"); the original part 4/7 "Interactions" section.
+
+Routing lets a seam's agent change between an interrupted tick and the next one, through a
+config edit or the fallback moving a claude seam to a pi fallback or back.
+
+**Approach.**
+1. `planTickStart` (src/tick/tick-resume.ts), which loop-tick.ts already calls with
+   `agent: cfg.agent ?? DEFAULT_AGENT`, compares the newest session-ledger author line's `agent`
+   with the tick's `agent`; a mismatch plans a `handoff` (fresh session, worktree left as is,
+   `buildHandoffPrompt` from src/prompt/prompt-followup.ts) instead of a resume.
+2. It reads `cfg.agent` from the same resolved view the spawn uses (`configForRole` plus the
+   fallback view), not a separate resolution.
+
+**Files touched.** src/tick/tick-resume.ts, src/loop/loop-tick.ts.
+
+**Acceptance criteria (on fake-pi and fake-claude).**
+- **Fallback flip.** An interrupted claude author tick, with the fallback active on the next
+  tick, runs a fresh pi session in the unreset worktree; its prompt carries the handoff bridge,
+  the revision note when a revision was in flight, and the hand-back note when one was applied.
+- **Config flip mid-revision.** Changing `agent` from pi to claude while a revision is
+  interrupted does the same and does not re-cherry-pick the rejected diff.
+- **Mixed seams.** A conflict resolver routed to a different agent than the author writes its
+  ledger line in the author's session dir; the author's next resume is then a handoff even
+  though its own agent did not change.
+- **Selectors.** The resume check and the spawn read the same `cfg.agent`.
+- `npm run test` green.
+
+Note (2026-10-10 by feature): this behavior was already present on main when the plan was
+picked up. The session-ledger `handoff` and the newest-author-line `agent` comparison landed in
+part 2/7; the backend-aware resume guard in parts 3c/3d; and the `cfg.agent` routing in part
+4b/7 (`loop-tick.ts` passes `cfg.agent ?? DEFAULT_AGENT`, the fallback view's agent while an
+episode is active). This tick added tests for the mixed-seam gate and the fallback-view
+selector (test/tick-resume.test.ts) and moved the entry to Done; no src change was needed.
 
 ### Scope the failure digest to one role: `tumwater report --failures --role <id>` (planned 2026-10-10 by plan; sibling of the landed "Scope the usage report to one role: `tumwater report --role <id>`"; independent of the Agent backends series; done 2026-10-10 by feature)
 

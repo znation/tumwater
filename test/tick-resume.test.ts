@@ -12,6 +12,7 @@ import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { defaultConfig } from "../src/config/config.js";
+import { fallbackRoleConfig } from "../src/config/config-views.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -174,6 +175,23 @@ test("a newer gate session in the author dir hands off instead of resuming the r
   assert.equal(p.resuming, false, "the newest file is the resolver's, so a continue would reach it");
   assert.equal(p.handoff, true);
   assert.match(p.prompt, /uncommitted edits are in your worktree/);
+});
+
+// PLANS.md part 4d/7 ("Mixed seams"): the resolver is routed to another agent, so its ledger
+// line is claude's while the author stays pi. pi's --continue reaches the newest FILE whichever
+// agent wrote it, so the author's own-agent resume must still hand off.
+test("a gate ledger line from another agent hands off the author's own-agent resume", () => {
+  const dir = tmpdir();
+  const s = state({ resumePending: true });
+  withSession(dir, "feature");
+  const base = { id: "i", name: "n", cwd: "/wt", at: 0 };
+  recordSession(sessionDir(dir, "feature"), { agent: "pi", kind: "author", ...base, at: 1000 });
+  recordSession(sessionDir(dir, "feature"), { agent: "claude", kind: "gate", ...base, at: 2000 });
+  const p = plan(dir, s);
+  assert.ok(p);
+  assert.equal(p.resuming, false, "the claude resolver's file is newest, so a pi continue would reach it");
+  assert.equal(p.handoff, true);
+  assert.equal(p.resumeCause, "handoff");
 });
 
 test("a claude author resumes its recorded session when the transcript exists", () => {
@@ -380,6 +398,33 @@ test("a claude resume whose only ledger line names another agent hands off", () 
     assert.ok(p);
     assert.equal(p.resuming, false);
     assert.equal(p.handoff, true, "another agent's session is not claude's to resume");
+    assert.match(p.prompt, /uncommitted edits are in your worktree/);
+  } finally {
+    restoreHome();
+  }
+});
+
+// PLANS.md part 4d/7 ("Selectors"): the resume check and the spawn must read the same
+// `cfg.agent`. While a model-fallback episode is active the resolved view is the fallback pair,
+// so a claude primary whose tier falls back to a pi pair runs — and resumes — as pi: the
+// interrupted claude session is not pi's to continue, so the next tick hands off.
+test("the fallback view's routed agent drives the resume check", () => {
+  const root = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  try {
+    const s = state({ resumePending: true });
+    withSession(root, "feature"); // a pi session file exists, so only the agent can refuse it
+    withClaudeAuthor(root, fs.realpathSync(root));
+    // The role's tier falls back to a pi pair; under a claude primary the fallback view still
+    // routes to pi (a pi provider name survives in a pi-routed view).
+    const config = { ...defaultConfig(), agent: "claude", fallback: "omlx/Qwen" };
+    const fb = fallbackRoleConfig(config, "feature");
+    assert.equal(fb?.agent, "pi", "a pi fallback pair routes to pi under a claude primary");
+    const p = plan(root, s, { agent: fb?.agent });
+    assert.ok(p);
+    assert.equal(p.resuming, false, "the pi fallback cannot --continue a claude session");
+    assert.equal(p.handoff, true);
+    assert.equal(p.resumeCause, "handoff");
     assert.match(p.prompt, /uncommitted edits are in your worktree/);
   } finally {
     restoreHome();
