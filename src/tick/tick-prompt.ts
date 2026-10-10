@@ -3,6 +3,7 @@ import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { planBacklogTarget } from "../scheduling/claims.js";
+import { configForRole } from "../config/config-views.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../inbox/prompt-not-before.js";
@@ -32,6 +33,11 @@ export interface TickPromptInput {
    * not dequeued, so assembling a preview can never consume a queued request. Everything
    * else — brief, principles, check, the state-derived notes — is assembled identically. */
   preview?: boolean;
+  /** The effective agent backend this tick RUNS on — the model-fallback pair while an episode
+   * is active — selecting the prompt dialect. planTickStart passes the same `cfg.agent` the
+   * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
+   * Omitted: the role's primary `configForRole(config, role).agent`. */
+  agent?: string;
 }
 
 /** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
@@ -59,7 +65,7 @@ function readRoleNote(root: string, role: string): string | undefined {
  * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and
  * re-queue it if the tick leaves it unfulfilled. */
 export function assembleTickPrompt(
-  { root, config, role, state, preview = false }: TickPromptInput,
+  { root, config, role, state, preview = false, agent }: TickPromptInput,
 ): { prompt: string; userPrompt: string | null } | null {
   // One read of the brief yields both the prompt it carries and the owning file's name
   // (brief.ts's readBrief): readInitialPrompt + briefFile were two full reads of the same
@@ -92,7 +98,7 @@ export function assembleTickPrompt(
     const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
     if (!dequeued) return null;
     userPrompt = stripNotBeforeMarker(dequeued);
-    prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex);
+    prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent);
   } else {
     // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
     // instructions, the qa/telemetry/clean blocks — resolves through the base role, so
@@ -166,6 +172,7 @@ export function assembleTickPrompt(
       extraInstructions: config.roles[base]?.instructions,
       check,
       briefFile: brief,
+      agent: agent ?? configForRole(config, role).agent,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
       // request block (PLANS.md "Per-role prompts 1/2"); its text is also the tick's userPrompt,
       // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on landing)

@@ -477,3 +477,68 @@ test("the native log rotates under logMaxBytes like the raw log", async () => {
     restoreHome();
   }
 });
+
+// The role-notes MCP wiring (plans/agent-backends.md "What the pi extensions did, per
+// backend", PLANS.md "Agent backends, part 5/7"): an authoring run with a notebook gets
+// --mcp-config naming the bundled server and TUMWATER_NOTES_PATH in its environment; a run
+// without a notebook gets neither, so review/landing/director runs expose no notebook tool.
+test("an authoring run with a notebook passes the role-notes MCP server and the notes path", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const envFile = path.join(dir, "notes-env.txt");
+  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
+    extraScript: [`printf '%s\\n' "$TUMWATER_NOTES_PATH" >> "${envFile}"`],
+  });
+  try {
+    const notes = path.join(dir, "state", "notes", "feature.md");
+    const result = await runAgent(claudeRun(dir, { notesPath: notes }));
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");
+    const at = argv.indexOf("--mcp-config");
+    assert.ok(at >= 0, `an authoring run passes --mcp-config: ${argv.join(" ")}`);
+    const mcp = JSON.parse(argv[at + 1]!) as { mcpServers: { tumwater: { args: string[] } } };
+    assert.match(mcp.mcpServers.tumwater.args[0]!, /role-notes-server\.js$/);
+    assert.equal(fs.readFileSync(envFile, "utf8").trim(), notes, "the notes path reaches the spawned server");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a claude run without a notebook passes no MCP config and no notes path", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const envFile = path.join(dir, "notes-env.txt");
+  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
+    extraScript: [`printf '[%s]' "$TUMWATER_NOTES_PATH" >> "${envFile}"`],
+  });
+  try {
+    const result = await runAgent(claudeRun(dir));
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");
+    assert.ok(!argv.includes("--mcp-config"), "a run with no notebook exposes no MCP server");
+    assert.equal(fs.readFileSync(envFile, "utf8"), "[]", "and no TUMWATER_NOTES_PATH is set");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});
+
+test("a resumed claude run re-passes --mcp-config, since claude keeps no flags across --resume", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
+  try {
+    const notes = path.join(dir, "notes.md");
+    const run = claudeRun(dir, { notesPath: notes });
+    assert.equal((await runAgent(run)).ok, true);
+    const resumed = await runAgent({ ...run, continueSession: true, notesPath: notes });
+    assert.equal(resumed.ok, true, `${resumed.errorMessage}`);
+    const second = readRunBlocks(fake.argvFile)[1]!.split("\n");
+    assert.ok(second.includes("--resume"), "the second run resumes");
+    assert.ok(second.includes("--mcp-config"), "the resume re-passes the notes MCP server");
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
+});

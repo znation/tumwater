@@ -63,7 +63,7 @@ function withClaudeAuthor(root: string, cwd: string, id = "c1"): void {
 function plan(
   root: string,
   s: LoopState,
-  opts: { tickPrompt?: () => string | null; pending?: PendingPrompt; agent?: string } = {},
+  opts: { tickPrompt?: (agent?: string) => string | null; pending?: PendingPrompt; agent?: string } = {},
 ) {
   return planTickStart({
     root,
@@ -90,6 +90,25 @@ test("a fresh tick takes the assembled prompt and derives the restart cause", ()
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
   assert.equal(s.lastError, undefined);
+});
+
+test("a fresh tick hands the effective agent to the prompt assembly", () => {
+  // plans/agent-backends.md, part 5/7: the tick's prompt dialect must match the backend the
+  // run actually uses. planTickStart receives the effective `cfg.agent` (the model-fallback
+  // pair while an episode is active) and passes it to the fresh-tick assembly; deriving the
+  // dialect from the role's primary instead would speak claude's MCP dialect to a pi run.
+  const dir = tmpdir();
+  const s = state();
+  let seen: string | undefined = "unset";
+  const p = plan(dir, s, {
+    agent: "claude",
+    tickPrompt: (agent) => {
+      seen = agent;
+      return "assembled";
+    },
+  });
+  assert.ok(p);
+  assert.equal(seen, "claude", "the effective agent reaches the fresh prompt assembly");
 });
 
 test("a resumable session resumes with the restart bridge and skips the assembled prompt", () => {

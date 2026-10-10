@@ -98,8 +98,8 @@ export class LoopPi {
       rawLogFile: piLogPath(this.host.root, this.host.role),
       nativeLogFile: nativeLogPath(this.host.root, this.host.role, resolved.agent ?? "pi"),
       signal: this.host.runSignal(),
-      // Only runAuthoringPi passes this; a landing, review, or conflict-resolution run has no
-      // notebook, and neither does the director (see runAuthoringPi).
+      // Only runAuthoringPi and its SUMMARY/stage-fix follow-ups pass this; a landing,
+      // review, or conflict-resolution run has no notebook, and neither does the director.
       notesPath,
       // A tool call silent for the configured stall threshold names itself in the event feed
       // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
@@ -309,11 +309,20 @@ export class LoopPi {
     resume = false,
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult> {
-    const notesPath =
-      this.host.role === DIRECTOR_ROLE ? undefined : roleNotesPath(this.host.root, this.host.role);
     return this.runWithTransientRetry(
-      this.loopPiOpts(wt, prompt, sessionName, "author", resume, config, notesPath),
+      this.loopPiOpts(wt, prompt, sessionName, "author", resume, config, this.authorNotesPath()),
     );
+  }
+
+  /** The notebook path an authoring run carries: the role's note file, or undefined for the
+   * director, which has no notebook. The SUMMARY/stage-fix follow-ups share the authoring
+   * tick's session and must carry the same notes wiring — claude re-passes `--mcp-config` on
+   * every invocation because it keeps no flags across `--continue`, and pi reads
+   * TUMWATER_NOTES_PATH from the environment. */
+  private authorNotesPath(): string | undefined {
+    return this.host.role === DIRECTOR_ROLE
+      ? undefined
+      : roleNotesPath(this.host.root, this.host.role);
   }
 
   /** The shared authoring/conflict run wiring WITHOUT the role notebook. The landing merge's
@@ -387,6 +396,8 @@ export class LoopPi {
         `tumwater-${this.host.role}-${this.host.tickNumber()}-${suffix}`,
         "author",
         true,
+        undefined,
+        this.authorNotesPath(),
       ),
       config: {
         ...cfg,

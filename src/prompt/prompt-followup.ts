@@ -1,4 +1,5 @@
-import { CONTEXT_BUDGET_RULE } from "./prompt.js";
+import { contextBudgetRule } from "./prompt.js";
+import { dialectFor } from "./dialect.js";
 import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-contract.js";
 
 /** The prompts that pick a pi session back up where prompt.ts's builders start one: the resume
@@ -34,7 +35,7 @@ unusable, redo it — but stay on this task rather than picking a new one.`;
  * to verify a half-finished tool call. The cut-off bridge carries a numeric re-reading budget
  * because the observed post-compaction behavior was the opposite of "read almost nothing": the
  * model re-read the whole tree and repeated identical reads of one file nine times. */
-export function buildResumePrompt(roleId: string, cause: ResumeCause = "restart"): string {
+export function buildResumePrompt(roleId: string, cause: ResumeCause = "restart", agent?: string): string {
   const opening =
     cause === "cut-off"
       ? `Your previous run as the "${roleId}" loop ran out of context before it could finish, so the
@@ -70,7 +71,7 @@ ${CONTINUE_TASK_BRIDGE}`;
   return `${opening} All the original rules
 still apply, in particular:
 - Do exactly ONE focused task, then stop.
-${CONTEXT_BUDGET_RULE}
+${contextBudgetRule(dialectFor(agent))}
 - Never create, amend, or revert git commits — the harness handles all git operations.
 - Your last message is plain text — never a tool call or an announcement of a next step.
 ${REPLY_ENDINGS}`;

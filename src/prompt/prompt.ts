@@ -6,6 +6,7 @@ import { DECOMPOSITION_GUIDANCE, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, PLAN_SIZI
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";
 import { worktreePath } from "../paths.js";
+import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
 
 /** Prompt construction for the role loops' pi runs (tick and director). The reply contract those
  * runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the
@@ -41,19 +42,23 @@ import { worktreePath } from "../paths.js";
  * once so the tick rules and prompt-followup.ts's resume bridge cannot drift. Must not contain
  * the phrase "ran out of context" — the loop tests use it to tell a fresh tick from a cut-off
  * resume. */
-export const CONTEXT_BUDGET_RULE = `- Your context window is finite: everything you read stays in it until the run ends, and a
+export function contextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
+  return `- Your context window is finite: everything you read stays in it until the run ends, and a
   run that fills the window lands nothing. A whole-file read of a 500-line module costs ~5k tokens.
 - Check size before reading (\`wc -l\`) and read files over ~300 lines in ranges: find the lines
-  with \`grep -n\`, then read them with the read tool's offset/limit (or \`sed -n 'A,Bp'\`).
+  with \`grep -n\`, then read them with ${dialect.readRange}.
 - Cap command output with \`head\`/\`tail\`. Never dump a file, a log, or a test run wholesale.
 - Do not re-read what you already saw — re-read only a region you edited.
 - Each turn re-sends everything read so far, so issue lookups that do not depend on each other
   (a \`wc -l\` over several files, the ranges a \`grep -n\` found, a typecheck and a targeted
   test) as separate tool calls in the same turn. Keep anything that depends on a prior result
   sequential — do not batch an edit with the test that checks it.
-- Oversized tool results come back as head+tail around a marker that names the omitted amount
-  and where the full output lives — follow the pointer (re-read with \`offset\`/\`limit\`, or open
-  the full-output file path) instead of retrying the same read.`;
+- ${dialect.oversizedOutput}`;
+}
+
+/** The pi-dialect reading-budget rule, byte-identical to the rule before the dialect split, for
+ * the callers and tests that want the default text. */
+export const CONTEXT_BUDGET_RULE = contextBudgetRule(PI_DIALECT);
 
 /** The test-runner rule every run that may run tests carries: the tick and director rules, the
  * conflict resolver, and the reviewer. Project-neutral on purpose — a fleet works on any codebase
@@ -107,7 +112,7 @@ export const DEFAULT_SCOPE = `- Do exactly ONE focused task, then stop. Small, c
  * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
  * be configured. `scope` is the Scope section's rules: DEFAULT_SCOPE unless the tick's role
  * states its own (Role.scope). */
-function commonRules(check?: BuildCheck, briefFile: string = "README.md", scope: string = DEFAULT_SCOPE): string {
+function commonRules(check?: BuildCheck, briefFile: string = "README.md", scope: string = DEFAULT_SCOPE, dialect: PromptDialect = PI_DIALECT): string {
   const verify = check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
@@ -139,7 +144,7 @@ Scope:
 ${scope}
 
 Reading budget:
-${CONTEXT_BUDGET_RULE}
+${contextBudgetRule(dialect)}
 
 Where you work:
 - Stay inside your worktree: run commands from it — the directory you start in, where
@@ -217,10 +222,12 @@ relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
 /** The standing instruction that makes the notebook seedable: every role tick is told it may
  * write one, so the first tick (when no note exists yet) can create it. The note content block
  * (roleNotesBlock) is what is omitted when there is nothing to show. */
-const ROLE_NOTES_INSTRUCTION = `Before you end, if you learned something the next tick of your role should know (where
-things live, what you ruled out and why, what you would look at next), call role_notes with
+export function roleNotesInstruction(dialect: PromptDialect = PI_DIALECT): string {
+  return `Before you end, if you learned something the next tick of your role should know (where
+things live, what you ruled out and why, what you would look at next), call ${dialect.notesTool} with
 the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
 BUGS.md hold the work itself.`;
+}
 
 interface TickPromptInput {
   role: Role;
@@ -264,6 +271,9 @@ interface TickPromptInput {
   briefFile?: string;
   /** Today's local date as YYYY-MM-DD (see dateLine). Omitted: todayStamp() — tests pin it. */
   today?: string;
+  /** The agent backend this role resolves to (`configForRole(config, role).agent`), selecting
+   * the prompt dialect (./dialect.ts). Omitted: pi's dialect. */
+  agent?: string;
 }
 
 /** Shared opening of every loop prompt: where the run happens, what day it is, and why the
@@ -285,7 +295,8 @@ deadlines from it; never infer the date from the repo.`,
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, planTargetNote, check, briefFile, today, userRequest } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, planTargetNote, check, briefFile, today, userRequest, agent } = input;
+  const dialect = dialectFor(agent);
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt, today),
@@ -305,8 +316,8 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  parts.push(ROLE_NOTES_INSTRUCTION);
-  parts.push(commonRules(check, briefFile, role.scope).trim());
+  parts.push(roleNotesInstruction(dialect));
+  parts.push(commonRules(check, briefFile, role.scope, dialect).trim());
   return parts.join("\n\n");
 }
 
@@ -325,6 +336,9 @@ export function buildDirectorPrompt(
   /** Rendered actionable backlog index (see backlog-structure.ts); the tick prompt carries it
    * too, so the director can route against the same bounded view of the backlog. */
   backlogIndex?: string,
+  /** The agent backend the director resolves to, selecting the prompt dialect (./dialect.ts).
+   * Omitted: pi's dialect. */
+  agent?: string,
 ): string {
   const parts = [
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
@@ -388,6 +402,6 @@ any other setting (timeouts, budgets, role enablement, review settings) has that
 with a warning, so such a request is guidance to record per the routing rules, not an edit you
 can make.`,
   );
-  parts.push(commonRules(check, briefFile).trim());
+  parts.push(commonRules(check, briefFile, undefined, dialectFor(agent)).trim());
   return parts.join("\n\n");
 }

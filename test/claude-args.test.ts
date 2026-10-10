@@ -21,7 +21,7 @@ test("claudeArgs builds the design's argv in order and pairs the prompt with std
     thinking: "off",
     sessionId: "11111111-1111-4111-8111-111111111111",
     maxBudgetUsd: 3.5,
-    mcpConfigPath: "/tmp/role-notes-mcp.json",
+    mcpConfig: JSON.stringify({ mcpServers: { tumwater: { command: "node", args: ["/x/role-notes-server.js"] } } }),
     args: ["--no-session-persistence"],
     prompt: "do the thing",
   });
@@ -44,7 +44,7 @@ test("claudeArgs builds the design's argv in order and pairs the prompt with std
     "project",
     "--strict-mcp-config",
     "--mcp-config",
-    "/tmp/role-notes-mcp.json",
+    '{"mcpServers":{"tumwater":{"command":"node","args":["/x/role-notes-server.js"]}}}',
     "--disable-slash-commands",
     "--exclude-dynamic-system-prompt-sections",
     "--append-system-prompt-file",

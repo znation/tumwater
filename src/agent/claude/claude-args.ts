@@ -76,8 +76,9 @@ export interface ClaudeArgOptions {
   resumeSessionId?: string;
   /** API-billing runs pass the remaining daily budget; subscription runs pass none. */
   maxBudgetUsd?: number;
-  /** The role-notes MCP config path (part 5/7). When present, `--mcp-config` names it. */
-  mcpConfigPath?: string;
+  /** The role-notes MCP config (part 5/7), as the JSON string claude's `--mcp-config`
+   * accepts. When present, it is passed verbatim. */
+  mcpConfig?: string;
   /** The configured `agents.claude.args` passthrough, appended last. */
   args?: string[];
   /** The tick prompt, returned as stdin rather than as an argv element. */
@@ -119,7 +120,7 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
     "project",
     "--strict-mcp-config",
   );
-  if (opts.mcpConfigPath !== undefined) args.push("--mcp-config", opts.mcpConfigPath);
+  if (opts.mcpConfig !== undefined) args.push("--mcp-config", opts.mcpConfig);
   args.push("--disable-slash-commands", "--exclude-dynamic-system-prompt-sections");
   if (shouldAppendAgents(opts.cwd)) args.push("--append-system-prompt-file", "AGENTS.md");
   if (opts.maxBudgetUsd !== undefined && opts.maxBudgetUsd > 0) {

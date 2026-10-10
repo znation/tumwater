@@ -55,8 +55,10 @@ export function planTickStart(opts: {
    * and a fresh tick's assembled prompt is recorded onto it (via tickPrompt). */
   pending: PendingPrompt;
   /** Assemble a fresh tick's prompt (null when the loop has nothing to run); the runner's
-   * tickPrompt() so the dequeued user request is recorded as pending exactly as before. */
-  tickPrompt: () => string | null;
+   * tickPrompt() so the dequeued user request is recorded as pending exactly as before. The
+   * effective `agent` below is passed through so the prompt speaks the dialect of the backend
+   * the tick actually runs on, not the role's primary. */
+  tickPrompt: (agent?: string) => string | null;
   /** The backend this tick would run on, for the resume decision: a newest author ledger line
    * naming another agent hands off instead of resuming. Defaults to pi (the only backend until
    * part 4/7 makes the choice configurable). */
@@ -142,9 +144,9 @@ export function planTickStart(opts: {
     : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
   let prompt: string | null;
   if (resuming) {
-    prompt = buildResumePrompt(opts.role, resumeCause);
+    prompt = buildResumePrompt(opts.role, resumeCause, agent);
   } else {
-    const assembled = opts.tickPrompt();
+    const assembled = opts.tickPrompt(agent);
     prompt = assembled === null ? null : handingOff ? buildHandoffPrompt(opts.role, assembled) : assembled;
   }
   if (prompt === null) return null;

@@ -216,8 +216,8 @@ export class LoopRunner {
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
    * the loop has nothing to run (an empty director inbox); a role loop's assembly never
    * returns null. */
-  private tickPrompt(): string | null {
-    const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state });
+  private tickPrompt(agent?: string): string | null {
+    const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
     if (assembled === null) return null;
     this.pending.record(assembled.userPrompt);
     return assembled.prompt;
@@ -322,7 +322,7 @@ export class LoopRunner {
       save: () => this.save(),
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
-      tickPrompt: () => this.tickPrompt(),
+      tickPrompt: (agent) => this.tickPrompt(agent),
       get recoveryFailure() {
         return self.recoveryFailure;
       },

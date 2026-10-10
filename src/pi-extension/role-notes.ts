@@ -9,54 +9,28 @@
  * Why: every tick is a fresh pi session, which retired session poisoning but also discards the
  * small continuity worth keeping — where things live, what was ruled out, what to look at
  * next. The note carries exactly that much, capped so it cannot grow into a transcript. The
- * 4,096-byte validation is a pure exported function (`validateRoleNote`), so it is testable
- * without pi, the same pattern as bounded-output and context-budget; the default export is the
- * thin adapter that registers the tool with pi's `registerTool()`.
+ * cap, schema, validation, and atomic write live in src/agent/role-notes-write.ts, shared with
+ * claude's MCP server (src/agent/mcp/role-notes-server.ts) so both agent backends write a note
+ * the same way; this file is only pi's thin registerTool adapter.
  *
  * A plain JSON Schema `parameters` object is passed — no `typebox` import — matching the shape
  * pi's own MCP extension builds for its dynamically registered tools, and keeping this file
  * free of runtime dependencies (PRINCIPLES.md).
  */
 
-import { writeTextAtomic } from "../files/files.js";
-import { gotSuffix } from "../text/text.js";
+import {
+  ROLE_NOTES_DESCRIPTION,
+  ROLE_NOTES_MAX_BYTES,
+  ROLE_NOTES_PARAMETERS,
+  saveRoleNote,
+  validateRoleNote,
+  writeRoleNote,
+} from "../agent/role-notes-write.js";
 
-/** The cap on a role's note, in UTF-8 bytes. Small enough to cost little on every turn, large
- * enough for the codebase facts a role wants to keep. */
-export const ROLE_NOTES_MAX_BYTES = 4096;
-
-/** The tool's parameter schema (plain JSON Schema). */
-const ROLE_NOTES_PARAMETERS = {
-  type: "object",
-  properties: {
-    text: {
-      type: "string",
-      description: `The full replacement note, at most ${ROLE_NOTES_MAX_BYTES} bytes. Empty text clears it.`,
-    },
-  },
-  required: ["text"],
-  additionalProperties: false,
-} as const;
-
-/** Validate note text against the byte cap. Returns null when the text is acceptable, or an
- * error naming the byte count and the fix — the same "shorten it to at most" wording
- * text/text.ts's tooLongMessage gives every other bounded text, so the model that overran
- * learns what to do, not just what went wrong. Pure, so the boundary is testable without pi. */
-export function validateRoleNote(text: string): string | null {
-  const bytes = Buffer.byteLength(text, "utf8");
-  if (bytes > ROLE_NOTES_MAX_BYTES) {
-    return `note is ${bytes} bytes — shorten it to at most ${ROLE_NOTES_MAX_BYTES} bytes`;
-  }
-  return null;
-}
-
-/** Replace the note file at `notesPath` with `text` through src/files/files.ts's
- * writeTextAtomic — the one home of the parent-dir creation, tmp+rename, and
- * no-remnant-on-failure contract, so a role's notebook cannot litter `.tumwater/state/notes/`
- * with a temp file that nothing prunes. Callers validate first; this does not. */
-export function writeRoleNote(notesPath: string, text: string): void {
-  writeTextAtomic(notesPath, text);
-}
+// Kept re-exported from pi's extension for the callers and tests that have always imported
+// them here (src/tick/tick-prompt.ts, test/role-notes.test.ts); the definitions now live in
+// src/agent/role-notes-write.ts.
+export { ROLE_NOTES_MAX_BYTES, validateRoleNote, writeRoleNote };
 
 /** Minimal structural types for pi's extension API — pi itself loads this file, so the real
  * types are not needed at compile time and stay out of the dependency tree. */
@@ -89,35 +63,11 @@ export default function roleNotes(pi: PiExtensionApi): void {
   pi.registerTool({
     name: "role_notes",
     label: "role notebook",
-    description:
-      `Replace this role's notebook: the short note the role's own earlier ticks left for the ` +
-      `next tick (where things live, what was ruled out, what to look at next; at most ` +
-      `${ROLE_NOTES_MAX_BYTES} bytes). Pass the full replacement text; empty text clears it.`,
+    description: ROLE_NOTES_DESCRIPTION,
     parameters: ROLE_NOTES_PARAMETERS,
     execute(_toolCallId, params) {
-      // The parameter schema asks for a string, but pi does not guarantee it enforced every
-      // tool call's shape — and coercing a malformed `text` to "" cleared the notebook, the
-      // destructive reading of a typo the model never sees. Reject it instead, naming the
-      // offending value and the fix, so a bad call is retried rather than silently wiping the
-      // continuity the tool exists to keep.
-      const text = params?.text;
-      if (typeof text !== "string") {
-        throw new Error(
-          `role_notes requires a string "text"${text === undefined ? "" : gotSuffix(text)} — pass the full replacement note, or "" to clear it`,
-        );
-      }
-      const error = validateRoleNote(text);
-      if (error) throw new Error(error);
-      writeRoleNote(notesPath, text);
-      return {
-        content: [
-          {
-            type: "text",
-            text: text === "" ? "notebook cleared" : `notebook saved (${Buffer.byteLength(text, "utf8")} bytes)`,
-          },
-        ],
-        details: undefined,
-      };
+      const text = saveRoleNote(notesPath, params?.text);
+      return { content: [{ type: "text", text }], details: undefined };
     },
   });
 }

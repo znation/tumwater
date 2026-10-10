@@ -67,6 +67,24 @@ test("a role tick prompt embeds the brief, principles, and the role's task — w
   assert.match(result.prompt, /read the project brief \(README\.md\) in full/);
 });
 
+test("an explicit agent override selects the dialect over the config's primary", () => {
+  // The effective-agent seam planTickStart drives: a role whose config resolves to pi but
+  // whose active fallback is claude must get claude's prompt dialect. `agent` overrides the
+  // role's primary `configForRole(...).agent`; omitted, the primary still wins (pinned by the
+  // tests above, whose prompts carry pi's wording).
+  const dir = root();
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+    agent: "claude",
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /mcp__tumwater__role_notes/, "the override speaks claude's dialect");
+  assert.ok(!result.prompt.includes("call role_notes with"), "never the pi tool name");
+});
+
 test("a repo whose brief markers are gone still assembles a prompt naming README.md", () => {
   // The degraded-but-running state: an operator edit (or a docs loop rewrite) can strip the
   // markers, leaving no file that owns the brief. The fleet must keep ticking — readInitialPrompt

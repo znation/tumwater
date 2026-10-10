@@ -753,6 +753,30 @@ test("requestSummary resumes the tick's session and folds its usage", async () =
   }
 });
 
+test("requestSummary carries the role notebook path, like the authoring run", async () => {
+  // plans/agent-backends.md, part 5/7: claude keeps no flags across --continue, so the
+  // SUMMARY/stage-fix follow-ups must re-pass --mcp-config; the shared wiring does that from
+  // PiRunOptions.notesPath, which the follow-up now fills exactly as runAuthoringPi does (pi
+  // reaches the same file through TUMWATER_NOTES_PATH). The director keeps no notebook.
+  const root = tmpdir();
+  const envFile = path.join(root, "notes-env");
+  await withPi(
+    `printf '[%s]' "$TUMWATER_NOTES_PATH" >> "${envFile}"\nprintf '%s\\n' '${assistantLine("SUMMARY: tidied src")}'`,
+    async () => {
+      fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
+      fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
+      const { loopPi } = makeHost(root);
+      const result = await loopPi.requestSummary(root);
+      assert.ok(result);
+      assert.equal(
+        fs.readFileSync(envFile, "utf8"),
+        `[${roleNotesPath(root, "feature")}]`,
+        "the follow-up runs with the role's notebook path in its environment",
+      );
+    },
+  );
+});
+
 test("requestSummary's 429 takes the shared transient retry: warns, waits the hint out, resumes, folds both", async () => {
   // BUGS.md 2026-10-01: the SUMMARY follow-up called bare runPi while the shared retry's own
   // doc claimed it wires EVERY pi run the loop makes — so a 429 on the follow-up turn failed

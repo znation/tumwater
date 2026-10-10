@@ -73,7 +73,7 @@ export interface LoopTickContext {
   warn(message: string): void;
   /** The signal a tick's pi runs watch: harness shutdown OR this tick's abort controller. */
   runSignal(): AbortSignal;
-  tickPrompt(): string | null;
+  tickPrompt(agent?: string): string | null;
   /** The live value of the runner's recoveryFailure field (set by the recovery phase mid-run,
    * read at finalize time). */
   readonly recoveryFailure: string | undefined;
@@ -241,7 +241,7 @@ export async function runTickPhase(
     role: ctx.role,
     state: s,
     pending: ctx.pending,
-    tickPrompt: () => ctx.tickPrompt(),
+    tickPrompt: (agent) => ctx.tickPrompt(agent),
     agent: cfg.agent ?? DEFAULT_AGENT,
   });
   if (plan === null) return { result: "skipped" };

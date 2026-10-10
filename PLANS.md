@@ -7,58 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 5/7: `role_notes` over MCP and the prompt dialect (planned 2026-10-09 by operator; requires parts 4a/7 and 4b/7 landed)
-
-Design: plans/agent-backends.md ("What the pi extensions did, per backend").
-
-**Approach.**
-1. **MCP server.** src/agent/mcp/role-notes-server.ts is a dependency-free stdio MCP server
-   (JSON-RPC `initialize`, `tools/list`, `tools/call`) exposing `role_notes {text}`.
-   - It writes through the same atomic, 4 KB-capped function as src/pi-extension/role-notes.ts
-     (extract it to src/agent/role-notes-write.ts).
-   - The claude adapter passes it with
-     `--mcp-config '{"mcpServers":{"tumwater":{"command":"node","args":[<dist path>]}}}'` only
-     when the run has a `notesPath`.
-2. **Dialect.** `PromptDialect` on each backend supplies:
-   - the notes tool name (`role_notes` / `mcp__tumwater__role_notes`);
-   - the read-range phrase;
-   - the oversized-output bullet: pi's head+tail marker vs claude's "large output is saved to a
-     file it names — read that file in ranges".
-
-   `ROLE_NOTES_INSTRUCTION` and `CONTEXT_BUDGET_RULE` (src/prompt/prompt.ts) and
-   prompt-followup.ts become functions of the dialect. pi's text stays byte-identical.
-3. **AGENTS.md.** When the worktree has `AGENTS.md` and no `CLAUDE.md`, claude runs get
-   `--append-system-prompt-file AGENTS.md`.
-
-**Interactions (resume and handoff prompts).** Added 2026-10-09 by operator.
-- **Prompt texts.** The resume and handoff texts become dialect functions alongside
-  `ROLE_NOTES_INSTRUCTION`, wherever they name a tool or the notes file:
-  - `buildResumePrompt` and `buildHandoffPrompt` (src/tick/tick-resume.ts);
-  - `buildRevisionNote` and `buildConflictHandbackNote`.
-  A pi→claude handoff renders in claude's dialect, and a claude→pi handoff in pi's.
-- **Per-run flags.** claude does not keep flags across `--resume`, so every claude invocation
-  that writes notes must pass `--mcp-config` again, including resumes, transient retries and
-  SUMMARY follow-ups. Test it with a resumed claude tick on fake-claude.
-
-**Files touched.**
-- src/agent/mcp/role-notes-server.ts, src/agent/role-notes-write.ts (new)
-- src/pi-extension/role-notes.ts
-- src/agent/claude/claude-args.ts
-- src/prompt/prompt.ts, src/prompt/prompt-followup.ts
-- src/tick/tick-prompt.ts
-
-Tests: test/role-notes-mcp.test.ts (spawn the server, call the tool, check the file and the
-cap), plus prompt snapshot cases for both dialects.
-
-**Acceptance criteria.**
-- **Unchanged pi.** pi tick prompts are byte-identical to before.
-- **claude prompts.** A claude tick prompt names `mcp__tumwater__role_notes`. A claude authoring
-  run on fake-claude receives `--mcp-config` naming the server. Director, review and landing runs
-  do not.
-- **Server.** The server rejects a note over 4 KB with a tool error, and leaves the old note
-  intact.
-- `npm run test` green.
-
 ### Agent backends, part 6a/7: the claude account state and notional spend (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires parts 4a/7, 4b/7 and 4e/7 landed)
 
 Design: plans/agent-backends.md ("Billing: subscription or API", "The subscription usage
@@ -576,6 +524,71 @@ prints the "no …" line and exits 0; a missing file too; `plan --list extra` an
 - `tumwater backlog`, its Markdown render, and its `--json` payload are unchanged — the existing
   backlog-render tests pass without edits.
 - `npm run test` green.
+
+### Agent backends, part 5/7: `role_notes` over MCP and the prompt dialect (planned 2026-10-09 by operator; requires parts 4a/7 and 4b/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("What the pi extensions did, per backend").
+
+**Approach.**
+1. **MCP server.** src/agent/mcp/role-notes-server.ts is a dependency-free stdio MCP server
+   (JSON-RPC `initialize`, `tools/list`, `tools/call`) exposing `role_notes {text}`.
+   - It writes through the same atomic, 4 KB-capped function as src/pi-extension/role-notes.ts
+     (extract it to src/agent/role-notes-write.ts).
+   - The claude adapter passes it with
+     `--mcp-config '{"mcpServers":{"tumwater":{"command":"node","args":[<dist path>]}}}'` only
+     when the run has a `notesPath`.
+2. **Dialect.** `PromptDialect` on each backend supplies:
+   - the notes tool name (`role_notes` / `mcp__tumwater__role_notes`);
+   - the read-range phrase;
+   - the oversized-output bullet: pi's head+tail marker vs claude's "large output is saved to a
+     file it names — read that file in ranges".
+
+   `ROLE_NOTES_INSTRUCTION` and `CONTEXT_BUDGET_RULE` (src/prompt/prompt.ts) and
+   prompt-followup.ts become functions of the dialect. pi's text stays byte-identical.
+3. **AGENTS.md.** When the worktree has `AGENTS.md` and no `CLAUDE.md`, claude runs get
+   `--append-system-prompt-file AGENTS.md`.
+
+**Interactions (resume and handoff prompts).** Added 2026-10-09 by operator.
+- **Prompt texts.** The resume and handoff texts become dialect functions alongside
+  `ROLE_NOTES_INSTRUCTION`, wherever they name a tool or the notes file:
+  - `buildResumePrompt` and `buildHandoffPrompt` (src/tick/tick-resume.ts);
+  - `buildRevisionNote` and `buildConflictHandbackNote`.
+  A pi→claude handoff renders in claude's dialect, and a claude→pi handoff in pi's.
+- **Per-run flags.** claude does not keep flags across `--resume`, so every claude invocation
+  that writes notes must pass `--mcp-config` again, including resumes, transient retries and
+  SUMMARY follow-ups. Test it with a resumed claude tick on fake-claude.
+
+**Files touched.**
+- src/agent/mcp/role-notes-server.ts, src/agent/role-notes-write.ts (new)
+- src/pi-extension/role-notes.ts
+- src/agent/claude/claude-args.ts, src/agent/claude/claude-backend.ts
+- src/prompt/prompt.ts, src/prompt/prompt-followup.ts, src/prompt/dialect.ts (new)
+- src/tick/tick-prompt.ts, src/tick/tick-resume.ts
+
+Tests: test/role-notes-mcp.test.ts (spawn the server, call the tool, check the file and the
+cap), test/prompt-dialect.test.ts (pi byte-identity and the claude wording), and claude-run
+cases for the MCP config on fresh and resumed runs.
+
+**Acceptance criteria.**
+- **Unchanged pi.** pi tick prompts are byte-identical to before.
+- **claude prompts.** A claude tick prompt names `mcp__tumwater__role_notes`. A claude authoring
+  run on fake-claude receives `--mcp-config` naming the server. Director, review and landing runs
+  do not.
+- **Server.** The server rejects a note over 4 KB with a tool error, and leaves the old note
+  intact.
+- `npm run test` green.
+
+**Landed.** src/agent/role-notes-write.ts holds the shared 4 KB cap, schema, validation, and
+atomic write; the pi extension and src/agent/mcp/role-notes-server.ts (a dependency-free stdio
+MCP server) both call it, and the claude adapter passes that server as inline `--mcp-config`
+plus TUMWATER_NOTES_PATH whenever the run carries a notebook — on resumes too, since claude keeps
+no flags across `--resume`. src/prompt/dialect.ts holds pi's and claude's only backend-specific
+prompt text; `contextBudgetRule`/`roleNotesInstruction` and `buildResumePrompt` take a dialect,
+and pi's text is byte-identical (test/prompt-dialect.test.ts). `buildHandoffPrompt`,
+`buildRevisionNote`, and `buildConflictHandbackNote` name no tool or notes file, so they needed no
+dialect argument; a handoff's assembled tick prompt already carries the right dialect. The
+AGENTS.md append was already in the part 3b/7 invocation builder, so this part changed no code
+for it.
 
 ### Agent backends, part 4c/7: per-agent binary resolution, passthrough args and the startup gate (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires parts 4a/7 and 4b/7 landed; done 2026-10-10 by feature)
 
