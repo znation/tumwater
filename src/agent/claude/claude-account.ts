@@ -233,17 +233,40 @@ function seedBilling(
     return { billing: "api" };
   const auth = probeAuthStatus(config);
   if (auth === null || auth.loggedIn !== true) return null;
-  const subscription = auth.subscriptionType !== undefined || auth.authMethod === "claude.ai";
+  const subscription = claudeAuthUsesSubscription(auth);
   return subscription
     ? { billing: "subscription", ...(auth.subscriptionType !== undefined ? { subscriptionType: auth.subscriptionType } : {}) }
     : { billing: "api" };
 }
 
-/** What `claude auth status` reports that seedBilling needs. */
-interface ClaudeAuthStatus {
+/** What `claude auth status` reports: whether a login exists, and the billing it names.
+ * `undefined` fields mean the reply did not name them. */
+export interface ClaudeAuthStatus {
   loggedIn: boolean;
   subscriptionType?: string;
   authMethod?: string;
+}
+
+/** Parse `claude auth status` stdout, returning null when it is not a JSON object or does not
+ * report a boolean `loggedIn` — the one home of the read, shared by this module's
+ * probeAuthStatus and doctor's claudeAuthProbe (doctor-model-checks.ts). An optional string
+ * field reads as absent when the reply names something else. */
+export function parseClaudeAuthStatus(stdout: string): ClaudeAuthStatus | null {
+  const doc = parseJsonObject(stdout);
+  if (doc === null || typeof doc.loggedIn !== "boolean") return null;
+  return {
+    loggedIn: doc.loggedIn,
+    subscriptionType: typeof doc.subscriptionType === "string" ? doc.subscriptionType : undefined,
+    authMethod: typeof doc.authMethod === "string" ? doc.authMethod : undefined,
+  };
+}
+
+/** True when an auth-status reply names claude.ai subscription billing — a subscription type
+ * (its presence alone signals one) or the explicit claude.ai auth method — rather than API
+ * billing. Shared by seedBilling below and doctor's checkClaudeAuth (doctor-model-checks.ts),
+ * which must not disagree about which seams are subscription-billed. */
+export function claudeAuthUsesSubscription(auth: ClaudeAuthStatus): boolean {
+  return auth.subscriptionType !== undefined || auth.authMethod === "claude.ai";
 }
 
 /** Run `claude auth status` under the same scrubbed environment a real run gets, bounded by a
@@ -259,13 +282,7 @@ function probeAuthStatus(config: TumwaterConfig): ClaudeAuthStatus | null {
       killSignal: "SIGKILL",
     });
     if (result.status !== 0 || typeof result.stdout !== "string") return null;
-    const doc = parseJsonObject(result.stdout);
-    if (doc === null || typeof doc.loggedIn !== "boolean") return null;
-    return {
-      loggedIn: doc.loggedIn,
-      subscriptionType: typeof doc.subscriptionType === "string" ? doc.subscriptionType : undefined,
-      authMethod: typeof doc.authMethod === "string" ? doc.authMethod : undefined,
-    };
+    return parseClaudeAuthStatus(result.stdout);
   } catch {
     return null;
   }

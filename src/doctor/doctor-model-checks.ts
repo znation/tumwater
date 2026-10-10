@@ -6,9 +6,9 @@ import { cacheReadUnpriced, fallbackModelPair, piModelsPath, readPiProviders } f
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isAgentId, routeModel } from "../config/model-selector.js";
 import { claudeBackend } from "../agent/claude/claude-backend.js";
-import { readClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
-import { isJsonObject } from "../files/json-object.js";
+import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
@@ -226,24 +226,13 @@ export async function piProviderAuth(
     timeoutMs,
   );
   if (result === null) return "unknown";
-  try {
-    const doc: unknown = JSON.parse(result.stdout);
-    const ready = isJsonObject(doc) && doc.ready;
-    if (result.code === 0 && ready === true) return "ready";
-    if (result.code === 0 && ready === false) return "not-ready";
-    return "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
-/** claude's billing, as `claude auth status` reports it: whether a login exists, and what
- * pays for runs — a subscription type from claude.ai OAuth, else an API key. `undefined`
- * fields mean the reply did not name them. */
-interface ClaudeAuth {
-  loggedIn: boolean;
-  subscriptionType?: string;
-  authMethod?: string;
+  if (result.code !== 0) return "unknown";
+  // An unreadable reply is unknown, never not-ready (which would blame the credentials).
+  const doc = parseJsonObject(result.stdout);
+  if (doc === null) return "unknown";
+  if (doc.ready === true) return "ready";
+  if (doc.ready === false) return "not-ready";
+  return "unknown";
 }
 
 /** Run `claude auth status` under the same scrubbed environment a real run gets (claudeEnv),
@@ -253,22 +242,12 @@ async function claudeAuthProbe(
   config: TumwaterConfig,
   pathEnv: string,
   timeoutMs: number,
-): Promise<ClaudeAuth | null> {
+): Promise<ClaudeAuthStatus | null> {
   const resolved = claudeBackend.resolveBin(config);
   const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
   const result = await boundedProbe(resolved.bin, ["auth", "status"], env, timeoutMs);
   if (result === null || result.code !== 0) return null;
-  try {
-    const doc: unknown = JSON.parse(result.stdout);
-    if (!isJsonObject(doc) || typeof doc.loggedIn !== "boolean") return null;
-    return {
-      loggedIn: doc.loggedIn,
-      subscriptionType: typeof doc.subscriptionType === "string" ? doc.subscriptionType : undefined,
-      authMethod: typeof doc.authMethod === "string" ? doc.authMethod : undefined,
-    };
-  } catch {
-    return null;
-  }
+  return parseClaudeAuthStatus(result.stdout);
 }
 
 /** claude credential readiness (plans/agent-backends.md "Every seam, checked"): a claude seam
@@ -292,7 +271,7 @@ export async function checkClaudeAuth(
     return { level: "warn", detail: "could not check — `claude auth status` did not run or its output was unreadable" };
   if (!auth.loggedIn)
     return { level: "fail", detail: "claude reports logged in: false — run `claude auth login`" };
-  const subscription = auth.subscriptionType !== undefined || auth.authMethod === "claude.ai";
+  const subscription = claudeAuthUsesSubscription(auth);
   const billing = subscription
     ? `subscription${auth.subscriptionType !== undefined ? ` (${auth.subscriptionType})` : ""}`
     : "API key";
