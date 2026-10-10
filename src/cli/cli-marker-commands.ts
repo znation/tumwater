@@ -8,7 +8,7 @@ import {
   ROLE_FLAG,
   type FlagSpec,
 } from "./cli-flag-specs.js";
-import { requireReadyRepo } from "./cli-query-commands.js";
+import { requireReadyRepo } from "./cli-repo-gate.js";
 import { cmdAbort, cmdPause, cmdReclaim, cmdResetCounters, cmdResume, cmdWake } from "../operator/operator-commands.js";
 
 /** The marker commands that share runMarkerCommand's guard+dispatch shape below. */

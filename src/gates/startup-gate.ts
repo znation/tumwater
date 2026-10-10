@@ -33,7 +33,7 @@ import { loopIds } from "../roles/loop-ids.js";
  * until that build runs. */
 
 /** The repo-level preconditions every repo-bound command shares (requireReadyRepo in
- * cli/cli-query-commands.ts): git
+ * cli/cli-repo-gate.ts): git
  * on PATH, a repository, tumwater.json present, at least one commit. The first unmet one's
  * message, or null when the repo is ready. A missing tumwater.json is "not initialized" here,
  * never "use defaults": starting a fleet is the moment an operator's config must exist. */

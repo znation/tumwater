@@ -21,7 +21,7 @@ import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
-import { requireReadyRepo } from "../cli/cli-query-commands.js";
+import { requireReadyRepo } from "../cli/cli-repo-gate.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { withStateLock } from "../concurrency/lock.js";

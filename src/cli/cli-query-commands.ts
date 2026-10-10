@@ -7,7 +7,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
-import { repoNotReady } from "../gates/startup-gate.js";
+import { requireReadyRepo } from "./cli-repo-gate.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { snapshot } from "../status/status-data.js";
@@ -21,13 +21,6 @@ import { renderFleetChange, renderRoleChange } from "../change/change-render.js"
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
 import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
-
-/** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo
- * half of `tumwater run`'s startup gate, shared by every repo-bound command). */
-export async function requireReadyRepo(root: string): Promise<void> {
-  const notReady = await repoNotReady(root);
-  if (notReady !== null) fail(notReady);
-}
 
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
  * neither a flag nor the value of a --role flag. Returns the id (null when absent) and the
