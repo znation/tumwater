@@ -454,7 +454,7 @@ export interface GateRunsPi {
 
 /** One run's spend folded into the owning loop's usage counters exactly once — the
  * reviewer's and conflict-resolution's runs charge to the authoring role, so the folding
- * belongs to the loop, not to the run itself (src/loop/loop.ts's runPi). */
+ * belongs to the loop, not to the run itself (the loop's runPi wiring, src/loop/loop-tick.ts). */
 export interface FoldsUsage {
   foldUsage(run: PiRunResult): void;
 }

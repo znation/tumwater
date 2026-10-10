@@ -39,8 +39,9 @@ export async function refusalContradiction(
 }
 
 /** What handleRefusal needs from its owning loop: identity, this tick's assistant-turn count
- * (deliberately not on LoopState — see loop.ts), and the loop's shared merge landing so a
- * conflict-resolution run folds into the same tick counters as an authoring run. */
+ * (deliberately not on LoopState — see TickUsage.turns, src/tick/tick-usage.ts), and the
+ * loop's shared merge landing so a conflict-resolution run folds into the same tick counters as
+ * an authoring run. */
 export interface RefusalContext {
   role: string;
   mainBranch: string;
