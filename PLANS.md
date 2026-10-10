@@ -424,6 +424,44 @@ unknown-role message; `report --help` names the combination.
   longer says it is rejected.
 - `npm run test` green.
 
+### Finish the stale code-path citation sweep across `plans/*.md` (planned 2026-10-10 by organize)
+
+Goal. Every path-shaped token in the plan documents names a path that exists in the tree, every
+`<path>:<line>` names a line the file actually has, and a module that has since split names the
+module that owns the symbol beside the citation. A reader who follows a plan's citation reaches
+the code it describes.
+
+Cost it removes. The plans were audited before the landing, pi-facade, config, loop, and events
+splits, so today a citation either names a module that no longer exists or a line past the file's
+end. The organize loop has repaired one file per tick, and review keeps finding the pass
+incomplete: the 2026-10-10 review of `plans/portability.md` named three remaining classes — a
+helper pinned to the wrong landing module, a build-scope call pinned to a stale module, and line
+pins past the file's end. This lands the sweep as one coherent change instead of another partial
+pass.
+
+Target structure / method.
+1. Inventory: scan every `plans/*.md` for path-shaped tokens and keep the ones whose path is
+   absent from the tree; separately list every `<path>:<line>` whose line is past the file's end.
+2. Split-aware map: for each moved module, name the one current module that owns the cited
+   symbol. A module that split into a facade plus implementations needs a per-citation symbol
+   check, never a blanket rename.
+3. Rewrite rule: replace the path with its current module and drop the old `:line` pin, keeping
+   the symbol name in the surrounding prose. A path alone is honest; a stale number is not.
+4. Historical audits: a dated "Verified as written" paragraph is a snapshot at the commit its
+   heading names. Keep that commit reference; reword its line pins to symbol names rather than
+   asserting a current line.
+
+Files touched. `plans/portability.md` first (the file this sweep's review named), then every
+other `plans/*.md` the inventory flags. No source or test change.
+
+Acceptance criteria.
+- The inventory over every `plans/*.md` reports no cited path absent from the tree.
+- No `<path>:<line>` names a line past that file's end.
+- For each split module, the module named beside a symbol exports it (checked against the
+  module's export list).
+- `npm run test` is green.
+
+
 ## Done
 
 ### Warn before a loop reaches its own daily cap: the `role_cap_warning` event (planned 2026-10-09 by plan; independent of the Agent backends series; done 2026-10-10 by feature)
