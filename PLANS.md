@@ -343,6 +343,80 @@ Acceptance criteria.
   module's export list).
 - `npm run test` is green.
 
+### Role-scoped Usage and Failures views in the dashboard (planned 2026-10-10 by plan; independent of the Agent backends series; sibling of the landed `tumwater report --role <id>` and `tumwater report --failures --role <id>`; completes the CLI's role scope on the dashboard's two report tabs)
+
+**Goal.** The dashboard's Usage and Failures views gain a loop picker, and `/api/report` and
+`/api/failures` accept a `?role=<id>` scope, so an operator can see one loop's spend and one
+loop group's failure evidence in the browser without dropping to `tumwater report --role`. The
+CLI already scopes both shapes (`report --role`, `report --failures --role`) and the collectors
+already take the optional base role (`collectReport(root, days, role?)`,
+`collectFailureReport(root, days, role?)`); only the dashboard's endpoint adaptation and its
+two views are missing. Out of scope: the TUI's Usage/Failures panes (a separate surface, left
+for a later sibling), and any change to the collectors or the CLI.
+
+**Approach.**
+1. **Endpoints.** In src/gui/gui-endpoints.ts, `handleReport` and `handleFailures` read
+   `const role = q.get("role")` and, when present (`!== null`), validate it through the
+   existing `rejectBadRole(root, res, role)` (gui-args.ts) before collecting — absent means the
+   fleet-wide report exactly as today, `?role=bogus` gets the shared unknown-role 400 with its
+   typo hint, and `?role=` (empty) is a present-but-unknown 400. Then pass `role ?? undefined`
+   as the collectors' third argument. No new gui-args helper is needed.
+2. **Role picker in the shared view scaffold.** In src/ui/gui/gui-client-report.ts,
+   `windowView(o)` gains an optional role scope: a `let role = recall(o.roleKey) || ""`, a
+   `rolePickerId`, and an `endpoint(days, role)` that appends `&role=` + encodeURIComponent(role)
+   only when `role` is non-empty. `viewHead` gains the picker markup, reusing the History view's
+   shape (src/ui/gui/gui-client-history.ts's `#histrole`):
+   `<label><span class='sr-only'>Loop</span><select class='field' id='<rolePickerId>'>…</select></label>`
+   with an `All loops` empty option. `syncReportRoles(d)` (new, in a `// report-role:start/end`
+   region) derives the option list from `(d.loops || []).map((l) => l.role)` — the same list
+   `syncHistoryRoles` uses — and is called from `fetchView` after the panel is built and from
+   gui-client-boot.ts's status refresh when `activeView` is `"usage"` or `"failures"` (mirroring
+   the existing `if (activeView === "history") syncHistoryRoles(d);`). `wireClicks` gains a
+   `change` delegate on the panel for `[data-role]` selects that stores the choice
+   (`store(o.roleKey, role)`) and refetches. The pure option builder is a separately extracted
+   function (e.g. `reportRoleOptions(roles)` returning the `<option>` inner HTML) so it is
+   unit-testable without a DOM.
+3. **Wire the two views.** The `usage` and `failures` `windowView` calls set the role config and
+   the scoped endpoint; the Usage blurb keeps its wording for the fleet-wide case.
+4. **Scoped Usage render.** `reportSummary(d)` must not show the fleet-only fleet-wide backlog
+   tallies as the scoped role's: when `d.role` is set, drop the `Features done` and `Bugs fixed`
+   tiles and, in the `render` output, print one scope line naming `d.role` and stating that
+   landing runs and backlog tallies are fleet-wide and omitted. The Failures view needs no
+   render change: `renderFailureMarkdown` already emits its `role:` line for a scoped digest.
+
+**Files touched.**
+- src/gui/gui-endpoints.ts (`handleReport`, `handleFailures`: read + validate `?role=`, pass it)
+- src/ui/gui/gui-client-report.ts (`windowView` role config, `viewHead` picker,
+  `reportRoleOptions`, `syncReportRoles`, `wireClicks` change delegate, `reportSummary` scope,
+  usage/failures endpoints)
+- src/ui/gui/gui-client-boot.ts (sync on status refresh while a report view is open)
+
+Tests: test/gui-report.test.ts — `/api/report?role=feature` deep-equals
+`collectReport(repo, 14, "feature")`, `/api/failures?role=feature` equals
+`renderFailureMarkdown(collectFailureReport(repo, 14, "feature"))`, `?role=bogus` is a 400 naming
+the valid ids, and the page-level endpoint regexes are updated to the role-aware form;
+test/gui-client-report.test.ts — a new `report-role` extraction test over `reportRoleOptions`
+(the `All loops` empty option, one escaped option per loop, order preserved; a role name with
+HTML metacharacters is escaped).
+
+**Acceptance criteria.**
+- `/api/report?role=feature&days=14` and `/api/report?role=feature` serve
+  `collectReport(root, days, "feature")` — `role: "feature"`, only feature per-role maps,
+  zero `featuresDone`/`bugsFixed`; without `?role` the payload is unchanged (seen by the
+existing deep-equal against `collectReport(repo, 14)`).
+- `/api/failures?role=feature` serves `renderFailureMarkdown(collectFailureReport(root, days,
+  "feature"))` and its markdown carries the `role: feature` line; without `?role` it is
+  unchanged.
+- `?role=bogus` on either endpoint is a 400 whose message names the valid ids; `?role=` is a
+  400 too; the days window still clamps exactly as today regardless of `role`.
+- The Usage and Failures views render a `Loop` select with `All loops` plus one option per
+  `lastStatus.loops[].role`; choosing one refetches with `&role=`, persists through `store`, and
+  the Usage summary then omits the `Features done`/`Bugs fixed` tiles and prints the scope line;
+  choosing `All loops` returns to the fleet-wide view.
+- The options follow the fleet's role list (custom loops included), refreshed while the view is
+  open, and a persisted role the fleet no longer lists falls back to `All loops`.
+- `npm run test` is green.
+
 
 ## Done
 
