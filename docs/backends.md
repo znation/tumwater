@@ -88,11 +88,12 @@ free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: 
 API-equivalent cost is tracked as notional spend, printed on its own line in `tumwater report`,
 and never counted in the spend totals. A rejected subscription usage window holds subscription
 claude seams until it resets (the first `allowed_warning` is logged too), so the fleet does not
-burn a failed run per loop per poll; pi seams and API-key claude seams keep ticking. The
-exemption is not yet complete: a subscription claude selector still counts as not-free to the
-budget gate, so a reached cap can still move it to its fallback (part 6b). The window is shown
-in place of the daily spend on a subscription-only fleet, and a run cut off by a rejected window
-resumes once it resets (parts 6d–6e). See
+burn a failed run per loop per poll; pi seams and API-key claude seams keep ticking. A
+subscription claude seam with no overage is free to the budget gate too: at the cap it stays
+put while priced seams move to their fallback, and a subscription claude pair is accepted as a
+budget `fallback` for a priced pi primary; an account spending into overage counts like API
+spend. The window is shown in place of the daily spend on a subscription-only fleet, and a run
+cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
