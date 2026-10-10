@@ -48,12 +48,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   }
   // pending-table:end
   function buildPendingView() {
-    const panel = $("pending");
-    if (!panel || panel.dataset.built) return;
-    panel.dataset.built = "1";
-    panel.innerHTML = "<div class='view-head'><div><h1>Pending</h1><p>Every loop's unlanded change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
+    if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every loop's unlanded change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
       "<div class='toolbar'><button type='button' class='btn btn-sm' id='pendingrefresh'>" + icon("refresh") + "Refresh</button></div></div>" +
-      "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>";
+      "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
   }
   // Load the fleet-wide change roster. Called when the view opens and by the Refresh button;

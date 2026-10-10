@@ -262,12 +262,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     async function fetchView(throttled) {
       if (throttled && Date.now() - fetchedAt < 60000) return;
       fetchedAt = Date.now();
-      const panel = $(o.panelId);
-      if (!panel.dataset.built) {
-        panel.dataset.built = "1";
-        panel.innerHTML = viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId, o.rolePickerId) +
-          "<div id='" + o.bodyId + "'><div class='empty'>Loading…</div></div>";
-      }
+      buildOnce(o.panelId, viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId, o.rolePickerId) +
+        "<div id='" + o.bodyId + "'><div class='empty'>Loading…</div></div>");
       markActive($(o.pickerId), "days", days);
       syncRoles(lastStatus);
       try {

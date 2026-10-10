@@ -14,17 +14,14 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
   let histRoleKey = "";
   const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["problems", "Problems"]];
   function buildHistoryView() {
-    const panel = $("history");
-    if (panel.dataset.built) return;
-    panel.dataset.built = "1";
-    panel.innerHTML = "<div class='view-head'><div><h1>History</h1><p>Every completed tick, newest first.</p></div>" +
+    if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed tick, newest first.</p></div>" +
       "<div class='toolbar'>" +
       "<label><span class='sr-only'>Loop</span><select class='field' id='histrole'><option value=''>All loops</option></select></label>" +
       "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
       "<label><span class='sr-only'>Ticks to show</span><select class='field' id='histcount'>" +
       [20, 50, 100, 200].map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") + "</select></label>" +
       "<button type='button' class='btn btn-sm' id='histrefresh'>" + icon("refresh") + "Refresh</button>" +
-      "</div></div><div class='card' id='histbody'><div class='empty'>Loading…</div></div>";
+      "</div></div><div class='card' id='histbody'><div class='empty'>Loading…</div></div>")) return;
     $("histcount").value = String(histCount);
     $("histrole").addEventListener("change", (ev) => {
       histRole = ev.target.value;

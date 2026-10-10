@@ -21,7 +21,7 @@ type SettingsFns = {
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
-    ["settings-view"],
+    ["panel-build", "settings-view"],
     ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting"],
     inject,
   );

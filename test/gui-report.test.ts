@@ -13,7 +13,7 @@ import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
 import { withGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
-import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
+import { clientScope, clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 
@@ -318,7 +318,7 @@ test("the lazily built Usage/Failures heads carry their blurbs — a dropped blu
     els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
   }
   const scope = clientScope<{ fetchReport(throttled?: boolean): Promise<void>; fetchFailures(): Promise<void>; viewHead(title: string, blurb?: string, pickerId?: string, choices?: number[], current?: number, refreshId?: string): string }>(
-    ["view-scaffold"], ["fetchReport", "fetchFailures", "viewHead"], {
+    ["panel-build", "view-scaffold"], ["fetchReport", "fetchFailures", "viewHead"], {
       document: { getElementById: (id: string) => els[id] ?? null },
       $: (id: string) => els[id] ?? null,
       markActive: () => {},
@@ -389,7 +389,7 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
     fmtUsd: (n: number) => "$" + n.toFixed(2),
   };
   const keys = Object.keys(inject);
-  const run = new Function(...keys, `${[ESC_LINE, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
     ...args: unknown[]
   ) => { fetchReport(throttled?: boolean): Promise<void> };
   await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
@@ -433,7 +433,7 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
       fmtUsd: (n: number) => "$" + n.toFixed(2),
     };
     const keys = Object.keys(inject);
-    const run = new Function(...keys, `${[ESC_LINE, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
       ...args: unknown[]
     ) => { fetchReport(throttled?: boolean): Promise<void> };
     await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();

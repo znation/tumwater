@@ -274,6 +274,19 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
     lastPaint[id] = html;
     return true;
   }
+  // panel-build:start
+  // Build a view's static skeleton the first time its view opens and leave it alone after:
+  // later opens refetch their data into it, so re-parsing the markup would drop the view's own
+  // listeners. Returns true when it built the panel this call (an absent panel or one already
+  // marked returns false), so the caller can wire its once-only listeners in the same branch.
+  function buildOnce(id, html) {
+    const panel = $(id);
+    if (!panel || panel.dataset.built) return false;
+    panel.dataset.built = "1";
+    panel.innerHTML = html;
+    return true;
+  }
+  // panel-build:end
   // The standard "this view could not load" panel: a title plus the server's error message,
   // if any. cls is "empty" for the bare panels (history, drawer) and "card empty" where the
   // view frames panels in cards (the report views). Drawer paints it through paintPanel so a

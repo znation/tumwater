@@ -40,12 +40,9 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // The view's one panel: built once, values fetched on each open of the tab (the boot's
   // switchView calls fetchSettings) — no polling loop of its own.
   function buildSettingsView() {
-    const panel = $("settings-view");
-    if (panel.dataset.built) return;
-    panel.dataset.built = "1";
-    panel.innerHTML = "<div class='view-head'><div><h1>Settings</h1>" +
+    buildOnce("settings-view", "<div class='view-head'><div><h1>Settings</h1>" +
       "<p>The fleet-wide settings an operator edits from here; everything else lives in tumwater.json or the CLI.</p></div></div>" +
-      "<div class='card' id='settingscard'><div class='empty'>Loading…</div></div>";
+      "<div class='card' id='settingscard'><div class='empty'>Loading…</div></div>");
   }
   async function fetchSettings() {
     buildSettingsView();
