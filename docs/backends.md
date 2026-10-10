@@ -81,12 +81,17 @@ per seam. The observability surfaces name the backend in the selector (`claude/c
 in `tumwater status`, the dashboards, and the event feed), and a seam with no model at all reads
 `claude default`.
 
-**Billing and spend.** Each claude run reports the CLI's own price for it, and that cost feeds
-the daily cap like any priced pi model; at a fleet of today's size it can amount to tens of
-dollars a day, so pair it with a free `fallback`. A claude.ai subscription is designed to be
-exempt from that cap — its cost recorded as notional, never in spend totals — and throttled by
-the account's usage window instead, but that exemption is not implemented yet: today every
-claude selector counts as not-free to the budget gate. See
+**Billing and spend.** Each claude run reports the CLI's own price for it. A run billed to an
+API key — or one that saw `isUsingOverage` at any point — feeds the daily cap like any priced
+pi model; at a fleet of today's size it can amount to tens of dollars a day, so pair it with a
+free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: its
+API-equivalent cost is tracked as notional spend, printed on its own line in `tumwater report`,
+and never counted in the spend totals. A rejected subscription usage window holds subscription
+claude seams until it resets (the first `allowed_warning` is logged too), so the fleet does not
+burn a failed run per loop per poll; pi seams and API-key claude seams keep ticking. The
+exemption is not yet complete: a subscription claude selector still counts as not-free to the
+budget gate, so a reached cap can still move it to its fallback (part 6b), and the window's
+display and resume-across-a-hold are not implemented (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
