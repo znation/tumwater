@@ -571,13 +571,14 @@ test("the dashboard's periodic fetches ride a bounded wait — pollSignal bounds
     lastInit = init;
     return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
   };
-  const { getJson, pollSignal } = new Function(
+  const { getJson, pollSignal, postJson } = new Function(
     "fetch",
     "AbortSignal",
-    `${head}\nreturn { getJson, pollSignal };`,
+    `${head}\nreturn { getJson, pollSignal, postJson };`,
   )(fetchStub, fakeAbortSignal) as {
     getJson: (path: string, init?: unknown) => Promise<unknown>;
     pollSignal: () => unknown;
+    postJson: (path: string, payload: unknown) => Promise<unknown>;
   };
   await getJson("/api/status", pollSignal());
   assert.deepEqual(requested, [15000], "the periodic fetches are bounded at 15 s");
@@ -586,6 +587,12 @@ test("the dashboard's periodic fetches ride a bounded wait — pollSignal bounds
   const sent = lastInit as { signal?: { aborted: boolean }; headers?: unknown };
   assert.equal(sent.signal?.aborted, false, "the signal rides into fetch as init.signal");
   assert.ok(sent.headers instanceof Headers, "the caller's init still reaches apiFetch's header merge");
+  // An operator action passes no signal of its own, so apiFetch supplies its generous default
+  // bound: the request still fails loudly on a server that never answers instead of hanging.
+  await postJson("/api/pause", { paused: true });
+  assert.deepEqual(requested, [15000, 120000], "a signal-less action fetch is bounded by apiFetch's default");
+  const actionInit = lastInit as { signal?: { aborted?: boolean } };
+  assert.equal(actionInit.signal?.aborted, false, "the default signal rides into the action's fetch");
   // A browser without AbortSignal.timeout keeps the old unbounded fetch instead of crashing.
   const plain = new Function("fetch", "AbortSignal", `${head}\nreturn pollSignal();`)(fetchStub, {});
   assert.deepEqual(plain, {}, "no AbortSignal.timeout means no signal, not a crash");

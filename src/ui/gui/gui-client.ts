@@ -50,12 +50,29 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
     stripped.searchParams.delete("token");
     history.replaceState(null, "", stripped.pathname + stripped.search + stripped.hash);
   }
+  // The bounded wait every API call shares. The periodic poll passes pollSignal()'s tighter
+  // bound as init.signal, but an operator action (pause, prompt, config edit, report fetch)
+  // passes none — and fetch has no default timeout, so a server killed outright (SIGKILL, an
+  // OOM kill) leaves a half-open connection whose reply never comes: the action's flash never
+  // appears and a retry stacks another pending request. The default bound is deliberately
+  // generous — it must outlast a 32 MiB attachment upload and a slow report read — while still
+  // failing the request loudly instead of hanging. A caller-supplied signal wins, so the poll
+  // keeps its 15 s. AbortSignal.timeout is standard since 2022; where a browser lacks it the
+  // fetch stays unbounded, exactly the old behavior.
+  const API_TIMEOUT_MS = 120000;
+  function apiTimeoutSignal(existing) {
+    if (existing !== undefined) return existing;
+    return typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(API_TIMEOUT_MS)
+      : undefined;
+  }
   // One response guard for every API call: on a non-2xx, throw apiError instead of letting a
-  // JSON error body be read as data.
+  // JSON error body be read as data, and give the request the bounded wait above when the
+  // caller brought none.
   async function apiFetch(path, init) {
     const headers = new Headers(init && init.headers);
     if (guiToken) headers.set("authorization", "Bearer " + guiToken);
-    const r = await fetch(path, Object.assign({}, init || {}, { headers: headers }));
+    const r = await fetch(path, Object.assign({}, init || {}, { signal: apiTimeoutSignal(init && init.signal), headers: headers }));
     if (!r.ok) throw await apiError(path, r);
     return r;
   }
@@ -63,7 +80,8 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
     return (await apiFetch(path, init)).json();
   }
   // Bounded wait for the dashboard's periodic fetches (the 1 s status poll and the today/drawer
-  // refreshes its await chain drives): a server that accepts the connection but never answers
+  // refreshes its await chain drives), tighter than apiFetch's default above: a server that
+  // accepts the connection but never answers
   // would otherwise hold the poll open forever, leaving the page frozen on stale data with no
   // offline alert — the catch in refresh() only runs when fetch rejects. The timeout aborts the
   // request, so the poll fails, the red "Lost contact" alert shows, and the loop keeps polling.
