@@ -13,6 +13,8 @@ import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
+import { warnEventBestEffort } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 import { worktreeUseLockPath, worktreeUsePath } from "../paths.js";
 
 /** One worktree's durable record, keyed by its directory basename inside `worktreesDir`. */
@@ -109,6 +111,24 @@ export function updateWorktreeUse(
   });
 }
 
+/** `updateWorktreeUse`, but best-effort: the durable registry only orders reclaim (see the
+ * module doc), so a write that fails — the lock times out behind a CLI `tumwater reclaim`, the
+ * state volume is full — is warned and dropped rather than thrown. Both release paths use it:
+ * `beginWorktreeUse`'s release and `releaseReclaim`, the latter in a `finally` after a reclaim.
+ * Their bookkeeping must not become the caller's failure — a throw there would mask a
+ * successful tick, landing, or clean with a registry error. The in-process `uses`/`reclaiming`
+ * state is updated before this runs, so only reclaim ordering degrades. */
+function updateWorktreeUseBestEffort(
+  root: string,
+  change: (registry: WorktreeUseRegistry) => boolean,
+): void {
+  try {
+    updateWorktreeUse(root, change);
+  } catch (err) {
+    warnEventBestEffort(root, "harness", `could not update the worktree-use registry: ${errorMessage(err)}`);
+  }
+}
+
 /** True while a `useWorktree` body holds this worktree. */
 export function isWorktreeInUse(dir: string): boolean {
   return (live.get(key(dir))?.uses ?? 0) > 0;
@@ -175,7 +195,7 @@ export function releaseReclaim(root: string, dir: string, at: number): void {
     settle?.();
   }
   const name = path.basename(path.resolve(dir));
-  updateWorktreeUse(root, (registry) => {
+  updateWorktreeUseBestEffort(root, (registry) => {
     registry[name] = { lastUsedAt: registry[name]?.lastUsedAt ?? at, reclaimedAt: at };
     return true;
   });
@@ -183,7 +203,7 @@ export function releaseReclaim(root: string, dir: string, at: number): void {
 
 function recordUse(root: string, dir: string, at: number): void {
   const name = path.basename(path.resolve(dir));
-  updateWorktreeUse(root, (registry) => {
+  updateWorktreeUseBestEffort(root, (registry) => {
     registry[name] = { ...registry[name], lastUsedAt: at };
     return true;
   });

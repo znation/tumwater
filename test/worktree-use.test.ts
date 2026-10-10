@@ -19,7 +19,7 @@ import {
   releaseReclaim,
   useWorktree,
 } from "../src/git/worktree-use.js";
-import { worktreesDir } from "../src/paths.js";
+import { worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A throwaway worktree-shaped directory, distinct per test so the process-global live map
@@ -108,6 +108,22 @@ test("a concurrent worktree-use write cannot drop another process's update", asy
   } finally {
     await stopChild(holder);
   }
+});
+
+test("a failed registry write on a release warns instead of failing the operation", async () => {
+  const root = tmpdir("wt-use-write-fail-");
+  const dir = useDir("wt-use-write-fail-wt-");
+  // Occupy the durable registry's path with a non-empty directory so writeJsonAtomic's
+  // tmp+rename fails (EISDIR). The registry only orders reclaim, so both release paths must
+  // warn and let the work they wrapped stand instead of turning it into a failure.
+  fs.mkdirSync(worktreeUsePath(root), { recursive: true });
+  fs.writeFileSync(path.join(worktreeUsePath(root), "occupied"), "x");
+  const value = await useWorktree(root, dir, () => "ok");
+  assert.equal(value, "ok");
+  assert.equal(isWorktreeInUse(dir), false, "the release still decrements the in-use count");
+  assert.equal(claimForReclaim(dir), true);
+  releaseReclaim(root, dir, 1_700_000_000_000); // must not throw despite the unwritable registry
+  assert.equal(isReclaimInProgress(dir), false);
 });
 
 test("a use starting during a reclaim waits for the release before running", async () => {
