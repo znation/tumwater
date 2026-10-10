@@ -21,6 +21,10 @@ npm install -g tumwater
 Or run any command without installing: `npx tumwater`. To run from a checkout of this repo
 instead: `npm install && npm run build && npm link`.
 
+With `claude` installed and logged in, `npm run smoke:claude` is an opt-in live check of the
+claude backend: it drives the real CLI through a throwaway repo (a few cents of API-equivalent
+spend on a subscription) and is not part of `npm test`, which stays green without claude.
+
 ## Status
 
 <!-- tumwater:status:start -->

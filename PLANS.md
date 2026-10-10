@@ -88,39 +88,6 @@ the backend id). Tests: test/pi.test.ts, test/progress.test.ts.
 - A pi non-buffered call still warns at `toolCallStallSeconds`.
 - `npm run test` green.
 
-### Agent backends, part 7c/7: the opt-in `smoke:claude` live check (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7b/7; independent of the citation-sweep series)
-
-Design: plans/agent-backends.md "Testing". Siblings 7a/7 and 7b/7 cover the cap and the stall
-threshold; this part is the live check only and changes no production path.
-
-**Goal.** A machine with a logged-in claude can run one opt-in command that exercises the live
-CLI end to end, so a regression the fake shim cannot see fails here by hand and not in the fleet.
-
-**Approach.** Add a new `smoke-claude` Node ESM script under `scripts/` (no dependencies) and a
-`"smoke:claude"` entry in package.json that runs it. The script builds a
-throwaway git repo under `fs.mkdtemp` and drives the real `claude` on PATH, printing a named
-PASS/FAIL per check and exiting nonzero on the first failure:
-- one call on each default model (Haiku, Sonnet, Opus 5.5), so a CLI too old for one fails here;
-- an isolated three-turn run that fails if total cost exceeds $0.10 (the isolation regression);
-- a `--resume` of that session;
-- a SIGTERM mid-tool call followed by a resume;
-- an unknown-model run that must classify as `configError`;
-- a check that the observed `billing` matches `claude auth status`, and that
-`claude-account.json` gained a window reading when the billing is subscription.
-It must not run under `npm test` (it costs money and needs auth): keep the script's own env
-setup, and leave `test-runner.ts`'s `TUMWATER_CLAUDE_BIN`/`CLAUDECODE`/`CLAUDE_CODE_*` stripping
-as is. Document it in README.md as opt-in.
-
-**Files touched.** a new `smoke-claude` script under `scripts/`, package.json, README.md.
-
-**Acceptance criteria.**
-- `npm run smoke:claude` is defined and is referenced nowhere in the `npm test` path; `npm run
-test` stays green on a machine with no claude installed.
-- Each check prints a named PASS/FAIL and the script exits nonzero on failure.
-- On a logged-in machine the script passes; run it once by hand and record the result in the
-landing commit body.
-- `npm run test` green.
-
 ### Finish the stale code-path citation sweep, part 3/5: the budget and model plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for the plan documents that cite the config
@@ -261,6 +228,46 @@ existing deep-equal against `collectReport(repo, 14)`).
 
 
 ## Done
+
+### Agent backends, part 7c/7: the opt-in `smoke:claude` live check (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 7/7, which feature judged too large for one run; requires parts 6a/7 and 6b/7 landed; siblings 7a/7 and 7b/7; independent of the citation-sweep series; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md "Testing". Siblings 7a/7 and 7b/7 cover the cap and the stall
+threshold; this part is the live check only and changes no production path.
+
+**Goal.** A machine with a logged-in claude can run one opt-in command that exercises the live
+CLI end to end, so a regression the fake shim cannot see fails here by hand and not in the fleet.
+
+**Approach.** Add a new `smoke-claude` Node ESM script under `scripts/` (no dependencies) and a
+`"smoke:claude"` entry in package.json that runs it. The script builds a
+throwaway git repo under `fs.mkdtemp` and drives the real `claude` on PATH, printing a named
+PASS/FAIL per check and exiting nonzero on the first failure:
+- one call on each default model (Haiku, Sonnet, Opus 5.5), so a CLI too old for one fails here;
+- an isolated three-turn run that fails if total cost exceeds $0.10 (the isolation regression);
+- a `--resume` of that session;
+- a SIGTERM mid-tool call followed by a resume;
+- an unknown-model run that must classify as `configError`;
+- a check that the observed `billing` matches `claude auth status`, and that
+`claude-account.json` gained a window reading when the billing is subscription.
+It must not run under `npm test` (it costs money and needs auth): keep the script's own env
+setup, and leave `test-runner.ts`'s `TUMWATER_CLAUDE_BIN`/`CLAUDECODE`/`CLAUDE_CODE_*` stripping
+as is. Document it in README.md as opt-in.
+
+**Files touched.** a new `smoke-claude` script under `scripts/`, package.json, README.md.
+
+**Acceptance criteria.**
+- `npm run smoke:claude` is defined and is referenced nowhere in the `npm test` path; `npm run
+test` stays green on a machine with no claude installed.
+- Each check prints a named PASS/FAIL and the script exits nonzero on failure.
+- On a logged-in machine the script passes; run it once by hand and record the result in the
+landing commit body.
+- `npm run test` green.
+
+**Landed.** `scripts/smoke-claude.mjs` drives the real CLI through the compiled adapter
+(`runAgent`), with a version floor check added before the model calls. The isolation check
+prompts for three Bash calls and asserts `costUsd < 0.10` and `turns >= 2` (the second turn is
+where the regression loaded `~/.claude`); it ran green by hand against claude 2.1.295 on a
+claude.ai subscription. The account check folds the run through `observeClaudeAccount` and
+reads the window back.
 
 ### Finish the stale code-path citation sweep, part 2c/5: `plans/portability.md`, part 7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 
