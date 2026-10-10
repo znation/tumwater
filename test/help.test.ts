@@ -61,7 +61,8 @@ test("helpStanzas keeps each stanza's description continuations and nothing else
 test("multi-form commands yield every usage form in their topic", () => {
   const report = helpTopic("report")!;
   assert.match(report, /report \[--days N\]/);
-  assert.match(report, /report --failures \[--days N\]/);
+  assert.match(report, /report --failures \[--days N\] \[--since <duration>\] \[--json\]/);
+  assert.match(report, /report --failures --since <duration> \[--json\]/);
   const prompt = helpTopic("prompt")!;
   assert.match(prompt, /prompt <text\.\.\.>/);
   assert.match(prompt, /prompt --list/);
