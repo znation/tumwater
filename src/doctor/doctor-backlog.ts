@@ -3,7 +3,7 @@ import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
-import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
+import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the three checks that
@@ -73,12 +73,15 @@ export function checkFixClaims(root: string): CheckOutcome {
   const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if ("outcome" in read) return read.outcome;
   const { doc } = read;
-  const headings = fixedHeadings(doc).slice(0, FIX_CLAIMS_CHECKED);
+  // One parse feeds every record's title and body: bugEntryBody re-parsed the whole document
+  // per heading, and BUGS.md grows without bound, so the newest-10 scan paid 1 + 10 full-document
+  // walks where one suffices.
+  const records = fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED);
   // The haystack walks src/, test/ and scripts/: build it only once a record names something.
   let haystack: string | undefined;
   const phantoms: Array<{ heading: string; missing: string[] }> = [];
-  for (const heading of headings) {
-    const symbols = fixSymbols(bugEntryBody(doc, heading));
+  for (const { title: heading, body } of records) {
+    const symbols = fixSymbols(body);
     if (symbols.length === 0) continue;
     haystack ??= sourceHaystack(root);
     const missing = unbackedSymbols(root, symbols, haystack);
@@ -86,7 +89,7 @@ export function checkFixClaims(root: string): CheckOutcome {
   }
   const [first, ...rest] = phantoms;
   if (!first)
-    return { level: "ok", detail: `newest ${headings.length} Fixed record(s) name code that exists on this tree` };
+    return { level: "ok", detail: `newest ${records.length} Fixed record(s) name code that exists on this tree` };
   // falseFixReason's message shape: the heading, then up to 3 missing names.
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);

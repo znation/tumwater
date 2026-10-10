@@ -53,10 +53,11 @@ export function fixedHeadings(doc: string): string[] {
 
 /** The `## Fixed` section's parsed entries, in document order — one parse that headings and
  * bodies both read from. Callers that need more than one heading's body (falseFixReason's
- * base-vs-head comparison) iterate this once instead of calling the per-heading lookups, each
- * of which re-parsed the whole document: with ~200 Fixed entries, building the base body map
- * and walking the head section re-parsed BUGS.md ~400 times per check. */
-function fixedEntries(doc: string): BacklogEntry[] {
+ * base-vs-head comparison, the doctor's checkFixClaims) iterate this once instead of calling
+ * the per-heading lookups, each of which re-parsed the whole document: with ~200 Fixed
+ * entries, building the base body map and walking the head section re-parsed BUGS.md ~400
+ * times per check, and the doctor's newest-10 scan re-parsed it once per heading. */
+export function fixedEntries(doc: string): BacklogEntry[] {
   return parseEntryDetails(doc, "Fixed");
 }
 
