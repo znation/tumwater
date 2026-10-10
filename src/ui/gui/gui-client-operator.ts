@@ -100,6 +100,24 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     input.focus({ preventScroll: true });
     input.select();
   }
+  // The cap editor's plain-decimal rule, the same one the TUI's Ctrl+B editor applies: empty
+  // means no cap, otherwise a plain decimal of 0 or more, at most Number.MAX_SAFE_INTEGER.
+  // Number() alone would read hex ("0x10" → 16) and finite exponent notation ("1e2" → 100) as
+  // dollar amounts no operator meant, and a long digit run stays finite (1e24) yet is no longer
+  // an exactly representable dollar amount — the setter's own checkDailyBudgetUsd bounds the
+  // same way, so this keeps the editor's inline error and the write path in agreement.
+  function parseBudgetField(raw) {
+    const t = String(raw).trim();
+    if (t === "") return { ok: true, value: 0 };
+    const n = Number(t);
+    if (!/^\d*\.?\d+$/.test(t) || !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER) {
+      return {
+        ok: false,
+        error: "the cap must be a number of 0 or more, at most " + Number.MAX_SAFE_INTEGER + " — leave it empty for no cap",
+      };
+    }
+    return { ok: true, value: n };
+  }
   async function saveBudget() {
     const input = $("budgetinput");
     if (!input) return;
@@ -110,7 +128,12 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       showFlash("error: the cap must be a number of 0 or more — leave it empty for no cap");
       return;
     }
-    const value = input.value === "" ? 0 : Number(input.value);
+    const parsed = parseBudgetField(input.value);
+    if (!parsed.ok) {
+      showFlash("error: " + parsed.error);
+      return;
+    }
+    const value = parsed.value;
     // A failure leaves the editor open so the value can be fixed.
     await postAction("/api/budget", { maxDailyCostUsd: value },
       value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed");

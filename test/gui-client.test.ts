@@ -5,6 +5,7 @@ import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src/text/format.js";
+import { parseBudgetInput } from "../src/ui/tui/tui-input.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
 // pure view model that turns a status payload into what the page shows, the Markdown
@@ -327,10 +328,11 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   const els: Record<string, unknown> = {};
   const scope = clientScope<{
     budgetCardHtml(b: object): string;
+    parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setFleetPause(paused: boolean, forSeconds?: number): Promise<void>;
-  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "saveBudget", "pauseControlHtml", "setFleetPause"], {
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
@@ -387,6 +389,33 @@ test("the cap editor refuses text the browser rejected instead of silently remov
   await scope.saveBudget();
   assert.deepEqual(posts.shift(), { path: "/api/budget", body: { maxDailyCostUsd: 25 } });
   assert.equal(flashes.shift(), "Daily cap set to $25");
+  // Non-plain-decimal spellings the type=number input accepts but the TUI's editor refuses
+  // must not reach the server: exponent notation reads as 100 and a 25-digit run stays finite
+  // yet is past MAX_SAFE_INTEGER.
+  input.value = "1e2";
+  await scope.saveBudget();
+  assert.equal(posts.length, 0, "exponent notation must not set a cap");
+  assert.match(flashes.shift() ?? "", /^error: the cap must be a number of 0 or more, at most \d+/);
+  input.value = "9".repeat(25);
+  await scope.saveBudget();
+  assert.equal(posts.length, 0, "a run past MAX_SAFE_INTEGER must not set a cap");
+  assert.match(flashes.shift() ?? "", /at most \d+/);
+  input.value = "12.34";
+  await scope.saveBudget();
+  assert.deepEqual(posts.shift(), { path: "/api/budget", body: { maxDailyCostUsd: 12.34 } });
+});
+
+// One rule for both cap editors: the dashboard's parseBudgetField must admit and refuse exactly
+// what the TUI's parseBudgetInput does, so an operator's spelling cannot work on one surface and
+// error on the other.
+test("the cap editor's plain-decimal rule matches the TUI's parseBudgetInput", () => {
+  const { scope } = operatorScope();
+  for (const s of ["", "   ", "0", "25", "12.34", ".5", "0x10", "1e2", "+5", "-1", "abc", "Infinity", "9".repeat(25)]) {
+    const gui = scope.parseBudgetField(s);
+    const tui = parseBudgetInput(s);
+    assert.equal(gui.ok, tui.ok, `ok parity for ${JSON.stringify(s)}`);
+    if (gui.ok && tui.ok) assert.equal(gui.value, tui.value, `value parity for ${JSON.stringify(s)}`);
+  }
 });
 
 test("the pause control offers timed pauses and shows a timed pause's countdown", async () => {
