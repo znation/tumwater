@@ -394,8 +394,7 @@ export class PiStreamParser {
     switch (kind) {
       case "transientRateLimit":
         this.transientRateLimit = true;
-        if (typeof event.retryAfterSeconds === "number" && Number.isFinite(event.retryAfterSeconds))
-          this.retryAfterSeconds = Math.max(0, Math.round(event.retryAfterSeconds));
+        this.setRetryAfterSeconds(event.retryAfterSeconds);
         break;
       case "transientBackend":
         this.transientBackend = true;
@@ -435,9 +434,15 @@ export class PiStreamParser {
     if (reading.isUsingOverage === true) this.usedOverage = true;
     if (reading.status === "rejected") {
       this.transientRateLimit = true;
-      if (typeof event.retryAfterSeconds === "number" && Number.isFinite(event.retryAfterSeconds))
-        this.retryAfterSeconds = Math.max(0, Math.round(event.retryAfterSeconds));
+      this.setRetryAfterSeconds(event.retryAfterSeconds);
     }
+  }
+
+  /** Fold a provider Retry-After hint into `retryAfterSeconds`: ignore a non-number or
+   * non-finite value, and clamp a negative or fractional one to whole seconds. */
+  private setRetryAfterSeconds(value: unknown): void {
+    if (typeof value !== "number" || !Number.isFinite(value)) return;
+    this.retryAfterSeconds = Math.max(0, Math.round(value));
   }
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -490,7 +495,7 @@ export class PiStreamParser {
         if (TRANSIENT_RATE_LIMIT.test(text)) {
           this.transientRateLimit = true;
           const hint = RETRY_AFTER.exec(text);
-          if (hint) this.retryAfterSeconds = Number(hint[1]);
+          if (hint) this.setRetryAfterSeconds(Number(hint[1]));
         } else if (TRANSIENT_BACKEND.test(text)) {
           // Rate-limit matched first, so a 429 stays a 429; this branch only sees the
           // connection/5xx/model-load texts the hold groups by kind.
