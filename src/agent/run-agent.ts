@@ -53,6 +53,26 @@ function spawnErrorMessage(
   return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
 }
 
+/** A best-effort append log: its parent is created and it is rotated when oversized before the
+ * stream opens, and an 'error' event (EACCES, ENOSPC) flips `broken` so the caller can skip
+ * waiting on a 'finish' that will never come. A broken log degrades to a lost log, never an
+ * unhandled 'error' or a stuck tick. Both the raw transcript and the backend-native debug log
+ * use one. */
+interface AppendLog {
+  stream: fs.WriteStream;
+  broken: boolean;
+}
+
+function openAppendLog(file: string, maxBytes: number): AppendLog {
+  ensureParentDir(file);
+  rotateIfLarge(file, maxBytes);
+  const log: AppendLog = { stream: fs.createWriteStream(file, { flags: "a" }), broken: false };
+  log.stream.on("error", () => {
+    log.broken = true;
+  });
+  return log;
+}
+
 /** Options for one non-interactive agent run (runAgent / its runPi alias). Exported so a caller
  * that builds the same wiring in several places (loop.ts's author run and SUMMARY follow-up) can
  * share one construction helper typed against this exact shape. */
@@ -120,26 +140,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // backend. An unregistered id also falls back to pi rather than rejecting the tick.
     const backend = agentBackend(opts.config.agent ?? DEFAULT_AGENT) ?? piBackend;
     ensureDir(opts.sessionDir);
-    ensureParentDir(opts.rawLogFile);
-    rotateIfLarge(opts.rawLogFile, opts.config.logMaxBytes);
-    const rawLog = fs.createWriteStream(opts.rawLogFile, { flags: "a" });
     // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
-    // nor hang the tick: mark it so finish() resolves without waiting for a 'finish' that
-    // will never come — a lost transcript is acceptable, a stuck loop is not.
-    let rawLogBroken = false;
-    rawLog.on("error", () => {
-      rawLogBroken = true;
-    });
+    // nor hang the tick: openAppendLog marks it so finish() resolves without waiting for a
+    // 'finish' that will never come — a lost transcript is acceptable, a stuck loop is not.
+    const rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
     // The backend-native stdout, kept beside the canonical raw log for debugging: every
     // complete native line is written before it is translated, so the two logs line up. A
     // broken native log degrades to a lost debug log, never a stuck or failed tick.
-    ensureParentDir(opts.nativeLogFile);
-    rotateIfLarge(opts.nativeLogFile, opts.config.logMaxBytes);
-    const nativeLog = fs.createWriteStream(opts.nativeLogFile, { flags: "a" });
-    let nativeLogBroken = false;
-    nativeLog.on("error", () => {
-      nativeLogBroken = true;
-    });
+    const nativeLog = openAppendLog(opts.nativeLogFile, opts.config.logMaxBytes);
     // The marker precedes this run's first event in file order — written to the same stream
     // stdout lines flow through, before spawn, so ordering is exact by construction; on a
     // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
@@ -151,7 +159,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         agent: backend.id,
       };
       if (opts.label) marker.label = opts.label;
-      rawLog.write(JSON.stringify(marker) + "\n");
+      rawLog.stream.write(JSON.stringify(marker) + "\n");
     }
     const parser = new PiStreamParser(opts.onToolCallStart);
     // The run's cross-group attribution mark, minted before the spawn so the environment can
@@ -252,7 +260,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
 
     // Quiet watchdog and its stall warning: src/pi/pi-watchdogs.ts.
 
-    const onLine = (line: string) => rawLog.write(line + "\n");
+    const onLine = (line: string) => rawLog.stream.write(line + "\n");
     // Split native stdout into complete lines, translate each, and feed the canonical lines to
     // the parser (which also hands them to onLine for the raw log). A trailing partial native
     // line stays buffered exactly as the parser's own buffer once held it.
@@ -264,7 +272,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         if (nl < 0) break;
         const line = nativeTail.slice(start, nl);
         start = nl + 1;
-        if (!nativeLogBroken) nativeLog.write(line + "\n");
+        if (!nativeLog.broken) nativeLog.stream.write(line + "\n");
         for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
       }
       if (start > 0) nativeTail = nativeTail.slice(start);
@@ -309,15 +317,12 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         pending -= 1;
         if (pending === 0) settle();
       };
-      rawLog.on("error", settle);
-      if (!rawLogBroken) {
-        pending += 1;
-        rawLog.end(flushed);
-      }
-      nativeLog.on("error", settle);
-      if (!nativeLogBroken) {
-        pending += 1;
-        nativeLog.end(flushed);
+      for (const log of [rawLog, nativeLog]) {
+        log.stream.on("error", settle);
+        if (!log.broken) {
+          pending += 1;
+          log.stream.end(flushed);
+        }
       }
       if (pending === 0) settle();
     };
