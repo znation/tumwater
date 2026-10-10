@@ -65,10 +65,20 @@ export function fenceTracker(): { inside(line: string): boolean; open(): boolean
   };
 }
 
+/** The title of a markdown heading line at `prefix` level — or the empty string when the heading
+ * carries no text. The prefix's own length drives the slice (never a hard-coded `3`/`4`), so the
+ * two heading levels cannot drift. The single home of the heading-title slice, shared by
+ * fencedHeadingTitle (which guards it with the fence tracker) and the readers in
+ * backlog-structure.ts that already know they hold a heading line: sectionTitles, planHeadingKeys,
+ * the stranded-entry and actionable-entry titles, and the in-section boundary compares. */
+export function headingTitle(line: string, prefix: "## " | "### "): string {
+  return line.slice(prefix.length).trim();
+}
+
 /** The trimmed title of `line` when it is a markdown heading line at `prefix` level and not
  * quoted content — null otherwise, including when fenceTracker reports the line inside a fenced
  * code block. The single home of the fence-aware heading guard (`!fenced.inside(line) &&
- * line.startsWith(prefix)` plus the slice/trim) that every line-level reader of the backlog
+ * line.startsWith(prefix)` plus headingTitle) that every line-level reader of the backlog
  * docs repeats: sectionLines' section boundaries and parseEntryDetails' entry boundaries here,
  * and question-commands.ts's walks of QUESTIONS.md (the Open/Answered scan, the `### ` block
  * split, and the Answered section's start); that file's two pure next-`## ` boundary walks
@@ -80,7 +90,7 @@ export function fencedHeadingTitle(
   fenced: ReturnType<typeof fenceTracker>,
   prefix: "## " | "### ",
 ): string | null {
-  return !fenced.inside(line) && line.startsWith(prefix) ? line.slice(prefix.length).trim() : null;
+  return !fenced.inside(line) && line.startsWith(prefix) ? headingTitle(line, prefix) : null;
 }
 
 /** The body lines of the `## <sectionTitle>` section of a markdown document: everything
@@ -95,8 +105,9 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
   let inSection = false;
   const fenced = fenceTracker();
   for (const line of md.split("\n")) {
-    if (fencedHeadingTitle(line, fenced, "## ") !== null) {
-      inSection = line.slice(3).trim() === sectionTitle;
+    const title = fencedHeadingTitle(line, fenced, "## ");
+    if (title !== null) {
+      inSection = title === sectionTitle;
       continue;
     }
     if (inSection) lines.push(line);
@@ -174,11 +185,14 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
   const fenced = fenceTracker();
   for (const line of sectionLines(md, sectionTitle)) {
     if (fenced.inside(line)) bodyLines.push(line);
-    else if (fencedHeadingTitle(line, fenced, "### ") !== null) {
-      close();
-      title = line.slice(4).trim();
-    } else {
-      bodyLines.push(line);
+    else {
+      const heading = fencedHeadingTitle(line, fenced, "### ");
+      if (heading !== null) {
+        close();
+        title = heading;
+      } else {
+        bodyLines.push(line);
+      }
     }
   }
   close(); // An entry at the end of file ends with EOF, not a heading.

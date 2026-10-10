@@ -2,7 +2,15 @@ import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { BACKLOG_FILES, fenceTracker, headingMetadata, parseEntryDetails, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
+import {
+  BACKLOG_FILES,
+  fenceTracker,
+  headingMetadata,
+  parseEntryDetails,
+  sectionBodyLines,
+  fenceAwareHeadingLines,
+  headingTitle,
+} from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import { entryHold, holdMark } from "./backlog-eligibility.js";
@@ -83,7 +91,7 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
       if (!line.startsWith("### ")) continue;
       const { text } = headingMetadata(lines, i);
       if (section === "Done" ? PLANNED_DATE.test(text) && !DONE_DATE.test(text) : DONE_DATE.test(text))
-        stranded.push({ title: line.slice(4).trim(), section });
+        stranded.push({ title: headingTitle(line, "### "), section });
     }
   }
   return stranded;
@@ -104,7 +112,7 @@ function planHeadingKey(title: string): string {
 function planHeadingKeys(md: string): Set<string> {
   const keys = new Set<string>();
   for (const line of fenceAwareHeadingLines(md, "### ")) {
-    keys.add(planHeadingKey(line.slice(4).trim()));
+    keys.add(planHeadingKey(headingTitle(line, "### ")));
   }
   return keys;
 }
@@ -112,7 +120,7 @@ function planHeadingKeys(md: string): Set<string> {
 /** The `## ` section titles of `md`, in file order, fence-aware (backlog-md.ts's shared tracker:
  * a `## Done` quoted inside a fenced code block is body text, not structure). */
 function sectionTitles(md: string): string[] {
-  return fenceAwareHeadingLines(md, "## ").map((line) => line.slice(3).trim());
+  return fenceAwareHeadingLines(md, "## ").map((line) => headingTitle(line, "## "));
 }
 
 /** How many times each `## ` title appears in `md` — the tally `duplicateHeadings` reports
@@ -296,10 +304,10 @@ export function actionableEntryRanges(md: string, sectionTitle: string): Actiona
     if (fenced.inside(line)) continue;
     if (line.startsWith("## ")) {
       close(i);
-      inSection = line.slice(3).trim() === sectionTitle;
+      inSection = headingTitle(line, "## ") === sectionTitle;
     } else if (inSection && line.startsWith("### ")) {
       close(i);
-      open = { title: line.slice(4).trim(), start: i + 1 };
+      open = { title: headingTitle(line, "### "), start: i + 1 };
     }
   }
   // A document ending in a newline splits to a trailing "" element; the last real line is one
