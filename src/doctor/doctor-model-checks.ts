@@ -6,6 +6,7 @@ import { cacheReadUnpriced, fallbackModelPair, piModelsPath, readPiProviders } f
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isAgentId, routeModel } from "../config/model-selector.js";
 import { claudeBackend } from "../agent/claude/claude-backend.js";
+import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
 import { isJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
@@ -65,7 +66,7 @@ export function checkFallbackModel(
   // refusal names the pair the operator declared.
   const nameOf = (pair: FallbackModelConfig) =>
     pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
-  const free = fallbackModelPair(config, modelsPath);
+  const free = fallbackModelPair(config, modelsPath, readClaudeAccount(root));
   if (free) {
     const name = nameOf(free);
     if (demoted)

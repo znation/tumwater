@@ -263,6 +263,32 @@ test("a claude-routed selector is never free, even if models.json prices its nam
   assert.equal(fleetModelsFree(mixed, piRouted), true, "a provider/id fallback runs on pi");
 });
 
+test("a subscription claude seam is free; API billing, overage, and an absent account keep today's refusal", () => {
+  const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
+  const cfg = fleetAt("claude", "claude-sonnet-5-5");
+  cfg.agent = "claude";
+  const api = { billing: "api" as const, observedAt: 1, windows: {} };
+  const sub = { billing: "subscription" as const, observedAt: 1, windows: {} };
+  assert.equal(fleetModelsFree(cfg, file, null), false, "no account file reads no subscription");
+  assert.equal(fleetModelsFree(cfg, file, api), false, "API billing is never free");
+  assert.equal(fleetModelsFree(cfg, file, sub), true, "subscription claude is free");
+  // A claude-routed fallback pair is accepted as free only under subscription billing.
+  const withFallback = { ...cfg, fallback: "claude/claude-sonnet-5-5" };
+  assert.equal(fallbackModelFree(withFallback, file, api), false, "an API claude fallback is refused");
+  assert.equal(fallbackModelFree(withFallback, file, sub), true, "a subscription claude fallback is free");
+  // An agent-less claude provider namespace under a subscription is free too.
+  assert.equal(fleetModelsFree(fleetAt("claude", "claude-sonnet-5-5"), file, sub), true);
+  // Overage is real money (plans/agent-backends.md §7): the subscription's overflow bills as API
+  // spend, so a window using overage makes the seam — and a claude fallback — not free.
+  const overage = {
+    billing: "subscription" as const,
+    observedAt: 1,
+    windows: { five_hour: { status: "allowed", isUsingOverage: true, observedAt: 1 } },
+  };
+  assert.equal(fleetModelsFree(cfg, file, overage), false, "an overage subscription claude seam is not free");
+  assert.equal(fallbackModelFree(withFallback, file, overage), false, "an overage claude fallback is refused");
+});
+
 test("a priced strong tier keeps the badge off even when every role runs a free model", () => {
   const file = writeModels();
   // Every role and the reviewer run the free model, but the strong tier names a paid one —

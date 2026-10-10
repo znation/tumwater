@@ -29,7 +29,8 @@ import {
 } from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort } from "../events/events.js";
-import { piPairFree, readPiProviders } from "../pi/pi-models.js";
+import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
+import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
@@ -172,13 +173,17 @@ export function pollBudgetGate(
   // who fixes a mistyped model id sees the fleet switch over within a cycle. One snapshot
   // serves both the engaged pair's check and the per-tier resolution below.
   const providers = readPiProviders(modelsPath);
+  // The persisted billing answer (6a/7): a subscription claude seam is free money, so the
+  // predicates below never move it to a fallback and accept a subscription claude pair as a
+  // budget fallback. One read per poll; an absent file reads as "no subscription".
+  const account = readClaudeAccount(root);
   // The usable predicate's two halves (part 5b/8): pi prices the pair at zero — a pair
   // routed to a non-pi backend (e.g. `claude/<id>`) is never free, the same predicate the
   // badge uses — and its breaker entry holds no demotion, tiers sharing a pair share the
   // verdict. The resolution below deliberately prices alone (the map's keys are the pairs
   // that would run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
-  const pairFreeAt = (p: FallbackModelConfig) => piPairFree(providers, p.provider, p.model);
+  const pairFreeAt = (p: FallbackModelConfig) => piPairFree(providers, p.provider, p.model, account);
   // The breaker map is keyed by every pair the tiers would run on absent a demotion
   // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
   // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
@@ -291,7 +296,9 @@ export function pollBudgetGate(
   const onFallback = reached && pairNames.length > 0;
   if (onFallback && state.from !== liveConfig) {
     state.from = liveConfig;
-    state.fallbackConfig = applyFallbackModel(liveConfig, priceResolved);
+    state.fallbackConfig = applyFallbackModel(liveConfig, priceResolved, (seam) =>
+      seamFree(providers, seam, account),
+    );
   }
   return {
     gate,

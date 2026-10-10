@@ -539,6 +539,23 @@ function stripRoleModels(
   );
 }
 
+/** Every `roles.<id>` entry with its model seam stripped, except a seam `free` calls free — a
+ * subscription claude role keeps its own model through the cap rather than moving to the
+ * fallback (plans/agent-backends.md "Free-ness"). With `keepTierNames`, an entry whose model is
+ * a tier name is left untouched: the resolved tier map now serves that tier itself, so the
+ * reference stays valid (stripping it would lose the role's tier). */
+function freeRoleModels(
+  config: TumwaterConfig,
+  free?: (seam: { agent?: string; provider?: string; model?: string }) => boolean,
+): TumwaterConfig["roles"] {
+  return Object.fromEntries(
+    Object.entries(config.roles).map(([id, rc]) => {
+      if (rc && free?.(withModelOverrides(config, roleSeamTier(config, id), rc))) return [id, rc];
+      return [id, isTierName(rc?.model) ? rc : stripModel(rc)];
+    }),
+  );
+}
+
 /** The config as seen by a role loop running on the free fallback model
  * (plans/fallback-model.md): the fallback's provider/model/thinking installed as the top-level
  * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
@@ -555,8 +572,16 @@ function stripRoleModels(
  * is left out (it inherits default's entry, harmless because the gate holds its roles), raw
  * per-role selector overrides are dropped so a paid pin cannot keep spending, and tier-name
  * role overrides (`roles.<id>.model: "strong"`) are kept since the map now serves the tier
- * itself. The director's exemption lives in the gates (roleForConfig), not here. */
-export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallbackMap): TumwaterConfig {
+ * itself. The director's exemption lives in the gates (roleForConfig), not here. A
+ * subscription claude seam is never moved (`free`): the gate passes one predicate over the
+ * resolved seam, so a free tier keeps its own primary in the map, a free role keeps its own
+ * override, and a free reviewer keeps its own model — while every priced seam still lands on its
+ * tier's fallback pair. */
+export function applyFallbackModel(
+  config: TumwaterConfig,
+  resolved?: TierFallbackMap,
+  free?: (seam: { agent?: string; provider?: string; model?: string }) => boolean,
+): TumwaterConfig {
   if (resolved) {
     const selectorOf = (f: TierFallback) =>
       f.pair
@@ -568,6 +593,13 @@ export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallba
         : undefined;
     const model: Partial<Record<ModelTier, string>> = {};
     for (const tier of MODEL_TIERS) {
+      // A free seam keeps the tier's own primary selector: the top-level form carries the
+      // backend namespace a resolved seam has already cleared.
+      if (free?.(withModelOverrides(config, tier, {}))) {
+        const own = topTierSelector(config, tier);
+        if (own !== undefined) model[tier] = formatModelSelector(own);
+        continue;
+      }
       const sel = selectorOf(resolved[tier]);
       if (sel !== undefined) model[tier] = sel;
     }
@@ -576,8 +608,8 @@ export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallba
       provider: undefined,
       model,
       thinking: undefined,
-      review: fallbackReview(config.review),
-      roles: stripRoleModels(config.roles, true),
+      review: free?.(reviewConfig(config)) ? config.review : fallbackReview(config.review),
+      roles: freeRoleModels(config, free),
     };
   }
   const pair = fallbackPair(config);

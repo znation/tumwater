@@ -7,43 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 6b/7: subscription free-ness and the cap exemption (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed)
-
-Design: plans/agent-backends.md ("Free-ness", "Every seam, checked").
-
-Goal: a subscription claude seam is free money, so the daily cap never moves it to a fallback
-and an all-subscription fleet resolves as free. Depends on 6a's account state.
-
-**Approach.**
-1. **Free predicate.** Today `piPairFree` (src/pi/pi-models.ts) refuses any non-pi backend
-   (`isAgentId(provider)`), and `fleetModelsFree`/`fallbackModelFree` judge every pair through
-   it. Extend those predicates to take a `ClaudeAccount | null` (the shape 6a defines) and treat
-   a `claude/<id>` seam as free while its billing is `subscription`; keep the rule centralized
-   in src/pi/pi-models.ts rather than adding a per-backend pricing hook, so the badge, the gate,
-   and the config pricing view keep judging pairs with one predicate.
-2. **Callers follow.** src/gates/budget-gates.ts's `pairFreeAt`, the pricing view in
-   src/config/config-views.ts, and src/status/status-data.ts's `fleetModelsFree` /
-   `fallbackModelFree` / seam-free read all go through that predicate unchanged, so
-   `applyFallbackModel` leaves subscription seams alone at the cap, a subscription claude pair
-   is accepted as a budget `fallback` for a paid pi primary, and `fleetModelsFree` turns true
-   when every seam is subscription claude (which 6d renders as the window badge).
-3. **Docs.** README states that a subscription claude model is free and so is never moved to a
-   budget fallback.
-
-**Files touched.** src/pi/pi-models.ts, src/gates/budget-gates.ts, src/config/config-views.ts,
-src/status/status-data.ts, README.md.
-
-**Tests.** Cases in test/pi-models.test.ts, test/budget-gates.test.ts, test/config-views.test.ts.
-
-**Acceptance criteria.**
-- With the cap reached and account billing `subscription`, a subscription claude seam stays
-  put while a priced pi seam moves to its fallback.
-- A subscription claude pair is accepted as a budget `fallback` for a priced pi primary.
-- `fleetModelsFree` is true when every seam is subscription claude and false when one seam is
-  API-billed claude.
-- With no account file or API billing, free-ness is exactly today's behavior.
-- `npm run test` green.
-
 ### Agent backends, part 7/7: API per-run cap, watchdog thresholds, smoke test (planned 2026-10-09 by operator; requires parts 6a/7 and 6b/7 landed)
 
 Design: plans/agent-backends.md ("Billing" — API runs, "Watchdogs and progress", "Testing").
@@ -458,6 +421,54 @@ and test/role-view.test.ts.
 - A mixed fleet shows both lines, the daily spend covering priced seams only.
 - A pi-only fleet's rendering is byte-identical to before.
 - `tumwater role <id>` names the billing for a claude seam.
+- `npm run test` green.
+
+### Agent backends, part 6b/7: subscription free-ness and the cap exemption (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Free-ness", "Every seam, checked").
+
+Goal: a subscription claude seam is free money, so the daily cap never moves it to a fallback
+and an all-subscription fleet resolves as free. Depends on 6a's account state.
+
+**Approach.**
+1. **Free predicate.** src/pi/pi-models.ts gained `seamFree(providers, seam, account)`, the one
+   agent-aware rule: a claude seam is free while the account billing is `subscription` and no
+   window is using overage, a pi seam is free when models.json prices it at zero, and everything
+   else is not free. Overage is real money (plans/agent-backends.md §7), so `accountUsesOverage`
+   mirrors the per-run `runCostIsReal` split: an overage subscription claude seam is priced like
+   API spend. `piPairFree` (the `provider/model` form), `fallbackModelPair`, `fallbackModelFree`,
+   and `fleetModelsFree` all take an optional `ClaudeAccount | null` and judge through it; an
+   absent account file or API billing keeps today's refusal.
+2. **Callers follow.** src/gates/budget-gates.ts reads the account once per poll and passes it to
+   `pairFreeAt` and to `applyFallbackModel`; src/status/status-data.ts passes it to the
+   `fleetModelsFree` / `fallbackModelFree` / seam-free reads; src/roles/role-view.ts and
+   src/doctor/doctor-model-checks.ts read it for their `fallbackModelPair` verdict. `applyFallbackModel`
+   (src/config/config-views.ts) gained an optional free predicate: a free tier keeps its own
+   primary in the model map, a free role keeps its own override, and a free reviewer keeps its
+   own model, while every priced seam still lands on its tier's fallback pair. So the gate leaves
+   a subscription seam put at the cap, accepts a subscription claude pair as a budget `fallback`
+   for a priced pi primary, and `fleetModelsFree` turns true for an all-subscription fleet (which
+   6d renders as the window badge).
+3. **Docs.** README states a subscription claude model with no overage is free and so is never
+   moved to a budget fallback.
+
+**Files touched.** src/pi/pi-models.ts, src/gates/budget-gates.ts, src/config/config-views.ts,
+src/status/status-data.ts, src/roles/role-view.ts, src/doctor/doctor-model-checks.ts, README.md.
+
+**Tests.** test/pi-models.test.ts (subscription free; API, overage, and absent refused),
+test/budget-gates.test.ts (subscription fallback engages; a subscription seam stays put while a
+priced pi seam moves; an overage subscription seam moves), test/config-views.test.ts
+(applyFallbackModel's free predicate), test/role-view.test.ts and
+test/doctor-model-checks.test.ts (a subscription claude fallback reads free).
+
+**Acceptance criteria.**
+- With the cap reached and account billing `subscription`, a subscription claude seam stays
+  put while a priced pi seam moves to its fallback.
+- A subscription claude pair is accepted as a budget `fallback` for a priced pi primary.
+- `fleetModelsFree` is true when every seam is subscription claude and false when one seam is
+  API-billed claude or the account is using overage.
+- The role view and doctor judge a subscription claude fallback free, like the budget gate.
+- With no account file or API billing, free-ness is exactly today's behavior.
 - `npm run test` green.
 
 ### Agent backends, part 6c/7: the usage-window hold and its events (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 6/7; requires part 6a/7 landed; done 2026-10-10 by feature)

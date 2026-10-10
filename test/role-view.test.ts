@@ -90,6 +90,15 @@ test("a configured fallback pair is reported, with its freeness verdict from pi'
   assert.equal(bare.fallbackFree, false);
 });
 
+test("a subscription claude fallback reads free in the role view", () => {
+  const dir = root();
+  writeConfig(dir, { fallbackModel: { provider: "claude", model: "claude-sonnet-5-5" } });
+  writeClaudeAccount(dir, { billing: "subscription", observedAt: Date.now(), windows: {} });
+  const p = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.deepEqual(p.fallback, { provider: "claude", model: "claude-sonnet-5-5" });
+  assert.equal(p.fallbackFree, true); // the account's subscription makes the claude pair free
+});
+
 test("a custom loop's task is its find text, and it reads as enabled and custom", () => {
   const dir = root();
   writeConfig(dir, { customLoops: [{ name: "greeter", task: "Say hello to the project." }] });

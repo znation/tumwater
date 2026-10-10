@@ -462,9 +462,12 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // cap is reached — the hold never stands under an open gate — and the director exempt.
   const budgetReachedNow = budgetReached({ spentUsd, capUsd: cfg.maxDailyCostUsd });
   const providers = readPiProviders(modelsPath);
+  // The persisted billing answer (6a/7), read once for every free-ness verdict below: a
+  // subscription claude seam is free, so the badge and the pause set judge it as such.
+  const account = readClaudeAccount(root);
   const publishedDemotions = info?.fallbackDemotions ?? {};
   const usable = (p: { provider?: string; model?: string }) =>
-    piPairFree(providers, p.provider, p.model) && !(modelPairName(p) in publishedDemotions);
+    piPairFree(providers, p.provider, p.model, account) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
   // The subscription usage window (part 6d/7): one account read per poll serves the block.
   const claudeWindow = claudeWindowBlock(cfg, providers, root, now);
@@ -495,7 +498,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       // One projection per poll, from the same spend the field above renders: null exactly
       // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
       capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
-      free: fleetModelsFree(cfg, modelsPath),
+      free: fleetModelsFree(cfg, modelsPath, account),
       agent: cfg.agent ?? "pi",
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
@@ -504,7 +507,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
       // resolution, so a map with no `default` entry names the pair the gate actually runs.
       fallback:
-        fallbackModelFree(cfg, modelsPath) && !(running && info?.fallbackDemoted)
+        fallbackModelFree(cfg, modelsPath, account) && !(running && info?.fallbackDemoted)
           ? (servingResolved.default.pair ?? null)
           : null,
       tiers:

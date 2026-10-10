@@ -13,6 +13,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
@@ -83,6 +84,15 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   assert.equal(warned.level, "warn");
   assert.match(warned.detail, /paid\/gpt-x is not priced at zero/);
   assert.match(warned.detail, /role loops pause instead of switching/);
+
+  // A subscription claude fallback is free by the account's billing answer, not by
+  // models.json: the check reads the same account the budget gate does.
+  const claudeSub = readyRepo();
+  writeConfig(claudeSub, { fallbackModel: { provider: "claude", model: "claude-sonnet-5-5" } });
+  writeClaudeAccount(claudeSub, { billing: "subscription", observedAt: Date.now(), windows: {} });
+  const accepted = checkFallbackModel(claudeSub, path.join(tmpdir(), "absent.json"));
+  assert.equal(accepted.level, "ok");
+  assert.match(accepted.detail, /^claude\/claude-sonnet-5-5 — priced at zero/);
 });
 
 test("checkFallbackModel cannot run on an invalid config and says so without failing", () => {

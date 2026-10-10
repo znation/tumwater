@@ -8,6 +8,8 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
+import { configForRole } from "../src/config/config-views.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 /** A fleet at a paid top-level model, a free fallback configured, one role pinned to the
  * paid model, and a reviewer override — everything the fallback view must strip. */
@@ -266,6 +268,71 @@ test("a claude-routed fallback cannot engage even when models.json prices its na
   const events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
   assert.equal(events[0]!.fallbackRejected, "claude/claude-sonnet-5-5");
+});
+
+test("a subscription claude fallback engages at the cap", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(
+    root,
+    JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5", cost: { input: 0, output: 0 } }] } } }),
+  );
+  writeClaudeAccount(root, { billing: "subscription", observedAt: Date.now(), windows: {} });
+  const cfg = configWith(10);
+  cfg.fallback = "claude/claude-sonnet-5-5";
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "fallback"); // the subscription fallback is free money, not refused
+  assert.deepEqual(p.roleConfig.model, {
+    small: "claude/claude-sonnet-5-5",
+    default: "claude/claude-sonnet-5-5",
+    strong: "claude/claude-sonnet-5-5",
+  });
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
+  assert.equal(events[0]!.provider, "claude");
+  assert.equal(events[0]!.model, "claude-sonnet-5-5");
+});
+
+test("a subscription claude seam stays put at the cap while a priced pi seam moves", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  writeClaudeAccount(root, { billing: "subscription", observedAt: Date.now(), windows: {} });
+  const cfg = configWith(10);
+  // One role pinned to subscription claude, one to a priced pi model; the top level is paid.
+  cfg.roles.feature = { ...cfg.roles.feature, provider: "claude", model: "claude-sonnet-5-5", enabled: true };
+  cfg.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "fallback");
+  const feature = configForRole(p.roleConfig, "feature");
+  assert.equal(feature.agent, "claude", "the free seam keeps its backend");
+  assert.equal(feature.model, "claude-sonnet-5-5", "the free seam keeps its model");
+  const plan = configForRole(p.roleConfig, "plan");
+  assert.equal(plan.provider, "free", "the priced seam moves to its fallback");
+  assert.equal(plan.model, "qwen-free");
+});
+
+test("an overage subscription claude seam moves to its fallback at the cap", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  // The account bills a subscription but is spending into overage: that overflow is real money
+  // (plans/agent-backends.md §7), so the seam is priced and the cap moves it.
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "allowed", isUsingOverage: true, observedAt: Date.now() } },
+  });
+  const cfg = configWith(10);
+  cfg.roles.feature = { ...cfg.roles.feature, provider: "claude", model: "claude-sonnet-5-5", enabled: true };
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "fallback");
+  const feature = configForRole(p.roleConfig, "feature");
+  assert.equal(feature.provider, "free", "an overage claude seam is priced and moves");
+  assert.equal(feature.model, "qwen-free");
 });
 
 test("a demoted fallback keeps the gate paused and the role view: demotion never promotes to the paid model", () => {

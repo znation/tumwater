@@ -414,6 +414,24 @@ test("applyFallbackModel with a resolved map keeps tiers and drops raw overrides
   assert.deepEqual(half.model, { small: "omlx/d:low", default: "omlx/d:low" });
 });
 
+test("applyFallbackModel keeps a free seam while moving a priced one", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = { default: "paid/gpt-x", strong: "paid/gpt-x" };
+  config.fallback = "free/qwen-free";
+  // A free (subscription claude) role and a priced pi role: only the priced one moves.
+  config.roles.feature = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
+  config.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
+  const resolved = resolveTierFallbacks(config, () => true);
+  const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
+  assert.equal(configForRole(out, "feature").agent, "claude", "the free seam's backend survives");
+  assert.equal(configForRole(out, "feature").model, "claude-sonnet-5-5");
+  assert.equal(configForRole(out, "plan").provider, "free", "the priced seam moves to its fallback");
+  assert.equal(configForRole(out, "plan").model, "qwen-free");
+  // Without the predicate the paid pin is still stripped as before.
+  const plain = applyFallbackModel(config, resolved);
+  assert.equal(configForRole(plain, "feature").provider, "free");
+});
+
 test("fallbackRoleConfig resolves the role's tier pair and is null when it pauses", () => {
   const config: TumwaterConfig = defaultConfig();
   config.model = "paid/primary";

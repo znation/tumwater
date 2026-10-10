@@ -125,7 +125,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
   // so a refused fallback is still named.
   const declaredFallback = fallbackPair(cfg);
-  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath) : null;
+  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, readClaudeAccount(root)) : null;
   const fallback = freeFallback ?? declaredFallback;
   // One state read serves both the model-fallback episode and the next-tick preview below.
   const state = loadLoopState(root, role);

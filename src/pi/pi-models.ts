@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import type { ClaudeAccount } from "../agent/claude/claude-account.js";
 import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
 import { enabledRoleIds } from "../config/config.js";
 import { configForRole, fallbackPair, resolverConfig, reviewConfig } from "../config/config-views.js";
@@ -138,20 +139,58 @@ export function cacheReadUnpriced(
   return inputPriced && cacheUnpriced;
 }
 
-/** Whether a seam's resolved pair may be called free: only pi's own models.json can price a
- * run, so a selector whose provider names an agent backend (e.g. `claude/<id>`) is never
- * free, exactly as an unresolvable pi pair is not — the badge must not read n/a while a
- * backend whose billing it cannot see runs (plans/agent-backends.md "Config" step 4). A
- * claude-routed bare id has no provider and is already refused by pairFree. Exported so the
- * budget gate (src/gates/budget-gates.ts) and the status pause set (src/status/status-data.ts)
- * judge fallback pairs with the same predicate the free-ness view does — neither may engage a
- * backend their own badge would not call free. */
+/** A seam's backend identity: the resolved `agent` when a seam carries one (configForRole,
+ * reviewConfig and resolverConfig all do), else the agent its provider namespace names, else
+ * pi. The shared shape the free predicate below judges and the fallback view preserves. */
+interface SeamModel {
+  agent?: string;
+  provider?: string;
+  model?: string;
+}
+
+/** True when the persisted account is spending into overage on any window: the subscription's
+ * overflow bills real money, so a claude seam is not free while it does. Mirrors the per-run
+ * split in `runCostIsReal` (src/pi/pi-run-result.ts) — a run that saw `isUsingOverage` counts as
+ * API spend, and so does every seam an overage account would run (plans/agent-backends.md §7
+ * "Overage is real money"). */
+function accountUsesOverage(account: ClaudeAccount | null): boolean {
+  return account !== null && Object.values(account.windows).some((w) => w.isUsingOverage === true);
+}
+
+/** Whether a seam may be called free: a subscription claude seam is free money (its marginal
+ * cost is zero, plans/agent-backends.md "Free-ness"), and a pi seam is free when pi's own
+ * models.json prices it at zero. A subscription that is spending into overage is NOT free: that
+ * overflow is API-priced real money, exactly as `runCostIsReal` treats a run that saw
+ * `isUsingOverage`. Everything else is NOT free — an API-billed claude seam, an overage
+ * subscription claude seam, an unresolvable or priced pi pair, and any other backend — so the
+ * badge never reads n/a while spend it cannot see could still reach the cap. The one central
+ * rule: the budget gate, the fallback view, and the status free-ness read all judge seams
+ * through it (plans/agent-backends.md "Free-ness" and "Every seam, checked"). */
+export function seamFree(
+  providers: Map<string, PiModelDef[]> | null,
+  seam: SeamModel,
+  account: ClaudeAccount | null = null,
+): boolean {
+  const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
+  if (agent === "claude") return account?.billing === "subscription" && !accountUsesOverage(account);
+  if (agent !== "pi") return false;
+  return pairFree(providers, seam.provider, seam.model);
+}
+
+/** Whether a fallback-config pair may be called free: a `claude/<id>` pair is free while the
+ * account bills a subscription and is not using overage, and a pi provider/model is free when
+ * models.json prices it at zero. A non-claude agent namespace, or an unresolvable pi pair, is refused — the badge must
+ * not read n/a while a backend whose billing it cannot see runs. Exported so the budget gate
+ * (src/gates/budget-gates.ts) and the status pause set (src/status/status-data.ts) judge
+ * fallback pairs with the same predicate the free-ness view does — neither may engage a backend
+ * their own badge would not call free. */
 export function piPairFree(
   providers: Map<string, PiModelDef[]> | null,
   provider: string | undefined,
   model: string | undefined,
+  account: ClaudeAccount | null = null,
 ): boolean {
-  return !isAgentId(provider) && pairFree(providers, provider, model);
+  return seamFree(providers, { provider, model }, account);
 }
 
 /** The free fallback pair the budget gate would engage for the fleet, or null when none is
@@ -162,9 +201,10 @@ export function piPairFree(
 export function fallbackModelPair(
   config: TumwaterConfig,
   modelsPath = piModelsPath(),
+  account: ClaudeAccount | null = null,
 ): FallbackModelConfig | null {
   const providers = readPiProviders(modelsPath);
-  return fallbackPair(config, (p) => piPairFree(providers, p.provider, p.model));
+  return fallbackPair(config, (p) => piPairFree(providers, p.provider, p.model, account));
 }
 
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
@@ -172,8 +212,12 @@ export function fallbackModelPair(
  * pi's definitions. False for every other case — no fallback, a half-named pair that would fall
  * through to pi's own default, an unknown id, or a priced one — and the gate then pauses role
  * loops exactly as it did before this feature. */
-export function fallbackModelFree(config: TumwaterConfig, modelsPath = piModelsPath()): boolean {
-  return fallbackModelPair(config, modelsPath) !== null;
+export function fallbackModelFree(
+  config: TumwaterConfig,
+  modelsPath = piModelsPath(),
+  account: ClaudeAccount | null = null,
+): boolean {
+  return fallbackModelPair(config, modelsPath, account) !== null;
 }
 
 /** True when every model the fleet could use is free: each enabled role's effective
@@ -181,11 +225,17 @@ export function fallbackModelFree(config: TumwaterConfig, modelsPath = piModelsP
  * its tier per plans/model-tiers.md) plus the reviewer's while review is on, plus the
  * `strong` tier's own model whenever any role is enabled — the conflict resolver (part 4/8)
  * runs on strong, so the budget must never read n/a while a priced strong model can spend.
- * Every pair is judged by piPairFree above — a non-pi backend is never free, since only pi's
- * models.json can price a run — so an unresolvable one counts as NOT free: the badge must
- * never read n/a while spend it is tracking could still reach the cap. With no enabled roles
- * and review off there are no pairs at all, so the fleet cannot spend and the answer is true. */
-export function fleetModelsFree(config: TumwaterConfig, modelsPath = piModelsPath()): boolean {
+ * Every pair is judged by `seamFree` above: a subscription claude seam is free, a pi seam is
+ * free when models.json prices it at zero, and everything else counts as NOT free — the badge
+ * must never read n/a while spend it is tracking could still reach the cap. With no enabled
+ * roles and review off there are no pairs at all, so the fleet cannot spend and the answer is
+ * true. `account` is the persisted claude billing answer (6a/7's reader), absent meaning "no
+ * subscription". */
+export function fleetModelsFree(
+  config: TumwaterConfig,
+  modelsPath = piModelsPath(),
+  account: ClaudeAccount | null = null,
+): boolean {
   const pairs: Array<{ agent: string | undefined; provider: string | undefined; model: string | undefined }> = [];
   for (const role of enabledRoleIds(config)) {
     const rc = configForRole(config, role);
@@ -205,8 +255,5 @@ export function fleetModelsFree(config: TumwaterConfig, modelsPath = piModelsPat
   // construction — no definitions file to consult.
   if (pairs.length === 0) return true;
   const providers = readPiProviders(modelsPath);
-  return pairs.every(
-    ({ agent, provider, model }) =>
-      (agent === undefined || agent === "pi") && piPairFree(providers, provider, model),
-  );
+  return pairs.every((seam) => seamFree(providers, seam, account));
 }
