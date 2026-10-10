@@ -52,6 +52,10 @@ export interface RoleViewPayload {
   provider?: string;
   model?: string;
   thinking?: string;
+  /** The backend this seam routes to (configForRole's `agent`, plans/agent-backends.md):
+   * `pi` unless a selector's provider names another agent or the top-level `agent` does.
+   * Drives the renderer's `<agent> default` label and the agent-qualified selector string. */
+  agent: string;
   /** The budget gate's fallback pair, or null when none is configured. */
   fallback: FallbackModelConfig | null;
   /** Whether that fallback is actually free in pi's definitions — what makes the gate
@@ -130,6 +134,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     tier: roleTier(role),
     modelTier: roleSeamTier(cfg, role),
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
+    agent: effective.agent ?? "pi",
     fallback,
     fallbackFree: freeFallback !== null,
     modelFallback: modelFallbackView(episode, cfg, role),

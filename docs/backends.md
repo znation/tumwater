@@ -1,7 +1,8 @@
 # Backends
 
 tumwater drives pi, and pi drives a model backend. Nothing in the harness is tied to a
-particular one: any OpenAI-compatible endpoint pi can reach will do.
+particular one: any OpenAI-compatible endpoint pi can reach will do. A second backend, Claude
+Code, is selectable with `agent` (see [Claude Code](#claude-code-agent-claude) below).
 
 ## What a backend must provide
 
@@ -59,6 +60,37 @@ fallback is carrying the fleet.
   `reasoning_effort` and honors only `thinking_budget`, which pi sends only when the model's
   `models.json` entry sets `compat.thinkingTokenBudgetField: "thinking_budget"`; without it,
   `:high` on that model is a no-op.
+
+## Claude Code (`agent: "claude"`)
+
+`agent` in `tumwater.json` names the backend bare selectors and the no-model default run on;
+`claude` runs on the Claude Code CLI instead of pi:
+
+```json
+"agent": "claude",
+"agents": { "claude": { "bin": "/usr/local/bin/claude", "args": ["--debug"] } }
+```
+
+`agents.claude.bin` overrides the binary (`TUMWATER_CLAUDE_BIN` overrides it for one run), and
+`agents.claude.args` appends extra argv after the harness's own flags; a flag the harness sets
+itself is a load error rather than a silent override. A selector whose provider names a backend
+id always routes there regardless of the top-level `agent`: `claude/claude-opus-5-5` runs on
+claude, `huggingface/…` on pi. Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
+default, Haiku 5.5 small — so `agent: "claude"` with no `model` still resolves a concrete model
+per seam. The observability surfaces name the backend in the selector (`claude/claude-sonnet-5-5`
+in `tumwater status`, the dashboards, and the event feed), and a seam with no model at all reads
+`claude default`.
+
+**Billing and spend.** Each claude run reports the CLI's own price for it, and that cost feeds
+the daily cap like any priced pi model; at a fleet of today's size it can amount to tens of
+dollars a day, so pair it with a free `fallback`. A claude.ai subscription is designed to be
+exempt from that cap — its cost recorded as notional, never in spend totals — and throttled by
+the account's usage window instead, but that exemption is not implemented yet: today every
+claude selector counts as not-free to the budget gate. See
+[plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
+for the design.
+
+See [plans/agent-backends.md](../plans/agent-backends.md) for the series' full design.
 
 ## Worked example: one machine's measurements, 2026-09
 

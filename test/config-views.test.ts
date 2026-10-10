@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import {
+  agentQualifiedSelector,
   applyFallbackModel,
   configForRole,
   FALLBACK_REVIEW_TIMEOUT_S,
   fallbackPair,
   fallbackRoleConfig,
   fleetModelLabel,
+  modelSelectorField,
   resolverConfig,
   reviewConfig,
   resolvedAgentConfig,
@@ -548,6 +550,28 @@ test("a mixed fallback under agent: claude runs on pi while the primary stays cl
   assert.equal(fb?.agent, "pi", "a non-agent provider runs on pi");
   assert.equal(fb?.provider, "omlx");
   assert.equal(fb?.model, "Qwen3.8-27B-MLX");
+});
+
+test("agentQualifiedSelector names a non-pi backend as the selector namespace", () => {
+  // Part 4f/7: a claude seam's selector carries the backend id (`claude/claude-sonnet-5-5`),
+  // the form routeModel parses back; pi keeps the historical `provider/model` byte-for-byte.
+  assert.equal(
+    agentQualifiedSelector({ provider: undefined, model: "claude-sonnet-5-5", thinking: undefined, agent: "claude" }),
+    "claude/claude-sonnet-5-5",
+  );
+  assert.equal(
+    agentQualifiedSelector({ provider: undefined, model: "claude-sonnet-5-5", thinking: "high", agent: "claude" }),
+    "claude/claude-sonnet-5-5:high",
+  );
+  assert.equal(
+    agentQualifiedSelector({ provider: "omlx", model: "Qwen", thinking: undefined, agent: "pi" }),
+    "omlx/Qwen",
+  );
+  assert.deepEqual(
+    modelSelectorField({ provider: "omlx", model: undefined, thinking: undefined, agent: "pi" }),
+    {},
+    "no resolved model leaves the field absent",
+  );
 });
 
 test("a legacy pi config gains no model and stays on pi", () => {

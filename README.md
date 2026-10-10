@@ -109,8 +109,14 @@ one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a
 (three consecutive 429s or backend failures) runs its next ticks on its tier's resolved
 `fallback` pair and probes the primary once the 5-minute cooldown elapses, returning to it
 when a probe answers; `tumwater status`, the TUI, the dashboard, and `tumwater role <id>` name
-the off-model episode. See [docs/backends.md](docs/backends.md) for requirements and a
-worked setup.
+the off-model episode. Set `agent` to run bare selectors and the no-model default on another
+backend — `claude` runs on Claude Code, with per-tier defaults (`claude-sonnet-5-5` and
+friends) and per-backend `agents.claude.bin`/`agents.claude.args` overrides; a selector whose
+provider names a backend id (`claude/claude-opus-5-5`) always routes there. A claude run's
+cost comes from the CLI's own price table and feeds the daily cap like a priced pi model, so
+pair it with a free `fallback`; the designed subscription exemption and usage-window throttle
+are not implemented yet (part 6/7 in PLANS.md). See [docs/backends.md](docs/backends.md) for
+requirements and a worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see
 [docs/how-it-works.md](docs/how-it-works.md). For a measured comparison of tumwater's own

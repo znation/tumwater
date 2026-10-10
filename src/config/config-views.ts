@@ -263,13 +263,29 @@ function fallbackSelectorFields(
  * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
  * that assembly and guard, shared by the two run-start event writers (loop-tick.ts's tick_start,
  * review.ts's review_start) and the per-loop status snapshot (status-data.ts) so the three
- * observability surfaces cannot disagree about which model a run starts on. */
+ * observability surfaces cannot disagree about which model a run starts on. A non-pi agent is
+ * named as the selector's provider namespace (agentQualifiedSelector), so a claude run reads
+ * `claude/claude-sonnet-5-5` in every surface instead of a bare model id. */
 export function modelSelectorField(
-  cfg: Pick<ResolvedModelConfig, "provider" | "model" | "thinking">,
+  cfg: Pick<ResolvedModelConfig, "provider" | "model" | "thinking" | "agent">,
 ): { model?: string } {
-  return cfg.model
-    ? { model: formatModelSelector({ provider: cfg.provider, model: cfg.model, thinking: cfg.thinking }) }
-    : {};
+  const { model } = cfg;
+  return model ? { model: agentQualifiedSelector({ ...cfg, model }) } : {};
+}
+
+/** The resolved seam as one selector string, agent-qualified: a non-pi backend id is the
+ * selector's provider namespace (`claude/claude-sonnet-5-5`), the form routeModel parses back
+ * into that agent; a pi seam keeps `provider/model[:thinking]` byte-identical to before, since
+ * pi's providers are real model providers, not a backend namespace. `model` is required — the
+ * caller has already guarded that a model resolved (modelSelectorField). */
+export function agentQualifiedSelector(cfg: {
+  provider?: string;
+  model: string;
+  thinking?: string;
+  agent?: string;
+}): string {
+  const base = formatModelSelector({ provider: cfg.provider, model: cfg.model, thinking: cfg.thinking });
+  return cfg.agent && cfg.agent !== "pi" ? `${cfg.agent}/${base}` : base;
 }
 
 /** The fleet's model wiring as one human-readable label, for the live-reload `model_changed`

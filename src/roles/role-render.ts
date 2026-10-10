@@ -63,12 +63,22 @@ function modelPair(provider: string | undefined, model: string | undefined): str
   return [provider, model].filter(Boolean).join("/");
 }
 
+/** The backend's own-default label when no model resolves: `<agent> default` — pi's
+ * historical `pi default` for the pi backend, `claude default` for claude (part 4f/7). */
+function agentDefault(p: RoleViewPayload): string {
+  return `${p.agent !== "pi" ? p.agent : "pi"} default`;
+}
+
 /** The provider/model wiring as one readable token: `provider/model` when both resolve,
- * `model` alone when only the model is named, and the pi-default note when neither is. */
+ * `model` alone when only the model is named, and the backend-default note when neither is.
+ * A non-pi backend is named as the selector's provider namespace (`claude/claude-sonnet-5-5`),
+ * matching the string the events and status rows carry; a pi seam is unchanged. */
 function modelLine(p: RoleViewPayload): string {
   const pair = modelPair(p.provider, p.model);
   const thinking = p.thinking ? ` (thinking: ${p.thinking})` : "";
-  return pair ? `${pair}${thinking}` : `pi default${thinking}`;
+  if (!pair) return `${agentDefault(p)}${thinking}`;
+  const agent = p.agent !== "pi" ? `${p.agent}/` : "";
+  return `${agent}${pair}${thinking}`;
 }
 
 /** Render one loop's inspection payload as Markdown. */
@@ -82,13 +92,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
   // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
   if (p.modelFallback) {
-    const pair = modelPair(p.modelFallback.provider, p.modelFallback.model) || "pi default";
+    const pair = modelPair(p.modelFallback.provider, p.modelFallback.model) || agentDefault(p);
     lines.push(
       `- Model fallback: ${pair} — on fallback since ${formatTimestamp(p.modelFallback.since)} (primary failing: ${p.modelFallback.reason})`,
     );
   }
   if (p.fallback) {
-    const pair = modelPair(p.fallback.provider, p.fallback.model) || "pi default";
+    const pair = modelPair(p.fallback.provider, p.fallback.model) || agentDefault(p);
     lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
   }
   lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);

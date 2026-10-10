@@ -133,11 +133,14 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   // single-pair text byte-identical to the pre-tier badge. Off-gate the badge is byte-
   // identical to before either way.
   const tierEntries = fallbackTierEntries(budget.tiers);
+  // The backend-default label when the engaged pair names neither half: `<agent> default`
+  // (plans/agent-backends.md part 4f/7), `pi default` for a pi fleet as before.
+  const agentDefault = `${budget.agent && budget.agent !== "pi" ? budget.agent : "pi"} default`;
   const fallback =
     fleetBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
         ? ` · fallback: ${tierEntries.join(", ")} (cost n/a)`
-        : ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
+        : ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? agentDefault} (cost n/a)`
       : "";
   const forecast =
     budget.capHitAt !== null

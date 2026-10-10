@@ -336,3 +336,22 @@ test("an active model-fallback episode is reported with its pair and reason", ()
   assert.equal(rolePayload(dir, "feature", NO_MODELS).modelFallback, null);
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Model fallback:/);
 });
+
+test("agent labels: a claude seam names the backend, pi stays byte-identical", () => {
+  // Part 4f/7: with agent claude and no model, configForRole fills the tier default and the
+  // renderer names it agent-qualified; a seam with no model at all falls back to `<agent>
+  // default` rather than pi's label.
+  const dir = root();
+  writeConfig(dir, { agent: "claude" });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.agent, "claude");
+  assert.equal(p.model, "claude-sonnet-5-5", "routeModel fills the default tier's model");
+  assert.match(renderRoleMarkdown(p), /- Model: claude\/claude-sonnet-5-5 \(default tier\)/m);
+  assert.match(
+    renderRoleMarkdown({ ...p, provider: undefined, model: undefined }),
+    /- Model: claude default \(default tier\)/m,
+  );
+
+  // The pi default stays byte-identical to before routing.
+  assert.match(renderRoleMarkdown(rolePayload(root(), "feature", NO_MODELS)), /- Model: pi default \(default tier\)/m);
+});

@@ -7,29 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Agent backends, part 4f/7: agent labels and docs (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed)
-
-Design: plans/agent-backends.md ("Every seam, checked" — status/TUI/GUI/events rows).
-
-**Approach.**
-1. **Labels.** "pi default" becomes "`<agent>` default" in src/roles/role-render.ts,
-   src/ui/badges.ts and src/events/event-format.ts. A `tick_start`/`review_start` model
-   selector carries the agent (`claude/claude-sonnet-5-5`); status rows follow.
-2. **Docs.** README "Backends": `agent`, routing, and the expected-spend note;
-   docs/backends.md gains a claude section; the "Built on pi" tagline becomes
-   "Built on pi; also runs on Claude Code".
-
-**Files touched.** src/roles/role-render.ts, src/ui/badges.ts, src/events/event-format.ts;
-README.md, docs/backends.md.
-
-**Acceptance criteria.**
-- With `agent: "claude"` and no `model`, role-render, badges and a `tick_start` event all name
-  `claude default`/`claude/claude-sonnet-5-5`; with `agent: "pi"` the strings stay
-  byte-identical to before.
-- README and docs/backends.md describe `agent`/`agents`, routing, and the spend expectation;
-  docs/backends.md links plans/agent-backends.md.
-- `npm run test` green.
-
 ### Agent backends, part 5/7: `role_notes` over MCP and the prompt dialect (planned 2026-10-09 by operator; requires parts 4a/7 and 4b/7 landed)
 
 Design: plans/agent-backends.md ("What the pi extensions did, per backend").
@@ -381,6 +358,36 @@ spawn failure names `agents.claude.bin`; `agentBinConfigKey` centralizes that ke
 missing-binary and spawn-error wording. Doctor's `checkAgentBinary` still checks only pi's binary
 (its agent-aware checks are part 4e/7), so the shared comments name that scope rather than claiming
 the gate and doctor can never disagree.
+
+### Agent backends, part 4f/7: agent labels and docs (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed; done 2026-10-10 by feature)
+
+Design: plans/agent-backends.md ("Every seam, checked" — status/TUI/GUI/events rows).
+
+**Approach.**
+1. **Labels.** "pi default" becomes "`<agent>` default" in src/roles/role-render.ts and
+   src/ui/badges.ts; the agent-qualified selector (`claude/claude-sonnet-5-5`) is written at
+   the shared `modelSelectorField` seam (src/config/config-views.ts), so `tick_start`/
+   `review_start` events, `model_changed`, and the status rows all carry the agent with no
+   change in src/events/event-format.ts. RoleViewPayload gains `agent`
+   (src/roles/role-view.ts) and the status snapshot's budget gains the fleet `agent`
+   (src/status/status-data.ts) for the badge's and role view's default labels.
+2. **Docs.** README "Backends": `agent`, routing, and the expected-spend note;
+   docs/backends.md gains a Claude Code section and links plans/agent-backends.md. The
+   "Built on pi" tagline lives inside README's protected initial-prompt block, so it is left
+   unchanged.
+
+**Files touched.** src/config/config-views.ts, src/roles/role-view.ts,
+src/roles/role-render.ts, src/ui/badges.ts, src/status/status-data.ts; README.md,
+docs/backends.md; test/config-views.test.ts, test/role-view.test.ts, test/badges.test.ts,
+test/status-data.test.ts, test/gui-operator.test.ts.
+
+**Acceptance criteria.**
+- With `agent: "claude"` and no `model`, role-render, badges and a `tick_start` event all name
+  `claude default`/`claude/claude-sonnet-5-5`; with `agent: "pi"` the strings stay
+  byte-identical to before.
+- README and docs/backends.md describe `agent`/`agents`, routing, and the spend expectation;
+  docs/backends.md links plans/agent-backends.md.
+- `npm run test` green.
 
 ### Agent backends, part 4d/7: resume and handoff under routing (planned 2026-10-09 by plan; split 2026-10-09 by plan from part 4/7; requires part 4b/7 landed; done 2026-10-10 by feature)
 

@@ -125,6 +125,10 @@ export interface StatusSnapshot {
      * to scripts through the snapshot's own serialization. */
     capHitAt: number | null;
     free: boolean;
+    /** The fleet's resolved backend (`agent` config, plans/agent-backends.md): the badge's
+     * `<agent> default` label when a fallback pair names neither a provider nor a model.
+     * Optional so literal budget blocks in the tests stand; fresh per poll like the pair. */
+    agent?: string;
     fallback: { provider?: string; model?: string } | null;
     /** The per-tier fallback labels (part 7b/8): tier → `provider/model[ (from <tier>)]` —
      * non-null ONLY while the cap is reached and the tiers resolve to two or more distinct
@@ -441,6 +445,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
       capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
       free: fleetModelsFree(cfg, modelsPath),
+      agent: cfg.agent ?? "pi",
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
       // must not be advertised as one that will save the fleet — and a demoted one is refused
