@@ -13,7 +13,7 @@ import {
 } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
-import { entryHold, holdMark } from "./backlog-eligibility.js";
+import { entryHoldAgainst, holdMark, plannedPartKeys } from "./backlog-eligibility.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
@@ -399,6 +399,7 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
   // the gate skips it. plannedPlanEntries is stat-cached by sectionEntries, so an unchanged
   // PLANS.md costs one stat per call.
   const planned = plannedPlanEntries(root);
+  const plannedParts = plannedPartKeys(planned);
   const listed: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {
     const full = path.join(root, file);
@@ -427,7 +428,7 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
     if (entries === null || entries.length === 0) continue;
     listed.push(`${file} ## ${section}`);
     for (const e of entries) {
-      const mark = holdMark(entryHold({ title: e.title, body: e.body }, planned));
+      const mark = holdMark(entryHoldAgainst({ title: e.title, body: e.body }, plannedParts));
       listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}`);
     }
   }

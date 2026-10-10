@@ -88,6 +88,25 @@ export function seriesPart(title: string): PartRef | null {
   return { series, part: m[2]!.toLowerCase(), of: Number(m[3]) };
 }
 
+/** The one identity a PartRef matches by: lowercased series, verbatim part token. */
+function partKey(series: string, part: string): string {
+  return `${series.toLowerCase()}\u0000${part}`;
+}
+
+/** The prerequisite-set identities of the still-planned entries — seriesPart(title) of each,
+ * keyed by partKey — built once for a batch and reused across every entry judged against it, so
+ * judging n entries is n seriesPart parses rather than n² (entryHold rebuilt the set per entry).
+ * Series compare case-insensitively and part tokens verbatim, exactly as entryHoldAgainst
+ * matches them. */
+export function plannedPartKeys(planned: readonly BacklogEntry[]): Set<string> {
+  const keys = new Set<string>();
+  for (const p of planned) {
+    const part = seriesPart(p.title);
+    if (part !== null) keys.add(partKey(part.series, part.part));
+  }
+  return keys;
+}
+
 /** The prerequisite parts a plan heading's trailing parenthetical names through the clause
  * `requires <ref>((, | and )<ref>)* landed`, with each range (e.g. `parts 1/5–3/5`) expanded.
  * Returns [] when the heading has no such clause or the clause does not parse — an agent judges
@@ -110,19 +129,22 @@ export function requiredParts(title: string): PartRef[] {
  * Bodies mentioning "requires" are never consulted — only the heading's trailing
  * parenthetical. */
 export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[]): EntryHold {
+  return entryHoldAgainst(entry, plannedPartKeys(planned));
+}
+
+/** `entryHold` against a prerequisite set already built by `plannedPartKeys`: the batch form, so
+ * a caller judging many entries parses the planned titles once for the whole batch instead of
+ * once per entry. */
+export function entryHoldAgainst(
+  entry: BacklogEntry,
+  plannedParts: ReadonlySet<string>,
+): EntryHold {
   if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
   if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) return "needs-review";
   if (hasNoteLine(entry.body, NEEDS_REPLAN_PREFIX)) return "needs-replan";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
-  const parts = planned
-    .map((p) => seriesPart(p.title))
-    .filter((p): p is PartRef => p !== null);
-  const blocked = refs.filter((ref) =>
-    parts.some(
-      (p) => p.series.toLowerCase() === ref.series.toLowerCase() && p.part === ref.part,
-    ),
-  );
+  const blocked = refs.filter((ref) => plannedParts.has(partKey(ref.series, ref.part)));
   return blocked.length === 0
     ? null
     : { blockedBy: blocked.map((ref) => `${ref.series} ${ref.part}/${ref.of}`) };
@@ -146,9 +168,10 @@ export function holdMark(hold: EntryHold): string {
  * are read once and reused as the prerequisite set. Questions carry no holds. */
 export function backlogHolds(root: string): { plans: EntryHold[]; bugs: EntryHold[] } {
   const planned = plannedPlanEntries(root);
+  const parts = plannedPartKeys(planned);
   return {
-    plans: planned.map((entry) => entryHold(entry, planned)),
-    bugs: openBugEntries(root).map((entry) => entryHold(entry, planned)),
+    plans: planned.map((entry) => entryHoldAgainst(entry, parts)),
+    bugs: openBugEntries(root).map((entry) => entryHoldAgainst(entry, parts)),
   };
 }
 
@@ -165,10 +188,11 @@ export function eligibleEntries(root: string, role: string): EligibleEntry[] {
   const entries = bugfix ? openBugEntries(root) : plannedPlanEntries(root);
   const ranges = actionableEntryRangesFor(root, file, section);
   const planned = plannedPlanEntries(root);
+  const parts = plannedPartKeys(planned);
   const out: EligibleEntry[] = [];
   for (let i = 0; i < entries.length && i < ranges.length; i++) {
     const entry = entries[i]!;
-    if (entryHold(entry, planned) !== null) continue;
+    if (entryHoldAgainst(entry, parts) !== null) continue;
     const range = ranges[i]!;
     out.push({
       key: entryKey(entry.title),

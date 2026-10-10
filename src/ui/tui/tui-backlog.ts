@@ -4,7 +4,7 @@ import {
   plannedPlanEntries,
   type BacklogEntry,
 } from "../../backlog/backlog.js";
-import { entryHold, holdMark } from "../../backlog/backlog-eligibility.js";
+import { entryHoldAgainst, holdMark, plannedPartKeys } from "../../backlog/backlog-eligibility.js";
 import { clipToWidth } from "../../text/text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui/tui.tsx): the three-section backlog body
@@ -20,9 +20,10 @@ import { clipToWidth } from "../../text/text-width.js";
  * Questions carry no holds. */
 export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
   const planned = plannedPlanEntries(root);
+  const plannedParts = plannedPartKeys(planned);
   return {
-    plans: planned.map((e) => holdMark(entryHold(e, planned))),
-    bugs: openBugEntries(root).map((e) => holdMark(entryHold(e, planned))),
+    plans: planned.map((e) => holdMark(entryHoldAgainst(e, plannedParts))),
+    bugs: openBugEntries(root).map((e) => holdMark(entryHoldAgainst(e, plannedParts))),
   };
 }
 
