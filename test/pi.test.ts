@@ -795,9 +795,9 @@ test("a missing pi binary fails the tick with an error", async () => {
 
 // pi crashing on malformed JSON (a torn model-server chunk): five ticks in the first 18 days died
 // with "Unterminated string in JSON at position N" as their only error, one of them 2 h 39 m of
-// director work. The session survives on disk, so the harness treats it as transient (loop.ts
-// retries once with --continue) — flagged from pi's stderr at exit, and only for exits the
-// harness itself did not cause.
+// director work. The session survives on disk, so the harness treats it as transient
+// (src/loop/loop-pi.ts retries once with --continue) — flagged from pi's stderr at exit, and only
+// for exits the harness itself did not cause.
 test("runPi flags a JSON.parse crash on pi's stderr as a transient pi crash", async () => {
   const r = await runFakePi(
     `echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2\nexit 1`,

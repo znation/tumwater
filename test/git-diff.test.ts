@@ -1,6 +1,6 @@
-// --- changedFiles + unquotePorcelainPath: the refusal path's git helpers (loop.ts) ---
+// --- changedFiles (refusal.ts) + unquotePorcelainPath (landing-git.ts): worktree git helpers ---
 // A refusing run may leave files with special characters in their names; changedFiles must
-// hand back decoded paths that loop.ts can classify (.md filter) and feed straight back to
+// hand back decoded paths that refusal.ts can classify (.md filter) and feed straight back to
 // `git add`, so these tests round-trip through real `git status --porcelain` output.
 
 import test from "node:test";

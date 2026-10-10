@@ -134,7 +134,8 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   const s = loadLoopState(dir, "clean");
   assert.equal(s.ticks, 3);
   assert.equal(s.commits, 1);
-  // loop.ts adds to these every tick; undefined would turn them into NaN.
+  // tick-usage.ts folds generatedTokens/peakContextTokens; scheduling/backoff.ts advances
+  // backoffSeconds; tick-finalize.ts records lastMainHead. Undefined would turn numbers to NaN.
   assert.equal(s.generatedTokens, 0);
   assert.equal(s.peakContextTokens, 0);
   assert.equal(s.backoffSeconds, 0);

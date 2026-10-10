@@ -23,7 +23,7 @@ import { ensureParentDir } from "../../src/files/files.js";
  * lander-bisect.test.ts,
  * split from one file so node --test runs the three in parallel processes (top-level tests
  * within a file run one after another; each file gets its own process, and its own PATH for
- * fakePi's global swap). Contexts and wiring built the way loop.ts and the landing drain build
+ * fakePi's global swap). Contexts and wiring built the way the landing drain builds
  * them, pinned-change repos in the queue shape the pipeline reads, and reviewer/check shims. */
 
 export const ROLE = "improve";
@@ -40,8 +40,9 @@ export interface PiCall {
   session: string;
 }
 
-/** A LanderContext wired like loop.ts does: real config/state, a recording runPi stub for the
- * conflict resolver (which may also mutate the worktree via `resolve`), and an abortable signal. */
+/** A LanderContext wired like landing-batch.ts does: real config/state, a recording runPi stub
+ * for the conflict resolver (which may also mutate the worktree via `resolve`), and an abortable
+ * signal. */
 export function makeCtx(
   root: string,
   state: LoopState,

@@ -335,7 +335,7 @@ test("readBranchHead matches git rev-parse across loose and packed refs", () => 
   assert.equal(readBranchHead(repo, "main"), head);
 });
 
-// --- commitPathsAndDiscardRest: the refusal path's commit (loop.ts) ---
+// --- commitPathsAndDiscardRest: the refusal path's commit (src/verdict/refusal.ts) ---
 // A refusing run's files arrive already decoded by changedFiles (test/git-diff.test.ts);
 // these tests pin the staging half: commit only the classified paths, discard the rest.
 
@@ -397,9 +397,9 @@ test("readBranchHead returns null for missing refs, bad content, and non-repos",
 });
 
 // --- runGit's error contract: a GitError must always say why when there is a why to say ---
-// These messages surface verbatim as a loop's lastError on the dashboards (loop.ts records
-// errorMessage(err) for any tick failure), so an unexplained "failed (ENOENT): " tail is what
-// an operator actually reads.
+// These messages surface verbatim as a loop's lastError on the dashboards (src/loop/loop-tick.ts
+// records errorMessage(err) for any tick failure), so an unexplained "failed (ENOENT): " tail is
+// what an operator actually reads.
 
 test("runGit names the spawn failure when git cannot be started (empty stderr)", async () => {
   const repo = makeRepo();

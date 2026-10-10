@@ -36,7 +36,7 @@ interface PiCall {
 /** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
  * defers to `resolve` (or returns a plain ok result when none is given). The landing target is
  * derived from the worktree's post-rebase HEAD inside mergeToMain (merge queue 2/5), so there is
- * no ref field. exemptPaths carries the config defaults, as loop.ts does. */
+ * no ref field. exemptPaths carries the config defaults, as loop-tick.ts does. */
 function makeCtx(
   root: string,
   resolve?: (wt: string, prompt: string, session: string) => Promise<PiRunResult>,
