@@ -194,7 +194,7 @@ export function budgetBadge(
       : "";
   const forecast =
     budget.capHitAt !== null
-      ? ` · ~cap at ${pad2(new Date(budget.capHitAt).getHours())}:${pad2(new Date(budget.capHitAt).getMinutes())}`
+      ? ` · ~cap at ${clockHm(budget.capHitAt)}`
       : "";
   if (budget.capUsd > 0)
     return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${forecast}${fallback}${window}`;
