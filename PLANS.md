@@ -244,24 +244,56 @@ part 1a/5, applied to these sections.
   (checked against the module's export list).
 - `npm run test` is green.
 
-### Finish the stale code-path citation sweep, part 2/5: `plans/portability.md`, parts 5/7–7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Needs review 2026-10-10 by feature: too large for one run**
+### Finish the stale code-path citation sweep, part 2a/5: `plans/portability.md`, part 5/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "5/7 — Make the
-agent binary configurable", "6/7 — Make the project's verification command configurable", and
-"7/7 — Adopt an existing repository without hijacking its README" sections.
+agent binary configurable" section.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these sections. Its `5/7` and `6/7` prose is the densest source of line pins
-past a file's end, and `7/7` cites the config and merge splits.
+part 1a/5, applied to this section. Its prose is a dense source of line pins past a file's end.
 
-**Files touched.** `plans/portability.md` (only the named sections). No source or test change.
+**Files touched.** `plans/portability.md` (only the named section). No source or test change.
 
 **Acceptance criteria.**
-- The inventory over the named sections reports no cited path absent from the tree.
-- No `<path>:<line>` in the named sections names a line past that file's end.
-- For each split module cited in the named sections, the module named beside a symbol exports it
+- The inventory over the named section reports no cited path absent from the tree.
+- No `<path>:<line>` in the named section names a line past that file's end.
+- For each split module cited in the named section, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 2b/5: `plans/portability.md`, part 6/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "6/7 — Make the
+project's verification command configurable" section.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to this section. This is the densest source of line pins past a file's end in
+the sweep, so the inventory step carries most of the work.
+
+**Files touched.** `plans/portability.md` (only the named section). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named section reports no cited path absent from the tree.
+- No `<path>:<line>` in the named section names a line past that file's end.
+- For each split module cited in the named section, the module named beside a symbol exports it
+  (checked against the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 2c/5: `plans/portability.md`, part 7/7 (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 2/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/portability.md`'s "7/7 — Adopt an
+existing repository without hijacking its README" section.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to this section. It cites the config and merge splits, so the split-aware map
+and its per-citation symbol check carry most of the work.
+
+**Files touched.** `plans/portability.md` (only the named section). No source or test change.
+
+**Acceptance criteria.**
+- The inventory over the named section reports no cited path absent from the tree.
+- No `<path>:<line>` in the named section names a line past that file's end.
+- For each split module cited in the named section, the module named beside a symbol exports it
   (checked against the module's export list).
 - `npm run test` is green.
 
@@ -308,7 +340,7 @@ part 1a/5, applied to these five files. Their absent paths are the `loop`, `type
 ### Finish the stale code-path citation sweep, part 5/5: the remaining plan documents (planned 2026-10-10 by plan; split 2026-10-10 by plan from the single-entry sweep; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for every `plans/*.md` file not assigned to
-parts 1a/5–1c/5 and 2/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
+parts 1a/5–1c/5 and 2a/5–4/5. The inventory today flags stale citations in `plans/agent-backends.md`,
 `plans/commit-bodies.md`, `plans/refusal-and-thrash.md`, `plans/repair-traces.md`,
 `plans/telemetry-role.md`, and `plans/user-defined-loops.md`; the rest
 (`plans/disk-floor.md`, `plans/merge-queue.md`, `plans/parallel-work-instances.md`,
@@ -320,7 +352,7 @@ missed.
 part 1a/5, applied to this scope. `plans/repair-traces.md` and `plans/telemetry-role.md` carry the
 out-of-range pins here; `plans/telemetry-role.md` also cites the `failure-report` module split.
 
-**Files touched.** `plans/*.md` files not assigned to parts 1a/5–1c/5 and 2/5–4/5. No source or test change.
+**Files touched.** `plans/*.md` files not assigned to parts 1a/5–1c/5 and 2a/5–4/5. No source or test change.
 
 **Acceptance criteria.**
 - The inventory over this scope reports no cited path absent from the tree.
