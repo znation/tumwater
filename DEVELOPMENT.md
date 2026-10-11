@@ -163,4 +163,49 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   `src/tick/tick-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,
   `src/cli/log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
   other read-only command bodies).
+- `src/status/`: the `status` collector behind the status table, TUI, and dashboard
+  (`status-data.ts`) and its per-poll cached readers; rendering lives in `src/ui/status-render.ts`.
+- `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
+  pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the fleet
+  failure hold (`gate-polls.ts` polls them; `gate-prompts.ts` holds their prompt text).
+- `src/fleet/`: fleet-wide state (`fleet-state.ts` — the pause markers and their writers), the
+  provider/kind hold, the fleet polls, the failure spread and error-storm alarms, and the
+  worktree reclaim pass (`reclaim.ts`).
+- `src/scheduling/`: scheduling primitives — per-role backoff, the quiet-hours parser,
+  multi-instance claims, and the `--once` round.
+- `src/verdict/`: the agent reply contract — the NOTHING_TO_DO and REFUSED sentinels, the
+  SUMMARY/WHY/RISK/VERIFIED block, the review VERDICT line, and the refusal and fix-claim
+  readers.
+- `src/review/`: the adversarial review gate (`review.ts`) and its helpers — pre-review
+  verification, verdict parsing, the missing-verdict follow-up, suite reruns, doc-only
+  exemptions, and known flakes.
+- `src/baseline/`: the pristine-main baseline check and the red-main detection that rejects
+  every code diff while main itself is red.
+- `src/redeploy/`: the self-redeploy path — the staleness policy, the probes that decide a
+  safe restart, and the production redeployer.
+- `src/doctor/`: the `tumwater doctor` pre-flight checks and their shared report contract.
+- `src/inbox/`: the prompt queue — the director's and per-role inboxes, image attachments,
+  submit/edit/cancel, and the queue-backed `prompt` command body.
+- `src/operator/`: the operator-intent layer shared by the
+  `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands, the dashboard's POST routes,
+  and the TUI's controls.
+- `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
+  reader/writer, its structure, its renderer, and its eligibility marks.
+- `src/budget/`: the daily cost budget's accounting and the fallback circuit breaker.
+- `src/change/`: the `tumwater diff` collector and renderer.
+- `src/concurrency/`: the merge lock, the semaphores, and the check-permit gate.
+- `src/events/`: the append-only event log — its writers, the tail and windowed readers,
+  event formatting, and the day-window derivation.
+- `src/failure/`: the failure digest — collection, clustering, time-and-spend, and rendering.
+- `src/files/`: filesystem helpers — tolerant JSON reads, stat caching, size-based tailing,
+  and the serialized file queue.
+- `src/init/`: `tumwater init` and its bundled template catalog.
+- `src/process/`: process spawning and supervision — the supervisor, process groups, the
+  process table, and the macOS LaunchServices guard.
+- `src/prompt/`: the prompt dialect and principles a tick prefill is assembled from.
+- `src/roles/`: the role catalog, its loop ids, per-role guidance, and the per-role views the
+  CLI and dashboards read.
+- Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
+  `src/brief.ts` (the initial-prompt bridge), `src/version.ts`, `src/project-name.ts`,
+  `src/collections.ts`, `src/errno.ts`, and `src/request-timeouts.ts`.
 - `test/`: unit tests.
