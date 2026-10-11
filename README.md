@@ -98,7 +98,8 @@ outputs once it has sat unused that long, whatever the free space; 0 disables), 
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak
 breaker trip, a failed landing, a blocked restart, a posted question — the command gets
-`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment).
+`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment;
+verify it with `tumwater notify --test`).
 Edits apply live while the fleet runs.
 From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
 <key>` reads one resolved value, `tumwater config set <key> <value>` writes one top-level

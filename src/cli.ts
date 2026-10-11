@@ -32,6 +32,7 @@ import { cmdPrompt } from "./inbox/prompt-commands.js";
 import { cmdBacklog, cmdDiff, cmdQuestions, cmdQueue, cmdRole, cmdStatus } from "./cli/cli-query-commands.js";
 import { requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./cli/log-commands.js";
+import { cmdNotify } from "./cli/notify-command.js";
 import { bugTitleOf, cancelAndAnnounce, cancelBug, cancelPlan, editAndAnnounce, editBug, editPlan, fileBug, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
 
 import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
@@ -173,6 +174,11 @@ async function main(): Promise<void> {
       ]);
       await requireReadyRepo(root);
       await cmdLogs(root, args);
+      break;
+    case "notify":
+      rejectUnknownArgs("notify", args, [{ names: ["--test"] }]);
+      await requireReadyRepo(root);
+      await cmdNotify(root, args);
       break;
     case "history":
       rejectUnknownArgs("history", args, [

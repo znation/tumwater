@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier } from "../src/events/notify.js";
+import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv } from "../src/events/notify.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -59,6 +59,18 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
     "a resume is good news; the paused page is the actionable one",
   );
   assert.equal(NOTIFY_MIN_GAP_MS, 60_000);
+});
+
+test("notifyCommandEnv carries exactly the three TUMWATER_EVENT_* keys with their values", () => {
+  const env = notifyCommandEnv("budget_paused", "feature", "m");
+  const eventKeys = Object.fromEntries(
+    Object.entries(env).filter(([key]) => key.startsWith("TUMWATER_EVENT_")),
+  );
+  assert.deepEqual(eventKeys, {
+    TUMWATER_EVENT_TYPE: "budget_paused",
+    TUMWATER_EVENT_LOOP: "feature",
+    TUMWATER_EVENT_MESSAGE: "m",
+  });
 });
 
 test("an allowlisted event spawns the notify command once with the three env vars set", async () => {

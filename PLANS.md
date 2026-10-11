@@ -6,7 +6,71 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Run the configured notify hook once: `tumwater notify --test` (planned 2026-10-10 by plan; independent of the waiting TUI Usage/Failures `--since`, TUI History `--result`, and `tumwater queue` plans — a new CLI command over `src/events/notify.ts` and `src/config`, no `src/ui/tui`, `src/history` or `src/landing` file; completes the operator's push channel, which today can only be exercised by waiting for a real event)
+### Role-scoped History pane in `tumwater tui`, matching `tumwater history --role <id>` (planned 2026-10-11 by plan; sibling of the landed GUI History Loop picker (`histRole` in src/ui/gui/gui-client-history.ts) and of the landed TUI `Ctrl+G` report scope; the TUI History pane filters by trailing window (Ctrl+S) and outcome class (Ctrl+O) but not by loop, so the exact-loop filter `tumwater history --role <id>` and the dashboard picker both have no TUI surface; independent of the waiting `tumwater notify --test`, dashboard land-queue, and remainder-and-cause plans — TUI-only, no `src/cli`, `src/events`, `src/landing`, or `src/failure` file)
+
+**Goal.** `tumwater history --role <id>` filters tick rows to one loop's exact id, and the
+dashboard's History view has a Loop picker for it, but the TUI's History pane shows only the
+fleet-wide read — an operator watching a busy fleet cannot narrow the pane to one loop. Add a
+session loop scope to the pane, cycled with `Ctrl+G` (the panes' scope key), so the TUI, the CLI,
+and the GUI read the same rows. History's filter is exact-loop, not the report panes' base-role
+aggregation: the scope cycles the raw `roleIds` (so `feature` and `feature-2` are separate slots),
+matching `tumwater history --role` and the GUI picker, and never runs through `scopeCycle`/`baseRoleOf`.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`:
+   - `historyPaneCache(root, sinceMs, resultClass, role: string | null)` gains the role and
+     passes it to `readTickRows(root, HISTORY_DEFAULT_TICKS, role)` and
+     `readTickRowsSince(root, sinceMs, role)` (both already take it). Prefix the pane header,
+     when `role !== null`, with a `role: <role>` line beside the existing `window:`/`result:`
+     labels. Keep the current empty-return rule (a role-only empty read returns `""`, so the
+     pane's `(no ticks yet)` note stands, exactly as the CLI's empty-state wording does not name
+     `--role`).
+   - Add `let historyRole: string | null = null` beside `historyResult`, add
+     `historyRole: string | null` to `TuiKeysState`, and return it from the state getter.
+   - In the `Ctrl+G` branch: when the current view is History (`view === roleIds.length + 4`),
+     cycle `historyRole` through `[null, ...roleIds]` (the raw roster ids; the same list the GUI
+     picker and `tumwater history --role` use) via the index-of-then-`+1`-mod-length pattern,
+     then recompute `paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole)`
+     and reset `paneScroll = 0`; on every other view keep cycling `scopeRole` for Usage/Failures
+     exactly as today. `deps.requestRender()` in both arms.
+   - Every other `historyPaneCache` call site (the Ctrl+T History entry, `Ctrl+S`, `Ctrl+O`)
+     passes `historyRole`.
+   - `syncSnapshot`: when `historyRole` is non-null and the incoming `roles` no longer includes
+     it, reset it to null (mirroring the existing `scopeRole` reset), so a retired loop's id
+     never labels an empty pane.
+2. `src/ui/tui/tui-frame.ts`: the `TuiView` `history` variant gains `role: string | null`;
+   `tabStrip` labels the tab `History: <role>` when scoped and plain `History` otherwise (mirroring
+   `Usage`/`Failures`); the history arm of `hintLine` gains
+   `["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"]` after the scroll hint, so the
+   key and the current loop are both on screen.
+3. `src/ui/tui/tui.tsx`: the History pane construction passes `role: s.historyRole`.
+4. No change to `tui-pane.ts` (the cache already is the pane body), the collectors, or any other
+   surface; no new runtime dependency.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
+`test/tui-keys.test.ts`, `test/tui-frame.test.ts`.
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, a new case with `syncSnapshot(0, false, ["feature", "feature-2", "clean"])`
+  and seeded `tick_end` events for two loops: after cycling to History, `Ctrl+G` moves
+  `state().historyRole` from `null` to `"feature"` to `"feature-2"` to `"clean"` to `null` — the
+  instance id is its own slot, unlike the report scope — and each press on the History view
+  recomputes `paneCache` so a scoped cache differs from the fleet-wide one; `Ctrl+G` leaves
+  `historyRole` unchanged while budget mode or role-prompt mode holds the prompt line; a later
+  `syncSnapshot` whose roster drops the scoped loop resets `historyRole` to null. The existing
+  Ctrl+G report-scope cases stay green (other views still cycle `scopeRole`).
+- `test/tui-frame.test.ts`: `tabStrip({ kind: "history", since: null, result: null, role: "feature" },
+  200)` shows `History: feature` while `role: null` shows `History`; `hintLine` for a history view
+  carries `Ctrl+G scope: feature` under a scope and `Ctrl+G scope: fleet` without one. The
+  existing history window/result hint cases and the all-views `Ctrl+D` loop stay green (their
+  literals gain `role: null`).
+- `test/tui-history.test.ts`'s `paneBody` history cases stay green (their literals gain
+  `role: null`; the pane body reads the already-scoped cache, not the role).
+- `npm run test` is green.
+
+## Done
+
+### Run the configured notify hook once: `tumwater notify --test` (planned 2026-10-10 by plan; independent of the waiting TUI Usage/Failures `--since`, TUI History `--result`, and `tumwater queue` plans — a new CLI command over `src/events/notify.ts` and `src/config`, no `src/ui/tui`, `src/history` or `src/landing` file; completes the operator's push channel, which today can only be exercised by waiting for a real event; done 2026-10-10 by feature)
 
 **Goal.** The `notify` hook (tumwater.json's `notify` shell command, run by
 `newNotifier` on nine allowlisted events) is the fleet's one push channel, but an operator who
@@ -73,70 +137,6 @@ with `newNotifier` now using the helper), a new `notify-command.test.ts` in `tes
 - `test/help.test.ts`: `ALL_COMMANDS` gains `"notify"` (its "names exactly the commands the full
   help lists" case then passes), and `helpTopic("notify")` starts `  tumwater notify`.
 - `npm run test` is green.
-
-### Role-scoped History pane in `tumwater tui`, matching `tumwater history --role <id>` (planned 2026-10-11 by plan; sibling of the landed GUI History Loop picker (`histRole` in src/ui/gui/gui-client-history.ts) and of the landed TUI `Ctrl+G` report scope; the TUI History pane filters by trailing window (Ctrl+S) and outcome class (Ctrl+O) but not by loop, so the exact-loop filter `tumwater history --role <id>` and the dashboard picker both have no TUI surface; independent of the waiting `tumwater notify --test`, dashboard land-queue, and remainder-and-cause plans — TUI-only, no `src/cli`, `src/events`, `src/landing`, or `src/failure` file)
-
-**Goal.** `tumwater history --role <id>` filters tick rows to one loop's exact id, and the
-dashboard's History view has a Loop picker for it, but the TUI's History pane shows only the
-fleet-wide read — an operator watching a busy fleet cannot narrow the pane to one loop. Add a
-session loop scope to the pane, cycled with `Ctrl+G` (the panes' scope key), so the TUI, the CLI,
-and the GUI read the same rows. History's filter is exact-loop, not the report panes' base-role
-aggregation: the scope cycles the raw `roleIds` (so `feature` and `feature-2` are separate slots),
-matching `tumwater history --role` and the GUI picker, and never runs through `scopeCycle`/`baseRoleOf`.
-
-**Approach.**
-1. `src/ui/tui/tui-keys.ts`:
-   - `historyPaneCache(root, sinceMs, resultClass, role: string | null)` gains the role and
-     passes it to `readTickRows(root, HISTORY_DEFAULT_TICKS, role)` and
-     `readTickRowsSince(root, sinceMs, role)` (both already take it). Prefix the pane header,
-     when `role !== null`, with a `role: <role>` line beside the existing `window:`/`result:`
-     labels. Keep the current empty-return rule (a role-only empty read returns `""`, so the
-     pane's `(no ticks yet)` note stands, exactly as the CLI's empty-state wording does not name
-     `--role`).
-   - Add `let historyRole: string | null = null` beside `historyResult`, add
-     `historyRole: string | null` to `TuiKeysState`, and return it from the state getter.
-   - In the `Ctrl+G` branch: when the current view is History (`view === roleIds.length + 4`),
-     cycle `historyRole` through `[null, ...roleIds]` (the raw roster ids; the same list the GUI
-     picker and `tumwater history --role` use) via the index-of-then-`+1`-mod-length pattern,
-     then recompute `paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole)`
-     and reset `paneScroll = 0`; on every other view keep cycling `scopeRole` for Usage/Failures
-     exactly as today. `deps.requestRender()` in both arms.
-   - Every other `historyPaneCache` call site (the Ctrl+T History entry, `Ctrl+S`, `Ctrl+O`)
-     passes `historyRole`.
-   - `syncSnapshot`: when `historyRole` is non-null and the incoming `roles` no longer includes
-     it, reset it to null (mirroring the existing `scopeRole` reset), so a retired loop's id
-     never labels an empty pane.
-2. `src/ui/tui/tui-frame.ts`: the `TuiView` `history` variant gains `role: string | null`;
-   `tabStrip` labels the tab `History: <role>` when scoped and plain `History` otherwise (mirroring
-   `Usage`/`Failures`); the history arm of `hintLine` gains
-   `["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"]` after the scroll hint, so the
-   key and the current loop are both on screen.
-3. `src/ui/tui/tui.tsx`: the History pane construction passes `role: s.historyRole`.
-4. No change to `tui-pane.ts` (the cache already is the pane body), the collectors, or any other
-   surface; no new runtime dependency.
-
-**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
-`test/tui-keys.test.ts`, `test/tui-frame.test.ts`.
-
-**Acceptance criteria.**
-- `test/tui-keys.test.ts`, a new case with `syncSnapshot(0, false, ["feature", "feature-2", "clean"])`
-  and seeded `tick_end` events for two loops: after cycling to History, `Ctrl+G` moves
-  `state().historyRole` from `null` to `"feature"` to `"feature-2"` to `"clean"` to `null` — the
-  instance id is its own slot, unlike the report scope — and each press on the History view
-  recomputes `paneCache` so a scoped cache differs from the fleet-wide one; `Ctrl+G` leaves
-  `historyRole` unchanged while budget mode or role-prompt mode holds the prompt line; a later
-  `syncSnapshot` whose roster drops the scoped loop resets `historyRole` to null. The existing
-  Ctrl+G report-scope cases stay green (other views still cycle `scopeRole`).
-- `test/tui-frame.test.ts`: `tabStrip({ kind: "history", since: null, result: null, role: "feature" },
-  200)` shows `History: feature` while `role: null` shows `History`; `hintLine` for a history view
-  carries `Ctrl+G scope: feature` under a scope and `Ctrl+G scope: fleet` without one. The
-  existing history window/result hint cases and the all-views `Ctrl+D` loop stay green (their
-  literals gain `role: null`).
-- `test/tui-history.test.ts`'s `paneBody` history cases stay green (their literals gain
-  `role: null`; the pane body reads the already-scoped cache, not the role).
-- `npm run test` is green.
-
-## Done
 
 ### A remainder-and-cause trace: a capped view discloses what it dropped, and a failed decision records the cause it acted on (planned 2026-10-10 by steward; promoted from the `no-observability` validation gap, carried by 58 Fixed entries — the largest non-`none` tag after `unclear-invariant`; independent of the Agent backends and citation-sweep series; follow-up to the landed invariant register and its citation guard; done 2026-10-11 by feature)
 

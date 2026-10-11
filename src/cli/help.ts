@@ -83,6 +83,8 @@ Usage:
   tumwater logs --role <id> [-f/--follow] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
+  tumwater notify --test          Run the configured notify hook once with a synthetic event
+                                   so the command can be checked before a real page
   tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]
                    [--result <changes|none|problems>] [--json]
                                    One row per completed tick, newest first — time, loop,

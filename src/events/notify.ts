@@ -48,6 +48,18 @@ interface Notifier {
   dispose(): void;
 }
 
+/** The child environment the notify hook runs with: the three TUMWATER_EVENT_* variables over
+ * the harness's own environment. One home for the variable names, shared by the notifier's
+ * spawn and the `tumwater notify --test` diagnostic (src/cli/notify-command.ts), so the two
+ * cannot drift on what a hook sees. */
+export function notifyCommandEnv(type: string, loop: string, message: string): NodeJS.ProcessEnv {
+  return childEnv({
+    TUMWATER_EVENT_TYPE: type,
+    TUMWATER_EVENT_LOOP: loop,
+    TUMWATER_EVENT_MESSAGE: message,
+  });
+}
+
 /** Subscribe to this process's event feed and spawn the configured command for allowlisted
  * events. Fire-and-forget: the spawn is never awaited from the poll loop — the command runs
  * detached with stdio ignored, so it outlives whatever the orchestrator does next, and a
@@ -72,11 +84,7 @@ export function newNotifier(
     try {
       const child = spawn(command, [], {
         shell: true,
-        env: childEnv({
-          TUMWATER_EVENT_TYPE: event.type,
-          TUMWATER_EVENT_LOOP: event.loop,
-          TUMWATER_EVENT_MESSAGE: stripTerminalControls(formatEvent(event)),
-        }),
+        env: notifyCommandEnv(event.type, event.loop, stripTerminalControls(formatEvent(event))),
         stdio: "ignore",
         detached: true,
       });

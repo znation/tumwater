@@ -13,6 +13,7 @@ const ALL_COMMANDS = [
   "doctor",
   "config",
   "logs",
+  "notify",
   "history",
   "tick",
   "diff",
