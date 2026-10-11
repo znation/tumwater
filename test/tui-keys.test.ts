@@ -248,6 +248,75 @@ test("syncSnapshot recomputes an on-screen report pane when it clears a retired 
   assert.equal(keys.state().paneCache, fleetUsage, "the pane body follows the cleared scope");
 });
 
+test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and resets the scroll", () => {
+  const root = makeRoot();
+  const now = Date.now();
+  // One tick 30 minutes old (inside 1h) and one three days old (only inside 7d).
+  writeEvents(root, [
+    { ts: now - 30 * 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "tick_end", tick: 2, result: "changed" },
+  ]);
+  const { keys } = makeKeys(root, () => now);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(1, 1); // a one-line budget so the two rows can scroll
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().view, 4, "History is roleIds.length + 4");
+  assert.equal(keys.state().historySince, null, "History opens on the default window");
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.match(keys.state().paneCache ?? "", /feature #2/, "the default newest-N read carries both");
+  assert.doesNotMatch(keys.state().paneCache ?? "", /window: last/);
+
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().paneScroll, 1, "the seeded rows overflow the one-line budget");
+
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "1h");
+  assert.match(keys.state().paneCache ?? "", /window: last 1h/);
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #2/, "the 1h window drops the three-day-old tick");
+  assert.equal(keys.state().paneScroll, 0, "a window change re-enters the body at its head");
+
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "6h");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "1d");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "7d");
+  assert.match(keys.state().paneCache ?? "", /feature #2/, "7d reaches the three-day-old tick");
+  assert.match(keys.state().paneCache ?? "", /oldest retained event/, "the 7d read hedges its coverage with the sparse-window note");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, null, "the cycle wraps to the default window");
+  assert.match(keys.state().paneCache ?? "", /feature #2/, "the default read carries both rows again");
+});
+
+test("Ctrl+S is inert in the prompt-line modes and off the History view only moves the label", () => {
+  const root = makeRoot();
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" }]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+
+  // Off the History view, Ctrl+S advances the window without computing a cache.
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "1h");
+  assert.equal(keys.state().paneCache, null, "no History pane is showing");
+
+  // Budget mode holds the prompt line: Ctrl+S leaves the window alone.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "1h", "Ctrl+S does nothing in budget mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+S.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "clean");
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "1h", "Ctrl+S does nothing in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+});
+
 test("the Pending pane caches the rendered fleet roster when collectPending resolves, and a cycle away drops it", async () => {
   const root = makeRoot();
   const fleet = {

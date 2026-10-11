@@ -290,6 +290,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   path `tumwater config set` uses.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, and Pending.
+  On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
+  same collector and sparse-window note `tumwater history --since` uses.
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a

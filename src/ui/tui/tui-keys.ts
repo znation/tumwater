@@ -1,9 +1,9 @@
 import { collectReport } from "../../report/report-data.js";
 import { renderReportMarkdown } from "../../report/report-render.js";
-import { REPORT_DEFAULT_DAYS } from "../../events/event-window.js";
+import { REPORT_DEFAULT_DAYS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import { collectFailureReport } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
-import { HISTORY_DEFAULT_TICKS, readTickRows } from "../../history/history-data.js";
+import { HISTORY_DEFAULT_TICKS, readTickRows, readTickRowsSince } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
 import { collectFleetChanges, type FleetChangeView } from "../../change/change-data.js";
 import { renderFleetChange } from "../../change/change-render.js";
@@ -48,6 +48,43 @@ import { arrowDir, pageDir } from "./tui-keymap.js";
 /** How long a TUI flash notice stays visible (ms). */
 const FLASH_MS = 3000;
 
+/** The History pane's session window cycle, Ctrl+S: the default newest-N read, then the same
+ * trailing windows the dashboard's History view and `tumwater history --since` offer — 1h,
+ * 6h, 1d, and the 7d cap the CLI's flag and the dashboard both stop at. The label is what the
+ * hint line names; the length is what readTickRowsSince takes. `null` is the default read
+ * through readTickRows, kept first so the pane opens on today's behavior. */
+const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
+  [null, "default"],
+  [3_600_000, "1h"],
+  [21_600_000, "6h"],
+  [86_400_000, "1d"],
+  [604_800_000, "7d"],
+];
+
+/** The label HISTORY_WINDOWS carries for a window length (null = the default tick count). The
+ * Ctrl+S cycle only ever stores a length from the table, so the lookup always hits; the null
+ * fallback keeps a would-be stale value from rendering "undefined". */
+function historyWindowLabel(sinceMs: number | null): string | null {
+  return HISTORY_WINDOWS.find(([ms]) => ms === sinceMs)?.[1] ?? null;
+}
+
+/** The History pane's body for one window: the paneCache the Ctrl+T/Ctrl+S handlers store. The
+ * default (null) read is byte-for-byte the newest-N pane that predates the window cycle —
+ * readTickRows with HISTORY_DEFAULT_TICKS. A trailing window reads through the same
+ * readTickRowsSince collector `tumwater history --since` uses, so the TUI, the CLI, and the
+ * dashboard cannot disagree about the rows. An empty row set returns "" so the pane keeps its
+ * own no-ticks note instead of a lone window header; otherwise the body is prefixed with the
+ * window label and, when the read cannot prove full coverage, the same sparse-window note
+ * every windowed render prints (SPARSE_WINDOW_NOTE). */
+function historyPaneCache(root: string, sinceMs: number | null): string {
+  if (sinceMs === null) return historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
+  const { rows, covered } = readTickRowsSince(root, sinceMs, null);
+  const body = historyPaneText(rows);
+  if (!body) return "";
+  const label = historyWindowLabel(sinceMs) ?? "default";
+  return "window: last " + label + "\n" + body + (covered ? "" : "\n" + SPARSE_WINDOW_NOTE);
+}
+
 /** The seams `createTuiKeys` cannot own itself (the factory's doc names each). */
 interface TuiKeysDeps {
   root: string;
@@ -84,6 +121,9 @@ interface TuiKeysState {
    * paneBody; null when the live transcript is shown. */
   noteCache: string | null;
   paneScroll: number;
+  /** The History pane's active trailing window label (Ctrl+S), or null for the default
+   * newest-N read; named in the hint line. */
+  historySince: string | null;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
@@ -201,6 +241,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // panes and the notebook view — PgDn/PgUp there. Reset to the head whenever the view is
   // entered, like entryScroll.
   let paneScroll = 0;
+  // The History pane's session trailing window (Ctrl+S), a HISTORY_WINDOWS length or null for
+  // the default newest-N read. Session-only like the view/scroll state; the next Ctrl+T into
+  // History computes the cache with it.
+  let historyWindow: number | null = null;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
   // pane's first line on its title, so its body pages by one line less (entryBudget).
@@ -438,6 +482,21 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
+    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor) {
+      // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
+      // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
+      // session state: advancing it off the History view only changes the label, and the next
+      // Ctrl+T into History computes the cache with it; on the History view this handler
+      // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
+      const i = HISTORY_WINDOWS.findIndex(([ms]) => ms === historyWindow);
+      historyWindow = HISTORY_WINDOWS[(i + 1) % HISTORY_WINDOWS.length]![0];
+      if (view === roleIds.length + 4) {
+        paneCache = historyPaneCache(root, historyWindow);
+        paneScroll = 0;
+      }
+      deps.requestRender();
+      return;
+    }
     if (key.ctrl && key.name === "t") {
       // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
       // never strands the editor with its pre-filled cap in the prompt line. Role-prompt
@@ -457,7 +516,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       } else if (view === roleIds.length + 3) {
         paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
       } else if (view === roleIds.length + 4) {
-        paneCache = historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
+        paneCache = historyPaneCache(root, historyWindow);
       } else if (view === roleIds.length + 5) {
         // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
         // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -679,6 +738,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         noteMode,
         noteCache,
         paneScroll,
+        historySince: historyWindow === null ? null : historyWindowLabel(historyWindow),
         eventBudget,
         entryBudget,
         roleIds,

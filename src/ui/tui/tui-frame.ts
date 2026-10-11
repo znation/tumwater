@@ -58,7 +58,7 @@ export type TuiView =
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null }
   | { kind: "failures"; scope: string | null }
-  | { kind: "history" }
+  | { kind: "history"; since: string | null }
   | { kind: "pending" };
 
 /** The pane's tab strip: every view by name, the current one bracketed (and bright), so the
@@ -92,7 +92,8 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "history" || view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {

@@ -112,10 +112,13 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "usage", scope: "feature" }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "failures", scope: "clean" }), /Ctrl\+G scope: clean/);
   assert.match(hint({ kind: "usage", scope: null }), /Ctrl\+G scope: fleet/);
-  assert.match(hint({ kind: "history" }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "history", since: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
   assert.equal(hint({ kind: "activity" }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
+  // The History pane names its trailing window in the Ctrl+S hint, default or active.
+  assert.match(hint({ kind: "history", since: "1h" }), /Ctrl\+S window: 1h/);
+  assert.match(hint({ kind: "history", since: null }), /Ctrl\+S window: default/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
     { kind: "activity" } as const,
@@ -123,7 +126,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "backlog" } as const,
     { kind: "usage", scope: null } as const,
     { kind: "failures", scope: null } as const,
-    { kind: "history" } as const,
+    { kind: "history", since: null } as const,
     { kind: "pending" } as const,
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
