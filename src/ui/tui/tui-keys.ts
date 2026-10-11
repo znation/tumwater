@@ -56,6 +56,19 @@ import { arrowDir, pageDir } from "./tui-keymap.js";
 /** How long a TUI flash notice stays visible (ms). */
 const FLASH_MS = 3000;
 
+/** Every Ctrl+<key> cycle walks its own ReadonlyArray<[key, label]> table one slot at a time,
+ * wrapping past the last back to the first. Each handler holds a key the table carries (a null
+ * default slot included), so findIndex always hits. The null fallback in cycleLabel keeps a
+ * would-be stale key from rendering "undefined". */
+function nextInCycle<T>(table: ReadonlyArray<[T, string]>, current: T): T {
+  const i = table.findIndex(([key]) => key === current);
+  return table[(i + 1) % table.length]![0];
+}
+
+function cycleLabel<T>(table: ReadonlyArray<[T, string]>, current: T): string | null {
+  return table.find(([key]) => key === current)?.[1] ?? null;
+}
+
 /** The History pane's session window cycle, Ctrl+S: the default newest-N read, then the same
  * trailing windows the dashboard's History view and `tumwater history --since` offer — 1h,
  * 6h, 1d, and the 7d cap the CLI's flag and the dashboard both stop at. The label is what the
@@ -68,13 +81,6 @@ const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
   [86_400_000, "1d"],
   [604_800_000, "7d"],
 ];
-
-/** The label HISTORY_WINDOWS carries for a window length (null = the default tick count). The
- * Ctrl+S cycle only ever stores a length from the table, so the lookup always hits; the null
- * fallback keeps a would-be stale value from rendering "undefined". */
-function historyWindowLabel(sinceMs: number | null): string | null {
-  return HISTORY_WINDOWS.find(([ms]) => ms === sinceMs)?.[1] ?? null;
-}
 
 /** The Ctrl+G scope cycle: fleet-wide (null), then each unique base role the roster names, in
  * roster order. An instance id (`feature-2`) folds into its base role because the scoped
@@ -101,13 +107,6 @@ const HISTORY_RESULTS: ReadonlyArray<[HistoryResultClass | null, string]> = [
   ...HISTORY_RESULT_CLASSES.map((c): [HistoryResultClass, string] => [c, c]),
 ];
 
-/** The label HISTORY_RESULTS carries for an outcome class (null = all). The Ctrl+O cycle only
- * ever stores a class from the table, so the lookup always hits; the null fallback keeps a
- * would-be stale value from rendering "undefined". */
-function historyResultLabel(resultClass: HistoryResultClass | null): string | null {
-  return HISTORY_RESULTS.find(([c]) => c === resultClass)?.[1] ?? null;
-}
-
 /** The History pane's body for one trailing window, one outcome class, and one exact-loop
  * scope: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G handlers store. The default
  * (null/null/null) read is byte-for-byte the newest-N pane that predates the window, outcome,
@@ -129,13 +128,13 @@ function historyPaneCache(root: string, sinceMs: number | null, resultClass: His
   const filtered = resultClass === null ? rows : rows.filter((r) => historyClass(r.result) === resultClass);
   const body = historyPaneText(filtered);
   // null when no class is active, so the header/empty-body paths below only name a result
-  // filter the session actually holds (historyResultLabel(null) is the "all" label).
-  const resultLabel = resultClass === null ? null : historyResultLabel(resultClass);
+  // filter the session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
+  const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
   // The role first, then the window/result labels: the loop is the coarsest cut, and a
   // role-only read (no window, no class) still prints its scope line above the rows.
   const header = [
     ...(role === null ? [] : ["role: " + role]),
-    ...(sinceMs === null ? [] : ["window: last " + (historyWindowLabel(sinceMs) ?? "default")]),
+    ...(sinceMs === null ? [] : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
     ...(resultLabel === null ? [] : ["result: " + resultLabel]),
   ].join("\n");
   if (!body) {
@@ -164,13 +163,6 @@ const REPORT_WINDOWS: ReadonlyArray<[number | null, string]> = [
   [86_400_000, "1d"],
   [REPORT_SINCE_MAX_MS, "7d"],
 ];
-
-/** The label REPORT_WINDOWS carries for a window length (null = the default day report). The
- * Ctrl+E cycle only ever stores a length from the table, so the lookup always hits; the null
- * fallback keeps a would-be stale value from rendering "undefined". */
-function reportWindowLabel(sinceMs: number | null): string | null {
-  return REPORT_WINDOWS.find(([ms]) => ms === sinceMs)?.[1] ?? null;
-}
 
 /** The Usage pane's body for one window and role scope: the paneCache the Ctrl+T/Ctrl+G/Ctrl+E
  * handlers store. The default (null) read is byte-for-byte the day report the pane showed
@@ -627,8 +619,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // only changes the label, and the next Ctrl+T into one computes the cache with it; on a
       // report pane this handler recomputes the cached Markdown from the newly windowed
       // collector and re-enters the body at its head.
-      const i = REPORT_WINDOWS.findIndex(([ms]) => ms === reportWindow);
-      reportWindow = REPORT_WINDOWS[(i + 1) % REPORT_WINDOWS.length]![0];
+      reportWindow = nextInCycle(REPORT_WINDOWS, reportWindow);
       if (view === roleIds.length + 2) {
         paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
         paneScroll = 0;
@@ -645,8 +636,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // session state: advancing it off the History view only changes the label, and the next
       // Ctrl+T into History computes the cache with it; on the History view this handler
       // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
-      const i = HISTORY_WINDOWS.findIndex(([ms]) => ms === historyWindow);
-      historyWindow = HISTORY_WINDOWS[(i + 1) % HISTORY_WINDOWS.length]![0];
+      historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
       if (view === roleIds.length + 4) {
         paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
         paneScroll = 0;
@@ -660,8 +650,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // advancing it off the History view only changes the label, and the next Ctrl+T into
       // History computes the cache with it; on the History view this handler re-reads and
       // re-filters the rows now and resets the scroll so the changed body re-enters at its head.
-      const i = HISTORY_RESULTS.findIndex(([c]) => c === historyResult);
-      historyResult = HISTORY_RESULTS[(i + 1) % HISTORY_RESULTS.length]![0];
+      historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
       if (view === roleIds.length + 4) {
         paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
         paneScroll = 0;
@@ -921,9 +910,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         noteMode,
         noteCache,
         paneScroll,
-        historySince: historyWindow === null ? null : historyWindowLabel(historyWindow),
-        reportSince: reportWindow === null ? null : reportWindowLabel(reportWindow),
-        historyResult: historyResultLabel(historyResult),
+        historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
+        reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),
+        historyResult: cycleLabel(HISTORY_RESULTS, historyResult),
         eventBudget,
         entryBudget,
         roleIds,
