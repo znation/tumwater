@@ -241,3 +241,82 @@ test("history --grep fails with its own wording when the value is missing or emp
   assert.equal(empty.code, 1);
   assert.match(empty.stderr, /history --grep needs a pattern/);
 });
+
+// --- --result <class>: the outcome filter its dashboard History sibling already has
+
+test("history --result narrows to one outcome class and composes with --json", async () => {
+  const repo = await seededHistoryRepo();
+
+  const changes = await cli(repo, "history", "--result", "changes");
+  assert.equal(changes.code, 0);
+  assert.equal(changes.stdout.trim().split("\n").length, 1);
+  assert.match(changes.stdout, /feature\s+#7\s+changed/);
+
+  const none = await cli(repo, "history", "--result", "none");
+  assert.equal(none.code, 0);
+  assert.equal(none.stdout.trim().split("\n").length, 1);
+  assert.match(none.stdout, /clean\s+#3\s+no_change/);
+
+  const problems = await cli(repo, "history", "--result", "problems");
+  assert.equal(problems.code, 0);
+  assert.equal(problems.stdout.trim().split("\n").length, 1);
+  assert.match(problems.stdout, /bugfix\s+#9\s+error/);
+
+  // --json swaps in the collector's payload: exactly the filtered rows, no prose or note.
+  const json = await cli(repo, "history", "--result", "problems", "--json");
+  assert.equal(json.code, 0);
+  const payload = JSON.parse(json.stdout) as { rows: Array<{ loop: string; result: string }> };
+  assert.deepEqual(payload.rows.map((r) => [r.loop, r.result]), [["bugfix", "error"]]);
+});
+
+test("history --result composes with --since and --role", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history result compose");
+  seedWindowedHistory(repo);
+
+  // The 1h window holds feature #3 (changed) and clean #2 (no_change); the class filter keeps
+  // only the former.
+  const changes = await cli(repo, "history", "--since", "1h", "--result", "changes");
+  assert.equal(changes.code, 0);
+  const lines = changes.stdout.trim().split("\n");
+  assert.equal(lines.length, 1, changes.stdout);
+  assert.match(lines[0]!, /feature\s+#3/);
+  assert.ok(!changes.stdout.includes("clean"), changes.stdout);
+
+  const scoped = await cli(repo, "history", "--since", "1h", "--role", "clean", "--result", "none");
+  assert.equal(scoped.code, 0);
+  assert.equal(scoped.stdout.trim().split("\n").length, 1);
+  assert.match(scoped.stdout, /clean\s+#2/);
+});
+
+test("history --result empty state names the class, never the empty log", async () => {
+  const repo = await seededHistoryRepo();
+
+  // The last two scanned rows are bugfix #9 (error) and clean #3 (no_change): `changes` filters
+  // both out of a window that held rows, so the wording names the class, not `no ticks yet`.
+  const none = await cli(repo, "history", "-n", "2", "--result", "changes");
+  assert.equal(none.code, 0);
+  assert.equal(none.stdout, 'no ticks with result "changes"\n');
+
+  // --grep keeps precedence when both filters are active and nothing survives.
+  const both = await cli(repo, "history", "--grep", "widget", "--result", "problems");
+  assert.equal(both.code, 0);
+  assert.equal(both.stdout, 'no ticks matching "widget"\n');
+});
+
+test("history --result fails with its own wording for a missing or unknown class", async () => {
+  const repo = await seededHistoryRepo();
+
+  const valueless = await cli(repo, "history", "--result");
+  assert.equal(valueless.code, 1);
+  assert.match(valueless.stderr, /history --result needs a value/);
+
+  const empty = await cli(repo, "history", "--result", "");
+  assert.equal(empty.code, 1);
+  assert.match(empty.stderr, /history --result needs a value/);
+
+  const bogus = await cli(repo, "history", "--result", "bogus");
+  assert.equal(bogus.code, 1);
+  assert.match(bogus.stderr, /changes, none, problems/);
+  assert.match(bogus.stderr, /got "bogus"/);
+});

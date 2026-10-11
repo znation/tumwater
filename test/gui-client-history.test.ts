@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
+import { historyClass as sharedHistoryClass } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { clientRegion, clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
@@ -44,8 +45,12 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /data-tickdetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
   assert.match(html, /data-tickdetail='1' data-role='qa' data-tick='2'/);
   // The outcome filter's buckets.
-  assert.deepEqual(["changed", "queued", "no_change", "skipped", "user_aborted", "error", "rejected"].map(historyClass),
+  const bucketCases = ["changed", "queued", "no_change", "skipped", "user_aborted", "error", "rejected"];
+  assert.deepEqual(bucketCases.map(historyClass),
     ["changes", "changes", "none", "none", "none", "problems", "problems"]);
+  // The browser copy is pinned to the CLI's canonical rule (history-data.ts's historyClass):
+  // any change to one copy without the other fails here, so the two cannot drift.
+  assert.deepEqual(bucketCases.map(historyClass), bucketCases.map(sharedHistoryClass));
   const problems = historyTableHtml(rows, "problems", new Set());
   assert.equal((problems.match(/<tr>/g) ?? []).length, 2, "the header row and the one error row");
   assert.match(historyTableHtml(rows, "changes", new Set()), /bumped coverage/);

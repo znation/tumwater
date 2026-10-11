@@ -83,15 +83,20 @@ Usage:
   tumwater logs --role <id> [-f/--follow] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
-  tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--json]
+  tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]
+                   [--result <changes|none|problems>] [--json]
                                    One row per completed tick, newest first — time, loop,
                                    tick number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
                                    shows the window's ticks instead of the last N (capped at
                                    7d, like logs --since); --grep <text> keeps only rows whose
                                    line matches, case-insensitively (like logs --grep);
-                                   --json prints the rows as machine-readable history data —
-                                   ts, tokens, and costUsd kept raw, the GUI's /api/history payload
+                                   --result <class> narrows to one outcome class — changes
+                                   (changed/queued), none (no_change/skipped/user_aborted), or
+                                   problems (everything else) — composed with --role, --since,
+                                   -n, and --grep; --json prints the rows as
+                                   machine-readable history data — ts, tokens, and costUsd
+                                   kept raw, the GUI's /api/history payload
   tumwater tick <role> [<n>] [--last] [--json]
                                    One completed tick's full event trail — a summary header
                                    (result or in-flight, duration, tokens/cost, the pinned

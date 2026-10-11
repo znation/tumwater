@@ -1,9 +1,10 @@
-import { say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { shortSpanPhrase } from "../text/phrases.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowGrepHaystack, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowGrepHaystack, type HistoryResultClass, type TickRow } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
+import { gotSuffix } from "../text/text.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
@@ -88,10 +89,19 @@ function renderRow(row: TickRow, widths: RowWidths): string {
  * two observing views' wordings each name the command that printed them. */
 export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
 
-/** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]`: print the last N
- * completed ticks, newest first — or, with `--since`, the ticks of a bounded past window over the
- * same record, the same shape `logs --since` and `report --since` speak. Read-only: stdout only, no
- * state file created — a missing or empty event log prints `no ticks yet` and exits 0. */
+/** The missing-value error cmdHistory prints for a valueless or empty `--result`, exported so
+ * cli.ts's rejectUnknownArgs spec for --result can fail a trailing `history --result` with the
+ * same wording. Its sibling of HISTORY_GREP_VALUE_ERROR: each names the command that printed
+ * it. */
+export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
+
+/** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--result
+ * <class>]`: print the last N completed ticks, newest first — or, with `--since`, the ticks of a
+ * bounded past window over the same record, the same shape `logs --since` and `report --since`
+ * speak. `--grep` keeps rows whose rendered line matches, and `--result` narrows to one outcome
+ * class (changes/none/problems, the dashboard History filter's buckets); both compose with
+ * --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
+ * event log prints `no ticks yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
   // `tick_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
@@ -133,6 +143,21 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     const needle = grepPattern.toLowerCase();
     rows = rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
   }
+  // `--result <class>` narrows to one outcome bucket, reading the same canonical historyClass
+  // rule the dashboard's History filter applies (shared from history-data.ts, not copied). It
+  // composes with --role, -n, --since, and --grep, so no rival-shape rule: a missing or empty
+  // value fails with its own wording, and an unknown class names the accepted ones (the gotSuffix
+  // shape the other flag validators use). Applied after --grep, over the same rows both the table
+  // and --json serialize.
+  const resultRaw = flagValue(rest, "--result");
+  let resultClass: HistoryResultClass | null = null;
+  if (resultRaw !== null) {
+    if (resultRaw === undefined || resultRaw === "") fail(HISTORY_RESULT_VALUE_ERROR);
+    if (!(HISTORY_RESULT_CLASSES as readonly string[]).includes(resultRaw))
+      fail(`history --result must be one of ${HISTORY_RESULT_CLASSES.join(", ")}${gotSuffix(resultRaw)}`);
+    resultClass = resultRaw as HistoryResultClass;
+    rows = rows.filter((r) => historyClass(r.result) === resultClass);
+  }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no ticks yet`,
@@ -151,9 +176,11 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     say(
       grepPattern !== null
         ? `no ticks matching "${grepPattern}"`
-        : sinceMs === null
-          ? "no ticks yet"
-          : `no ticks in ${durationLabel(sinceMs)}`,
+        : resultClass !== null
+          ? `no ticks with result "${resultClass}"`
+          : sinceMs === null
+            ? "no ticks yet"
+            : `no ticks in ${durationLabel(sinceMs)}`,
     );
     return;
   }

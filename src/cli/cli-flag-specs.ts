@@ -262,6 +262,15 @@ export function grepFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--grep"], value: true, valueName: "<text>", missingValue };
 }
 
+/** The `--result <class>` flag spec of `history`'s outcome filter, beside grepFlagSpec: one
+ * definition of the flag's spelling and value shape, so the gate's accepted vocabulary cannot
+ * drift. The missing-value wording names the command, so the spec is a factory taking it — the
+ * same string the body fails with; which classes are accepted is the command body's rule
+ * (history-data.ts's HISTORY_RESULT_CLASSES). */
+export function resultFlagSpec(missingValue: string): FlagSpec {
+  return { names: ["--result"], value: true, valueName: "<class>", missingValue };
+}
+
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of ticks, then exit), `--role <id>`
  * (scope a --once round to one loop, parsed by parseRoleFlag), and `--gui` (also serve the

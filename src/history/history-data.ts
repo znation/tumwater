@@ -22,6 +22,25 @@ import { groupBy } from "../collections.js";
 export const HISTORY_DEFAULT_TICKS = 20;
 export const HISTORY_MAX_TICKS = 200;
 
+/** The outcome classes `tumwater history --result` and the dashboard's History filter both
+ * speak: Changes (the tick landed or queued work), No change (it did nothing on purpose, or
+ * the operator aborted it), Problems (everything else, e.g. error/rejected). The one canonical
+ * rule; the browser's copy in gui-client-history.ts is pinned to it by
+ * test/gui-client-history.test.ts, so the two cannot drift. */
+export const HISTORY_RESULT_CLASSES = ["changes", "none", "problems"] as const;
+
+/** One outcome class, derived from the list above so the two cannot disagree. */
+export type HistoryResultClass = (typeof HISTORY_RESULT_CLASSES)[number];
+
+/** Which outcome class a tick result falls in (the HISTORY_RESULT_CLASSES rule): `changed` and
+ * `queued` are `changes`; `no_change`, `skipped`, and `user_aborted` are `none`; every other
+ * result is `problems`. Pure; the canonical home the dashboard's client-side filter mirrors. */
+export function historyClass(result: string): HistoryResultClass {
+  if (result === "changed" || result === "queued") return "changes";
+  if (result === "no_change" || result === "skipped" || result === "user_aborted") return "none";
+  return "problems";
+}
+
 /** How much of a tick's summary or error a row keeps. Long enough to name the work, short
  * enough that the row stays one terminal line next to its other columns. */
 const DETAIL_MAX = 72;

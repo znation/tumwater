@@ -78,7 +78,9 @@ collectors and the same Markdown renders the CLI and dashboard use.
 - The existing Ctrl+T Usage/Failures cache cases stay green (the default window is unchanged).
 - `npm run test` is green.
 
-### Filter `tumwater history` by outcome class: `--result <changes|none|problems>` (planned 2026-10-10 by plan; independent of the waiting TUI History `--since`, TUI Usage/Failures `--since`, and TUI `Ctrl+G` scope plans — CLI-only, no `src/ui/tui` file; completes the dashboard History view's outcome filter on the command line, sharing its one bucket rule)
+## Done
+
+### Filter `tumwater history` by outcome class: `--result <changes|none|problems>` (planned 2026-10-10 by plan; independent of the waiting TUI History `--since`, TUI Usage/Failures `--since`, and TUI `Ctrl+G` scope plans — CLI-only, no `src/ui/tui` file; completes the dashboard History view's outcome filter on the command line, sharing its one bucket rule; done 2026-10-10 by feature)
 
 **Goal.** The dashboard's History view narrows ticks to an outcome class — Changes
 (`changed`/`queued`), No change (`no_change`/`skipped`/`user_aborted`), Problems (everything
@@ -119,7 +121,8 @@ dashboard's `historyClass` applies.
 
 **Files touched.** `src/history/history-data.ts`, `src/history/history.ts`,
 `src/cli/cli-flag-specs.ts`, `src/cli.ts`, `src/cli/help.ts`,
-`test/cli-history-filtering.test.ts`, `test/gui-client-history.test.ts`.
+`test/cli-history-filtering.test.ts`, `test/cli-history.test.ts`,
+`test/gui-client-history.test.ts`.
 
 **Acceptance criteria.**
 - `test/cli-history-filtering.test.ts`, new cases against `seededHistoryRepo()` (results
@@ -135,8 +138,6 @@ dashboard's `historyClass` applies.
    cannot drift.
 - The existing `--role`, `-n`, `--since`, `--grep`, and `--json` history cases stay green.
 - `npm run test` is green.
-
-## Done
 
 ### A trailing `--since` window in the TUI History pane, matching `tumwater history --since` (planned 2026-10-10 by plan; independent of the waiting dashboard report `--since` and TUI `Ctrl+G` scope plans — different pane, its own window state, a different key; sibling of the landed dashboard History trailing window and the landed `tumwater history --since`; done 2026-10-10 by feature)
 

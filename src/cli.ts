@@ -18,6 +18,7 @@ import {
   LAST_FLAG,
   N_FLAG,
   rejectUnknownArgs,
+  resultFlagSpec,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   sinceFlagSpec,
@@ -37,7 +38,7 @@ import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.
 import { repoToplevel } from "./git/git.js";
 import { runDoctor } from "./doctor/doctor.js";
 import { renderDoctor } from "./doctor/doctor-render.js";
-import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history/history.js";
+import { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR } from "./history/history.js";
 import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
 import { cmdReport } from "./report/report.js";
 
@@ -178,6 +179,7 @@ async function main(): Promise<void> {
         N_FLAG,
         sinceFlagSpec("history --since"),
         grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
+        resultFlagSpec(HISTORY_RESULT_VALUE_ERROR),
         JSON_FLAG,
         ROLE_FLAG,
       ]);

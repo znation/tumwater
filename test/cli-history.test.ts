@@ -225,7 +225,7 @@ test("history rejects unknown flags, prints no ticks yet on an empty log, and ha
 
   const help = await cli(repo, "help", "history");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--since <duration>\] \[--grep <text>\] \[--json\]/);
+  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--since <duration>\] \[--grep <text>\]\s+\[--result <changes\|none\|problems>\] \[--json\]/);
   assert.match(help.stdout, /machine-readable history data/);
 });
 
