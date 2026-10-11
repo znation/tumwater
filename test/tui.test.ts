@@ -271,7 +271,7 @@ function seedEntry(root: string, file: string, heading: string): void {
 /** Local-noon fixture timestamps: oracles.ts's atLocalTs (daysAgo, hour 12) — a fixed hour keeps
  * the fixture from straddling midnight between seeding and collectReport's own clock read. */
 
-test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures → History → Pending", async () => {
+test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures → History → Pending → Queued", async () => {
   const repo = await makeTuiRepo();
   // Seed the clean loop's pi log with one assistant turn so the transcript pane has
   // something real to show (the user message must never render).
@@ -350,6 +350,10 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     frame = tui.lastFrame();
     assert.match(frame, /\[Pending\]/);
 
+    tui.key(undefined, "t", { ctrl: true }); // → queued
+    frame = tui.lastFrame();
+    assert.match(frame, /\[Queued\]/);
+
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /\[Activity\]/); // wraps back to Activity
   });
@@ -403,6 +407,7 @@ A second body line, kept verbatim.`,
     tui.key(undefined, "t", { ctrl: true }); // → failures
     tui.key(undefined, "t", { ctrl: true }); // → history
     tui.key(undefined, "t", { ctrl: true }); // → pending
+    tui.key(undefined, "t", { ctrl: true }); // → queued
     tui.key(undefined, "t", { ctrl: true }); // → events
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "t", { ctrl: true }); // → project status again
@@ -690,6 +695,7 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
     // Re-entering the view recomputes the cache and starts at the head again.
     tui.key(undefined, "t", { ctrl: true }); // → history
     tui.key(undefined, "t", { ctrl: true }); // → pending
+    tui.key(undefined, "t", { ctrl: true }); // → queued
     tui.key(undefined, "t", { ctrl: true }); // → events
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "t", { ctrl: true }); // → project status

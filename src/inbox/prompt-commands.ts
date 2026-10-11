@@ -23,9 +23,7 @@ import {
   editListedPrompt,
   editRolePrompt,
 } from "./inbox-edit.js";
-import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
-import { stripNotBeforeMarker } from "./prompt-not-before.js";
-import { humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
+import { listWideScope, promptPreview, queuedListRows, renderQueuedList } from "./inbox.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
@@ -38,63 +36,6 @@ import {
 } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
-
-/** One traversal of the queues behind `prompt --list`'s render: with `--role`, that loop's
- * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the
- * remaining catalog ids in order, empty queues skipped — exactly the sections the prose
- * prints. `position` is the 1-based per-loop number the prose prints and `--cancel`
- * consumes; `text` is the full verbatim prompt, not a preview; `queuedAtMs` is the enqueue
- * stamp parsed from the queue filename (null for a hand-placed name), which the prose turns
- * into a `queued <age> ago` suffix; `notBeforeMs` is the prompt's not-before time parsed from
- * its queue file's marker line (null when absent or malformed), which the prose turns into a
- * `delivers in <duration>` countdown instead of the age — and `--json` carries both as-is. */
-function promptListPayload(
-  root: string,
-  role: string | null,
-  validIds: string[],
-): { prompts: { role: string; position: number; text: string; queuedAtMs: number | null; notBeforeMs: number | null }[] } {
-  const prompts: { role: string; position: number; text: string; queuedAtMs: number | null; notBeforeMs: number | null }[] = [];
-  const record = (r: string, position: number, e: { text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
-    // The marker is stripped from the text both shapes print (stripNotBeforeMarker): the
-    // prose and --json are the operator's view of what a loop will tick, and the marker is
-    // plumbing, not content. Full verbatim prompt text minus plumbing, still not a preview.
-    prompts.push({ role: r, position, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
-  if (role !== null) {
-    queuedRolePromptRecords(root, role).forEach((e, i) => record(role, i + 1, e));
-    return { prompts };
-  }
-  queuedRolePromptRecords(root, DIRECTOR_ROLE).forEach((e, i) => record(DIRECTOR_ROLE, i + 1, e));
-  for (const r of validIds) {
-    if (r === DIRECTOR_ROLE) continue;
-    queuedRolePromptRecords(root, r).forEach((e, i) => record(r, i + 1, e));
-  }
-  return { prompts };
-}
-
-/** The ` (queued <age> ago)` suffix a prose `--list` line carries when its queue filename
- * stamps the enqueue time (queueFileStamp) — omitted when the stamp is unparseable, so a
- * hand-placed file renders exactly as it did before the age existed. Age buckets through
- * humanSeconds, the same phrasing every other relative time in the harness prints.
- * A deferred prompt (the not-before marker still in the future) shows its countdown instead
- * — ` (delivers in <duration>)` from the same humanSeconds — since the age of a prompt that
- * has not been delivered yet is not the fact an operator scanning the list needs. */
-function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string {
-  if (notBeforeMs !== null && notBeforeMs > now) {
-    const seconds = secondsUntil(notBeforeMs, now);
-    return ` (delivers in ${humanSeconds(seconds)})`;
-  }
-  if (queuedAtMs === null) return "";
-  const ageSeconds = secondsSince(queuedAtMs, now);
-  return ` (queued ${humanSeconds(ageSeconds)} ago)`;
-}
-
-/** The loop order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
- * the director first, then the remaining cached catalog ids — the per-loop sections `--list`
- * prints, each numbered from 1. The single home of that scope, shared by the cancel and edit
- * branches so neither can drift from what the list showed. */
-function listWideScope(root: string): string[] {
-  return [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
-}
 
 /** The shared tail of the list-wide cancel/edit branches: report an ambiguity (naming the
  * rival loops, with the `--role` escape hatch) or a miss (carrying the length of the longest
@@ -233,30 +174,17 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // same array, so the per-loop positions --cancel consumes can never disagree with the
     // data a script reads. Full text, verbatim: this is the inspection command that tells
     // you what a queued prompt actually says before you cancel it.
-    const payload = promptListPayload(root, role, validIds as string[]);
+    const prompts = queuedListRows(root, role, validIds as string[]);
     if (parsed.json) {
       // An empty queue still prints the document, the history --json empty-rows precedent.
-      sayJson(payload);
+      sayJson({ prompts });
       return;
     }
-    if (payload.prompts.length === 0) {
+    if (prompts.length === 0) {
       say(role !== null ? `nothing queued for ${role}` : "nothing queued");
       return;
     }
-    const sections: string[] = [];
-    let currentRole: string | null = null;
-    let lines: string[] = [];
-    const now = Date.now();
-    for (const p of payload.prompts) {
-      if (p.role !== currentRole) {
-        if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
-        currentRole = p.role;
-        lines = [];
-      }
-      lines.push(`${p.position}. ${p.text}${queuedAgeSuffix(p.queuedAtMs, p.notBeforeMs, now)}`);
-    }
-    if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
-    say(sections.join("\n"));
+    say(renderQueuedList(prompts, Date.now()));
     return;
   }
   if (parsed.mode === "cancel") {

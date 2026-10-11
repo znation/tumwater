@@ -13,6 +13,7 @@ import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { enqueueLanding, readLandingQueue } from "../src/landing/landing-queue.js";
 import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
+import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -153,8 +154,11 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().view, 5, "Pending follows History (roleIds.length + 5)");
   keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "cycling past Pending wraps to Activity");
-  assert.equal(keys.state().paneCache, null, "leaving History and Pending drops the cache");
+  assert.equal(keys.state().view, 6, "Queued follows Pending (roleIds.length + 6)");
+  assert.equal(keys.state().paneCache, "", "an empty queue caches the empty list, not null");
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "cycling past Queued wraps to Activity");
+  assert.equal(keys.state().paneCache, null, "leaving History, Pending, and Queued drops the cache");
 });
 
 test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache", () => {
@@ -270,7 +274,8 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
 
   // Role-prompt mode owns it the same way; it opens from a transcript view, scope kept.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // history → pending
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // pending → activity
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // pending → queued
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // queued → activity
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // activity → transcript feature
   assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
@@ -776,7 +781,8 @@ test("a Pending collector resolution after the operator cycled away does not cac
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   assert.equal(keys.state().view, 5);
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away before it resolves
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away to Activity before it resolves
   assert.equal(keys.state().view, 0);
   resolveLate(fleet);
   await Promise.resolve();
@@ -810,6 +816,25 @@ test("a Pending collector resolution after the roster size changed does not cach
     queueText,
     "the late resolution must not cache the fleet roster onto the shifted History pane",
   );
+});
+
+test("the Queued pane caches the CLI's rendered queue list on entry and drops it on a cycle away", () => {
+  const root = makeRoot();
+  enqueuePrompt(root, "director text");
+  enqueueRolePrompt(root, "clean", "clean text");
+  const t = Date.now();
+  const { keys } = makeKeys(root, () => t);
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  assert.equal(keys.state().view, 6);
+  assert.equal(
+    keys.state().paneCache,
+    renderQueuedList(queuedListRows(root, null, listWideScope(root)), t),
+    "the pane caches the same director-first list the CLI prints",
+  );
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
+  assert.equal(keys.state().view, 0);
+  assert.equal(keys.state().paneCache, null, "leaving Queued drops the cache");
 });
 
 test("a flash notice expires on the injected clock", () => {

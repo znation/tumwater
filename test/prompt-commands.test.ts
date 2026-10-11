@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/inbox/prompt-commands.js";
-import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, listWideScope, queuedListRows, queuedRolePrompts, renderQueuedList } from "../src/inbox/inbox.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { imageReferencePaths } from "../src/inbox/inbox-attachments.js";
@@ -69,6 +69,22 @@ test("prompt --list prose groups by loop, restarts numbering, and stamps the que
   assert.match(lines[2]!, /^clean:$/);
   assert.match(lines[3]!, /^1\. clean one \(queued \S+ ago\)$/);
   assert.match(lines[4]!, /^2\. clean two \(queued \S+ ago\)$/);
+});
+
+test("queuedListRows/renderQueuedList is the list-shaped view the TUI Queued pane shares", () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "director note");
+  enqueueRolePrompt(root, "clean", "clean one");
+  enqueueRolePrompt(root, "clean", "clean two");
+  // A deferred prompt (not-before in the future) shows its countdown, not an age.
+  enqueueRolePrompt(root, "clean", "deliver later", Date.now() + 3_600_000);
+  const lines = renderQueuedList(queuedListRows(root, null, listWideScope(root)), Date.now()).split("\n");
+  assert.equal(lines[0], `${DIRECTOR_ROLE}:`);
+  assert.match(lines[1]!, /^1\. director note \(queued \S+ ago\)$/);
+  assert.equal(lines[2], "clean:");
+  assert.match(lines[3]!, /^1\. clean one \(queued \S+ ago\)$/);
+  assert.match(lines[4]!, /^2\. clean two \(queued \S+ ago\)$/);
+  assert.match(lines[5]!, /^3\. deliver later \(delivers in /);
 });
 
 test("prompt --list renders a hand-placed unstamped file without an age suffix", async () => {

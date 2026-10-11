@@ -18,6 +18,7 @@ import { renderFleetChange } from "../../change/change-render.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
+import { listWideScope, queuedListRows, renderQueuedList } from "../../inbox/inbox.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import {
   isFleetPaused,
@@ -347,7 +348,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   };
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
   // status (planned features + open bugs + open questions), then the usage report, the failure
-  // digest, the completed-tick history, and the pending-change roster — Ctrl+T.
+  // digest, the completed-tick history, the pending-change roster, and the queued prompts —
+  // Ctrl+T.
   let view = 0;
   // The session-scoped role the Usage and Failures panes collect for, cycled by Ctrl+G, null
   // for the fleet. Session-only, like the view/selection/scroll state: a fresh TUI starts
@@ -727,7 +729,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       exitHistorySearch();
       noteMode = false; // a cycle away leaves notebook mode and drops its snapshot
       noteCache = null;
-      view = (view + 1) % (roleIds.length + 6); // events → each loop's transcript → project status → usage report → failures → history → pending → events
+      view = (view + 1) % (roleIds.length + 7); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → events
       selectedEntry = null; // leaving a view drops any entry selection…
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
       paneScroll = 0; // the Markdown panes always re-enter at their head
@@ -762,6 +764,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
               deps.requestRender();
             },
           );
+        } else if (view === roleIds.length + 6) {
+          // Queued is a synchronous read of the same queue list `tumwater prompt --list`
+          // prints (renderQueuedList over queuedListRows), so it paints on entry with no
+          // async collector. The now() clock keeps the age/countdown suffix testable.
+          paneCache = renderQueuedList(queuedListRows(root, null, listWideScope(root)), now());
         } else {
           paneCache = null;
         }
@@ -961,7 +968,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       currentBudgetFree = budgetFree;
       roleIds = roles;
       directorInFlight = directorRunning;
-      view = Math.min(view, roleIds.length + 5); // clamp a stale index if roles changed
+      view = Math.min(view, roleIds.length + 6); // clamp a stale index if roles changed
       // A retired or renamed loop must not leave the report panes silently scoped to an
       // absent role — drop the scope with the stale view index. The tab strip and hint then
       // read "fleet", so a report pane still on screen must recompute its cached Markdown

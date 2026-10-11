@@ -5,6 +5,8 @@ import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { knownRoleIdsCached } from "../config/config.js";
+import { humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { warnEvent } from "../events/events.js";
 import { isPromptImageSibling } from "./inbox-attachments.js";
@@ -207,6 +209,90 @@ export function queuedRolePromptEntries(root: string, role: string): QueuedPromp
     queuedAtMs: e.queuedAtMs,
     notBeforeMs: e.notBeforeMs,
   }));
+}
+
+/** The loop order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
+ * the director first, then the remaining cached catalog ids — the per-loop sections `prompt
+ * --list` and the TUI Queued pane print, each numbered from 1. The single home of that scope,
+ * shared by the cancel and edit branches so neither can drift from what the list showed. */
+export function listWideScope(root: string): string[] {
+  return [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
+}
+
+/** One row of the list-shaped queue view (`prompt --list`'s prose and --json, the TUI Queued
+ * pane): `position` is the 1-based per-loop number the prose prints and `--cancel` consumes;
+ * `text` is the full verbatim prompt; `queuedAtMs` is the enqueue stamp parsed from the queue
+ * filename (null for a hand-placed name), which the prose turns into a `queued <age> ago`
+ * suffix; `notBeforeMs` is the prompt's not-before time parsed from its queue file's marker
+ * line (null when absent or malformed), which the prose turns into a `delivers in <duration>`
+ * countdown instead of the age — and `--json` carries both as-is. */
+interface QueuedListRow {
+  role: string;
+  position: number;
+  text: string;
+  queuedAtMs: number | null;
+  notBeforeMs: number | null;
+}
+
+/** One traversal of the queues behind the list-shaped queue views: with `role`, that loop's
+ * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the
+ * remaining catalog ids in order, empty queues skipped — exactly the sections the prose
+ * prints. */
+export function queuedListRows(root: string, role: string | null, validIds: string[]): QueuedListRow[] {
+  const prompts: QueuedListRow[] = [];
+  const record = (r: string, position: number, e: { text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
+    // The marker is stripped from the text both shapes print (stripNotBeforeMarker): the
+    // prose and --json are the operator's view of what a loop will tick, and the marker is
+    // plumbing, not content. Full verbatim prompt text minus plumbing, still not a preview.
+    prompts.push({ role: r, position, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
+  if (role !== null) {
+    queuedRolePromptRecords(root, role).forEach((e, i) => record(role, i + 1, e));
+    return prompts;
+  }
+  queuedRolePromptRecords(root, DIRECTOR_ROLE).forEach((e, i) => record(DIRECTOR_ROLE, i + 1, e));
+  for (const r of validIds) {
+    if (r === DIRECTOR_ROLE) continue;
+    queuedRolePromptRecords(root, r).forEach((e, i) => record(r, i + 1, e));
+  }
+  return prompts;
+}
+
+/** The ` (queued <age> ago)` suffix a prose list line carries when its queue filename stamps
+ * the enqueue time (queueFileStamp) — omitted when the stamp is unparseable, so a hand-placed
+ * file renders exactly as it did before the age existed. Age buckets through humanSeconds, the
+ * same phrasing every other relative time in the harness prints.
+ * A deferred prompt (the not-before marker still in the future) shows its countdown instead
+ * — ` (delivers in <duration>)` from the same humanSeconds — since the age of a prompt that
+ * has not been delivered yet is not the fact an operator scanning the list needs. */
+function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string {
+  if (notBeforeMs !== null && notBeforeMs > now) {
+    const seconds = secondsUntil(notBeforeMs, now);
+    return ` (delivers in ${humanSeconds(seconds)})`;
+  }
+  if (queuedAtMs === null) return "";
+  const ageSeconds = secondsSince(queuedAtMs, now);
+  return ` (queued ${humanSeconds(ageSeconds)} ago)`;
+}
+
+/** Render the list-shaped queue view as the prose `prompt --list` prints and the TUI Queued
+ * pane shows: consecutive rows grouped by role, one `<role>:` section per loop holding
+ * `"<position>. <text><queuedAgeSuffix>"` lines, sections joined by `\n`. Empty rows render
+ * the empty string, so each surface keeps its own empty-state note. One renderer so the CLI
+ * and the TUI cannot drift on order, numbering, or the age/countdown wording. */
+export function renderQueuedList(rows: readonly QueuedListRow[], now: number): string {
+  const sections: string[] = [];
+  let currentRole: string | null = null;
+  let lines: string[] = [];
+  for (const p of rows) {
+    if (p.role !== currentRole) {
+      if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
+      currentRole = p.role;
+      lines = [];
+    }
+    lines.push(`${p.position}. ${p.text}${queuedAgeSuffix(p.queuedAtMs, p.notBeforeMs, now)}`);
+  }
+  if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
+  return sections.join("\n");
 }
 
 /** How many prompts are queued for one loop and deliverable now, without re-reading unchanged

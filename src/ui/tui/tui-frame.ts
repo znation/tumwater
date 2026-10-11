@@ -50,8 +50,8 @@ export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3
 }
 
 /** Which pane the TUI shows: the activity feed, one loop's transcript, the backlog, the usage
- * report, the failure digest, the completed-tick history, or the pending-change roster — the
- * dashboard's views, in the order Ctrl+T cycles them. */
+ * report, the failure digest, the completed-tick history, the pending-change roster, or the
+ * queued prompts — the dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =
   | { kind: "activity" }
   | { kind: "transcript"; role: string; index: number; count: number; note: boolean }
@@ -59,7 +59,8 @@ export type TuiView =
   | { kind: "usage"; scope: string | null; window: string | null }
   | { kind: "failures"; scope: string | null; window: string | null }
   | { kind: "history"; since: string | null; result: string | null; role: string | null; grep: string | null }
-  | { kind: "pending" };
+  | { kind: "pending" }
+  | { kind: "queued" };
 
 /** The pane's tab strip: every view by name, the current one bracketed (and bright), so the
  * Ctrl+T cycle can be seen rather than remembered. */
@@ -72,6 +73,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
     ["failures", view.kind === "failures" && view.scope ? `Failures: ${view.scope}` : "Failures"],
     ["history", view.kind === "history" && view.role ? `History: ${view.role}` : "History"],
     ["pending", "Pending"],
+    ["queued", "Queued"],
   ];
   const spans: StatusSpan[] = [];
   tabs.forEach(([kind, label], i) => {
@@ -94,6 +96,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {

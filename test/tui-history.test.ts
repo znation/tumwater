@@ -54,6 +54,18 @@ test("an empty history pane falls back to the no-ticks note, not entryBodyWindow
   assert.equal(rows.emptyNote, "(no ticks yet)");
 });
 
+test("a null queued cache falls back to the no-queued-prompts note, and a cache windows its lines", () => {
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
+  const empty = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(empty.body, []);
+  assert.equal(empty.emptyNote, "(no queued prompts)");
+
+  const list = "director:\n1. steer the director\nclean:\n1. clean one";
+  const shown = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: list } });
+  assert.equal(shown.body.map((l) => l.map((s) => s.text).join("")).join("\n"), list);
+  assert.equal(shown.emptyNote, "(no queued prompts)");
+});
+
 test("a null pending cache holds the loading note, and a resolved roster windows its text", () => {
   const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
   const loading = paneBody({ kind: "pending" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
