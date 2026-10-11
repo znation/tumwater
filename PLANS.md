@@ -25,6 +25,66 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The History view's empty state names the selected window, and the server's sparse note renders when `covered` is false.
 - `npm run test` is green.
 
+### `tumwater prompt --edit ... --attach`: add images to a queued prompt in place (planned 2026-10-10 by plan; independent of the dashboard History and citation-sweep series; completes the landed `tumwater prompt --attach` enqueue form, whose doc-comment names the gap)
+
+**Goal.** `tumwater prompt --attach <path> <text>` queues a prompt with up to four images;
+`tumwater prompt --edit <n> "<new text>"` rewrites a queued prompt in place and carries its
+existing `[image attached: …]` references over, because `--edit` has no `--attach` form. An
+operator who queued the wrong image (or none) must cancel and re-queue, losing the entry's
+position and its pending `--at` deferral. Let `--edit` accept `--attach` too, saving the new
+images beside the same queue file and appending their reference lines after the existing set,
+so one command corrects the text and the images without moving the entry.
+
+**Approach.**
+1. `src/cli/cli-command-args.ts`: the edit variant gains `attachPaths: string[]`. `--attach`
+   stays queue/edit-only: call `refuseQueueOnlyFlag("--attach", attachFlags.length > 0 && editFlag < 0)`
+   so `--list`/`--cancel` keep the exact `--attach only queues a prompt` refusal while `--edit`
+   passes. In the `editFlag` branch, claim `attachClaims` alongside `roleClaim` in both token
+   scans (the stray-token loop before the position, and the replacement-text loop), so an attach
+   pair is never replacement text, and return `attachPaths`.
+2. `src/inbox/prompt-commands.ts`: factor the enqueue branch's `--attach` block (the
+   `attachPathsProblem` pre-check, the per-path `fs.readFileSync` + base64, and
+   `promptImagesProblem`) into one module-level helper `readPromptImages(paths): PromptImageInput[]`
+   that fails through `fail`. The enqueue and edit branches both call it; the edit branch passes
+   the result to `editRolePrompt`.
+3. `src/inbox/inbox-edit.ts`: `editRolePrompt(root, role, position, newText, images?: PromptImageInput[])`.
+   After reading the old file and its carried references, when `images` is non-empty: reject a
+   combined count above `PROMPT_IMAGES_MAX_COUNT` with
+   `promptImagesCountProblem(carried.length + images.length)`, save them with
+   `savePromptImages(root, role, file, images)`, and append their `imageReferenceLines` after the
+   carried ones. The composed length check (`promptLengthProblem`) then covers the body plus
+   every reference line; on any throw after the save, `unlinkAllMissingTolerant` the newly saved
+   paths so a failed edit strands no files — the same unwind `submitPromptWithImages` uses.
+4. `src/inbox/inbox-attachments.ts` + `src/inbox/inbox.ts`: seed `savePromptImages`'s `taken`
+   set from the same-stem image siblings already beside the queue file, so an edit that adds a
+   `.png` to a prompt that already has one gets `-2` rather than overwriting the referenced file.
+   Extract `inbox.ts`'s inline same-stem test in `removeSameStemSiblings` into an exported
+   `isPromptImageSibling(stem, entry)` in `inbox-attachments.ts` and call it from both sites,
+   single-homing the `<stem>.<ext>` / `<stem>-<n>.<ext>` shape.
+5. `src/cli/help.ts` and `README.md`: name the `--edit … --attach` form beside the enqueue form.
+6. No new runtime dependency.
+
+**Files touched.** `src/cli/cli-command-args.ts`, `src/inbox/prompt-commands.ts`,
+`src/inbox/inbox-edit.ts`, `src/inbox/inbox-attachments.ts`, `src/inbox/inbox.ts`,
+`src/cli/help.ts`, `README.md`, and the tests named below.
+
+**Acceptance criteria.**
+- `test/cli-command-args.test.ts`: the `--edit` fixtures carry `attachPaths: []`; a new case
+  parses `--edit 1 "new" --attach a.png` (and an `--attach` pair before `--edit`) to
+  `{ mode: "edit", …, attachPaths: ["a.png"] }` with the attach pair absent from `text`;
+  `--list`/`--cancel` still fail with `--attach only queues a prompt`.
+- `test/inbox-edit.test.ts`: `editRolePrompt` with one image writes the new text plus the carried
+  and new reference lines under the same queue file and deferral; a second same-extension image
+  on a prompt that already has one lands as `<stem>-2.<ext>` while the existing file is
+  byte-unchanged; a combined count over four throws before any save; an over-cap composed text
+  throws and removes the just-saved image.
+- `test/prompt-commands.test.ts`: `prompt --edit 2 --attach <png> "new text"` rewrites the
+  entry and `--list` shows both reference lines; the queue keeps its position and stamp; a bad
+  attach path fails by name with the queue untouched.
+- `test/inbox-attachments.test.ts`: `savePromptImages` returns a non-colliding path when a
+  same-stem image already exists.
+- `npm run test` is green.
+
 ## Done
 
 ### Search the dashboard History view with `tumwater history --grep`'s rule (planned 2026-10-10 by plan; independent of the citation-sweep series; sibling of the landed `tumwater history --grep` and the landed role scope in the dashboard History view; done 2026-10-10 by feature)
