@@ -16,7 +16,8 @@ import { ownerAliveSh } from "./fixtures/victim-fixture.js";
 // The process-tree-hygiene regressions: a run — killed or exited normally — must take its
 // tool-call children, grandchildren, and backgrounded cross-group orphans with it, and
 // signalTree must tolerate the groups those exits leave behind (src/process/process.ts's sweep, as
-// runPi arms it). The quiet-watchdog and stall-warning tests stay in pi.test.ts; the shared
+// runPi arms it). The watchdog timing tests live in pi-watchdogs.test.ts and the stall-warning
+// tests stay in pi.test.ts; the shared
 // runPi fixture lives in pi-run-harness.ts.
 
 // A killed tick must take its tool-call grandchildren with it. pi runs detached as its own
