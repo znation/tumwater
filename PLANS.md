@@ -78,6 +78,28 @@ collectors and the same Markdown renders the CLI and dashboard use.
 - The existing Ctrl+T Usage/Failures cache cases stay green (the default window is unchanged).
 - `npm run test` is green.
 
+### List the durable land queue in execution order: `tumwater queue [--json]` (planned 2026-10-10 by plan; independent of the waiting TUI Usage/Failures `--since` and CLI history `--result` plans — a new CLI command over `src/landing`, no `src/ui/tui` or `src/history` file; completes the land queue's read surfaces, which today expose its depth in the status header and its entries only through `tumwater status --json`'s `landQueue` object, never as a command of its own)
+
+**Goal.** The orchestrator's landing slot drains the durable land queue (`src/landing/landing-queue.ts`) oldest-first, but no command lists the waiting landings: `tumwater status` shows only the header depth and `tumwater status --json` buries the entries inside the whole fleet snapshot. Add `tumwater queue [--json]`: every readable entry in execution order (position, loop, tick number, short pinned sha, age, summary), a `land queue empty` line for an empty queue, and a count of the torn/foreign queue files the reader skips.
+
+**Approach.**
+1. `src/landing/landing-queue.ts`: add `export interface LandingQueueView { entries: LandingEntry[]; unreadable: number }` and `export function readLandingQueue(root: string): LandingQueueView` — one pass over the private `queueFiles(root)` through the existing `readEntry`, pushing readable entries in filename order and counting the rest. The queue's depth is `entries.length + unreadable`, so no second directory listing is needed. This is the one home of "the queue as a view", beside its readers.
+2. `src/status/status-data.ts`: replace the `queuedLandings(root)` read with `readLandingQueue(root)` so the status payload's `landQueue.entries` and the new command cannot drift. Keep the same projection (`{role, sha, tick, summary, enqueuedAt}`) and the `entries?` guard on a non-empty readable list (`view.entries.length > 0`), and use `view.entries` for the `liveLandingMarker` sha set; `depth` becomes `view.entries.length + view.unreadable`. Update the doc comments that name `queuedLandings`.
+3. A new render-half module `landing-queue-render.ts` beside `landing-queue.ts` in `src/landing/` (the `change-render.ts`/`backlog-render.ts` convention): `export function renderLandingQueue(view: LandingQueueView, now: number): string` — a `land queue (<depth>):` header then one 1-based line per entry, `  <n>. <role> tick #<tick> · <shortSha(sha)> · <humanSeconds(secondsSince(enqueuedAt, now))> ago · <summary>`; `depth === 0` prints `land queue empty`; `unreadable > 0` appends `  (+<n> unreadable queue file(s) skipped)`.
+4. `src/cli/cli-query-commands.ts`: add `export async function cmdQueue(root, args)`: `rejectUnknownArgs("queue", args, [JSON_FLAG])`, `await requireReadyRepo(root)`, then `sayJsonOrRender(args, readLandingQueue(root), (v) => renderLandingQueue(v, Date.now()))`. The `--json` form prints the view's raw `entries` (unshortened `sha`, raw `enqueuedAt`) plus `unreadable`, the `report --json` precedent that the JSON is the collector's own document, not a re-parse of the render.
+5. `src/cli.ts`: import `cmdQueue` from `./cli/cli-query-commands.js` and add `case "queue": await cmdQueue(root, args); break;` beside the other read-only query cases.
+6. `src/cli/help.ts`: add a `tumwater queue [--json]` stanza beside `tumwater diff` naming the execution order, the per-entry fields, and that `--json` prints the `{entries, unreadable}` document.
+7. No new runtime dependency; `status`, `diff`, the landing pipeline, and the TUI/dashboard are otherwise untouched (their depth badge and in-flight cell keep reading the same snapshot fields).
+
+**Files touched.** `src/landing/landing-queue.ts`, a new `landing-queue-render.ts` in `src/landing/`, `src/status/status-data.ts`, `src/cli/cli-query-commands.ts`, `src/cli.ts`, `src/cli/help.ts`, `test/landing-queue.test.ts`, a new `cli-queue.test.ts` in `test/`, `test/help.test.ts`.
+
+**Acceptance criteria.**
+- `test/landing-queue.test.ts`, new cases: after three `enqueueLanding` calls with distinct `enqueuedAt` (or the same millisecond, relying on the counter), `readLandingQueue(repo).entries` is in filename order and `unreadable` is 0; a torn file written into `landQueueDir(repo)` (a junk `.json` beside the healthy entries) is skipped by `entries` and counted in `unreadable`; a missing queue directory reads as `{entries: [], unreadable: 0}`.
+- A new `cli-queue.test.ts` in `test/` (`cli(repo, ...)` over an initialized repo): an empty queue prints `land queue empty` and exits 0; after two `enqueueLanding` calls, `queue` prints one line per entry oldest-first carrying the loop, `tick #<n>`, the short sha, an age, and the summary; `queue --json` prints `{entries:[...], unreadable:0}` with the raw sha and numeric `enqueuedAt`; an unknown flag exits non-zero naming the flag.
+- `test/help.test.ts`: `ALL_COMMANDS` names `queue`, and `helpTopic("queue")` resolves to a stanza starting `  tumwater queue`.
+- The existing `status --json` `landQueue` cases and the other `test/landing-queue.test.ts` cases stay green (the readable-entry projection is unchanged).
+- `npm run test` is green.
+
 ## Done
 
 ### Filter `tumwater history` by outcome class: `--result <changes|none|problems>` (planned 2026-10-10 by plan; independent of the waiting TUI History `--since`, TUI Usage/Failures `--since`, and TUI `Ctrl+G` scope plans — CLI-only, no `src/ui/tui` file; completes the dashboard History view's outcome filter on the command line, sharing its one bucket rule; done 2026-10-10 by feature)
