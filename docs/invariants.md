@@ -126,3 +126,47 @@ error-class under a `review-rejected` cause carrying the reason; its `organize` 
 the `merge_conflict` arm as error-class under a `merge-conflict` cause with the shared no-text
 placeholder, not a review-rejection), and "a review_error landing prices its authoring hours
 under the matching review_failed cause".
+
+## Disclosed cuts and recorded causes
+
+A bounded view and a terminal decision each owe the reader the same thing: what the view left
+out, and what the outcome was decided from. A silent cut reads as a complete list; a defaulted
+outcome reads as evidence the run never produced. Both rules are stated here so a landing that
+adds a capped view or a terminal outcome updates the record shape in the same commit.
+
+### INV-D1: a capped failure-digest section discloses the count its cut dropped
+
+**Guarantee.** Every failure-digest list section that cuts its list — the top-N error, warning,
+review-failure and rejection clusters, the top-`LOSS_TOP` loss-cause ranking, the newest-
+`STATE_CHANGE_TOP` state transitions, and the newest-`LANDED_TOP` merges — prints a remainder
+line whose dropped count is derived from the same list the section itemized, so a cut section
+never reads as a complete itemization of the window.
+
+**Binds.** `src/failure/failure-data.ts` (the `*_TOP` caps, and the `hiddenClusters` /
+`lossCausesHidden` / `stateChangesTotal` / `landedTotal` fields the render reads),
+`src/failure/failure-render.ts` (`renderFailureMarkdown`, `renderClusters`), `src/failure/time-spend.ts`
+(`LOSS_TOP`), `src/failure/failure-state-change.ts` (`STATE_CHANGE_TOP`).
+
+**Pinned by.** `test/failure-render.test.ts` — "the top-N cluster sections mark their cut:
+remainder line, no silent truncation", "a state changes section over the newest-6 cap names its
+remainder instead of truncating silently", "a landed list over the newest-10 cap names its
+remainder instead of reading as the whole window", and "the loss-cause ranking's top-5 cut
+discloses its remainder, like every other capped section".
+
+### INV-D2: an unparseable FLOW line and a signal-killed check record a cause, not a pass or a timeout
+
+**Guarantee.** A malformed or truncated `FLOW:` line yields no `FlowResult` — `extractFlow`
+requires the `passed|bug` verdict — so the qa rotation records nothing rather than defaulting to
+`passed`, and a check killed by a signal is reported as a signal kill distinct from a timeout:
+`killedPhrase` names the signal, and `tscVerdict` returns a signal-death rejection rather than a
+timeout.
+
+**Binds.** `src/verdict/reply-contract.ts` (`extractFlow`), `src/tick/tick-verdict.ts` (the
+`ctx.flow && !diagnosis.cutOff` guard around `recordFlow`), `src/build/build-check-events.ts`
+(`killedPhrase`, `timedOutPhrase`), `src/build/build-stage.ts` (`tscVerdict`).
+
+**Pinned by.** `test/reply-contract.test.ts` — "extractFlow requires the verdict and keeps
+hyphens in the name" and "extractFlow returns null when absent, empty, or only mid-sentence";
+`test/build-check.test.ts` — "a merge-scope check killed by an external signal rejects, naming
+the signal and real duration"; `test/build-stage.test.ts` — "compileStaged reads a tsc that died
+by signal as a rejection even with output attached".

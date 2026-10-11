@@ -74,70 +74,6 @@ with `newNotifier` now using the helper), a new `notify-command.test.ts` in `tes
   help lists" case then passes), and `helpTopic("notify")` starts `  tumwater notify`.
 - `npm run test` is green.
 
-### A remainder-and-cause trace: a capped view discloses what it dropped, and a failed decision records the cause it acted on (planned 2026-10-10 by steward; promoted from the `no-observability` validation gap, carried by 58 Fixed entries — the largest non-`none` tag after `unclear-invariant`; independent of the Agent backends and citation-sweep series; follow-up to the landed invariant register and its citation guard)
-
-**Goal.** Retire the `no-observability` gap. It is recorded when a failure or a wrong decision
-left no trace, so a fixer could neither detect it nor reconstruct the inputs it acted on. Give the
-project a trace contract with two rules a landing can be checked against: **a capped or narrowed
-view discloses in its output what it dropped**, and **a terminal failure records the cause it
-decided from rather than a defaulted pass or a bare count**.
-
-**Evidence.** The validation-gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E
-'s/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows `no-observability` on 58 Fixed entries, second only
-to `unclear-invariant` (97) and the largest tag with no retiring infrastructure plan; 9 are still
-kept verbatim and the rest survive as `; gap: no-observability` one-liners. The recurring families,
-each visible in the cited entries:
-- **A capped section prints no remainder.** The failure digest's loss ranking keeps the top 5
-  causes and itemizes the rest nowhere ("The failure digest's 'Top loss causes by time' ranking is
-  cut to the top 5 causes by time…", fixed 2026-10-01), while sibling sections already disclose
-  their cuts (`+21 more`, `+46 more`); its Review rejections section truncates at 5
-  alphabetically-first clusters ("The digest's Review rejections section silently truncates at 5
-  alphabetically-first clusters…"), and its Fleet state changes section keeps only the newest 6
-  transitions ("The digest's Fleet state changes section silently keeps only the newest 6
-  transitions…").
-- **A failure path records a pass, a silence, or a bare count.** A malformed FLOW line defaults to
-  `passed` ("A FLOW line without a parseable verdict is recorded as a pass…"); a signal-killed
-  build check is reported as a timeout ("A build check killed by a signal is reported as 'timed
-  out after 300s'…"); `quiet_killed` is the only outcome with no strike cap, backoff, or alarm
-  ("`quiet_killed` is the only tick outcome with no strike cap, no backoff and no alarm…"); a
-  persistent review failure never reaches the error-streak alarm ("A persistent review failure
-  never reaches the error-streak alarm…").
-- **A label names the wrong evidence.** Build-check rejections name a stack frame instead of the
-  failing test ("Build-check rejections name the stack frame instead of the failing test…"); a
-  role over-cap rejection names the director's prefill whatever loop it targets ("A role prompt's
-  over-cap rejection names the director's prefill whatever loop it targets…").
-Seed the contract from these families, and add sections as new ones recur.
-
-**Approach.**
-1. Add one shared remainder helper beside the render/text helpers, producing the digest's existing
-   `_+N more … not listed_` / `(+N unreadable …)` shape, and apply it to every view that currently
-   cuts silently — starting with the digest's loss ranking, Review rejections, and Fleet state
-   changes, and the per-role rejection counter. The count is derived from the same list the view
-   already builds, so the marker cannot drift from the cut.
-2. Give the terminal-outcome paths a cause field. `extractFlow` and the killed-specific-check
-   paths record the observed cause (a malformed/truncated verdict, a signal kill) as a distinct
-   value, never a defaulted `passed`; `quiet_killed` and the other unalarmed outcomes feed the
-   existing streak/backoff machinery. A wrong or absent cause is then an assertion a test can fail
-   on, not prose.
-3. State the contract where a fixer reads it. Name the trace rule in the invariants register
-   (docs/invariants.md) beside the boundary families, so a landing that adds a capped view or a
-   terminal outcome updates the record shape in the same commit.
-4. No new runtime dependency and no change to the loop pipeline.
-
-**Files touched.** the render/text helpers and `src/failure/` renderers; `src/verdict/` (extractFlow)
-and the build-check/kill outcome paths; `docs/invariants.md`; the `test/...` cases below.
-
-**Acceptance criteria.**
-- A digest render seeded with more loss causes, review clusters, and fleet transitions than each
-  section's cap prints the marked remainder (hidden count, not silent), under a test per section;
-  the cap-size-seeded render is byte-unchanged.
-- A malformed or truncated FLOW line records a non-`passed` outcome, and a signal-killed build
-  check event carries its kill cause distinct from a timeout, each under a test.
-- The invariants register states the remainder-and-cause rule and cites the `test/...` cases that
-  pin it, so the citation guard (the landed "Keep the invariant register honest…") covers the new
-  sections.
-- `npm run test` is green.
-
 ### Show the durable land queue in the dashboard's Pending view, matching `tumwater queue` (planned 2026-10-10 by plan; sibling of the landed `tumwater queue` CLI command and the landed dashboard Pending view; completes the land queue's read surfaces on the dashboard, which today show only the header depth badge `· land queue: N` — the entries already ride `/api/status`'s `landQueue.entries` and are polled every second but never painted; independent of the waiting TUI History `--result`, CLI `notify --test`, and remainder-and-cause trace plans — GUI-only, no `src/ui/tui`, `src/history`, `src/events`, or `src/failure` file)
 
 **Goal.** The dashboard's Pending view shows every loop's unlanded change (from `/api/diff`) and
@@ -256,6 +192,78 @@ matching `tumwater history --role` and the GUI picker, and never runs through `s
 - `npm run test` is green.
 
 ## Done
+
+### A remainder-and-cause trace: a capped view discloses what it dropped, and a failed decision records the cause it acted on (planned 2026-10-10 by steward; promoted from the `no-observability` validation gap, carried by 58 Fixed entries — the largest non-`none` tag after `unclear-invariant`; independent of the Agent backends and citation-sweep series; follow-up to the landed invariant register and its citation guard; done 2026-10-11 by feature)
+
+**Goal.** Retire the `no-observability` gap. It is recorded when a failure or a wrong decision
+left no trace, so a fixer could neither detect it nor reconstruct the inputs it acted on. Give the
+project a trace contract with two rules a landing can be checked against: **a capped or narrowed
+view discloses in its output what it dropped**, and **a terminal failure records the cause it
+decided from rather than a defaulted pass or a bare count**.
+
+**Evidence.** The validation-gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E
+'s/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows `no-observability` on 58 Fixed entries, second only
+to `unclear-invariant` (97) and the largest tag with no retiring infrastructure plan; 9 are still
+kept verbatim and the rest survive as `; gap: no-observability` one-liners. The recurring families,
+each visible in the cited entries:
+- **A capped section prints no remainder.** The failure digest's loss ranking keeps the top 5
+  causes and itemizes the rest nowhere ("The failure digest's 'Top loss causes by time' ranking is
+  cut to the top 5 causes by time…", fixed 2026-10-01), while sibling sections already disclose
+  their cuts (`+21 more`, `+46 more`); its Review rejections section truncates at 5
+  alphabetically-first clusters ("The digest's Review rejections section silently truncates at 5
+  alphabetically-first clusters…"), and its Fleet state changes section keeps only the newest 6
+  transitions ("The digest's Fleet state changes section silently keeps only the newest 6
+  transitions…").
+- **A failure path records a pass, a silence, or a bare count.** A malformed FLOW line defaults to
+  `passed` ("A FLOW line without a parseable verdict is recorded as a pass…"); a signal-killed
+  build check is reported as a timeout ("A build check killed by a signal is reported as 'timed
+  out after 300s'…"); `quiet_killed` is the only outcome with no strike cap, backoff, or alarm
+  ("`quiet_killed` is the only tick outcome with no strike cap, no backoff and no alarm…"); a
+  persistent review failure never reaches the error-streak alarm ("A persistent review failure
+  never reaches the error-streak alarm…").
+- **A label names the wrong evidence.** Build-check rejections name a stack frame instead of the
+  failing test ("Build-check rejections name the stack frame instead of the failing test…"); a
+  role over-cap rejection names the director's prefill whatever loop it targets ("A role prompt's
+  over-cap rejection names the director's prefill whatever loop it targets…").
+Seed the contract from these families, and add sections as new ones recur.
+
+**Approach.**
+1. Add one shared remainder helper beside the render/text helpers, producing the digest's existing
+   `_+N more … not listed_` / `(+N unreadable …)` shape, and apply it to every view that currently
+   cuts silently — starting with the digest's loss ranking, Review rejections, and Fleet state
+   changes, and the per-role rejection counter. The count is derived from the same list the view
+   already builds, so the marker cannot drift from the cut.
+2. Give the terminal-outcome paths a cause field. `extractFlow` and the killed-specific-check
+   paths record the observed cause (a malformed/truncated verdict, a signal kill) as a distinct
+   value, never a defaulted `passed`; `quiet_killed` and the other unalarmed outcomes feed the
+   existing streak/backoff machinery. A wrong or absent cause is then an assertion a test can fail
+   on, not prose.
+3. State the contract where a fixer reads it. Name the trace rule in the invariants register
+   (docs/invariants.md) beside the boundary families, so a landing that adds a capped view or a
+   terminal outcome updates the record shape in the same commit.
+4. No new runtime dependency and no change to the loop pipeline.
+
+**Files touched.** the render/text helpers and `src/failure/` renderers; `src/verdict/` (extractFlow)
+and the build-check/kill outcome paths; `docs/invariants.md`; the `test/...` cases below.
+
+**Acceptance criteria.**
+- A digest render seeded with more loss causes, review clusters, and fleet transitions than each
+  section's cap prints the marked remainder (hidden count, not silent), under a test per section;
+  the cap-size-seeded render is byte-unchanged.
+- A malformed or truncated FLOW line records a non-`passed` outcome, and a signal-killed build
+  check event carries its kill cause distinct from a timeout, each under a test.
+- The invariants register states the remainder-and-cause rule and cites the `test/...` cases that
+  pin it, so the citation guard (the landed "Keep the invariant register honest…") covers the new
+  sections.
+- `npm run test` is green.
+
+**Landed.** The capped-section remainder lines and both cause recordings this plan asked for
+already rode individual fixes before this tick; they are now stated and pinned as the register's
+`INV-D1`/`INV-D2` contract (docs/invariants.md). This tick added that register entry and moved
+this plan to Done. No shared remainder helper was extracted: the four digest remainders carry
+different wording ("older transitions hidden", "loss causes by time not listed", "clusters
+holding N", "older merges not listed") and already share the `agree`/`plural` helpers, so a
+single formatter would add parameters without removing a computation.
 
 ### Filter the TUI History pane by outcome class, matching `tumwater history --result` (planned 2026-10-10 by plan; sibling of the landed CLI `tumwater history --result <changes|none|problems>` and the landed dashboard History outcome filter; completes that outcome filter on the TUI's History pane, reading the same canonical `historyClass` rule from `src/history/history-data.ts`; shares `src/ui/tui/tui-keys.ts`/`tui-frame.ts` with the waiting TUI Usage/Failures `--since` plan — both add one session cycle and one hint pair — so a landing conflict is possible and the resolver handles it; done 2026-10-10 by feature)
 
