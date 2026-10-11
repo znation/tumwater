@@ -143,6 +143,11 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     const needle = grepPattern.toLowerCase();
     rows = rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
   }
+  // The set --grep admitted, saved so the empty-state wording blames the filter that actually
+  // emptied it: if the result filter below removes rows grep matched, naming the pattern would
+  // be false (`no ticks matching "widget"` when feature #7 does match). The GUI draws the same
+  // line between a search and its outcome filter.
+  const afterGrep = rows.length;
   // `--result <class>` narrows to one outcome bucket, reading the same canonical historyClass
   // rule the dashboard's History filter applies (shared from history-data.ts, not copied). It
   // composes with --role, -n, --since, and --grep, so no rival-shape rule: a missing or empty
@@ -174,13 +179,15 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
     // a bare {"rows":[]} document above, never prose in either form.
     say(
-      grepPattern !== null
-        ? `no ticks matching "${grepPattern}"`
-        : resultClass !== null
-          ? `no ticks with result "${resultClass}"`
-          : sinceMs === null
-            ? "no ticks yet"
-            : `no ticks in ${durationLabel(sinceMs)}`,
+      resultClass !== null && afterGrep > 0
+        ? `no ticks with result "${resultClass}"`
+        : grepPattern !== null
+          ? `no ticks matching "${grepPattern}"`
+          : resultClass !== null
+            ? `no ticks with result "${resultClass}"`
+            : sinceMs === null
+              ? "no ticks yet"
+              : `no ticks in ${durationLabel(sinceMs)}`,
     );
     return;
   }

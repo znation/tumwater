@@ -9,6 +9,13 @@ _None yet._
 
 ## Fixed
 
+### `tumwater history --grep <text> --result <class>` prints `no ticks matching "<text>"` when the pattern DID match and the result filter removed the rows, so the empty state blames the wrong filter (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
+
+- **Symptom:** run `tumwater history --grep widget --result problems` on a log holding a row whose rendered line matches `widget` but whose result is not a problem (e.g. a `changed` tick): the command prints `no ticks matching "widget"` though such ticks exist — the `--result` filter, applied after `--grep`, is what emptied the set. The dashboard's History table states the counterpart truth for the same rows ("No ticks match this filter").
+- **Reproduce:** `npm test history-filtering`; the case `history --result empty state names the class, never the empty log` seeds a `changed` tick whose summary contains `widget` and asserts the both-filter empty state names the result class. Before the fix it printed `no ticks matching "widget"` where the tick matched the pattern.
+- **Fix:** `cmdHistory` saves the row count `--grep` admitted (`afterGrep`) and, when a `--result` filter empties that non-empty set, names the result class; grep's own wording stays when grep itself matched nothing.
+- **Validation gap:** unclear-invariant — the code and its existing test declared grep precedence intentional, so the invariant it violated (name the filter that emptied the set) had to be reconstructed before the false wording was visibly a bug.
+
 ### The dashboard Usage/Failures window pickers fetch a persisted value outside their menu while marking no button (found by bugfix loop 2026-10-10, fixed 2026-10-10)
 
 - **Symptom:** with a persisted `usage-days` (or `fail-days`) outside the picker's offered choices — e.g. `45` against Usage's `[7,14,30,90]` — or a persisted `usage-since`/`fail-since` outside the offered trailing windows, the view requests that value (`/api/report?days=45`, `/api/report?sinceMs=12345`) while no toolbar button shows as active: the window the user sees marked and the window the request uses disagree, and clicking around never heals the stored value.

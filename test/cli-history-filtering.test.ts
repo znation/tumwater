@@ -298,10 +298,17 @@ test("history --result empty state names the class, never the empty log", async 
   assert.equal(none.code, 0);
   assert.equal(none.stdout, 'no ticks with result "changes"\n');
 
-  // --grep keeps precedence when both filters are active and nothing survives.
+  // When grep admits rows but the result filter then removes them, the wording names the
+  // result filter that emptied the set: `no ticks matching "widget"` would be false, feature
+  // #7 does match. (The GUI says the same: rows existed, the outcome filter excluded them.)
   const both = await cli(repo, "history", "--grep", "widget", "--result", "problems");
   assert.equal(both.code, 0);
-  assert.equal(both.stdout, 'no ticks matching "widget"\n');
+  assert.equal(both.stdout, 'no ticks with result "problems"\n');
+
+  // With no grep match either, grep's own wording stays: the pattern is what emptied the set.
+  const unmatched = await cli(repo, "history", "--grep", "no such text", "--result", "problems");
+  assert.equal(unmatched.code, 0);
+  assert.equal(unmatched.stdout, 'no ticks matching "no such text"\n');
 });
 
 test("history --result fails with its own wording for a missing or unknown class", async () => {
