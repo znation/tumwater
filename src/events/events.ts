@@ -191,6 +191,20 @@ export function warnEventBestEffort(root: string, loop: string, message: string)
   }
 }
 
+/** The `{ emit, warn }` pair for a caller on a catch-less path (the orchestrator's poll loop
+ * and the live config reload it drives): both route through logEventBestEffort and
+ * warnEventBestEffort, so the "an unwritable feed must not end the fleet" policy has one home
+ * and the harness-loop warning shorthand cannot drift from warnEvent's event shape. */
+export function bestEffortEventLogger(root: string): {
+  emit: (event: HarnessEventInput) => void;
+  warn: (message: string) => void;
+} {
+  return {
+    emit: (event) => logEventBestEffort(root, event),
+    warn: (message) => warnEventBestEffort(root, "harness", message),
+  };
+}
+
 /** The shape this process's last event append left a log in, per log path: while the file
  * still stats exactly this way, its last byte is the newline our own append wrote, so the
  * torn-tail check's open/fstat/last-byte read is redundant. Any other stat — an operator

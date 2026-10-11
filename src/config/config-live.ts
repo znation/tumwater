@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { loopIds } from "../roles/loop-ids.js";
 import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
-import { logEvent, type HarnessEventInput } from "../events/events.js";
+import { bestEffortEventLogger } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
@@ -62,18 +62,9 @@ export function newLiveConfigReload(deps: {
   // Best-effort event logging: poll() runs inside the orchestrator's poll loop
   // (src/orchestrator/orchestrator.ts), which has no catch, so an unwritable feed (ENOSPC,
   // EACCES, the path replaced by a directory) would otherwise end the fleet — and, worse, skip
-  // the config application that follows the emission. The feed is the failure; the reload still
-  // happens, the same "logging must not throw" policy the abort-request consumer
-  // (operator-requests.ts's warnFailure) and the dashboard server (gui-server.ts's
-  // recordServerError) apply.
-  const emit = (event: HarnessEventInput): void => {
-    try {
-      logEvent(deps.root, event);
-    } catch {
-      // The event feed is the failure; the reload below must still run.
-    }
-  };
-  const warn = (message: string): void => emit({ loop: "harness", type: "warning", message });
+  // the config application that follows the emission. bestEffortEventLogger (events.ts) holds
+  // the shared "logging must not throw" policy.
+  const { emit, warn } = bestEffortEventLogger(deps.root);
 
   return {
     poll() {
