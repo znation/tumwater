@@ -593,6 +593,34 @@ test("setConfigKey merges agents.<id>.bin/.args, dropping the legacy alias for p
   assert.doesNotThrow(() => loadConfig(legacy), "the written file passes the alias rule");
 });
 
+// The other direction of the one-spelling rule: setting a LEGACY top-level key drops the
+// new-form agents.pi field it would collide with in the file, rather than relying on
+// collapseAgentAliases (which drops the legacy side, so the value just set would vanish).
+test("setConfigKey's legacy top-level pi keys replace the new-form field they collide with", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.agents = { pi: { bin: "/opt/pi", args: ["--new"] } };
+  saveConfig(dir, base);
+  const file = path.join(dir, "tumwater.json");
+
+  // piArgs set drops agents.pi.args but keeps the entry's surviving bin field.
+  let r = setConfigKey(dir, "piArgs", '["--legacy"]');
+  assert.ok(r.ok && Array.isArray(r.value), JSON.stringify(r));
+  assert.deepEqual(r.oldValue, [], "the merged default piArgs is the reported previous value");
+  let raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(raw.piArgs, ["--legacy"]);
+  assert.deepEqual((raw.agents as Record<string, Record<string, unknown>>).pi, { bin: "/opt/pi" });
+  assert.doesNotThrow(() => loadConfig(dir), "piArgs beside agents.pi.bin passes the alias rule");
+
+  // agentBin set drops the entry's last remaining field, so the emptied pi entry is removed.
+  r = setConfigKey(dir, "agentBin", "/legacy/pi");
+  assert.ok(r.ok && r.oldValue === undefined, JSON.stringify(r));
+  raw = readJson(file) as Record<string, unknown>;
+  assert.equal(raw.agentBin, "/legacy/pi");
+  assert.ok(!("pi" in ((raw.agents as Record<string, unknown>) ?? {})), "the emptied agents.pi entry is gone");
+  assert.doesNotThrow(() => loadConfig(dir), "the legacy-only spelling reloads");
+});
+
 test("unsetConfigKey removes agents.<id> fields and drops the entry/section when they empty", () => {
   const dir = tmpdir();
   const base = defaultConfig();
@@ -767,6 +795,22 @@ test("unsetConfigKey removes one role field, preserving siblings, and reverts an
   assert.ok(r.ok && r.oldValue === 3600, JSON.stringify(r));
   assert.ok(!("minTickIntervalSeconds" in (readJson(file) as { roles: Record<string, Record<string, unknown>> }).roles.qa!));
   assert.equal(loadConfig(dir).roles.qa!.minTickIntervalSeconds, 7200, "the default applies again");
+});
+
+test("unsetConfigKey drops a roles entry it empties, keeping the rest of the section", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const roles = (readJson(file) as { roles: Record<string, unknown> }).roles;
+  // A default role entry in the file holds only its seeded `enabled`, so unsetting that one
+  // field empties the entry: it is dropped rather than left as an empty object.
+  assert.deepEqual(roles.clean, { enabled: true }, "clean seeds a single enabled field");
+  const r = unsetConfigKey(dir, "roles.clean.enabled");
+  assert.ok(r.ok && r.oldValue === true, JSON.stringify(r));
+  const after = (readJson(file) as { roles: Record<string, unknown> }).roles;
+  assert.ok(!("clean" in after), "the emptied roles entry is removed from the file");
+  assert.ok("qa" in after, "the roles section keeps its other entries");
+  assert.equal(loadConfig(dir).roles.clean?.enabled, true, "the default applies again");
 });
 
 test("unsetConfigKey rejects unknown keys and role fields, and a validation failure leaves the file byte-identical", () => {
