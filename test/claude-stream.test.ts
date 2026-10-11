@@ -160,6 +160,40 @@ test("classifies API errors from the result's structured signals", () => {
       opts: { isError: true, text: "No conversation found with session ID: x" },
       expected: { resumeMissing: true },
     },
+    // Text fallbacks, reached when claude leaves `api_error_status` null or omits it.
+    {
+      name: "rate limit in text",
+      opts: { isError: true, text: "rate limit reached, retry later" },
+      expected: { transientRateLimit: true },
+    },
+    {
+      name: "overloaded in text",
+      opts: { isError: true, text: "Overloaded" },
+      expected: { transientBackend: true },
+      backendKind: "server",
+    },
+    {
+      name: "connection in text",
+      opts: { isError: true, text: "connection refused" },
+      expected: { transientBackend: true },
+      backendKind: "connection",
+    },
+    {
+      name: "timeout in text",
+      opts: { isError: true, text: "request timed out" },
+      expected: { transientBackend: true },
+      backendKind: "timeout",
+    },
+    {
+      name: "401 in text under a null status",
+      opts: { isError: true, apiErrorStatus: null, text: "API error 401" },
+      expected: { configError: true },
+    },
+    {
+      name: "an error text naming no known signal",
+      opts: { isError: true, text: "something odd happened" },
+      expected: {},
+    },
   ];
   for (const c of cases) {
     const { parser } = fold([claudeResult(c.opts)]);
@@ -226,6 +260,28 @@ test("an unmapped native type is reported once and does not fail the run", () =>
   translator.translate(claudeUnknown("task_started"));
   translator.translate(claudeInit());
   assert.deepEqual(translator.warnings(), ["task_started"]);
+});
+
+test("a content block pi has no vocabulary for is dropped without failing the run", () => {
+  // claude may add block types over time (server_tool_use, image, ...). The translator's
+  // contract is forward-compatible: an unknown block is dropped while the known blocks around
+  // it still fold into the message.
+  const { canonical } = fold([
+    claudeAssistant({
+      id: "msg-1",
+      blocks: [
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "aGk=" } },
+        claudeText("kept"),
+      ],
+      usage: { output: 1 },
+    }),
+    claudeResult({ totalCostUsd: 0.001 }),
+  ]);
+  const messageEnd = JSON.parse(canonical.find((l) => JSON.parse(l).type === "message_end")!) as {
+    message: { content: Array<{ type: string; text?: string }> };
+  };
+  assert.deepEqual(messageEnd.message.content.map((b) => b.type), ["text"], "the unknown block is dropped");
+  assert.equal(messageEnd.message.content[0]?.text, "kept", "the surrounding known block survives");
 });
 
 test("thinking blocks translate to canonical thinking content", () => {
