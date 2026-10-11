@@ -248,7 +248,18 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // nested harness under test keeps the outer run's.
       env: invocation.env,
     });
-    if (invocation.stdin !== undefined) child.stdin?.end(invocation.stdin);
+    if (invocation.stdin !== undefined) {
+      // A backend that dies before draining its stdin — an immediately-failing startup such as
+      // an unknown flag, an unresumable session, or a not-logged-in exit — leaves this write
+      // nothing to feed. Once the prompt exceeds the OS pipe buffer the write then fails EPIPE,
+      // and an unhandled 'error' event on the stdin stream is thrown from the event loop and
+      // takes the whole process (the whole fleet) down. The child's own exit status and stderr
+      // already report why the run died, so swallowing the failed write adds no silence the
+      // caller needs to break; git.ts's patchId carries the same guard for a patch-id that
+      // dies before reading its input.
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(invocation.stdin);
+    }
 
     // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the tick deadline and the quiet
     // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set

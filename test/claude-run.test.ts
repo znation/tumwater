@@ -16,6 +16,7 @@ import type { PiRunOptions } from "../src/agent/run-agent.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv } from "./helpers/env.js";
 import { fakeClaudeReplay, readRunBlocks } from "./fakes/fake-claude.js";
+import { writeScript } from "./fakes/fake-commands.js";
 import {
   claudeAssistant,
   claudeInit,
@@ -359,6 +360,29 @@ test("a claude spawn error names agents.claude.bin, not pi's agentBin", async ()
     assert.equal(result.ok, false);
     assert.match(result.errorMessage ?? "", /failed to spawn \/no\/such\/dir-xyz\/claude-here/);
     assert.match(result.errorMessage ?? "", /resolved from agents\.claude\.bin in tumwater\.json/);
+  } finally {
+    restoreHome();
+  }
+});
+
+test("a backend that exits before reading a large stdin prompt does not crash the run with EPIPE", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const bin = path.join(dir, "claude-exits");
+  // A backend that dies at startup without draining its stdin: what a bad flag, an
+  // unresumable session, or a not-logged-in startup does. With a prompt larger than the OS
+  // pipe buffer, the runner's stdin write then fails EPIPE (write EPIPE on a dead reader).
+  writeScript(bin, "exit 7");
+  try {
+    const run = claudeRun(dir, {
+      prompt: "x".repeat(512 * 1024),
+      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", agents: { claude: { bin } } },
+    });
+    // The stdin stream's 'error' must be handled: unhandled it is thrown from the event loop
+    // and takes the whole process down, before the run's own exit status is ever folded. The
+    // sibling guard is git.ts's patchId, for a patch-id that dies before reading its input.
+    const result = await runAgent(run);
+    assert.equal(result.ok, false, "the run fails on the child's exit, not the parent's EPIPE");
   } finally {
     restoreHome();
   }
