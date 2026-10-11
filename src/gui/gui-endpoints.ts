@@ -13,9 +13,12 @@ import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { loadConfigSafe } from "../config/config.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
-import { collectReport } from "../report/report-data.js";
-import { collectFailureReport } from "../failure/failure-data.js";
+import { collectReport, collectReportSince } from "../report/report-data.js";
+import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
+import { renderSinceReportMarkdown } from "../report/report-render.js";
+import { REPORT_SINCE_MAX_MS } from "../events/event-window.js";
+import { humanSeconds } from "../text/datetime.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowGrepHaystack } from "../history/history-data.js";
@@ -26,7 +29,6 @@ import { rolePayload } from "../roles/role-view.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
-import { humanSeconds } from "../text/datetime.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
@@ -106,27 +108,63 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
   sendJson(res, 200, await collectRoleChange(root, role));
 }
 
-/** Handle GET /api/report?days=N[&role=<id>]: the usage report data (collectReport's
- * ReportData) as JSON — the dashboard's report tab renders it. The days window follows
- * windowDays. An absent role is the fleet-wide report exactly as before; a present one is a
- * filter, validated through rejectBadRole (unknown, including the empty string → 400 naming
- * the valid ids) and handed to collectReport's role scope. Reads files directly, so it works
- * whether or not the fleet is running. */
+/** Handle GET /api/report?days=N[&role=<id>] or /api/report?sinceMs=<ms>[&role=<id>]: the
+ * usage report — the day series (collectReport's ReportData) as JSON the dashboard's report tab
+ * charts, or, when sinceMs is set, the trailing-window totals rendered through
+ * renderSinceReportMarkdown as { markdown } (the CLI's `report --since` shape), bounded by the
+ * reportSinceMs helper. The day window follows windowDays. An absent role is the fleet-wide
+ * report exactly as before; a present one is a filter, validated through rejectBadRole (unknown,
+ * including the empty string → 400 naming the valid ids) and handed to the collector's role
+ * scope. Reads files directly, so it works whether or not the fleet is running. */
 export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (role !== null && rejectBadRole(root, res, role)) return;
+  if (q.get("sinceMs") !== null) {
+    const sinceMs = reportSinceMs(q, res);
+    if (sinceMs === null) return;
+    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, sinceMs, role ?? undefined)) });
+    return;
+  }
   sendJson(res, 200, collectReport(root, windowDays(q), role ?? undefined));
 }
 
-/** Handle GET /api/failures?days=N[&role=<id>]: the same bounded Markdown failure digest the
- * telemetry loop feeds on and `tumwater report --failures` prints, as JSON ({ markdown }) — the
- * dashboard's failures tab renders it. The days window follows windowDays (so it can never
- * drift from /api/report's). role rides the same absent-fleet / present-filter rule as
+/** Parse and bound the report endpoints' `?sinceMs=` trailing-window length: a simultaneous
+ * `?days=` is the CLI's rival shape (whole local days vs a trailing window) → 400 naming both;
+ * otherwise the length rides intQuery's positive-integer rule (absent is impossible here — the
+ * callers branch on its presence — malformed → 400) and a value above REPORT_SINCE_MAX_MS is a
+ * 400 naming the cap, never a silent clamp (an explicit window typo must not shrink to some
+ * other window). Returns the parsed length, or null once the 400 is sent. */
+function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | null {
+  if (q.get("days") !== null) {
+    sendJson(res, 400, { error: "days and sinceMs are mutually exclusive; days counts whole local days, sinceMs totals a trailing window" });
+    return null;
+  }
+  const sinceMs = intQuery(q, res, "sinceMs", "positive");
+  if (sinceMs === null) return null;
+  if (sinceMs > REPORT_SINCE_MAX_MS) {
+    sendJson(res, 400, { error: `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})` });
+    return null;
+  }
+  return sinceMs;
+}
+
+/** Handle GET /api/failures?days=N[&role=<id>] or /api/failures?sinceMs=<ms>[&role=<id>]: the
+ * same bounded Markdown failure digest the telemetry loop feeds on and `tumwater report
+ * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
+ * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
+ * the CLI's `report --failures --since` shape. The days window follows windowDays (so it can
+ * never drift from /api/report's). role rides the same absent-fleet / present-filter rule as
  * handleReport: absent → the fleet digest, present → validated and scoped. Reads files
  * directly, so it works with no fleet running. */
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (role !== null && rejectBadRole(root, res, role)) return;
+  if (q.get("sinceMs") !== null) {
+    const sinceMs = reportSinceMs(q, res);
+    if (sinceMs === null) return;
+    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, sinceMs, role ?? undefined)) });
+    return;
+  }
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), role ?? undefined)) });
 }
 

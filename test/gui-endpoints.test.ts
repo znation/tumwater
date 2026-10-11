@@ -102,6 +102,70 @@ function serveFailures(root: string, query = "") {
   return captureJson((res) => handleFailures(new URLSearchParams(query), res, root));
 }
 
+// ---- ?sinceMs= on both report endpoints: the CLI's trailing-window shape ----
+// The dashboard's Usage and Failures tabs read through the same collectors and renders as
+// `tumwater report --since` / `report --failures --since`, so the browser and terminal cannot
+// disagree about a window. Timestamps are wall-clock offsets, not day keys: a sub-day window is
+// the whole point.
+test("handleReport serves the trailing-window totals as { markdown } when ?sinceMs is set", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    // 30 min old — inside a 1 h window; counts.
+    JSON.stringify({ ts: now - 30 * 60 * 1000, loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 1234 }),
+    // 3 h old — outside a 1 h window; must not count.
+    JSON.stringify({ ts: now - 3 * 60 * 60 * 1000, loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 9999 }),
+  ]);
+
+  const { captured, data } = await serveReport(root, "?sinceMs=3600000");
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  const payload = data as { markdown: string; series?: unknown; days?: unknown };
+  assert.equal("series" in payload, false, "the since shape is markdown, not the day series");
+  assert.equal("days" in payload, false);
+  assert.match(payload.markdown, /window: last 1h/);
+  assert.match(payload.markdown, /1234 output tokens/, "the 30-minute-old tick counts");
+  assert.doesNotMatch(payload.markdown, /9999/, "the 3-hour-old tick is outside the window");
+});
+
+test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 10 }),
+    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 20 }),
+  ]);
+
+  assert.equal((await serveReport(root, "?sinceMs=604800001")).captured.status, 400, "above the 7d cap is a 400, not a clamp");
+  assert.equal((await serveReport(root, "?sinceMs=3600000&days=7")).captured.status, 400, "?days and ?sinceMs are rival shapes");
+
+  const scoped = (await serveReport(root, "?sinceMs=3600000&role=feature")).data as { markdown: string };
+  assert.match(scoped.markdown, /^role: feature$/m, "?role scopes the since collector");
+  assert.match(scoped.markdown, /10 output tokens/, "only the feature tick's usage counts");
+  assert.doesNotMatch(scoped.markdown, /bugfix/);
+});
+
+test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is set", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    JSON.stringify({ ts: now - 10 * 60 * 1000, loop: "bugfix", type: "tick_end", tick: 1, result: "error", error: "pi exited 1" }),
+  ]);
+
+  const { captured, data } = await serveFailures(root, "?sinceMs=3600000");
+  assert.equal(captured.status, 200);
+  const payload = data as { markdown: string };
+  assert.match(payload.markdown, /^# tumwater failure digest/);
+  assert.match(payload.markdown, /window: last 1h/);
+  assert.match(payload.markdown, /bugfix/);
+
+  assert.equal((await serveFailures(root, "?sinceMs=604800001")).captured.status, 400);
+  assert.equal((await serveFailures(root, "?sinceMs=3600000&days=7")).captured.status, 400);
+
+  const scoped = (await serveFailures(root, "?sinceMs=3600000&role=feature")).data as { markdown: string };
+  assert.match(scoped.markdown, /^role: feature$/m, "?role scopes the windowed digest");
+});
+
 // ---- POST /api/restart: the build-stale alert's refresh button ----
 // handleRestart reads a request body (the shared readJsonObject front half), so a fake req is
 // an EventEmitter that emits the body then ends — the same shape readBody's callbacks expect.

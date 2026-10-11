@@ -2,7 +2,10 @@
  * totals (each with its per-day average) over four daily bar charts — landed commits, ticks by
  * loop, output tokens, spend by loop — with gridlines, a scale, and one shared color per loop;
  * a window picker switches between 7, 14, 30, and 90 days and a Loop picker scopes the report
- * to one loop group (`?role=`, the browser twin of `tumwater report --role`). Failures renders
+ * to one loop group (`?role=`, the browser twin of `tumwater report --role`). Both pickers also
+ * carry trailing-window buttons (1h/6h/1d, `?sinceMs=`, the browser twin of `tumwater report
+ * --since`), so the day and sub-day shapes read through the same collectors and renders as the
+ * CLI; the since shape draws the returned Markdown instead of the charts. Failures renders
  * the failure digest (/api/failures, the Markdown `tumwater report --failures` prints) through
  * the page's Markdown renderer, over the same kind of window and Loop pickers. Both fetch when
  * their view opens, on Refresh, and — Usage only, throttled — when new events arrive while it
@@ -215,17 +218,21 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   // view-scaffold:start
   // The window pickers' choices and the views' shared head (title, blurb, picker, Refresh).
-  function viewHead(title, blurb, pickerId, choices, current, refreshId, rolePickerId) {
+  function viewHead(title, blurb, pickerId, choices, current, refreshId, rolePickerId, sinceChoices) {
     // A dropped blurb renders as no subtitle at all, never the string "undefined". The Loop
     // picker rides the toolbar when the view has one (the shared Usage/Failures shape); the
-    // options are filled by syncRoles from the fleet's role list.
+    // options are filled by syncRoles from the fleet's role list. The trailing-window buttons
+    // (a view that configured sinceChoices) sit in the same segmented control after the day
+    // buttons; each carries its length as data-since so windowView can mark exactly one active.
     const rolePicker = rolePickerId
       ? "<label><span class='sr-only'>Loop</span><select class='field' id='" + rolePickerId + "' data-role='1'><option value=''>All loops</option></select></label>"
       : "";
+    const sinceButtons = (sinceChoices || []).map(([ms, label]) =>
+      "<button type='button' data-since='" + ms + "'>" + esc(String(label)) + "</button>").join("");
     return "<div class='view-head'><div><h1>" + esc(title) + "</h1>" +
       (blurb ? "<p>" + esc(blurb) + "</p>" : "") + "</div><div class='toolbar'>" + rolePicker +
       "<div class='seg' id='" + pickerId + "'>" + choices.map((n) => "<button type='button' data-days='" + n + "' class='" +
-        (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + "</div>" +
+        (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + sinceButtons + "</div>" +
       "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
   }
   // One day-window view, the shape Usage and Failures share: a lazily built panel (shared head
@@ -233,10 +240,14 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // render), the picker's active choice re-marked on every fetch, a GET of the view's endpoint
   // at ?days=<days> rendered into the body — with an error panel naming the view on failure —
   // optional 60-second throttling (Usage's event-driven refetch), and click wiring for the
-  // picker's data-days buttons (persisted through recall/store) and the Refresh button. The
-  // views differ only in endpoint, body renderer, and titles.
+  // picker's data-days and data-since buttons (persisted through recall/store, each clearing the
+  // other so exactly one window shape is live) and the Refresh button. The views differ only in
+  // endpoint, body renderer, and titles.
   function windowView(o) {
     let days = Number(recall(o.key)) || o.defaultDays;
+    // The persisted trailing window (only a view that configured sinceChoices reads it): 0 or
+    // no stored value means the day window is live, otherwise days is ignored on the fetch.
+    let sinceMs = o.sinceChoices ? Number(recall(o.sinceKey)) || null : null;
     // The persisted Loop scope for this view: "" is the fleet-wide report. Only a view that
     // configured a rolePickerId reads it, so a view without a picker never touches storage.
     let role = o.roleKey ? recall(o.roleKey) || "" : "";
@@ -263,12 +274,15 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     async function fetchView(throttled) {
       if (throttled && Date.now() - fetchedAt < 60000) return;
       fetchedAt = Date.now();
-      buildOnce(o.panelId, viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId, o.rolePickerId) +
+      buildOnce(o.panelId, viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId, o.rolePickerId, o.sinceChoices) +
         "<div id='" + o.bodyId + "'><div class='empty'>Loading…</div></div>");
-      markActive($(o.pickerId), "days", days);
+      // Exactly one of the two controls is active: a live since window clears the day buttons
+      // (days → -1) and marks its own; otherwise the day window is the marked one.
+      markActive($(o.pickerId), "days", sinceMs ? -1 : days);
+      if (o.sinceChoices) markActive($(o.pickerId), "since", sinceMs || -1);
       syncRoles(lastStatus);
       try {
-        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days, role)));
+        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days, role, sinceMs)));
       } catch (e) {
         // Name the view, status, and server error rather than a bare "unavailable".
         $(o.bodyId).innerHTML = errorPanel(o.errorTitle, e, "card empty");
@@ -283,8 +297,19 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         fetchView();
       });
       container.addEventListener("click", (ev) => {
+        const s = clickClosest(ev, "[data-since]");
+        if (s) {
+          sinceMs = Number(s.dataset.since);
+          store(o.sinceKey, String(sinceMs));
+          fetchView();
+          return;
+        }
         const b = clickClosest(ev, "[data-days]");
         if (b) {
+          // A day-window click clears a live trailing window, so the two cannot disagree
+          // about which is in force; the empty string is the stored "no since" sentinel.
+          sinceMs = null;
+          store(o.sinceKey, "");
           days = Number(b.dataset.days);
           store(o.key, String(days));
           fetchView();
@@ -301,9 +326,18 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     blurb: "What the fleet produced and what it cost, per day and per loop.",
     pickerId: "usagewindow", choices: [7, 14, 30, 90], refreshId: "usagerefresh",
     key: "usage-days", defaultDays: 14, roleKey: "usage-role", rolePickerId: "usagerole",
+    sinceKey: "usage-since", sinceChoices: [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]],
     errorTitle: "Usage report unavailable",
-    endpoint: (days, role) => "/api/report?days=" + days + (role ? "&role=" + encodeURIComponent(role) : ""),
+    endpoint: (days, role, sinceMs) => (sinceMs ? "/api/report?sinceMs=" + sinceMs : "/api/report?days=" + days) +
+      (role ? "&role=" + encodeURIComponent(role) : ""),
     render: (d) => {
+      // The since shape is a Markdown totals report (the CLI's report --since render), not a
+      // series: draw it through the page's Markdown renderer as the Failures tab does, dropping
+      // the render's own "# …" heading since the view head already titles the page.
+      if (d.markdown) {
+        const md = String(d.markdown).replace(/^# .*\n+/, "");
+        return "<article class='card md'>" + renderMarkdown(md, true) + "</article>";
+      }
       const block = (title, svg) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
         "</h2><span class='muted'>per day</span></header><div class='chart'>" + svg + "</div></section>";
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
@@ -323,8 +357,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     blurb: "What went wrong, where, and how often — the digest the telemetry loop reads.",
     pickerId: "failwindow", choices: [7, 14, 30], refreshId: "failrefresh",
     key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
+    sinceKey: "fail-since", sinceChoices: [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]],
     errorTitle: "Failure digest unavailable",
-    endpoint: (days, role) => "/api/failures?days=" + days + (role ? "&role=" + encodeURIComponent(role) : ""),
+    endpoint: (days, role, sinceMs) => (sinceMs ? "/api/failures?sinceMs=" + sinceMs : "/api/failures?days=" + days) +
+      (role ? "&role=" + encodeURIComponent(role) : ""),
     render: (d) => {
       // The view head already titles the page, so the digest's own "# …" heading is dropped.
       const md = String(d.markdown || "").replace(/^# .*\n+/, "");

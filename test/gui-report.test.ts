@@ -131,8 +131,8 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   // Both views have a container and a sidebar link; the window pickers choose the days.
   assert.match(GUI_PAGE, /<section id="report" class="view" aria-label="Usage" hidden><\/section>/);
   assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
-  assert.match(GUI_PAGE, /endpoint: \(days, role\) => "\/api\/report\?days=" \+ days \+ \(role \? "&role=" \+ encodeURIComponent\(role\) : ""\)/);
-  assert.match(GUI_PAGE, /endpoint: \(days, role\) => "\/api\/failures\?days=" \+ days \+ \(role \? "&role=" \+ encodeURIComponent\(role\) : ""\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => \(sinceMs \? "\/api\/report\?sinceMs=" \+ sinceMs : "\/api\/report\?days=" \+ days\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => \(sinceMs \? "\/api\/failures\?sinceMs=" \+ sinceMs : "\/api\/failures\?days=" \+ days\)/);
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   // The fleet view's "today" tiles read a one-day report, refreshed on new events.
@@ -450,4 +450,67 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
   assert.match(fleet, /Features done/, "the fleet-wide render keeps the backlog tiles");
   assert.match(fleet, /Bugs fixed/);
   assert.doesNotMatch(fleet, /Loop scope:/, "and prints no scope line");
+});
+
+test("the Usage trailing-window control fetches ?sinceMs, renders markdown, and a day click reverts", async () => {
+  // The dashboard twin of `tumwater report --since`: a persisted "usage-since" makes the Usage
+  // tab fetch the windowed markdown shape and render it through the page's Markdown renderer;
+  // clicking a day button clears it and fetches the day shape. The whole report blob runs here
+  // (the sparse-window test's seam) so viewHead's since buttons, windowView's fetch, and its
+  // click wiring are all exercised, not guessed.
+  const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(type: string, fn: (ev: unknown) => void): void }> = {};
+  const getJsonUrls: string[] = [];
+  const markCalls: [string, unknown][] = [];
+  let clickHandler: ((ev: unknown) => void) | null = null;
+  for (const id of ["report", "failures", "usagebody", "failbody", "usagewindow", "failwindow", "usagerole", "failrole"]) {
+    const el: { dataset: Record<string, string>; innerHTML: string; addEventListener(type: string, fn: (ev: unknown) => void): void } = {
+      dataset: {}, innerHTML: "",
+      addEventListener(type, fn) { if (type === "click" && id === "report") clickHandler = fn; },
+    };
+    els[id] = el;
+  }
+  // clickClosest's stand-in: report whichever button the current phase wants found.
+  let sinceClick: { dataset: Record<string, string> } | null = null;
+  let daysClick: { dataset: Record<string, string> } | null = null;
+  const inject = {
+    document: { getElementById: (id: string) => els[id] ?? null },
+    $: (id: string) => els[id] ?? null,
+    markActive: (_box: unknown, attr: string, cur: unknown) => { markCalls.push([attr, cur]); },
+    recall: (key: string) => (key === "usage-since" ? "3600000" : null),
+    store: () => {},
+    lastStatus: null,
+    getJson: async (url: string) => {
+      getJsonUrls.push(url);
+      return { markdown: "# tumwater usage report\n\nwindow: last 1h" };
+    },
+    errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
+    clickClosest: (_ev: unknown, sel: string) => (sel === "[data-since]" ? sinceClick : sel === "[data-days]" ? daysClick : null),
+    renderMarkdown: (md: string) => "<rendered>" + md + "</rendered>",
+    icon: iconStub,
+    plural: (n: number, one: string) => `${n} ${one}`,
+    workSplit: (t: { workCommits?: number; maintenanceCommits?: number }) => `${t.workCommits ?? 0} work / ${t.maintenanceCommits ?? 0} maintenance`,
+    fmtTokens: (n: number) => String(n),
+    fmtUsd: (n: number) => "$" + n.toFixed(2),
+  };
+  const keys = Object.keys(inject);
+  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    ...args: unknown[]
+  ) => { fetchReport(throttled?: boolean): Promise<void> };
+  const { fetchReport } = run(...keys.map((k) => inject[k as keyof typeof inject]));
+
+  await fetchReport();
+  assert.equal(getJsonUrls[0], "/api/report?sinceMs=3600000", "the persisted since window rides the request");
+  assert.match(els.report!.innerHTML, /data-since='3600000'>1h</, "the toolbar carries the since button");
+  assert.match(els.usagebody!.innerHTML, /<rendered>/, "the markdown payload renders through renderMarkdown");
+  assert.match(els.usagebody!.innerHTML, /window: last 1h/);
+  assert.doesNotMatch(els.usagebody!.innerHTML, /<svg/, "not the chart path");
+  assert.ok(markCalls.some(([attr, cur]) => attr === "since" && cur === 3600000), "markActive marks the since button");
+  assert.ok(markCalls.some(([attr, cur]) => attr === "days" && cur === -1), "and clears the day buttons");
+
+  // A day-button click clears the persisted since window and fetches the day shape.
+  sinceClick = null;
+  daysClick = { dataset: { days: "7" } };
+  clickHandler!({});
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(getJsonUrls[1], "/api/report?days=7", "the day click reverts to ?days");
 });
