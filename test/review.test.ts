@@ -986,47 +986,54 @@ test("gate exempts a doc-only diff without running pi", async () => {
   });
 });
 
+/** A deterministic gate rejection: commit `content` as `file` in a fresh repo, run the gate
+ * under a pi shim that would create `piRanMarker()` if the reviewer ran, and assert the
+ * rejection carried every `detailMatch` while pi never ran. The conflict-marker and
+ * misfiled-plan tests share this shape because their rejections must be decided before any
+ * reviewer run. */
+async function assertRejectedWithoutReview(
+  file: string,
+  content: string,
+  message: string,
+  ...detailMatches: RegExp[]
+): Promise<void> {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(path.join(wt, file), content);
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", message);
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    for (const detail of detailMatches) assert.match(result.detail!, detail);
+    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  });
+}
+
 test("gate rejects a change that still holds conflict markers, with no pi run", async () => {
   // A change handed back to its author with the markers left in place (PLANS.md "Robust
   // conflict landing, part 2/2") reaches the gate if the author's stage fix-up turn did not
   // clear them. An md-only diff skips the reviewer by design, so only a deterministic check
   // can stop raw `<<<<<<<` lines from landing on main.
-  const root = makeRepo();
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(
-    path.join(wt, "notes.md"),
+  await assertRejectedWithoutReview(
+    "notes.md",
     "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
+    "doc change with markers left in",
+    /conflict markers remain in: notes\.md/,
   );
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "doc change with markers left in");
-  const marker = piRanMarker();
-  await withPi(`touch '${marker}'`, async () => {
-      const { result } = await reviewGate(root, wt);
-      assert.equal(result.decision, "rejected");
-      assert.match(result.detail!, /conflict markers remain in: notes\.md/);
-      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
-  });
 });
 
 test("gate rejects conflict markers in a non-ASCII-named file (git C-quotes the diff path)", async () => {
   // `git diff --name-only` C-quotes non-ASCII paths by default; if aheadOfMainFiles hands the
   // gate that quoted text, hasConflictMarkers reads a path that does not exist and returns
   // false, so a marker-bearing non-ASCII file slips through the same way a plain-named one did.
-  const root = makeRepo();
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(
-    path.join(wt, "héllo.md"),
+  await assertRejectedWithoutReview(
+    "héllo.md",
     "before\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> main\nafter\n",
+    "non-ASCII doc change with markers left in",
+    /conflict markers remain in: héllo\.md/,
   );
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "non-ASCII doc change with markers left in");
-  const marker = piRanMarker();
-  await withPi(`touch '${marker}'`, async () => {
-      const { result } = await reviewGate(root, wt);
-      assert.equal(result.decision, "rejected");
-      assert.match(result.detail!, /conflict markers remain in: héllo\.md/);
-      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
-  });
 });
 
 test("gate rejects an md-only diff that files a new plan directly under ## Done, with no pi run", async () => {
@@ -1034,22 +1041,13 @@ test("gate rejects an md-only diff that files a new plan directly under ## Done,
   // the done section. The heading-set check cannot see it — one ## Done, heading set unchanged
   // — so the new-plan-under-Done rule is what rejects it, deterministically, before any
   // reviewer run.
-  const root = makeRepo();
-  const wt = await ensureWorktree(root, ROLE, "main");
-  fs.writeFileSync(
-    path.join(wt, "PLANS.md"),
+  await assertRejectedWithoutReview(
+    "PLANS.md",
     "## Planned\n\n## Done\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+    "misfiled plan",
+    /PLANS\.md files "Feature B \(planned 2026-09-26\)"/,
+    /file it under "## Planned"/,
   );
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "misfiled plan");
-  const marker = piRanMarker();
-  await withPi(`touch '${marker}'`, async () => {
-      const { result } = await reviewGate(root, wt);
-      assert.equal(result.decision, "rejected");
-      assert.match(result.detail!, /PLANS\.md files "Feature B \(planned 2026-09-26\)"/);
-      assert.match(result.detail!, /file it under "## Planned"/);
-      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
-  });
 });
 
 test("gate is a no-op when review.enabled is false", async () => {
