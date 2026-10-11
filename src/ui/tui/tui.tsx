@@ -153,8 +153,8 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const pane: TuiView = role
       ? { kind: "transcript", role, index: view, count: roleIds.length, note: s.noteMode }
       : view === roleIds.length + 1 ? { kind: "backlog" }
-        : view === roleIds.length + 2 ? { kind: "usage", scope: s.scopeRole }
-          : view === roleIds.length + 3 ? { kind: "failures", scope: s.scopeRole }
+        : view === roleIds.length + 2 ? { kind: "usage", scope: s.scopeRole, window: s.reportSince }
+          : view === roleIds.length + 3 ? { kind: "failures", scope: s.scopeRole, window: s.reportSince }
             : view === roleIds.length + 4 ? { kind: "history", since: s.historySince }
               : view === roleIds.length + 5 ? { kind: "pending" }
                 : { kind: "activity" };

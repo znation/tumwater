@@ -317,6 +317,89 @@ test("Ctrl+S is inert in the prompt-line modes and off the History view only mov
   keys.handleKey(undefined, { name: "escape" });
 });
 
+test("Ctrl+E cycles the Usage and Failures panes' trailing report window and resets the scroll", () => {
+  const root = makeRoot();
+  const now = Date.now();
+  // One feature tick 30 minutes old (inside 1h) and one three days old (only inside 7d), with
+  // distinct token counts so the windowed usage totals name which ticks they aggregated. Both
+  // are errors so the failure digest's window tick count names the same split.
+  writeEvents(root, [
+    { ts: now - 30 * 60_000, loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 100 },
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "tick_end", tick: 2, result: "error", tokens: 1_000_000 },
+  ]);
+  const { keys } = makeKeys(root, () => now);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(1, 1); // a one-line budget so the report body can scroll
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  assert.equal(keys.state().view, 2, "Usage is roleIds.length + 2");
+  assert.equal(keys.state().reportSince, null, "the report pane opens on the default day window");
+  assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default day report aggregates both ticks");
+  assert.match(keys.state().paneCache ?? "", /2 ticks/);
+
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().paneScroll, 1, "the usage body overflows the one-line budget");
+
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h");
+  assert.match(keys.state().paneCache ?? "", /window: last 1h/);
+  assert.match(keys.state().paneCache ?? "", /100 output tokens/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /1\.0M/, "the 1h window drops the three-day-old tick's tokens");
+  assert.equal(keys.state().paneScroll, 0, "a window change re-enters the body at its head");
+
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "6h");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1d");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "7d");
+  assert.match(keys.state().paneCache ?? "", /window: last 7d/);
+  assert.match(keys.state().paneCache ?? "", /1\.0M/, "7d reaches the three-day-old tick");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, null, "the cycle wraps to the default window");
+  assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default read aggregates both ticks again");
+
+  // Failures: the same Ctrl+E cycle over the digest, whose window line names its tick count.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → failures
+  assert.equal(keys.state().view, 3, "Failures is roleIds.length + 3");
+  assert.equal(keys.state().reportSince, null, "the digest opens on the default day window");
+  assert.match(keys.state().paneCache ?? "", /· 2 ticks/, "the default digest aggregates both error ticks");
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().paneScroll, 1, "the digest body overflows the one-line budget");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h");
+  assert.match(keys.state().paneCache ?? "", /window: last 1h/);
+  assert.match(keys.state().paneCache ?? "", /· 1 ticks/, "the 1h digest drops the three-day-old error tick");
+  assert.equal(keys.state().paneScroll, 0, "a window change re-enters the digest at its head");
+});
+
+test("Ctrl+E is inert in the prompt-line modes and off the report views only moves the label", () => {
+  const root = makeRoot();
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 100 }]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+
+  // Off the report views, Ctrl+E advances the window without computing a cache.
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h");
+  assert.equal(keys.state().paneCache, null, "no report pane is showing");
+
+  // Budget mode holds the prompt line: Ctrl+E leaves the window alone.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in budget mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+E.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "clean");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+});
+
 test("the Pending pane caches the rendered fleet roster when collectPending resolves, and a cycle away drops it", async () => {
   const root = makeRoot();
   const fleet = {

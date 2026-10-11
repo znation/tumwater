@@ -1,7 +1,7 @@
-import { collectReport } from "../../report/report-data.js";
-import { renderReportMarkdown } from "../../report/report-render.js";
-import { REPORT_DEFAULT_DAYS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
-import { collectFailureReport } from "../../failure/failure-data.js";
+import { collectReport, collectReportSince } from "../../report/report-data.js";
+import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
+import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
+import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
 import { HISTORY_DEFAULT_TICKS, readTickRows, readTickRowsSince } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
@@ -85,6 +85,45 @@ function historyPaneCache(root: string, sinceMs: number | null): string {
   return "window: last " + label + "\n" + body + (covered ? "" : "\n" + SPARSE_WINDOW_NOTE);
 }
 
+/** The Usage and Failures panes' session window cycle, Ctrl+E: the default whole-day report,
+ * then 1h, 6h, 1d, and the REPORT_SINCE_MAX_MS 7d cap — the trailing windows
+ * `tumwater report --since` / `tumwater report --failures --since` collect. (The dashboard's
+ * report tabs stop at 1d.) The label is what the hint line names; the
+ * length is what collectReportSince / collectFailureReportSince take. `null` is the default
+ * REPORT_DEFAULT_DAYS shape, kept first so the panes open on today's behavior. */
+const REPORT_WINDOWS: ReadonlyArray<[number | null, string]> = [
+  [null, "default"],
+  [3_600_000, "1h"],
+  [21_600_000, "6h"],
+  [86_400_000, "1d"],
+  [REPORT_SINCE_MAX_MS, "7d"],
+];
+
+/** The label REPORT_WINDOWS carries for a window length (null = the default day report). The
+ * Ctrl+E cycle only ever stores a length from the table, so the lookup always hits; the null
+ * fallback keeps a would-be stale value from rendering "undefined". */
+function reportWindowLabel(sinceMs: number | null): string | null {
+  return REPORT_WINDOWS.find(([ms]) => ms === sinceMs)?.[1] ?? null;
+}
+
+/** The Usage pane's body for one window and role scope: the paneCache the Ctrl+T/Ctrl+G/Ctrl+E
+ * handlers store. The default (null) read is byte-for-byte the day report the pane showed
+ * before the window cycle — collectReport at REPORT_DEFAULT_DAYS; a trailing window reads
+ * through the same collectReportSince collector `tumwater report --since` uses, so the TUI,
+ * CLI, and dashboard cannot disagree. Both honor the Ctrl+G role scope, so the two session
+ * cycles compose. */
+function usagePaneCache(root: string, sinceMs: number | null, scope?: string): string {
+  if (sinceMs === null) return renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS, scope));
+  return renderSinceReportMarkdown(collectReportSince(root, sinceMs, scope));
+}
+
+/** The Failures pane's body for one window and role scope, the digest sibling of
+ * usagePaneCache; renderFailureMarkdown renders both the day and --since shapes. */
+function failuresPaneCache(root: string, sinceMs: number | null, scope?: string): string {
+  if (sinceMs === null) return renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS, scope));
+  return renderFailureMarkdown(collectFailureReportSince(root, sinceMs, scope));
+}
+
 /** The seams `createTuiKeys` cannot own itself (the factory's doc names each). */
 interface TuiKeysDeps {
   root: string;
@@ -124,6 +163,9 @@ interface TuiKeysState {
   /** The History pane's active trailing window label (Ctrl+S), or null for the default
    * newest-N read; named in the hint line. */
   historySince: string | null;
+  /** The Usage and Failures panes' active trailing window label (Ctrl+E), or null for the
+   * default day report; named in the hint line. */
+  reportSince: string | null;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
@@ -245,6 +287,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // the default newest-N read. Session-only like the view/scroll state; the next Ctrl+T into
   // History computes the cache with it.
   let historyWindow: number | null = null;
+  // The Usage and Failures panes' session trailing window (Ctrl+E), a REPORT_WINDOWS length or
+  // null for the default day report. Session-only like the view/scroll state; the next Ctrl+T
+  // into either pane computes the cache with it.
+  let reportWindow: number | null = null;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
   // pane's first line on its title, so its body pages by one line less (entryBudget).
@@ -473,10 +519,29 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       const slot = slots.indexOf(scopeRole);
       scopeRole = slots[(slot + 1) % slots.length] ?? null;
       if (view === roleIds.length + 2) {
-        paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
+        paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
         paneScroll = 0;
       } else if (view === roleIds.length + 3) {
-        paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
+        paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
+        paneScroll = 0;
+      }
+      deps.requestRender();
+      return;
+    }
+    if (key.ctrl && key.name === "e" && !budgetMode && !rolePromptFor) {
+      // Ctrl+E advances the Usage and Failures panes' trailing report window (mnemonic:
+      // **E**lapsed). Guarded out of the budget and role-prompt editors like the other
+      // mode-sensitive keys. The window is session state: advancing it off either report pane
+      // only changes the label, and the next Ctrl+T into one computes the cache with it; on a
+      // report pane this handler recomputes the cached Markdown from the newly windowed
+      // collector and re-enters the body at its head.
+      const i = REPORT_WINDOWS.findIndex(([ms]) => ms === reportWindow);
+      reportWindow = REPORT_WINDOWS[(i + 1) % REPORT_WINDOWS.length]![0];
+      if (view === roleIds.length + 2) {
+        paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
+        paneScroll = 0;
+      } else if (view === roleIds.length + 3) {
+        paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
         paneScroll = 0;
       }
       deps.requestRender();
@@ -512,9 +577,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Compute the pane's Markdown once per activation (this handler renders immediately), and
       // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
       if (view === roleIds.length + 2) {
-        paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
+        paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
       } else if (view === roleIds.length + 3) {
-        paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
+        paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
       } else if (view === roleIds.length + 4) {
         paneCache = historyPaneCache(root, historyWindow);
       } else if (view === roleIds.length + 5) {
@@ -712,10 +777,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       if (scopeRole !== null && !roleIds.includes(scopeRole)) {
         scopeRole = null;
         if (view === roleIds.length + 2) {
-          paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS));
+          paneCache = usagePaneCache(root, reportWindow);
           paneScroll = 0;
         } else if (view === roleIds.length + 3) {
-          paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS));
+          paneCache = failuresPaneCache(root, reportWindow);
           paneScroll = 0;
         }
       }
@@ -739,6 +804,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         noteCache,
         paneScroll,
         historySince: historyWindow === null ? null : historyWindowLabel(historyWindow),
+        reportSince: reportWindow === null ? null : reportWindowLabel(reportWindow),
         eventBudget,
         entryBudget,
         roleIds,

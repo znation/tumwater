@@ -298,7 +298,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   second terminal. `Ctrl+G` cycles a session-only role scope for the Usage and Failures panes
   through the fleet and each loop, the same scope `tumwater report --role` and the dashboard's
   Usage/Failures views take; the tab strip names it (`Usage: <role>`) and the hint line shows
-  the current scope (`scope: fleet` or `scope: <role>`).
+  the current scope (`scope: fleet` or `scope: <role>`). `Ctrl+E` cycles a session-only
+  trailing window for the Usage and Failures panes (default, 1h, 6h, 1d, 7d) through the same
+  collectors `tumwater report --since` and `tumwater report --failures --since` use, with the
+  hint line naming it (`window: default` or `window: <window>`).
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
   toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
   its backoff, `Ctrl+N` switches the pane between the live transcript and a read-only view of
