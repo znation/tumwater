@@ -67,8 +67,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // TUI/status header carries, so the two surfaces cannot drift — and names the free space,
       // the hold and the last reclaim there.
       if (d.diskBadge) {
-        const held = !!(d.disk && d.disk.held);
-        const low = !!(d.disk && !held && d.disk.reclaimGB > 0 && d.disk.freeGB < d.disk.reclaimGB);
+        const held = Boolean(d.disk && d.disk.held);
+        const low = Boolean(d.disk && !held && d.disk.reclaimGB > 0 && d.disk.freeGB < d.disk.reclaimGB);
         rows += row(held ? "amber" : "blue", icon("info"),
           esc(badgeLabel(d.diskBadge)),
           held

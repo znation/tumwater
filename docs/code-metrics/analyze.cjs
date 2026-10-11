@@ -211,7 +211,7 @@ for (const f of files) {
       if (ts.canHaveModifiers(n) && (ts.getModifiers(n) || []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) exportsN++;
       if (ts.isImportDeclaration(n) || (ts.isExportDeclaration(n) && n.moduleSpecifier)) {
         const spec = n.moduleSpecifier.text;
-        const typeOnly = ts.isImportDeclaration(n) ? !!(n.importClause && n.importClause.isTypeOnly) : n.isTypeOnly;
+        const typeOnly = ts.isImportDeclaration(n) ? Boolean(n.importClause && n.importClause.isTypeOnly) : n.isTypeOnly;
         out.imports.push({ from: f, spec, typeOnly });
       }
       if (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword && n.arguments[0] && ts.isStringLiteral(n.arguments[0])) {
@@ -229,7 +229,7 @@ for (const f of files) {
           file: f, cat, name: fnName(n, sf), line: s + 1, span: e - s + 1, codeLines: fnCode,
           params: n.parameters.length, cc: m.cc, cog: m.cog, depth: m.maxDepth, mi,
           kind: ts.SyntaxKind[n.kind], nestedIn: fnStack.length,
-          async: !!(ts.getModifiers(n) || []).some((x) => x.kind === ts.SyntaxKind.AsyncKeyword),
+          async: Boolean((ts.getModifiers(n) || []).some((x) => x.kind === ts.SyntaxKind.AsyncKeyword)),
         });
         fnStack.push(1); ts.forEachChild(n, visit); fnStack.pop();
         return;

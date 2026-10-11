@@ -74,7 +74,7 @@ for (const k of runs) {
   const tally = (name) => Number((new RegExp(`^ℹ ${name} (\\d+)`, "m").exec(txt) || [])[1]);
   perRun.push({
     run: k,
-    ok: !!table && tally("fail") === 0,
+    ok: Boolean(table) && tally("fail") === 0,
     node: table ? { lines: +table[1], branches: +table[2], functions: +table[3] } : null,
     tests: { total: tally("tests"), pass: tally("pass"), fail: tally("fail"), skipped: tally("skipped") },
     split,

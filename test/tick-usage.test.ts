@@ -108,11 +108,11 @@ test("lastRateLimit is stamped only by a run that ENDED on the 429, with the Ret
 
   // A run that merely saw a 429 inside pi's own retry and then finished must not stamp one.
   u.fold(s, run({ transientRateLimit: true, ok: true }));
-  assert.equal(!!u.lastRateLimit, false);
+  assert.equal(Boolean(u.lastRateLimit), false);
 
   // A failed run that was not a 429 must not stamp one either.
   u.fold(s, run({ ok: false, transientServerTimeout: true }));
-  assert.equal(!!u.lastRateLimit, false);
+  assert.equal(Boolean(u.lastRateLimit), false);
 
   // The real thing: a run that ended on the provider's 429.
   u.fold(s, run({ ok: false, transientRateLimit: true, retryAfterSeconds: 30 }));
@@ -156,11 +156,11 @@ test("lastBackendFailure is stamped only by a run that ENDED on a backend failur
 
   // A run that saw a backend failure inside pi's own retry and then finished must not stamp.
   u.fold(s, run({ transientBackend: true, backendKind: "connection", ok: true }));
-  assert.equal(!!u.lastBackendFailure, false);
+  assert.equal(Boolean(u.lastBackendFailure), false);
 
   // A failed run that was a rate limit — not a backend failure — stamps the 429, not this.
   u.fold(s, run({ ok: false, transientRateLimit: true }));
-  assert.equal(!!u.lastBackendFailure, false);
+  assert.equal(Boolean(u.lastBackendFailure), false);
   assert.ok(u.lastRateLimit, "the 429 stamp is untouched");
 
   // The real thing: a run that ended on the backend failure, kind and all.

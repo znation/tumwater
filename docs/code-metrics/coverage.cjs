@@ -145,7 +145,7 @@ for (const relJs of jsFiles) {
   });
   const branches = [...branchKeys.values()].map(([a], i) => [toTs(a), brCov[i]]);
   const funcs = [...funcKeys.values()].map(([a], i) => [toTs(a), fnCov[i]]);
-  result[relJs.replace(/\.js$/, ".ts")] = { loaded: !!rec, lines: [...tsLines.entries()], branches, funcs };
+  result[relJs.replace(/\.js$/, ".ts")] = { loaded: Boolean(rec), lines: [...tsLines.entries()], branches, funcs };
   tot.lines += tsLines.size; tot.linesCov += [...tsLines.values()].filter(Boolean).length;
   tot.br += branches.length; tot.brCov += branches.filter((b) => b[1]).length;
   tot.fn += funcs.length; tot.fnCov += funcs.filter((b) => b[1]).length;

@@ -209,7 +209,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   function historyTableHtml(rows, filter, known, grep, sinceKey) {
     const shown = (rows || []).filter((r) => filter === "all" || historyClass(r.result) === filter);
     if (!shown.length) {
-      const hasRows = !!(rows && rows.length);
+      const hasRows = Boolean(rows && rows.length);
       if (hasRows)
         return "<div class='empty'><strong>No ticks match this filter</strong>Try another outcome or loop.</div>";
       if (grep)
