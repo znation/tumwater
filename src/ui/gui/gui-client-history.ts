@@ -126,8 +126,8 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
           "/api/tick answered " + role + " tick " + tick + " without a text field — the running server's build may not match this dashboard",
         );
       histDetails.set(key, { state: "ok", text: d.text });
-    } catch (e) {
-      histDetails.set(key, { state: "error", message: e && e.message ? e.message : "Tick detail unavailable" });
+    } catch (err) {
+      histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Tick detail unavailable" });
     }
     renderHistory();
   }
@@ -167,8 +167,8 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       // refetches.
       histDetails.clear();
       histDetailOpen = "";
-    } catch (e) {
-      $("histbody").innerHTML = errorPanel("History unavailable", e);
+    } catch (err) {
+      $("histbody").innerHTML = errorPanel("History unavailable", err);
       return;
     }
     renderHistory();

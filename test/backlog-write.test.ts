@@ -130,15 +130,15 @@ test("an unreadable BUGS.md fails the write instead of seeding over it", async (
   const file = path.join(repo, "BUGS.md");
   const before = fs.readFileSync(file, "utf8");
   fs.chmodSync(file, 0o000);
-  let err: unknown;
+  let caught: unknown;
   try {
     fileBug(repo, "new bug", 'tumwater bug "<symptom>"');
-  } catch (e) {
-    err = e;
+  } catch (err) {
+    caught = err;
   } finally {
     fs.chmodSync(file, 0o644); // restore so the assertion and harness cleanup can read it
   }
-  assert.match(String(err), /EACCES/);
+  assert.match(String(caught), /EACCES/);
   assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 

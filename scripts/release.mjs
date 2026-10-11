@@ -29,8 +29,8 @@ function die(msg) {
 const sh = (...args) => {
   try {
     return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-  } catch (e) {
-    die(`git ${args.join(" ")} failed:\n${e.stderr || e.message}`);
+  } catch (err) {
+    die(`git ${args.join(" ")} failed:\n${err.stderr || err.message}`);
   }
 };
 

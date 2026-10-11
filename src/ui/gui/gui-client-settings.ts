@@ -49,8 +49,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     const card = $("settingscard");
     try {
       renderSettingsPanel(await getJson("/api/config"));
-    } catch (e) {
-      card.innerHTML = errorPanel("Settings could not load", e, "card empty");
+    } catch (err) {
+      card.innerHTML = errorPanel("Settings could not load", err, "card empty");
     }
   }
   function renderSettingsPanel(d) {
@@ -68,12 +68,12 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     // object sends the parsed value; anything else (a model selector like gpt-5) sends the
     // literal string. Without the parse an object field would arrive as a quoted string.
     let value;
-    try { value = JSON.parse(input.value); } catch (e) { value = input.value; }
+    try { value = JSON.parse(input.value); } catch { value = input.value; }
     try {
       const d = await postJson("/api/config-set", { key: key, value: value });
       showFlash(d && d.oldValue === null ? "Saved " + key + " (was unset)" : "Saved " + key);
-    } catch (e) {
-      showFlash("error: " + (e && e.message ? e.message : String(e)));
+    } catch (err) {
+      showFlash("error: " + (err && err.message ? err.message : String(err)));
     }
   }
   // settings-view:end

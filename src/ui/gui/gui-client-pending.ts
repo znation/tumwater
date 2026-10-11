@@ -59,9 +59,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
     buildPendingView();
     try {
       pendingFleet = await getJson("/api/diff");
-    } catch (e) {
+    } catch (err) {
       const body = $("pendingbody");
-      if (body) body.innerHTML = errorPanel("Pending unavailable", e);
+      if (body) body.innerHTML = errorPanel("Pending unavailable", err);
       return;
     }
     renderPending();

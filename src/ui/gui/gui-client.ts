@@ -113,8 +113,8 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
     let d;
     try {
       d = await postJson(path, body);
-    } catch (e) {
-      showFlash("error: " + e.message);
+    } catch (err) {
+      showFlash("error: " + err.message);
       return;
     }
     showFlash(typeof okMsg === "function" ? okMsg(d) : okMsg);

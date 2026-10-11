@@ -296,9 +296,9 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       syncRoles(lastStatus);
       try {
         $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days, role, sinceMs)));
-      } catch (e) {
+      } catch (err) {
         // Name the view, status, and server error rather than a bare "unavailable".
-        $(o.bodyId).innerHTML = errorPanel(o.errorTitle, e, "card empty");
+        $(o.bodyId).innerHTML = errorPanel(o.errorTitle, err, "card empty");
       }
     }
     function wireClicks(container) {

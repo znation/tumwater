@@ -22,7 +22,7 @@ export const GUI_PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tumwater</title>
 <link rel="icon" href="${FAVICON}">
-<script>try{var t=localStorage.getItem("tumwater-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<script>try{var t=localStorage.getItem("tumwater-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch{}</script>
 <style>${GUI_STYLES}</style>
 </head>
 <body>

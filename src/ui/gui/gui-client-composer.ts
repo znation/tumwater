@@ -207,9 +207,9 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     try {
       for (const img of promptImages) images.push({ name: img.name, dataBase64: await readImageAsBase64(img.file) });
       showFlash(await sendPrompt(target, text, images));
-    } catch (e) {
+    } catch (err) {
       // The prompt was not accepted: keep the text and the images so they can be fixed and resent.
-      showFlash("error: " + e.message);
+      showFlash("error: " + err.message);
       return;
     } finally {
       sending = false;

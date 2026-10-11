@@ -264,8 +264,8 @@ export function printCoverageTable(dumpDir: string, distRoot: string, out: NodeJ
   let rows: CoverageRow[];
   try {
     rows = coverageRowsFromDumps(dumpDir, distRoot);
-  } catch (e) {
-    process.stderr.write(`tumwater: the deterministic coverage table failed: ${(e as Error).message}\n`);
+  } catch (err) {
+    process.stderr.write(`tumwater: the deterministic coverage table failed: ${(err as Error).message}\n`);
     return;
   }
   out.write(formatCoverageTable(rows));

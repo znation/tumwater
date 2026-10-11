@@ -169,8 +169,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       const key = last ? last.ts + ":" + last.type + ":" + last.loop : "";
       if (lastEventKey !== null && key !== lastEventKey) onNewEvents();
       lastEventKey = key;
-    } catch (e) {
-      console.error("tumwater: render failed", e);
+    } catch (err) {
+      console.error("tumwater: render failed", err);
     }
     await refreshDrawer();
   }
@@ -186,8 +186,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   async function pollLoop() {
     try {
       await refresh();
-    } catch (e) {
-      console.error("tumwater: poll failed", e);
+    } catch (err) {
+      console.error("tumwater: poll failed", err);
     }
     setTimeout(pollLoop, 1000);
   }

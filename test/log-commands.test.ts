@@ -22,7 +22,7 @@ test("logs -f follows a missing event log without creating it, then picks up app
   t.mock.timers.enable({ apis: ["setInterval"] });
   let followError: unknown = null;
   try {
-    void cmdLogs(repo, ["-f"]).catch((e) => (followError = e));
+    void cmdLogs(repo, ["-f"]).catch((err) => (followError = err));
 
     // A fresh repo has no events.jsonl; following must tolerate that without creating it —
     // logs is read-only (writes to stdout only), so it never leaves harness state behind.
@@ -58,7 +58,7 @@ test("logs --role -f follows a transcript created after startup and skips non-re
   t.mock.timers.enable({ apis: ["setInterval"] });
   let followError: unknown = null;
   try {
-    void cmdLogs(repo, ["--role", "clean", "-f"]).catch((e) => (followError = e));
+    void cmdLogs(repo, ["--role", "clean", "-f"]).catch((err) => (followError = err));
 
     // No pi log yet: the command reports that, then follows the path it will appear at.
     assert.equal(cap.out(), "no transcript yet for clean\n");

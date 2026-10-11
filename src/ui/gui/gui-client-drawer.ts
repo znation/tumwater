@@ -194,9 +194,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const d = await getJson(url + encodeURIComponent(role), pollSignal());
       if (openLoopRole() !== role) return;
       assign({ role, state: "ok", view: d });
-    } catch (e) {
+    } catch (err) {
       if (openLoopRole() !== role) return;
-      assign({ role, state: "error", message: e && e.message ? e.message : fallbackMessage });
+      assign({ role, state: "error", message: err && err.message ? err.message : fallbackMessage });
     }
     if (lastStatus) renderLoopDrawer(lastStatus);
   }
@@ -282,9 +282,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     let d;
     try {
       d = await getJson("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index), pollSignal());
-    } catch (e) {
+    } catch (err) {
       // Keep what is shown; only a first load that fails says so.
-      if (lastPaint.entrybody === undefined) paintPanel("entrybody", errorPanel("Could not load this entry", e));
+      if (lastPaint.entrybody === undefined) paintPanel("entrybody", errorPanel("Could not load this entry", err));
       return;
     }
     if (openEntryKey() !== file + ":" + index) return;
