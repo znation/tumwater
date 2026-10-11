@@ -42,6 +42,54 @@ missing a field.
 - `docs/invariants.md` is unchanged by this landing and still parses under the new guard.
 - `npm run test` is green.
 
+### Search the dashboard History view with `tumwater history --grep`'s rule (planned 2026-10-10 by plan; independent of the citation-sweep series; sibling of the landed `tumwater history --grep` and the landed role scope in the dashboard History view)
+
+**Goal.** `tumwater history --grep <text>` filters rows case-insensitively against a canonical
+haystack (the row's own unpadded line prefixed with `tick_end`). The dashboard's History view
+offers a loop picker and an outcome filter but no text search, so an operator cannot ask the same
+substring question from the browser. Add a search field to the History toolbar that filters
+through the same rule, with the predicate shared by the CLI and the endpoint rather than
+re-implemented in the browser.
+
+**Approach.**
+1. `src/history/history-data.ts`: add and export `tickRowGrepHaystack(row: TickRow): string` — the
+   canonical unpadded row line (`[row.time, row.loop, \`#${row.tick}\`, row.result,
+   row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs), row.usage, row.detail].join("  ").trimEnd()`)
+   prefixed `tick_end `, the same string `src/history/history.ts`'s private `grepHaystack` builds
+   today through `renderRow(row, widthsOf(cellsOf(row)))`. Import `shortSpanPhrase` from
+   `../text/phrases.js` (history.ts already does).
+2. `src/history/history.ts`: delete the private `grepHaystack` and have `cmdHistory` filter with
+   `tickRowGrepHaystack`, so the CLI and the endpoint share one rule. No behavior change: the
+   produced string is byte-identical (each cell padded to its own measured width is unpadded, and
+   `cellsOf` already phrases the duration the same way).
+3. `src/gui/gui-endpoints.ts` `handleHistory`: read `q.get("grep")`, and when it is non-empty
+   filter the `readTickRows` result with the shared predicate lowercased, preserving the CLI rule
+   that `n`/`role` bound the scanned rows and grep filters after them (`n` bounds the window, not
+   the printed rows). An empty or absent `grep` filters nothing; `role` and `grep` compose.
+4. `src/ui/gui/gui-client-history.ts`: add a search `<input id='histgrep'>` to the toolbar, with
+   state `histGrep` recalled via `recall("hist-grep")` and persisted via `store`, and append
+   `&grep=` (through `encodeURIComponent`) to the `/api/history` URL in `fetchHistory` only when
+   non-empty; an Enter/`change` refetches. Pass `histGrep` to `historyTableHtml`, which shows
+   `No ticks match this search` (instead of `No ticks yet`) when a pattern is set and the fetched
+   rows are empty.
+
+**Files touched.** `src/history/history-data.ts`, `src/history/history.ts`,
+`src/gui/gui-endpoints.ts`, `src/ui/gui/gui-client-history.ts`, and the tests named below. No new
+runtime dependency.
+
+**Acceptance criteria.**
+- `test/history-data.test.ts` pins `tickRowGrepHaystack` as the exact string a row renders as when
+  it is the widest in each column (a null-duration row included, its em dash kept), and
+  `test/cli-history-filtering.test.ts` still passes unchanged, proving the CLI's `--grep` output is
+  untouched.
+- `test/gui-server.test.ts` covers `/api/history?grep=<text>`: a pattern matching one seeded row
+  returns only it; a pattern matching none returns `{ rows: [] }`; `role` and `grep` compose; `n`
+  still bounds the scanned window before grep.
+- `test/gui-client-history.test.ts` asserts the search input is in the toolbar, that `fetchHistory`
+  appends the encoded `grep` only when set, and that a set pattern with no rows names the search
+  rather than the empty log.
+- `npm run test` is green.
+
 ## Done
 
 ### Finish the stale code-path citation sweep, part 5f/5: `parallel-work-instances`, `worktree-pool` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
