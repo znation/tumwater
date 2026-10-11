@@ -1,7 +1,13 @@
-import { readTextIfExists, writeTextAtomic } from "../files/files.js";
+import { readTextIfExists, unlinkAllMissingTolerant, writeTextAtomic } from "../files/files.js";
 import { logEventBestEffort } from "../events/events.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
-import { imageReferenceLines, imageReferencePaths } from "./inbox-attachments.js";
+import {
+  imageReferenceLines,
+  imageReferencePaths,
+  promptImagesCountProblem,
+  savePromptImages,
+  type PromptImageInput,
+} from "./inbox-attachments.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
@@ -35,9 +41,11 @@ export type EditOutcome =
  *
  * Carries an attached prompt's `[image attached: …]` reference lines (and so their sibling
  * files) over the rewrite — the edit replaces the prompt's text, not its attachments, which
- * only cancel and dequeue take with the prompt. `--edit` has no `--attach` form, so dropping
- * them would leave the image files orphaned with nothing pointing at them and the receiving
- * loop reading no image.
+ * only cancel and dequeue take with the prompt. An optional `images` array (the CLI's
+ * `prompt --edit … --attach`) appends its newly saved reference lines after the carried ones,
+ * so one command corrects the text and the images in place instead of cancel-and-re-queue;
+ * the combined count must fit the per-prompt cap, and any throw after the save unlinks the
+ * new files again.
  *
  * Enforces the same prefill length cap as a submission (promptLengthProblem): the edited
  * text plus its carried image lines ride into the target tick's prefill exactly like a
@@ -53,7 +61,7 @@ export type EditOutcome =
  * lands between that read and the rename is a narrower race than takeQueuedFile's own
  * read-then-remove window, and the atomic rename means every observer sees either the whole
  * old file or the whole new one — never a half-written prompt. */
-export function editRolePrompt(root: string, role: string, position: number, newText: string): EditOutcome {
+export function editRolePrompt(root: string, role: string, position: number, newText: string, images?: PromptImageInput[]): EditOutcome {
   // Trim once, then measure and store that one text: promptLengthProblem judges the trimmed
   // value, and submitRolePrompt queues the trimmed value, so writing the raw replacement let
   // whitespace the probe discarded smuggle an over-cap body past the cap.
@@ -68,13 +76,34 @@ export function editRolePrompt(root: string, role: string, position: number, new
   // content, and the new text goes in marker-free.
   const deferral = notBeforeMs(oldFileText);
   // The rewritten text carries the prompt's attachments over: only the text is editable, and
-  // an edit that dropped the reference lines would leave the image files unreferenced. The
-  // composed text is what a tick's prefill receives, so the submission cap applies to it too.
-  const composed = text + imageReferenceLines(imageReferencePaths(oldFileText));
-  const composedProblem = promptLengthProblem(composed, role);
-  if (composedProblem) throw new Error(composedProblem); // Before the write.
-  const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + composed;
-  writeTextAtomic(file, fileText);
+  // an edit that dropped the reference lines would leave the image files unreferenced. A
+  // non-empty `images` appends its own reference lines after the carried ones, saved beside
+  // the same queue file; the combined count is checked before a single file is written, and
+  // any throw after those saves unlinks them again — the same unwind submitPromptWithImages
+  // uses, so a failed edit strands no images.
+  const carriedPaths = imageReferencePaths(oldFileText);
+  let savedImagePaths: string[] = [];
+  let composed: string;
+  try {
+    if (images !== undefined && images.length > 0) {
+      const countProblem = promptImagesCountProblem(carriedPaths.length + images.length);
+      if (countProblem) throw new Error(countProblem); // Before any save.
+      const saved = savePromptImages(root, role, file, images);
+      if ("problem" in saved) throw new Error(saved.problem);
+      savedImagePaths = saved.paths;
+    }
+    // The composed text is what a tick's prefill receives, so the submission cap covers the
+    // body plus every reference line; the carried paths stay first, the new ones append after
+    // them in one reference block.
+    composed = text + imageReferenceLines([...carriedPaths, ...savedImagePaths]);
+    const composedProblem = promptLengthProblem(composed, role);
+    if (composedProblem) throw new Error(composedProblem); // Before the write.
+    const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + composed;
+    writeTextAtomic(file, fileText);
+  } catch (err) {
+    unlinkAllMissingTolerant(savedImagePaths);
+    throw err;
+  }
   const oldText = stripNotBeforeMarker(oldFileText);
   logEventBestEffort(root, { loop: role, type: "prompt_edited", preview: promptPreview(composed) });
   return { status: "edited", oldText, newText: composed };
@@ -91,11 +120,11 @@ export type ListedEditOutcome =
  * the two cannot drift — followed by editRolePrompt in the resolved loop. One loop holding
  * the position resolves, several are an ambiguity the caller reports with a --role escape
  * hatch, none is a miss carrying the largest queue length for the error's count. */
-export function editListedPrompt(root: string, scope: string[], position: number, newText: string): ListedEditOutcome {
+export function editListedPrompt(root: string, scope: string[], position: number, newText: string, images?: PromptImageInput[]): ListedEditOutcome {
   const resolved = resolveListedQueue(root, scope, position);
   return listedQueueOutcome(resolved, (role) => ({
     status: "edited",
     role,
-    outcome: editRolePrompt(root, role, position, newText),
+    outcome: editRolePrompt(root, role, position, newText, images),
   }));
 }

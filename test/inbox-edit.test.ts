@@ -9,6 +9,7 @@ import { DIRECTOR_PROMPT_MAX_CHARS, submitRolePrompt } from "../src/inbox/inbox-
 import { imageReferencePaths } from "../src/inbox/inbox-attachments.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
+import { roleInboxDir } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
@@ -202,4 +203,98 @@ test("editRolePrompt keeps an attached prompt's image reference and its file", (
   assert.match(after, /^screenshot that/);
   assert.equal(imageReferencePaths(after)[0], imagePath, "the reference line survives the edit");
   assert.equal(fs.existsSync(imagePath), true, "the image file is not orphaned");
+});
+
+test("editRolePrompt with images appends new reference lines after the carried set, under the same deferral", () => {
+  const root = tmpdir();
+  const dueMs = Date.now() + 45 * 60_000;
+  submitRolePrompt(
+    root,
+    "feature",
+    "screenshot this",
+    [{ name: "one.png", dataBase64: Buffer.from("one").toString("base64") }],
+    dueMs,
+  );
+  // The prompt is deferred, so read it through the records (queuedRolePrompts filters to
+  // deliverable prompts); the edit still carries the marker over.
+  const carried = imageReferencePaths(queuedRolePromptRecords(root, "feature")[0]?.text as string);
+
+  const outcome = editRolePrompt(root, "feature", 1, "screenshot that", [
+    { name: "two.jpg", dataBase64: Buffer.from("two").toString("base64") },
+  ]);
+  assert.equal(outcome.status, "edited");
+
+  const after = queuedRolePromptRecords(root, "feature")[0]?.text as string;
+  const refs = imageReferencePaths(after);
+  assert.equal(refs.length, 2, "the carried reference plus the new one");
+  assert.equal(refs[0], carried[0], "the carried reference stays first");
+  assert.ok(fs.existsSync(refs[0]!), "the carried image survives");
+  assert.ok(fs.existsSync(refs[1]!), "the new image was saved");
+  assert.match(after, /^screenshot that$/m);
+  // The deferral rides the same queue file, unchanged.
+  assert.equal(queuedRolePromptRecords(root, "feature")[0]?.notBeforeMs, dueMs);
+  assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+});
+
+test("editRolePrompt's new image does not overwrite the prompt's existing same-extension image", () => {
+  const root = tmpdir();
+  submitRolePrompt(root, "feature", "screenshot this", [
+    { name: "one.png", dataBase64: Buffer.from("original-bytes").toString("base64") },
+  ]);
+  const existing = imageReferencePaths(queuedRolePrompts(root, "feature")[0] as string)[0] as string;
+  const stem = path.basename(existing, ".png");
+
+  const outcome = editRolePrompt(root, "feature", 1, "still screenshotted", [
+    { name: "two.png", dataBase64: Buffer.from("new-bytes").toString("base64") },
+  ]);
+  assert.equal(outcome.status, "edited");
+
+  const refs = imageReferencePaths(queuedRolePrompts(root, "feature")[0] as string);
+  assert.equal(refs.length, 2);
+  assert.equal(refs[0], existing, "the existing reference is unchanged");
+  assert.equal(path.basename(refs[1]!), `${stem}-2.png`, "the new image dedups to -2");
+  assert.deepEqual(fs.readFileSync(existing), Buffer.from("original-bytes"), "the existing file is byte-unchanged");
+  assert.deepEqual(fs.readFileSync(refs[1]!), Buffer.from("new-bytes"));
+});
+
+test("editRolePrompt refuses an image count over four before saving any image", () => {
+  const root = tmpdir();
+  const images = [1, 2, 3, 4].map((n) => ({
+    name: `${n}.png`,
+    dataBase64: Buffer.from(`img-${n}`).toString("base64"),
+  }));
+  submitRolePrompt(root, "feature", "four images", images);
+  const before = queuedRolePrompts(root, "feature")[0] as string;
+  assert.equal(imageReferencePaths(before).length, 4);
+  const dir = roleInboxDir(root, "feature");
+  const dirBefore = fs.readdirSync(dir).sort();
+
+  assert.throws(
+    () =>
+      editRolePrompt(root, "feature", 1, "five images", [
+        { name: "5.png", dataBase64: Buffer.from("img-5").toString("base64") },
+      ]),
+    /at most 4 images per prompt \(got 5\)/,
+  );
+  assert.deepEqual(queuedRolePrompts(root, "feature"), [before], "the queue is untouched");
+  assert.deepEqual(fs.readdirSync(dir).sort(), dirBefore, "no image was saved");
+});
+
+test("editRolePrompt removes the image it just saved when the composed text is over the cap", () => {
+  const root = tmpdir();
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "short");
+  const dir = roleInboxDir(root, DIRECTOR_ROLE);
+  const before = fs.readdirSync(dir).sort();
+
+  // The body alone fits the cap; the appended reference line pushes the composed text over,
+  // so the save must be unwound along with the failed edit.
+  assert.throws(
+    () =>
+      editRolePrompt(root, DIRECTOR_ROLE, 1, "x".repeat(DIRECTOR_PROMPT_MAX_CHARS), [
+        { name: "big.png", dataBase64: Buffer.from("bytes").toString("base64") },
+      ]),
+    /shorten it to at most/,
+  );
+  assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["short"], "nothing edited");
+  assert.deepEqual(fs.readdirSync(dir).sort(), before, "the just-saved image was unlinked");
 });

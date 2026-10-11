@@ -204,7 +204,7 @@ type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
   | { mode: "list"; role: string | null; json: boolean }
   | { mode: "cancel"; role: string | null; position: number }
-  | { mode: "edit"; role: string | null; position: number; text: string };
+  | { mode: "edit"; role: string | null; position: number; text: string; attachPaths: string[] };
 
 /** The stdin prompt read once per process: cli.ts pre-parses prompt's args and cmdPrompt
  * re-parses them, and a second readFileSync(0) on a drained pipe would see an empty prompt. */
@@ -267,18 +267,19 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // prompt text (or beside a state change), so it is refused before either branch runs.
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
 
-  // The queue-only flags --file, --at, and --attach have nothing to mean in the read-only and
-  // destructive modes (--list, --cancel, --edit): --file is the file-shaped twin of free-form
-  // text (an edit's replacement text is typed, never read from a file), a delivery deferral
-  // has nothing to mean to a listing or a cancel, and an image attachment has nothing to mean
-  // to a listing, a cancel, or an edit's replacement text. One home for the mode predicate and
-  // the `<flag> only queues a prompt` wording, so a new mode or queue-only flag is added here.
+  // The queue-only flags --file and --at have nothing to mean in the read-only and destructive
+  // modes (--list and --cancel): --file is the file-shaped twin of free-form text (an edit's
+  // replacement text is typed, never read from a file), and a delivery deferral has nothing to
+  // mean to a listing or a cancel. --attach is queue/edit-only: --list and --cancel refuse it
+  // by name, while --edit accepts it to append images to the prompt it rewrites (the editFlag
+  // test below exempts that one mode). One home for the mode predicate and the
+  // `<flag> only queues a prompt` wording, so a new mode or queue-only flag is added here.
   const refuseQueueOnlyFlag = (flag: string, present: boolean): void => {
     if (present && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail(`${flag} only queues a prompt`);
   };
   refuseQueueOnlyFlag("--file", fileFlag >= 0);
   refuseQueueOnlyFlag("--at", atFlag >= 0);
-  refuseQueueOnlyFlag("--attach", attachFlags.length > 0);
+  refuseQueueOnlyFlag("--attach", attachFlags.length > 0 && editFlag < 0);
   // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
   // plumbing the edit carries over), so a --at alongside it has nothing to mean.
   // The pair is claimed like --role's: the flag and its value are never prompt content.
@@ -314,24 +315,24 @@ export function parsePromptArgs(args: string[]): PromptArgs {
 
   if (editFlag >= 0) {
     const n = parsePositionFlag("--edit", args[editFlag + 1], '--edit 2 "new text"');
-    // The --edit pair and the --role pair are the only flags this mode claims. Tokens
-    // preceding --edit (other than a claimed flag) would be silently dropped — a mistyped
-    // command would edit prompt N with only the trailing fragment — so they are refused
-    // here by the same stray-argument wording the sibling modes use; tokens after the
-    // position are the replacement text.
+    // The --edit pair, the --role pair, and any --attach pairs are the only flags this mode
+    // claims. Tokens preceding --edit (other than a claimed flag) would be silently dropped —
+    // a mistyped command would edit prompt N with only the trailing fragment — so they are
+    // refused here by the same stray-argument wording the sibling modes use; tokens after the
+    // position are the replacement text, minus any claimed attach pair.
     for (let i = 0; i < editFlag; i++) {
-      if (roleClaim.includes(i)) continue;
+      if (roleClaim.includes(i) || attachClaims.includes(i)) continue;
       fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
     }
     const textTokens: string[] = [];
     for (let i = editFlag + 2; i < args.length; i++) {
-      if (roleClaim.includes(i)) continue;
+      if (roleClaim.includes(i) || attachClaims.includes(i)) continue;
       textTokens.push(args[i] as string);
     }
     const text = textTokens.join(" ").trim();
     if (!text)
       fail('edit text required — usage: tumwater prompt --edit <n> "<new text>" (add --role <id> to aim it at one loop)');
-    return { mode: "edit", role, position: n, text };
+    return { mode: "edit", role, position: n, text, attachPaths };
   }
 
   if (fileFlag >= 0) {

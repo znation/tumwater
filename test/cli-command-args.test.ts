@@ -478,6 +478,7 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     role: null,
     position: 2,
     text: "new text",
+    attachPaths: [],
   });
 
   // The --role pair is a scope wherever it sits, never replacement text.
@@ -486,12 +487,14 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     role: "bugfix",
     position: 1,
     text: "fix it",
+    attachPaths: [],
   });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "bugfix", "--edit", "1", "fix it"])), {
     mode: "edit",
     role: "bugfix",
     position: 1,
     text: "fix it",
+    attachPaths: [],
   });
 
   // Multi-word text joins like the enqueue mode; single-dash tokens stay content.
@@ -500,6 +503,7 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
     role: null,
     position: 1,
     text: "-x y",
+    attachPaths: [],
   });
 });
 
@@ -590,10 +594,32 @@ test("parsePromptArgs --attach: missing value names the flag", () => {
   assert.match(r.stderr, /--attach needs a path \(e\.g\. `--attach shot\.png`\)/);
 });
 
-test("parsePromptArgs --attach is refused in the read-only and destructive modes", () => {
+test("parsePromptArgs --attach is refused in the read-only modes and composes with --edit", () => {
   assert.match(expectFail(() => parsePromptArgs(["--list", "--attach", "a.png"])).stderr, /--attach only queues a prompt/);
   assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--attach", "a.png"])).stderr, /--attach only queues a prompt/);
-  assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--attach", "a.png"])).stderr, /--attach only queues a prompt/);
+  // --edit accepts it: the attach pair is claimed, never baked into the replacement text,
+  // wherever it sits relative to the position and the text.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "new", "--attach", "a.png"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: "new",
+    attachPaths: ["a.png"],
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--attach", "a.png", "--edit", "1", "new"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: "new",
+    attachPaths: ["a.png"],
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "--attach", "a.png", "new"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: "new",
+    attachPaths: ["a.png"],
+  });
   // A stray token beside --list is still the stray-argument error; the guard only covers
   // the pair itself.
   assert.match(expectFail(() => parsePromptArgs(["--list", "--attach"])).stderr, /--attach only queues a prompt/);

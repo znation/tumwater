@@ -69,15 +69,40 @@ test("savePromptImages writes beside the queue file under the same stem, sanitiz
   assert.deepEqual(fs.readdirSync(dir), before);
 });
 
+test("savePromptImages does not overwrite an image already beside the queue file", () => {
+  const root = tmpdir();
+  const queueFile = enqueueRolePrompt(root, "qa", "look");
+  const stem = path.basename(queueFile, ".md");
+  const existing = path.join(roleInboxDir(root, "qa"), `${stem}.png`);
+  fs.writeFileSync(existing, Buffer.from("original"));
+
+  // The same stem and extension already on disk: the new image dedups to `-2` and the
+  // referenced existing file is byte-unchanged.
+  const saved = savePromptImages(root, "qa", queueFile, [png()]);
+  assert.ok("paths" in saved);
+  assert.equal(path.basename(saved.paths[0]!), `${stem}-2.png`);
+  assert.deepEqual(fs.readFileSync(existing), Buffer.from("original"));
+});
+
 test("savePromptImages removes its partial writes when a later image's write fails", () => {
   const root = tmpdir();
   const queueFile = enqueueRolePrompt(root, "qa", "look");
   const dir = roleInboxDir(root, "qa");
   const stem = path.basename(queueFile, ".md");
-  // Occupy the second image's target path with a directory, so the first write succeeds
-  // and the second throws (EISDIR) mid-loop.
-  fs.mkdirSync(path.join(dir, `${stem}.jpg`));
-  assert.throws(() => savePromptImages(root, "qa", queueFile, [png(), { name: "b.jpg", dataBase64: PNG.toString("base64") }]));
+  // Make the second image's write fail (EISDIR) mid-loop, so the first write succeeds and
+  // the second throws.
+  const target = path.join(dir, `${stem}.jpg`);
+  const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {
+    if (String(file) === target) {
+      throw Object.assign(new Error("EISDIR: illegal operation on a directory, write"), { code: "EISDIR" });
+    }
+    return orig(file, data, ...rest);
+  });
+  try {
+    assert.throws(() => savePromptImages(root, "qa", queueFile, [png(), { name: "b.jpg", dataBase64: PNG.toString("base64") }]));
+  } finally {
+    restoreWrite();
+  }
   assert.ok(!fs.existsSync(path.join(dir, `${stem}.png`)), "the already-written first image is removed again");
 });
 

@@ -6,6 +6,8 @@ import { cmdPrompt } from "../src/inbox/prompt-commands.js";
 import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
+import { imageReferencePaths } from "../src/inbox/inbox-attachments.js";
+import { queueFileStamp } from "../src/files/file-queue.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
@@ -406,4 +408,52 @@ test("prompt --attach refuses the path list's cheap rules before reading any fil
   const ext = await expectFailAsync(() => cmdPrompt(root, ["--attach", path.join(root, "nope.txt"), "note"]));
   assert.match(ext, /unsupported image type "\*\.txt"/);
   assert.equal(inboxSize(root), 0, "nothing was queued");
+});
+
+test("prompt --edit --attach appends the new image after the carried one, keeping position and stamp", async () => {
+  const root = makeRoot();
+  const imgA = path.join(root, "a.png");
+  const imgB = path.join(root, "b.jpg");
+  fs.writeFileSync(imgA, Buffer.from("png-a"));
+  fs.writeFileSync(imgB, Buffer.from("jpg-b"));
+  // Enqueue prompt 1 plain, then prompt 2 with one image, so --edit 2 has a carried set and
+  // a queue position to preserve.
+  enqueueRolePrompt(root, "feature", "first");
+  await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", imgA, "second"]));
+  const dir = dirOf(root, "feature");
+  const md = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+  const second = path.join(dir, md[1] as string);
+  const stamp = queueFileStamp(path.basename(second));
+
+  const { stdout } = await expectOk(() =>
+    cmdPrompt(root, ["--role", "feature", "--edit", "2", "--attach", imgB, "new text"]),
+  );
+  assert.match(stdout, /edited: /);
+
+  // The same queue file and enqueue stamp: the entry did not move. Its text now carries the
+  // carried reference and the new one, both naming files on disk.
+  assert.equal(fs.existsSync(second), true);
+  assert.equal(queueFileStamp(path.basename(second)), stamp, "the filename is unchanged");
+  const text = fs.readFileSync(second, "utf8");
+  assert.match(text, /^new text\n\n\[image attached: .+\]\n\[image attached: .+\]$/);
+  const refs = imageReferencePaths(text);
+  assert.equal(refs.length, 2, "the carried reference and the new one");
+  assert.ok(fs.existsSync(refs[0]!) && fs.existsSync(refs[1]!), "both image files exist");
+
+  // --list shows both reference lines under position 1; the other entry keeps its position.
+  const list = await expectOk(() => cmdPrompt(root, ["--list", "--role", "feature"]));
+  assert.equal((list.stdout.match(/\[image attached: /g) ?? []).length, 2, "--list shows both reference lines");
+  assert.match(list.stdout, /^1\. first \(queued /m, "the other entry keeps its position");
+  assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+});
+
+test("prompt --edit --attach fails on a bad path by name with the queue untouched", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, "bugfix", "queued");
+  const bad = await expectFailAsync(() =>
+    cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "--attach", path.join(root, "nope.png"), "new"]),
+  );
+  assert.match(bad, /cannot read attached image/);
+  assert.deepEqual(queuedRolePrompts(root, "bugfix"), ["queued"], "the queue is untouched");
+  assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });

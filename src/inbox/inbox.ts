@@ -7,7 +7,7 @@ import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { warnEvent } from "../events/events.js";
-import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
+import { isPromptImageSibling } from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
@@ -259,12 +259,7 @@ function removeSameStemSiblings(root: string, role: string, file: string): void 
     return; // The queue directory itself is gone — nothing to clean.
   }
   for (const entry of entries) {
-    if (entry === path.basename(file) || !entry.startsWith(stem)) continue;
-    const rest = entry.slice(stem.length);
-    const isImage =
-      (rest.startsWith(".") && PROMPT_IMAGE_EXTENSIONS.includes(rest.toLowerCase())) ||
-      (/^-\d+\./.test(rest) && PROMPT_IMAGE_EXTENSIONS.includes(rest.slice(rest.indexOf(".")).toLowerCase()));
-    if (!isImage) continue;
+    if (entry === path.basename(file) || !isPromptImageSibling(stem, entry)) continue;
     try {
       removeQueueFile(path.join(dir, entry));
     } catch (err) {

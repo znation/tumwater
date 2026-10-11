@@ -18,6 +18,22 @@ import { agree, plural } from "../text/phrases.js";
  * `<stem>-<n>.<ext>` shape savePromptImages writes and nothing else. */
 export const PROMPT_IMAGE_EXTENSIONS: readonly string[] = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
 
+/** Whether one directory entry is an image sibling savePromptImages writes beside a queue
+ * file whose stem is `stem`: `<stem>.<image extension>` or its same-extension dedup suffix
+ * `<stem>-<n>.<ext>` (n a digit run). The two call sites — savePromptImages seeding its
+ * `taken` set from siblings already on disk, and inbox.ts's dequeue/cancel cleanup — share
+ * this one definition, so what an edit treats as a collision is exactly what a dequeue takes
+ * with the prompt. A bare prefix match is never enough: a hand-placed sibling prompt's file
+ * may share the stem followed by a hyphen (`a-notes.md` beside `a.md`), and must not match. */
+export function isPromptImageSibling(stem: string, entry: string): boolean {
+  if (!entry.startsWith(stem)) return false;
+  const rest = entry.slice(stem.length);
+  return (
+    (rest.startsWith(".") && PROMPT_IMAGE_EXTENSIONS.includes(rest.toLowerCase())) ||
+    (/^-\d+\./.test(rest) && PROMPT_IMAGE_EXTENSIONS.includes(rest.slice(rest.indexOf(".")).toLowerCase()))
+  );
+}
+
 /** Per-image decoded-size cap. Exported so a surface that holds a file before reading it
  * (the GUI composer's drop/paste handler) can refuse an oversized image with the same bound
  * the endpoint enforces, instead of offering a chip the server later rejects. */
@@ -113,7 +129,18 @@ export function savePromptImages(
   if (problem) return { problem };
   const dir = roleInboxDir(root, role);
   const stem = path.basename(queueFile).replace(/\.md$/, "");
+  // Seed the collision set from image siblings already beside the queue file, so an edit
+  // that adds a `.png` to a prompt whose image is already `<stem>.png` lands as `<stem>-2.png`
+  // instead of overwriting (and orphaning the reference to) the existing file. A directory
+  // that does not exist yet leaves the set empty; the write below creates it.
   const taken = new Set<string>();
+  try {
+    for (const entry of fs.readdirSync(dir)) {
+      if (isPromptImageSibling(stem, entry)) taken.add(entry);
+    }
+  } catch {
+    // No inbox dir yet (or unreadable): the write below reports the real failure, if any.
+  }
   const paths: string[] = [];
   // The image whose write is in flight: it only joins `paths` once its write returns, so a
   // write that throws after creating the file (ENOSPC, EIO) would otherwise be the one

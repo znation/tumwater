@@ -166,6 +166,29 @@ function attachPathsProblem(paths: readonly string[]): string | null {
   return null;
 }
 
+/** Read and validate an `--attach <path>` list into the GUI's image input shape: refuse the
+ * cheap path-only rules first (attachPathsProblem above — count, extension, on-disk size),
+ * read each surviving file whole, and re-run the endpoint's validation client-side
+ * (promptImagesProblem) so the CLI's error names the broken rule with the same wording the
+ * dashboard answers 400 with. Fails through `fail` with the same messages the enqueue branch
+ * always raised, so the enqueue and `--edit` forms share one definition and cannot drift. */
+function readPromptImages(paths: readonly string[]): PromptImageInput[] {
+  const pathProblem = attachPathsProblem(paths);
+  if (pathProblem !== null) fail(pathProblem);
+  const images = paths.map((p): PromptImageInput => {
+    let bytes: Buffer;
+    try {
+      bytes = fs.readFileSync(p);
+    } catch (err) {
+      return fail(`cannot read attached image ${JSON.stringify(p)}: ${errorMessage(err)}`);
+    }
+    return { name: path.basename(p), dataBase64: bytes.toString("base64") };
+  });
+  const problem = promptImagesProblem(images);
+  if (problem !== null) fail(problem);
+  return images;
+}
+
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
  * director (default) or one role's queue, list what is queued with per-loop position
  * numbering, or cancel a queued prompt by position. The dispatcher in cli.ts gates on a ready
@@ -246,16 +269,19 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   if (parsed.mode === "edit") {
     // The same broken-config policy and list-wide resolution as cancel, one verb over: the
     // file's new content rides the same queue file (position, enqueue stamp, and a pending
-    // --at deferral untouched), and a concurrent dequeue reports gone and exits clean.
+    // --at deferral untouched), and a concurrent dequeue reports gone and exits clean. An
+    // `--attach` list is read through the same helper the enqueue form uses and appended to
+    // the prompt's images in place.
+    const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
     if (role === null) {
-      sayListedOutcome(editListedPrompt(root, listWideScope(root), parsed.position, parsed.text), parsed.position);
+      sayListedOutcome(editListedPrompt(root, listWideScope(root), parsed.position, parsed.text, images), parsed.position);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
     sayPromptOutcome(
       parsed.position,
       target,
-      runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, parsed.text)),
+      runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, parsed.text, images)),
       false,
     );
     return;
@@ -264,28 +290,9 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
   // parsed duration, computed at submit so the deferral starts when the operator queued it.
   const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
-  // `--attach <path>`: refuse what the paths alone reveal before reading anything
-  // (attachPathsProblem above — count, extension, on-disk size), then read each surviving
-  // file whole and re-run the GUI endpoint's validation client-side (promptImagesProblem) so
-  // the CLI's error names the broken rule — extension list, per-image cap, image-count cap —
-  // with the same wording the dashboard answers 400 with, instead of deferring to
-  // savePromptImages's post-enqueue rejection.
-  let images: PromptImageInput[] | undefined;
-  if (parsed.attachPaths.length > 0) {
-    const pathProblem = attachPathsProblem(parsed.attachPaths);
-    if (pathProblem !== null) fail(pathProblem);
-    images = parsed.attachPaths.map((p) => {
-      let bytes: Buffer;
-      try {
-        bytes = fs.readFileSync(p);
-      } catch (err) {
-        return fail(`cannot read attached image ${JSON.stringify(p)}: ${errorMessage(err)}`);
-      }
-      return { name: path.basename(p), dataBase64: bytes.toString("base64") };
-    });
-    const problem = promptImagesProblem(images);
-    if (problem !== null) fail(problem);
-  }
+  // `--attach <path>`: read and validate through the shared helper (a bad path fails by name
+  // before anything is queued).
+  const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
   const wake = submitRolePromptAndWake(root, target, parsed.text, images, dueMs);
   const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
   if (parsed.atDelayMs !== null) {

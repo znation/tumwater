@@ -182,11 +182,12 @@ Usage:
                                    machine-readable data)
   tumwater prompt --cancel <n>     Remove the Nth queued prompt as --list shows them; when
                                    several loops show that N, name one with --role <id>
-  tumwater prompt --edit <n> <text...>
+  tumwater prompt --edit <n> <text...> [--attach <path>]
                                    Replace the Nth queued prompt's text in place (position,
                                    enqueue age, and a pending --at deferral are kept; as
-                                   shown by --list); when several loops show that N, name
-                                   one with --role <id>
+                                   shown by --list); --attach (repeat up to 4) appends images
+                                   after any the prompt already carries; when several loops
+                                   show that N, name one with --role <id>
   tumwater reset-counters [--role <id>]
                                    Zero lifetime ticks/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
