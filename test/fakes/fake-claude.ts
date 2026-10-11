@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathPrepend, RUN_MARKER, writeScript } from "./fake-commands.js";
 import { tmpdir } from "../fixtures/repo-fixtures.js";
+import { setEnv } from "../helpers/env.js";
 
 // --- The fake claude shim (fakeClaudeReplay/readRunBlocks), the twin of fake-pi.ts ---
 // Every claude run in the suite goes through this PATH shim: it replays canned
@@ -57,6 +58,31 @@ export function fakeClaudeReplay(
   writeScript(path.join(dir, "claude"), body);
   const restore = pathPrepend(dir);
   return { argvFile, stdinFile, restore };
+}
+
+/** Run one async block with a fake claude replay installed and a fresh temp `$HOME` for its
+ * duration, restoring both afterwards even when the block throws — the claude twin of
+ * fake-pi.ts's withPi, and the single home of the `setEnv("HOME", tmpdir())` + fakeClaudeReplay
+ * + `try/finally { fake.restore(); restoreHome(); }` pairing the claude tests repeated. The
+ * block receives the installed replay (its argvFile/stdinFile), so a test writes only its body
+ * and the save/restore pairing cannot be forgotten or double-restore. `opts` is
+ * fakeClaudeReplay's own options; a test with more env vars around the replay or its own
+ * `$HOME` calls fakeClaudeReplay directly instead. */
+export async function withClaudeReplay<T>(
+  lines: readonly string[],
+  optsOrFn: { extraScript?: readonly string[] } | ((fake: FakeClaudeReplay) => Promise<T>),
+  maybeFn?: (fake: FakeClaudeReplay) => Promise<T>,
+): Promise<T> {
+  const opts = typeof optsOrFn === "function" ? undefined : optsOrFn;
+  const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn!;
+  const restoreHome = setEnv("HOME", tmpdir());
+  const fake = fakeClaudeReplay(lines, opts);
+  try {
+    return await fn(fake);
+  } finally {
+    fake.restore();
+    restoreHome();
+  }
 }
 
 /** Read back a run-block log written by fakeClaudeReplay's RUN_MARKER: fake-commands'

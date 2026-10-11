@@ -15,7 +15,7 @@ import { configForRole } from "../src/config/config-views.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv } from "./helpers/env.js";
-import { fakeClaudeReplay, readRunBlocks } from "./fakes/fake-claude.js";
+import { fakeClaudeReplay, readRunBlocks, withClaudeReplay } from "./fakes/fake-claude.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import {
   claudeAssistant,
@@ -53,13 +53,11 @@ function argValue(block: string, flag: string): string | undefined {
 
 test("runAgent runs the claude backend on a fake and folds its stream", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "ignored-init-id" }),
     claudeAssistant({ id: "m1", blocks: [claudeText("done")], usage: { input: 10, output: 5 } }),
     claudeResult({ totalCostUsd: 0.02 }),
-  ]);
-  try {
+  ], async (fake) => {
     const run = claudeRun(dir);
     const result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
@@ -85,10 +83,7 @@ test("runAgent runs the claude backend on a fake and folds its stream", async ()
       fs.existsSync(claudeTranscriptPath(run.cwd, record.id)),
       "the fake wrote the transcript the resume check reads",
     );
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("an unterminated final native line is still translated at stream end", async () => {
@@ -98,8 +93,7 @@ test("an unterminated final native line is still translated at stream end", asyn
   // and a successful run looks cost-unknown. The extra script strips the fixture's trailing
   // newline so the final `result` arrives only when the stream closes.
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay(
+  await withClaudeReplay(
     [
       claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "s" }),
       claudeAssistant({ id: "m1", blocks: [claudeText("done")], usage: { input: 10, output: 5 } }),
@@ -110,28 +104,22 @@ test("an unterminated final native line is still translated at stream end", asyn
         `printf '%s' "$(cat "$streamFile")" > "$streamFile.trimmed" && mv "$streamFile.trimmed" "$streamFile"`,
       ],
     },
-  );
-  try {
+  async () => {
     const run = claudeRun(dir);
     const result = await runAgent(run);
     assert.equal(result.costUsd, 0.02, "the unterminated final result is still folded");
     assert.equal(result.finalText, "done");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("agent: claude with no model resolves the author tier default that reaches --model", async () => {
   // Part 4b/7's config routing, end to end: a config that names only the backend must spawn
   // claude with the default tier's model on the command line.
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "ignored-init-id" }),
     claudeResult({ totalCostUsd: 0.01 }),
-  ]);
-  try {
+  ], async (fake) => {
     const config = defaultConfig();
     config.agent = "claude";
     const run = claudeRun(dir, { config: configForRole(config, "feature") });
@@ -140,10 +128,7 @@ test("agent: claude with no model resolves the author tier default that reaches 
     const argv = readRunBlocks(fake.argvFile);
     assert.equal(argv.length, 1);
     assert.equal(argValue(argv[0]!, "--model"), "claude-sonnet-5-5", "the default-tier claude model runs");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a run killed before its result still flushes the last assistant message", async () => {
@@ -153,12 +138,10 @@ test("a run killed before its result still flushes the last assistant message", 
   // the last turn (BUGS.md 2026-10-09). The fake prints one assistant event and then sleeps
   // until the quiet watchdog kills it.
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay(
+  await withClaudeReplay(
     [claudeAssistant({ id: "m1", blocks: [claudeText("still working")], usage: { output: 3 } })],
     { extraScript: ['cat "$streamFile"', "exec sleep 60"] },
-  );
-  try {
+  async () => {
     const run = claudeRun(dir, {
       config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", tickTimeoutSeconds: 5, quietTimeoutSeconds: 1 },
     });
@@ -167,17 +150,12 @@ test("a run killed before its result still flushes the last assistant message", 
     const raw = fs.readFileSync(run.rawLogFile, "utf8");
     assert.match(raw, /"type":"message_end"/, "the flushed turn reaches the raw log");
     assert.match(raw, /still working/, "the pending assistant text is in the flushed message");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a continueSession run resumes the recorded claude id in its own cwd", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
-  try {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     const run = claudeRun(dir);
     const first = await runAgent(run);
     assert.equal(first.ok, true, `${first.errorMessage}`);
@@ -189,28 +167,20 @@ test("a continueSession run resumes the recorded claude id in its own cwd", asyn
     const secondArgs = readRunBlocks(fake.argvFile)[1]!;
     assert.equal(argValue(secondArgs, "--resume"), freshId, "the continue resumes the recorded id");
     assert.ok(!secondArgs.includes("--session-id"), "a resume does not also mint a fresh id");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a ledger record whose cwd differs is not resumed", async () => {
   const dirA = tmpdir();
   const dirB = tmpdir();
   const sessions = path.join(tmpdir(), "sessions");
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
-  try {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     await runAgent(claudeRun(dirA, { sessionDir: sessions }));
     await runAgent(claudeRun(dirB, { sessionDir: sessions, continueSession: true }));
     const runs = readRunBlocks(fake.argvFile);
     assert.ok(!runs[1]!.includes("--resume"), "another cwd's session is not resumable");
     assert.ok(runs[1]!.includes("--session-id"), "it mints a fresh session instead");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("claude's resumable predicate requires the kind, the recorded cwd, and a transcript", () => {
@@ -267,9 +237,7 @@ test("claude's resumable predicate requires the kind, the recorded cwd, and a tr
 
 test("a ledger record whose transcript file is absent is not resumed", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
-  try {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     const run = claudeRun(dir);
     await runAgent(run);
     const firstId = readSessions(run.sessionDir)[0]!.id;
@@ -280,10 +248,7 @@ test("a ledger record whose transcript file is absent is not resumed", async () 
     assert.ok(!secondArgs.includes("--resume"), "a missing transcript is not resumable");
     const secondId = argValue(secondArgs, "--session-id");
     assert.ok(secondId && secondId !== firstId, "a fresh id is minted instead");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("the spawned env strips CLAUDECODE and CLAUDE_CODE_SESSION_ID and stdin carries the prompt", async () => {
@@ -390,9 +355,7 @@ test("a backend that exits before reading a large stdin prompt does not crash th
 
 test("agents.claude.args reaches the fake's recorded argv after the harness flags", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
-  try {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     const run = claudeRun(dir);
     run.config = { ...run.config, agents: { claude: { args: ["--debug"] } } };
     const result = await runAgent(run);
@@ -403,10 +366,7 @@ test("agents.claude.args reaches the fake's recorded argv after the harness flag
       argv.indexOf("--debug") > argv.indexOf("--strict-mcp-config"),
       "passthrough args are appended after the harness flags",
     );
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("the claude project slug turns every non-alphanumeric into a dash, as the fake assumes", () => {
@@ -416,15 +376,13 @@ test("the claude project slug turns every non-alphanumeric into a dash, as the f
 
 test("a claude run writes native lines beside the canonical raw log and warns once per unknown type", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const warnings: string[] = [];
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "s1" }),
     claudeUnknown("mystery_event"),
     claudeAssistant({ id: "m1", blocks: [claudeText("done")], usage: { input: 10, output: 5 } }),
     claudeResult({ totalCostUsd: 0.02 }),
-  ]);
-  try {
+  ], async () => {
     const run = claudeRun(dir, { onAgentWarning: (w) => warnings.push(w) });
     const result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
@@ -438,51 +396,36 @@ test("a claude run writes native lines beside the canonical raw log and warns on
     assert.doesNotMatch(raw, /mystery_event/, "the canonical log drops the unmapped native line");
 
     assert.deepEqual(warnings, ["mystery_event"], "the unmapped type warns exactly once");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a claude run with no native output writes no native lines and warns about nothing", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const warnings: string[] = [];
-  const fake = fakeClaudeReplay([]);
-  try {
+  await withClaudeReplay([], async () => {
     const run = claudeRun(dir, { onAgentWarning: (w) => warnings.push(w) });
     const result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
     assert.equal(fs.readFileSync(run.nativeLogFile, "utf8"), "", "no native output writes no lines");
     assert.deepEqual(warnings, [], "a run with no activity warns about nothing");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a result-less claude run warns cost_unknown exactly once", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const warnings: string[] = [];
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ apiKeySource: "ANTHROPIC_API_KEY", sessionId: "s1" }),
     claudeAssistant({ id: "m1", blocks: [claudeText("partial")], usage: { input: 10, output: 5 } }),
-  ]);
-  try {
+  ], async () => {
     await runAgent(claudeRun(dir, { onAgentWarning: (w) => warnings.push(w) }));
     assert.deepEqual(warnings, ["cost_unknown"], "a run with activity but no result cost warns once");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("the native log rotates under logMaxBytes like the raw log", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
-  try {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async () => {
     const run = claudeRun(dir, {
       config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", logMaxBytes: 16 },
     });
@@ -495,10 +438,7 @@ test("the native log rotates under logMaxBytes like the raw log", async () => {
       "the grown generation moves to .1",
     );
     assert.match(fs.readFileSync(run.nativeLogFile, "utf8"), /"type":"result"/, "the fresh log holds only this run");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 // The role-notes MCP wiring (plans/agent-backends.md "What the pi extensions did, per
@@ -507,12 +447,10 @@ test("the native log rotates under logMaxBytes like the raw log", async () => {
 // without a notebook gets neither, so review/landing/director runs expose no notebook tool.
 test("an authoring run with a notebook passes the role-notes MCP server and the notes path", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const envFile = path.join(dir, "notes-env.txt");
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
     extraScript: [`printf '%s\\n' "$TUMWATER_NOTES_PATH" >> "${envFile}"`],
-  });
-  try {
+  }, async (fake) => {
     const notes = path.join(dir, "state", "notes", "feature.md");
     const result = await runAgent(claudeRun(dir, { notesPath: notes }));
     assert.equal(result.ok, true, `${result.errorMessage}`);
@@ -522,36 +460,26 @@ test("an authoring run with a notebook passes the role-notes MCP server and the 
     const mcp = JSON.parse(argv[at + 1]!) as { mcpServers: { tumwater: { args: string[] } } };
     assert.match(mcp.mcpServers.tumwater.args[0]!, /role-notes-server\.js$/);
     assert.equal(fs.readFileSync(envFile, "utf8").trim(), notes, "the notes path reaches the spawned server");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a claude run without a notebook passes no MCP config and no notes path", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const envFile = path.join(dir, "notes-env.txt");
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], {
     extraScript: [`printf '[%s]' "$TUMWATER_NOTES_PATH" >> "${envFile}"`],
-  });
-  try {
+  }, async (fake) => {
     const result = await runAgent(claudeRun(dir));
     assert.equal(result.ok, true, `${result.errorMessage}`);
     const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");
     assert.ok(!argv.includes("--mcp-config"), "a run with no notebook exposes no MCP server");
     assert.equal(fs.readFileSync(envFile, "utf8"), "[]", "and no TUMWATER_NOTES_PATH is set");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a resumed claude run re-passes --mcp-config, since claude keeps no flags across --resume", async () => {
   const dir = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeResult({ totalCostUsd: 0 })]);
-  try {
+  await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     const notes = path.join(dir, "notes.md");
     const run = claudeRun(dir, { notesPath: notes });
     assert.equal((await runAgent(run)).ok, true);
@@ -560,8 +488,5 @@ test("a resumed claude run re-passes --mcp-config, since claude keeps no flags a
     const second = readRunBlocks(fake.argvFile)[1]!.split("\n");
     assert.ok(second.includes("--resume"), "the second run resumes");
     assert.ok(second.includes("--mcp-config"), "the resume re-passes the notes MCP server");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });

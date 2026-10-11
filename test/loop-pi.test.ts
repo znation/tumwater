@@ -13,9 +13,8 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
-import { fakeClaudeReplay, readRunBlocks } from "./fakes/fake-claude.js";
+import { readRunBlocks, withClaudeReplay } from "./fakes/fake-claude.js";
 import { claudeInit, claudeRateLimit, claudeResult, claudeUnknown } from "./fixtures/claude-events.js";
-import { setEnv } from "./helpers/env.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { resolverConfig } from "../src/config/config-views.js";
 import { recordSession } from "../src/agent/session-ledger.js";
@@ -893,12 +892,10 @@ test("requestStageFix resumes the tick's session with the findings and folds its
 
 test("a claude run keeps its native log and surfaces unmapped-event warnings", async () => {
   const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeUnknown("mystery_event"),
     claudeResult({ totalCostUsd: 0.01 }),
-  ]);
-  try {
+  ], async () => {
     const config = defaultConfig();
     config.agent = "claude";
     config.model = "claude-sonnet-5-5";
@@ -912,22 +909,17 @@ test("a claude run keeps its native log and surfaces unmapped-event warnings", a
     const native = fs.readFileSync(nativeLogPath(root, "feature", "claude"), "utf8");
     assert.match(native, /"type":"mystery_event"/, "the native log lands at the role.agent path");
     assert.match(native, /"type":"result"/);
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a subscription claude rejected window earns no within-run retry", async () => {
   const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const resetsAt = Math.floor(Date.now() / 1000) + 3600;
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ sessionId: "c1", apiKeySource: "none" }),
     claudeRateLimit({ type: "five_hour", status: "rejected", resetsAt }),
     claudeResult({ isError: true, apiErrorStatus: 429, text: "Claude usage limit reached" }),
-  ]);
-  try {
+  ], async (fake) => {
     const config = defaultConfig();
     config.agent = "claude";
     config.model = "claude-sonnet-5-5";
@@ -941,10 +933,7 @@ test("a subscription claude rejected window earns no within-run retry", async ()
     assert.equal(readRunBlocks(fake.argvFile).length, 1, "one attempt, no retry");
     assert.deepEqual(sleeps, [], "no wait is spent on a retry the window would reject anyway");
     assert.equal(usage.length, 1, "one foldUsage for the one attempt");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 // PLANS.md "Agent backends, part 7a/7": the caller computes `--max-budget-usd` from the
@@ -952,9 +941,7 @@ test("a subscription claude rejected window earns no within-run retry", async ()
 // non-director claude authoring run. These tests pin the argv the real adapter builds.
 test("an API-billed claude authoring run carries the remaining fleet budget as --max-budget-usd", async () => {
   const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })]);
-  try {
+  await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
     saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 12 });
     const config = defaultConfig();
@@ -965,17 +952,12 @@ test("an API-billed claude authoring run carries the remaining fleet budget as -
     const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
     assert.equal(result.ok, true, `${result.errorMessage}`);
     assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "3");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a per-role cap lowers the claude run's --max-budget-usd below the fleet's remaining", async () => {
   const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })]);
-  try {
+  await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
     saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 1.5 });
     const config = defaultConfig();
@@ -987,10 +969,7 @@ test("a per-role cap lowers the claude run's --max-budget-usd below the fleet's 
     const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
     assert.equal(result.ok, true, `${result.errorMessage}`);
     assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "0.5");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 // PLANS.md "Agent backends, part 7a/7", objection 1: the per-role cap is keyed by BASE role
@@ -998,9 +977,7 @@ test("a per-role cap lowers the claude run's --max-budget-usd below the fleet's 
 // `feature-2` run must see `maxDailyCostUsdPerRole.feature`, not a nonexistent `feature-2` key.
 test("a per-role cap sums a multi-instance role's spend and keys on the base role", async () => {
   const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })]);
-  try {
+  await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
     saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 0.6 });
     saveLoopState(root, { ...freshLoopState("feature-2"), dayStamp: todayStamp(), dayCostUsd: 0.6 });
@@ -1015,22 +992,17 @@ test("a per-role cap sums a multi-instance role's spend and keys on the base rol
     assert.equal(result.ok, true, `${result.errorMessage}`);
     // 2 − (0.6 + 0.6): the group's summed spend, below the fleet's remaining 13.8.
     assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "0.8");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 test("a subscription account and the director both pass no --max-budget-usd", async () => {
   const root = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ sessionId: "c1" }),
     claudeResult({ totalCostUsd: 0.01 }),
     claudeInit({ sessionId: "c2" }),
     claudeResult({ totalCostUsd: 0.01 }),
-  ]);
-  try {
+  ], async (fake) => {
     saveLoopState(root, { ...freshLoopState("feature"), dayStamp: todayStamp(), dayCostUsd: 12 });
     const config = defaultConfig();
     config.agent = "claude";
@@ -1051,8 +1023,5 @@ test("a subscription account and the director both pass no --max-budget-usd", as
     assert.equal(blocks.length, 2);
     assert.equal(flagValue(blocks[0]!, "--max-budget-usd"), undefined, "subscription runs are exempt");
     assert.equal(flagValue(blocks[1]!, "--max-budget-usd"), undefined, "the director is exempt");
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });

@@ -18,7 +18,7 @@ import { fallbackRoleConfig } from "../src/config/config-views.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";
-import { fakeClaudeReplay } from "./fakes/fake-claude.js";
+import { withClaudeReplay } from "./fakes/fake-claude.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { claudeAssistant, claudeInit, claudeRateLimit, claudeResult, claudeToolUse } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
@@ -298,12 +298,10 @@ test("a fake-claude resumeMissing run arms resumePending, and the next tick hand
   const { root, wt } = await initializedWorktree("feature");
   const cwd = fs.realpathSync(wt);
   const logs = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ sessionId: "gone" }),
     claudeResult({ isError: true, text: "No conversation found with session ID gone" }),
-  ]);
-  try {
+  ], async () => {
     // A recorded claude author lets the run resume by id; the fake replays the "no
     // conversation" error a pruned transcript would produce.
     withClaudeAuthor(root, cwd, "c1");
@@ -354,10 +352,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next tick hand
     assert.equal(p.handoff, true, "the kept worktree is handed off, not reset");
     assert.equal(p.resumeCause, "handoff");
     assert.match(p.prompt, /uncommitted edits are in your worktree/);
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 // BUGS.md 2026-10-09: the resume-missing verdict must be remembered on every path that arms
@@ -525,15 +520,13 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
   const { root, wt } = await initializedWorktree("feature");
   const cwd = fs.realpathSync(wt);
   const logs = tmpdir();
-  const restoreHome = setEnv("HOME", tmpdir());
   const resetsAt = Math.floor(Date.now() / 1000) + 3600;
-  const fake = fakeClaudeReplay([
+  await withClaudeReplay([
     claudeInit({ sessionId: "c1", apiKeySource: "none" }),
     claudeAssistant({ blocks: [claudeToolUse("t1", "Edit", { file_path: "wip.txt" })], stopReason: "tool_use" }),
     claudeRateLimit({ type: "five_hour", status: "rejected", resetsAt }),
     claudeResult({ isError: true, apiErrorStatus: 429, text: "Claude usage limit reached" }),
-  ]);
-  try {
+  ], async () => {
     withClaudeAuthor(root, cwd, "c1");
     const run = await runAgent({
       cwd,
@@ -591,10 +584,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
     assert.equal(p.handoff, false);
     assert.equal(p.resumeCause, "rate-limit");
     assert.match(p.prompt, /usage window/);
-  } finally {
-    fake.restore();
-    restoreHome();
-  }
+  });
 });
 
 // PLANS.md part 7a/7: an API-billed claude run cut off at its per-run `--max-budget-usd` cap
