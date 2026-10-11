@@ -47,6 +47,30 @@ async function abortHungImproveTick(repo: string): Promise<void> {
   }
 }
 
+/** Plant the aborted "improve" run's pi session file — the fake pi writes none, so the
+ * resume/handoff check has one to find. Returns the session dir for the handoff seed. */
+function seedInterruptedPiSession(repo: string): string {
+  const dir = sessionDir(repo, "improve");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
+  return dir;
+}
+
+/** Seed that interrupted session and then record a NEWER author ledger line from another
+ * agent (claude), so the newest author session is not the tick's to --continue and the tick
+ * hands off to a fresh session instead. */
+function seedInterruptedHandoffSession(repo: string): void {
+  const dir = seedInterruptedPiSession(repo);
+  recordSession(dir, {
+    agent: "claude",
+    id: "c",
+    kind: "author",
+    name: "n",
+    cwd: roleWt(repo, "improve"),
+    at: Date.now(),
+  });
+}
+
 test("a tick cut off at the context ceiling warns, skips backoff, and resumes", async () => {
   const repo = await initializedRepo();
   // Replays the observed incident: mid-run text, then a thinking-only final message
@@ -138,8 +162,7 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
   let restore = () => {};
   try {
     // The aborted run's pi session is on disk (the fake pi writes none, so seed one).
-    fs.mkdirSync(sessionDir(repo, "improve"), { recursive: true });
-    fs.writeFileSync(path.join(sessionDir(repo, "improve"), "interrupted.jsonl"), "{}\n");
+    seedInterruptedPiSession(repo);
 
     // Next launch: a new runner (state comes from disk) resumes and finishes the task.
     restore = fakePi(
@@ -178,17 +201,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
   try {
     // The aborted run wrote its own pi session and ledger line; append a NEWER author line for
     // another agent. The newest author session is now not this tick's to --continue.
-    const dir = sessionDir(repo, "improve");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
-    recordSession(dir, {
-      agent: "claude",
-      id: "c",
-      kind: "author",
-      name: "n",
-      cwd: roleWt(repo, "improve"),
-      at: Date.now(),
-    });
+    seedInterruptedHandoffSession(repo);
 
     // The handoff runs a fresh session and finishes the task; it must not --continue, and its
     // prompt must carry the handoff bridge.
@@ -238,17 +251,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     await setRef(repo, rejectedRefName("improve"), sha);
     // The aborted run's session, then a NEWER author line for another agent: the newest author
     // session is not this tick's to --continue, so the tick hands off.
-    const dir = sessionDir(repo, "improve");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
-    recordSession(dir, {
-      agent: "claude",
-      id: "c",
-      kind: "author",
-      name: "n",
-      cwd: roleWt(repo, "improve"),
-      at: Date.now(),
-    });
+    seedInterruptedHandoffSession(repo);
 
     restore = fakePi(
       [
@@ -292,17 +295,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
       (d) => fs.writeFileSync(path.join(d, "partial.txt"), "handed back\n"),
       "the handed-back work",
     );
-    const dir = sessionDir(repo, "improve");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
-    recordSession(dir, {
-      agent: "claude",
-      id: "c",
-      kind: "author",
-      name: "n",
-      cwd: roleWt(repo, "improve"),
-      at: Date.now(),
-    });
+    seedInterruptedHandoffSession(repo);
 
     restore = fakePi(
       [APPROVE_PI, `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the interrupted work")}'`].join("\n"),
@@ -351,17 +344,7 @@ test("a cross-agent handoff re-sends an already-applied landing hand-back note",
       path.join(roleWt(repo, "improve"), "partial.txt"),
       "<<<<<<< HEAD\npartial\n=======\nhanded back\n>>>>>>> abc\n",
     );
-    const dir = sessionDir(repo, "improve");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
-    recordSession(dir, {
-      agent: "claude",
-      id: "c",
-      kind: "author",
-      name: "n",
-      cwd: roleWt(repo, "improve"),
-      at: Date.now(),
-    });
+    seedInterruptedHandoffSession(repo);
 
     restore = fakePi(
       [
@@ -400,17 +383,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
       path.join(roleWt(repo, "improve"), "partial.txt"),
       "<<<<<<< HEAD\npartial\n=======\nrejected\n>>>>>>> abc\n",
     );
-    const dir = sessionDir(repo, "improve");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "interrupted.jsonl"), "{}\n");
-    recordSession(dir, {
-      agent: "claude",
-      id: "c",
-      kind: "author",
-      name: "n",
-      cwd: roleWt(repo, "improve"),
-      at: Date.now(),
-    });
+    seedInterruptedHandoffSession(repo);
 
     restore = fakePi(
       [
@@ -482,8 +455,7 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     clock.release();
 
     // The killed run's pi session is on disk (the fake pi writes none, so seed one).
-    fs.mkdirSync(sessionDir(repo, "improve"), { recursive: true });
-    fs.writeFileSync(path.join(sessionDir(repo, "improve"), "interrupted.jsonl"), "{}\n");
+    seedInterruptedPiSession(repo);
 
     // Next launch resumes the session and finishes the task; the bridge names the hang
     // watchdog. If it did not (regression), the fake pi stalls again and the assertions fail.
