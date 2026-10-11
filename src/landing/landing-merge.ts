@@ -150,19 +150,29 @@ async function tryMerge(
     // The gate's pre-check ran OUTSIDE this lock against the head as it stood then; a rebase
     // that rewrote anything means the tree about to land is new bytes (BUGS.md 2026-09-08).
     // Re-verify exactly what will become main before fast-forwarding.
-    if (!(await verifyLanding(ctx, wt, await headOf(wt, "HEAD"), preMergeHead, verifiedHead)))
+    // The worktree's POST-REBASE HEAD: fetched once and used for both the re-check and the
+    // fast-forward. A branch ref tracks its own tip through the rebase (so this is
+    // behavior-preserving for role branches), but a pinned bare sha does not move when git
+    // rebase rewrites it — ff'ing main to the original pin would fail as merge_blocked whenever
+    // main moved between commit and landing, which under concurrency is the common case (review
+    // runs outside this lock).
+    const target = await headOf(wt, "HEAD");
+    if (!(await verifyLanding(ctx, wt, target, preMergeHead, verifiedHead)))
       return "merge_blocked";
-    // Fast-forward to the worktree's POST-REBASE HEAD, not a ref captured before it: a branch
-    // ref tracks its own tip through the rebase (so this is behavior-preserving for role
-    // branches), but a pinned bare sha does not move when git rebase rewrites it — ff'ing main
-    // to the original pin would fail as merge_blocked whenever main moved between commit and
-    // landing, which under concurrency is the common case (review runs outside this lock).
-    if (!(await ffMainTo(ctx.root, await headOf(wt, "HEAD"), ctx.mainBranch))) return "merge_blocked";
+    const mainBefore = await headOf(ctx.root, ctx.mainBranch);
+    if (!(await ffMainTo(ctx.root, target, ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
+    // A fast-forward to a commit main already contains is a no-op ("Already up to date"): the
+    // change is already an ancestor of main (a leftover-recovery re-land of an entry main
+    // holds), so main's head is some later commit that did not produce this summary. Logging a
+    // `merged` event there would count the already-counted landing a second time and pair the
+    // change's summary with the wrong commit (BUGS.md 2026-10-10). Only a fast-forward that
+    // moved main records a landing.
     // Best-effort: main has already fast-forwarded, so an unwritable events feed must not turn
     // a completed landing into a rejected one and skip syncRootInstall below — the same
     // no-torn-feed policy as the orchestrator's other post-effect logging.
-    logEventBestEffort(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
+    if (commit !== mainBefore)
+      logEventBestEffort(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
     logNewQuestions(ctx.root, before, ctx.role);
     // Still under the lock: a landing that moved main's lockfile re-syncs the root install
     // every worktree resolves through before the next landing's check runs (BUGS.md 2026-10-01).

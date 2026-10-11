@@ -92,6 +92,28 @@ test("a clean rebase lands as changed with a merged event and linear history", a
   assert.equal(merged[0]!.summary, "branch work");
 });
 
+test("a re-land of a change main already holds logs no second merged event", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
+  commitIn(wt, "branch work");
+  const changeHead = headSha(wt);
+  // Main already holds this change and has moved on past it — the leftover-recovery re-land
+  // shape: the landing's fast-forward is a no-op, so main's head is a later commit.
+  sh(root, "git", "merge", "--ff-only", changeHead);
+  const laterMain = advanceMain(root, "after.txt", "after\n");
+
+  const { ctx } = makeCtx(root);
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "changed", "the change is on main, so the landing is done, not blocked");
+  assert.equal(mainSha(root), laterMain, "the no-op fast-forward leaves main where it was");
+  assert.equal(
+    eventsOfType(root, "merged").length,
+    0,
+    "an already-held change is not re-counted as a fresh landing",
+  );
+});
+
 test("a fix-claim block in the landing's exempt arm warns, names the reason to the lander, and never runs pi", async () => {
   const { root, wt } = await initializedWorktree();
   // BUGS.md's template ends with "## Fixed"; an appended entry lands in that section. Its body
