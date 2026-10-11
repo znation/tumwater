@@ -141,6 +141,31 @@ test("historyNoteHtml renders the server's sparse-window note and nothing when e
   assert.match(html, /log&#39;s/, "the note is escaped like every other rendered string");
 });
 
+test("fetchHistory normalizes a persisted tick count the toolbar does not offer", async () => {
+  // Only the picker's four counts are ever written, but a persisted hist-n from another build
+  // (or a hand edit) can be anything. The picker can then not represent it, so the viewed count
+  // and the requested count would disagree; normalize at read to the default the picker shows.
+  const paths: string[] = [];
+  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
+  const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
+  await run(
+    (key: string) => (key === "hist-n" ? "30" : null),
+    () => {},
+    () => false,
+    () => undefined,
+    iconStub,
+    null,
+    () => {},
+    (title: string) => title,
+    async (path: string) => {
+      paths.push(path);
+      return { rows: [] };
+    },
+  ).fetchHistory(false);
+  assert.deepEqual(paths, ["/api/history?n=50"], "an off-menu persisted count falls back to the default the picker shows");
+});
+
 test("histDetailCardHtml branches on the entry's state: loading, error, then the fetched card", () => {
   const { histDetailCardHtml } = clientScope<{ histDetailCardHtml(entry: unknown): string }>(
     HISTORY_REGIONS,

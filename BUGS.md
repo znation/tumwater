@@ -13,6 +13,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The dashboard History count picker could not represent an off-menu persisted `hist-n`, so it showed one count while the request used another (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
+
+- **Symptom:** `buildHistoryView` set the "Ticks to show" select from `String(histCount)`, whose only writer stored one of the picker's four values (20/50/100/200) — but `histCount` was read as `Number(recall("hist-n")) || 50`, unvalidated. A persisted `hist-n` outside that set (an older dashboard's option list, or a hand edit) left the select unable to represent it, so the picker painted one count while `fetchHistory` requested `n=<off-menu>`; the operator sees a selection that does not match the rows and the stale value never heals.
+- **Reproduce:** run the served blob with `recall("hist-n")` returning `"30"` and call `fetchHistory(false)`; before the fix the request was `/api/history?n=30` (the new case `fetchHistory normalizes a persisted tick count the toolbar does not offer` failed on that URL), after the fix it is `/api/history?n=50` — the default the picker shows.
+- **Cause:** the recall value was normalized only for falsiness (`|| 50`, which also turns `"0"`/NaN into 50) but never checked against the option set, unlike the loop picker's `syncHistoryRoles` fallback.
+- **Fix:** `HIST_COUNTS` is now the one home for the offered counts (it also builds the select's options), and the recalled value is normalized at read: a value not in the set falls back to 50, so the picker and the request always agree.
+
+**Validation gap:** no-fake — the existing `historyFetchScope` hardcoded recall to `hist-grep`/null and used no DOM, so confirming the mismatch needed a recall stub returning an off-menu count (a fake that did not exist); with the fix the check is a plain request-URL assertion.
+
 ### The dashboard History loop picker repainted a vanished persisted scope to "All loops" but left `histRole` filtering the request, so the picker and the rows disagreed (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
 
 - **Symptom:** `syncHistoryRoles` (src/ui/gui/gui-client-history.ts) rebuilds the History Loop picker when the fleet's role list changes and sets `select.value = roles.includes(histRole) ? histRole : ""`, so a persisted `hist-role` naming a since-retired loop repaints as "All loops". But unlike the report views' sibling `syncRoles` (src/ui/gui/gui-client-report.ts), it never followed that fallback back into its scope variable or storage, so `histRole` kept the ghost id and `fetchHistory` kept sending `&role=<vanished>`. The picker read "All loops" while `/api/history` (which passes `role` straight through as a filter, no validation) answered zero rows — a view that looks empty for no visible reason. The stale value also survived reloads, since the fallback was never persisted.

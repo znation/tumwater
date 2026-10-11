@@ -7,8 +7,11 @@
  * view opens and, while it stays open, whenever the status poll sees new events — never on a
  * timer of its own. A row opens that loop's drawer. Spliced into gui-client.ts's script,
  * reaching its helpers (esc, getJson, resultInfo, the formatters) through that concatenation. */
-export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-role") || "";
-  let histCount = Number(recall("hist-n")) || 50;
+export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to show" picker offers; the recalled count is normalized to one of
+  // them at read, so the picker can always represent (and the request always matches) the scope.
+  const HIST_COUNTS = [20, 50, 100, 200];
+  let histRole = recall("hist-role") || "";
+  let histCount = HIST_COUNTS.includes(Number(recall("hist-n"))) ? Number(recall("hist-n")) : 50;
   let histGrep = recall("hist-grep") || "";
   let histSinceKey = recall("hist-since") || "";
   let histNote = "";
@@ -24,7 +27,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
       "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
       "<label><span class='sr-only'>Search</span><input class='field' id='histgrep' type='search' placeholder='Search ticks…' autocomplete='off'></label>" +
       "<label><span class='sr-only'>Ticks to show</span><select class='field' id='histcount'>" +
-      [20, 50, 100, 200].map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") +
+      HIST_COUNTS.map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") +
       histWindowOptions() + "</select></label>" +
       "<button type='button' class='btn btn-sm' id='histrefresh'>" + icon("refresh") + "Refresh</button>" +
       "</div></div><div class='card' id='histbody'><div class='empty'>Loading…</div></div>")) return;
