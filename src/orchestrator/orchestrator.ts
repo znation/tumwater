@@ -17,7 +17,7 @@ import { LoopRunner } from "../loop/loop.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
-import { queuedLandingFiles } from "../landing/landing-queue.js";
+import { queuedLandingFiles, queuedLandingRoles } from "../landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
 import { logEvent, logEventBestEffort, type HarnessEventInput } from "../events/events.js";
@@ -555,7 +555,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const reserve = workReserveCount(root, runners, {
         maxConcurrent: liveConfig.maxConcurrent,
         enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
-        queuedLandingRoles: new Set(queuedLandingFiles(root).map((q) => q.entry.role)),
+        queuedLandingRoles: queuedLandingRoles(root),
       });
       semaphore.setReserve(reserve);
       if ((lastReserve === 0) !== (reserve === 0)) {

@@ -48,7 +48,7 @@ import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../fleet/failure-sprea
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
-import { queuedLandingFiles } from "../landing/landing-queue.js";
+import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { logEventBestEffort } from "../events/events.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfoBestEffort, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
@@ -321,7 +321,7 @@ export function pollFleetGates(
   // hold/resume event per transition. Enabled only: a disabled loop runs no tick to count. The
   // scheduling pass spends the returned headroom one due maintenance loop at a time, beside
   // capPaused, with the fresh-wake/queued-prompt override the need-based deferral honors.
-  const queuedLandingRoles = new Set(queuedLandingFiles(root).map((q) => q.entry.role));
+  const queuedRoles = queuedLandingRoles(root);
   const maintenanceQuota = pollMaintenanceQuotaGate(
     root,
     states.quota,
@@ -329,7 +329,7 @@ export function pollFleetGates(
       role: r.role,
       enabled: loopEnabled(r.config, r.role),
       running: r.state.running === true,
-      hasQueuedLanding: queuedLandingRoles.has(r.role),
+      hasQueuedLanding: queuedRoles.has(r.role),
     })),
     liveConfig.maintenancePerWorkLanding,
     now,

@@ -14,7 +14,7 @@ import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
 import { hasOutstandingWork } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
-import { queuedLandingFiles } from "../landing/landing-queue.js";
+import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
@@ -127,7 +127,7 @@ export async function pollRunnerReasons(
   // only when a landing completes or a tick enqueues — both asynchronous events this pass
   // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
   // landing that completes mid-pass just keeps its role blocked one extra poll (conservative).
-  const queuedLandingRoles = new Set(queuedLandingFiles(root).map((q) => q.entry.role));
+  const queuedRoles = queuedLandingRoles(root);
   // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
   // with more than one runner assigns each due instance a distinct eligible entry, and releases
   // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once
@@ -158,14 +158,14 @@ export async function pollRunnerReasons(
     for (const r of groupRunners) {
       const busy =
         r.state.running ||
-        queuedLandingRoles.has(r.role) ||
+        queuedRoles.has(r.role) ||
         hasOutstandingWork(r.state);
       if (r.state.claim === undefined && busy) hold = true;
       const released = claimReleaseReason(r, {
         listedKeys: listed,
         eligibleKeys,
         now,
-        hasQueuedLanding: queuedLandingRoles.has(r.role),
+        hasQueuedLanding: queuedRoles.has(r.role),
         // Per instance, not per base role: a lowered `instances` leaves the surplus runner in
         // place with `loopEnabled` false, and its idle claim must be released so a sibling can
         // take the entry instead of the key staying held until the 24h stale sweep.
@@ -308,7 +308,7 @@ export async function pollRunnerReasons(
     // — but the landing's outcome replaces it before the interlock lets the role back into this
     // pass), and skipping here saves that branch's workLandedSince git-range query for the skipped
     // role.
-    if (queuedLandingRoles.has(runner.role)) continue;
+    if (queuedRoles.has(runner.role)) continue;
     // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
     // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
     // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll

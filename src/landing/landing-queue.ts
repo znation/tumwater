@@ -162,6 +162,13 @@ export function queuedLandings(root: string): LandingEntry[] {
   return queuedLandingFiles(root).map((q) => q.entry);
 }
 
+/** The roles currently holding a queued landing — the maintenance quota's and the permit
+ * reserve's "already in flight" input, and the scheduler's per-poll merge-queue interlock.
+ * A missing queue directory reads as an empty set, like every reader here. */
+export function queuedLandingRoles(root: string): Set<string> {
+  return new Set(queuedLandingFiles(root).map((q) => q.entry.role));
+}
+
 /** The head of the queue — its oldest entry — plus the file to drop on completion, or null when
  * the queue is empty or its oldest file is a vanished/torn entry. */
 export function headLanding(root: string): { entry: LandingEntry; file: string } | null {
