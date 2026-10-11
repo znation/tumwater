@@ -26,6 +26,65 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `tabStrip({ kind: "usage", scope: "feature" }, width)` shows `Usage: feature` while `scope: null` shows `Usage`; `hintLine` for a usage or failures view carries the `Ctrl+G` hint, naming `scope: feature` under a scope and `scope: fleet` without one.
 - `npm run test` is green.
 
+### A trailing `--since` window in the TUI History pane, matching `tumwater history --since` (planned 2026-10-10 by plan; independent of the waiting dashboard report `--since` and TUI `Ctrl+G` scope plans — different pane, its own window state, a different key; sibling of the landed dashboard History trailing window and the landed `tumwater history --since`)
+
+**Goal.** `tumwater history --since <duration>` reads a trailing window through `readTickRowsSince`,
+and the dashboard's History view offers the same windows (1h/6h/1d/7d). The TUI's History pane
+still renders only the newest `HISTORY_DEFAULT_TICKS` ticks via
+`readTickRows(root, HISTORY_DEFAULT_TICKS, null)`, so the TUI is the one surface that cannot ask
+for the last hour or day. Add a session-only window cycle, keyed `Ctrl+S`, that reads through the
+same collector and prints the same sparse-window note the CLI prints.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`: import `readTickRowsSince` from `../../history/history-data.js` and
+   `SPARSE_WINDOW_NOTE` from `../../events/event-window.js`. Add a module constant
+   `HISTORY_WINDOWS: ReadonlyArray<[number | null, string]>` =
+   `[[null, "default"], [3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"], [604_800_000, "7d"]]`,
+   and a module helper `historyPaneCache(root: string, sinceMs: number | null): string`:
+   when `sinceMs === null` return `historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null))`
+   unchanged; otherwise read `const { rows, covered } = readTickRowsSince(root, sinceMs, null)`,
+   return `""` when `historyPaneText(rows)` is empty (so the pane keeps its own empty note),
+   and otherwise return `"window: last " + label + "\n" + body` plus, when `!covered`,
+   `"\n" + SPARSE_WINDOW_NOTE`.
+2. Add `let historyWindow: number | null = null` beside the `paneCache` state (session-only, like
+   the view/scroll state). The Ctrl+T handler's History branch becomes
+   `paneCache = historyPaneCache(root, historyWindow)`. Add a `Ctrl+S` branch beside the Ctrl+N
+   branch, gated `!budgetMode && !rolePromptFor` like the other mode-sensitive keys: advance
+   `historyWindow` to the next `HISTORY_WINDOWS` entry (index-of, `+1` mod length); when
+   `view === roleIds.length + 4` (History) recompute `paneCache = historyPaneCache(root, historyWindow)`
+   and reset `paneScroll = 0` so the changed body re-enters at its head; always
+   `deps.requestRender()`. Off the History view, setting `historyWindow` is enough — the next
+   Ctrl+T entry computes with it.
+3. Expose the window on `TuiKeysState` as `historySince: string | null`, the `HISTORY_WINDOWS`
+   label for `historyWindow` (null while it is null), and return it from `state()`.
+4. `src/ui/tui/tui-frame.ts`: the `TuiView` history variant becomes
+   `{ kind: "history"; since: string | null }`. Split the shared
+   `usage || failures || history || pending` branch of `hintLine` so `history` has its own key
+   list, carrying `["Ctrl+S", view.since ? \`window: ${view.since}\` : "window: default"]`
+   before the `Ctrl+T`/`Ctrl+D` pairs; the `tabStrip` label stays `History`.
+5. `src/ui/tui/tui.tsx`: build the pane as `{ kind: "history", since: s.historySince }`.
+6. No new runtime dependency; the role scope, Usage/Failures panes, and Pending pane are
+   untouched.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
+`test/tui-keys.test.ts`, `test/tui-frame.test.ts` (plus the `{ kind: "history" }` literals in
+`test/tui-history.test.ts` gain `since: null`).
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, a new case: seed a `feature` `tick_end` 30 min old and one 3 days old
+   (both ts derived from one `Date.now()` read), `syncSnapshot(0, false, [])`, then Ctrl+T into
+   History and press Ctrl+S: `state().historySince` cycles `"1h"`, `"6h"`, `"1d"`, `"7d"`,
+   `null`; under `"1h"` the cache carries the 30-min row and not the 3-day row, and under `null`
+   it carries both; each press on the History view resets `paneScroll` to 0. Ctrl+S leaves
+   `historySince` unchanged while budget mode or role-prompt mode holds the prompt line, and
+   pressing it off the History view changes the label without computing a cache.
+- `test/tui-frame.test.ts`: `hintLine({ kind: "history", since: "1h" }, ...)` carries a `Ctrl+S`
+   hint naming `window: 1h`, while `since: null` names `window: default`; the `{ kind: "history" }`
+   literals in the existing frame/hint/tab-strip cases become `{ kind: "history", since: null }`
+   and their assertions are otherwise unchanged.
+- The existing Ctrl+T History cache/paging case stays green (the default window is unchanged).
+- `npm run test` is green.
+
 ## Done
 
 ### A trailing `--since` window on the dashboard Usage and Failures views (planned 2026-10-10 by plan; independent of the waiting dashboard History trailing-window and prompt `--edit --attach` plans; completes the CLI's `report --since` and `report --failures --since` on the dashboard's two report tabs, sharing their `windowView` toolbar with the landed role scope; done 2026-10-10 by feature)
