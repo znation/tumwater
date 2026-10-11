@@ -66,6 +66,77 @@ same collector and prints the same sparse-window note the CLI prints.
 - The existing Ctrl+T History cache/paging case stays green (the default window is unchanged).
 - `npm run test` is green.
 
+### A trailing `--since` window on the TUI Usage and Failures panes, matching `tumwater report --since` (planned 2026-10-10 by plan; sibling of the landed dashboard Usage/Failures `--since`; completes the CLI's `report --since` / `report --failures --since` on the TUI's two report panes; independent of the waiting `Ctrl+G` scope plan and of the waiting TUI History `--since` plan in its own window state and key — its own `reportWindow`, a different `Ctrl+E` — though it edits the same two Ctrl+T report branches and hintLine region as the `Ctrl+G` plan, so a landing conflict is possible and the resolver handles it)
+
+**Goal.** `tumwater report --since <duration>` totals usage over a trailing window and
+`tumwater report --failures --since <duration>` windows the failure digest, both capped at
+`REPORT_SINCE_MAX_MS` (7d), and the dashboard's Usage/Failures tabs now offer the same
+1h/6h/1d/7d choice. The TUI's Usage and Failures panes still render only the whole-day shape
+(`REPORT_DEFAULT_DAYS`) via `collectReport` / `collectFailureReport`, so the TUI is the one
+surface that cannot ask either report for the last hour or day. Add a session-only window cycle,
+keyed `Ctrl+E`, that reads through the same `collectReportSince` / `collectFailureReportSince`
+collectors and the same Markdown renders the CLI and dashboard use.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`: import `collectReportSince` from `../../report/report-data.js`,
+   `renderSinceReportMarkdown` from `../../report/report-render.js`, `collectFailureReportSince`
+   from `../../failure/failure-data.js`, and `REPORT_SINCE_MAX_MS` from
+   `../../events/event-window.js`. Add a module constant `REPORT_WINDOWS:
+   ReadonlyArray<[number | null, string]>` = `[[null, "default"], [3_600_000, "1h"],
+   [21_600_000, "6h"], [86_400_000, "1d"], [REPORT_SINCE_MAX_MS, "7d"]]`, and two module
+   helpers `usagePaneCache(root: string, sinceMs: number | null): string` and
+   `failuresPaneCache(root: string, sinceMs: number | null): string`: at `sinceMs === null`
+   return the existing day shape (`renderReportMarkdown(collectReport(root,
+   REPORT_DEFAULT_DAYS))` / `renderFailureMarkdown(collectFailureReport(root,
+   REPORT_DEFAULT_DAYS))`) unchanged; otherwise return
+   `renderSinceReportMarkdown(collectReportSince(root, sinceMs))` /
+   `renderFailureMarkdown(collectFailureReportSince(root, sinceMs))`. The since renders already
+   print their own `window: last <label>` line, so the pane body needs no extra label.
+2. Add `let reportWindow: number | null = null` beside the `paneCache` state (session-only, like
+   the view/scroll state). In the Ctrl+T handler the Usage branch becomes
+   `paneCache = usagePaneCache(root, reportWindow)` and the Failures branch
+   `paneCache = failuresPaneCache(root, reportWindow)`. Add a `Ctrl+E` branch beside the Ctrl+N
+   branch, gated `!budgetMode && !rolePromptFor` like the other mode-sensitive keys: advance
+   `reportWindow` to the next `REPORT_WINDOWS` entry (index-of, `+1` mod length); when
+   `view === roleIds.length + 2` (Usage) or `view === roleIds.length + 3` (Failures) recompute
+   `paneCache` from the matching helper and reset `paneScroll = 0` so the changed body re-enters
+   at its head; always `deps.requestRender()`. Off both report views, setting `reportWindow` is
+   enough — the next Ctrl+T entry computes with it.
+3. Expose the window on `TuiKeysState` as `reportSince: string | null`, the `REPORT_WINDOWS`
+   label for `reportWindow` (null while it is null), and return it from `state()`.
+4. `src/ui/tui/tui-frame.ts`: the `TuiView` `usage` and `failures` variants gain
+   `window: string | null`. Split the shared
+   `usage || failures || history || pending` branch of `hintLine` so `usage`/`failures` get their
+   own key list, carrying `["Ctrl+E", view.window ? \`window: ${view.window}\` : "window:
+   default"]` before the `Ctrl+T`/`Ctrl+D` pairs (the remaining `history || pending` branch is
+   unchanged). `tabStrip` stays as it is (plain `Usage` / `Failures`).
+5. `src/ui/tui/tui.tsx`: build the two panes as `{ kind: "usage", window: s.reportSince }` and
+   `{ kind: "failures", window: s.reportSince }` from the state it already reads.
+6. No new runtime dependency; the role scope (`scopeRole`, the `Ctrl+G` plan) and the History
+   pane are untouched, and `paneBody` reads only `paneCache` so it needs no change.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
+`test/tui-keys.test.ts`, `test/tui-frame.test.ts` (plus the `{ kind: "usage" }` /
+`{ kind: "failures" }` literals in `test/tui-frame.test.ts` gain `window: null`).
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, a new case: seed one `feature` `tick_end` with tokens 30 min old and
+   one 3 days old (both ts derived from one `Date.now()` read), `syncSnapshot(0, false, [])`, then
+   Ctrl+T into Usage and press Ctrl+E: `state().reportSince` cycles `"1h"`, `"6h"`, `"1d"`,
+   `"7d"`, `null`; under `"1h"` the cached pane carries the 30-min tick's tokens and not the
+   3-day tick's, and under `null` it carries both; each press on the Usage view resets
+   `paneScroll` to 0. The same cycle on the Failures view with an error-result tick inside the
+   hour and one outside. Ctrl+E leaves `reportSince` unchanged while budget mode or role-prompt
+   mode holds the prompt line, and pressing it off both report views changes the label without
+   recomputing a cache.
+- `test/tui-frame.test.ts`: `hintLine({ kind: "usage", window: "1h" }, ...)` carries a `Ctrl+E`
+   hint naming `window: 1h`, while `window: null` names `window: default`; the same for
+   `failures`; the `{ kind: "usage" }` / `{ kind: "failures" }` literals in the existing
+   frame/hint/tab-strip cases become `{ kind: "usage", window: null }` /
+   `{ kind: "failures", window: null }` and their assertions are otherwise unchanged.
+- The existing Ctrl+T Usage/Failures cache cases stay green (the default window is unchanged).
+- `npm run test` is green.
+
 ## Done
 
 ### A trailing `--since` window on the dashboard Usage and Failures views (planned 2026-10-10 by plan; independent of the waiting dashboard History trailing-window and prompt `--edit --attach` plans; completes the CLI's `report --since` and `report --failures --since` on the dashboard's two report tabs, sharing their `windowView` toolbar with the landed role scope; done 2026-10-10 by feature)
