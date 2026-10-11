@@ -398,6 +398,29 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     promptHistory = resetPromptRecall(promptHistory);
   };
 
+  /** Recompute the active pane's cached Markdown after `changed` state moved, re-entering the
+   * body at its head, and return whether the current view holds such a pane. "report" covers
+   * the Usage/Failures panes (fed by the report window and base-role scope); "history" the
+   * History pane (its window, outcome filter, and exact-loop scope); "all" either. A view that
+   * is not the named pane is left untouched, so advancing one window redraws only the pane it
+   * feeds. The one home of the view-index→collector mapping the pane key handlers and
+   * syncSnapshot share. */
+  const refreshPaneCache = (changed: "report" | "history" | "all"): boolean => {
+    const isReport = view === roleIds.length + 2 || view === roleIds.length + 3;
+    const isHistory = view === roleIds.length + 4;
+    if ((changed === "report" || changed === "all") && isReport) {
+      paneCache = view === roleIds.length + 2
+        ? usagePaneCache(root, reportWindow, scopeRole ?? undefined)
+        : failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
+    } else if ((changed === "history" || changed === "all") && isHistory) {
+      paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
+    } else {
+      return false;
+    }
+    paneScroll = 0;
+    return true;
+  };
+
   const handleKey = (str: string | undefined, key: { ctrl?: boolean; name?: string }): void => {
     if (key.ctrl && key.name === "d") {
       deps.quit();
@@ -595,20 +618,12 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         const slots: Array<string | null> = [null, ...roleIds];
         const slot = slots.indexOf(historyRole);
         historyRole = slots[(slot + 1) % slots.length] ?? null;
-        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
-        paneScroll = 0;
       } else {
         const slots = scopeCycle(roleIds);
         const slot = slots.indexOf(scopeRole);
         scopeRole = slots[(slot + 1) % slots.length] ?? null;
-        if (view === roleIds.length + 2) {
-          paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
-          paneScroll = 0;
-        } else if (view === roleIds.length + 3) {
-          paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
-          paneScroll = 0;
-        }
       }
+      refreshPaneCache("all");
       deps.requestRender();
       return;
     }
@@ -620,13 +635,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // report pane this handler recomputes the cached Markdown from the newly windowed
       // collector and re-enters the body at its head.
       reportWindow = nextInCycle(REPORT_WINDOWS, reportWindow);
-      if (view === roleIds.length + 2) {
-        paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
-        paneScroll = 0;
-      } else if (view === roleIds.length + 3) {
-        paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
-        paneScroll = 0;
-      }
+      refreshPaneCache("report");
       deps.requestRender();
       return;
     }
@@ -637,10 +646,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Ctrl+T into History computes the cache with it; on the History view this handler
       // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
       historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
-      if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
-        paneScroll = 0;
-      }
+      refreshPaneCache("history");
       deps.requestRender();
       return;
     }
@@ -651,10 +657,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // History computes the cache with it; on the History view this handler re-reads and
       // re-filters the rows now and resets the scroll so the changed body re-enters at its head.
       historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
-      if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
-        paneScroll = 0;
-      }
+      refreshPaneCache("history");
       deps.requestRender();
       return;
     }
@@ -672,35 +675,31 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       paneScroll = 0; // the Markdown panes always re-enter at their head
       // Compute the pane's Markdown once per activation (this handler renders immediately), and
       // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
-      if (view === roleIds.length + 2) {
-        paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
-      } else if (view === roleIds.length + 3) {
-        paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
-      } else if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
-      } else if (view === roleIds.length + 5) {
-        // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
-        // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
-        // Guard on the PENDING pane still being current — view === roleIds.length + 5 — not just
-        // on the raw index: an operator who cycled away, or a roster change that shifted which
-        // pane the same index names, must not have this resolution overwrite the pane now shown.
-        // The default collector degrades rather than throws, so the rejection arm only covers an
-        // injected seam (or an unexpected throw).
-        paneCache = null;
-        void collectPending(root).then(
-          (fleet) => {
-            if (view !== roleIds.length + 5) return;
-            paneCache = renderFleetChange(fleet);
-            deps.requestRender();
-          },
-          (err: unknown) => {
-            if (view !== roleIds.length + 5) return;
-            flashError(err);
-            deps.requestRender();
-          },
-        );
-      } else {
-        paneCache = null;
+      if (!refreshPaneCache("all")) {
+        if (view === roleIds.length + 5) {
+          // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
+          // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
+          // Guard on the PENDING pane still being current — view === roleIds.length + 5 — not just
+          // on the raw index: an operator who cycled away, or a roster change that shifted which
+          // pane the same index names, must not have this resolution overwrite the pane now shown.
+          // The default collector degrades rather than throws, so the rejection arm only covers an
+          // injected seam (or an unexpected throw).
+          paneCache = null;
+          void collectPending(root).then(
+            (fleet) => {
+              if (view !== roleIds.length + 5) return;
+              paneCache = renderFleetChange(fleet);
+              deps.requestRender();
+            },
+            (err: unknown) => {
+              if (view !== roleIds.length + 5) return;
+              flashError(err);
+              deps.requestRender();
+            },
+          );
+        } else {
+          paneCache = null;
+        }
       }
       deps.requestRender();
       return;
@@ -872,23 +871,14 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // views compute with the scope on their next Ctrl+T.
       if (scopeRole !== null && !roleIds.includes(scopeRole)) {
         scopeRole = null;
-        if (view === roleIds.length + 2) {
-          paneCache = usagePaneCache(root, reportWindow);
-          paneScroll = 0;
-        } else if (view === roleIds.length + 3) {
-          paneCache = failuresPaneCache(root, reportWindow);
-          paneScroll = 0;
-        }
+        refreshPaneCache("report");
       }
       // The same drop for History's exact-loop scope: a retired or renamed loop must not keep
       // labeling an empty pane. An on-screen History pane recomputes from the fleet-wide read
       // so its rows and its `role:` header clear together.
       if (historyRole !== null && !roleIds.includes(historyRole)) {
         historyRole = null;
-        if (view === roleIds.length + 4) {
-          paneCache = historyPaneCache(root, historyWindow, historyResult, null);
-          paneScroll = 0;
-        }
+        refreshPaneCache("history");
       }
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
