@@ -6,6 +6,83 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### List every loop's queued prompts in a TUI Queued pane, matching `tumwater prompt --list` (planned 2026-10-11 by plan; sibling of the landed TUI Pending pane (`tumwater queue`), the landed dashboard Queued tab (`prompt --cancel`), and the waiting dashboard queued-prompt edit series (parts 1/2 and 2/2); completes `tumwater prompt --list`'s read surface on the TUI, which today shows only the director's numbered previews above every pane (`tui.tsx`'s `snap.inboxPrompts`) and each role's `p:N` count marker (`status-render.ts`'s `roleQueued`), never the role queues' contents or a deferred prompt's countdown; read-only, so it needs no server, mutation, or cancellation; independent of the waiting TUI History grep plan in behavior — it touches `tui-keys.ts`/`tui-frame.ts`/`tui.tsx` too, but its own Queued branch rather than the History branches, so a landing conflict is possible and the resolver handles it; it shares `src/inbox/inbox.ts` with the waiting dashboard queued-edit part 1/2 only at the read seam, which edits `inbox-edit.ts`)
+
+**Goal.** `tumwater prompt --list` prints every queued prompt grouped by loop (director first, then
+catalog order), each numbered from 1 with its full text and a `(queued <age> ago)` suffix — or a
+`(delivers in <duration>)` countdown when the prompt carries a not-before marker — while
+`tumwater prompt --cancel <n>` consumes that same per-loop numbering. The TUI has no pane showing
+that list. Add a Queued pane after Pending that renders the CLI's list from the CLI's own row
+builder, so the two surfaces cannot drift on order, numbering, or the age/countdown wording.
+
+**Approach.**
+1. `src/inbox/inbox.ts`: move the list-shaping pieces out of `prompt-commands.ts` so the CLI and
+the TUI read one queue list (import `knownRoleIdsCached` from `../config/config.js` — config
+imports no inbox module, so no cycle — and `humanSeconds`/`secondsSince`/`secondsUntil` from
+`../text/datetime.js`):
+   - `export function listWideScope(root: string): string[]` — the moved one-liner
+     `[DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)]`.
+   - `export interface QueuedListRow { role: string; position: number; text: string; queuedAtMs: number | null; notBeforeMs: number | null }`.
+   - `export function queuedListRows(root: string, role: string | null, validIds: string[]): QueuedListRow[]` —
+     the moved `promptListPayload` body (director records first when `role` is null, then
+     `validIds`), stripping the marker from each text through `stripNotBeforeMarker` exactly as
+     today.
+   - `export function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string` —
+     moved verbatim from `prompt-commands.ts`, doc comment kept.
+   - `export function renderQueuedList(rows: readonly QueuedListRow[], now: number): string` —
+     the moved section loop: group consecutive rows by role, one `<role>:` section per loop
+     holding `"<position>. <text><queuedAgeSuffix>"` lines, sections joined by `\n`; the CLI's
+     `say(sections.join("\n"))` output is byte-identical.
+   Keep each moved doc comment, retargeting “the CLI's --list” to name both surfaces.
+2. `src/inbox/prompt-commands.ts`: delete the moved locals (`promptListPayload`,
+`queuedAgeSuffix`, `listWideScope`) and the now-unused `humanSeconds`/`secondsSince`/
+`secondsUntil`/`knownRoleIdsCached` imports; import `listWideScope`, `queuedListRows`,
+`renderQueuedList` from `./inbox.js`. The `--json` arm keeps
+`sayJson({ prompts: queuedListRows(root, role, validIds as string[]) })`; the prose arm keeps its
+`prompts.length === 0` guard, then `say(renderQueuedList(prompts, Date.now()))`.
+3. `src/ui/tui/tui-frame.ts`: `TuiView` gains `| { kind: "queued" }`; `tabStrip`'s `tabs` gains
+`["queued", "Queued"]` after `["pending", "Pending"]`; `hintLine` gains a `queued` branch with
+the pending branch's keys (`Enter`/`↑↓`/`PgUp PgDn`/`Ctrl+T`/`Ctrl+D`).
+4. `src/ui/tui/tui-keys.ts`: import `listWideScope`, `queuedListRows`, `renderQueuedList` from
+`../../inbox/inbox.js`; in the Ctrl+T handler change the cycle to
+`(view + 1) % (roleIds.length + 7)` and add, beside the Pending branch inside
+`if (!refreshPaneCache("all"))`, `else if (view === roleIds.length + 6) paneCache =
+renderQueuedList(queuedListRows(root, null, listWideScope(root)), now());` (the factory's
+injected `now` clock, so a test pins the suffix); the `syncSnapshot` clamp becomes
+`Math.min(view, roleIds.length + 6)`; update the `view` comments.
+5. `src/ui/tui/tui.tsx`: the pane selection gains
+`: view === roleIds.length + 6 ? { kind: "queued" }` before the activity fallback.
+6. `src/ui/tui/tui-pane.ts`: add a `queued` branch returning `paneCache` windowed through
+`entryBodyWindow` exactly like the `history`/`pending` branches, with
+`emptyNote: "(no queued prompts)"`; extend the `paneBody` doc's kind list.
+7. `docs/how-it-works.md`: the TUI bullet lists the Queued pane after Pending and names
+`tumwater prompt --list` as the CLI view it matches.
+
+**Files touched.** `src/inbox/inbox.ts`, `src/inbox/prompt-commands.ts`,
+`src/ui/tui/tui-frame.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui.tsx`,
+`src/ui/tui/tui-pane.ts`, `docs/how-it-works.md`, `test/tui-frame.test.ts`,
+`test/tui-keys.test.ts`, `test/tui.test.ts`.
+
+**Acceptance criteria.**
+- `test/prompt-commands.test.ts`: the existing `prompt --list` prose and `--json` cases stay green
+  against the extracted `queuedListRows`/`renderQueuedList` (same sections, numbering, and
+  suffix). A new case seeds one director prompt and two role prompts and asserts
+  `renderQueuedList(queuedListRows(root, null, listWideScope(root)), now)` yields the director
+  section first then the role's, each numbered from 1, and a deferred prompt's line carries
+  `(delivers in ` from its future `notBeforeMs` rather than an age.
+- `test/tui-keys.test.ts`: the cycle case now sees Pending at `roleIds.length + 5`, a further
+  Ctrl+T lands on Queued at `roleIds.length + 6`, and the next wraps to Activity; with a director
+  and a role queue file seeded, entering Queued sets `state().paneCache` to
+  `renderQueuedList(queuedListRows(root, null, listWideScope(root)), <fixed now>)`; leaving Queued
+  drops it to null.
+- `test/tui-frame.test.ts`: every `tabStrip` expectation gains `Queued` after `Pending` (including
+  the narrow-width case staying within its width), a `hintLine({ kind: "queued" }, …)` case
+  matches its keys, and the Ctrl+D loop includes `{ kind: "queued" }`.
+- `test/tui.test.ts`: a `paneBody({ kind: "queued" }, …)` case windows the cached list and returns
+  the `(no queued prompts)` note when the cache is null.
+- `docs/how-it-works.md` names the Queued pane and `tumwater prompt --list`.
+- `npm run test` is green.
+
 ### Search the TUI History pane with `tumwater history --grep`'s rule (planned 2026-10-11 by plan; sibling of the landed `tumwater history --grep`, the landed dashboard History search, and the landed TUI History `Ctrl+S`/`Ctrl+O`/`Ctrl+G` filters; completes the last `history` filter without a TUI surface; independent of the waiting TUI Pending land-queue plan — it shares `src/ui/tui/tui-keys.ts` and `tui-frame.ts` but edits the History pane's branches, the prompt-line modes, and the history view shape, not the Pending branch, so a landing conflict is possible and the resolver handles it)
 
 **Goal.** The History pane filters by trailing window (`Ctrl+S`), outcome class (`Ctrl+O`), and exact loop (`Ctrl+G`), but a free-text search has no TUI surface: `tumwater history --grep <text>` and the dashboard's History search field both filter the rows through `history-data.ts`'s `tickRowGrepHaystack` case-insensitive substring rule. Add that search to the TUI, reading the same haystack so the three surfaces cannot disagree.
