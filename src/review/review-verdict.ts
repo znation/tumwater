@@ -52,11 +52,56 @@ export function parseVerdict(text: string): ReviewVerdict | null {
  * nothing but those still yields them, since a lead-in beats recording no reason at all.
  * Empty when the region carries no lines at all. */
 function reasonsFrom(region: string): string[] {
-  const lines = region.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = withoutQuotedCode(region);
   const numbered = lines.map(listItemText).filter((r): r is string => Boolean(r));
   if (numbered.length > 0) return numbered;
   const findings = lines.filter((l) => !isPreamble(l));
   return findings.length > 0 ? findings : lines;
+}
+
+/** The region's non-empty lines with quoted code removed before list scanning: fenced code
+ * blocks (backtick or tilde fences) and C-family block comments. A reviewer anchors an
+ * objection by quoting the offending source, and a comment continuation line (a `*` line
+ * from inside a block comment) is shaped like a `*` bullet; keeping it lets the
+ * numbered-first rule below return the fragment and suppress the prose objection, so
+ * reasons[0] names the code instead of what to fix. Removal is a subtraction, never a state
+ * that consumes what follows an unmatched opener: only a CLOSED fence drops its block and
+ * only a `/*`–comment-close pair drops a comment, so the prose after a lone opener survives.
+ * A `/*` opener anywhere on a line (code before it) starts its comment, and a bare
+ * continuation line whose opener sits outside the region (the quoted shape the gate sees) is
+ * dropped by line. */
+function withoutQuotedCode(region: string): string[] {
+  // The shortest opener-to-close span, across lines or within one, so code before an opener
+  // and text after its closer on the same line both survive.
+  const unquoted = stripFencedBlocks(region).replace(/\/\*[\s\S]*?\*\//g, " ");
+  return unquoted
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => !/^\*.*\*\/$/.test(l));
+}
+
+/** Drop each fenced code block whose opener has a matching closer, and drop a lone fence
+ * marker's line. Content after an unmatched opener is kept as text — a fence is a quote
+ * boundary, not a switch that swallows the rest of the reply. */
+function stripFencedBlocks(region: string): string {
+  const lines = region.split("\n");
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const mark = (lines[i] ?? "").trim().match(/^(`{3,}|~{3,})/)?.[1];
+    if (!mark) {
+      kept.push(lines[i] ?? "");
+      continue;
+    }
+    let close = i + 1;
+    while (close < lines.length) {
+      const end = (lines[close] ?? "").trim().match(/^(`{3,}|~{3,})/)?.[1];
+      if (end && end[0] === mark[0] && end.length >= mark.length) break;
+      close++;
+    }
+    if (close < lines.length) i = close; // matched: drop opener..closer; unmatched: drop the marker only
+  }
+  return kept.join("\n");
 }
 
 /** A list item: `1.`/`1)` numbering or a `-`/`*` bullet, optionally inside a markdown

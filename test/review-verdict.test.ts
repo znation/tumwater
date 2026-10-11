@@ -303,3 +303,72 @@ test("a bold-numbered rejection reaches the author's next-tick note numbered onc
       "Address the objections or take a different approach.",
   );
 });
+
+// A reviewer anchors an objection by quoting the offending source. A block-comment
+// continuation line (` * … */`), whether fenced or bare, must not be read as a finding bullet:
+// reasonsFrom's numbered-first rule would then return the fragment and suppress the prose
+// objection, so reasons[0] named the code instead of what to fix.
+
+test("parseVerdict reads the prose objection, not a quoted block-comment fragment", () => {
+  const fenced = [
+    "VERDICT: reject",
+    "",
+    "The comment is stale:",
+    "",
+    "```",
+    " * or write one key through screenOperableKey. */",
+    "```",
+    "",
+    "Fix the comment.",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(fenced)?.reasons, ["Fix the comment."]);
+
+  const bare = [
+    "VERDICT: reject",
+    "",
+    " * or write one key through screenOperableKey. */",
+    "",
+    "Fix the comment.",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(bare)?.reasons, ["Fix the comment."]);
+});
+
+// Removal of quoted code is a subtraction, not a state that consumes what follows an
+// unmatched opener: a reply that opens a fence (or a `/*`) and never closes it must still
+// yield the prose objection below, not an empty reason list.
+
+test("parseVerdict keeps the prose objection after an unmatched code opener", () => {
+  const unclosedFence = ["VERDICT: reject", "```", "some code", "Fix the comment."].join("\n");
+  assert.ok(
+    parseVerdict(unclosedFence)?.reasons.includes("Fix the comment."),
+    `expected the prose objection to survive, got ${JSON.stringify(parseVerdict(unclosedFence)?.reasons)}`,
+  );
+
+  const unclosedComment = ["VERDICT: reject", "/* note", "Fix the comment."].join("\n");
+  assert.ok(
+    parseVerdict(unclosedComment)?.reasons.includes("Fix the comment."),
+    `expected the prose objection to survive, got ${JSON.stringify(parseVerdict(unclosedComment)?.reasons)}`,
+  );
+});
+
+// A block-comment opener can follow code on its line. Its continuation lines must still be
+// dropped, or the `* … */` line is read as the finding bullet and suppresses the prose.
+
+test("parseVerdict drops continuation lines whose comment opener follows code", () => {
+  const text = [
+    "VERDICT: reject",
+    "const x = 1; /* comment starts here",
+    " * comment line one",
+    " * comment line two */",
+    "Fix it.",
+  ].join("\n");
+  const reasons = parseVerdict(text)?.reasons ?? [];
+  assert.ok(
+    reasons.includes("Fix it."),
+    `expected the prose objection to survive, got ${JSON.stringify(reasons)}`,
+  );
+  assert.ok(
+    !reasons.some((r) => r.includes("comment line one")),
+    `expected the comment continuation to be dropped, got ${JSON.stringify(reasons)}`,
+  );
+});

@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A rejection reply that quotes a block-comment line has the comment's ` * ` continuation read as a bullet reason, so `reasonsFrom` returns the fragment and drops the reviewer's real findings — the digest's clean rejection cluster is the code fragment `or write one key through screenOperableKey. */` (found by telemetry loop 2026-10-11 from the digest's Top rejection cluster `clean · 10-11 → 10-11 — or write one key through screenOperableKey. */`, in a window whose time-and-spend row gives clean `0.7 h · $0.13` in the error-class cell for 2 review rejections and whose top-five loss causes hide that cause among the `+9 more`; correlated with merged commit f15b23fc, "Read bold- and heading-numbered review findings as reasons, not the preamble", which added the `[-*]` bullet screen)
+_None yet._
+
+## Fixed
+
+### A rejection reply that quotes a block-comment line has the comment's ` * ` continuation read as a bullet reason, so `reasonsFrom` returns the fragment and drops the reviewer's real findings — the digest's clean rejection cluster is the code fragment `or write one key through screenOperableKey. */` (found by telemetry loop 2026-10-11 from the digest's Top rejection cluster `clean · 10-11 → 10-11 — or write one key through screenOperableKey. */`, in a window whose time-and-spend row gives clean `0.7 h · $0.13` in the error-class cell for 2 review rejections and whose top-five loss causes hide that cause among the `+9 more`; correlated with merged commit f15b23fc, "Read bold- and heading-numbered review findings as reasons, not the preamble", which added the `[-*]` bullet screen; fixed 2026-10-11 by bugfix loop)
 
 - **Symptom:** `parseVerdict` (src/review/review-verdict.ts) parses a reject verdict's reasons through `reasonsFrom`, which trims each line and maps it through `listItemText`. `LIST_ITEM` (`/^(?:#{1,6}\s+)?(\*\*)?(?:\d+[.)]|[-*])(\*\*)?\s+(.+)$/`) accepts a bare `*` as a bullet, so a trimmed C/JSDoc block-comment continuation line like `* or write one key through screenOperableKey. */` matches it and yields the item text `or write one key through screenOperableKey. */`. Because `numbered.length > 0`, `reasonsFrom` returns only those bullet items and skips its prose fallback, so a reviewer reply that quotes the offending comment (the shape the review prompt invites) loses every finding it stated as prose. `firstReason(reasons)` — the gate `detail`, the loop's `lastError`, the digest's rejection cluster key (src/failure/failure-data.ts, keyed on `reasons[0]`), and the author's next-tick rejection note — all then name the code fragment instead of the objection to fix.
 - **Reproduce:** offline, no model, against the built module:
@@ -16,8 +20,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Impact:** the digest's `clean` rejection cluster is the fragment (1×, 2026-10-11), and clean carries `0.7 h · $0.13` in the digest's error-class cell for 2 rejections — the loss cause naming this work is among the `+9 more` the top-five cut hides. The author's next-tick note lists the fragment as the objection to fix, and the operator cannot tell what the reviewer objected to.
 - **Cause:** `LIST_ITEM`'s `[-*]` arm does not distinguish a markdown bullet from a block-comment continuation line; `reasonsFrom` also does not strip fenced code blocks before scanning, so a quoted diff/comment is read as the finding list. The comment above `LIST_ITEM` says it matches a "`-`/`*` bullet" finding; a `*/`-terminated comment line is not one.
 - **Suggested fix:** in `reasonsFrom`, drop fenced code blocks and block-comment continuation lines before mapping to list items (or require a `*` bullet's text to not be inside a fence), keeping the `1.`/`1)`/`-`/`*` shapes the reply contract advertises. Pin it with a `parseVerdict` test over a reject reply that quotes a `*` comment line and states its objection as prose, asserting `reasons[0]` is the prose objection and not the fragment — the case returns the fragment today.
+- **Fix:** `reasonsFrom` (src/review/review-verdict.ts) now scans `withoutQuotedCode(region)`,
+  which drops fenced code blocks (backtick/tilde) and C-family block comments before the
+  numbered-first pass, and also drops a bare continuation line ending in a comment close whose
+  opener sits outside the scanned region. A quoted ` * … */` line no longer matches `LIST_ITEM`,
+  so the prose objection below it survives as the fallback reason. Pinned by the `parseVerdict`
+  test "reads the prose objection, not a quoted block-comment fragment" over both a fenced and a
+  bare block-comment quote.
 
-## Fixed
+**Validation gap:** none — the failure reproduced deterministically offline against the built
+module (the fenced and bare quotes both returned the fragment), so no missing shim, real run, or
+observability stood in the way of confirming it; the added `parseVerdict` test failed before the
+fix and passes after.
 
 ### `tumwater config set roles '<json>'` reports success but cannot disable a built-in role, and the next `config set` rewrites tumwater.json to re-list every role (found by qa loop 2026-10-10 while exercising the `reset-counters` flow as a first-time user; the setup step's `config set roles` silently left every loop enabled; fixed 2026-10-11 by bugfix loop)
 
