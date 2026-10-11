@@ -7,41 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Keep the invariant register honest with a citation and id guard test (planned 2026-10-10 by plan; independent of the citation-sweep and Agent backends series; follow-up to the landed "An invariant register")
-
-**Goal.** `docs/invariants.md` promises in its own "Keep it honest" paragraph that every invariant
-has a stable id and a resolvable `test/...` citation, and that its `Binds.` modules are the ones the
-guarantee spans — but nothing enforces any of that. A renamed test, a moved module, or a copied
-entry slips through silently, turning the register the fleet reads into a stale citation. Add a test
-that parses the register and fails on a broken citation, a duplicate/malformed id, or an entry
-missing a field.
-
-**Approach.**
-1. Add a new test file, the invariants-doc guard, beside the other doc-parsing tests. Read the register through
-   `fileURLToPath(new URL("../../docs/invariants.md", import.meta.url))` (the pattern
-   `test/backlog-structure.test.ts` uses for `PLANS.md`), with the repo root as
-   `fileURLToPath(new URL("../../", import.meta.url))`.
-2. Parse with a small helper local to the test: split the text at `^### (INV-[A-Z]\d+):`, and per
-   entry record its id, whether it carries the `**Guarantee.**`, `**Binds.**`, and `**Pinned by.**`
-   field labels, and every backticked path token matching `/(?:src|test|docs|plans|scripts)\//`.
-3. Assert, so the guard names the failure rather than only a count:
-   - the register holds at least one entry, and ids are unique and match `/^INV-[A-Z]\d+$/`;
-   - every entry has all three field labels and its `**Pinned by.**` cites at least one
-     `test/*.test.ts` path;
-   - every cited path resolves under the repo root (skip the prose placeholders — the bare
-     `test/...` / `src/...` ellipses and any glob token — so only real citations are checked);
-   - the two `test/...` and `src/...` paths cited by each entry exist.
-4. Tests only; no `src/` change, no runtime dependency, no new pipeline step.
-
-**Files touched.** One new test file under `test/` (the invariants-doc guard). No source change.
-
-**Acceptance criteria.**
-- `npm test invariants` is green, and the new file fails if a cited `test/...` or `src/...` path is
-  removed, if two entries share an id, or if an entry loses a field label (verified by temporarily
-  breaking the doc and watching the guard fail).
-- `docs/invariants.md` is unchanged by this landing and still parses under the new guard.
-- `npm run test` is green.
-
 ### Search the dashboard History view with `tumwater history --grep`'s rule (planned 2026-10-10 by plan; independent of the citation-sweep series; sibling of the landed `tumwater history --grep` and the landed role scope in the dashboard History view)
 
 **Goal.** `tumwater history --grep <text>` filters rows case-insensitively against a canonical
@@ -91,6 +56,41 @@ runtime dependency.
 - `npm run test` is green.
 
 ## Done
+
+### Keep the invariant register honest with a citation and id guard test (planned 2026-10-10 by plan; independent of the citation-sweep and Agent backends series; follow-up to the landed "An invariant register"; done 2026-10-10 by feature)
+
+**Goal.** `docs/invariants.md` promises in its own "Keep it honest" paragraph that every invariant
+has a stable id and a resolvable `test/...` citation, and that its `Binds.` modules are the ones the
+guarantee spans — but nothing enforces any of that. A renamed test, a moved module, or a copied
+entry slips through silently, turning the register the fleet reads into a stale citation. Add a test
+that parses the register and fails on a broken citation, a duplicate/malformed id, or an entry
+missing a field.
+
+**Approach.**
+1. Add a new test file, the invariants-doc guard, beside the other doc-parsing tests. Read the register through
+   `fileURLToPath(new URL("../../docs/invariants.md", import.meta.url))` (the pattern
+   `test/backlog-structure.test.ts` uses for `PLANS.md`), with the repo root as
+   `fileURLToPath(new URL("../../", import.meta.url))`.
+2. Parse with a small helper local to the test: split the text at `^### (INV-[A-Z]\d+):`, and per
+   entry record its id, whether it carries the `**Guarantee.**`, `**Binds.**`, and `**Pinned by.**`
+   field labels, and every backticked path token matching `/(?:src|test|docs|plans|scripts)\//`.
+3. Assert, so the guard names the failure rather than only a count:
+   - the register holds at least one entry, and ids are unique and match `/^INV-[A-Z]\d+$/`;
+   - every entry has all three field labels and its `**Pinned by.**` cites at least one
+     `test/*.test.ts` path;
+   - every cited path resolves under the repo root (skip the prose placeholders — the bare
+     `test/...` / `src/...` ellipses and any glob token — so only real citations are checked);
+   - the two `test/...` and `src/...` paths cited by each entry exist.
+4. Tests only; no `src/` change, no runtime dependency, no new pipeline step.
+
+**Files touched.** One new test file under `test/` (the invariants-doc guard). No source change.
+
+**Acceptance criteria.**
+- `npm test invariants` is green, and the new file fails if a cited `test/...` or `src/...` path is
+  removed, if two entries share an id, or if an entry loses a field label (verified by temporarily
+  breaking the doc and watching the guard fail).
+- `docs/invariants.md` is unchanged by this landing and still parses under the new guard.
+- `npm run test` is green.
 
 ### Finish the stale code-path citation sweep, part 5f/5: `parallel-work-instances`, `worktree-pool` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 
