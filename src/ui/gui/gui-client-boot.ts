@@ -121,6 +121,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   function rerender() {
     if (!lastStatus) return;
     if (activeView === "fleet") renderFleet(lastStatus);
+    if (activeView === "pending") renderPendingQueue(lastStatus);
     if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus);
   }
   let lastEventKey = null;
@@ -161,6 +162,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       renderAlerts(d);
       renderComposer(d);
       if (activeView === "fleet") renderFleet(d);
+      if (activeView === "pending") renderPendingQueue(d);
       if (activeView === "history") syncHistoryRoles(d);
       // Keep the Usage/Failures Loop pickers in step with the fleet while either is open.
       if (activeView === "usage" || activeView === "failures") syncReportRoles(d);

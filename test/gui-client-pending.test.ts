@@ -75,3 +75,54 @@ test("pendingTableHtml escapes role, branch, and subject text", () => {
   assert.match(html, /&lt;img&gt;/);
   assert.match(html, /x&lt;y/);
 });
+
+// The Land queue card (pendingQueueHtml): the queued landings the status payload already
+// carries, painted in execution order like `tumwater queue` — from a pure function of the
+// payload and a fixed `now` so the ages are pinned.
+test("pendingQueueHtml lists each queued landing in order with position, role, tick, short sha, age, and summary", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
+    ["format", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const html = pendingQueueHtml({ depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", tick: 42, summary: "add the thing", enqueuedAt: now - 180_000 },
+    { role: "bugfix", sha: "0123456789abcdef", tick: 7, summary: "fix the thing", enqueuedAt: now - 5_000 },
+  ] }, now);
+  assert.match(html, /1\. feature tick #42 · abcdef12 · 3m ago · add the thing/);
+  assert.match(html, /2\. bugfix tick #7 · 01234567 · 5s ago · fix the thing/);
+  assert.ok(html.indexOf("1. feature") < html.indexOf("2. bugfix"), "array order is the row order");
+});
+
+test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
+    ["format", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  assert.match(pendingQueueHtml({ depth: 0 }, now), /Land queue empty/);
+  assert.match(pendingQueueHtml(null, now), /Land queue empty/);
+  // A depth with no readable list is the unreadable-file count, stated without inventing rows.
+  assert.match(pendingQueueHtml({ depth: 2 }, now), /land queue: 2 waiting/);
+  // An entries field that is not an array, and an entry missing its sha/enqueuedAt, degrades.
+  assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: "nope" }, now), /undefined|NaN/);
+  const malformed = pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", tick: undefined, summary: undefined, sha: undefined, enqueuedAt: undefined },
+  ] }, now);
+  assert.match(malformed, /qa/);
+  assert.doesNotMatch(malformed, /undefined|NaN/);
+});
+
+test("pendingQueueHtml escapes role and summary markup", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
+    ["format", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const html = pendingQueueHtml({ depth: 1, entries: [
+    { role: "r<script>", sha: "abcdef12", tick: 1, summary: "<img>", enqueuedAt: now - 1_000 },
+  ] }, now);
+  assert.doesNotMatch(html, /<script>|<img>/);
+  assert.match(html, /r&lt;script&gt;/);
+  assert.match(html, /&lt;img&gt;/);
+});

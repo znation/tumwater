@@ -74,61 +74,6 @@ with `newNotifier` now using the helper), a new `notify-command.test.ts` in `tes
   help lists" case then passes), and `helpTopic("notify")` starts `  tumwater notify`.
 - `npm run test` is green.
 
-### Show the durable land queue in the dashboard's Pending view, matching `tumwater queue` (planned 2026-10-10 by plan; sibling of the landed `tumwater queue` CLI command and the landed dashboard Pending view; completes the land queue's read surfaces on the dashboard, which today show only the header depth badge `· land queue: N` — the entries already ride `/api/status`'s `landQueue.entries` and are polled every second but never painted; independent of the waiting TUI History `--result`, CLI `notify --test`, and remainder-and-cause trace plans — GUI-only, no `src/ui/tui`, `src/history`, `src/events`, or `src/failure` file)
-
-**Goal.** The dashboard's Pending view shows every loop's unlanded change (from `/api/diff`) and
-its header badge shows the queue depth (`· land queue: N`, src/ui/badges.ts `landingBadge`), but
-the waiting landings themselves — role, tick, short sha, age, summary, in execution order — are
-visible only through `tumwater queue` or `tumwater status --json`. The status payload the page
-already polls each second carries them at `landQueue.entries` (StatusSnapshot, filled from
-`readLandingQueue`). Paint a "Land queue" card at the top of the Pending view from that payload,
-so an operator watching the browser sees what the landing slot will merge next without leaving
-the page.
-
-**Approach.**
-1. `src/ui/gui/gui-client-pending.ts`, inside the `pending-table` marked region (so `clientScope`
-   can run it): add the pure `pendingQueueHtml(landQueue, now)`.
-   - Non-empty readable `entries`: one row per entry in array order, `<n>. <role> tick #<tick> ·
-     <shortSha(sha)> · <humanSeconds((now - enqueuedAt) / 1000)> ago · <summary>` — the same
-     fields and order as `renderLandingQueue` (src/landing/landing-queue-render.ts), so the page
-     and the CLI cannot drift. `shortSha`/`humanSeconds` come from the assembled script's
-     `format` region (the test already loads it beside `pending-table`) and `esc` from the
-     script's own `esc`.
-   - `landQueue` absent or `depth === 0`: `Land queue empty`.
-   - `depth > 0` with `entries` absent or not an array: `land queue: <depth> waiting` (the depth
-     also counts the unreadable queue files the status reader skips; the payload carries no
-     split, so the card states the count without inventing an itemization).
-   - Guard a non-array `entries`, a missing `sha`, and a non-finite `enqueuedAt` so no row prints
-     `undefined` or `NaN`.
-2. `buildPendingView()` gains a `<div class="card" id="pendingqueue">` above `#pendingbody`, and
-   `fetchPending()` paints it through a `renderPendingQueue()` that reads `lastStatus &&
-   lastStatus.landQueue` (the polled payload, no new fetch) and calls `pendingQueueHtml` with
-   `Date.now()`.
-3. `src/ui/gui/gui-client-boot.ts`: `rerender()` gains `if (activeView === "pending")
-   renderPendingQueue(lastStatus);` beside its fleet line, so the card tracks the one-second
-   status poll while the view is open; the roster keeps its own open/Refresh `/api/diff` fetch.
-4. No server change: `landQueue.entries` already rides `/api/status` (src/ui/status-payload.ts
-   passes `snap.landQueue` through), and the Pending view's pure-function test seam already
-   loads the `format` region.
-
-**Files touched.** `src/ui/gui/gui-client-pending.ts`, `src/ui/gui/gui-client-boot.ts`,
-`test/gui-client-pending.test.ts`.
-
-**Acceptance criteria.**
-- `test/gui-client-pending.test.ts`, a new case over `pendingQueueHtml({ depth, entries }, now)`
-  with two entries: the rows appear in array order, each carrying its 1-based position, role,
-  `tick #<tick>`, the sha's first eight characters, an age derived from the fixed `now`, and the
-  summary.
-- `pendingQueueHtml({ depth: 0 }, now)` and `pendingQueueHtml(null, now)` both carry `Land queue
-  empty`; `pendingQueueHtml({ depth: 2 }, now)` with the readable list absent carries `land
-  queue: 2 waiting`.
-- An escaping case (a role and summary containing markup render escaped) and a malformed-
-  document case (`entries` not an array, `sha`/`enqueuedAt` missing) render without `undefined`
-  or `NaN`.
-- The existing `pendingTableHtml` cases stay green, and `GUI_CLIENT_JS` still carries the module
-  verbatim (its existing case covers the new function, which lives in the same region).
-- `npm run test` is green.
-
 ### Role-scoped History pane in `tumwater tui`, matching `tumwater history --role <id>` (planned 2026-10-11 by plan; sibling of the landed GUI History Loop picker (`histRole` in src/ui/gui/gui-client-history.ts) and of the landed TUI `Ctrl+G` report scope; the TUI History pane filters by trailing window (Ctrl+S) and outcome class (Ctrl+O) but not by loop, so the exact-loop filter `tumwater history --role <id>` and the dashboard picker both have no TUI surface; independent of the waiting `tumwater notify --test`, dashboard land-queue, and remainder-and-cause plans — TUI-only, no `src/cli`, `src/events`, `src/landing`, or `src/failure` file)
 
 **Goal.** `tumwater history --role <id>` filters tick rows to one loop's exact id, and the
@@ -265,6 +210,60 @@ different wording ("older transitions hidden", "loss causes by time not listed",
 holding N", "older merges not listed") and already share the `agree`/`plural` helpers, so a
 single formatter would add parameters without removing a computation.
 
+### Show the durable land queue in the dashboard's Pending view, matching `tumwater queue` (planned 2026-10-10 by plan; sibling of the landed `tumwater queue` CLI command and the landed dashboard Pending view; completes the land queue's read surfaces on the dashboard, which today show only the header depth badge `· land queue: N` — the entries already ride `/api/status`'s `landQueue.entries` and are polled every second but never painted; independent of the waiting TUI History `--result`, CLI `notify --test`, and remainder-and-cause trace plans — GUI-only, no `src/ui/tui`, `src/history`, `src/events`, or `src/failure` file; done 2026-10-11 by feature)
+
+**Goal.** The dashboard's Pending view shows every loop's unlanded change (from `/api/diff`) and
+its header badge shows the queue depth (`· land queue: N`, src/ui/badges.ts `landingBadge`), but
+the waiting landings themselves — role, tick, short sha, age, summary, in execution order — are
+visible only through `tumwater queue` or `tumwater status --json`. The status payload the page
+already polls each second carries them at `landQueue.entries` (StatusSnapshot, filled from
+`readLandingQueue`). Paint a "Land queue" card at the top of the Pending view from that payload,
+so an operator watching the browser sees what the landing slot will merge next without leaving
+the page.
+
+**Approach.**
+1. `src/ui/gui/gui-client-pending.ts`, inside the `pending-table` marked region (so `clientScope`
+   can run it): add the pure `pendingQueueHtml(landQueue, now)`.
+   - Non-empty readable `entries`: one row per entry in array order, `<n>. <role> tick #<tick> ·
+     <shortSha(sha)> · <humanSeconds((now - enqueuedAt) / 1000)> ago · <summary>` — the same
+     fields and order as `renderLandingQueue` (src/landing/landing-queue-render.ts), so the page
+     and the CLI cannot drift. `shortSha`/`humanSeconds` come from the assembled script's
+     `format` region (the test already loads it beside `pending-table`) and `esc` from the
+     script's own `esc`.
+   - `landQueue` absent or `depth === 0`: `Land queue empty`.
+   - `depth > 0` with `entries` absent or not an array: `land queue: <depth> waiting` (the depth
+     also counts the unreadable queue files the status reader skips; the payload carries no
+     split, so the card states the count without inventing an itemization).
+   - Guard a non-array `entries`, a missing `sha`, and a non-finite `enqueuedAt` so no row prints
+     `undefined` or `NaN`.
+2. `buildPendingView()` gains a `<div class="card" id="pendingqueue">` above `#pendingbody`, and
+   `fetchPending()` paints it through a `renderPendingQueue()` that reads `lastStatus &&
+   lastStatus.landQueue` (the polled payload, no new fetch) and calls `pendingQueueHtml` with
+   `Date.now()`.
+3. `src/ui/gui/gui-client-boot.ts`: `rerender()` gains `if (activeView === "pending")
+   renderPendingQueue(lastStatus);` beside its fleet line, so the card tracks the one-second
+   status poll while the view is open; the roster keeps its own open/Refresh `/api/diff` fetch.
+4. No server change: `landQueue.entries` already rides `/api/status` (src/ui/status-payload.ts
+   passes `snap.landQueue` through), and the Pending view's pure-function test seam already
+   loads the `format` region.
+
+**Files touched.** `src/ui/gui/gui-client-pending.ts`, `src/ui/gui/gui-client-boot.ts`,
+`test/gui-client-pending.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-pending.test.ts`, a new case over `pendingQueueHtml({ depth, entries }, now)`
+  with two entries: the rows appear in array order, each carrying its 1-based position, role,
+  `tick #<tick>`, the sha's first eight characters, an age derived from the fixed `now`, and the
+  summary.
+- `pendingQueueHtml({ depth: 0 }, now)` and `pendingQueueHtml(null, now)` both carry `Land queue
+  empty`; `pendingQueueHtml({ depth: 2 }, now)` with the readable list absent carries `land
+  queue: 2 waiting`.
+- An escaping case (a role and summary containing markup render escaped) and a malformed-
+  document case (`entries` not an array, `sha`/`enqueuedAt` missing) render without `undefined`
+  or `NaN`.
+- The existing `pendingTableHtml` cases stay green, and `GUI_CLIENT_JS` still carries the module
+  verbatim (its existing case covers the new function, which lives in the same region).
+- `npm run test` is green.
 ### Filter the TUI History pane by outcome class, matching `tumwater history --result` (planned 2026-10-10 by plan; sibling of the landed CLI `tumwater history --result <changes|none|problems>` and the landed dashboard History outcome filter; completes that outcome filter on the TUI's History pane, reading the same canonical `historyClass` rule from `src/history/history-data.ts`; shares `src/ui/tui/tui-keys.ts`/`tui-frame.ts` with the waiting TUI Usage/Failures `--since` plan — both add one session cycle and one hint pair — so a landing conflict is possible and the resolver handles it; done 2026-10-10 by feature)
 
 **Goal.** The TUI History pane now offers the `Ctrl+S` trailing window (landed), but it renders
