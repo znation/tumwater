@@ -21,7 +21,8 @@ import { seedCounters } from "./fixtures/loop-fixtures.js";
 // child-process CLI tests live in their command's topic file: cli-prompt-queue.test.ts
 // carries the prompt queue, cli-preflight.test.ts run's startup preflight, and
 // cli-arg-strictness.test.ts the argument-strictness tests; cli-gui.test.ts (gui),
-// cli-run-live.test.ts (run's lifecycle), doctor.test.ts, report.test.ts, and tui.test.ts.
+// the cli-run-*.test.ts family (run's pre-boot guards, lifecycle, forced exit, live
+// window/gui, and scoped once round), doctor.test.ts, report.test.ts, and tui.test.ts.
 
 test("status refuses repos that are not ready", async () => {
   // Not a git repo.

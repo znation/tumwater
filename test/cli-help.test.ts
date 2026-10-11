@@ -20,7 +20,8 @@ import { cli } from "./helpers/cli-harness.js";
 // processes, nearly every test here spawning the CLI. The other child-process CLI tests live
 // in their command's topic file: cli-prompt-queue.test.ts (prompt queue), cli-preflight.test.ts
 // (run's startup preflight), cli-arg-strictness.test.ts (argument strictness), cli-gui.test.ts
-// (gui), cli-run-live.test.ts (run's lifecycle), doctor.test.ts, report.test.ts, and
+// (gui), the cli-run-*.test.ts family (run's pre-boot guards, lifecycle, forced exit, live
+// window/gui, and scoped once round), doctor.test.ts, report.test.ts, and
 // tui.test.ts.
 
 test("help and no command print usage", async () => {
