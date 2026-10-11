@@ -283,8 +283,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   opens its details — its notebook and next tick's prompt included — and its live transcript
   (`#loop/<name>` links straight to it). Its History, Usage,
   Failures, and Pending views match `tumwater history`, `tumwater report`, `tumwater report
-  --failures`, and `tumwater diff`; the Pending view also shows a loop's full unlanded patch in
-  its drawer.
+  --failures`, and `tumwater diff`; the Pending view also paints the land queue as a card
+  mirroring `tumwater queue`, and shows a loop's full unlanded patch in its drawer.
   Its Settings view shows the curated top-level config keys (provider, model, fallback, the daily
   spend cap, quiet hours, the notify hook) with inline Save buttons that write through the same
   path `tumwater config set` uses.
@@ -296,13 +296,17 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   `historyClass` buckets and an emptied filter's `no ticks with result "<class>"` wording
   `tumwater history --result` uses, with the hint line naming the active class (`result: all` or
   `result: <class>`).
+  `Ctrl+G` cycles the pane's exact-loop scope through the fleet and each raw roster id — an
+  instance id is its own slot, the same scope `tumwater history --role` and the dashboard picker
+  take; the hint line names it (`scope: fleet` or `scope: <id>`) and a scoped pane prefixes its
+  body with `role: <id>`.
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a
-  second terminal. `Ctrl+G` cycles a session-only role scope for the Usage and Failures panes
-  through the fleet and each loop, the same scope `tumwater report --role` and the dashboard's
-  Usage/Failures views take; the tab strip names it (`Usage: <role>`) and the hint line shows
-  the current scope (`scope: fleet` or `scope: <role>`). `Ctrl+E` cycles a session-only
+  second terminal. On the Usage and Failures panes, `Ctrl+G` cycles the base-role report scope
+  through the fleet and each base role, the same scope `tumwater report --role` and the
+  dashboard's Usage/Failures views take; the tab strip names it (`Usage: <role>`) and the hint
+  line shows the current scope (`scope: fleet` or `scope: <role>`). `Ctrl+E` cycles a session-only
   trailing window for the Usage and Failures panes (default, 1h, 6h, 1d, 7d) through the same
   collectors `tumwater report --since` and `tumwater report --failures --since` use, with the
   hint line naming it (`window: default` or `window: <window>`).
