@@ -71,6 +71,9 @@ interface TuiKeysState {
   budgetMode: boolean;
   rolePromptFor: string | null;
   view: number;
+  /** The session-scoped role the Usage and Failures panes collect for (Ctrl+G), null for the
+   * fleet; cleared when the incoming roster no longer names it. */
+  scopeRole: string | null;
   selectedEntry: number | null;
   entryScroll: number;
   paneCache: string | null;
@@ -171,6 +174,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // status (planned features + open bugs + open questions), then the usage report, the failure
   // digest, the completed-tick history, and the pending-change roster — Ctrl+T.
   let view = 0;
+  // The session-scoped role the Usage and Failures panes collect for, cycled by Ctrl+G, null
+  // for the fleet. Session-only, like the view/selection/scroll state: a fresh TUI starts
+  // fleet-wide, and syncSnapshot clears it when the roster drops the role.
+  let scopeRole: string | null = null;
   // The project-status pane's entry selection (null = list mode): the flat index of the
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
   // so cycling back into the view always starts at today's heading list.
@@ -411,6 +418,26 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
+    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor) {
+      // Ctrl+G cycles the session-scoped role the Usage and Failures panes collect for
+      // (mnemonic: the **g**lobal report scope). Guarded out of the budget and role-prompt
+      // editors, whose prompt line the key must not disturb — the same inertness the per-loop
+      // keys honor. On a report pane, recompute its cached Markdown from the newly scoped
+      // collector and re-enter the body at its head; every other view just keeps the scope for
+      // the Ctrl+T entry that later computes with it.
+      const slots: Array<string | null> = [null, ...roleIds];
+      const slot = slots.indexOf(scopeRole);
+      scopeRole = slots[(slot + 1) % slots.length] ?? null;
+      if (view === roleIds.length + 2) {
+        paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
+        paneScroll = 0;
+      } else if (view === roleIds.length + 3) {
+        paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
+        paneScroll = 0;
+      }
+      deps.requestRender();
+      return;
+    }
     if (key.ctrl && key.name === "t") {
       // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
       // never strands the editor with its pre-filled cap in the prompt line. Role-prompt
@@ -426,9 +453,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Compute the pane's Markdown once per activation (this handler renders immediately), and
       // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
       if (view === roleIds.length + 2) {
-        paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS));
+        paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
       } else if (view === roleIds.length + 3) {
-        paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS));
+        paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined));
       } else if (view === roleIds.length + 4) {
         paneCache = historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
       } else if (view === roleIds.length + 5) {
@@ -618,6 +645,21 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       roleIds = roles;
       directorInFlight = directorRunning;
       view = Math.min(view, roleIds.length + 5); // clamp a stale index if roles changed
+      // A retired or renamed loop must not leave the report panes silently scoped to an
+      // absent role — drop the scope with the stale view index. The tab strip and hint then
+      // read "fleet", so a report pane still on screen must recompute its cached Markdown
+      // from the fleet-wide collector (and re-enter at the body's head) to match; the other
+      // views compute with the scope on their next Ctrl+T.
+      if (scopeRole !== null && !roleIds.includes(scopeRole)) {
+        scopeRole = null;
+        if (view === roleIds.length + 2) {
+          paneCache = renderReportMarkdown(collectReport(root, REPORT_DEFAULT_DAYS));
+          paneScroll = 0;
+        } else if (view === roleIds.length + 3) {
+          paneCache = renderFailureMarkdown(collectFailureReport(root, REPORT_DEFAULT_DAYS));
+          paneScroll = 0;
+        }
+      }
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
       eventBudget = evBudget;
@@ -630,6 +672,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         budgetMode,
         rolePromptFor,
         view,
+        scopeRole,
         selectedEntry,
         entryScroll,
         paneCache,

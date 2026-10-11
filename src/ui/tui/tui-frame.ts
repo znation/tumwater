@@ -56,8 +56,8 @@ export type TuiView =
   | { kind: "activity" }
   | { kind: "transcript"; role: string; index: number; count: number; note: boolean }
   | { kind: "backlog" }
-  | { kind: "usage" }
-  | { kind: "failures" }
+  | { kind: "usage"; scope: string | null }
+  | { kind: "failures"; scope: string | null }
   | { kind: "history" }
   | { kind: "pending" };
 
@@ -68,8 +68,8 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
     ["activity", "Activity"],
     ["transcript", view.kind === "transcript" ? `${view.note ? "Notebook" : "Transcript"}: ${view.role} (${view.index}/${view.count})` : "Transcript"],
     ["backlog", "Backlog"],
-    ["usage", "Usage"],
-    ["failures", "Failures"],
+    ["usage", view.kind === "usage" && view.scope ? `Usage: ${view.scope}` : "Usage"],
+    ["failures", view.kind === "failures" && view.scope ? `Failures: ${view.scope}` : "Failures"],
     ["history", "History"],
     ["pending", "Pending"],
   ];
@@ -91,7 +91,8 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
     keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "transcript" : "notebook"], ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "usage" || view.kind === "failures" || view.kind === "history" || view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "history" || view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {

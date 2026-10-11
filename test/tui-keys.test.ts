@@ -155,6 +155,99 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   assert.equal(keys.state().paneCache, null, "leaving History and Pending drops the cache");
 });
 
+test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache", () => {
+  const root = makeRoot();
+  // One failed feature tick with tokens: it lands in the usage report's totals and the
+  // failure digest's per-role table, so scoping to clean changes both renders.
+  writeEvents(root, [
+    { ts: Date.now(), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: Date.now(), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  assert.equal(keys.state().scopeRole, null, "a fresh TUI starts fleet-wide");
+
+  // Off a report view the key only moves the scope; no cache is computed.
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, "feature");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, "clean");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, null, "the cycle wraps back to the fleet");
+
+  // Usage: each press recomputes the cached Markdown, and the scoped text differs.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  assert.equal(keys.state().view, 4);
+  const fleetUsage = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
+  assert.equal(keys.state().scopeRole, "feature");
+  const featureUsage = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → clean
+  assert.equal(keys.state().scopeRole, "clean");
+  const cleanUsage = keys.state().paneCache;
+  assert.notEqual(featureUsage, fleetUsage, "the feature-scoped usage cache differs from the fleet-wide one");
+  assert.notEqual(cleanUsage, fleetUsage, "the clean-scoped usage cache differs from the fleet-wide one");
+
+  // Failures under the same clean scope caches a digest unlike the fleet-wide one.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → failures (view 5), scope clean
+  assert.equal(keys.state().view, 5);
+  const cleanFailures = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → fleet
+  assert.equal(keys.state().scopeRole, null);
+  assert.notEqual(cleanFailures, keys.state().paneCache, "the scoped failure digest differs from the fleet-wide one");
+});
+
+test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking roster clears the scope", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(50, false, ["feature", "clean"]);
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, "feature");
+
+  // Budget mode owns the prompt line: Ctrl+G must not cycle the scope.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, "feature", "Ctrl+G is inert in budget mode");
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Role-prompt mode owns it the same way.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "feature");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().scopeRole, "feature", "Ctrl+G is inert in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // A roster that still names the role keeps the scope; one that drops it resets.
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  assert.equal(keys.state().scopeRole, "feature", "a still-present role keeps its scope");
+  keys.syncSnapshot(0, false, ["clean"]);
+  assert.equal(keys.state().scopeRole, null, "a roster drop clears the stale scope");
+});
+
+test("syncSnapshot recomputes an on-screen report pane when it clears a retired scope", () => {
+  const root = makeRoot();
+  // A failed feature tick with tokens: scoping to the fleet and to feature render differently.
+  writeEvents(root, [
+    { ts: Date.now(), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: Date.now(), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  const fleetUsage = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
+  assert.notEqual(keys.state().paneCache, fleetUsage, "the feature-scoped body differs from the fleet one");
+
+  // A rename keeps the roster length but retires the scoped name: the scope drops and the
+  // still-visible pane body must recompute fleet-wide to match the tab strip and hint.
+  keys.syncSnapshot(0, false, ["feat", "clean"]);
+  assert.equal(keys.state().scopeRole, null);
+  assert.equal(keys.state().paneCache, fleetUsage, "the pane body follows the cleared scope");
+});
+
 test("the Pending pane caches the rendered fleet roster when collectPending resolves, and a cycle away drops it", async () => {
   const root = makeRoot();
   const fleet = {

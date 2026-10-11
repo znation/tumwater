@@ -293,7 +293,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a
-  second terminal.
+  second terminal. `Ctrl+G` cycles a session-only role scope for the Usage and Failures panes
+  through the fleet and each loop, the same scope `tumwater report --role` and the dashboard's
+  Usage/Failures views take; the tab strip names it (`Usage: <role>`) and the hint line shows
+  the current scope (`scope: fleet` or `scope: <role>`).
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
   toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
   its backoff, `Ctrl+N` switches the pane between the live transcript and a read-only view of
