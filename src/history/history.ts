@@ -178,16 +178,19 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     // truth is `the ticks are there, none match`. The logs --grep rule (its `no events
     // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
     // a bare {"rows":[]} document above, never prose in either form.
+    //
+    // The result class is named only when it emptied a non-empty set (`afterGrep > 0`): an
+    // empty log or window scanned no rows, so the result filter removed nothing and the
+    // empty-log/window prose is the true one — the dashboard's History view draws the same
+    // line. A grep that admitted nothing keeps its own wording regardless of --result.
     say(
       resultClass !== null && afterGrep > 0
         ? `no ticks with result "${resultClass}"`
         : grepPattern !== null
           ? `no ticks matching "${grepPattern}"`
-          : resultClass !== null
-            ? `no ticks with result "${resultClass}"`
-            : sinceMs === null
-              ? "no ticks yet"
-              : `no ticks in ${durationLabel(sinceMs)}`,
+          : sinceMs === null
+            ? "no ticks yet"
+            : `no ticks in ${durationLabel(sinceMs)}`,
     );
     return;
   }

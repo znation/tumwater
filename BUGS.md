@@ -14,6 +14,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater history --result <class>` prints `no ticks with result "<class>"` when the log or window held no ticks at all, so the empty state blames the result filter for the log's emptiness (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
+
+- **Symptom:** run `tumwater history --result changes` against an event log with no completed ticks, or `tumwater history --since 1s --result changes` over a window that scanned no rows: the command prints `no ticks with result "changes"` even though the `--result` filter removed nothing — the log or window was already empty. The dashboard's History view states the counterpart truth for the same state (`No ticks yet` / `No ticks in 1s`), so the CLI blamed a filter where the GUI named the source.
+- **Reproduce:** `npm test history-filtering`; the case `history --result empty state names the class, never the empty log` now seeds a blank repo and a 1s window and asserts `no ticks yet` / `no ticks in 1s`. Before the fix both printed `no ticks with result "changes"`.
+- **Cause:** the empty-state branch in `cmdHistory` (src/history/history.ts) named the result class whenever `resultClass !== null`, without checking `afterGrep` (the row count before the result filter). Only a result filter that empties a non-empty set is the cause; when no rows were scanned, the log/window prose is the true one.
+- **Fix:** the result class is named only when `afterGrep > 0`; an empty log or window falls through to `no ticks yet` / `no ticks in <window>`, and a grep that admitted nothing keeps grep's own wording. The same `afterGrep > 0` rule the sibling both-filter case uses, so the CLI and the dashboard's History view draw the same line.
+- **Validation gap:** none — the existing offline CLI fixture reproduces the state with a blank repo and a too-short window; the missing piece was a test case for an empty set before the result filter, not a fake or an observation.
+
 ### `tumwater history --grep <text> --result <class>` prints `no ticks matching "<text>"` when the pattern DID match and the result filter removed the rows, so the empty state blames the wrong filter (found by bugfix loop 2026-10-10 in a latent-bug hunt; fixed 2026-10-10 by bugfix loop)
 
 - **Symptom:** run `tumwater history --grep widget --result problems` on a log holding a row whose rendered line matches `widget` but whose result is not a problem (e.g. a `changed` tick): the command prints `no ticks matching "widget"` though such ticks exist — the `--result` filter, applied after `--grep`, is what emptied the set. The dashboard's History table states the counterpart truth for the same rows ("No ticks match this filter").

@@ -309,6 +309,20 @@ test("history --result empty state names the class, never the empty log", async 
   const unmatched = await cli(repo, "history", "--grep", "no such text", "--result", "problems");
   assert.equal(unmatched.code, 0);
   assert.equal(unmatched.stdout, 'no ticks matching "no such text"\n');
+
+  // A log holding no ticks at all: the result filter removed nothing, so naming the class
+  // would blame it for the log's emptiness. The empty-log prose stays.
+  const blank = makeRepo();
+  await initProject(blank, "cli history result empty log");
+  const emptyLog = await cli(blank, "history", "--result", "changes");
+  assert.equal(emptyLog.code, 0);
+  assert.equal(emptyLog.stdout, "no ticks yet\n");
+
+  // A window that scanned no rows: same rule, the window is what the empty state names —
+  // matching the dashboard's History view, which reports the window, not the outcome filter.
+  const emptyWindow = await cli(repo, "history", "--since", "1s", "--result", "changes");
+  assert.equal(emptyWindow.code, 0);
+  assert.equal(emptyWindow.stdout, "no ticks in 1s\n");
 });
 
 test("history --result fails with its own wording for a missing or unknown class", async () => {
