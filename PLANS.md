@@ -146,6 +146,81 @@ row loads the prompt's body into a textarea in place, and Save replaces it throu
   as the path it shares.
 - `npm run test` is green.
 
+### Defer a prompt from the dashboard composer, matching `tumwater prompt --at <duration>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater prompt --at <duration>` (commit 654f15b3) and the landed dashboard deferral display (`gui-client-fleet.ts`'s `delivers in`); the dashboard can already paint a deferred prompt's countdown but no dashboard surface can set the marker, so an operator must drop to the CLI to schedule one; independent of the waiting TUI Queued pane, TUI History grep, dashboard queued-prompt edit, and dashboard Settings Clear plans in code — `src/cli/cli-args.ts`'s newly exported `parseDurationMs` plus `src/inbox/inbox-submit.ts`, the two prompt handlers in `src/gui/gui-endpoint-commands.ts`, and the composer files, no `src/ui/tui` file — it shares `src/gui/gui-endpoint-commands.ts` with the landed prompt-edit and Settings Clear handlers but edits different functions, so a landing conflict is possible and the resolver handles it)
+
+**Goal.** `tumwater prompt --at <duration>` queues a prompt whose `tumwater:not-before <iso>`
+marker line (`src/inbox/prompt-not-before.ts`'s `notBeforeMarker`) keeps it out of execution
+order until the duration passes; the marker rides through the one `enqueueRolePrompt` atomic
+write and every display surface strips it (`stripNotBeforeMarker`). The dashboard's
+`/api/prompt` and `/api/prompt-role` never set it and the composer has no control for it, so a
+deferred prompt can be shown (`gui-client-fleet.ts`'s `delivers in …`) but not created from the
+browser. Add an optional defer field to the composer and thread the parsed delay to the same
+submit path the CLI uses, so the two surfaces cannot disagree on the grammar or the marker.
+
+**Approach.**
+1. `src/cli/cli-args.ts`: add `export` to the existing private `parseDurationMs` (leave
+`UNIT_MS`/`UNIT_ORDER` private), keeping its doc comment and body unchanged. `parseDurationFlag`
+and `durationLabel` are untouched (same definitions, same `fail()` wording), so every existing
+importer and `test/cli-args.test.ts`'s duration cases stay green. Exporting the grammar's own
+parser gives the server a function that returns `null` instead of ending the process through
+`parseDurationFlag`'s `fail()` wrapper, and there is still one copy of the grammar.
+`src/operator/operator-intent.ts` and `src/inbox/prompt-commands.ts` already import
+`durationLabel` from this module, so the import edge exists; the new caller is only one more.
+2. `src/inbox/inbox-submit.ts`: `submitPrompt` gains the `notBeforeMs?: number` parameter its
+role sibling `submitRolePrompt` already has and forwards it (`submitRolePrompt(root,
+DIRECTOR_ROLE, text, images, notBeforeMs)`).
+3. `src/gui/gui-endpoint-commands.ts`:
+   - Extend `checkedPromptFields` to read an optional `defer` field before it returns: absent →
+no deferral; a non-string, blank, or `parseDurationMs`-null value (imported from
+`../cli/cli-args.js`) → 400 `{ error: "defer needs a duration like 45s, 90m, 1h30m, or 2d" }`
+and return null; a parsed value over
+`PAUSE_FOR_MAX_MS` (imported from `../operator/operator-intent.js`, the same 90d cap the CLI's
+`failOverDurationCap` applies) → 400 `defer is capped at 90d`. Return `{ text, images,
+notBeforeMs }` with `notBeforeMs = Date.now() + ms` when a defer was given, `undefined`
+otherwise.
+   - `handlePrompt` passes `fields.notBeforeMs` to `submitPrompt`; `handlePromptRole` passes it
+to `submitRolePromptAndWake` (which already accepts it).
+4. `src/ui/gui/gui-page.ts`: the composer's `composer-foot` gains a labelled compact input
+`<input class="field" id="promptdefer" type="text" placeholder="defer (45m)"
+autocomplete="off">` (its `<label>` carries `sr-only` text) beside `prompthint`.
+5. `src/ui/gui/gui-client-composer.ts`:
+   - `sendPrompt(target, text, images, defer)` adds a `defer` key to the POST body only when
+the trimmed value is non-empty, and appends ` — delivers in <defer>` to the confirmation for a
+deferred prompt (echoing the operator's own spelling, like the CLI's `durationLabel` echo).
+   - The submit handler reads `$("promptdefer").value.trim()`, passes it, and clears the input
+only after a successful send (kept on a refusal, like the text and the images). Whitespace-only
+text is still the no-op it is today.
+6. `docs/how-it-works.md`: the dashboard Fleet bullet's prompt-box sentence adds that the
+composer can defer a prompt by a duration, using the same grammar and `tumwater:not-before`
+marker `tumwater prompt --at` uses.
+
+**Files touched.** `src/cli/cli-args.ts`, `src/inbox/inbox-submit.ts`,
+`src/gui/gui-endpoint-commands.ts`, `src/ui/gui/gui-page.ts`,
+`src/ui/gui/gui-client-composer.ts`, `test/gui-operator.test.ts`,
+`test/gui-client-composer.test.ts`, `docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- `test/gui-operator.test.ts`, new cases beside the `/api/prompt-role` case: a live-server
+`POST /api/prompt` with `{ text, defer: "90m" }` answers 200 and the director queue's newest
+prompt record (`queuedRolePromptEntries(root, DIRECTOR_ROLE)` or a raw read of
+`.tumwater/inbox/<stamp>.md`) carries a `notBeforeMs` in the future, roughly now + 90m; a
+`POST /api/prompt-role` with `{ role: "feature", text, defer: "1h30m" }` does the same for that
+role's queue and still returns the wake message. `defer: "soon"`, `defer: "30m1h"`, and
+`defer: 30` answer 400 matching `/duration like 45s, 90m, 1h30m, or 2d/` and queue no file;
+`defer: "91d"` answers 400 matching `/capped at 90d/`; an absent `defer` queues the same
+marker-less prompt as today (the existing cases stay green, and
+`src/inbox/prompt-not-before.ts`'s `notBeforeMs()` reads `null` for it).
+- `test/gui-client-composer.test.ts`: the submit test sets `promptdefer` and asserts both POST
+bodies (`/api/prompt` and `/api/prompt-role`) carry the `defer` key unchanged, the flash names
+`delivers in`, and the field clears on success but survives a rejected send; a string assertion
+on `GUI_CLIENT_COMPOSER_JS` pins the `promptdefer` read and the `defer` key; the fake-DOM helper
+gains the `promptdefer` element so the existing composer cases keep running.
+- `test/cli-args.test.ts`'s `parseDurationFlag`/`durationLabel` cases stay green unchanged,
+pinning the export as behavior-preserving.
+- `docs/how-it-works.md` names the composer's defer control and the `tumwater prompt --at`
+grammar it shares.
+- `npm run test` is green.
+
 ## Done
 
 ### Read and edit a queued prompt by its queue file behind the dashboard API (planned 2026-10-11 by plan; part 1/2 of "Edit a queued prompt from the dashboard Queued tab" — the server seam and endpoints its client half consumes; sibling part 2/2 requires this landed; the file-addressed twin of the landed CLI `tumwater prompt --edit` and the landed file-addressed `POST /api/prompt-cancel`; independent of the waiting TUI Pending land-queue, TUI History grep, and dashboard Settings Clear plans in code — inbox/gui only, no `src/ui/tui` or `src/ui/gui` file — though it shares `src/gui/gui-endpoint-commands.ts` and `src/gui/gui-server.ts` with the Settings Clear plan, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
