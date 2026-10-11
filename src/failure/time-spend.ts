@@ -98,6 +98,24 @@ interface LossDraft {
   costUsd: number;
 }
 
+/** A queued tick's resolved landing outcome — the pin/outcome pair `resolveQueuedResult`
+ * returns, used as the attempt window an event must fall inside to belong to it. */
+type ResolvedLanding = NonNullable<ReturnType<typeof resolveQueuedResult>>;
+
+/** The newest event for `role` inside a landing attempt's pin→outcome window — the attempt no
+ * other can occupy. Shared by the review-rejected and review_error cause joins, so the two
+ * agree on which event belongs to the attempt (BUGS.md 2026-10-10: the window, not the pin's
+ * sha, is the match, since every vet rebases its pin before the gate). */
+function newestAttemptEvent(
+  eventsByLoop: Map<string, HarnessEvent[]>,
+  role: string,
+  attempt: ResolvedLanding,
+): HarnessEvent | undefined {
+  return (eventsByLoop.get(role) ?? [])
+    .filter((e) => e.ts >= attempt.pin.ts && e.ts <= attempt.outcome.ts)
+    .at(-1);
+}
+
 /** The time a `tick_end` attests: its own `durationMs` when it carries one (every event
  * written since 2026-09-29 does), else the start→end pairing over `starts` — the same
  * fallback history-data.ts renders, so old events read their span the one way it can still be
@@ -158,7 +176,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
   // history rows. tickEvents is oldest-first, hence the backward walk.
   const claimTop = new Map<string, number>();
-  const resolved = new Map<HarnessEvent, NonNullable<ReturnType<typeof resolveQueuedResult>>>();
+  const resolved = new Map<HarnessEvent, ResolvedLanding>();
   for (let i = tickEvents.length - 1; i >= 0; i--) {
     const ev = tickEvents[i]!;
     if (ev.result !== "queued") continue;
@@ -168,7 +186,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   for (const ev of tickEvents) {
     let cls = OUTCOME_CLASS[ev.result as TickResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
-    let resolvedOutcome: NonNullable<ReturnType<typeof resolveQueuedResult>> | null = null;
+    let resolvedOutcome: ResolvedLanding | null = null;
     if (ev.result === "queued") {
       resolvedOutcome = resolved.get(ev) ?? null;
       if (resolvedOutcome) {
@@ -212,9 +230,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // `land_queued` keeps the authored one — exact-sha equality names no reason for a rebased
       // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
-      const rej = (rejectedByLoop.get(role) ?? [])
-        .filter((r) => r.ts >= resolvedOutcome!.pin.ts && r.ts <= resolvedOutcome!.outcome.ts)
-        .at(-1);
+      const rej = newestAttemptEvent(rejectedByLoop, role, resolvedOutcome!);
       const reasons = stringList(rej?.reasons);
       example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
     } else if (ev.result === "queued" && resolvedOutcome?.result === "review_error") {
@@ -229,9 +245,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // keeps the authored one — exact-sha equality missed every rebased vet (BUGS.md
       // 2026-10-10). The review failure for this attempt is the one that falls inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
-      const failed = (reviewFailedByLoop.get(role) ?? [])
-        .filter((r) => r.ts >= resolvedOutcome!.pin.ts && r.ts <= resolvedOutcome!.outcome.ts)
-        .at(-1);
+      const failed = newestAttemptEvent(reviewFailedByLoop, role, resolvedOutcome!);
       const text = errorTextOrPlaceholder(failed?.message);
       key = poolTimeoutKey(normalizeClusterKey(text));
       example = truncateExample(text);
