@@ -648,6 +648,35 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
   }
 });
 
+test("gui /api/history?grep filters through the CLI's shared haystack rule after the scan", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history grep api test");
+  const events = historySeedEvents();
+  writeEvents(repo, events);
+
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // A pattern matching one seeded row returns only it, case-insensitively, through the same
+    // canonical row line `tumwater history --grep` filters.
+    const one = (await (await fetch(base + "/api/history?grep=" + encodeURIComponent("SORTED IMPORTS"))).json()) as { rows: { loop: string; tick: number }[] };
+    assert.deepEqual(one.rows.map((r) => [r.loop, r.tick]), [["clean", 9]]);
+    // A pattern matching none is an empty row set, never prose or an error.
+    assert.deepEqual(await (await fetch(base + "/api/history?grep=" + encodeURIComponent("no such text"))).json(), { rows: [] });
+    // An empty pattern filters nothing.
+    assert.deepEqual(await (await fetch(base + "/api/history?grep=")).json(), { rows: tickRows(events, 20, null) });
+    // role and grep compose.
+    const scoped = (await (await fetch(base + "/api/history?role=feature&grep=" + encodeURIComponent("sorted"))).json()) as { rows: unknown[] };
+    assert.deepEqual(scoped.rows, []);
+    // n bounds the scanned window first: the newest row is clean#9, so feature#1's detail is
+    // outside the scan even though the retained log holds it — the CLI's -n rule.
+    assert.deepEqual(await (await fetch(base + "/api/history?n=1&grep=" + encodeURIComponent("tidy up"))).json(), { rows: [] });
+    const wide = (await (await fetch(base + "/api/history?grep=" + encodeURIComponent("tidy up"))).json()) as { rows: { loop: string; tick: number }[] };
+    assert.deepEqual(wide.rows.map((r) => [r.loop, r.tick]), [["feature", 1]]);
+  } finally {
+    server.close();
+  }
+});
+
 test("gui /api/tick serves one tick's detail over the live route, 404 when the scan misses", async () => {
   const repo = makeRepo();
   await initProject(repo, "tick api test");

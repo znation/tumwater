@@ -12,6 +12,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { squash } from "../text/text.js";
+import { shortSpanPhrase } from "../text/phrases.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { groupBy } from "../collections.js";
 
@@ -79,6 +80,27 @@ export interface TickRow {
   costUsd: number;
   usage: string;
   detail: string;
+}
+
+/** The `--grep` haystack for one rendered history row: the canonical unpadded row line — what
+ * renderRow (history.ts) produces when the row is the widest in each column, so padToWidth is
+ * the identity — prefixed with the raw event type so stable ids (`tick_end`) are greppable the
+ * way logs --grep's haystack carries `e.type`. Built per row because the filter runs before the
+ * widths of the rows actually shown are known, and shared by `tumwater history --grep` and the
+ * dashboard's /api/history?grep so the two cannot disagree on the rule. A tick with no reported
+ * duration shows the em dash. */
+export function tickRowGrepHaystack(row: TickRow): string {
+  return `tick_end ${[
+    row.time,
+    row.loop,
+    `#${row.tick}`,
+    row.result,
+    row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
+    row.usage,
+    row.detail,
+  ]
+    .join("  ")
+    .trimEnd()}`;
 }
 
 /** The landing bookkeeping resolveQueuedResult joins over: per loop, the `land_queued` pins

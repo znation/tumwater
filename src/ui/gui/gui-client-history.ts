@@ -1,13 +1,15 @@
 /** The dashboard's History view, browser-side: every completed tick, newest first, as
  * /api/history serves them (the rows `tumwater history` prints). A toolbar narrows it to one
- * loop (server-side, so a quiet loop still gets its full count), to an outcome class
- * (changes, no change, problems — client-side over the fetched rows), and picks how many ticks
- * to fetch. It refetches when the view opens and, while it stays open, whenever the status
+ * loop (server-side, so a quiet loop still gets its full count), searches the rendered row text
+ * (server-side, through the same haystack rule `tumwater history --grep` uses), to an outcome
+ * class (changes, no change, problems — client-side over the fetched rows), and picks how many
+ * ticks to fetch. It refetches when the view opens and, while it stays open, whenever the status
  * poll sees new events — never on a timer of its own. A row opens that loop's drawer. Spliced
  * into gui-client.ts's script, reaching its helpers (esc, getJson, resultInfo, the formatters)
  * through that concatenation. */
 export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-role") || "";
   let histCount = Number(recall("hist-n")) || 50;
+  let histGrep = recall("hist-grep") || "";
   let histFilter = "all";
   let histRows = null;
   let histFetchedAt = 0;
@@ -18,14 +20,21 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
       "<div class='toolbar'>" +
       "<label><span class='sr-only'>Loop</span><select class='field' id='histrole'><option value=''>All loops</option></select></label>" +
       "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
+      "<label><span class='sr-only'>Search</span><input class='field' id='histgrep' type='search' placeholder='Search ticks…' autocomplete='off'></label>" +
       "<label><span class='sr-only'>Ticks to show</span><select class='field' id='histcount'>" +
       [20, 50, 100, 200].map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") + "</select></label>" +
       "<button type='button' class='btn btn-sm' id='histrefresh'>" + icon("refresh") + "Refresh</button>" +
       "</div></div><div class='card' id='histbody'><div class='empty'>Loading…</div></div>")) return;
     $("histcount").value = String(histCount);
+    $("histgrep").value = histGrep;
     $("histrole").addEventListener("change", (ev) => {
       histRole = ev.target.value;
       store("hist-role", histRole);
+      fetchHistory();
+    });
+    $("histgrep").addEventListener("change", (ev) => {
+      histGrep = ev.target.value.trim();
+      store("hist-grep", histGrep);
       fetchHistory();
     });
     $("histcount").addEventListener("change", (ev) => {
@@ -127,7 +136,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     buildHistoryView();
     syncHistoryRoles(lastStatus);
     try {
-      const d = await getJson("/api/history?n=" + histCount + (histRole ? "&role=" + encodeURIComponent(histRole) : ""));
+      const d = await getJson("/api/history?n=" + histCount + (histRole ? "&role=" + encodeURIComponent(histRole) : "") + (histGrep ? "&grep=" + encodeURIComponent(histGrep) : ""));
       histRows = d && Array.isArray(d.rows) ? d.rows : [];
       // A refetch invalidates the drill-down cache: cached trails could disagree with the new
       // rows, and an open card's tick may no longer be among them — close it; the next expand
@@ -147,14 +156,16 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     if (result === "no_change" || result === "skipped" || result === "user_aborted") return "none";
     return "problems";
   }
-  // The History table for rows (/api/history's, newest first) under an outcome filter; known is
+  // The History table for rows (/api/history's, newest first) under a grep (already applied
+  // server-side) and an outcome filter; known is
   // the set of the fleet's loop ids, whose rows open that loop's drawer. Pure — the view's
   // render paints what this returns.
-  function historyTableHtml(rows, filter, known) {
+  function historyTableHtml(rows, filter, known, grep) {
     const shown = (rows || []).filter((r) => filter === "all" || historyClass(r.result) === filter);
     if (!shown.length) {
-      return "<div class='empty'><strong>" + (rows && rows.length ? "No ticks match this filter" : "No ticks yet") + "</strong>" +
-        (rows && rows.length ? "Try another outcome or loop." : "Completed ticks show up here as the loops work.") + "</div>";
+      const hasRows = !!(rows && rows.length);
+      return "<div class='empty'><strong>" + (hasRows ? "No ticks match this filter" : grep ? "No ticks match this search" : "No ticks yet") + "</strong>" +
+        (hasRows ? "Try another outcome or loop." : grep ? "Try another search." : "Completed ticks show up here as the loops work.") + "</div>";
     }
     return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Loop</th><th class='c-tick num'>Tick</th>" +
       "<th>Result</th><th class='c-detail'>Detail</th><th class='num c-dur'>Took</th><th class='num c-usage'>Usage</th></tr></thead><tbody>" +
@@ -188,6 +199,6 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     const body = $("histbody");
     if (!body) return;
     markActive($("histfilter"), "hist", histFilter);
-    body.innerHTML = historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.loops) || []).map((l) => l.role)));
+    body.innerHTML = historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.loops) || []).map((l) => l.role)), histGrep);
   }
 `;

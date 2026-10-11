@@ -2,7 +2,7 @@ import { say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { shortSpanPhrase } from "../text/phrases.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowGrepHaystack, type TickRow } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
@@ -21,8 +21,7 @@ type RowCells = { loop: string; tick: string; result: string; duration: string; 
 type RowWidths = { [K in keyof RowCells]: number };
 
 /** The row's five padded columns as their unpadded strings — the one home for the cell values,
- * shared by the renderer (which pads), the width pass (which measures), and the grep haystack
- * (which needs the row as it renders when it is the widest row in each column). A tick with no
+ * shared by the renderer (which pads) and the width pass (which measures). A tick with no
  * reported duration shows the em dash. */
 function cellsOf(row: TickRow): RowCells {
   return {
@@ -83,15 +82,6 @@ function renderRow(row: TickRow, widths: RowWidths): string {
     .trimEnd();
 }
 
-/** The --grep haystack: the WYSIWYG row line — renderRow over the row's own widths, where
- * padToWidth is the identity, so this is the canonical unpadded line the row renders as
- * whenever it is the widest row in each column — prefixed with the raw event type so stable
- * ids (`tick_end`) are greppable the way logs --grep's haystack carries e.type. Built per row
- * because the filter runs before the widths of the rows actually shown are known. */
-function grepHaystack(row: TickRow): string {
-  return `tick_end ${renderRow(row, widthsOf(cellsOf(row)))}`;
-}
-
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so
  * cli.ts's rejectUnknownArgs spec for --grep can fail a trailing `history --grep` with the same
  * wording. Kept local to this module — log-commands.ts holds its own GREP_VALUE_ERROR — so the
@@ -141,7 +131,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // rule: -n bounds the scanned window, not the printed rows).
   if (grepPattern !== null) {
     const needle = grepPattern.toLowerCase();
-    rows = rows.filter((r) => grepHaystack(r).toLowerCase().includes(needle));
+    rows = rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A

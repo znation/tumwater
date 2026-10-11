@@ -18,7 +18,7 @@ import { collectFailureReport } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history/history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, tickRowGrepHaystack } from "../history/history-data.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -128,8 +128,8 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), role ?? undefined)) });
 }
 
-/** Handle GET /api/history?role=<id>&n=N: the per-tick rows readTickRows derives from the
- * event log ({ rows }) — the same rows `tumwater history` prints (the shared scan, window
+/** Handle GET /api/history?role=<id>&n=N[&grep=<text>]: the per-tick rows readTickRows derives
+ * from the event log ({ rows }) — the same rows `tumwater history` prints (the shared scan, window
  * growth included, so a role-filtered ask on a busy fleet cannot silently come back short),
  * the dashboard's history tab renders them. n is optional: absent → HISTORY_DEFAULT_TICKS;
  * present but not a plain non-negative integer → 400 (the handleBacklog index discipline — an
@@ -137,15 +137,23 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * typo rule); then clamped to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails
  * fast, its established convention. role is optional: absent or empty → all loops; present →
  * passed straight through as the role filter with no config validation (a filter is not a
- * target — an id with no ticks legitimately yields zero rows), so the endpoint reads nothing
- * but files, like /api/report and /api/failures. Reads files directly, so it works whether
- * or not the fleet is running. */
+ * target — an id with no ticks legitimately yields zero rows). grep is optional: absent or
+ * empty filters nothing; present → the rows are filtered through tickRowGrepHaystack, the same
+ * case-insensitive haystack rule `tumwater history --grep` uses (shared, not re-implemented),
+ * after the n/role scan so n bounds the scanned window and not the printed rows — the CLI's
+ * rule. Reads files directly, so it works whether or not the fleet is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_TICKS);
   if (parsed === null) return;
   const n = Math.min(HISTORY_MAX_TICKS, Math.max(1, parsed));
   const role = q.get("role") || null; // "" and absent both read all loops
-  sendJson(res, 200, { rows: readTickRows(root, n, role) });
+  const grep = q.get("grep") || null; // "" and absent both filter nothing
+  let rows = readTickRows(root, n, role);
+  if (grep !== null) {
+    const needle = grep.toLowerCase();
+    rows = rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
+  }
+  sendJson(res, 200, { rows });
 }
 
 /** Handle GET /api/tick?role=<id>&tick=N: one tick's full event trail — readTickDetail's

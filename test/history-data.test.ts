@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readTickRowsSince, tickRows } from "../src/history/history-data.js";
+import { readTickRowsSince, tickRowGrepHaystack, tickRows, type TickRow } from "../src/history/history-data.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
@@ -28,6 +28,33 @@ function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
 function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "feature", type: "tick_start", tick: 1, ...over } as HarnessEvent;
 }
+
+test("tickRowGrepHaystack is the canonical unpadded row line, tick_end-prefixed", () => {
+  // The shared haystack `tumwater history --grep` and the dashboard's /api/history?grep both
+  // filter through: the row exactly as renderRow prints it when it is the widest row in each
+  // column (padToWidth is the identity), with the raw event type in front so `tick_end` is
+  // greppable the way logs --grep's haystack carries e.type.
+  const row: TickRow = {
+    ts: 1,
+    time: "2026-10-10 12:00:00",
+    loop: "feature",
+    tick: 7,
+    result: "changed",
+    durationMs: 45_000,
+    tokens: 1234,
+    costUsd: 0.5,
+    usage: "1234 tok · $0.50",
+    detail: "added a widget",
+  };
+  assert.equal(
+    tickRowGrepHaystack(row),
+    "tick_end 2026-10-10 12:00:00  feature  #7  changed  45s  1234 tok · $0.50  added a widget",
+  );
+  // A row whose tick_end lost its start keeps the em dash the renderer shows — not a
+  // fabricated duration; the trailing empty cells trim away exactly as renderRow's trimEnd does.
+  const unpaired: TickRow = { ...row, durationMs: null, usage: "", detail: "" };
+  assert.equal(tickRowGrepHaystack(unpaired), "tick_end 2026-10-10 12:00:00  feature  #7  changed  —");
+});
 
 test("a corrupt event's loop renders as ? like the reports", () => {
   // eventRole's "?" rule (the usage report and failure digest already apply it); the row

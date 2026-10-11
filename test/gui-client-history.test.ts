@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
-import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
+import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
 // /api/history's rows, its tick drill-down (the per-row details toggle and the card /api/tick
@@ -19,7 +19,7 @@ const HISTORY_REGIONS = ["format", "view-model", "history-detail", "history-tabl
 
 test("the History table renders tick rows, escapes them, and filters by outcome", () => {
   const { historyTableHtml, historyClass } = clientScope<{
-    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>): string;
+    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, grep?: string): string;
     historyClass(result: string): string;
   }>(HISTORY_REGIONS, ["historyTableHtml", "historyClass"], { icon: iconStub });
   const now = Date.now();
@@ -49,8 +49,56 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.equal((problems.match(/<tr>/g) ?? []).length, 2, "the header row and the one error row");
   assert.match(historyTableHtml(rows, "changes", new Set()), /bumped coverage/);
   assert.match(historyTableHtml([], "all", new Set()), /No ticks yet/);
+  // A server-side grep that matched nothing names the search, never the empty log.
+  assert.match(historyTableHtml([], "all", new Set(), "widget"), /No ticks match this search/);
+  assert.doesNotMatch(historyTableHtml([], "all", new Set(), "widget"), /No ticks yet/);
+  assert.match(historyTableHtml(null, "all", new Set(), "widget"), /No ticks match this search/, "a response without rows under a search reads as no match, not an empty log");
   assert.match(historyTableHtml(rows.slice(1, 2), "changes", new Set()), /No ticks match this filter/);
   assert.match(historyTableHtml(null, "all", new Set()), /No ticks yet/, "a response without rows reads as none");
+});
+
+test("the History toolbar carries the search field, recalled and persisted", () => {
+  // The search input lives inside the toolbar markup, between its opening and the card body.
+  const toolbar = GUI_CLIENT_HISTORY_JS.slice(
+    GUI_CLIENT_HISTORY_JS.indexOf("class='toolbar'"),
+    GUI_CLIENT_HISTORY_JS.indexOf("<div class='card' id='histbody'>"),
+  );
+  assert.match(toolbar, /id='histgrep'/);
+  // Its pattern persists like the loop and count selections.
+  assert.match(GUI_CLIENT_HISTORY_JS, /recall\("hist-grep"\)/);
+  assert.match(GUI_CLIENT_HISTORY_JS, /store\("hist-grep", histGrep\)/);
+});
+
+/** Run the whole history blob (the served constant) in one function scope with stand-ins for
+ * everything it reaches, then hand back fetchHistory. The DOM- and status-touching paths return
+ * early (buildOnce false, $ undefined), so only the /api/history request is observable. */
+function historyFetchScope(recallGrep: string | null, paths: string[]) {
+  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
+  const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
+  return run(
+    (key: string) => (key === "hist-grep" ? recallGrep : null),
+    () => {},
+    () => false,
+    () => undefined,
+    iconStub,
+    null,
+    () => {},
+    (title: string) => title,
+    async (path: string) => {
+      paths.push(path);
+      return { rows: [] };
+    },
+  );
+}
+
+test("fetchHistory appends the encoded grep only when a pattern is set", async () => {
+  const bare: string[] = [];
+  await historyFetchScope(null, bare).fetchHistory(false);
+  assert.deepEqual(bare, ["/api/history?n=50"]);
+  const searched: string[] = [];
+  await historyFetchScope("sorted imports", searched).fetchHistory(false);
+  assert.deepEqual(searched, ["/api/history?n=50&grep=sorted%20imports"]);
 });
 
 test("histDetailCardHtml branches on the entry's state: loading, error, then the fetched card", () => {
