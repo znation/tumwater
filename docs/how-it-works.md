@@ -302,6 +302,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   instance id is its own slot, the same scope `tumwater history --role` and the dashboard picker
   take; the hint line names it (`scope: fleet` or `scope: <id>`) and a scoped pane prefixes its
   body with `role: <id>`.
+  `/` on the History pane with an empty prompt line opens a free-text search; Enter filters the
+  rows through the same `tickRowGrepHaystack` haystack and case-insensitive substring rule
+  `tumwater history --grep` and the dashboard's History search use, the pane's `search:` header
+  and the hint line name the active pattern, and Esc cancels.
   The Pending pane shows the durable land queue above the pending-change roster, reading and
   rendering it through the same `readLandingQueue`/`renderLandingQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI.

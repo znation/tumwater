@@ -9,6 +9,7 @@ import {
   historyClass,
   readTickRows,
   readTickRowsSince,
+  tickRowGrepHaystack,
   type HistoryResultClass,
 } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
@@ -109,45 +110,67 @@ const HISTORY_RESULTS: ReadonlyArray<[HistoryResultClass | null, string]> = [
   ...HISTORY_RESULT_CLASSES.map((c): [HistoryResultClass, string] => [c, c]),
 ];
 
-/** The History pane's body for one trailing window, one outcome class, and one exact-loop
- * scope: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G handlers store. The default
- * (null/null/null) read is byte-for-byte the newest-N pane that predates the window, outcome,
- * and loop cycles — readTickRows with HISTORY_DEFAULT_TICKS, unfiltered. A trailing window
- * reads through the same readTickRowsSince collector `tumwater history --since` uses, and a
- * class filters through history-data.ts's canonical historyClass rule, so the TUI, the CLI, and
- * the dashboard cannot disagree about the rows. The role is the exact loop id the raw roster
- * (and `history --role`, and the dashboard picker) names — readTickRows filters `e.loop ===
- * role`, so an instance id is its own scope, never folded into a base role. An empty read with
- * no class returns "" so the pane keeps its own no-ticks note instead of a lone header; when a
- * class is active and the read returned rows, an empty filtered body names the class (the CLI's
- * wording) so the pane states the filter instead of claiming the log is empty. Otherwise the
- * body is prefixed with the active role/window/result labels and, when the read cannot prove
- * full coverage, the same sparse-window note every windowed render prints (SPARSE_WINDOW_NOTE). */
-function historyPaneCache(root: string, sinceMs: number | null, resultClass: HistoryResultClass | null, role: string | null): string {
+/** The History pane's body for one trailing window, one outcome class, one exact-loop scope,
+ * and one free-text search: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G/`/` handlers store.
+ * The default (null/null/null/null) read is byte-for-byte the newest-N pane that predates the
+ * window, outcome, loop, and search cycles — readTickRows with HISTORY_DEFAULT_TICKS,
+ * unfiltered. A trailing window reads through the same readTickRowsSince collector `tumwater
+ * history --since` uses, a class filters through history-data.ts's canonical historyClass rule,
+ * and the search filters through tickRowGrepHaystack — the same haystack and case-insensitive
+ * substring rule `tumwater history --grep` and the dashboard's History search use — so the TUI,
+ * the CLI, and the dashboard cannot disagree about the rows. The role is the exact loop id the
+ * raw roster (and `history --role`, and the dashboard picker) names — readTickRows filters
+ * `e.loop === role`, so an instance id is its own scope, never folded into a base role. An empty
+ * read with no class and no search returns "" so the pane keeps its own no-ticks note instead of
+ * a lone header; when a class or a search is active and the read returned rows, an empty
+ * filtered body names whichever filter the CLI's precedence blames, so the pane states the
+ * filter instead of claiming the log is empty. Otherwise the body is prefixed with the active
+ * role/window/result/search labels and, when the read cannot prove full coverage, the same
+ * sparse-window note every windowed render prints (SPARSE_WINDOW_NOTE). */
+function historyPaneCache(
+  root: string,
+  sinceMs: number | null,
+  resultClass: HistoryResultClass | null,
+  role: string | null,
+  grep: string | null,
+): string {
   const { rows, covered } = sinceMs === null
     ? { rows: readTickRows(root, HISTORY_DEFAULT_TICKS, role), covered: true }
     : readTickRowsSince(root, sinceMs, role);
-  const filtered = resultClass === null ? rows : rows.filter((r) => historyClass(r.result) === resultClass);
+  // The search runs first, exactly as `tumwater history` orders --grep ahead of --result, and
+  // its admitted count is saved so the empty-body wording blames the filter that actually
+  // emptied the set (`afterGrep > 0` means rows matched the pattern and the class then removed
+  // them). The needle is the same case-insensitive substring rule over tickRowGrepHaystack the
+  // CLI and the dashboard search use, so the three surfaces cannot disagree.
+  const needle = grep === null ? null : grep.toLowerCase();
+  const grepped = needle === null ? rows : rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
+  const afterGrep = grepped.length;
+  const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
   const body = historyPaneText(filtered);
   // null when no class is active, so the header/empty-body paths below only name a result
   // filter the session actually holds (cycleLabel(HISTORY_RESULTS, null) is the "all" label).
   const resultLabel = resultClass === null ? null : cycleLabel(HISTORY_RESULTS, resultClass);
-  // The role first, then the window/result labels: the loop is the coarsest cut, and a
+  // The role first, then the window/result/search labels: the loop is the coarsest cut, and a
   // role-only read (no window, no class) still prints its scope line above the rows.
   const header = [
     ...(role === null ? [] : ["role: " + role]),
     ...(sinceMs === null ? [] : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
     ...(resultLabel === null ? [] : ["result: " + resultLabel]),
+    ...(grep === null ? [] : ["search: " + grep]),
   ].join("\n");
   if (!body) {
-    // The class names itself only when it emptied a set the read did return (rows.length > 0):
-    // the CLI's `afterGrep > 0` and the dashboard's `hasRows` draw the same line, so an empty
-    // log or window keeps the pane's own no-ticks note instead of blaming a filter that
-    // removed nothing. A role-only empty read returns "" the same way (the CLI's empty-state
-    // wording does not name --role), so the pane never grows a lone `role:` header.
-    return resultClass !== null && rows.length > 0
-      ? header + "\nno ticks with result \"" + resultLabel + "\""
-      : "";
+    // The class names itself only when it emptied a set grep admitted (`afterGrep > 0`) — the
+    // CLI's condition and the dashboard's `hasRows` draw the same line — so an empty log or
+    // window keeps the pane's own no-ticks note instead of blaming a filter that removed
+    // nothing. A pattern that admitted nothing names itself next, with the CLI's wording. An
+    // empty read with neither filter returns "" so the pane keeps its own note, and a role-only
+    // empty read returns "" too (the CLI's empty-state wording does not name --role), so the
+    // pane never grows a lone `role:` header.
+    if (resultClass !== null && afterGrep > 0) {
+      return header + "\nno ticks with result \"" + resultLabel + "\"";
+    }
+    if (grep !== null) return header + "\nno ticks matching \"" + grep + "\"";
+    return "";
   }
   return (header ? header + "\n" : "") + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
 }
@@ -233,6 +256,9 @@ interface TuiKeysState {
   /** The History pane's active outcome class label (Ctrl+O), "all" when unfiltered; named in
    * the hint line. */
   historyResult: string | null;
+  /** The History pane's active free-text search (the `/` editor), or null when none; named in
+   * the pane's own `search:` header and in the hint line. */
+  historyGrep: string | null;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
@@ -366,6 +392,18 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // roster drops the id. The raw ids, not scopeCycle's base roles: History filters by exact
   // loop (`history --role`), so `feature-2` is its own slot.
   let historyRole: string | null = null;
+  // The History pane's session free-text search (the `/` prompt-line editor), a
+  // case-insensitive substring over history-data.ts's tickRowGrepHaystack — the same rule
+  // `tumwater history --grep` and the dashboard search use. null is no search; session-only
+  // like the window/result/role, so the next Ctrl+T into History computes the cache with it.
+  let historyGrep: string | null = null;
+  // The History search editor on the prompt line: `/` enters it (only on History with an empty
+  // line), pre-filling the applied pattern; Enter applies it, Esc restores the draft. Its own
+  // saved-draft pair, exactly like the budget and role-prompt editors: the three share one
+  // prompt line and are mutually exclusive, so no editor can clobber another's saved draft.
+  let searchMode = false;
+  let searchSavedInput = "";
+  let searchSavedCursor = 0;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
   // pane's first line on its title, so its body pages by one line less (entryBudget).
@@ -403,10 +441,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   /** Recompute the active pane's cached Markdown after `changed` state moved, re-entering the
    * body at its head, and return whether the current view holds such a pane. "report" covers
    * the Usage/Failures panes (fed by the report window and base-role scope); "history" the
-   * History pane (its window, outcome filter, and exact-loop scope); "all" either. A view that
-   * is not the named pane is left untouched, so advancing one window redraws only the pane it
-   * feeds. The one home of the view-index→collector mapping the pane key handlers and
-   * syncSnapshot share. */
+   * History pane (its window, outcome filter, exact-loop scope, and free-text search); "all"
+   * either. A view that is not the named pane is left untouched, so advancing one window
+   * redraws only the pane it feeds. The one home of the view-index→collector mapping the pane
+   * key handlers and syncSnapshot share. */
   const refreshPaneCache = (changed: "report" | "history" | "all"): boolean => {
     const isReport = view === roleIds.length + 2 || view === roleIds.length + 3;
     const isHistory = view === roleIds.length + 4;
@@ -415,12 +453,24 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         ? usagePaneCache(root, reportWindow, scopeRole ?? undefined)
         : failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
     } else if ((changed === "history" || changed === "all") && isHistory) {
-      paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
+      paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep);
     } else {
       return false;
     }
     paneScroll = 0;
     return true;
+  };
+
+  // Leave History search mode (Enter applies, Esc cancels, Ctrl+T cycles): restore the saved
+  // prompt text, and reset the recall state with it — the same settle contract the budget and
+  // role-prompt editors honor. The applied historyGrep itself persists across view cycling,
+  // like historyWindow/historyResult.
+  const exitHistorySearch = (): void => {
+    if (!searchMode) return;
+    searchMode = false;
+    input = searchSavedInput;
+    cursor = searchSavedCursor;
+    promptHistory = resetPromptRecall(promptHistory);
   };
 
   const handleKey = (str: string | undefined, key: { ctrl?: boolean; name?: string }): void => {
@@ -453,11 +503,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
       // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
       // saves the prompt text; leaving restores it. Esc cancels the same way.
-      if (rolePromptFor) {
-        // Mutually exclusive with role-prompt mode: the two editors share one prompt line,
-        // so a mode may not enter while the other holds it. Flash the way out instead of
-        // silently dropping either mode's saved draft.
-        flashMessage(`finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`);
+      if (rolePromptFor || searchMode) {
+        // Mutually exclusive with the role-prompt and History-search editors: all three share
+        // one prompt line, so a mode may not enter while another holds it. Flash the way out
+        // instead of silently dropping the held mode's saved draft (or parsing its text as a
+        // cap on Enter).
+        flashMessage(
+          searchMode
+            ? "finish or cancel the search first (Esc cancels)"
+            : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
+        );
         deps.requestRender();
         return;
       }
@@ -606,7 +661,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor) {
+    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor && !searchMode) {
       // Ctrl+G cycles the active pane's loop scope (mnemonic: the **g**lobal scope / the
       // **g**roup). Guarded out of the budget and role-prompt editors, whose prompt line the
       // key must not disturb — the same inertness the per-loop keys honor. On the History
@@ -641,7 +696,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor) {
+    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor && !searchMode) {
       // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
       // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
       // session state: advancing it off the History view only changes the label, and the next
@@ -652,7 +707,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor) {
+    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor && !searchMode) {
       // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
       // of budget-edit and role-prompt modes like Ctrl+S beside it. The class is session state:
       // advancing it off the History view only changes the label, and the next Ctrl+T into
@@ -669,6 +724,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // mode composes the same way: cycling away restores the saved director draft.
       exitBudgetMode();
       exitRolePromptMode();
+      exitHistorySearch();
       noteMode = false; // a cycle away leaves notebook mode and drops its snapshot
       noteCache = null;
       view = (view + 1) % (roleIds.length + 6); // events → each loop's transcript → project status → usage report → failures → history → pending → events
@@ -710,6 +766,23 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           paneCache = null;
         }
       }
+      deps.requestRender();
+      return;
+    }
+    if (!key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && view === roleIds.length + 4 && input === "") {
+      // `/` opens the History pane's free-text search on the prompt line (the pager's search
+      // key; this project already reserves `/` for a meta action). Guarded to the History view
+      // and to an empty line, so off History it types into the prompt as today and on History a
+      // director draft is never disturbed. Pre-fills the applied pattern so Enter re-submits it
+      // and the operator can edit it; Esc cancels without applying.
+      const settled = settlePromptRecall(promptHistory, input, cursor);
+      promptHistory = settled.history;
+      searchSavedInput = settled.text;
+      searchSavedCursor = settled.cursor;
+      searchMode = true;
+      input = historyGrep ?? "";
+      cursor = input.length;
+      flashMessage("search ticks: Enter to filter, Esc to cancel");
       deps.requestRender();
       return;
     }
@@ -760,7 +833,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (!budgetMode && arrow !== null) {
+    if (!budgetMode && !searchMode && arrow !== null) {
       // Up/Down walk the submitted-prompt history the way readline does (tui-prompt-history.ts's
       // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
       // above already returned), and budget mode keeps them out — recalling a prompt into
@@ -778,6 +851,12 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         cursor = recalled.cursor;
       }
     }
+    if (key.name === "escape" && searchMode) {
+      // Esc cancels the History search without applying it; the applied pattern is unchanged.
+      exitHistorySearch();
+      deps.requestRender();
+      return;
+    }
     if (key.name === "escape" && budgetMode) {
       // Esc cancels budget-edit mode, restoring the previous prompt text.
       exitBudgetMode();
@@ -791,7 +870,17 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (key.name === "return") {
-      if (budgetMode) {
+      if (searchMode) {
+        // Enter applies the trimmed line as the History search: an empty line clears it. The
+        // cache is recomputed now (the pane is showing) and the body re-enters at its head; a
+        // successful apply restores the saved prompt draft through exitHistorySearch.
+        const pattern = input.trim();
+        historyGrep = pattern === "" ? null : pattern;
+        exitHistorySearch();
+        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep);
+        paneScroll = 0;
+        flashMessage(historyGrep === null ? "search cleared" : `search: "${historyGrep}"`);
+      } else if (budgetMode) {
         // Enter in budget mode parses + saves the cap through the shared setter (which
         // writes tumwater.json atomically; the running orchestrator picks it up on its next
         // ~2 s poll). An invalid value flashes and STAYS in edit mode so the operator can
@@ -912,6 +1001,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
         reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),
         historyResult: cycleLabel(HISTORY_RESULTS, historyResult),
+        historyGrep,
         eventBudget,
         entryBudget,
         roleIds,

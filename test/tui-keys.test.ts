@@ -597,6 +597,96 @@ test("Ctrl+O is inert in the prompt-line modes and off the History view only mov
   keys.handleKey(undefined, { name: "escape" });
 });
 
+test("the `/` search filters the History pane through tickRowGrepHaystack and clears on an empty line", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 2, result: "changed" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().view, 4, "History is roleIds.length + 4");
+  assert.equal(keys.state().historyGrep, null, "History opens unsearched");
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.match(keys.state().paneCache ?? "", /clean #2/);
+
+  // `/` enters search on the empty line, and Enter applies the typed pattern.
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "", "an empty search opens blank");
+  for (const ch of "clean") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().historyGrep, "clean");
+  assert.match(keys.state().paneCache ?? "", /^search: clean$/m, "the header names the pattern");
+  assert.match(keys.state().paneCache ?? "", /clean #2/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/, "the non-matching row is filtered out");
+
+  // Re-opening pre-fills the applied pattern; Esc cancels without changing it.
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "clean", "re-opening pre-fills the applied pattern");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().historyGrep, "clean", "Esc leaves the applied pattern unchanged");
+  assert.equal(keys.state().input, "", "Esc restores the pre-search draft");
+
+  // Re-open, clear the line, and submit: the search lifts and the full rows return.
+  keys.handleKey("/", { name: "/" });
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().historyGrep, null, "an empty line clears the search");
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.match(keys.state().paneCache ?? "", /clean #2/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /search:/);
+});
+
+test("`/` opens the History search only on the History view with an empty line, and search mode owns the line", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 2, result: "changed" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(50, false, ["clean"]);
+
+  // Off History, `/` types into the prompt line.
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "/", "`/` off History types into the prompt");
+  keys.handleKey(undefined, { ctrl: true, name: "u" }); // clear the draft
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().view, 5, "History is roleIds.length + 4");
+
+  // On History with a non-empty line, `/` types instead of entering search.
+  for (const ch of "draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "draft/", "`/` on a non-empty line leaves the draft alone");
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+
+  // Budget mode owns the line on History too: `/` edits the cap, it does not enter search.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  assert.equal(keys.state().input, "50", "budget mode pre-fills the cap");
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "50/", "`/` in budget mode edits the cap, not the search");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // While search holds the line, the pane-cycle keys and prompt recall are inert.
+  keys.handleKey(undefined, { ctrl: true, name: "s" }); // window → 1h before searching
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // result → changes
+  const since = keys.state().historySince;
+  const result = keys.state().historyResult;
+  const role = keys.state().historyRole;
+  keys.handleKey("/", { name: "/" });
+  for (const ch of "clean") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  keys.handleKey(undefined, { name: "up" });
+  assert.equal(keys.state().historySince, since, "Ctrl+S is inert in search mode");
+  assert.equal(keys.state().historyResult, result, "Ctrl+O is inert in search mode");
+  assert.equal(keys.state().historyRole, role, "Ctrl+G is inert in search mode");
+  assert.equal(keys.state().input, "clean", "Up/Down do not recall while search holds the line");
+  keys.handleKey(undefined, { name: "escape" });
+});
+
 test("the Pending pane caches the rendered fleet roster when collectPending resolves, and a cycle away drops it", async () => {
   const root = makeRoot();
   const fleet = {
