@@ -150,6 +150,14 @@ async function gateBuildFixture(
   return { root, wt };
 }
 
+/** A `gateBuildFixture` whose check passes: the root installs a `buildcheck-tool` that
+ * exits 0, and both the root install's and the change worktree's manifests declare it under
+ * `scriptName` (default `build`) — so a fresh main re-check and the change's own check both
+ * run green. */
+function greenBuildFixture(scriptName = "build"): Promise<{ root: string; wt: string }> {
+  return gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", scriptName);
+}
+
 // A pre-check failure that survives its one re-run is attributed through main's own baseline
 // verdict at its tip (main-red.ts's mainTipVerdict) — never handed to a model run. Main green:
 // the change broke the check and is rejected deterministically. Main red: not the change's
@@ -560,7 +568,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
 // post-rebase re-verify). A skipped pre-check makes no fresh observation: verifiedHead stays
 // absent even when the model approves (asserted in the timeout test above).
 test("a green pre-check hands its verified head to the landing path", async () => {
-  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
+  const { root, wt } = await greenBuildFixture();
   await withPi(reviewerStub(), async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
@@ -585,7 +593,7 @@ async function moveMainAndRebase(root: string, wt: string): Promise<string> {
 }
 
 test("an approved change cleanly rebased onto a moved main reuses its approval: no reviewer run, one check", async () => {
-  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
+  const { root, wt } = await greenBuildFixture();
   const runs = path.join(tmpdir(), "pi-runs");
   await withPi(`echo run >> '${runs}'\nprintf '%s\n' '${assistantLine("VERDICT: approve\n1. solid")}'`, async () => {
     const state = freshLoopState(ROLE);
@@ -616,7 +624,7 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
 });
 
 test("a rebase that changes the patch is re-reviewed", async () => {
-  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
+  const { root, wt } = await greenBuildFixture();
   const runs = path.join(tmpdir(), "pi-runs");
   await withPi(`echo run >> '${runs}'\n${reviewerStub()}`, async () => {
     const state = freshLoopState(ROLE);
@@ -658,7 +666,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
 // spend its run re-running `npm test` — and stays silent about it when no check ran (no declared
 // script, or a skipped run), so the reviewer is never told a suite passed that never executed.
 test("a green pre-check is named in the reviewer's prompt; no check means no such claim", async () => {
-  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const { root, wt } = await greenBuildFixture("test");
   const prompts = path.join(tmpdir(), "prompts.log");
   // The fake pi records its argv (the prompt is the last argument) before answering.
   await withPi(
@@ -706,7 +714,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
   const rerunWarnings = (root: string) =>
     warningMessages(root).filter((m) => m.startsWith("reviewer re-ran the suite"));
 
-  const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const green = await greenBuildFixture("test");
   const greenPrompts = path.join(tmpdir(), "prompts.log");
   await withPi(reviewerScript(greenPrompts), async () => {
     const { result } = await reviewGate(green.root, green.wt);
@@ -740,7 +748,7 @@ const rerunCallEvents = (id: string, command: string): string[] =>
 const RERUN_COMMAND = "cd /tmp/revrun && npm test 2>&1 | tail -15";
 
 test("a reviewer that re-runs the suite even after the no-re-run nudge fails the review, strike-free", async () => {
-  const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const green = await greenBuildFixture("test");
   const prompts = path.join(tmpdir(), "prompts.log");
   await withPi(
     [
@@ -780,7 +788,7 @@ test("a reviewer that re-runs the suite even after the no-re-run nudge fails the
 // bypassed the strike-free branch (followUp was null) and fed the discard ladder, so a flaky
 // backend could destroy a finished, tested commit the reviewer never judged.
 test("a no-re-run nudge that dies on the backend is strike-free and its error names the failure", async () => {
-  const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const green = await greenBuildFixture("test");
   await withPi(
     [
       TOUCH_SESSION,
