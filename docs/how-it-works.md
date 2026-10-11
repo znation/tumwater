@@ -300,6 +300,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   instance id is its own slot, the same scope `tumwater history --role` and the dashboard picker
   take; the hint line names it (`scope: fleet` or `scope: <id>`) and a scoped pane prefixes its
   body with `role: <id>`.
+  The Pending pane shows the durable land queue above the pending-change roster, reading and
+  rendering it through the same `readLandingQueue`/`renderLandingQueue` pair `tumwater queue`
+  prints, so the queue's order, age, skips, and wording match the CLI.
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a

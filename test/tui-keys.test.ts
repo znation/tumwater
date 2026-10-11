@@ -11,6 +11,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
+import { enqueueLanding, readLandingQueue } from "../src/landing/landing-queue.js";
+import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -617,17 +619,56 @@ test("the Pending pane caches the rendered fleet roster when collectPending reso
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   assert.equal(keys.state().view, 5);
-  assert.equal(keys.state().paneCache, null, "the cache stays empty until the collector resolves");
+  assert.equal(
+    keys.state().paneCache,
+    "land queue empty",
+    "the cache holds the queue (empty here) before the collector resolves",
+  );
   const before = renders;
 
   resolvePending(fleet);
   await pending;
   assert.equal(
     keys.state().paneCache,
-    "feature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
-    "the pane caches renderFleetChange's roster text",
+    "land queue empty\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
+    "the pane caches the queue above renderFleetChange's roster text",
   );
   assert.ok(renders > before, "a resolution repaints the pane");
+});
+
+test("the Pending pane renders the durable land queue on entry, above the resolved fleet roster", async () => {
+  const root = makeRoot();
+  enqueueLanding(root, { role: "feature", sha: "a".repeat(40), tick: 3, summary: "add a thing", enqueuedAt: 0 });
+  const fleet = {
+    mainBranch: "main",
+    roles: [
+      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, commits: [], dirtyFiles: [] },
+      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, commits: [], dirtyFiles: ["a.ts"] },
+    ],
+  };
+  let resolvePending!: (view: typeof fleet) => void;
+  const pending = new Promise<typeof fleet>((resolve) => (resolvePending = resolve));
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => pending,
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  // The queue needs no git read, so it is already rendered when the collector is still in flight.
+  assert.equal(keys.state().paneCache, renderLandingQueue(readLandingQueue(root), 0));
+
+  resolvePending(fleet);
+  await pending;
+  assert.equal(
+    keys.state().paneCache,
+    renderLandingQueue(readLandingQueue(root), 0) +
+      "\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
+    "the two-role roster is appended below the same queue text",
+  );
 });
 
 test("a Pending collector resolution after the operator cycled away does not cache onto the new view", async () => {
@@ -667,6 +708,7 @@ test("a Pending collector resolution after the roster size changed does not cach
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (index 5, no roles)
   assert.equal(keys.state().view, 5);
+  const queueText = keys.state().paneCache; // the immediate queue set, before the collector resolves
   // A role appears while the collector is in flight: index 5 now maps to History, not Pending.
   keys.syncSnapshot(0, false, ["feature"], false);
   assert.equal(keys.state().view, 5, "the clamp keeps the raw index");
@@ -675,7 +717,7 @@ test("a Pending collector resolution after the roster size changed does not cach
   await Promise.resolve();
   assert.equal(
     keys.state().paneCache,
-    null,
+    queueText,
     "the late resolution must not cache the fleet roster onto the shifted History pane",
   );
 });

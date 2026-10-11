@@ -14,6 +14,8 @@ import {
 import { historyPaneText } from "./tui-history.js";
 import { collectFleetChanges, type FleetChangeView } from "../../change/change-data.js";
 import { renderFleetChange } from "../../change/change-render.js";
+import { readLandingQueue } from "../../landing/landing-queue.js";
+import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import {
@@ -679,20 +681,27 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         if (view === roleIds.length + 5) {
           // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
           // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
+          // The durable land queue needs no git plumbing, so read and render it through the CLI's
+          // own pair (`tumwater queue`) UP FRONT: the queue paints on entry, and the git-backed
+          // roster is appended below it when the collector resolves, so the three surfaces
+          // (CLI, dashboard, TUI) cannot drift on order, age, skips, or wording.
           // Guard on the PENDING pane still being current — view === roleIds.length + 5 — not just
           // on the raw index: an operator who cycled away, or a roster change that shifted which
           // pane the same index names, must not have this resolution overwrite the pane now shown.
           // The default collector degrades rather than throws, so the rejection arm only covers an
           // injected seam (or an unexpected throw).
-          paneCache = null;
+          const queueText = renderLandingQueue(readLandingQueue(root), now());
+          paneCache = queueText;
           void collectPending(root).then(
             (fleet) => {
               if (view !== roleIds.length + 5) return;
-              paneCache = renderFleetChange(fleet);
+              paneCache = queueText + "\n\n" + renderFleetChange(fleet);
               deps.requestRender();
             },
             (err: unknown) => {
               if (view !== roleIds.length + 5) return;
+              // Keep the queue visible rather than replacing it with a loading note: it is
+              // already known and unaffected by the git read that failed.
               flashError(err);
               deps.requestRender();
             },

@@ -6,53 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Show the durable land queue in the TUI Pending pane, matching `tumwater queue` (planned 2026-10-11 by plan; sibling of the waiting dashboard Pending-view land-queue plan and of the landed `tumwater queue` CLI command, and the TUI half of that read surface; independently landable — it reuses `src/landing/landing-queue.ts`'s `readLandingQueue` and `src/landing/landing-queue-render.ts`'s `renderLandingQueue`, the CLI's own reader/renderer, rather than a copy, so the CLI, dashboard, and TUI cannot drift; shares `src/ui/tui/tui-keys.ts` with the waiting role-scoped TUI History plan — a landing conflict is possible and the resolver handles it; no new view, key, or hint)
-
-**Goal.** The TUI's Pending pane (`Ctrl+T` to Pending; `tui-keys.ts`'s `view ===
-roleIds.length + 5` branch) renders only `collectFleetChanges`'s unlanded-change roster, while
-`tumwater queue` lists the durable land queue and the dashboard Pending plan adds the same
-entries to its view. Add the queue above the roster in the TUI pane, reading and rendering it
-through the CLI's existing `readLandingQueue`/`renderLandingQueue` pair so the three surfaces
-agree on order, age, skips, and wording.
-
-**Approach.**
-1. `src/ui/tui/tui-keys.ts`: import `readLandingQueue` from
-   `../../landing/landing-queue.js` and `renderLandingQueue` from
-   `../../landing/landing-queue-render.js`. In the Pending branch, before kicking off the async
-   collector, compute `const queueText = renderLandingQueue(readLandingQueue(root), now())` —
-   the factory's injected `now` clock, so the printed age is pinnable in a test — and set
-   `paneCache = queueText` immediately, so the queue paints on entry instead of waiting on git
-   plumbing.
-2. In the collector's resolution arm, keep the existing "the Pending view is still current"
-   guard and set `paneCache = queueText + "\n\n" + renderFleetChange(fleet)`. In the rejection
-   arm, keep the queue visible (`paneCache` stays `queueText`) and `flashError(err)` as today,
-   rather than leaving the loading note over a queue that is already known.
-3. `src/ui/tui/tui-pane.ts`'s pending branch is unchanged: it windows whatever string
-   `paneCache` holds, so the queue-plus-roster text flows through its existing
-   `entryBodyWindow`. No new view, `Ctrl+T` index, `tabStrip` label, or `hintLine` key; no
-   change to `tui-frame.ts` or `tui.tsx`.
-
-**Files touched.** `src/ui/tui/tui-keys.ts`, `test/tui-keys.test.ts`,
-`docs/how-it-works.md` (the TUI bullet's Pending sentence names the land queue above the
-roster, beside the existing "`Ctrl+O` cycles the pane's outcome filter" sentence).
-
-**Acceptance criteria.**
-- `test/tui-keys.test.ts`, a new case: seed one queue entry with
-  `enqueueLanding(root, { role: "feature", sha: "…", tick: 3, summary: "…", enqueuedAt: 0 })`
-  and wire a `collectPending` that returns a two-role `FleetChangeView`; `syncSnapshot`, then
-  `Ctrl+T` five times into Pending. Before the collector resolves, `state().paneCache` equals
-  `renderLandingQueue(readLandingQueue(root), 0)` — the queue renders without the git read. After
-  it resolves, `state().paneCache` equals that same queue text plus `"\n\n"` plus
-  `renderFleetChange(fleet)`. With no queue files seeded, the queue half is `land queue empty`.
-- The existing pending cases stay green: a resolution after the operator cycled away, and one
-  after a roster change remapped the raw index onto another view, both still write no cache; the
-  pre-resolution `paneCache === null` assertion in
-  "the Pending pane caches the rendered fleet roster…" becomes the queue text (the immediate set
-  is the behavior change).
-- `docs/how-it-works.md`'s TUI bullet says the Pending pane shows the land queue above the
-  pending-change roster, naming `tumwater queue` as the CLI view it matches.
-- `npm run test` is green.
-
 ### Search the TUI History pane with `tumwater history --grep`'s rule (planned 2026-10-11 by plan; sibling of the landed `tumwater history --grep`, the landed dashboard History search, and the landed TUI History `Ctrl+S`/`Ctrl+O`/`Ctrl+G` filters; completes the last `history` filter without a TUI surface; independent of the waiting TUI Pending land-queue plan — it shares `src/ui/tui/tui-keys.ts` and `tui-frame.ts` but edits the History pane's branches, the prompt-line modes, and the history view shape, not the Pending branch, so a landing conflict is possible and the resolver handles it)
 
 **Goal.** The History pane filters by trailing window (`Ctrl+S`), outcome class (`Ctrl+O`), and exact loop (`Ctrl+G`), but a free-text search has no TUI surface: `tumwater history --grep <text>` and the dashboard's History search field both filter the rows through `history-data.ts`'s `tickRowGrepHaystack` case-insensitive substring rule. Add that search to the TUI, reading the same haystack so the three surfaces cannot disagree.
@@ -99,6 +52,54 @@ roster, beside the existing "`Ctrl+O` cycles the pane's outcome filter" sentence
 - `npm run test` is green.
 
 ## Done
+
+### Show the durable land queue in the TUI Pending pane, matching `tumwater queue` (planned 2026-10-11 by plan; sibling of the waiting dashboard Pending-view land-queue plan and of the landed `tumwater queue` CLI command, and the TUI half of that read surface; independently landable — it reuses `src/landing/landing-queue.ts`'s `readLandingQueue` and `src/landing/landing-queue-render.ts`'s `renderLandingQueue`, the CLI's own reader/renderer, rather than a copy, so the CLI, dashboard, and TUI cannot drift; shares `src/ui/tui/tui-keys.ts` with the waiting role-scoped TUI History plan — a landing conflict is possible and the resolver handles it; no new view, key, or hint; done 2026-10-11 by feature)
+
+**Goal.** The TUI's Pending pane (`Ctrl+T` to Pending; `tui-keys.ts`'s `view ===
+roleIds.length + 5` branch) renders only `collectFleetChanges`'s unlanded-change roster, while
+`tumwater queue` lists the durable land queue and the dashboard Pending plan adds the same
+entries to its view. Add the queue above the roster in the TUI pane, reading and rendering it
+through the CLI's existing `readLandingQueue`/`renderLandingQueue` pair so the three surfaces
+agree on order, age, skips, and wording.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`: import `readLandingQueue` from
+   `../../landing/landing-queue.js` and `renderLandingQueue` from
+   `../../landing/landing-queue-render.js`. In the Pending branch, before kicking off the async
+   collector, compute `const queueText = renderLandingQueue(readLandingQueue(root), now())` —
+   the factory's injected `now` clock, so the printed age is pinnable in a test — and set
+   `paneCache = queueText` immediately, so the queue paints on entry instead of waiting on git
+   plumbing.
+2. In the collector's resolution arm, keep the existing "the Pending view is still current"
+   guard and set `paneCache = queueText + "\n\n" + renderFleetChange(fleet)`. In the rejection
+   arm, keep the queue visible (`paneCache` stays `queueText`) and `flashError(err)` as today,
+   rather than leaving the loading note over a queue that is already known.
+3. `src/ui/tui/tui-pane.ts`'s pending branch is unchanged: it windows whatever string
+   `paneCache` holds, so the queue-plus-roster text flows through its existing
+   `entryBodyWindow`. No new view, `Ctrl+T` index, `tabStrip` label, or `hintLine` key; no
+   change to `tui-frame.ts` or `tui.tsx`.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `test/tui-keys.test.ts`,
+`docs/how-it-works.md` (the TUI bullet's Pending sentence names the land queue above the
+roster, beside the existing "`Ctrl+O` cycles the pane's outcome filter" sentence).
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, a new case: seed one queue entry with
+  `enqueueLanding(root, { role: "feature", sha: "…", tick: 3, summary: "…", enqueuedAt: 0 })`
+  and wire a `collectPending` that returns a two-role `FleetChangeView`; `syncSnapshot`, then
+  `Ctrl+T` five times into Pending. Before the collector resolves, `state().paneCache` equals
+  `renderLandingQueue(readLandingQueue(root), 0)` — the queue renders without the git read. After
+  it resolves, `state().paneCache` equals that same queue text plus `"\n\n"` plus
+  `renderFleetChange(fleet)`. With no queue files seeded, the queue half is `land queue empty`.
+- The existing pending cases stay green: a resolution after the operator cycled away, and one
+  after a roster change remapped the raw index onto another view, both still write no cache —
+  the shifted-view case now asserts the cache is unchanged, still the queue text written on
+  entry, rather than null; the pre-resolution `paneCache === null` assertion in
+  "the Pending pane caches the rendered fleet roster…" becomes the queue text (the immediate set
+  is the behavior change).
+- `docs/how-it-works.md`'s TUI bullet says the Pending pane shows the land queue above the
+  pending-change roster, naming `tumwater queue` as the CLI view it matches.
+- `npm run test` is green.
 
 ### Run the configured notify hook once: `tumwater notify --test` (planned 2026-10-10 by plan; independent of the waiting TUI Usage/Failures `--since`, TUI History `--result`, and `tumwater queue` plans — a new CLI command over `src/events/notify.ts` and `src/config`, no `src/ui/tui`, `src/history` or `src/landing` file; completes the operator's push channel, which today can only be exercised by waiting for a real event; done 2026-10-10 by feature)
 
