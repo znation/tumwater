@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
+import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
@@ -19,7 +20,7 @@ const HISTORY_REGIONS = ["format", "view-model", "history-detail", "history-tabl
 
 test("the History table renders tick rows, escapes them, and filters by outcome", () => {
   const { historyTableHtml, historyClass } = clientScope<{
-    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, grep?: string): string;
+    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, grep?: string, sinceKey?: string): string;
     historyClass(result: string): string;
   }>(HISTORY_REGIONS, ["historyTableHtml", "historyClass"], { icon: iconStub });
   const now = Date.now();
@@ -53,6 +54,8 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(historyTableHtml([], "all", new Set(), "widget"), /No ticks match this search/);
   assert.doesNotMatch(historyTableHtml([], "all", new Set(), "widget"), /No ticks yet/);
   assert.match(historyTableHtml(null, "all", new Set(), "widget"), /No ticks match this search/, "a response without rows under a search reads as no match, not an empty log");
+  assert.match(historyTableHtml([], "all", new Set(), undefined, "1d"), /No ticks in the last day/, "an empty selected window is named, not read as an empty log");
+  assert.match(historyTableHtml([], "all", new Set(), undefined, "nonsense"), /No ticks yet/, "a stale window key falls back to the plain empty state");
   assert.match(historyTableHtml(rows.slice(1, 2), "changes", new Set()), /No ticks match this filter/);
   assert.match(historyTableHtml(null, "all", new Set()), /No ticks yet/, "a response without rows reads as none");
 });
@@ -101,6 +104,43 @@ test("fetchHistory appends the encoded grep only when a pattern is set", async (
   assert.deepEqual(searched, ["/api/history?n=50&grep=sorted%20imports"]);
 });
 
+test("historyQuery picks the count or trailing-window shape and composes the role", () => {
+  const { historyQuery } = clientScope<{ historyQuery(count: number, role: string, sinceKey: string): string }>(
+    HISTORY_REGIONS,
+    ["historyQuery"],
+    { icon: iconStub },
+  );
+  assert.equal(historyQuery(50, "", ""), "/api/history?n=50");
+  assert.equal(historyQuery(50, "clean", ""), "/api/history?n=50&role=clean");
+  assert.equal(historyQuery(50, "", "1d"), "/api/history?sinceMs=86400000", "a window replaces the count shape");
+  assert.equal(historyQuery(50, "clean", "7d"), "/api/history?sinceMs=604800000&role=clean", "role composes with the window");
+  assert.equal(historyQuery(50, "", "nonsense"), "/api/history?n=50", "an unknown window key falls back to the count");
+});
+
+test("the History toolbar carries the four trailing-window options in the #histcount select", () => {
+  const { histWindowOptions } = clientScope<{ histWindowOptions(): string }>(HISTORY_REGIONS, ["histWindowOptions"], { icon: iconStub });
+  const options = histWindowOptions();
+  for (const [value, label] of [
+    ["1h", "The last hour"],
+    ["6h", "The last 6 hours"],
+    ["1d", "The last day"],
+    ["7d", "The last 7 days"],
+  ] as [string, string][]) {
+    assert.match(options, new RegExp("<option value='" + value + "'>" + label + "</option>"), `the ${value} window option`);
+  }
+  // The options are inserted into that select's markup (the count options then the windows).
+  assert.match(GUI_CLIENT_HISTORY_JS, /id='histcount'>"[\s\S]*?histWindowOptions\(\)/);
+});
+
+test("historyNoteHtml renders the server's sparse-window note and nothing when empty", () => {
+  const { historyNoteHtml } = clientScope<{ historyNoteHtml(note: string): string }>(HISTORY_REGIONS, ["historyNoteHtml"], { icon: iconStub });
+  assert.equal(historyNoteHtml(""), "");
+  const html = historyNoteHtml(SPARSE_WINDOW_NOTE);
+  assert.match(html, /window-note/);
+  assert.match(html, /oldest retained event lies inside this window/);
+  assert.match(html, /log&#39;s/, "the note is escaped like every other rendered string");
+});
+
 test("histDetailCardHtml branches on the entry's state: loading, error, then the fetched card", () => {
   const { histDetailCardHtml } = clientScope<{ histDetailCardHtml(entry: unknown): string }>(
     HISTORY_REGIONS,
@@ -132,7 +172,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
     histDetails: Map<string, { state: string; text?: string; message?: string }>;
     histDetailOpen: string;
     toggleHistDetail(role: string, tick: string): void;
-    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>): string;
+    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
   }>(HISTORY_REGIONS, ["histDetails", "histDetailOpen", "toggleHistDetail", "historyTableHtml"], {
     icon: iconStub,
     getJson: (path: string) => {
@@ -182,7 +222,7 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   const scope = clientScope<{
     histDetails: Map<string, { state: string; message?: string }>;
     toggleHistDetail(role: string, tick: string): void;
-    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>): string;
+    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
   }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
     icon: iconStub,
     getJson: () => Promise.reject(new Error("no tick #9 for clean in the scanned window")),
@@ -205,7 +245,7 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   const scope = clientScope<{
     histDetails: Map<string, { state: string; message?: string }>;
     toggleHistDetail(role: string, tick: string): void;
-    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>): string;
+    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
   }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
     icon: iconStub,
     getJson: () => Promise.resolve({}), // a 200 body without the promised text field

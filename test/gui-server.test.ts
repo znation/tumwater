@@ -5,7 +5,8 @@ import net from "node:net";
 import path from "node:path";
 import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
-import { tickRows } from "../src/history/history-data.js";
+import { tickRows, readTickRowsSince } from "../src/history/history-data.js";
+import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { dequeuePrompt, enqueueRolePrompt, inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
@@ -643,6 +644,54 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
       const body = (await r.json()) as { error: string };
       assert.match(body.error, /n must be a non-negative integer/);
     }
+
+    // sinceMs: the trailing-window shape. Its seed (1970) sits entirely before any trailing
+    // window, so the rows are empty over a covered window and the note is absent.
+    assert.deepEqual(await (await fetch(base + "/api/history?sinceMs=604800000")).json(), { rows: [], covered: true, note: "" });
+    assert.deepEqual(await (await fetch(base + "/api/history?sinceMs=1")).json(), { rows: [], covered: true, note: "" });
+    assert.deepEqual(await (await fetch(base + "/api/history?sinceMs=604800000&role=clean")).json(), { rows: [], covered: true, note: "" }, "role composes with the window");
+    // A count and a window are rival shapes (the CLI's rule), sinceMs must parse positive, and
+    // it is capped at the shared `history --since` bound.
+    const rival = await fetch(base + "/api/history?sinceMs=3600000&n=20");
+    assert.equal(rival.status, 400, "sinceMs and n are rivals");
+    assert.match(((await rival.json()) as { error: string }).error, /sinceMs cannot be combined with n/);
+    const badSince = await fetch(base + "/api/history?sinceMs=abc");
+    assert.equal(badSince.status, 400);
+    assert.match(((await badSince.json()) as { error: string }).error, /sinceMs must be a positive integer/);
+    const overCap = await fetch(base + "/api/history?sinceMs=604800001");
+    assert.equal(overCap.status, 400, "above LOGS_SINCE_MAX_MS → 400");
+    assert.match(((await overCap.json()) as { error: string }).error, /sinceMs is capped at 7d/);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/history serves a trailing window from readTickRowsSince with its coverage note", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history since api test");
+  const base = Date.now();
+  const t = (mins: number) => base - mins * 60_000;
+  const events: HarnessEvent[] = [
+    { ts: t(30), loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
+    { ts: t(10), loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+    { ts: t(5), loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "later work" } as HarnessEvent,
+  ];
+  writeEvents(repo, events);
+  const { server, base: url } = await startLocalGui(repo);
+  try {
+    // The window's rows come from the same collector as `tumwater history --since`.
+    const all = (await (await fetch(url + "/api/history?sinceMs=7200000")).json()) as { rows: { loop: string; tick: number }[]; covered: boolean; note: string };
+    assert.deepEqual(all.rows, readTickRowsSince(repo, 7_200_000, null).rows);
+    assert.deepEqual(all.rows.map((r) => [r.loop, r.tick]), [["feature", 1], ["clean", 9]], "newest first");
+    // The log starts inside the window, so coverage cannot be proven and the shared note rides.
+    assert.equal(all.covered, false);
+    assert.equal(all.note, SPARSE_WINDOW_NOTE);
+    // role composes with the window; a window narrower than every event holds none.
+    const clean = (await (await fetch(url + "/api/history?sinceMs=7200000&role=clean")).json()) as { rows: { loop: string }[] };
+    assert.deepEqual(clean.rows, readTickRowsSince(repo, 7_200_000, "clean").rows);
+    assert.deepEqual(clean.rows.map((r) => r.loop), ["clean"]);
+    const tiny = await (await fetch(url + "/api/history?sinceMs=1")).json();
+    assert.deepEqual((tiny as { rows: unknown[] }).rows, []);
   } finally {
     server.close();
   }

@@ -18,13 +18,15 @@ import { collectFailureReport } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, tickRowGrepHaystack } from "../history/history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowGrepHaystack } from "../history/history-data.js";
+import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
+import { humanSeconds } from "../text/datetime.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
@@ -128,26 +130,49 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), role ?? undefined)) });
 }
 
-/** Handle GET /api/history?role=<id>&n=N[&grep=<text>]: the per-tick rows readTickRows derives
- * from the event log ({ rows }) — the same rows `tumwater history` prints (the shared scan, window
- * growth included, so a role-filtered ask on a busy fleet cannot silently come back short),
- * the dashboard's history tab renders them. n is optional: absent → HISTORY_DEFAULT_TICKS;
- * present but not a plain non-negative integer → 400 (the handleBacklog index discipline — an
- * explicit count that does not parse is a client error, unlike the report's degrade-to-default
- * typo rule); then clamped to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails
- * fast, its established convention. role is optional: absent or empty → all loops; present →
- * passed straight through as the role filter with no config validation (a filter is not a
- * target — an id with no ticks legitimately yields zero rows). grep is optional: absent or
- * empty filters nothing; present → the rows are filtered through tickRowGrepHaystack, the same
- * case-insensitive haystack rule `tumwater history --grep` uses (shared, not re-implemented),
- * after the n/role scan so n bounds the scanned window and not the printed rows — the CLI's
- * rule. Reads files directly, so it works whether or not the fleet is running. */
+/** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms> for a
+ * trailing window: the per-tick rows the CLI's `tumwater history` derives from the event log,
+ * the dashboard's history tab renders them. The count shape ({ rows }) rides readTickRows (the
+ * shared scan, window growth included, so a role-filtered ask on a busy fleet cannot silently
+ * come back short); n is optional: absent → HISTORY_DEFAULT_TICKS; present but not a plain
+ * non-negative integer → 400 (the handleBacklog index discipline — an explicit count that does
+ * not parse is a client error, unlike the report's degrade-to-default typo rule); then clamped
+ * to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails fast, its established
+ * convention. grep is optional: absent or empty filters nothing; present → the rows are
+ * filtered through tickRowGrepHaystack, the same case-insensitive haystack rule
+ * `tumwater history --grep` uses (shared, not re-implemented), after the n/role scan so n
+ * bounds the scanned window and not the printed rows — the CLI's rule. The window shape
+ * ({ rows, covered, note }) rides readTickRowsSince, the collector behind `history --since`,
+ * so the browser and the CLI cannot disagree about the window's rows; a simultaneous n is a
+ * rival shape → 400 (the CLI's count-vs-window rule), sinceMs parses through intQuery
+ * (positive) and is capped at LOGS_SINCE_MAX_MS (the shared `history --since` cap), and note is
+ * SPARSE_WINDOW_NOTE when covered is false, else "". role is optional: absent or empty → all
+ * loops; present → passed straight through as the role filter with no config validation (a
+ * filter is not a target — an id with no ticks legitimately yields zero rows), so the endpoint
+ * reads nothing but files, like /api/report and /api/failures. Reads files directly, so it
+ * works whether or not the fleet is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const role = q.get("role") || null; // "" and absent both read all loops
+  const grep = q.get("grep") || null; // "" and absent both filter nothing
+  if (q.get("sinceMs") !== null) {
+    if (q.get("n") !== null) {
+      sendJson(res, 400, { error: "sinceMs cannot be combined with n (a count and a window are rival shapes)" });
+      return;
+    }
+    const sinceMs = intQuery(q, res, "sinceMs", "positive");
+    if (sinceMs === null) return;
+    if (sinceMs > LOGS_SINCE_MAX_MS) {
+      sendJson(res, 400, { error: `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${sinceMs})` });
+      return;
+    }
+    const { rows, covered } = readTickRowsSince(root, sinceMs, role);
+    const matched = grep === null ? rows : rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(grep.toLowerCase()));
+    sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE });
+    return;
+  }
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_TICKS);
   if (parsed === null) return;
   const n = Math.min(HISTORY_MAX_TICKS, Math.max(1, parsed));
-  const role = q.get("role") || null; // "" and absent both read all loops
-  const grep = q.get("grep") || null; // "" and absent both filter nothing
   let rows = readTickRows(root, n, role);
   if (grep !== null) {
     const needle = grep.toLowerCase();
