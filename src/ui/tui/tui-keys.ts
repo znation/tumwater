@@ -108,31 +108,33 @@ function historyResultLabel(resultClass: HistoryResultClass | null): string | nu
   return HISTORY_RESULTS.find(([c]) => c === resultClass)?.[1] ?? null;
 }
 
-/** The History pane's body for one trailing window and one outcome class: the paneCache the
- * Ctrl+T/Ctrl+S/Ctrl+O handlers store. The default (null/null) read is byte-for-byte the
- * newest-N pane that predates the window and outcome cycles — readTickRows with
- * HISTORY_DEFAULT_TICKS, unfiltered. A trailing window reads through the same
- * readTickRowsSince collector `tumwater history --since` uses, and a class filters through
- * history-data.ts's canonical historyClass rule, so the TUI, the CLI, and the dashboard cannot
- * disagree about the rows. An empty read with no class returns "" so the pane keeps its own
- * no-ticks note instead of a lone window header; when a class is active and the read returned
- * rows, an empty filtered body names the class (the CLI's wording) so the pane states the filter
- * instead of claiming the log is empty. Otherwise the body is prefixed with the active
- * window and result labels and, when the read cannot prove full coverage, the same sparse-
- * window note every windowed render prints (SPARSE_WINDOW_NOTE). */
-function historyPaneCache(root: string, sinceMs: number | null, resultClass: HistoryResultClass | null): string {
-  if (sinceMs === null && resultClass === null) {
-    return historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
-  }
+/** The History pane's body for one trailing window, one outcome class, and one exact-loop
+ * scope: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G handlers store. The default
+ * (null/null/null) read is byte-for-byte the newest-N pane that predates the window, outcome,
+ * and loop cycles — readTickRows with HISTORY_DEFAULT_TICKS, unfiltered. A trailing window
+ * reads through the same readTickRowsSince collector `tumwater history --since` uses, and a
+ * class filters through history-data.ts's canonical historyClass rule, so the TUI, the CLI, and
+ * the dashboard cannot disagree about the rows. The role is the exact loop id the raw roster
+ * (and `history --role`, and the dashboard picker) names — readTickRows filters `e.loop ===
+ * role`, so an instance id is its own scope, never folded into a base role. An empty read with
+ * no class returns "" so the pane keeps its own no-ticks note instead of a lone header; when a
+ * class is active and the read returned rows, an empty filtered body names the class (the CLI's
+ * wording) so the pane states the filter instead of claiming the log is empty. Otherwise the
+ * body is prefixed with the active role/window/result labels and, when the read cannot prove
+ * full coverage, the same sparse-window note every windowed render prints (SPARSE_WINDOW_NOTE). */
+function historyPaneCache(root: string, sinceMs: number | null, resultClass: HistoryResultClass | null, role: string | null): string {
   const { rows, covered } = sinceMs === null
-    ? { rows: readTickRows(root, HISTORY_DEFAULT_TICKS, null), covered: true }
-    : readTickRowsSince(root, sinceMs, null);
+    ? { rows: readTickRows(root, HISTORY_DEFAULT_TICKS, role), covered: true }
+    : readTickRowsSince(root, sinceMs, role);
   const filtered = resultClass === null ? rows : rows.filter((r) => historyClass(r.result) === resultClass);
   const body = historyPaneText(filtered);
   // null when no class is active, so the header/empty-body paths below only name a result
   // filter the session actually holds (historyResultLabel(null) is the "all" label).
   const resultLabel = resultClass === null ? null : historyResultLabel(resultClass);
+  // The role first, then the window/result labels: the loop is the coarsest cut, and a
+  // role-only read (no window, no class) still prints its scope line above the rows.
   const header = [
+    ...(role === null ? [] : ["role: " + role]),
     ...(sinceMs === null ? [] : ["window: last " + (historyWindowLabel(sinceMs) ?? "default")]),
     ...(resultLabel === null ? [] : ["result: " + resultLabel]),
   ].join("\n");
@@ -140,12 +142,13 @@ function historyPaneCache(root: string, sinceMs: number | null, resultClass: His
     // The class names itself only when it emptied a set the read did return (rows.length > 0):
     // the CLI's `afterGrep > 0` and the dashboard's `hasRows` draw the same line, so an empty
     // log or window keeps the pane's own no-ticks note instead of blaming a filter that
-    // removed nothing.
+    // removed nothing. A role-only empty read returns "" the same way (the CLI's empty-state
+    // wording does not name --role), so the pane never grows a lone `role:` header.
     return resultClass !== null && rows.length > 0
       ? header + "\nno ticks with result \"" + resultLabel + "\""
       : "";
   }
-  return header + "\n" + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
+  return (header ? header + "\n" : "") + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
 }
 
 /** The Usage and Failures panes' session window cycle, Ctrl+E: the default whole-day report,
@@ -213,6 +216,10 @@ interface TuiKeysState {
   /** The session-scoped role the Usage and Failures panes collect for (Ctrl+G), null for the
    * fleet; cleared when the incoming roster no longer names it. */
   scopeRole: string | null;
+  /** The History pane's exact-loop scope (Ctrl+G), a raw roster id or null for the fleet's
+   * full read; cleared when the incoming roster no longer names it. Separate from scopeRole:
+   * History filters by exact loop (`history --role`), where `feature-2` is its own slot. */
+  historyRole: string | null;
   selectedEntry: number | null;
   entryScroll: number;
   paneCache: string | null;
@@ -360,6 +367,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // The History pane's session outcome filter (Ctrl+O), a HISTORY_RESULTS class or null for no
   // filter. Session-only like the window; the next Ctrl+T into History computes with it.
   let historyResult: HistoryResultClass | null = null;
+  // The History pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
+  // fleet's full read. Session-only like the window/result; syncSnapshot clears it when the
+  // roster drops the id. The raw ids, not scopeCycle's base roles: History filters by exact
+  // loop (`history --role`), so `feature-2` is its own slot.
+  let historyRole: string | null = null;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
   // pane's first line on its title, so its body pages by one line less (entryBudget).
@@ -578,21 +590,32 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor) {
-      // Ctrl+G cycles the session-scoped role the Usage and Failures panes collect for
-      // (mnemonic: the **g**lobal report scope). Guarded out of the budget and role-prompt
-      // editors, whose prompt line the key must not disturb — the same inertness the per-loop
-      // keys honor. On a report pane, recompute its cached Markdown from the newly scoped
-      // collector and re-enter the body at its head; every other view just keeps the scope for
-      // the Ctrl+T entry that later computes with it.
-      const slots = scopeCycle(roleIds);
-      const slot = slots.indexOf(scopeRole);
-      scopeRole = slots[(slot + 1) % slots.length] ?? null;
-      if (view === roleIds.length + 2) {
-        paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
+      // Ctrl+G cycles the active pane's loop scope (mnemonic: the **g**lobal scope / the
+      // **g**roup). Guarded out of the budget and role-prompt editors, whose prompt line the
+      // key must not disturb — the same inertness the per-loop keys honor. On the History
+      // pane it walks the raw roster ids (`[null, ...roleIds]`) so an instance id is its own
+      // slot, matching `history --role` and the dashboard picker; on every other view it cycles
+      // the base-role report scope the Usage and Failures collectors aggregate by, exactly as
+      // before. A pane showing the scope recomputes its cached Markdown and re-enters the body
+      // at its head; every other view keeps the scope for the Ctrl+T entry that later computes
+      // with it.
+      if (view === roleIds.length + 4) {
+        const slots: Array<string | null> = [null, ...roleIds];
+        const slot = slots.indexOf(historyRole);
+        historyRole = slots[(slot + 1) % slots.length] ?? null;
+        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
         paneScroll = 0;
-      } else if (view === roleIds.length + 3) {
-        paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
-        paneScroll = 0;
+      } else {
+        const slots = scopeCycle(roleIds);
+        const slot = slots.indexOf(scopeRole);
+        scopeRole = slots[(slot + 1) % slots.length] ?? null;
+        if (view === roleIds.length + 2) {
+          paneCache = usagePaneCache(root, reportWindow, scopeRole ?? undefined);
+          paneScroll = 0;
+        } else if (view === roleIds.length + 3) {
+          paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
+          paneScroll = 0;
+        }
       }
       deps.requestRender();
       return;
@@ -625,7 +648,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       const i = HISTORY_WINDOWS.findIndex(([ms]) => ms === historyWindow);
       historyWindow = HISTORY_WINDOWS[(i + 1) % HISTORY_WINDOWS.length]![0];
       if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow, historyResult);
+        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
         paneScroll = 0;
       }
       deps.requestRender();
@@ -640,7 +663,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       const i = HISTORY_RESULTS.findIndex(([c]) => c === historyResult);
       historyResult = HISTORY_RESULTS[(i + 1) % HISTORY_RESULTS.length]![0];
       if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow, historyResult);
+        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
         paneScroll = 0;
       }
       deps.requestRender();
@@ -665,7 +688,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       } else if (view === roleIds.length + 3) {
         paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
       } else if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow, historyResult);
+        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole);
       } else if (view === roleIds.length + 5) {
         // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
         // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -868,6 +891,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           paneScroll = 0;
         }
       }
+      // The same drop for History's exact-loop scope: a retired or renamed loop must not keep
+      // labeling an empty pane. An on-screen History pane recomputes from the fleet-wide read
+      // so its rows and its `role:` header clear together.
+      if (historyRole !== null && !roleIds.includes(historyRole)) {
+        historyRole = null;
+        if (view === roleIds.length + 4) {
+          paneCache = historyPaneCache(root, historyWindow, historyResult, null);
+          paneScroll = 0;
+        }
+      }
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
       eventBudget = evBudget;
@@ -881,6 +914,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         rolePromptFor,
         view,
         scopeRole,
+        historyRole,
         selectedEntry,
         entryScroll,
         paneCache,

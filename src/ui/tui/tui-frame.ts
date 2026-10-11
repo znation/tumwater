@@ -58,7 +58,7 @@ export type TuiView =
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null; window: string | null }
   | { kind: "failures"; scope: string | null; window: string | null }
-  | { kind: "history"; since: string | null; result: string | null }
+  | { kind: "history"; since: string | null; result: string | null; role: string | null }
   | { kind: "pending" };
 
 /** The pane's tab strip: every view by name, the current one bracketed (and bright), so the
@@ -70,7 +70,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
     ["backlog", "Backlog"],
     ["usage", view.kind === "usage" && view.scope ? `Usage: ${view.scope}` : "Usage"],
     ["failures", view.kind === "failures" && view.scope ? `Failures: ${view.scope}` : "Failures"],
-    ["history", "History"],
+    ["history", view.kind === "history" && view.role ? `History: ${view.role}` : "History"],
     ["pending", "Pending"],
   ];
   const spans: StatusSpan[] = [];
@@ -92,7 +92,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   const spans: StatusSpan[] = [];

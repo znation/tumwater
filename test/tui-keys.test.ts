@@ -223,6 +223,65 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   assert.match(keys.state().paneCache ?? "", /^role: feature$/m, "the scoped body names the role the scope shows");
 });
 
+test("Ctrl+G on the History view cycles the raw roster ids and recomputes the scoped cache", () => {
+  const root = makeRoot();
+  // One completed tick per loop, so each exact-loop scope has its own row set: feature-2 is
+  // a distinct scope, unlike the report panes' base-role aggregation.
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "feature-2", type: "tick_end", tick: 1, result: "none" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "tick_end", tick: 1, result: "changed" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "feature-2", "clean"]);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
+  assert.equal(keys.state().view, 7);
+  assert.equal(keys.state().historyRole, null, "History opens fleet-wide");
+
+  const fleet = keys.state().paneCache;
+  assert.match(fleet ?? "", /feature #1/, "the fleet-wide read holds feature's row");
+  assert.match(fleet ?? "", /feature-2 #1/, "...and the instance's row");
+
+  const seen: Array<string | null> = [];
+  const caches: Array<string | null> = [];
+  for (let i = 0; i < 4; i++) {
+    keys.handleKey(undefined, { ctrl: true, name: "g" });
+    seen.push(keys.state().historyRole);
+    caches.push(keys.state().paneCache);
+  }
+  assert.deepEqual(seen, ["feature", "feature-2", "clean", null], "the raw roster ids each get their own slot");
+  assert.match(caches[0] ?? "", /^role: feature$/m, "the scoped cache names its loop");
+  assert.match(caches[0] ?? "", /feature #1/);
+  assert.doesNotMatch(caches[0] ?? "", /feature-2/, "an instance's rows stay out of its base loop's scope");
+  assert.match(caches[1] ?? "", /feature-2 #1/);
+  assert.notEqual(caches[0], fleet, "the feature-scoped cache differs from the fleet-wide one");
+  assert.notEqual(caches[1], caches[0], "feature-2 is its own scope, unlike the report cycle");
+
+  // Budget mode owns the prompt line: the History scope must not move.
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature again
+  assert.equal(keys.state().historyRole, "feature");
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().historyRole, "feature", "Ctrl+G is inert in budget mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Role-prompt mode owns it the same way; it opens from a transcript view, scope kept.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // history → pending
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // pending → activity
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // activity → transcript feature
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "feature");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().historyRole, "feature", "Ctrl+G is inert in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // A roster that drops the scoped loop clears the History scope.
+  keys.syncSnapshot(0, false, ["clean"]);
+  assert.equal(keys.state().historyRole, null, "a roster drop clears the stale history scope");
+});
+
 test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking roster clears the scope", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);

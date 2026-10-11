@@ -45,11 +45,11 @@ test("rows render newest-first, one line each, and no rows is the empty string",
 
 test("an empty history pane falls back to the no-ticks note, not entryBodyWindow's placeholder", () => {
   const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, paneScroll: 0 };
-  const empty = paneBody({ kind: "history", since: null, result: null }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  const empty = paneBody({ kind: "history", since: null, result: null, role: null }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
   assert.equal(empty.emptyNote, "(no ticks yet)");
 
-  const rows = paneBody({ kind: "history", since: null, result: null }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: historyPaneText([row()]) } });
+  const rows = paneBody({ kind: "history", since: null, result: null, role: null }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: historyPaneText([row()]) } });
   assert.equal(rows.body.length, 1);
   assert.equal(rows.emptyNote, "(no ticks yet)");
 });
