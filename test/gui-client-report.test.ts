@@ -181,3 +181,19 @@ test("rolePickerOptions renders All loops plus one escaped option per role, orde
   assert.doesNotMatch(hostile, /<b>x<\/b>/, "raw HTML in a role name is not rendered");
   assert.match(hostile, /<option value='&lt;b&gt;x&lt;\/b&gt;'>&lt;b&gt;x&lt;\/b&gt;<\/option>/, "value and label are escaped");
 });
+
+test("reportBaseRoles folds each instance into its `instanceOf` base role, once, in fleet order", () => {
+  // The report views' Loop picker must offer the same roles the scoped collectors honor. The
+  // status payload names an instance's base as `instanceOf`; a bare row has none, so its own
+  // role is the base. Dedupe keeps a multi-instance base to a single option.
+  const { reportBaseRoles } = clientScope<{ reportBaseRoles(loops?: Array<{ role: string; instanceOf?: string }>): string[] }>(
+    ["format", "report-role"],
+    ["reportBaseRoles"],
+  );
+  assert.deepEqual(reportBaseRoles([]), [], "no loops leaves no roles");
+  assert.deepEqual(
+    reportBaseRoles([{ role: "feature" }, { role: "feature-2", instanceOf: "feature" }, { role: "bugfix-2", instanceOf: "bugfix" }, { role: "clean" }]),
+    ["feature", "bugfix", "clean"],
+    "one slot per base role, first occurrence order preserved",
+  );
+});

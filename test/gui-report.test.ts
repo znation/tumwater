@@ -452,6 +452,47 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
   assert.doesNotMatch(fleet, /Loop scope:/, "and prints no scope line");
 });
 
+test("the report Loop picker offers base roles only, so an instance id never labels another scope's body", async () => {
+  // The scoped collectors fold an instance id (`feature-2`) into its base role, so offering the
+  // instance would collect `feature`'s whole body under `feature-2`'s name — the GUI twin of
+  // the TUI Ctrl+G bug. syncRoles paints rolePickerOptions(reportBaseRoles(loops)), so the
+  // picker offers one `feature` option and no `feature-2`, and a persisted instance scope falls
+  // back to All loops instead of collecting the base body under the instance's name.
+  const els: Record<string, { dataset: Record<string, string>; innerHTML: string; value?: string; addEventListener(): void }> = {};
+  for (const id of ["report", "usagebody", "usagewindow", "failures", "failbody", "failwindow", "usagerole", "failrole"]) {
+    els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
+  }
+  const stored: Array<[string, string]> = [];
+  const inject = {
+    document: { getElementById: (id: string) => els[id] ?? null },
+    $: (id: string) => els[id] ?? null,
+    markActive: () => {},
+    // The persisted report scope names the instance id old builds offered.
+    recall: (key: string) => (key === "usage-role" ? "feature-2" : null),
+    store: (key: string, value: string) => { stored.push([key, value]); },
+    lastStatus: { loops: [{ role: "feature" }, { role: "feature-2", instanceOf: "feature" }, { role: "clean" }] },
+    getJson: async () => ({ markdown: "# usage" }),
+    errorPanel: (title: string) => title,
+    clickClosest: () => null,
+    renderMarkdown: (md: string) => md,
+    icon: iconStub,
+    plural: (n: number, one: string) => `${n} ${one}`,
+    workSplit: (t: { workCommits?: number }) => String(t.workCommits ?? 0),
+    fmtTokens: (n: number) => String(n),
+    fmtUsd: (n: number) => "$" + n.toFixed(2),
+  };
+  const keys = Object.keys(inject);
+  const make = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    ...args: unknown[]
+  ) => { fetchReport(): Promise<void> };
+  await make(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
+  const options = els.usagerole!.innerHTML;
+  assert.match(options, /<option value='feature'>feature<\/option>/, "the base role is offered");
+  assert.doesNotMatch(options, /feature-2/, "the instance id collects feature's body, so it is not an option");
+  assert.equal(els.usagerole!.value, "", "a persisted instance scope falls back to All loops");
+  assert.deepEqual(stored, [["usage-role", ""]], "and the fallback persists");
+});
+
 test("the Usage trailing-window control fetches ?sinceMs, renders markdown, and a day click reverts", async () => {
   // The dashboard twin of `tumwater report --since`: a persisted "usage-since" makes the Usage
   // tab fetch the windowed markdown shape and render it through the page's Markdown renderer;

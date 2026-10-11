@@ -213,6 +213,22 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return "<option value=''>All loops</option>" +
       (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
   }
+  // The report views' Loop picker offers base roles only: the scoped collectors
+  // (collectReport/collectFailureReport) fold an instance id (feature-2) into its base role, so
+  // an instance option would collect the base role's whole body under the instance's name — the
+  // GUI twin of the TUI's Ctrl+G scope cycle (src/ui/tui/tui-keys.ts scopeCycle). The status
+  // payload already carries the base role as instanceOf on an instance row (src/status/
+  // status-data.ts), so this borrows the server's own fold rather than re-deriving it. History's
+  // picker (gui-client-history.ts) filters by exact loop id and keeps the raw fleet list. Pure,
+  // so a test can drive it without a DOM.
+  function reportBaseRoles(loops) {
+    const bases = [];
+    for (const l of loops || []) {
+      const base = l.instanceOf || l.role;
+      if (!bases.includes(base)) bases.push(base);
+    }
+    return bases;
+  }
   // Repaint both report views' Loop pickers from a status payload: each view's persisted
   // choice is kept while the fleet still lists it and falls back to All loops otherwise. The
   // views are defined below; the boot poll and each fetch call this once they exist.
@@ -273,7 +289,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       if (!o.rolePickerId || !d) return;
       const select = $(o.rolePickerId);
       if (!select) return;
-      const roles = (d.loops || []).map((l) => l.role);
+      const roles = reportBaseRoles(d.loops);
       const key = roles.join(",");
       if (key === rolesKey) return;
       rolesKey = key;

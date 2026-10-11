@@ -197,6 +197,32 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   assert.notEqual(cleanFailures, keys.state().paneCache, "the scoped failure digest differs from the fleet-wide one");
 });
 
+test("Ctrl+G cycles base roles only, so an instance id never labels another scope's body", () => {
+  const root = makeRoot();
+  // One failed feature tick with tokens, so the Usage body carries the collected `role` line.
+  writeEvents(root, [
+    { ts: Date.now(), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: Date.now(), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  // The roster names an instance; the scoped collectors fold it into `feature`.
+  keys.syncSnapshot(0, false, ["feature", "feature-2"]);
+
+  const seen: Array<string | null> = [];
+  for (let i = 0; i < 2; i++) {
+    keys.handleKey(undefined, { ctrl: true, name: "g" });
+    seen.push(keys.state().scopeRole);
+  }
+  assert.deepEqual(seen, ["feature", null], "feature-2 collects feature's body, so the cycle skips it");
+
+  // On the Usage pane the tab-strip scope and the collected body's own `role:` name agree.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  assert.equal(keys.state().view, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → feature
+  assert.equal(keys.state().scopeRole, "feature");
+  assert.match(keys.state().paneCache ?? "", /^role: feature$/m, "the scoped body names the role the scope shows");
+});
+
 test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking roster clears the scope", () => {
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);

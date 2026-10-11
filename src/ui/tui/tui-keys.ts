@@ -28,6 +28,7 @@ import { errorMessage } from "../../text/text.js";
 import { fleetPausePhrase, fleetResumePhrase } from "../../text/phrases.js";
 import { usdCap } from "../../text/format.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
+import { baseRoleOf } from "../../roles/loop-ids.js";
 import {
   applyKey,
   parseBudgetInput,
@@ -66,6 +67,21 @@ const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
  * fallback keeps a would-be stale value from rendering "undefined". */
 function historyWindowLabel(sinceMs: number | null): string | null {
   return HISTORY_WINDOWS.find(([ms]) => ms === sinceMs)?.[1] ?? null;
+}
+
+/** The Ctrl+G scope cycle: fleet-wide (null), then each unique base role the roster names, in
+ * roster order. An instance id (`feature-2`) folds into its base role because the scoped
+ * collectors aggregate by base role — report-data.ts's role scope groups an instance's usage
+ * with its siblings' — so cycling through the instance ids would relabel the same body with
+ * names that collect it identically. `feature`/`feature-2` therefore offer one slot, and the
+ * name the tab strip and hint show is the name the collector honors. */
+function scopeCycle(roleIds: readonly string[]): Array<string | null> {
+  const bases: string[] = [];
+  for (const id of roleIds) {
+    const base = baseRoleOf(id);
+    if (!bases.includes(base)) bases.push(base);
+  }
+  return [null, ...bases];
 }
 
 /** The History pane's body for one window: the paneCache the Ctrl+T/Ctrl+S handlers store. The
@@ -515,7 +531,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // keys honor. On a report pane, recompute its cached Markdown from the newly scoped
       // collector and re-enter the body at its head; every other view just keeps the scope for
       // the Ctrl+T entry that later computes with it.
-      const slots: Array<string | null> = [null, ...roleIds];
+      const slots = scopeCycle(roleIds);
       const slot = slots.indexOf(scopeRole);
       scopeRole = slots[(slot + 1) % slots.length] ?? null;
       if (view === roleIds.length + 2) {
