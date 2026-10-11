@@ -78,6 +78,64 @@ collectors and the same Markdown renders the CLI and dashboard use.
 - The existing Ctrl+T Usage/Failures cache cases stay green (the default window is unchanged).
 - `npm run test` is green.
 
+### Filter `tumwater history` by outcome class: `--result <changes|none|problems>` (planned 2026-10-10 by plan; independent of the waiting TUI History `--since`, TUI Usage/Failures `--since`, and TUI `Ctrl+G` scope plans — CLI-only, no `src/ui/tui` file; completes the dashboard History view's outcome filter on the command line, sharing its one bucket rule)
+
+**Goal.** The dashboard's History view narrows ticks to an outcome class — Changes
+(`changed`/`queued`), No change (`no_change`/`skipped`/`user_aborted`), Problems (everything
+else, e.g. `error`/`rejected`) — beside its loop picker, text search, and count/window choice.
+`tumwater history` has `--role`, `-n`, `--since`, `--grep`, and `--json` but no outcome filter,
+so the command line cannot ask "which ticks errored in the last day" (`--grep` matches summary
+text, not the result). Add `--result <class>` to the CLI, reading the same bucket rule the
+dashboard's `historyClass` applies.
+
+**Approach.**
+1. `src/history/history-data.ts`: add `export const HISTORY_RESULT_CLASSES = ["changes",
+   "none", "problems"] as const` and `export function historyClass(result: string): "changes"
+   | "none" | "problems"` with the dashboard's buckets (`changed`/`queued` → `changes`;
+   `no_change`/`skipped`/`user_aborted` → `none`; everything else → `problems`). This is the
+   canonical rule; the browser's copy is pinned to it by a test (criterion 2).
+2. `src/history/history.ts`: add `export const HISTORY_RESULT_VALUE_ERROR = "history --result
+   needs a value"` beside `HISTORY_GREP_VALUE_ERROR`. After `parseGrepFlag` and the
+   `--since`/`-n`/`--role` row collection, read `flagValue(rest, "--result")`: `null` → no
+   filter; `undefined` or `""` → `fail(HISTORY_RESULT_VALUE_ERROR)`; a value not in
+   `HISTORY_RESULT_CLASSES` → `fail` naming the accepted classes (the existing `gotSuffix`
+   shape). Apply after the grep filter: `rows = rows.filter((r) => historyClass(r.result) ===
+   resultClass)`. `--result` composes with `--role`, `-n`, `--since`, `--grep`, and `--json` —
+   no rival-shape rule. Extend the doc comment.
+3. `src/history/history.ts` empty state: keep `--grep`'s precedence; when rows are empty and
+   `--result` alone is the active filter, print `no ticks with result "<class>"` (the grep
+   wording's shape) instead of `no ticks yet`, so a filtered-out set is never read as a quiet
+   log. `--json` stays a bare `{rows}` document in every exit-0 case.
+4. `src/cli/cli-flag-specs.ts`: add `resultFlagSpec(missingValue)` beside `grepFlagSpec` —
+   `{ names: ["--result"], value: true, valueName: "<class>", missingValue }` — so a trailing
+   `--result` is refused at the gate with the same wording the body uses.
+5. `src/cli.ts`: add `resultFlagSpec(HISTORY_RESULT_VALUE_ERROR)` to the `history` case's
+   `rejectUnknownArgs` list, beside `grepFlagSpec`.
+6. `src/cli/help.ts`: the `tumwater history` usage line gains `[--result
+   <changes|none|problems>]` and its description notes the outcome filter composes with
+   `--role`, `--since`, `-n`, and `--grep`.
+7. No new runtime dependency; the dashboard's client-side filter and `/api/history` are
+   unchanged.
+
+**Files touched.** `src/history/history-data.ts`, `src/history/history.ts`,
+`src/cli/cli-flag-specs.ts`, `src/cli.ts`, `src/cli/help.ts`,
+`test/cli-history-filtering.test.ts`, `test/gui-client-history.test.ts`.
+
+**Acceptance criteria.**
+- `test/cli-history-filtering.test.ts`, new cases against `seededHistoryRepo()` (results
+   `changed`, `no_change`, `error`): `history --result changes` prints only feature #7;
+   `--result none` only clean #3; `--result problems` only bugfix #9; `--result changes
+   --since 1h` composes; `--result problems --json` is `{rows:[the error row]}` with no prose
+   or note; `--result bogus` exits 1 naming `changes, none, problems`; a trailing `history
+   --result` exits 1 with `history --result needs a value`; a result filter matching nothing
+   prints `no ticks with result "<class>"`, never `no ticks yet`.
+- `test/gui-client-history.test.ts`: the existing `historyClass` bucket assertion is extended
+   to compare the browser function against the shared `historyClass` from `history-data.js`
+   over `changed, queued, no_change, skipped, user_aborted, error, rejected`, so the two copies
+   cannot drift.
+- The existing `--role`, `-n`, `--since`, `--grep`, and `--json` history cases stay green.
+- `npm run test` is green.
+
 ## Done
 
 ### A trailing `--since` window in the TUI History pane, matching `tumwater history --since` (planned 2026-10-10 by plan; independent of the waiting dashboard report `--since` and TUI `Ctrl+G` scope plans — different pane, its own window state, a different key; sibling of the landed dashboard History trailing window and the landed `tumwater history --since`; done 2026-10-10 by feature)
