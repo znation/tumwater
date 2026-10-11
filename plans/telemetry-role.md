@@ -10,11 +10,11 @@ document.
 
 The fleet can read its own source and cannot watch itself run.
 
-Every role prompt in `src/roles/roles.ts` searches the *tree*: `git log --stat`, `wc -l` over
-sources,
+Every role prompt in `src/roles/role-catalog.ts` searches the *tree*: `git log --stat`, `wc -l`
+over sources,
 `grep -rn` for a pattern, ranged reads. Not one of them reads `.tumwater/log/events.jsonl`, the
 per-role pi transcripts, or `tumwater logs` —
-`grep -n "events.jsonl\|tumwater logs" src/roles/roles.ts
+`grep -n "events.jsonl\|tumwater logs" src/roles/role-catalog.ts
 src/prompt/prompt.ts` returns nothing. The harness emits a dense, structured, append-only record of
 everything it does and no agent has ever opened it.
 
@@ -101,8 +101,7 @@ depends on 1/2 of that series for the scheduling half).
    capped. The tick prompt is ~8k tokens
    today; the digest must remain a rounding error against it, not a second window filler.
 3. **One backwards scan, one home.** The windowed, early-stopping backwards read of events.jsonl
-   exists today as `readWindowEvents` in `src/report/report.ts` and moves to core
-   `src/events/event-window.ts`
+   lives as `readWindowEvents` in the core `src/events/event-window.ts`
    (Refined 2026-09-18). Both the usage report and the failure digest import it rather than
    re-deriving it — one reader of the log's tail, as `parseEventLine` is one parser.
 4. **The role writes only BUGS.md**, and only its `## Open` section (plus the normal `_None yet._`
@@ -113,12 +112,16 @@ depends on 1/2 of that series for the scheduling half).
 
 ## Shape
 
-- `src/failure-report.ts` — new **core** module (not `src/ui/`): `collectFailureReport(root, days)` →
-  `FailureReportData`, `renderFailureMarkdown(data)` → string, and `TELEMETRY_DIGEST_DAYS = 1`
-  (the role's window; the CLI keeps 14). It is core because a core consumer — `tickPrompt()` in
-  `src/loop.ts` — injects it into the role's prompt, and the README's layering rule (`src/ui/`
-  "imported only by each other and `cli.ts`") plus the codebase's zero core→ui imports
-  (`grep -rn 'from "./ui/' src/*.ts` names only `cli.ts`) make a core→ui import a violation.
+- `src/failure/` — the **core** failure-digest modules (not `src/ui/`):
+  `collectFailureReport(root, days)` in `src/failure/failure-data.ts` → `FailureReportData`,
+  `renderFailureMarkdown(data)` in `src/failure/failure-render.ts` → string,
+  `normalizeClusterKey` in `src/failure/failure-cluster.ts`, and `TELEMETRY_DIGEST_DAYS = 1` in
+  `src/tick/telemetry-digest.ts`
+  (the role's window; the CLI keeps 14). It is core because a core consumer — `assembleTickPrompt()`
+  in `src/tick/tick-prompt.ts` — injects it into the role's prompt, and the README's layering rule
+  (`src/ui/`
+  "imported only by each other and `src/cli.ts`") plus the codebase's zero core→ui imports
+  (`grep -rn 'from "./ui/' src/*.ts` names only `src/cli.ts`) make a core→ui import a violation.
 - `src/events/event-window.ts` — new **core** module: `readWindowEvents` and its
   `oldestCompleteLine`
   helper move here from `src/report/report.ts`, along with `REPORT_DEFAULT_DAYS` /
@@ -128,12 +131,12 @@ depends on 1/2 of that series for the scheduling half).
   the retained log reaches back past the window's start) and false when it consumed the file's
   start. The caller cannot otherwise tell "the log was rotated inside the window" from "the fleet
   was idle that week" — both leave the oldest returned event later than the window start.
-  `src/report/report.ts` imports the reader and re-exports the two constants (so `cli.ts`'s and the
-  tests' imports are unchanged); `collectReport`'s single call site adapts with a destructure (one
+  `src/report/report.ts` imports the constants from the core module;
+  `collectReport`'s single call site adapts with a destructure (one
   line). Invariant 3's one reader is preserved and both the usage report and the digest share it.
 - `src/cli.ts` — `tumwater report --failures [--days N]`, sharing `REPORT_DEFAULT_DAYS` /
   `REPORT_MAX_DAYS` with the usage report so both surfaces bound the window identically.
-- `src/roles/roles.ts` — the `telemetry` role, placed after `qa` in catalog order (both are
+- `src/roles/role-catalog.ts` — the `telemetry` role, placed after `qa` in catalog order (both are
   observers)
   and before `improve`; `OBSERVER_ROLES` gains `"telemetry"`. `DEFERRABLE_ROLES` and
   `BASELINE_BLOCKED_ROLES` already exclude it by construction — no code change — but
@@ -141,11 +144,11 @@ depends on 1/2 of that series for the scheduling half).
 - `src/prompt/prompt.ts` — `TickPromptInput` gains `digest?: string`; `buildTickPrompt` renders it
   as a
   `<failure-digest>` block beside the `<principles>` block.
-- `src/loop.ts` — `tickPrompt()` computes the digest via `collectFailureReport` +
-  `renderFailureMarkdown` only when `this.role === "telemetry"`, reading `this.root` (the project
+- `src/tick/tick-prompt.ts` — `assembleTickPrompt()` injects the digest (via `telemetryDigest`,
+  src/tick/telemetry-digest.ts) only for the `telemetry` role, reading `root` (the project
   root where `events.jsonl` lives, not the worktree); a throw omits the block and never fails the
   tick.
-- `src/config.ts` — `roles.telemetry = { enabled: true, minTickIntervalSeconds: 7200 }`.
+- `src/config/config.ts` — `roles.telemetry = { enabled: true, minTickIntervalSeconds: 7200 }`.
 
 ### What the digest contains
 
@@ -248,20 +251,19 @@ acquired a sense it did not have.
 The entry was created 2026-09-17 and had never been audited (1/2 was refined that day; the tree
 is now `833cabf` and none of the landings since the README's stamp touches this plan's anchors).
 The audit found one design defect and pinned five seams; the Shape bullets above are corrected in
-place. Verified anchors: `TickPromptInput` at src/prompt/prompt.ts:142 and
-`buildTickPrompt` at :163; `tickPrompt()` at src/loop.ts:144, which reads `readPrinciples` from
-core principles.ts (so a core digest function is the only clean injection); the `qa` catalog entry
-at
-src/roles/roles.ts:185–195 with `improve` at :196; `OBSERVER_ROLES` at src/roles/roles.ts:274;
-`DEFERRABLE_ROLES` at :282 and `BASELINE_BLOCKED_ROLES` at :312; `roles.qa`'s clock at
-src/config.ts:21; the observer no-backoff arm at src/state.ts:217; `"*.md"` in
-`review.exemptPaths` at src/config.ts:61; the exact-set catalog assertion and `exempt` set at
-test/roles.test.ts:44–62; the slow-clock assertion and its `continue` list at
-test/config.test.ts:36–52.
+place. Verified anchors (at `833cabf`): `TickPromptInput` and `buildTickPrompt` in
+src/prompt/prompt.ts; `tickPrompt()` in src/loop/loop.ts, which read `readPrinciples`
+(src/prompt/principles.ts) (so a core digest function is the only clean injection); the `qa`
+catalog entry and `improve` in src/roles/role-catalog.ts; `OBSERVER_ROLES`, `DEFERRABLE_ROLES`,
+and `BASELINE_BLOCKED_ROLES` in src/roles/roles.ts; `roles.qa`'s clock in src/config/config.ts;
+the observer no-backoff arm in src/tick/tick-apply.ts; `"*.md"` in
+`review.exemptPaths` in src/config/config.ts; the exact-set catalog assertion and `exempt` set at
+test/roles.test.ts; the slow-clock assertion and its `continue` list at
+test/config.test.ts.
 
-**Defect.** 2/2 injects the digest in `tickPrompt()`, which is core; 1/2 placed the digest in
-`src/ui/failure-report.ts` and left the reader in `src/report/report.ts`. Core→ui has no precedent
-(only `cli.ts` imports `src/ui/`), so the injection as written would either violate the
+**Defect.** 2/2 injects the digest in `tickPrompt()`, which is core; 1/2 was drafted to place the
+digest under `src/ui/` and left the reader in `src/report/report.ts`. Core→ui has no precedent
+(only `src/cli.ts` imports `src/ui/`), so the injection as written would either violate the
 presentation-layer boundary or duplicate the log reader. Resolved by the core placement in the
 Shape section above.
 
@@ -270,20 +272,23 @@ Shape section above.
 (a corrupt log omits the block, never fails the tick). (2) Window: `TELEMETRY_DIGEST_DAYS = 1`
 for the role, distinct from the CLI's 14 — a two-week block re-surfaces the same clusters every
 tick. (3) Catalog: insert after `qa`/before `improve`, add to `OBSERVER_ROLES`; update
-test/roles.test.ts:50's `exempt` set (the assertion is exact) and the observer message at :67.
-(4) Config: assign `roles.telemetry` beside `roles.qa` (src/config.ts:21) and add `"telemetry"`
-to test/config.test.ts:47's `continue` list. (5) Tests: test/roles.test.ts, test/prompt.test.ts,
+test/roles.test.ts's `exempt` set (the assertion is exact) and the observer message.
+(4) Config: assign `roles.telemetry` beside `roles.qa` (src/config/config.ts) and add
+`"telemetry"` to test/config.test.ts's `continue` list. (5) Tests: test/roles.test.ts,
+test/prompt.test.ts,
 test/config.test.ts; BUGS.md-only diffs are already exempt via `"*.md"`, and the generic
 no-backoff behavior needs no loop test. No design question remains open.
 
 ## Landed 2026-09-18 (feature loop) — 1/2 only; 2/2 still planned
 
-The digest and the CLI flag are in. `src/failure-report.ts` (core) holds
-`collectFailureReport` / `renderFailureMarkdown` / `normalizeClusterKey` /
-`TELEMETRY_DIGEST_DAYS = 1`; `src/events/event-window.ts` (core) holds the moved windowed tail read
-and the `REPORT_*_DAYS` bounds, now returning `{ events, coversFullWindow }`; `src/report/report.ts`
-imports the reader and re-exports the constants; `src/cli.ts` adds the valueless `--failures`
-flag. `test/failure-report.test.ts` is new. `npm test`: 1,118 pass.
+The digest and the CLI flag are in. The **core** failure modules hold them: `collectFailureReport`
+in `src/failure/failure-data.ts`, `renderFailureMarkdown` in `src/failure/failure-render.ts`,
+`normalizeClusterKey` in `src/failure/failure-cluster.ts`, and `TELEMETRY_DIGEST_DAYS = 1` in
+`src/tick/telemetry-digest.ts`; `src/events/event-window.ts` (core) holds the moved windowed tail
+read and the `REPORT_*_DAYS` bounds, now returning `{ events, coversFullWindow }`;
+`src/report/report.ts` imports the constants from the core module; `src/cli.ts` adds the
+valueless `--failures` flag. The digest's unit tests live in test/failure-cluster.test.ts,
+test/failure-render.test.ts, and test/telemetry-digest.test.ts. `npm test`: 1,118 pass.
 
 Five decisions the implementation pinned, recorded so the plan matches the code:
 

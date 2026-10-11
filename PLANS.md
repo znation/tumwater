@@ -42,13 +42,13 @@ missing a field.
 - `docs/invariants.md` is unchanged by this landing and still parses under the new guard.
 - `npm run test` is green.
 
-### Finish the stale code-path citation sweep, part 5e/5: `telemetry-role`, `disk-floor` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
+## Done
 
-**Goal.** The same citation invariant as part 1a/5, for `plans/telemetry-role.md` and
-`plans/disk-floor.md`. `plans/telemetry-role.md` carries the most absent tokens left in the
-sweep — the `failure-report` module split across its root and UI homes and its test file, the
-moved top-level `loop`, `config`, and `state` modules, and two out-of-range `src/roles/roles.ts`
-pins.
+### Finish the stale code-path citation sweep, part 5f/5: `parallel-work-instances`, `worktree-pool` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/parallel-work-instances.md` and
+`plans/worktree-pool.md`. Both are inventoried over their full text so a path or line pin that
+moved is caught rather than missed.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
 part 1a/5, applied to these two files.
@@ -62,13 +62,13 @@ part 1a/5, applied to these two files.
   the module's export list).
 - `npm run test` is green.
 
-## Done
+### Finish the stale code-path citation sweep, part 5e/5: `telemetry-role`, `disk-floor` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
 
-### Finish the stale code-path citation sweep, part 5f/5: `parallel-work-instances`, `worktree-pool` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/parallel-work-instances.md` and
-`plans/worktree-pool.md`. Both are inventoried over their full text so a path or line pin that
-moved is caught rather than missed.
+**Goal.** The same citation invariant as part 1a/5, for `plans/telemetry-role.md` and
+`plans/disk-floor.md`. `plans/telemetry-role.md` carries the most absent tokens left in the
+sweep — the `failure-report` module split across its root and UI homes and its test file, the
+moved top-level `loop`, `config`, and `state` modules, and two out-of-range `src/roles/roles.ts`
+pins.
 
 **Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
 part 1a/5, applied to these two files.

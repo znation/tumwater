@@ -167,7 +167,8 @@ poll. A clean that deletes 100k files can take a minute, which is the same reaso
 
 - The status/TUI/GUI header shows a disk badge while the fleet holds, or while free space is
   below `diskReclaimGB`. It reads, for example, "disk 8.2 GB free — holding new work". It
-  follows `budgetBadge`/`quietBadge` in src/ui/badges.ts plus a `fleet-alerts.ts` alert.
+  follows `budgetBadge`/`quietBadge` in src/ui/badges.ts plus a `FleetAlert` from
+  `fleetAlerts` in src/ui/fleet-alerts.ts.
 - A held loop's phase reads "disk hold", like "budget paused" in src/ui/status-model.ts.
 - The orchestrator publishes `{ freeGB, held, lastReclaim }` in `OrchestratorInfo`
   (src/fleet/orchestrator-info.ts), so the separate status, TUI and GUI processes read it without
