@@ -103,9 +103,9 @@ disables a role and the dotted `roles.<id>.enabled false` is the disable verb.
 `applyConfigRequest`, `preserveFileRoles`).
 
 **Pinned by.** `test/config-write.test.ts` — "a whole-config write preserves the file's own
-roles section", "a whole-config write does not add a roles section the file never had",
-"dotted writes preserve the file's own roles section", and "applyConfigRequest preserves the
-file's own roles section".
+roles section", "a whole-config write does not add a roles section the file never had", and
+"dotted writes preserve the file's own roles section" — and `test/config-request.test.ts` —
+"applyConfigRequest preserves the file's own roles section".
 
 ## Sibling result shapes a classifier treats alike
 
