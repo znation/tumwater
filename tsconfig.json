@@ -3,6 +3,10 @@
     "target": "ES2023",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    // A side-effect-only import (`import "./x.js"`) is the one import tsc otherwise does not
+    // require to resolve: a typo'd path compiles clean and crashes at load with
+    // ERR_MODULE_NOT_FOUND, exactly the failure this flag turns into a compile error.
+    "noUncheckedSideEffectImports": true,
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,
