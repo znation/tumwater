@@ -77,3 +77,15 @@ test("a null pending cache holds the loading note, and a resolved roster windows
   assert.equal(resolved.body.map((l) => l.map((s) => s.text).join("")).join("\n"), roster);
   assert.equal(resolved.emptyNote, "(loading pending changes…)");
 });
+
+test("an empty queued pane holds the no-prompts note, and a cached list windows its text", () => {
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, paneScroll: 0 };
+  const empty = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(empty.body, []);
+  assert.equal(empty.emptyNote, "(no queued prompts)");
+
+  const list = "director:\n1. do the thing (queued 5m ago)\nclean:\n1. fix it (delivers in 1h)";
+  const cached = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: list } });
+  assert.equal(cached.body.map((l) => l.map((s) => s.text).join("")).join("\n"), list);
+  assert.equal(cached.emptyNote, "(no queued prompts)");
+});
