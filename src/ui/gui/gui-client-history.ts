@@ -129,6 +129,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     histRoleKey = key;
     select.innerHTML = "<option value=''>All loops</option>" + roles.map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
     select.value = roles.includes(histRole) ? histRole : "";
+    // Keep the scope variable in step with the repainted picker (and persist the fallback),
+    // exactly as the report views' syncRoles does: a role the fleet dropped must stop filtering
+    // the request, or the picker would read All loops while the rows stayed scoped to the ghost.
+    if (select.value !== histRole) {
+      histRole = select.value;
+      store("hist-role", histRole);
+    }
   }
   async function fetchHistory(throttled) {
     if (throttled && Date.now() - histFetchedAt < 4000) return;

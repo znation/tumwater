@@ -219,3 +219,30 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   assert.match(html, /\/api\/tick answered clean tick 9 without a text field/);
   assert.match(html, /server&#39;s build may not match/, "the card's esc() escapes the message's apostrophe");
 });
+
+test("fetchHistory drops and re-persists a loop scope the fleet no longer lists", async () => {
+  // A persisted hist-role naming a retired loop: syncHistoryRoles repaints the picker to All
+  // loops, and the scope variable must follow it. Otherwise the picker shows All loops while
+  // the request keeps `&role=<vanished>`, so the view reads as an empty log the operator cannot
+  // explain. The report views' syncRoles already falls back and persists; History must match.
+  const paths: string[] = [];
+  const stored: Array<[string, string]> = [];
+  const select = { innerHTML: "", value: "gone-loop" };
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
+  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
+  await run(
+    (key: string) => (key === "hist-role" ? "gone-loop" : null),
+    (key: string, value: string) => { stored.push([key, value]); },
+    () => false, // buildHistoryView returns early; only the fetch is observed
+    (id: string) => (id === "histrole" ? select : undefined),
+    iconStub,
+    { loops: [{ role: "feature" }, { role: "qa" }] },
+    () => {},
+    (title: string) => title,
+    async (path: string) => { paths.push(path); return { rows: [] }; },
+  ).fetchHistory(false);
+  assert.equal(select.value, "", "the picker falls back to All loops");
+  assert.deepEqual(paths, ["/api/history?n=50"], "and the request drops the vanished role");
+  assert.deepEqual(stored, [["hist-role", ""]], "the fallback persists so a reload does not resurrect it");
+});
