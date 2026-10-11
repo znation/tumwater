@@ -79,6 +79,74 @@ CLI, and the dashboard bucket a result the same way.
   class is active).
 - `npm run test` is green.
 
+### Run the configured notify hook once: `tumwater notify --test` (planned 2026-10-10 by plan; independent of the waiting TUI Usage/Failures `--since`, TUI History `--result`, and `tumwater queue` plans — a new CLI command over `src/events/notify.ts` and `src/config`, no `src/ui/tui`, `src/history` or `src/landing` file; completes the operator's push channel, which today can only be exercised by waiting for a real event)
+
+**Goal.** The `notify` hook (tumwater.json's `notify` shell command, run by
+`newNotifier` on nine allowlisted events) is the fleet's one push channel, but an operator who
+writes one has no way to check it: the hook fires only when a budget pause, failed landing, or
+posted question happens. Add `tumwater notify --test`: run the configured command once with a
+synthetic `TUMWATER_EVENT_TYPE`/`TUMWATER_EVENT_LOOP`/`TUMWATER_EVENT_MESSAGE` environment,
+inherit its stdio so its effect (a desktop notification, a posted webhook, an appended line) is
+visible, and report its exit code. The default is opinionated and single: one fixed
+representative allowlisted event (`land_failed`, loop `harness`, message `tumwater notify
+--test`), no per-type or per-message flags — the goal is to prove the hook runs, not to replay
+a specific page.
+
+**Approach.**
+1. `src/events/notify.ts`: add `export function notifyCommandEnv(type: string, loop: string,
+   message: string): NodeJS.ProcessEnv` returning `childEnv({ TUMWATER_EVENT_TYPE: type,
+   TUMWATER_EVENT_LOOP: loop, TUMWATER_EVENT_MESSAGE: message })`, and use it in
+   `newNotifier`'s spawn (`env: notifyCommandEnv(event.type, event.loop,
+   stripTerminalControls(formatEvent(event)))`). The three variable names then have one home,
+   so the notifier and the test command cannot drift.
+2. New `notify-command.ts` in `src/cli/` (the command-module convention beside
+   `src/cli/log-commands.ts`): module constants `NOTIFY_TEST_TYPE = "land_failed"`,
+   `NOTIFY_TEST_LOOP = "harness"`, `NOTIFY_TEST_MESSAGE = "tumwater notify --test"`; and
+   `export async function cmdNotify(root: string, args: string[]): Promise<void>`:
+   - `if (!args.includes("--test")) fail("usage: tumwater notify --test")`.
+   - `const command = loadConfig(root).notify`; when it is not a non-empty string,
+     `fail("notify is not configured (set `notify` in tumwater.json)")`.
+   - `say(`running the notify hook (TUMWATER_EVENT_TYPE=${NOTIFY_TEST_TYPE}) …`)`, then await a
+     local `runNotifyHook(command, env): Promise<number>` helper — `spawn(command, [], {
+     shell: true, stdio: "inherit", env })`, resolve the `close` code (`?? 1`) and resolve
+     `127` on the `error` event. Unlike the notifier's detached fire-and-forget spawn, this one
+     is awaited with inherited stdio, so the operator sees the hook's own output and its exit.
+   - `code === 0` → `say("notify hook exited 0")`; otherwise
+     `say(`notify hook exited with code ${code}`)` and `process.exitCode = 1`.
+   - No event is logged: a test run is a diagnostic and leaves the event log and every other
+     harness state file untouched.
+3. `src/cli.ts`: import `cmdNotify`; add a `case "notify":` beside `case "logs":`:
+   `rejectUnknownArgs("notify", args, [{ names: ["--test"] }])`, then `await
+   requireReadyRepo(root)`, then `await cmdNotify(root, args)`.
+4. `src/cli/help.ts`: add a `  tumwater notify --test` stanza beside the `logs` stanzas —
+   "Run the configured notify hook once with a synthetic event so the command can be checked
+   before a real page".
+5. `README.md`: in the settings paragraph's `notify` parenthetical, add "verify it with
+   `tumwater notify --test`".
+6. No new runtime dependency; the notifier's firing behavior, the allowlist, and the
+   orchestrator wiring are unchanged — only the env-var names move behind the new helper.
+
+**Files touched.** `src/events/notify.ts`, a new `notify-command.ts` in `src/cli/`, `src/cli.ts`,
+`src/cli/help.ts`, `README.md`, `test/notify.test.ts` (the pinned env assertions stay green
+with `newNotifier` now using the helper), a new `notify-command.test.ts` in `test/`,
+`test/help.test.ts`.
+
+**Acceptance criteria.**
+- `test/notify.test.ts`, a new case: `notifyCommandEnv("budget_paused", "feature", "m")`
+  returns exactly those three `TUMWATER_EVENT_*` keys and values. The existing spawn/env cases
+  stay green (the notifier's rendered message and throttle are unchanged).
+- A new `notify-command.test.ts` in `test/` over `initializedRepo()` with `setConfigKey(repo,
+  "notify", recorderCommand(out))` (the `test/notify.test.ts` recorder: `echo
+  "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_LOOP|$TUMWATER_EVENT_MESSAGE" >> <out>`) and the
+  `cli(repo, ...)` harness: bare `notify` exits non-zero naming `usage: tumwater notify --test`;
+  with no `notify` configured, `notify --test` exits non-zero naming the missing setting; with
+  the recorder it exits 0, records exactly one line whose fields are
+  `land_failed|harness|tumwater notify --test`, and its stdout names the hook run; a hook that
+  exits 3 makes `notify --test` exit non-zero and print the code.
+- `test/help.test.ts`: `ALL_COMMANDS` gains `"notify"` (its "names exactly the commands the full
+  help lists" case then passes), and `helpTopic("notify")` starts `  tumwater notify`.
+- `npm run test` is green.
+
 ### A remainder-and-cause trace: a capped view discloses what it dropped, and a failed decision records the cause it acted on (planned 2026-10-10 by steward; promoted from the `no-observability` validation gap, carried by 58 Fixed entries — the largest non-`none` tag after `unclear-invariant`; independent of the Agent backends and citation-sweep series; follow-up to the landed invariant register and its citation guard)
 
 **Goal.** Retire the `no-observability` gap. It is recorded when a failure or a wrong decision
