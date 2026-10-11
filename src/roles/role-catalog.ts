@@ -18,6 +18,8 @@ import {
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import type { ModelTier } from "../config/config-schema.js";
 
+/** One role in the catalog: its id and title, the role-specific "find something to do" text,
+ * and the model tier its runs resolve to. */
 export interface Role {
   /** The loop's unique identifier — the .tumwater/state/<id>.json state file's name, the
    * tumwater.json roles.<id> config key, and what every --role CLI flag names. Built-in ids

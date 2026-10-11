@@ -27,6 +27,8 @@ function counter(value: unknown): number {
   return nonNegativeNumber(value, 0);
 }
 
+/** One role loop's per-tick usage accounting: the counters fold() grows from each pi run, plus
+ * the billing and rate-window readings the orchestrator persists at tick end. */
 export class TickUsage {
   /** Assistant turns folded into THIS tick so far (non-persisted): reset at tick start,
    * grown in fold. Read at commit time for the trailer, where it holds exactly the

@@ -106,6 +106,9 @@ export interface AgentExitClassification {
   configError?: boolean;
 }
 
+/** One registered backend's contract — the seam's per-backend half: its identity and binary,
+ * and the command builder, stdout translator, resume check, and exit classifier run-agent.ts
+ * reads at run time. */
 export interface AgentBackend {
   /** The registry key; also the `agent` config value and selector namespace. */
   id: string;

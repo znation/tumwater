@@ -90,6 +90,7 @@ interface ClaimReleaseCtx {
   enabled: boolean;
 }
 
+/** Why a runner drops its queued-landing claim; claimReleaseReason below decides each arm. */
 export type ClaimReleaseReason = "left" | "ineligible" | "disabled" | "stale";
 
 /** Why a runner must drop its claim, or null when it keeps it. A runner is idle when it is not

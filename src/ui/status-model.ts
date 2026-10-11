@@ -349,6 +349,8 @@ export const LOOP_RANK_RULES: ReadonlyArray<{
   { rank: 3, prefixes: ["held: maintenance quota"] },
 ];
 
+/** The rank LOOP_RANK_RULES assigns `phase`: -1 for director working, 4 for idle, otherwise the
+ * first matching rule's rank. */
 export function loopRank(phase: string): number {
   for (const rule of LOOP_RANK_RULES) {
     if (

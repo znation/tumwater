@@ -26,6 +26,8 @@ export const COMMIT_IDENT = [
   "user.email=tumwater@localhost",
 ];
 
+/** The error every failed git subprocess reports: the argv, the cause text (git's stderr or the
+ * spawn error's message), and git's exit code or the spawn errno. */
 export class GitError extends Error {
   constructor(
     public args: string[],

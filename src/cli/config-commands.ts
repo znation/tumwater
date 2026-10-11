@@ -66,6 +66,8 @@ function screenOperableKey(root: string, k: string) {
   return { parsed, config };
 }
 
+/** The `tumwater config` command body: bare prints the resolved config; `get` and `unset`
+ * screen their key through screenOperableKey, while `set` writes through setConfigKey. */
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
   const [sub, key, ...rest] = args;
   if (sub === "get") {

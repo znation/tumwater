@@ -25,6 +25,8 @@ const PI_MISSING_MESSAGE =
  * surfaces that report it. */
 type AgentBinSource = "env" | "config" | "default";
 
+/** An agent binary chosen for a run: the resolved path plus the source that named it
+ * (agentBinSourceLabel renders the source for operators). */
 export interface ResolvedAgentBin {
   bin: string;
   source: AgentBinSource;
