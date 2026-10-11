@@ -97,6 +97,18 @@ cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
+**Per-run cap.** An API-billed claude authoring run carries `--max-budget-usd` set to what
+remains of the daily budget — the lower of the fleet cap (`maxDailyCostUsd` − fleet spend) and
+the role's own cap (`maxDailyCostUsdPerRole` − that role group's spend) when set — so one
+runaway run cannot overshoot it. Subscription-billed runs and the director get no per-run cap.
+A run the CLI stops at that cap keeps its session and worktree edits; the next tick resumes
+them as a `handoff` with a "budget-capped" cause rather than failing.
+
+**Stalled tool calls.** claude sends no content updates while a tool runs, so every open
+claude tool call is judged stalled by the buffered-command wall-clock threshold — at least 10
+minutes, twice `toolCallStallSeconds` — instead of the silence window pi uses; a long claude
+verify run therefore raises no false alarm.
+
 See [plans/agent-backends.md](../plans/agent-backends.md) for the series' full design.
 
 ## Worked example: one machine's measurements, 2026-09
