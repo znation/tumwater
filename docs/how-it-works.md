@@ -292,6 +292,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, and Pending.
   On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
   same collector and sparse-window note `tumwater history --since` uses.
+  `Ctrl+O` cycles the pane's outcome filter (all, changes, none, problems) through the same
+  `historyClass` buckets and an emptied filter's `no ticks with result "<class>"` wording
+  `tumwater history --result` uses, with the hint line naming the active class (`result: all` or
+  `result: <class>`).
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a

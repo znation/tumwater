@@ -6,79 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Filter the TUI History pane by outcome class, matching `tumwater history --result` (planned 2026-10-10 by plan; sibling of the landed CLI `tumwater history --result <changes|none|problems>` and the landed dashboard History outcome filter; completes that outcome filter on the TUI's History pane, reading the same canonical `historyClass` rule from `src/history/history-data.ts`; shares `src/ui/tui/tui-keys.ts`/`tui-frame.ts` with the waiting TUI Usage/Failures `--since` plan — both add one session cycle and one hint pair — so a landing conflict is possible and the resolver handles it)
-
-**Goal.** The TUI History pane now offers the `Ctrl+S` trailing window (landed), but it renders
-`readTickRows`/`readTickRowsSince` rows unfiltered, while `tumwater history --result
-<changes|none|problems>` and the dashboard's History view narrow ticks to one outcome class
-(Changes / No change / Problems). Add a session-only outcome cycle keyed `Ctrl+O` (mnemonic:
-**O**utcome) that keeps only rows whose result falls in the active class, composing with the
-active trailing window, and surface the active class in the hint line. The pane reuses
-`history-data.ts`'s `historyClass`/`HISTORY_RESULT_CLASSES` rather than a copy, so the TUI, the
-CLI, and the dashboard bucket a result the same way.
-
-**Approach.**
-1. `src/ui/tui/tui-keys.ts`: import `historyClass`, `HISTORY_RESULT_CLASSES`, and `type
-   HistoryResultClass` from `../../history/history-data.js`. Add a module constant
-   `HISTORY_RESULTS: ReadonlyArray<[HistoryResultClass | null, string]>` = `[[null, "all"],
-   ...HISTORY_RESULT_CLASSES.map((c) => [c, c] as const)]` — the label is the class id, matching
-   the CLI's accepted values, and the class list comes from `history-data.ts` rather than a copy —
-   and a module helper `historyResultLabel(resultClass: HistoryResultClass | null): string |
-   null` (the table lookup, null only for a would-be stale value). Add `let historyResult:
-   HistoryResultClass | null = null` beside `historyWindow`, commented session-only like it.
-2. Extend the existing `historyPaneCache` to `historyPaneCache(root, sinceMs, resultClass)`. The
-   default path (`sinceMs === null && resultClass === null`) stays byte-for-byte the current
-   `historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null))`. Otherwise read through the
-   window collector (`readTickRows` for the default, `readTickRowsSince` otherwise), filter
-   `resultClass === null ? rows : rows.filter((r) => historyClass(r.result) === resultClass)`,
-   and render header lines — `window: last <label>` when a window is active and
-   `result: <label>` when a class is active — followed by the filtered body. When a class is
-   active and the filtered body is empty, return the header plus `no ticks with result
-   "<label>"` (the CLI's exact wording) instead of `""`, so the pane states the filter rather
-   than the generic `(no ticks yet)`; keep `SPARSE_WINDOW_NOTE` when the since read is not
-   `covered` and rows remain.
-3. Add a `Ctrl+O` branch beside the `Ctrl+S` branch, gated `!budgetMode && !rolePromptFor` like
-   it: advance `historyResult` to the next `HISTORY_RESULTS` entry (index-of, `+1` mod length);
-   when `view === roleIds.length + 4` (History) recompute `paneCache = historyPaneCache(root,
-   historyWindow, historyResult)` and set `paneScroll = 0` so the changed body re-enters at its
-   head; always `deps.requestRender()`. Off the History view, setting `historyResult` is enough —
-   the next Ctrl+T into History computes with it.
-4. Pass `historyResult` at the two existing History call sites: the `Ctrl+S` recompute and the
-   Ctrl+T History-entry `paneCache = historyPaneCache(root, historyWindow, historyResult)`.
-5. Expose `historyResult: string | null` on `TuiKeysState` (the active label via
-   `historyResultLabel`, null when none) and return it from `state()`, beside `historySince`.
-6. `src/ui/tui/tui-frame.ts`: the `TuiView` `history` variant gains `result: string | null`;
-   the `hintLine` history branch gains `["Ctrl+O", view.result ? \`result: ${view.result}\` :
-   "result: all"]` after the `Ctrl+S` pair. `tabStrip` stays `History` unchanged.
-7. `src/ui/tui/tui.tsx`: build the History pane as `{ kind: "history", since: s.historySince,
-   result: s.historyResult }` from the state it already reads.
-8. Update the existing `{ kind: "history", since: ... }` literals in `test/tui-frame.test.ts`
-   and `test/tui-history.test.ts` to carry `result: null`.
-
-**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
-`test/tui-keys.test.ts`, `test/tui-frame.test.ts`, `test/tui-history.test.ts`.
-
-**Acceptance criteria.**
-- `test/tui-keys.test.ts`, a new case: seed three `feature` `tick_end` events with results
-  `changed`, `no_change`, and `error` (all inside the default newest-N read), `syncSnapshot(0,
-  false, [])`, then Ctrl+T into History: `state().historyResult` is `"all"` and the pane carries
-  all three. Ctrl+O cycles `"changes"`, `"none"`, `"problems"`, then back to `"all"`; under
-  `"changes"` the pane carries the changed row and neither the no-change nor the error row, under
-  `"none"` the no-change row alone, under `"problems"` the error row alone, and the body's header
-  line reads `result: <class>`; each press on the History view resets `paneScroll` to 0. Compose
-  with Ctrl+S: after Ctrl+S to `1h`, a filter whose only matching tick is older than an hour
-  leaves the pane showing `no ticks with result "<class>"`.
-- `test/tui-keys.test.ts`: Ctrl+O leaves `historyResult` unchanged while budget mode or
-  role-prompt mode holds the prompt line, and pressing it off the History view changes the label
-  without computing a cache (the off-view preamble Ctrl+S uses).
-- `test/tui-frame.test.ts`: `hintLine({ kind: "history", since: null, result: "problems" }, ...)`
-  carries a `Ctrl+O` hint naming `result: problems`, while `result: null` names `result: all`; the
-  existing `{ kind: "history", ... }` literals there and in `test/tui-history.test.ts` gain
-  `result: null` and their assertions are otherwise unchanged.
-- The existing Ctrl+S History window cases stay green (the default path is unchanged when no
-  class is active).
-- `npm run test` is green.
-
 ### Run the configured notify hook once: `tumwater notify --test` (planned 2026-10-10 by plan; independent of the waiting TUI Usage/Failures `--since`, TUI History `--result`, and `tumwater queue` plans — a new CLI command over `src/events/notify.ts` and `src/config`, no `src/ui/tui`, `src/history` or `src/landing` file; completes the operator's push channel, which today can only be exercised by waiting for a real event)
 
 **Goal.** The `notify` hook (tumwater.json's `notify` shell command, run by
@@ -267,6 +194,85 @@ the page.
 - `npm run test` is green.
 
 ## Done
+
+### Filter the TUI History pane by outcome class, matching `tumwater history --result` (planned 2026-10-10 by plan; sibling of the landed CLI `tumwater history --result <changes|none|problems>` and the landed dashboard History outcome filter; completes that outcome filter on the TUI's History pane, reading the same canonical `historyClass` rule from `src/history/history-data.ts`; shares `src/ui/tui/tui-keys.ts`/`tui-frame.ts` with the waiting TUI Usage/Failures `--since` plan — both add one session cycle and one hint pair — so a landing conflict is possible and the resolver handles it; done 2026-10-10 by feature)
+
+**Goal.** The TUI History pane now offers the `Ctrl+S` trailing window (landed), but it renders
+`readTickRows`/`readTickRowsSince` rows unfiltered, while `tumwater history --result
+<changes|none|problems>` and the dashboard's History view narrow ticks to one outcome class
+(Changes / No change / Problems). Add a session-only outcome cycle keyed `Ctrl+O` (mnemonic:
+**O**utcome) that keeps only rows whose result falls in the active class, composing with the
+active trailing window, and surface the active class in the hint line. The pane reuses
+`history-data.ts`'s `historyClass`/`HISTORY_RESULT_CLASSES` rather than a copy, so the TUI, the
+CLI, and the dashboard bucket a result the same way.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`: import `historyClass`, `HISTORY_RESULT_CLASSES`, and `type
+   HistoryResultClass` from `../../history/history-data.js`. Add a module constant
+   `HISTORY_RESULTS: ReadonlyArray<[HistoryResultClass | null, string]>` = `[[null, "all"],
+   ...HISTORY_RESULT_CLASSES.map((c) => [c, c] as const)]` — the label is the class id, matching
+   the CLI's accepted values, and the class list comes from `history-data.ts` rather than a copy —
+   and a module helper `historyResultLabel(resultClass: HistoryResultClass | null): string |
+   null` (the table lookup, null only for a would-be stale value). Add `let historyResult:
+   HistoryResultClass | null = null` beside `historyWindow`, commented session-only like it.
+2. Extend the existing `historyPaneCache` to `historyPaneCache(root, sinceMs, resultClass)`. The
+   default path (`sinceMs === null && resultClass === null`) stays byte-for-byte the current
+   `historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null))`. Otherwise read through the
+   window collector (`readTickRows` for the default, `readTickRowsSince` otherwise), filter
+   `resultClass === null ? rows : rows.filter((r) => historyClass(r.result) === resultClass)`,
+   and render header lines — `window: last <label>` when a window is active and
+   `result: <label>` when a class is active — followed by the filtered body. When a class is
+   active, the unfiltered read returned rows (`rows.length > 0` — the CLI's `afterGrep > 0` and
+   the dashboard's `hasRows` rule), and the filtered body is empty, return the header plus
+   `no ticks with result "<label>"` (the CLI's exact wording); otherwise (no class, or the read
+   itself was empty) return `""` so an empty log or window keeps the pane's own `(no ticks yet)`
+   note rather than blaming a filter that removed nothing; keep `SPARSE_WINDOW_NOTE` when the
+   since read is not `covered` and rows remain.
+3. Add a `Ctrl+O` branch beside the `Ctrl+S` branch, gated `!budgetMode && !rolePromptFor` like
+   it: advance `historyResult` to the next `HISTORY_RESULTS` entry (index-of, `+1` mod length);
+   when `view === roleIds.length + 4` (History) recompute `paneCache = historyPaneCache(root,
+   historyWindow, historyResult)` and set `paneScroll = 0` so the changed body re-enters at its
+   head; always `deps.requestRender()`. Off the History view, setting `historyResult` is enough —
+   the next Ctrl+T into History computes with it.
+4. Pass `historyResult` at the two existing History call sites: the `Ctrl+S` recompute and the
+   Ctrl+T History-entry `paneCache = historyPaneCache(root, historyWindow, historyResult)`.
+5. Expose `historyResult: string | null` on `TuiKeysState` (the active label via
+   `historyResultLabel`, null when none) and return it from `state()`, beside `historySince`.
+6. `src/ui/tui/tui-frame.ts`: the `TuiView` `history` variant gains `result: string | null`;
+   the `hintLine` history branch gains `["Ctrl+O", view.result ? \`result: ${view.result}\` :
+   "result: all"]` after the `Ctrl+S` pair. `tabStrip` stays `History` unchanged.
+7. `src/ui/tui/tui.tsx`: build the History pane as `{ kind: "history", since: s.historySince,
+   result: s.historyResult }` from the state it already reads.
+8. Update the existing `{ kind: "history", since: ... }` literals in `test/tui-frame.test.ts`
+   and `test/tui-history.test.ts` to carry `result: null`.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
+`test/tui-keys.test.ts`, `test/tui-frame.test.ts`, `test/tui-history.test.ts`,
+`docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, a new case: seed three `feature` `tick_end` events with results
+  `changed`, `no_change`, and `error` (all inside the default newest-N read), `syncSnapshot(0,
+  false, [])`, then Ctrl+T into History: `state().historyResult` is `"all"` and the pane carries
+  all three. Ctrl+O cycles `"changes"`, `"none"`, `"problems"`, then back to `"all"`; under
+  `"changes"` the pane carries the changed row and neither the no-change nor the error row, under
+  `"none"` the no-change row alone, under `"problems"` the error row alone, and the body's header
+  line reads `result: <class>`; each press on the History view resets `paneScroll` to 0. Compose
+  with Ctrl+S: after Ctrl+S to `1h`, a filter whose only matching tick is older than an hour
+  leaves the pane showing `no ticks with result "<class>"`. An active class over a read that
+  returned zero rows (an empty log) leaves `paneCache` as `""`, keeping the pane's own no-ticks
+  note. `docs/how-it-works.md`'s TUI section documents the `Ctrl+O` cycle beside the `Ctrl+S`
+  window sentence.
+- `test/tui-keys.test.ts`: Ctrl+O leaves `historyResult` unchanged while budget mode or
+  role-prompt mode holds the prompt line, and pressing it off the History view changes the label
+  without computing a cache (the off-view preamble Ctrl+S uses).
+- `test/tui-frame.test.ts`: `hintLine({ kind: "history", since: null, result: "problems" }, ...)`
+  carries a `Ctrl+O` hint naming `result: problems`, while `result: null` names `result: all`; the
+  existing `{ kind: "history", ... }` literals there and in `test/tui-history.test.ts` gain
+  `result: null` and their assertions are otherwise unchanged.
+- The existing Ctrl+S History window cases stay green (the default path is unchanged when no
+  class is active).
+- `npm run test` is green.
 
 ### A trailing `--since` window on the TUI Usage and Failures panes, matching `tumwater report --since` (planned 2026-10-10 by plan; sibling of the landed dashboard Usage/Failures `--since`; completes the CLI's `report --since` / `report --failures --since` on the TUI's two report panes; independent of the waiting `Ctrl+G` scope plan and of the waiting TUI History `--since` plan in its own window state and key — its own `reportWindow`, a different `Ctrl+E` — though it edits the same two Ctrl+T report branches and hintLine region as the `Ctrl+G` plan, so a landing conflict is possible and the resolver handles it; done 2026-10-10 by feature)
 

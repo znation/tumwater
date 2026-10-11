@@ -298,6 +298,7 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
   keys.handleKey(undefined, { ctrl: true, name: "s" });
   assert.equal(keys.state().historySince, "1h");
   assert.match(keys.state().paneCache ?? "", /window: last 1h/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /result:/, "a window without an outcome filter names no result header");
   assert.match(keys.state().paneCache ?? "", /feature #1/);
   assert.doesNotMatch(keys.state().paneCache ?? "", /feature #2/, "the 1h window drops the three-day-old tick");
   assert.equal(keys.state().paneScroll, 0, "a window change re-enters the body at its head");
@@ -423,6 +424,115 @@ test("Ctrl+E is inert in the prompt-line modes and off the report views only mov
   assert.equal(keys.state().rolePromptFor, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+});
+
+test("Ctrl+O cycles the History pane's outcome class, filters rows by historyClass, and resets the scroll", () => {
+  const root = makeRoot();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: now - 50_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change" },
+    { ts: now - 40_000, loop: "feature", type: "tick_end", tick: 3, result: "error" },
+  ]);
+  const { keys } = makeKeys(root, () => now);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(1, 1); // a one-line budget so the three rows can scroll
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().historyResult, "all", "History opens unfiltered");
+  const all = keys.state().paneCache ?? "";
+  assert.match(all, /feature #1/);
+  assert.match(all, /feature #2/);
+  assert.match(all, /feature #3/);
+  assert.doesNotMatch(all, /result:/);
+
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().paneScroll, 1, "the seeded rows overflow the one-line budget");
+
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "changes");
+  assert.match(keys.state().paneCache ?? "", /^result: changes\n/, "the header names the class");
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #2/, "the no-change row is filtered out");
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #3/, "the error row is filtered out");
+  assert.equal(keys.state().paneScroll, 0, "a class change re-enters the body at its head");
+
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "none");
+  assert.match(keys.state().paneCache ?? "", /feature #2/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "problems");
+  assert.match(keys.state().paneCache ?? "", /feature #3/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "all", "the cycle wraps to no filter");
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.match(keys.state().paneCache ?? "", /feature #3/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /result:/);
+});
+
+test("Ctrl+O composes with the Ctrl+S window and names an emptied filter", () => {
+  const root = makeRoot();
+  const now = Date.now();
+  // The only "changed" tick is three days old; a "no_change" tick sits inside 1h.
+  writeEvents(root, [
+    { ts: now - 30 * 60_000, loop: "feature", type: "tick_end", tick: 1, result: "no_change" },
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "tick_end", tick: 2, result: "changed" },
+  ]);
+  const { keys } = makeKeys(root, () => now);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → changes
+  assert.match(keys.state().paneCache ?? "", /feature #2/);
+  keys.handleKey(undefined, { ctrl: true, name: "s" }); // → 1h
+  assert.equal(keys.state().historySince, "1h");
+  const cache = keys.state().paneCache ?? "";
+  assert.match(cache, /window: last 1h/);
+  assert.match(cache, /result: changes/);
+  assert.match(cache, /no ticks with result "changes"/);
+  assert.doesNotMatch(cache, /feature #/);
+});
+
+test("Ctrl+O over a zero-row read keeps the pane's no-ticks note, not a filter-empty claim", () => {
+  const root = makeRoot();
+  writeEvents(root, []);
+  const { keys } = makeKeys(root, () => Date.now());
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().paneCache, "", "an empty log opens on the pane's own no-ticks note");
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // → changes
+  assert.equal(keys.state().historyResult, "changes");
+  assert.equal(keys.state().paneCache, "", "an empty log is not blamed on the outcome filter");
+});
+
+test("Ctrl+O is inert in the prompt-line modes and off the History view only moves the label", () => {
+  const root = makeRoot();
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" }]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+
+  // Off the History view, Ctrl+O advances the class without computing a cache.
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "changes");
+  assert.equal(keys.state().paneCache, null, "no History pane is showing");
+
+  // Budget mode holds the prompt line: Ctrl+O leaves the class alone.
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().budgetMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "changes", "Ctrl+O does nothing in budget mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Role-prompt mode holds it too: open it on a transcript view and try Ctrl+O.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // events → transcript clean
+  assert.equal(keys.state().view, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().rolePromptFor, "clean");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "changes", "Ctrl+O does nothing in role-prompt mode");
   keys.handleKey(undefined, { name: "escape" });
 });
 

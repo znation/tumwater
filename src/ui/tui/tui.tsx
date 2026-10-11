@@ -155,7 +155,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
       : view === roleIds.length + 1 ? { kind: "backlog" }
         : view === roleIds.length + 2 ? { kind: "usage", scope: s.scopeRole, window: s.reportSince }
           : view === roleIds.length + 3 ? { kind: "failures", scope: s.scopeRole, window: s.reportSince }
-            : view === roleIds.length + 4 ? { kind: "history", since: s.historySince }
+            : view === roleIds.length + 4 ? { kind: "history", since: s.historySince, result: s.historyResult }
               : view === roleIds.length + 5 ? { kind: "pending" }
                 : { kind: "activity" };
     // The pane's body lines (tui-pane.ts, extracted from this closure): transcripts, the

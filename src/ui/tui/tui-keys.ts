@@ -3,7 +3,14 @@ import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/re
 import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
-import { HISTORY_DEFAULT_TICKS, readTickRows, readTickRowsSince } from "../../history/history-data.js";
+import {
+  HISTORY_DEFAULT_TICKS,
+  HISTORY_RESULT_CLASSES,
+  historyClass,
+  readTickRows,
+  readTickRowsSince,
+  type HistoryResultClass,
+} from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
 import { collectFleetChanges, type FleetChangeView } from "../../change/change-data.js";
 import { renderFleetChange } from "../../change/change-render.js";
@@ -84,21 +91,61 @@ function scopeCycle(roleIds: readonly string[]): Array<string | null> {
   return [null, ...bases];
 }
 
-/** The History pane's body for one window: the paneCache the Ctrl+T/Ctrl+S handlers store. The
- * default (null) read is byte-for-byte the newest-N pane that predates the window cycle —
- * readTickRows with HISTORY_DEFAULT_TICKS. A trailing window reads through the same
- * readTickRowsSince collector `tumwater history --since` uses, so the TUI, the CLI, and the
- * dashboard cannot disagree about the rows. An empty row set returns "" so the pane keeps its
- * own no-ticks note instead of a lone window header; otherwise the body is prefixed with the
- * window label and, when the read cannot prove full coverage, the same sparse-window note
- * every windowed render prints (SPARSE_WINDOW_NOTE). */
-function historyPaneCache(root: string, sinceMs: number | null): string {
-  if (sinceMs === null) return historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
-  const { rows, covered } = readTickRowsSince(root, sinceMs, null);
-  const body = historyPaneText(rows);
-  if (!body) return "";
-  const label = historyWindowLabel(sinceMs) ?? "default";
-  return "window: last " + label + "\n" + body + (covered ? "" : "\n" + SPARSE_WINDOW_NOTE);
+/** The History pane's session outcome cycle, Ctrl+O: all ticks, then the canonical classes
+ * `tumwater history --result` and the dashboard's History filter speak. The class list comes
+ * from history-data.ts (HISTORY_RESULT_CLASSES) rather than a copy, so the TUI, the CLI, and
+ * the dashboard bucket a result the same way; the class id doubles as the label. `null` is no
+ * filter, kept first so the pane opens on today's behavior. */
+const HISTORY_RESULTS: ReadonlyArray<[HistoryResultClass | null, string]> = [
+  [null, "all"],
+  ...HISTORY_RESULT_CLASSES.map((c): [HistoryResultClass, string] => [c, c]),
+];
+
+/** The label HISTORY_RESULTS carries for an outcome class (null = all). The Ctrl+O cycle only
+ * ever stores a class from the table, so the lookup always hits; the null fallback keeps a
+ * would-be stale value from rendering "undefined". */
+function historyResultLabel(resultClass: HistoryResultClass | null): string | null {
+  return HISTORY_RESULTS.find(([c]) => c === resultClass)?.[1] ?? null;
+}
+
+/** The History pane's body for one trailing window and one outcome class: the paneCache the
+ * Ctrl+T/Ctrl+S/Ctrl+O handlers store. The default (null/null) read is byte-for-byte the
+ * newest-N pane that predates the window and outcome cycles — readTickRows with
+ * HISTORY_DEFAULT_TICKS, unfiltered. A trailing window reads through the same
+ * readTickRowsSince collector `tumwater history --since` uses, and a class filters through
+ * history-data.ts's canonical historyClass rule, so the TUI, the CLI, and the dashboard cannot
+ * disagree about the rows. An empty read with no class returns "" so the pane keeps its own
+ * no-ticks note instead of a lone window header; when a class is active and the read returned
+ * rows, an empty filtered body names the class (the CLI's wording) so the pane states the filter
+ * instead of claiming the log is empty. Otherwise the body is prefixed with the active
+ * window and result labels and, when the read cannot prove full coverage, the same sparse-
+ * window note every windowed render prints (SPARSE_WINDOW_NOTE). */
+function historyPaneCache(root: string, sinceMs: number | null, resultClass: HistoryResultClass | null): string {
+  if (sinceMs === null && resultClass === null) {
+    return historyPaneText(readTickRows(root, HISTORY_DEFAULT_TICKS, null));
+  }
+  const { rows, covered } = sinceMs === null
+    ? { rows: readTickRows(root, HISTORY_DEFAULT_TICKS, null), covered: true }
+    : readTickRowsSince(root, sinceMs, null);
+  const filtered = resultClass === null ? rows : rows.filter((r) => historyClass(r.result) === resultClass);
+  const body = historyPaneText(filtered);
+  // null when no class is active, so the header/empty-body paths below only name a result
+  // filter the session actually holds (historyResultLabel(null) is the "all" label).
+  const resultLabel = resultClass === null ? null : historyResultLabel(resultClass);
+  const header = [
+    ...(sinceMs === null ? [] : ["window: last " + (historyWindowLabel(sinceMs) ?? "default")]),
+    ...(resultLabel === null ? [] : ["result: " + resultLabel]),
+  ].join("\n");
+  if (!body) {
+    // The class names itself only when it emptied a set the read did return (rows.length > 0):
+    // the CLI's `afterGrep > 0` and the dashboard's `hasRows` draw the same line, so an empty
+    // log or window keeps the pane's own no-ticks note instead of blaming a filter that
+    // removed nothing.
+    return resultClass !== null && rows.length > 0
+      ? header + "\nno ticks with result \"" + resultLabel + "\""
+      : "";
+  }
+  return header + "\n" + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
 }
 
 /** The Usage and Failures panes' session window cycle, Ctrl+E: the default whole-day report,
@@ -182,6 +229,9 @@ interface TuiKeysState {
   /** The Usage and Failures panes' active trailing window label (Ctrl+E), or null for the
    * default day report; named in the hint line. */
   reportSince: string | null;
+  /** The History pane's active outcome class label (Ctrl+O), "all" when unfiltered; named in
+   * the hint line. */
+  historyResult: string | null;
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
@@ -307,6 +357,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // null for the default day report. Session-only like the view/scroll state; the next Ctrl+T
   // into either pane computes the cache with it.
   let reportWindow: number | null = null;
+  // The History pane's session outcome filter (Ctrl+O), a HISTORY_RESULTS class or null for no
+  // filter. Session-only like the window; the next Ctrl+T into History computes with it.
+  let historyResult: HistoryResultClass | null = null;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
   // can page within it without re-deriving the height math. An open backlog entry spends the
   // pane's first line on its title, so its body pages by one line less (entryBudget).
@@ -572,7 +625,22 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       const i = HISTORY_WINDOWS.findIndex(([ms]) => ms === historyWindow);
       historyWindow = HISTORY_WINDOWS[(i + 1) % HISTORY_WINDOWS.length]![0];
       if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow);
+        paneCache = historyPaneCache(root, historyWindow, historyResult);
+        paneScroll = 0;
+      }
+      deps.requestRender();
+      return;
+    }
+    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor) {
+      // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
+      // of budget-edit and role-prompt modes like Ctrl+S beside it. The class is session state:
+      // advancing it off the History view only changes the label, and the next Ctrl+T into
+      // History computes the cache with it; on the History view this handler re-reads and
+      // re-filters the rows now and resets the scroll so the changed body re-enters at its head.
+      const i = HISTORY_RESULTS.findIndex(([c]) => c === historyResult);
+      historyResult = HISTORY_RESULTS[(i + 1) % HISTORY_RESULTS.length]![0];
+      if (view === roleIds.length + 4) {
+        paneCache = historyPaneCache(root, historyWindow, historyResult);
         paneScroll = 0;
       }
       deps.requestRender();
@@ -597,7 +665,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       } else if (view === roleIds.length + 3) {
         paneCache = failuresPaneCache(root, reportWindow, scopeRole ?? undefined);
       } else if (view === roleIds.length + 4) {
-        paneCache = historyPaneCache(root, historyWindow);
+        paneCache = historyPaneCache(root, historyWindow, historyResult);
       } else if (view === roleIds.length + 5) {
         // Pending is the cycle's one async collector: collectFleetChanges awaits git plumbing,
         // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -821,6 +889,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         paneScroll,
         historySince: historyWindow === null ? null : historyWindowLabel(historyWindow),
         reportSince: reportWindow === null ? null : reportWindowLabel(reportWindow),
+        historyResult: historyResultLabel(historyResult),
         eventBudget,
         entryBudget,
         roleIds,

@@ -118,13 +118,16 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+E window: default/);
   assert.match(hint({ kind: "failures", scope: null, window: "7d" }), /Ctrl\+E window: 7d/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+E window: default/);
-  assert.match(hint({ kind: "history", since: null }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "history", since: null, result: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
   assert.equal(hint({ kind: "activity" }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
-  assert.match(hint({ kind: "history", since: "1h" }), /Ctrl\+S window: 1h/);
-  assert.match(hint({ kind: "history", since: null }), /Ctrl\+S window: default/);
+  assert.match(hint({ kind: "history", since: "1h", result: null }), /Ctrl\+S window: 1h/);
+  assert.match(hint({ kind: "history", since: null, result: null }), /Ctrl\+S window: default/);
+  // The History pane names its outcome class in the Ctrl+O hint, "all" or the active class.
+  assert.match(hint({ kind: "history", since: null, result: "problems" }), /Ctrl\+O result: problems/);
+  assert.match(hint({ kind: "history", since: null, result: null }), /Ctrl\+O result: all/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
     { kind: "activity" } as const,
@@ -132,7 +135,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "backlog" } as const,
     { kind: "usage", scope: null, window: null } as const,
     { kind: "failures", scope: null, window: null } as const,
-    { kind: "history", since: null } as const,
+    { kind: "history", since: null, result: null } as const,
     { kind: "pending" } as const,
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
