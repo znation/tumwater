@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseVerdict } from "../src/review/review-verdict.js";
+import { buildRejectedReviewNote } from "../src/prompt/gate-prompts.js";
 
 // The review gate's fail-closed rule (review-verdict.ts): a reply with no parseable verdict
 // is a FAILED review, never an approval — a model that forgets the VERDICT line must not have
-// its silence read as approval.
+// its silence read as approval. This file holds the parser's unit cases, including the reply-shape
+// and prior-objection-resolution cases moved here out of review.test.ts (2026-10-11), which
+// now holds only the gate-orchestration tests; the cases that render a parsed rejection
+// through buildRejectedReviewNote stay with the parser whose reasons they feed.
 
 test("parseVerdict returns null when no verdict line exists", () => {
   assert.equal(parseVerdict("Looks good to me, ship it."), null);
@@ -100,4 +104,202 @@ test("parseVerdict clips an over-long reason to the shared per-line cap", () => 
   const reason = parseVerdict(text)?.reasons[0] ?? "";
   assert.ok(reason.length <= 300, `expected <= 300 chars, got ${reason.length}`);
   assert.ok(reason.endsWith("…"));
+});
+
+test("parseVerdict reads prose reasons written before a verdict-last reply's verdict", () => {
+  const v = parseVerdict(
+    "The change repeats the swap logic twice.\nIt also needs a maxRetries guard.\nVERDICT: reject",
+  );
+  assert.deepEqual(v, {
+    verdict: "reject",
+    reasons: [
+      "The change repeats the swap logic twice.",
+      "It also needs a maxRetries guard.",
+    ],
+  });
+});
+
+test("parseVerdict prefers reasons after the verdict when both regions carry them", () => {
+  const v = parseVerdict(
+    "1. stale concern above the decision\nVERDICT: reject\n1. the real reason below",
+  );
+  assert.deepEqual(v, { verdict: "reject", reasons: ["the real reason below"] });
+});
+
+// A revision re-review is asked to check the prior objections FIRST, so a reviewer may open
+// its numbered reasons with a statement that they are resolved. That is not an objection, yet
+// every reasons[0] consumer would name it as the rejection and the author's note would tell
+// the author to fix it (BUGS.md 2026-10-09).
+test("a leading prior-objection resolution is not recorded as a rejection's first reason", () => {
+  const v = parseVerdict(
+    "VERDICT: reject\n" +
+      "1. Prior objections 1–10 are all resolved — the ten cited lines are now ≤100 bytes, so none is an outstanding rejection on this change.\n" +
+      "2. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n",
+  );
+  assert.equal(v?.verdict, "reject");
+  assert.deepEqual(v?.reasons, ["plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js"]);
+  assert.equal(
+    buildRejectedReviewNote({ reasons: v!.reasons }),
+    "Your previous change was rejected in review:\n" +
+      "1. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n" +
+      "Address the objections or take a different approach.",
+  );
+});
+
+// The filter drops only a resolution; a line that reports a prior objection still open is a
+// real objection and must lead the list.
+test("a prior objection reported unresolved is kept as the first reason", () => {
+  const v = parseVerdict("VERDICT: reject\n1. Prior objection 3 is still unresolved — the helper drops errors.");
+  assert.deepEqual(v?.reasons, ["Prior objection 3 is still unresolved — the helper drops errors."]);
+  const notResolved = parseVerdict("VERDICT: reject\n1. Prior objection 2 is not resolved by this revision.");
+  assert.deepEqual(notResolved?.reasons, ["Prior objection 2 is not resolved by this revision."]);
+});
+
+// A resolution phrase with an adverb between the negation and "resolved" is still an open
+// objection; the filter must not read it as a resolution and delete it (review 2026-10-09).
+test("an unresolved prior objection phrased with an intervening adverb is kept", () => {
+  const v = parseVerdict("VERDICT: reject\n1. Prior objection 2 is not yet fully resolved — the helper drops errors.");
+  assert.deepEqual(v?.reasons, ["Prior objection 2 is not yet fully resolved — the helper drops errors."]);
+});
+
+// A resolution phrase negated by "never" or "no longer … resolved" reports the objection still
+// open; the filter must keep it rather than tell the author to fix nothing (latent-bug hunt
+// 2026-10-09).
+test("a prior objection negated with never or no-longer-resolved is kept", () => {
+  const never = "Prior objections 1–3 were never resolved by this revision.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${never}`)?.reasons, [never]);
+  const noLonger = "Prior objection 2 is no longer resolved by this revision.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${noLonger}`)?.reasons, [noLonger]);
+});
+
+// A single line that reports some prior objections resolved and another still open is not a
+// resolution; dropping it whole would hide the open one the author must fix (review 2026-10-09).
+test("a line mixing a resolution with an open objection is kept whole", () => {
+  const contrast = "Prior objections 1 and 2 are resolved, but objection 3 requires a bounds check.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${contrast}`)?.reasons, [contrast]);
+  const outstanding = "Prior objections 1 and 2 are resolved; objection 3 is outstanding.";
+  assert.deepEqual(parseVerdict(`VERDICT: reject\n1. ${outstanding}`)?.reasons, [outstanding]);
+});
+
+// When the reasons below the VERDICT line are all resolutions, the filter leaves nothing;
+// the objections may sit above the verdict line, so the whole-text region is tried next
+// rather than returning an empty reason list (review 2026-10-09).
+test("a rejection falls back past a resolution-only post-verdict region to the whole text", () => {
+  const v = parseVerdict(
+    "1. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n" +
+      "VERDICT: reject\n" +
+      "Prior objections 1–10 are all resolved — all ten cited lines are now ≤100 bytes.\n",
+  );
+  assert.equal(v?.verdict, "reject");
+  assert.deepEqual(v?.reasons, ["plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js"]);
+});
+
+// Reply shapes the fleet's reviewers really wrote (BUGS.md 2026-09-23: 11 approvals logged a
+// preamble as their `review_verdict` reason). Reviewers number findings in bold or under
+// headings and open with a colon-terminated lead-in or a bare heading; a bare-marker list
+// match missed every such item, so the whole reply fell to the prose fallback and its first
+// line — the preamble — became reasons[0], the field review_verdict logs, the feed renders,
+// and the digest clusters rejections on. Each row: reasons[0] is the first real finding, and
+// no reason keeps the list's own markup.
+const REPLY_SHAPES: { shape: string; reply: string; reasons: string[] }[] = [
+  {
+    shape: "colon preamble, then bold-wrapped numbered leads (bugfix, 2026-09-23 23:46)",
+    reply:
+      "I checked the diff against the code, its callers, and its tests. Findings:\n\n" +
+      "**1. Scope matches the claim.** The diff touches exactly the five things the summary enumerates.\n\n" +
+      "**2. Both record paths really decline.** `extractFlow` has exactly one consumer.\n\n" +
+      "VERDICT: approve",
+    reasons: [
+      "Scope matches the claim. The diff touches exactly the five things the summary enumerates.",
+      "Both record paths really decline. `extractFlow` has exactly one consumer.",
+    ],
+  },
+  {
+    shape: "\"Here is what I verified:\" preamble (organize, 2026-09-23 20:48)",
+    reply:
+      "All checks complete. Here is what I verified:\n\n" +
+      "**1. Scope — the diff is exactly what's claimed.** The merge diff is precisely the 5-file change.\n\n" +
+      "**2. The extraction is verbatim.** I mechanically diffed the moved block.\n\n" +
+      "VERDICT: approve",
+    reasons: [
+      "Scope — the diff is exactly what's claimed. The merge diff is precisely the 5-file change.",
+      "The extraction is verbatim. I mechanically diffed the moved block.",
+    ],
+  },
+  {
+    shape: "bare heading, then bold numbered questions (clean, 2026-09-23 22:06)",
+    reply:
+      "## Review\n\n**1. Does the diff match the claims?** Yes. The diff is four files.\n\n" +
+      "**2. VERIFIED claims hold.** Tests only match `/not initialized/`.\n\nVERDICT: approve",
+    reasons: [
+      "Does the diff match the claims? Yes. The diff is four files.",
+      "VERIFIED claims hold. Tests only match `/not initialized/`.",
+    ],
+  },
+  {
+    shape: "bold lead alone on its line, its body on the next (organize, 2026-09-23 14:24)",
+    reply:
+      "I verified the change against the repo. Summary of what I checked:\n\n" +
+      "**1. Diff matches the claim — no more, no less.**\n`git show --stat HEAD` confirms the 7 files.\n\n" +
+      "**2. The move is verbatim, as the RISK claim states.**\nI diffed the block line-by-line.\n\n" +
+      "VERDICT: approve",
+    reasons: ["Diff matches the claim — no more, no less.", "The move is verbatim, as the RISK claim states."],
+  },
+  {
+    shape: "bold number only (`**1.** X`)",
+    reply: "All checks done. Summary of what I verified:\n**1.** The helper drops errors.\n**2.** No test covers it.\nVERDICT: reject",
+    reasons: ["The helper drops errors.", "No test covers it."],
+  },
+  {
+    shape: "bold number with a paren (`**1) X**`)",
+    reply: "Findings:\n**1) The helper drops errors.**\n**2) No test covers it.**\nVERDICT: reject",
+    reasons: ["The helper drops errors.", "No test covers it."],
+  },
+  {
+    shape: "heading-wrapped numbering (`### 1. X`)",
+    reply: "## Review\n### 1. Scope matches the claim\nNothing unclaimed.\n### 2) Tests pin the fix\nBoth ways.\nVERDICT: approve",
+    reasons: ["Scope matches the claim", "Tests pin the fix"],
+  },
+  {
+    shape: "plain numbering with a bold lead keeps the reviewer's own emphasis (`1. **X** body`)",
+    reply: "Findings:\n1. **Scope matches.** Nothing unclaimed.\n2. **Tests pin it.**\nVERDICT: approve",
+    reasons: ["**Scope matches.** Nothing unclaimed.", "**Tests pin it.**"],
+  },
+  {
+    shape: "prose fallback skips a colon preamble",
+    reply: "All checks complete. Here is what I verified:\nThe diff is exactly the claimed split.\nVERDICT: approve",
+    reasons: ["The diff is exactly the claimed split."],
+  },
+  {
+    shape: "prose fallback skips a bare heading and a bold lead-in",
+    reply: "## Review\n**Summary:**\nThe move is byte-identical.\n**Diff matches the claim exactly.** Nothing unclaimed.\nVERDICT: approve",
+    reasons: ["The move is byte-identical.", "**Diff matches the claim exactly.** Nothing unclaimed."],
+  },
+  {
+    shape: "a reply of nothing but lead-ins still records them rather than no reason",
+    reply: "## Review\nHere is what I verified:\nVERDICT: approve",
+    reasons: ["## Review", "Here is what I verified:"],
+  },
+];
+
+for (const { shape, reply, reasons } of REPLY_SHAPES) {
+  test(`parseVerdict reads the first finding, not the preamble: ${shape}`, () => {
+    assert.deepEqual(parseVerdict(reply)?.reasons, reasons);
+  });
+}
+
+test("a bold-numbered rejection reaches the author's next-tick note numbered once, markup-free", () => {
+  // The rejection path shares the list: before the fix the prose fallback kept every line
+  // whole, so the note read "1. Findings:" then "2. **1. The helper drops errors.** …".
+  const v = parseVerdict(
+    "I checked the diff. Findings:\n\n**1. The helper drops errors.** `run` swallows the throw.\n\n" +
+      "**2. No test covers it.**\n\nVERDICT: reject",
+  );
+  assert.equal(v?.verdict, "reject");
+  assert.equal(
+    buildRejectedReviewNote({ reasons: v!.reasons }),
+    "Your previous change was rejected in review:\n" +
+      "1. The helper drops errors. `run` swallows the throw.\n2. No test covers it.\n" +
+      "Address the objections or take a different approach.",
+  );
 });

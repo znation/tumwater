@@ -21,8 +21,9 @@ node_modules walk-up, npm-ENOENT handling; main's build green again since `c0218
    counted); `"review_error"` takes error backoff.
 3. `state.phase` clears at tick end — except on abort, deliberately: an aborted mid-review tick
    must recover and re-review fresh instead of resuming the author session whose work is committed.
-4. test/review.test.ts (renamed from review-gate.test.ts) covers the pure functions plus gate
-   orchestration: approve + stray-edit discard, reject reset + reasons recorded, verdict-less
+4. test/review-verdict.test.ts covers the pure verdict-parsing cases, and test/review.test.ts
+   (renamed from review-gate.test.ts)
+   covers gate orchestration: approve + stray-edit discard, reject reset + reasons recorded, verdict-less
    fail-closed keep, 3-strike discard, doc-only exemption without a pi run, `enabled: false`
    no-op, `lastApprovedHead` skip, `-recovery` session suffix, abort with no bookkeeping;
    loop.test.ts routes fresh/resumed/recovered ticks through the gate.
