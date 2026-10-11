@@ -235,14 +235,14 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + sinceButtons + "</div>" +
       "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
   }
-  // One day-window view, the shape Usage and Failures share: a lazily built panel (shared head
+  // The window-view scaffold Usage and Failures share: a lazily built panel (shared head
   // with a window picker and Refresh, body holding a Loading… placeholder until the first
   // render), the picker's active choice re-marked on every fetch, a GET of the view's endpoint
-  // at ?days=<days> rendered into the body — with an error panel naming the view on failure —
-  // optional 60-second throttling (Usage's event-driven refetch), and click wiring for the
-  // picker's data-days and data-since buttons (persisted through recall/store, each clearing the
-  // other so exactly one window shape is live) and the Refresh button. The views differ only in
-  // endpoint, body renderer, and titles.
+  // (o.endpoint selects the day or since shape) rendered into the body — with an error panel
+  // naming the view on failure — optional 60-second throttling (Usage's event-driven refetch),
+  // and click wiring for the picker's data-days and data-since buttons (persisted through
+  // recall/store, each clearing the other so exactly one window shape is live) and the Refresh
+  // button. Usage and Failures are two configurations of this one scaffold.
   function windowView(o) {
     let days = Number(recall(o.key)) || o.defaultDays;
     // The persisted trailing window (only a view that configured sinceChoices reads it): 0 or
