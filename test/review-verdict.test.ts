@@ -372,3 +372,64 @@ test("parseVerdict drops continuation lines whose comment opener follows code", 
     `expected the comment continuation to be dropped, got ${JSON.stringify(reasons)}`,
   );
 });
+
+// A reviewer quotes the offending code as a fenced block or a C/JSDoc block comment (the
+// review prompt invites it). Those lines are context, not findings: a `*`-prefixed comment
+// continuation must not match LIST_ITEM as a bullet and push the prose findings out of the
+// prose fallback.
+
+test("parseVerdict skips a fenced block-comment quote and keeps the prose finding", () => {
+  const text = [
+    "VERDICT: reject",
+    "",
+    "The comment is stale:",
+    "",
+    "```",
+    " * or write one key through screenOperableKey. */",
+    "```",
+    "",
+    "Fix the comment.",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(text)?.reasons, ["Fix the comment."]);
+});
+
+test("parseVerdict does not read a bare quoted comment close line as a bullet", () => {
+  const text = "VERDICT: reject\n\n * or write one key through screenOperableKey. */\n";
+  assert.deepEqual(parseVerdict(text)?.reasons, []);
+});
+
+test("parseVerdict skips a quoted multi-line JSDoc comment and keeps the prose finding", () => {
+  const text = [
+    "VERDICT: reject",
+    "The helper's comment is wrong:",
+    "/**",
+    " * or write one key through screenOperableKey. */",
+    "Fix it.",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(text)?.reasons, ["Fix it."]);
+});
+
+// The fence scan goes through backlog-md.ts's shared fenceTracker, so a backtick fence line
+// whose info string itself contains a backtick is paragraph text that opens nothing — a local
+// `^(```+|~~~+)` scan would swallow every finding after it as fenced content.
+
+test("parseVerdict reads past a backtick fence info string the shared fenceTracker rejects", () => {
+  const text = ["VERDICT: reject", "```md / ## Done / ```", "1. real finding"].join("\n");
+  assert.deepEqual(parseVerdict(text)?.reasons, ["real finding"]);
+});
+
+// The comment-continuation guard must not drop a genuine bullet: only a `*`-led line closed
+// by `*/` on the same line is quoted comment context; a bullet (or the advertised bold-numbered
+// shape) whose text merely contains the terminator is a real finding.
+
+test("parseVerdict keeps bullets whose text merely contains a comment terminator", () => {
+  const text = [
+    "VERDICT: reject",
+    "* Fix the stale `*/` handling in the comment",
+    "**1.** Remove the trailing `*/`",
+  ].join("\n");
+  assert.deepEqual(parseVerdict(text)?.reasons, [
+    "Fix the stale `*/` handling in the comment",
+    "Remove the trailing `*/`",
+  ]);
+});
