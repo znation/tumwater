@@ -64,7 +64,13 @@ function invariantProblems(md: string): string[] {
       if (!body.includes(field)) problems.push(`${label}: missing ${field} field`);
     }
     const paths = citedPaths(body);
-    const pins = paths.filter((p) => p.startsWith("test/") && p.endsWith(".test.ts"));
+    // The pin must be in the **Pinned by.** field: a `test/*.test.ts` path cited only in the
+    // Guarantee or Binds prose is not a pin, even though `citedPaths` above (which feeds the
+    // existence check) sees every cited path.
+    const pinnedAt = body.indexOf("**Pinned by.**");
+    const pins = citedPaths(pinnedAt >= 0 ? body.slice(pinnedAt) : "").filter(
+      (p) => p.startsWith("test/") && p.endsWith(".test.ts"),
+    );
     if (pins.length === 0) {
       problems.push(`${label}: **Pinned by.** cites no test/*.test.ts path`);
     }
@@ -132,6 +138,25 @@ test("a cited path that does not exist is reported", () => {
 
 test("an empty register is reported", () => {
   assert.deepEqual(invariantProblems("# Invariants\n\n_None yet._\n"), ["register holds no `### INV-…:` entries"]);
+});
+
+test("a test path cited outside **Pinned by.** does not satisfy the pin check", () => {
+  const md = [
+    "# Invariants",
+    "",
+    "## Cross-surface agreement",
+    "",
+    "### INV-A1: synthetic",
+    "",
+    "**Guarantee.** Something holds, as `test/backlog-structure.test.ts` shows.",
+    "",
+    "**Binds.** `src/backlog/backlog-structure.ts`.",
+    "",
+    "**Pinned by.** the run that follows.",
+    "",
+  ].join("\n");
+  const problems = invariantProblems(md);
+  assert.ok(problems.some((p) => p.includes("cites no test/*.test.ts path")), problems.join("; "));
 });
 
 test("this repo's docs/invariants.md is honest", () => {
