@@ -65,6 +65,39 @@ test("readClaudeAccount: a window past its resetsAt reads back as reset", () => 
   assert.equal(read?.windows.seven_day?.status, "allowed", "a future window keeps its status");
 });
 
+test("readClaudeAccount drops a non-finite utilization instead of keeping Infinity", () => {
+  // utilization is healed like the observedAt/resetsAt stamps: a hand-edited or torn file's
+  // `1e999` parses to Infinity, which would render as `Infinity%` and make the
+  // claudeWindowEntries comparator return NaN.
+  const root = tmpdir();
+  fs.mkdirSync(path.dirname(claudeAccountPath(root)), { recursive: true });
+  fs.writeFileSync(
+    claudeAccountPath(root),
+    '{"billing":"subscription","observedAt":1000,"windows":{"five_hour":{"status":"allowed","utilization":1e999,"observedAt":1000}}}',
+  );
+  const read = readClaudeAccount(root, 1_000);
+  assert.equal(read?.windows.five_hour?.status, "allowed", "the window survives");
+  assert.equal(
+    Object.hasOwn(read!.windows.five_hour!, "utilization"),
+    false,
+    "the non-finite fraction is dropped, not kept as Infinity",
+  );
+});
+
+test("observeClaudeAccount drops a non-finite run utilization at the write choke point", () => {
+  const root = tmpdir();
+  const out = observeClaudeAccount(root, {
+    billing: "subscription",
+    rateWindows: [{ type: "five_hour", status: "allowed", utilization: Number.POSITIVE_INFINITY }],
+  }, 1_000);
+  assert.equal(out?.windows.five_hour?.status, "allowed");
+  assert.equal(
+    Object.hasOwn(out!.windows.five_hour!, "utilization"),
+    false,
+    "a non-finite fraction never enters the file",
+  );
+});
+
 test("observeClaudeAccount folds a run's billing and windows, converting resetsAt to ms", () => {
   const root = tmpdir();
   const out = observeClaudeAccount(root, {

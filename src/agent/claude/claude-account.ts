@@ -135,10 +135,14 @@ function readWindow(value: unknown, fileObservedAt: number, now: number): Claude
   const observedAt = finiteNumber(value.observedAt, fileObservedAt);
   const resetsAt = finiteNumber(value.resetsAt, Number.NaN);
   const resets = Number.isFinite(resetsAt);
+  // utilization heals like the two stamps above: JSON's `1e999` parses to Infinity, and a
+  // non-finite fraction would render as `Infinity%` in the badges and poison the
+  // claudeWindowEntries comparator (Infinity - Infinity is NaN).
+  const utilization = finiteNumber(value.utilization, undefined);
   const window: ClaudeWindow = {
     status: resets && resetsAt <= now ? "reset" : value.status,
     ...(resets ? { resetsAt } : {}),
-    ...(typeof value.utilization === "number" ? { utilization: value.utilization } : {}),
+    ...(utilization !== undefined ? { utilization } : {}),
     ...(typeof value.overageStatus === "string" ? { overageStatus: value.overageStatus } : {}),
     ...(value.isUsingOverage === true ? { isUsingOverage: true } : {}),
     observedAt,
@@ -192,10 +196,13 @@ export function observeClaudeAccount(
 /** One run's rate-window reading in the file's shape: unix-seconds `resetsAt` becomes epoch ms,
  * and absent optional fields stay absent. */
 function windowFromRun(w: RateWindow, now: number): ClaudeWindow {
+  // The write choke point heals utilization like readWindow does, so a non-finite value
+  // handed straight to observeClaudeAccount can never re-enter the file through a save.
+  const utilization = finiteNumber(w.utilization, undefined);
   return {
     status: w.status,
     ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt * 1000 } : {}),
-    ...(typeof w.utilization === "number" ? { utilization: w.utilization } : {}),
+    ...(utilization !== undefined ? { utilization } : {}),
     ...(typeof w.overageStatus === "string" ? { overageStatus: w.overageStatus } : {}),
     ...(w.isUsingOverage === true ? { isUsingOverage: true } : {}),
     observedAt: now,
