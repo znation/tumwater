@@ -134,6 +134,30 @@ export function requirePromptText(
   return text;
 }
 
+/** Parse and cap a dashboard `?sinceMs=` trailing-window length. The caller branches on the
+ * parameter's presence, so only a present one reaches here: the value rides intQuery's
+ * positive-integer rule (malformed → the shared 400), and a value above `maxMs` is a 400 built
+ * by `overCap` rather than a silent clamp — an explicit window typo must not shrink to some
+ * other window. Shared by the report endpoints (through reportSinceMs, event-window.ts's
+ * REPORT_SINCE_MAX_MS and its "must be between 1 and …" wording) and /api/history
+ * (LOGS_SINCE_MAX_MS, the CLI's "is capped at …" wording), so the parse-and-cap discipline
+ * cannot drift between them; each caller keeps its own wording through `overCap`. Returns the
+ * parsed length, or null once the 400 is sent. */
+export function sinceMsQuery(
+  q: URLSearchParams,
+  res: http.ServerResponse,
+  maxMs: number,
+  overCap: (sinceMs: number) => string,
+): number | null {
+  const sinceMs = intQuery(q, res, "sinceMs", "positive");
+  if (sinceMs === null) return null;
+  if (sinceMs > maxMs) {
+    sendJson(res, 400, { error: overCap(sinceMs) });
+    return null;
+  }
+  return sinceMs;
+}
+
 /** Pull the required `paused` boolean out of a pause endpoint's body — the shared validator
  * for /api/pause and /api/pause-role, which must reject a missing or non-boolean target state
  * with the same 400 wording: the target state is explicit (`paused: true|false`), so a retried

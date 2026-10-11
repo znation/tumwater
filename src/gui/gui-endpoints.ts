@@ -26,7 +26,7 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
-import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
+import { intQuery, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
@@ -130,22 +130,17 @@ export function handleReport(q: URLSearchParams, res: http.ServerResponse, root:
 
 /** Parse and bound the report endpoints' `?sinceMs=` trailing-window length: a simultaneous
  * `?days=` is the CLI's rival shape (whole local days vs a trailing window) → 400 naming both;
- * otherwise the length rides intQuery's positive-integer rule (absent is impossible here — the
- * callers branch on its presence — malformed → 400) and a value above REPORT_SINCE_MAX_MS is a
- * 400 naming the cap, never a silent clamp (an explicit window typo must not shrink to some
- * other window). Returns the parsed length, or null once the 400 is sent. */
+ * otherwise the length rides sinceMsQuery (gui-args.ts) — positive-integer parse, then a 400
+ * naming the cap rather than a silent clamp (an explicit window typo must not shrink to some
+ * other window) — with the "must be between 1 and …" wording. Returns the parsed length, or
+ * null once the 400 is sent. */
 function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | null {
   if (q.get("days") !== null) {
     sendJson(res, 400, { error: "days and sinceMs are mutually exclusive; days counts whole local days, sinceMs totals a trailing window" });
     return null;
   }
-  const sinceMs = intQuery(q, res, "sinceMs", "positive");
-  if (sinceMs === null) return null;
-  if (sinceMs > REPORT_SINCE_MAX_MS) {
-    sendJson(res, 400, { error: `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})` });
-    return null;
-  }
-  return sinceMs;
+  return sinceMsQuery(q, res, REPORT_SINCE_MAX_MS, (sinceMs) =>
+    `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`);
 }
 
 /** Handle GET /api/failures?days=N[&role=<id>] or /api/failures?sinceMs=<ms>[&role=<id>]: the
@@ -182,8 +177,8 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * bounds the scanned window and not the printed rows — the CLI's rule. The window shape
  * ({ rows, covered, note }) rides readTickRowsSince, the collector behind `history --since`,
  * so the browser and the CLI cannot disagree about the window's rows; a simultaneous n is a
- * rival shape → 400 (the CLI's count-vs-window rule), sinceMs parses through intQuery
- * (positive) and is capped at LOGS_SINCE_MAX_MS (the shared `history --since` cap), and note is
+ * rival shape → 400 (the CLI's count-vs-window rule), sinceMs parses and is capped through
+ * sinceMsQuery (gui-args.ts, LOGS_SINCE_MAX_MS — the shared `history --since` cap), and note is
  * SPARSE_WINDOW_NOTE when covered is false, else "". role is optional: absent or empty → all
  * loops; present → passed straight through as the role filter with no config validation (a
  * filter is not a target — an id with no ticks legitimately yields zero rows), so the endpoint
@@ -197,12 +192,9 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
       sendJson(res, 400, { error: "sinceMs cannot be combined with n (a count and a window are rival shapes)" });
       return;
     }
-    const sinceMs = intQuery(q, res, "sinceMs", "positive");
+    const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
+      `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
     if (sinceMs === null) return;
-    if (sinceMs > LOGS_SINCE_MAX_MS) {
-      sendJson(res, 400, { error: `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${sinceMs})` });
-      return;
-    }
     const { rows, covered } = readTickRowsSince(root, sinceMs, role);
     const matched = grep === null ? rows : rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(grep.toLowerCase()));
     sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE });
