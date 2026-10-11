@@ -1,6 +1,6 @@
 /**
  * The dashboard's POST operator endpoint handlers (src/gui/gui-server.ts routes to them): prompt,
- * prompt-role, prompt-cancel, budget, config-set, config-unset, pause, wake, restart, abort,
+ * prompt-role, prompt-cancel, prompt-edit, budget, config-set, config-unset, pause, wake, restart, abort,
  * pause-role —
  * everything that writes state or queues work — plus the shared request-body helpers
  * (readPostBody, readRoleBody, checkedPromptImages, checkedPromptFields) each mutating handler
@@ -12,6 +12,7 @@
  */
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile, queueFileNameProblem } from "../inbox/inbox-cancel.js";
+import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
@@ -21,7 +22,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
-import { gotSuffix } from "../text/text.js";
+import { errorMessage, gotSuffix } from "../text/text.js";
 import type http from "node:http";
 
 /** Every POST handler's shared opening: readJsonObject reads the body and — when it is
@@ -149,6 +150,46 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
     200,
     outcome.status === "cancelled"
       ? { ok: true, status: "cancelled", preview: promptPreview(outcome.text) }
+      : { ok: true, status: "gone" },
+  );
+}
+
+/** Handle POST /api/prompt-edit: rewrite one queued prompt addressed by its queue file — the
+ * dashboard's per-row edit affordance, the file-addressed twin of the CLI's position-addressed
+ * `prompt --edit`. The role is optional (absent edits the director's queue) and validates
+ * exactly like /api/prompt-cancel; a file name failing the basename guard (inbox-cancel.ts's
+ * queueFileNameProblem) is a user-input error answered 400 with nothing touched on disk. Text
+ * and images validate through the same checkedPromptFields /api/prompt and /api/prompt-role
+ * use; editQueuedFile throws for a bad name or an over-cap text — both user-input errors
+ * answered 400 (a filesystem failure reads as 400 like handleConfigSet's failed write). A
+ * vanished file answers 200 { ok: true, status: "gone" } — the loop already dequeued the
+ * prompt, which is data for the flash line, not a server fault; an edit answers 200 with the
+ * old and new operator-facing text the client flashes. Same body discipline as /api/prompt
+ * (readJsonObject → 400 malformed/non-object, 413 oversized). */
+export async function handlePromptEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md", "text": "..."}');
+  if (!body) return;
+  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
+  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  const fileProblem = queueFileNameProblem(body.file);
+  if (fileProblem) {
+    sendJson(res, 400, { error: fileProblem });
+    return;
+  }
+  const fields = checkedPromptFields(res, body, role);
+  if (!fields) return;
+  let outcome: EditOutcome;
+  try {
+    outcome = editQueuedFile(root, role, body.file as string, fields.text, fields.images);
+  } catch (err) {
+    sendJson(res, 400, { error: errorMessage(err) });
+    return;
+  }
+  sendJson(
+    res,
+    200,
+    outcome.status === "edited"
+      ? { ok: true, status: "edited", oldText: outcome.oldText, newText: outcome.newText }
       : { ok: true, status: "gone" },
   );
 }

@@ -1,8 +1,9 @@
 /**
  * The dashboard's GET data endpoint handlers (src/gui/gui-server.ts routes to them): transcript,
- * backlog, report, failures, history, tick, diff, config — the read-only surface. The POST
- * operator endpoints (prompt, prompt-role, prompt-cancel, budget, config-set, pause, wake,
- * restart, abort, pause-role) and their body-discipline helpers live in
+ * prompt-text, backlog, report, failures, history, tick, diff, config — the read-only surface.
+ * The POST
+ * operator endpoints (prompt, prompt-role, prompt-cancel, prompt-edit, budget, config-set, pause,
+ * wake, restart, abort, pause-role) and their body-discipline helpers live in
  * gui/gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond
  * its own `res`; server lifecycle, routing, the static page, and the token gate stay in
  * gui/gui-server.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
@@ -26,6 +27,9 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
+import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
 import { intQuery, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -245,6 +249,34 @@ export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: s
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
   sendJson(res, 200, rolePayload(root, role as string));
+}
+
+/** Handle GET /api/prompt-text?file=<name>[&role=<id>]: one queued prompt's editable body —
+ * the text an edit replaces, for the dashboard's per-row edit affordance (PLANS.md
+ * 2026-10-11). The prompt is addressed by its queue-file basename (the /api/prompt-cancel
+ * address), so a stale poll's snapshot can never read the wrong entry; the not-before deferral
+ * marker and the `[image attached: …]` reference block are stripped, both plumbing the edit
+ * carries over unchanged. The role is optional (absent reads the director's queue) and
+ * validates exactly like /api/transcript; a file name failing queueFileNameProblem is a
+ * user-input error answered 400 with nothing read. A vanished file answers 200
+ * { ok: true, status: "gone" } — the loop already dequeued it, which is data for the UI, not
+ * a server fault. Reads one file directly, so it works whether or not the fleet is running. */
+export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const roleParam = q.get("role");
+  if (roleParam !== null && rejectBadRole(root, res, roleParam)) return;
+  const role = roleParam ?? DIRECTOR_ROLE;
+  const file = q.get("file");
+  const fileProblem = queueFileNameProblem(file);
+  if (fileProblem) {
+    sendJson(res, 400, { error: fileProblem });
+    return;
+  }
+  const text = readQueuedPromptBody(root, role, file as string);
+  if (text === null) {
+    sendJson(res, 200, { ok: true, status: "gone" });
+    return;
+  }
+  sendJson(res, 200, { ok: true, text });
 }
 /** Handle GET /api/config: the Settings view's resolved values for exactly
  * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses

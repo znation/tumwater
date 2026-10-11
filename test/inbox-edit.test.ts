@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { editListedPrompt, editRolePrompt } from "../src/inbox/inbox-edit.js";
-import { enqueuePrompt, enqueueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { editListedPrompt, editQueuedFile, editRolePrompt, readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
+import { enqueuePrompt, enqueueRolePrompt, queuedFiles, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { cancelListedPrompt } from "../src/inbox/inbox-cancel.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { imageReferencePaths } from "../src/inbox/inbox-attachments.js";
@@ -297,4 +297,83 @@ test("editRolePrompt removes the image it just saved when the composed text is o
   );
   assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["short"], "nothing edited");
   assert.deepEqual(fs.readdirSync(dir).sort(), before, "the just-saved image was unlinked");
+});
+
+/** Seed a queue file at an exact basename, so the file-addressed entry points can be driven
+ * without depending on enqueueRolePrompt's stamp. */
+function seedQueueFile(root: string, role: string, name: string, text: string): string {
+  const dir = roleInboxDir(root, role);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, text);
+  return file;
+}
+
+/** editQueuedFile is editRolePrompt's file-addressed twin: the dashboard's edit affordance
+ * names the queue file a 1 s-stale poll showed, so the write can never land on another entry. */
+test("editQueuedFile rewrites one named queue file in place and returns the edit outcome", () => {
+  const root = tmpdir();
+  const file = seedQueueFile(root, "qa", "q.md", "old text");
+  seedQueueFile(root, "qa", "sibling.md", "sibling text");
+
+  const outcome = editQueuedFile(root, "qa", "q.md", "new text");
+  assert.deepEqual(outcome, { status: "edited", oldText: "old text", newText: "new text" });
+  assert.equal(fs.readFileSync(file, "utf8"), "new text", "the named file holds the new body");
+  assert.equal(path.basename(file), "q.md", "the queue file is not replaced");
+  assert.equal(fs.readFileSync(path.join(roleInboxDir(root, "qa"), "sibling.md"), "utf8"), "sibling text");
+  assert.deepEqual(queuedRolePrompts(root, "qa"), ["new text", "sibling text"]);
+
+  const events = eventsOfType(root, "prompt_edited");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.loop, "qa");
+});
+
+test("editQueuedFile refuses a name failing queueFileNameProblem, touching nothing", () => {
+  const root = tmpdir();
+  const file = seedQueueFile(root, "qa", "q.md", "old");
+  for (const bad of ["../x.md", "q.txt"]) {
+    assert.throws(() => editQueuedFile(root, "qa", bad, "new"), /file/);
+  }
+  assert.equal(fs.readFileSync(file, "utf8"), "old", "a rejected name changes nothing");
+  assert.deepEqual(queuedRolePrompts(root, "qa"), ["old"]);
+  assert.equal(eventsOfType(root, "prompt_edited").length, 0);
+});
+
+test("editQueuedFile returns gone when the named file has vanished", () => {
+  const root = tmpdir();
+  assert.deepEqual(editQueuedFile(root, "qa", "q.md", "new"), { status: "gone" });
+});
+
+test("editQueuedFile keeps an attached prompt's image reference and its file", () => {
+  const root = tmpdir();
+  const imagePath = path.join(roleInboxDir(root, "qa"), "q.png");
+  seedQueueFile(root, "qa", "q.md", `old text\n\n[image attached: ${imagePath}]`);
+  fs.writeFileSync(imagePath, "png-bytes");
+
+  const outcome = editQueuedFile(root, "qa", "q.md", "new text");
+  assert.equal(outcome.status, "edited");
+  const after = fs.readFileSync(path.join(roleInboxDir(root, "qa"), "q.md"), "utf8");
+  assert.match(after, /^new text/);
+  assert.equal(imageReferencePaths(after)[0], imagePath, "the reference line survives the edit");
+  assert.equal(fs.existsSync(imagePath), true, "the image file is not orphaned");
+});
+
+/** readQueuedPromptBody is the editor's read half: it must show the text a user edits, never
+ * the deferral marker or the attachment reference block, both of which the edit carries over
+ * untouched. */
+test("readQueuedPromptBody strips the not-before marker and the image reference lines", () => {
+  const root = tmpdir();
+  const dueMs = Date.now() + 45 * 60_000;
+  submitRolePrompt(
+    root,
+    "qa",
+    "read me",
+    [{ name: "shot.png", dataBase64: Buffer.from("png-bytes").toString("base64") }],
+    dueMs,
+  );
+  const name = path.basename(queuedFiles(root, "qa")[0] as string);
+
+  assert.equal(readQueuedPromptBody(root, "qa", name), "read me", "marker and reference block stripped");
+  assert.equal(readQueuedPromptBody(root, "qa", "missing.md"), null, "a vanished file reads as gone");
+  assert.throws(() => readQueuedPromptBody(root, "qa", "../x.md"), /file/);
 });

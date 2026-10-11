@@ -193,6 +193,17 @@ export function imageReferencePaths(text: string): string[] {
   return paths;
 }
 
+/** The prompt text without its `[image attached: …]` reference lines, trailing blank lines
+ * trimmed — the editable body an editor should show. The reference block is plumbing the edit
+ * path carries over unchanged, never content a user rewrites, and a line that is not exactly
+ * the writer's shape is content and stays. The reader-side counterpart to
+ * imageReferencePaths: the same line predicate, applied to drop rather than collect. */
+export function stripImageReferenceLines(text: string): string {
+  const kept = text.split("\n").filter((line) => IMAGE_REF_LINE.exec(line.trim()) === null);
+  while (kept.length > 0 && (kept[kept.length - 1] as string).trim() === "") kept.pop();
+  return kept.join("\n");
+}
+
 /** Drop the `[image attached: …]` lines whose files are no longer on disk from a prompt being
  * re-queued after a tick that already consumed them — takeQueuedFile removes an attached
  * image with its prompt, so a re-queued copy would otherwise send the loop's agent after

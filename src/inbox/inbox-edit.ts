@@ -1,16 +1,19 @@
 import { readTextIfExists, unlinkAllMissingTolerant, writeTextAtomic } from "../files/files.js";
 import { logEventBestEffort } from "../events/events.js";
+import path from "node:path";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
 import {
   imageReferenceLines,
   imageReferencePaths,
   promptImagesCountProblem,
   savePromptImages,
+  stripImageReferenceLines,
   type PromptImageInput,
 } from "./inbox-attachments.js";
 import { promptLengthProblem } from "./inbox-submit.js";
-import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
+import { listedQueueOutcome, queueFileNameProblem, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
+import { roleInboxDir } from "../paths.js";
 
 /** The edit half of the prompt queues: rewriting one queued prompt's text in place
  * (`tumwater prompt --edit`), by per-loop position or by list-wide position numbering.
@@ -28,9 +31,10 @@ export type EditOutcome =
   | { status: "edited"; oldText: string; newText: string }
   | { status: "gone" };
 
-/** Rewrite the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt
- * --list` — in place: same queue file (so the filename's enqueue stamp and the entry's
- * position behind older prompts are untouched), same atomic write enqueueRolePrompt uses
+/** Rewrite one queued prompt's file in place — the shared core behind editRolePrompt (address
+ * by per-loop position) and editQueuedFile (address by queue-file basename): same queue file
+ * (so the filename's enqueue stamp and the entry's position behind older prompts are
+ * untouched), same atomic write enqueueRolePrompt uses
  * (writeTextAtomic's temp file + rename, so a concurrent dequeue or another edit can never
  * expose a half-written file), and the existing not-before deferral carried over — when the
  * old file starts with the marker, the new text is written under the same marker; a
@@ -53,22 +57,23 @@ export type EditOutcome =
  * applies. The initial text check throws before any read or write; the composed check (body
  * plus carried image lines) throws before the write when the body alone fit.
  *
- * Throws for out-of-range positions with no side effects. The race policy pairs with the
- * outcome: the file is read first, and a read that hits ENOENT returns { status: "gone" } —
+ * Throws for out-of-range positions with no side effects in editRolePrompt's position form;
+ * the image-address form throws for a name failing queueFileNameProblem before touching disk.
+ * The race policy pairs with the outcome: the file is read first, and a read that hits ENOENT
+ * returns { status: "gone" } —
  * the loop dequeued it or a cancel removed it between listing and write, a normal race
  * exactly like takeCancelledPrompt's; any other read error propagates (a permission failure
  * is not a race). The write itself is unconditional once the read succeeded: a dequeue that
  * lands between that read and the rename is a narrower race than takeQueuedFile's own
  * read-then-remove window, and the atomic rename means every observer sees either the whole
  * old file or the whole new one — never a half-written prompt. */
-export function editRolePrompt(root: string, role: string, position: number, newText: string, images?: PromptImageInput[]): EditOutcome {
+function editPromptAtFile(root: string, role: string, file: string, newText: string, images?: PromptImageInput[]): EditOutcome {
   // Trim once, then measure and store that one text: promptLengthProblem judges the trimmed
   // value, and submitRolePrompt queues the trimmed value, so writing the raw replacement let
   // whitespace the probe discarded smuggle an over-cap body past the cap.
   const text = newText.trim();
   const lengthProblem = promptLengthProblem(text, role);
   if (lengthProblem) throw new Error(lengthProblem); // Before any read or write, like submitRolePrompt.
-  const file = queuedFileAtPosition(root, role, position);
   const oldFileText = readTextIfExists(file);
   if (oldFileText === null) return { status: "gone" }; // Dequeued or cancelled mid-listing.
   // The marker is plumbing: the edit replaces only the content beneath it. notBeforeMs
@@ -107,6 +112,43 @@ export function editRolePrompt(root: string, role: string, position: number, new
   const oldText = stripNotBeforeMarker(oldFileText);
   logEventBestEffort(root, { loop: role, type: "prompt_edited", preview: promptPreview(composed) });
   return { status: "edited", oldText, newText: composed };
+}
+
+/** Rewrite the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt
+ * --list` — in place, through the shared editPromptAtFile. See that helper for the full
+ * contract (deferral carry-over, attachment carry-over, the prompt_edited event, the race
+ * policy). */
+export function editRolePrompt(root: string, role: string, position: number, newText: string, images?: PromptImageInput[]): EditOutcome {
+  return editPromptAtFile(root, role, queuedFileAtPosition(root, role, position), newText, images);
+}
+
+/** Rewrite one queued prompt addressed by its queue-file basename — the file-addressed twin of
+ * editRolePrompt, for the dashboard's per-row edit affordance (PLANS.md 2026-10-11): the
+ * address is the file itself, so a stale poll's snapshot can never rewrite the wrong entry.
+ * Same race policy, deferral carry-over, attachment carry-over, and prompt_edited event as
+ * editRolePrompt, through the shared editPromptAtFile. Throws for a name failing
+ * queueFileNameProblem — the GUI endpoint pre-checks the same guard and answers 400 before
+ * anything is touched on disk. */
+export function editQueuedFile(root: string, role: string, name: string, newText: string, images?: PromptImageInput[]): EditOutcome {
+  const problem = queueFileNameProblem(name);
+  if (problem) throw new Error(problem);
+  return editPromptAtFile(root, role, path.join(roleInboxDir(root, role), name), newText, images);
+}
+
+/** Read one queued prompt's editable body — the text an edit replaces, for the dashboard's
+ * edit affordance (PLANS.md 2026-10-11): stripNotBeforeMarker drops the deferral plumbing,
+ * stripImageReferenceLines drops the `[image attached: …]` reference block the edit carries
+ * over unchanged (so it is never shown in the editor and cannot be edited away), and trimEnd
+ * drops any blank lines left behind. null when the file is gone — the loop dequeued it or
+ * another operator cancelled it, which the endpoint reports as { status: "gone" } rather than
+ * an error. Throws for a name failing queueFileNameProblem. Reading the one named file directly
+ * keeps the dashboard's lazy fetch off the per-poll path. */
+export function readQueuedPromptBody(root: string, role: string, name: string): string | null {
+  const problem = queueFileNameProblem(name);
+  if (problem) throw new Error(problem);
+  const text = readTextIfExists(path.join(roleInboxDir(root, role), name));
+  if (text === null) return null;
+  return stripImageReferenceLines(stripNotBeforeMarker(text)).trimEnd();
 }
 
 /** Outcome of editListedPrompt: a resolved edit (naming the loop it landed in, since the

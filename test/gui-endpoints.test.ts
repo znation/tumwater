@@ -4,15 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleConfig, handleDiff, handleReport, handleFailures, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
+import { handleConfig, handleDiff, handleReport, handleFailures, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handlePromptEdit, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { configPath, roleNotesPath } from "../src/paths.js";
+import { configPath, roleInboxDir, roleNotesPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -24,6 +25,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -572,4 +574,100 @@ test("handleDiff refuses an unknown role through rejectBadRole's 400", async () 
   assert.match((bad.data as { error: string }).error, /valid ids:/);
   const traversal = await serveDiff(root, "?role=" + encodeURIComponent("../../../etc"));
   assert.equal(traversal.captured.status, 400);
+});
+
+// ---- GET /api/prompt-text and POST /api/prompt-edit: the Queued tab's file-addressed edit
+// seam (PLANS.md 2026-10-11, part 1/2). Both address one prompt by its queue-file basename,
+// the /api/prompt-cancel address, and share inbox-edit.ts's core with the CLI's
+// `prompt --edit` so the browser cannot drift from it.
+
+/** Seed a queue file at an exact basename, so these endpoints can be driven without depending
+ * on enqueueRolePrompt's stamp (the browser names whichever file a poll showed). */
+function seedPromptFile(root: string, role: string, name: string, text: string): string {
+  const dir = roleInboxDir(root, role);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, text);
+  return file;
+}
+
+function servePromptText(root: string, query: string) {
+  return captureJson((res) => handlePromptText(new URLSearchParams(query), res, root));
+}
+
+function servePromptEdit(root: string, body: unknown) {
+  return captureJson((res) => handlePromptEdit(fakeReq(JSON.stringify(body)), res, root));
+}
+
+test("handlePromptText serves a queue file's editable body, with gone and the guards", async () => {
+  const root = tmpdir();
+  seedPromptFile(root, "qa", "q.md", "the queued body");
+
+  const { captured, data } = await servePromptText(root, "?role=qa&file=q.md");
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  assert.deepEqual(data, { ok: true, text: "the queued body" });
+
+  // A vanished file is data for the UI, not a server fault.
+  const gone = await servePromptText(root, "?role=qa&file=missing.md");
+  assert.equal(gone.captured.status, 200);
+  assert.deepEqual(gone.data, { ok: true, status: "gone" });
+
+  // A missing or hostile file name is the shared basename guard's 400.
+  const missing = await servePromptText(root, "?role=qa");
+  assert.equal(missing.captured.status, 400);
+  assert.match((missing.data as { error: string }).error, /file required/);
+  const bad = await servePromptText(root, "?role=qa&file=../escape.md");
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /plain queue-file basename/);
+
+  // The role is a target, not a filter: an unknown id is rejectBadRole's 400.
+  const unknown = await servePromptText(root, "?role=ghost&file=q.md");
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /unknown role "ghost"/);
+});
+
+test("handlePromptEdit rewrites the named file, leaving a sibling intact, with gone and the guards", async () => {
+  const root = tmpdir();
+  seedPromptFile(root, "qa", "q.md", "old body");
+  seedPromptFile(root, "qa", "sibling.md", "sibling body");
+
+  const { captured, data } = await servePromptEdit(root, { role: "qa", file: "q.md", text: "new body" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, status: "edited", oldText: "old body", newText: "new body" });
+  assert.equal(fs.readFileSync(path.join(roleInboxDir(root, "qa"), "q.md"), "utf8"), "new body");
+  assert.equal(
+    fs.readFileSync(path.join(roleInboxDir(root, "qa"), "sibling.md"), "utf8"),
+    "sibling body",
+    "a sibling queue file is untouched",
+  );
+
+  // A bad file name and an over-cap body are user-input 400s, the file left as it was.
+  const bad = await servePromptEdit(root, { role: "qa", file: "q.txt", text: "x" });
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /\.md/);
+  const overCap = await servePromptEdit(root, {
+    role: "qa",
+    file: "q.md",
+    text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1),
+  });
+  assert.equal(overCap.captured.status, 400);
+  assert.match((overCap.data as { error: string }).error, /shorten it to at most/);
+  assert.equal(fs.readFileSync(path.join(roleInboxDir(root, "qa"), "q.md"), "utf8"), "new body");
+
+  // A vanished file answers gone; a missing file field is the guard's 400.
+  const gone = await servePromptEdit(root, { role: "qa", file: "missing.md", text: "new" });
+  assert.equal(gone.captured.status, 200);
+  assert.deepEqual(gone.data, { ok: true, status: "gone" });
+  const missing = await servePromptEdit(root, { role: "qa", text: "new" });
+  assert.equal(missing.captured.status, 400);
+  assert.match((missing.data as { error: string }).error, /file required/);
+
+  // The role is optional and validates exactly like /api/prompt-cancel.
+  seedPromptFile(root, DIRECTOR_ROLE, "director.md", "director body");
+  const asDirector = await servePromptEdit(root, { file: "director.md", text: "edited" });
+  assert.equal(asDirector.captured.status, 200);
+  const unknown = await servePromptEdit(root, { role: "ghost", file: "q.md", text: "x" });
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /unknown role "ghost"/);
 });
