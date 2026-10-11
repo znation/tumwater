@@ -5,6 +5,7 @@ import path from "node:path";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { setConfigKey } from "../src/config/config-write.js";
+import { runNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/notify-command.js";
 
 // The `notify --test` command: run the configured notify hook once with a synthetic event, via
 // the CLI the way the cli-queue tests drive `queue` — an initialized repo, child-process runs,
@@ -57,4 +58,18 @@ test("a hook that exits non-zero makes notify --test exit non-zero and print the
   const r = await cli(repo, "notify", "--test");
   assert.equal(r.code, 1);
   assert.match(r.stdout, /notify hook exited with code 3/);
+});
+
+test("a hook that never exits is killed at the timeout and reported, not awaited forever", async () => {
+  const repo = await initializedRepo();
+  const result = setConfigKey(repo, "notify", "sleep 60");
+  assert.ok(result.ok, `setConfigKey failed: ${result.ok ? "" : result.error}`);
+  const r = await cli(repo, "notify", "--test");
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, new RegExp(`did not finish within ${NOTIFY_TEST_TIMEOUT_MS / 1000}s and was killed`));
+});
+
+test("runNotifyHook resolves a never-ending hook at the injected timeout", async () => {
+  const r = await runNotifyHook("sleep 30", {}, 150);
+  assert.deepEqual(r, { timedOut: true });
 });

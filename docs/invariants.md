@@ -189,3 +189,22 @@ hyphens in the name" and "extractFlow returns null when absent, empty, or only m
 `test/build-check.test.ts` — "a merge-scope check killed by an external signal rejects, naming
 the signal and real duration"; `test/build-stage.test.ts` — "compileStaged reads a tsc that died
 by signal as a rejection even with output attached".
+
+## Bounded waits: a step that produces no verdict cannot hold its caller forever
+
+A wait on something outside the harness — a spawned child, a probe — is bounded so a hang is
+reported as a hang instead of stalling the caller. State the bound here so a later change
+cannot drop it silently.
+
+### INV-E1: `tumwater notify --test` bounds its hook wait
+
+**Guarantee.** `tumwater notify --test` stops waiting for a hook that does not finish within
+`NOTIFY_TEST_TIMEOUT_MS` and reports the timeout with a non-zero exit, rather than awaiting the
+hook forever; the bound is cleared on every outcome, so a hook that exits promptly never keeps
+the CLI alive.
+
+**Binds.** `src/cli/notify-command.ts` (`runNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`).
+
+**Pinned by.** `test/notify-command.test.ts` — "a hook that never exits is killed at the timeout
+and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
+injected timeout".
