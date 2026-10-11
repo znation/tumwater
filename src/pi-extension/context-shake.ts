@@ -120,7 +120,13 @@ function replacementFor(msg: ShakeMessage, fullOutputPath: string | null): strin
     return `[elided by tumwater: ${chars} chars; full output in ${fullOutputPath}]`;
   }
   const path = msg.readInput?.path ?? "the file";
-  const start = typeof msg.readInput?.offset === "number" && msg.readInput.offset > 0 ? msg.readInput.offset : 1;
+  // The offset is a wire value from the model's read tool input, so heal it like this
+  // module's other wire numbers (percentOf): a JSON `1e999` parses to Infinity and a
+  // fractional line number is no line at all, and the old bare `offset > 0` admitted both
+  // — rendering a pointer the model cannot follow (`big.ts:Infinity-Infinity`,
+  // `big.ts:1.5-2.5`). nonNegativeNumber makes it a non-negative finite number and the
+  // floor makes it a whole line, clamped to 1 exactly as a missing offset is.
+  const start = Math.max(1, Math.floor(nonNegativeNumber(msg.readInput?.offset, 1)));
   const lines = msg.text === "" ? 0 : msg.text.split("\n").length;
   const end = start + Math.max(1, lines) - 1;
   return `[elided by tumwater: ${chars} chars of ${path}:${start}-${end}; re-read the range if you still need it]`;

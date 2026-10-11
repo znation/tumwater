@@ -451,11 +451,18 @@ test("the adapter tolerates missing usage and an empty context", () => {
   assert.equal(handlers.turn_end!({}, { getContextUsage: () => ({ tokens: 0, contextWindow: 0, percent: null }) }), undefined);
 });
 
-test("a read pointer clamps a non-positive or missing offset to line 1", () => {
-  // `replacementFor`'s guard is `typeof offset === "number" && offset > 0`: an offset of 0 or
-  // below is a number that never starts a range, so the pointer must say line 1 — the same as
-  // a read input that names only the file — rather than "big.ts:0-0".
-  for (const readInput of [{ path: "src/big.ts", offset: 0 }, { path: "src/big.ts", offset: -5 }, { path: "src/big.ts" }]) {
+test("a read pointer clamps a non-positive, non-finite, or missing offset to line 1", () => {
+  // `replacementFor` heals the wire offset through nonNegativeNumber: an offset of 0, a
+  // negative one, a JSON `1e999` (Infinity), a NaN, or a missing one is not a line that can
+  // start a range, so the pointer must say line 1 — the same as a read input that names only
+  // the file — rather than "big.ts:0-0" or "big.ts:Infinity-Infinity".
+  for (const readInput of [
+    { path: "src/big.ts", offset: 0 },
+    { path: "src/big.ts", offset: -5 },
+    { path: "src/big.ts", offset: Number.POSITIVE_INFINITY },
+    { path: "src/big.ts", offset: Number.NaN },
+    { path: "src/big.ts" },
+  ]) {
     const read: ShakeMessage = {
       entryId: "r",
       role: "toolResult",
@@ -468,6 +475,20 @@ test("a read pointer clamps a non-positive or missing offset to line 1", () => {
     assert.equal(plan.edits.length, 1);
     assert.match(plan.edits[0]!.replacement, /src\/big\.ts:1-1; re-read the range/, JSON.stringify(readInput));
   }
+});
+
+test("a read pointer floors a fractional offset to a whole line", () => {
+  const read: ShakeMessage = {
+    entryId: "r",
+    role: "toolResult",
+    toolName: "read",
+    text: big(60_000),
+    readInput: { path: "src/big.ts", offset: 2.9 },
+  };
+  const messages = [read, ...protectedFillers()];
+  const plan = shakePlan(messages, atPercent(70));
+  assert.equal(plan.edits.length, 1);
+  assert.match(plan.edits[0]!.replacement, /src\/big\.ts:2-2; re-read the range/);
 });
 
 test("shakePlan tolerates a message with no text", () => {
