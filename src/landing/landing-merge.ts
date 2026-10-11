@@ -42,14 +42,16 @@ import type { RunsPi } from "../loop/loop-pi.js";
  * keeps the tick lifecycle around it — because this is a self-contained concern with its own flow
  * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
  * borrows from the loop are identity (root/mainBranch), `role` for events and session naming only,
- * the current tick number for session naming, and the loop's shared pi wiring so a
- * conflict-resolution run folds into the same tick counters as an authoring run. */
+ * the current tick number for session naming, the live config and its review-exemption patterns
+ * (the in-lock re-check), and the loop's shared pi wiring so a conflict-resolution run folds into
+ * the same tick counters as an authoring run. */
 
 /** What mergeToMain needs from its owning loop: identity (root, main branch), the role for events
  * and session naming only — the landing code never re-derives it into a branch — plus the tick
- * number that names the conflict-resolution session, and the loop's shared pi runner (role config,
- * session dir, raw log, transient-timeout retry) with usage folded into the tick counters — every
- * pi run of a tick lands there exactly once. */
+ * number that names the conflict-resolution session, the live config and its review-exemption
+ * patterns (the in-lock re-check), and the loop's shared pi runner (role config, session dir,
+ * raw log, transient-timeout retry) with usage folded into the tick counters — every pi run of a
+ * tick lands there exactly once. */
 export interface MergeContext extends RunsPi {
   root: string;
   role: string;

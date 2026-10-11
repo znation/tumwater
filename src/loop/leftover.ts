@@ -17,8 +17,9 @@ import type { LoopState } from "./loop-state.js";
  * ahead of main; recovery adopts that tip into the pin scheme and queues it, so invariant 1
  * holds whether or not the pin survived. Split out of loop.ts — which keeps the tick lifecycle
  * around it — because this is a self-contained concern with its own entry condition and git
- * surface; the only things it borrows from the loop are identity, the tick number, and the
- * worktree (for the no-pin fallback). */
+ * surface; the only things it borrows from the loop are identity, the tick number, the
+ * worktree (for the no-pin fallback), and three pieces of the role's landing state: its
+ * conflict streak, outstanding hand-back, and permanent-reviewer hold. */
 
 /** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery stops
  * re-queuing it (LoopState.mergeConflicts). Each attempt costs a conflict-resolution run, and
@@ -28,8 +29,9 @@ import type { LoopState } from "./loop-state.js";
  * part 2/2"); a lineage already handed back once is discarded instead. */
 export const MERGE_CONFLICT_LIMIT = 2;
 
-/** What recoverLeftover needs from its owning loop: identity, the current tick number, and the
- * role's worktree (needed only for the no-pin ahead-of-main fallback). */
+/** What recoverLeftover needs from its owning loop: identity, the current tick number, the
+ * role's worktree (needed only for the no-pin ahead-of-main fallback), and the role's landing
+ * state — its conflict streak, outstanding hand-back, and permanent-reviewer hold. */
 export interface LeftoverContext {
   root: string;
   role: string;

@@ -22,9 +22,9 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * instead of burning runs that are guaranteed to fail. Split out of loop.ts — which keeps the
  * tick lifecycle around it — because this is a self-contained policy with its own per-process
  * state (one harness-level warning per newly-discovered red SHA) and its own event contract; what
- * it borrows from the loop is identity only, and it consumes build/build-check.ts's
- * checkMainBaseline machinery (detection + execution + per-SHA cache), which stays unaware of
- * ticks. */
+ * it borrows from the loop is identity and the role's worktree, and it consumes
+ * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
+ * which stays unaware of ticks. */
 
 /** The last main SHA for which this process logged a red-main warning (the baseline check):
  * one harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
