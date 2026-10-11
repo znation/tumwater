@@ -224,7 +224,11 @@ if (statusOnly) {
 if (bumpMode) {
   const ahead = guardMain();
   const out = spawnSync("npm", ["version", "--no-git-tag-version", bumpLevel], { cwd: root, encoding: "utf8" });
-  if (out.status !== 0) die(`npm version failed: ${(out.stderr || out.stdout).trim()}`);
+  // A spawn failure (npm not on PATH, a non-executable npm) leaves status null and stdout/
+  // stderr undefined, so the message below would throw a bare TypeError instead of naming
+  // the cause — the same distinction ghSpawn draws for gh. Check the spawn error first.
+  if (out.error) die(`could not run \`npm\` (${out.error.message}) — \`npm version\` needs the npm CLI on PATH.`);
+  if (out.status !== 0) die(`npm version failed: ${(out.stderr || out.stdout || "").trim()}`);
   const newVersion = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
   sh("add", "package.json", "package-lock.json");
   sh("commit", "-m", `tumwater(release): ${newVersion}`);

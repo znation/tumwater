@@ -170,6 +170,23 @@ test("bump commits the next patch version and pushes it to origin", () => {
   );
 });
 
+test("bump dies naming npm when the npm CLI is not on PATH", () => {
+  const { root } = pushedRepoWithLock("0.1.0");
+  // Replace PATH so npm cannot be found: the `npm version` spawn fails with ENOENT, whose
+  // status-null/stdout-undefined shape the message-building `.trim()` used to turn into a bare
+  // TypeError instead of naming the missing tool. git stays reachable for guardMain.
+  const restore = pathReplace(gitOnlyBinDir("release-no-npm-"));
+  try {
+    const r = runRelease(root, ["bump", "patch"]);
+
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /could not run `npm`/);
+    assert.doesNotMatch(r.stderr, /TypeError/, "the spawn failure never reaches the operator raw");
+  } finally {
+    restore();
+  }
+});
+
 test("bump replays on the new main when the first push is rejected", () => {
   const { root } = pushedRepoWithLock("0.1.0");
   installRejectOncePushHook(root);
