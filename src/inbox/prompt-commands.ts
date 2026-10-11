@@ -147,9 +147,13 @@ function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome
 
 /** Refuse an `--attach` path list from what the paths alone reveal, before any file is read:
  * the shared image-count cap first (so a glob that expanded past it is rejected without
- * reading or base64-encoding dozens of files), then each path's extension and on-disk size.
- * A path that cannot be statted is left for the read below to report with its own
- * missing-file wording. Returns the first problem, or null when every path survives. */
+ * reading or base64-encoding dozens of files), then each path's extension, regular-file
+ * shape, and on-disk size. The regular-file check is not just a nicer message for a
+ * directory named `shot.png` (whose stat size is small enough to pass the cap): it also keeps
+ * `readPromptImages` from calling readFileSync on a FIFO or device node that would block the
+ * command indefinitely. A path that cannot be statted is left for the read below to report
+ * with its own missing-file wording. Returns the first problem, or null when every path
+ * survives. */
 function attachPathsProblem(paths: readonly string[]): string | null {
   const countProblem = promptImagesCountProblem(paths.length);
   if (countProblem !== null) return countProblem;
@@ -157,7 +161,10 @@ function attachPathsProblem(paths: readonly string[]): string | null {
     const extProblem = promptImageExtensionProblem(p);
     if (extProblem !== null) return extProblem;
     try {
-      const sizeProblem = promptImageSizeProblem(path.basename(p), fs.statSync(p).size);
+      const stat = fs.statSync(p);
+      if (!stat.isFile())
+        return `attached image ${JSON.stringify(p)} is not a regular file — pass a path to an image file`;
+      const sizeProblem = promptImageSizeProblem(path.basename(p), stat.size);
       if (sizeProblem !== null) return sizeProblem;
     } catch {
       // Missing or unreadable: the read below names it.

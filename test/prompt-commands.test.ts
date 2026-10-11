@@ -393,6 +393,12 @@ test("prompt --attach fails on a nonexistent path, an unsupported extension, and
   fs.writeFileSync(big, Buffer.alloc(5 * 1024 * 1024 + 1));
   const size = await expectFailAsync(() => cmdPrompt(root, ["--attach", big, "hello"]));
   assert.match(size, /at most 5242880 \(5 MiB\) per image/);
+  // A directory whose name ends in an image extension: its stat size is under the cap, so
+  // only the regular-file rule refuses it before readFileSync would fail with a raw EISDIR.
+  const dir = path.join(root, "shots.png");
+  fs.mkdirSync(dir);
+  const dirFail = await expectFailAsync(() => cmdPrompt(root, ["--attach", dir, "hello"]));
+  assert.match(dirFail, /is not a regular file/);
   assert.equal(inboxSize(root), 0, "none of the refused shapes queued anything");
 });
 
