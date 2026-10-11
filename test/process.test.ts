@@ -20,7 +20,7 @@ import {
   systemProcessProbe,
 } from "../src/process/process-table.js";
 import { makeRunMarker, runMarkerEnv } from "../src/process/run-marker.js";
-import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
+import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./fixtures/victim-fixture.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { errnoError } from "./helpers/fs-faults.js";
@@ -65,10 +65,7 @@ test("pidAlive follows a real child across its whole lifetime", async () => {
 });
 
 test("pidAlive reads a live foreign process as NOT alive (EPERM)", (t) => {
-  if (runningAsRoot()) {
-    t.skip("running as root: signal-0 to pid 1 is permitted, so the EPERM branch is unreachable");
-    return;
-  }
+  if (skipIfRoot(t, "running as root: signal-0 to pid 1 is permitted, so the EPERM branch is unreachable")) return;
   // PID 1 (launchd/init) is always running but owned by another user: a non-root probe gets
   // EPERM. The contract says that reads as "not alive" — a live foreign holder must not be
   // mistaken for one of ours, or the merge lock it holds could never be broken.

@@ -11,6 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import type { TestContext } from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +50,16 @@ export function tmpdir(prefix = "tumwater-test-"): string {
  * skip or branch on the predicate instead of asserting a failure that cannot fire). */
 export function runningAsRoot(): boolean {
   return process.getuid?.() === 0;
+}
+
+/** Skip the running test when it runs as root, where a chmod-based permission failure cannot
+ * fire (runningAsRoot): one home for the skip-and-return dance and its default reason, shared
+ * by the permission fixtures. Callers whose reason differs pass it as `reason`. Returns true
+ * when it skipped, so the call site reads `if (skipIfRoot(t)) return;`. */
+export function skipIfRoot(t: TestContext, reason = "chmod cannot stop a root process"): boolean {
+  if (!runningAsRoot()) return false;
+  t.skip(reason);
+  return true;
 }
 
 export function sh(cwd: string, cmd: string, ...args: string[]): string {

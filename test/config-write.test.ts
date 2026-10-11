@@ -14,7 +14,7 @@ import {
 } from "../src/config/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
-import { runningAsRoot, tmpdir } from "./fixtures/repo-fixtures.js";
+import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Tests for src/config/config-write.ts — the harness-mediated write paths split out of
 // src/config/config.ts
@@ -77,10 +77,7 @@ test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid v
 // byte-for-byte intact, and the atomic writer's tmp file does not linger. Skipped under root,
 // where chmod cannot stop the write (the success path already covers the ordinary case).
 test("setDailyBudgetUsd reports a failed write and leaves the config untouched", (t) => {
-  if (runningAsRoot()) {
-    t.skip("chmod cannot stop a root process");
-    return;
-  }
+  if (skipIfRoot(t)) return;
   const dir = tmpdir();
   const base = defaultConfig();
   base.maxDailyCostUsd = 7;
@@ -108,10 +105,7 @@ test("setDailyBudgetUsd reports a failed write and leaves the config untouched",
 // atomic-write catch rather than the outer lock catch. Pre-creating the state dir makes the two
 // separable — chmod on the root does not change the state dir's own permissions.
 test("setDailyBudgetUsd surfaces an atomic-write failure after the lock is taken", (t) => {
-  if (runningAsRoot()) {
-    t.skip("chmod cannot stop a root process");
-    return;
-  }
+  if (skipIfRoot(t)) return;
   const dir = tmpdir();
   const base = defaultConfig();
   base.maxDailyCostUsd = 7;
@@ -352,10 +346,7 @@ test("applyConfigRequest survives structurally malformed requests without throwi
 // commitAll's `git add -A` and reach a review gate), and the file is still there for a retry.
 // Skipped under root, where chmod cannot stop the unlink (the success path already covers it).
 test("a request whose unlink fails is still applied, with the failed deletion surfaced as the error", (t) => {
-  if (runningAsRoot()) {
-    t.skip("chmod cannot stop a root process");
-    return;
-  }
+  if (skipIfRoot(t)) return;
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
@@ -376,10 +367,7 @@ test("a request whose unlink fails is still applied, with the failed deletion su
 // The ??= precedence: a request that failed validation AND could not be deleted reports the
 // validation problem — the reason the caller acts on — never the cleanup noise.
 test("a validation failure outranks a failed deletion in the surfaced error", (t) => {
-  if (runningAsRoot()) {
-    t.skip("chmod cannot stop a root process");
-    return;
-  }
+  if (skipIfRoot(t)) return;
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
