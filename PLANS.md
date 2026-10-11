@@ -85,6 +85,71 @@ so one command corrects the text and the images without moving the entry.
   same-stem image already exists.
 - `npm run test` is green.
 
+### A trailing `--since` window on the dashboard Usage and Failures views (planned 2026-10-10 by plan; independent of the waiting dashboard History trailing-window and prompt `--edit --attach` plans; completes the CLI's `report --since` and `report --failures --since` on the dashboard's two report tabs, sharing their `windowView` toolbar with the landed role scope)
+
+**Goal.** `tumwater report --since <duration>` totals usage over a trailing window and
+`tumwater report --failures --since <duration>` windows the failure digest the same way (both
+capped at 7d). The dashboard's Usage and Failures views offer only whole-day counts
+(7/14/30/90 and 7/14/30), so an operator cannot ask either tab for the last hour, 6 hours, or
+day — the sub-day windows the CLI has. Add a trailing-window choice to both toolbars that
+reads through the same `collectReportSince` / `collectFailureReportSince` collectors and reuses
+the CLI's own Markdown render, so the browser and the terminal cannot disagree about the
+window or its totals.
+
+**Approach.**
+1. `src/gui/gui-endpoints.ts`: import `collectReportSince` from `../report/report-data.js`,
+   `renderSinceReportMarkdown` from `../report/report-render.js`, `collectFailureReportSince`
+   from `../failure/failure-data.js`, and `REPORT_SINCE_MAX_MS` from `../events/event-window.js`.
+   In `handleReport`, after the existing `role` validation, branch on `q.get("sinceMs") !== null`:
+   a simultaneous `q.get("days") !== null` is the CLI's rival shape → 400 naming both; otherwise
+   parse through the existing `intQuery(q, res, "sinceMs", "positive")` (null → return), reject a
+   value above `REPORT_SINCE_MAX_MS` with a 400 naming the cap, and answer
+   `{ markdown: renderSinceReportMarkdown(collectReportSince(root, sinceMs, role ?? undefined)) }`.
+   The day path is unchanged (`collectReport` JSON). `handleFailures` gets the identical branch,
+   answering `{ markdown: renderFailureMarkdown(collectFailureReportSince(root, sinceMs, role ?? undefined)) }`,
+   and its day path stays `collectFailureReport` + `renderFailureMarkdown`.
+2. `src/ui/gui/gui-client-report.ts`: give `viewHead` an optional trailing `sinceChoices`
+   argument (an array of `[ms, label]`) and render one `<button type='button' data-since='<ms>'>`
+   per entry into the existing `.seg` after the count buttons. In `windowView` add
+   `let sinceMs = o.sinceChoices ? Number(recall(o.sinceKey)) || null : null;`, pass
+   `o.sinceChoices` into `viewHead`, call `o.endpoint(days, role, sinceMs)`, and mark both
+   controls on every fetch — `markActive($(o.pickerId), "days", sinceMs ? -1 : days)` and
+   `markActive($(o.pickerId), "since", sinceMs || -1)` — so exactly one is active. `wireClicks`
+   gains a `[data-since]` branch (`sinceMs = Number(b.dataset.since)`, `store(o.sinceKey, String(sinceMs))`,
+   fetch) and its `[data-days]` branch clears a live since (`sinceMs = null`, `store(o.sinceKey, "")`)
+   before persisting the count. Both configs gain
+   `sinceChoices: [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]]` and
+   `sinceKey: "usage-since"` / `"fail-since"`, and their `endpoint` takes `(days, role, sinceMs)`
+   to build `/api/report?sinceMs=<ms>` (or `/api/failures?sinceMs=<ms>`) when set, the day
+   `?days=` form otherwise, with the role suffix unchanged.
+3. Usage's `render(d)`: when the payload carries `d.markdown` (the since shape), render it as
+   `"<article class='card md'>" + renderMarkdown(stripHashHeading(d.markdown), true) + "</article>"`
+   — the same markdown-card path Failures already uses, dropping the render's own `# …` heading
+   since the view head titles the page — and otherwise keep today's `reportSummary` + chart
+   render. Failures' render already handles `{ markdown }` and needs no change.
+4. No new runtime dependency; the day-window path and both role scopes are untouched.
+
+**Files touched.** `src/gui/gui-endpoints.ts`, `src/ui/gui/gui-client-report.ts`,
+`test/gui-endpoints.test.ts`, `test/gui-report.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-endpoints.test.ts`: `handleReport` with `?sinceMs=3600000` answers 200
+  `application/json` with a `markdown` field carrying no `series`/`days`, whose text includes
+  `renderSinceReportMarkdown`'s `window: last 1h` line and counts a seeded `tick_end` 30 min old
+  but not one 3 h old; `handleFailures` with `?sinceMs=3600000` answers `{ markdown }` whose first
+  line is the failure digest's `window: last 1h`. `?sinceMs=604800001` (above the cap) and
+  `?sinceMs=3600000&days=7` (rival shape) each answer 400; `?sinceMs=3600000&role=feature` scopes
+  both collectors (only the feature tick counts, the digest names `feature`).
+- `test/gui-report.test.ts`: with `recall("usage-since")` returning `"3600000"`, `fetchReport`
+  requests `/api/report?sinceMs=3600000`, and a `{ markdown }` payload renders through
+  `renderMarkdown` in the Usage body instead of the chart path; the built toolbar carries a
+  `data-since` button that `markActive` marks while no `data-days` button is active. Choosing a
+  `data-days` button builds a `?days=` request (asserted through the URL passed to the injected
+  `getJson`).
+- The existing day-window `handleReport`/`handleFailures` tests and the Usage chart and
+  sparse-note tests stay green.
+- `npm run test` is green.
+
 ## Done
 
 ### Search the dashboard History view with `tumwater history --grep`'s rule (planned 2026-10-10 by plan; independent of the citation-sweep series; sibling of the landed `tumwater history --grep` and the landed role scope in the dashboard History view; done 2026-10-10 by feature)
