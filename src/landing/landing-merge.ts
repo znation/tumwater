@@ -22,7 +22,7 @@ import { isExemptDiff } from "../review/exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { withLock } from "../concurrency/lock.js";
-import { buildConflictPrompt } from "../gates/gate-prompts.js";
+import { buildConflictPrompt } from "../prompt/gate-prompts.js";
 import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";

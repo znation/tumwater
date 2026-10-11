@@ -2848,7 +2848,7 @@ Part 2/3 already writes the accurate `review_failed` message itself (its conditi
 
 **Approach.**
 1. `src/loop/loop-state.ts`: add `reviewResume?: { patchId: string; sessionDir: string; attempts: number; at: number }` to `LoopState`, documented as the reviewer session a progressing timeout left for the next attempt. Heal it in `loadLoopState` with `healRecord` like `lastReview` (`v.attempts`/`v.at` through `healNumber`) and drop the field unless `patchId` and `sessionDir` are strings, so a corrupt marker cannot throw in `sessionResumable`. Export `REVIEW_RESUME_LIMIT = 2`.
-2. `src/gates/gate-prompts.ts`: add `buildReviewResumePrompt(base, patchId)` beside `buildReviewPrompt`. It states the previous run hit its time budget, names the frozen base SHA and that the change's diff is unchanged (same patch-id), tells the reviewer to continue from where it stopped rather than re-reading what it already checked, and to finish with the `VERDICT` line. It carries no diff — the session already holds it.
+2. `src/prompt/gate-prompts.ts`: add `buildReviewResumePrompt(base, patchId)` beside `buildReviewPrompt`. It states the previous run hit its time budget, names the frozen base SHA and that the change's diff is unchanged (same patch-id), tells the reviewer to continue from where it stopped rather than re-reading what it already checked, and to finish with the `VERDICT` line. It carries no diff — the session already holds it.
 3. `src/review/review.ts`, in `reviewAheadOfMain`:
    - Compute `const reviewedPatchId = await patchId(wt, mainBranch, head)` once (reuse it for the already-approved check too) — the same identity `state.lastApprovedPatchId` uses.
    - Decide `resuming` = `state.reviewResume` exists and `state.reviewResume.patchId === reviewedPatchId` and `state.reviewResume.attempts < REVIEW_RESUME_LIMIT` and `sessionResumable(state.reviewResume.sessionDir, { kind: "gate", agent: reviewCfg.agent ?? "pi" }, hasResumableSession(state.reviewResume.sessionDir))`.
@@ -2858,7 +2858,7 @@ Part 2/3 already writes the accurate `review_failed` message itself (its conditi
    - The follow-up path is unchanged: the no-re-run rule and suite-rerun tripwire apply as today, and a follow-up continues the same (resumed or fresh) run directory.
 4. Streak: a progressing timeout that will be resumed still counts for `consecutiveErrors`; the point is that the next attempt converges, so the counting is untouched.
 
-**Files touched:** src/loop/loop-state.ts, src/review/review.ts, src/gates/gate-prompts.ts, test/loop-state.test.ts, test/review.test.ts, test/gate-prompts.test.ts.
+**Files touched:** src/loop/loop-state.ts, src/review/review.ts, src/prompt/gate-prompts.ts, test/loop-state.test.ts, test/review.test.ts, test/gate-prompts.test.ts.
 
 **Acceptance criteria:**
 - With a fake pi whose first gate run times out while progressing and whose next run approves, the second review of the same change runs with `--continue` in the timed-out run's own directory, its prompt is the resume prompt (not the full diff prompt), `reviewAheadOfMain` returns `approved`, and `state.reviewResume` is cleared. `review_start` for that run has `resumed: true`.

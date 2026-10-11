@@ -1,4 +1,4 @@
-/** Tests for src/gates/gate-prompts.ts — the landing gate's prompts: conflict resolution after a
+/** Tests for src/prompt/gate-prompts.ts — the landing gate's prompts: conflict resolution after a
  * rebase, the adversarial pre-merge review, and the notes that carry the gate's verdicts back
  * to the author loop. Split out of prompt.test.ts, which keeps the role-loop prompt builders'
  * tests; gate prompts are started by the harness's merge/review pipeline, not the role ticks,
@@ -13,7 +13,7 @@ import {
   buildReviewPrompt,
   buildReviewResumePrompt,
   buildStageFixPrompt,
-} from "../src/gates/gate-prompts.js";
+} from "../src/prompt/gate-prompts.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { TEST_RUNNER_RULE } from "../src/prompt/prompt.js";

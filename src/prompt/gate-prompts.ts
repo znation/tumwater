@@ -1,5 +1,5 @@
 import { shortSha } from "../text/format.js";
-import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
+import { TEST_RUNNER_RULE, dateLine } from "./prompt.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";

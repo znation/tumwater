@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { requestNoRerun, requestVerdict } from "../src/review/review-followup.js";
-import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../src/gates/gate-prompts.js";
+import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../src/prompt/gate-prompts.js";
 import { piLogPath, reviewRunSessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";

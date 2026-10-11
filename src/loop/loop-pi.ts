@@ -10,7 +10,7 @@ import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/c
 import { dailyCost, fleetDailyCost } from "../budget/budget.js";
 import { loadLoopState } from "./loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
-import { buildStageFixPrompt } from "../gates/gate-prompts.js";
+import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";

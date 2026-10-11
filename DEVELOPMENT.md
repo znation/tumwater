@@ -167,7 +167,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   (`status-data.ts`) and its per-poll cached readers; rendering lives in `src/ui/status-render.ts`.
 - `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
   pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the fleet
-  failure hold (`gate-polls.ts` polls them; `gate-prompts.ts` holds their prompt text).
+  failure hold (`gate-polls.ts` polls them).
 - `src/fleet/`: fleet-wide state (`fleet-state.ts` — the pause markers and their writers), the
   provider/kind hold, the fleet polls, the failure spread and error-storm alarms, and the
   worktree reclaim pass (`reclaim.ts`).
@@ -202,7 +202,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/init/`: `tumwater init` and its bundled template catalog.
 - `src/process/`: process spawning and supervision — the supervisor, process groups, the
   process table, and the macOS LaunchServices guard.
-- `src/prompt/`: the prompt dialect and principles a tick prefill is assembled from.
+- `src/prompt/`: the prompt dialect, principles, and the landing gate's pi-run prompt text
+  (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`) a tick prefill is assembled from.
 - `src/roles/`: the role catalog, its loop ids, per-role guidance, and the per-role views the
   CLI and dashboards read.
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),

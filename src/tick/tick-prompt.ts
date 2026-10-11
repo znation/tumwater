@@ -11,7 +11,7 @@ import { readBrief } from "../brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildAssignmentNote, buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildRejectedReviewNote } from "../prompt/gate-prompts.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";

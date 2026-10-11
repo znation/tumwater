@@ -11,7 +11,7 @@ import { nativeLogPath, piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";
 import { readPrinciples } from "../prompt/principles.js";
-import { buildReviewPrompt, buildReviewResumePrompt } from "../gates/gate-prompts.js";
+import { buildReviewPrompt, buildReviewResumePrompt } from "../prompt/gate-prompts.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";

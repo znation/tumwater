@@ -4,7 +4,7 @@ import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { failureHeadline } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
-import { buildMainRedNote } from "../gates/gate-prompts.js";
+import { buildMainRedNote } from "../prompt/gate-prompts.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";

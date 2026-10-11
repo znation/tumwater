@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
-import { buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
+import { buildRejectedReviewNote } from "../src/prompt/gate-prompts.js";
 import { aheadOfMain, patchId } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";

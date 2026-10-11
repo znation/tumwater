@@ -185,7 +185,7 @@ markdown.
   - **The primary instance with no claim and an empty `free`** runs exactly as today. That
     includes bugfix's latent-bug search and feature's nothing-to-do. Its prompt adds an
     exclusion list of held titles.
-- **Prompt.** `assembleTickPrompt` appends `buildAssignmentNote` (src/gates/gate-prompts.ts)
+- **Prompt.** `assembleTickPrompt` appends `buildAssignmentNote` (src/prompt/gate-prompts.ts)
   when `state.claim` is set and the tick dequeued no user request:
   - the entry's title and current line range (looked up by key);
   - an instruction to implement or fix only that entry, which replaces the charter's "pick one"

@@ -1337,7 +1337,7 @@ src/config/config-validation.ts` still finds no `check` key. Re-pinned anchors (
 Correction (pinned in place):
 1. **The gate's build-fix prompt is an npm assumption the 09-23 fix-on-the-spot feature added.**
    `buildBuildFixPrompt(roleId, script, reasons)` (then in src/prompt/prompt.ts; the in-slot fix
-   run was later removed and its prompt replaced by `buildStageFixPrompt(findings)` in src/gates/gate-prompts.ts) interpolated
+   run was later removed and its prompt replaced by `buildStageFixPrompt(findings)` in src/prompt/gate-prompts.ts) interpolated
    `` `npm run ${script}` `` twice into its text, and the gate called it with
    `check.script` — a field the configured-command variant of the `BuildCheck` union does not
    have. The rejection reasons are equally npm-shaped: the headline then read
@@ -1403,7 +1403,7 @@ Re-pinned anchors (09-24 note's terms → today):
   `runDoctor(root, pathEnv)` still loads config once behind a guard — the
   09-24 pin's shape holds, `checkBuildCheck` gains the config parameter from it.
 - **Fix prompt:** `buildBuildFixPrompt(roleId, script, reasons)` was later replaced by
-  `buildStageFixPrompt(findings)` in src/gates/gate-prompts.ts; the in-slot fix run was
+  `buildStageFixPrompt(findings)` in src/prompt/gate-prompts.ts; the in-slot fix run was
   removed, and the reasons headline is now built by `checkFailureReasons`
   (src/build/build-check-report.ts). Tests: test/prompt.test.ts (formerly `buildBuildFixPrompt names the role, the failing
   script…`) — updated

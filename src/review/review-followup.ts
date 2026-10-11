@@ -8,7 +8,7 @@ import { agentSessionResumable } from "../agent/agent-backend.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath } from "../paths.js";
-import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../gates/gate-prompts.js";
+import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../prompt/gate-prompts.js";
 import type { ToolCallStart } from "./suite-rerun.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 import type { ReviewContext } from "./review.js";

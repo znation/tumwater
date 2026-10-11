@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "../src/loop/revision.js";
-import { buildRevisionNote, buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
+import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-prompts.js";
 import { vetRequest } from "../src/landing/landing-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, landingRefName } from "../src/paths.js";

@@ -16,7 +16,7 @@ import {
   buildConflictHandbackNote,
   buildRevisionNote,
   buildRejectedReviewNote,
-} from "../gates/gate-prompts.js";
+} from "../prompt/gate-prompts.js";
 import type { LoopPi } from "./loop-pi.js";
 import {
   fallbackRoleConfig,

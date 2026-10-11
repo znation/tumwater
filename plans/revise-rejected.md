@@ -47,7 +47,7 @@ is itself a finding, so rounds cannot drift onto unrelated complaints.
   main and the red-main gate, only for a role tick that dequeued no user request. `revisionRound`
   on the tick context records that this tick holds the rejected diff, so a pending revision a
   user-request tick leaves untouched is not mistaken for one.
-- `buildRevisionNote` (`src/gates/gate-prompts.ts`) replaces the plain rejected note on a
+- `buildRevisionNote` (`src/prompt/gate-prompts.ts`) replaces the plain rejected note on a
   revision tick: it numbers the objections, asks for the smallest edit that resolves each, and
   offers the nothing-to-do sentinel for a change whose premise the objections disproved. A
   revision tick that declares nothing-to-do resets the worktree, clears the revision, and ends
@@ -70,7 +70,7 @@ is itself a finding, so rounds cannot drift onto unrelated complaints.
   capped like the ahead-of-main diff and is empty on any git failure, including a prior object
   that is gone. The high creation factor makes range-diff pair the versions even for a tiny
   change; at the default a small revision renders as two unrelated commits.
-- `buildReviewPrompt` (`src/gates/gate-prompts.ts`) gains an optional prior-review block,
+- `buildReviewPrompt` (`src/prompt/gate-prompts.ts`) gains an optional prior-review block,
   placed after the author's commit body: the round, the numbered prior objections, the
   interdiff, and the instruction to check each objection first, with an unresolved one a
   rejection on its own. Without a prior review the block is absent and the prompt is unchanged.
