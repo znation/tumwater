@@ -329,12 +329,16 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return { fetch: fetchView, wireClicks, syncRoles };
   }
 
+  // The trailing-window lengths both report views offer, as [milliseconds, short label]. Usage
+  // and Failures share one set, so their segmented controls always offer the same windows.
+  const REPORT_SINCE_CHOICES = [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]];
+
   const usage = windowView({
     panelId: "report", title: "Usage", bodyId: "usagebody",
     blurb: "What the fleet produced and what it cost, per day and per loop.",
     pickerId: "usagewindow", choices: [7, 14, 30, 90], refreshId: "usagerefresh",
     key: "usage-days", defaultDays: 14, roleKey: "usage-role", rolePickerId: "usagerole",
-    sinceKey: "usage-since", sinceChoices: [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]],
+    sinceKey: "usage-since", sinceChoices: REPORT_SINCE_CHOICES,
     errorTitle: "Usage report unavailable",
     endpoint: (days, role, sinceMs) => (sinceMs ? "/api/report?sinceMs=" + sinceMs : "/api/report?days=" + days) +
       (role ? "&role=" + encodeURIComponent(role) : ""),
@@ -365,7 +369,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     blurb: "What went wrong, where, and how often — the digest the telemetry loop reads.",
     pickerId: "failwindow", choices: [7, 14, 30], refreshId: "failrefresh",
     key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
-    sinceKey: "fail-since", sinceChoices: [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]],
+    sinceKey: "fail-since", sinceChoices: REPORT_SINCE_CHOICES,
     errorTitle: "Failure digest unavailable",
     endpoint: (days, role, sinceMs) => (sinceMs ? "/api/failures?sinceMs=" + sinceMs : "/api/failures?days=" + days) +
       (role ? "&role=" + encodeURIComponent(role) : ""),
