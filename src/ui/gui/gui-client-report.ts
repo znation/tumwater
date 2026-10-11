@@ -180,21 +180,26 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function reportSummary(data) {
     const t = data.totals;
     const days = Math.max(1, Number(data.days) || data.series.length || 1);
-    const tile = (label, ic, value, perDay, extra) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
-      "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(perDay + " a day" + (extra || "")) + "</span></div>";
+    // The per-day average every tile's sub-line carries: the shared "≈ " prefix and division by
+    // the window's day count, with the tile's own formatter for the quotient (counts keep one
+    // decimal, ticks and tokens round, money reuses fmtUsd). One home for the prefix and the
+    // divisor, so the six tiles cannot drift on how an average is stated.
+    const perDay = (value, fmt) => "≈ " + fmt(value / days);
+    const tile = (label, ic, value, avg, extra) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
+      "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(avg + " a day" + (extra || "")) + "</span></div>";
     return [
-      tile("Commits landed", "merge", String(t.commits), "≈ " + (t.commits / days).toFixed(1),
+      tile("Commits landed", "merge", String(t.commits), perDay(t.commits, (v) => v.toFixed(1)),
         " · " + workSplit(t)),
       // A role scope has no backlog tallies: features/bugs come from day-granular backlog-file
       // dates that carry no role, so the scoped collector zeroes them and the tiles stay out —
       // the Usage render's scope line states the omission instead.
       ...(data.role ? [] : [
-        tile("Features done", "plan", String(t.featuresDone), "≈ " + (t.featuresDone / days).toFixed(1)),
-        tile("Bugs fixed", "bug", String(t.bugsFixed), "≈ " + (t.bugsFixed / days).toFixed(1)),
+        tile("Features done", "plan", String(t.featuresDone), perDay(t.featuresDone, (v) => v.toFixed(1))),
+        tile("Bugs fixed", "bug", String(t.bugsFixed), perDay(t.bugsFixed, (v) => v.toFixed(1))),
       ]),
-      tile("Ticks", "refresh", String(t.ticks), "≈ " + Math.round(t.ticks / days)),
-      tile("Output tokens", "bars", fmtTokens(t.tokensOut), "≈ " + fmtTokens(Math.round(t.tokensOut / days))),
-      tile("Spent", "dollar", fmtUsd(t.costUsd), "≈ " + fmtUsd(t.costUsd / days)),
+      tile("Ticks", "refresh", String(t.ticks), perDay(t.ticks, Math.round)),
+      tile("Output tokens", "bars", fmtTokens(t.tokensOut), perDay(t.tokensOut, (v) => fmtTokens(Math.round(v)))),
+      tile("Spent", "dollar", fmtUsd(t.costUsd), perDay(t.costUsd, fmtUsd)),
     ].join("");
   }
 
