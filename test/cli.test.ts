@@ -8,7 +8,7 @@ import { readInitialPrompt } from "../src/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
-import { cli } from "./helpers/cli-harness.js";
+import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 import { seedCounters } from "./fixtures/loop-fixtures.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is tested as a
@@ -123,6 +123,24 @@ test("init --branch with a name git rejects fails before creating anything", asy
   // so a re-run with a good name starts clean instead of tripping the existing-repo refusal.
   assert.ok(!fs.existsSync(path.join(dir, ".git")));
   assert.ok(!fs.existsSync(path.join(dir, "README.md")));
+});
+
+test("TUMWATER_DEBUG echoes the stack of a thrown CLI error", async () => {
+  const dir = tmpdir();
+  // The invalid branch name makes initProject throw past its own fail-free checks, so the
+  // error reaches the top-level catch instead of the fail() gate that already reports.
+  const plain = await cli(dir, "init", "Build a thing.", "--branch", "bad name");
+  assert.equal(plain.code, 1);
+  assert.doesNotMatch(plain.stderr, /\n    at /);
+  const debug = await cliWithEnv(dir, { TUMWATER_DEBUG: "1" }, [
+    "init",
+    "Build a thing.",
+    "--branch",
+    "bad name",
+  ]);
+  assert.equal(debug.code, 1);
+  assert.match(debug.stderr, /not a valid git branch name/);
+  assert.match(debug.stderr, /\n    at /);
 });
 
 test("init --branch in an existing repo fails instead of silently ignoring the flag", async () => {

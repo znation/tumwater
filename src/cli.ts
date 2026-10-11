@@ -43,7 +43,7 @@ import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
 import { cmdReport } from "./report/report.js";
 
 import { didYouMean } from "./text/suggest.js";
-import { errorMessage, gotSuffix } from "./text/text.js";
+import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
 import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
@@ -360,5 +360,13 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
+  // An error reaches this catch when a command body throws it, rather than reporting through
+  // fail() like the arg parsers and the repo gate do. Its message is what the operator needs,
+  // but a genuine bug's stack is the only clue to where it was thrown, and fail() below drops
+  // it. TUMWATER_DEBUG (a developer aid, not a supported feature) echoes the stack first,
+  // through the same terminal-control strip fail() applies so a value in the trace cannot
+  // drive the terminal.
+  if (process.env.TUMWATER_DEBUG && err instanceof Error && err.stack)
+    process.stderr.write(stripTerminalControls(err.stack) + "\n");
   fail(errorMessage(err));
 });
