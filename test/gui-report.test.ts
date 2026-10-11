@@ -514,3 +514,50 @@ test("the Usage trailing-window control fetches ?sinceMs, renders markdown, and 
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(getJsonUrls[1], "/api/report?days=7", "the day click reverts to ?days");
 });
+
+test("the report window pickers normalize a persisted value outside their menu", async () => {
+  // Regression (2026-10-10): a persisted "usage-days" or "usage-since" outside the picker's
+  // offered choices (a stale or hand-edited localStorage entry) used to ride the fetch while
+  // marking no button, so the request and the shown window disagreed and never healed. windowView
+  // now normalizes each persisted picker value to an offered choice at read.
+  const run = async (stored: Record<string, string>) => {
+    const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(): void }> = {};
+    const getJsonUrls: string[] = [];
+    const markCalls: [string, unknown][] = [];
+    for (const id of ["report", "failures", "usagebody", "failbody", "usagewindow", "failwindow", "usagerole", "failrole"]) {
+      els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
+    }
+    const inject = {
+      document: { getElementById: (id: string) => els[id] ?? null },
+      $: (id: string) => els[id] ?? null,
+      markActive: (_box: unknown, attr: string, cur: unknown) => { markCalls.push([attr, cur]); },
+      recall: (key: string) => stored[key] ?? null,
+      store: () => {},
+      lastStatus: null,
+      getJson: async (url: string) => { getJsonUrls.push(url); return { markdown: "# usage" }; },
+      errorPanel: (title: string) => title,
+      clickClosest: () => null,
+      renderMarkdown: (md: string) => md,
+      icon: iconStub,
+      plural: (n: number, one: string) => `${n} ${one}`,
+      workSplit: (t: { workCommits?: number }) => String(t.workCommits ?? 0),
+      fmtTokens: (n: number) => String(n),
+      fmtUsd: (n: number) => "$" + n.toFixed(2),
+    };
+    const keys = Object.keys(inject);
+    const make = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+      ...args: unknown[]
+    ) => { fetchReport(): Promise<void> };
+    await make(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
+    return { urls: getJsonUrls, marks: markCalls, els };
+  };
+
+  const offMenuDays = await run({ "usage-days": "45" });
+  assert.equal(offMenuDays.urls[0], "/api/report?days=14", "an off-menu day count falls back to the view default");
+  assert.ok(offMenuDays.marks.some(([attr, cur]) => attr === "days" && cur === 14), "the default day button is marked");
+  assert.doesNotMatch(offMenuDays.els.report!.innerHTML, /data-days='45'/, "the toolbar offers only the configured choices");
+
+  const offMenuSince = await run({ "usage-since": "12345" });
+  assert.equal(offMenuSince.urls[0], "/api/report?days=14", "an off-menu trailing window falls back to the day window");
+  assert.ok(offMenuSince.marks.some(([attr, cur]) => attr === "days" && cur === 14), "the day window is the active one");
+});

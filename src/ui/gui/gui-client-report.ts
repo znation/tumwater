@@ -244,10 +244,18 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // recall/store, each clearing the other so exactly one window shape is live) and the Refresh
   // button. Usage and Failures are two configurations of this one scaffold.
   function windowView(o) {
-    let days = Number(recall(o.key)) || o.defaultDays;
-    // The persisted trailing window (only a view that configured sinceChoices reads it): 0 or
-    // no stored value means the day window is live, otherwise days is ignored on the fetch.
-    let sinceMs = o.sinceChoices ? Number(recall(o.sinceKey)) || null : null;
+    // The persisted day window, normalized to one of the picker's choices at read. A stored value
+    // outside the menu (a stale or hand-edited localStorage entry) would leave no button marked
+    // while the fetch still asked for it, and the mismatch never healed; the view's default stands
+    // in, so the request and the marked button always agree.
+    const dayChoice = Number(recall(o.key));
+    let days = o.choices.includes(dayChoice) ? dayChoice : o.defaultDays;
+    // The persisted trailing window (only a view that configured sinceChoices reads it): one of
+    // the offered lengths, otherwise null so the day window is live and days is used on the fetch.
+    // Normalized the same way, so an off-menu stored value cannot mark no since button while the
+    // fetch still uses it.
+    const sinceChoice = o.sinceChoices ? Number(recall(o.sinceKey)) : NaN;
+    let sinceMs = (o.sinceChoices || []).some(([ms]) => ms === sinceChoice) ? sinceChoice : null;
     // The persisted Loop scope for this view: "" is the fleet-wide report. Only a view that
     // configured a rolePickerId reads it, so a view without a picker never touches storage.
     let role = o.roleKey ? recall(o.roleKey) || "" : "";
