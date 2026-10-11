@@ -61,7 +61,8 @@ function fakeInstaller(mode: "install" | "noop" | "fail" = "install"): InstallRu
 /** Run `fn` with a fake `npm` on PATH: a fresh bin dir holding `script` as npm shadows the real
  * one while shell binaries stay reachable, and PATH is restored afterwards even when `fn` throws
  * — the shared form of the `const bin = tmpdir(...); writeScript(...); const restore =
- * pathPrepend(bin); try { ... } finally { restore(); }` boilerplate the npmInstall tests repeated. */
+ * pathPrepend(bin); try { ... } finally { restore(); }` boilerplate the npmInstall tests
+ * repeated. */
 async function withFakeNpm<T>(script: string, fn: () => Promise<T>): Promise<T> {
   const bin = tmpdir("dep-install-bin-");
   writeScript(path.join(bin, "npm"), script);

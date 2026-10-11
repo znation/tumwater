@@ -179,11 +179,11 @@ export function seamFree(
 
 /** Whether a fallback-config pair may be called free: a `claude/<id>` pair is free while the
  * account bills a subscription and is not using overage, and a pi provider/model is free when
- * models.json prices it at zero. A non-claude agent namespace, or an unresolvable pi pair, is refused — the badge must
- * not read n/a while a backend whose billing it cannot see runs. Exported so the budget gate
- * (src/gates/budget-gates.ts) and the status pause set (src/status/status-data.ts) judge
- * fallback pairs with the same predicate the free-ness view does — neither may engage a backend
- * their own badge would not call free. */
+ * models.json prices it at zero. A non-claude agent namespace, or an unresolvable pi pair, is
+ * refused — the badge must not read n/a while a backend whose billing it cannot see runs.
+ * Exported so the budget gate (src/gates/budget-gates.ts) and the status pause set
+ * (src/status/status-data.ts) judge fallback pairs with the same predicate the free-ness view
+ * does — neither may engage a backend their own badge would not call free. */
 export function piPairFree(
   providers: Map<string, PiModelDef[]> | null,
   provider: string | undefined,

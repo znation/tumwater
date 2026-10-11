@@ -11,8 +11,8 @@ export interface CheckOutcome {
   detail: string;
 }
 
-/** Constructors for the one CheckOutcome shape, so each check names its verdict (`okOutcome(detail)`)
- * instead of repeating the two-field literal. */
+/** Constructors for the one CheckOutcome shape, so each check names its verdict
+ * (`okOutcome(detail)`) instead of repeating the two-field literal. */
 export function okOutcome(detail: string): CheckOutcome {
   return { level: "ok", detail };
 }
