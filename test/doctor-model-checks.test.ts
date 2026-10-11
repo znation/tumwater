@@ -434,9 +434,14 @@ test("piProviderAuth settles at its deadline and caps runaway output", { timeout
 
   // Runaway output: once past the cap the probe stops capturing, kills the child, and reads
   // as unknown rather than growing the buffer for the whole deadline. Settling well before the
-  // 4 s deadline is the red-proof for the cap: without the cap branch the same assertion would
-  // still read "unknown" but only after the deadline, and this timing would fail.
-  writeScript(path.join(binDir, "pi"), "while true; do echo '{\"ready\":true}'; done");
+  // 4 s deadline is the red-proof for the cap: the producer never exits, so without the cap
+  // branch the probe would still read "unknown" but only after the deadline, and this timing
+  // would fail. Each iteration is a single `printf` shell builtin writing 100 KB (no external
+  // binary, no PATH lookup), so the 1 MiB cap costs ~11 pipe reads instead of the old
+  // `while true; do echo ...; done`'s ~65k shell iterations, which a busy machine could
+  // stretch past the 3 s bound. A shell without `printf` emits nothing, so that loop runs to
+  // the deadline and fails the timing bound rather than passing as a fast nonzero exit.
+  writeScript(path.join(binDir, "pi"), "while :; do printf '%0100000d' 0; done");
   const startedAt = Date.now();
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir, 4000), "unknown");
   assert.ok(Date.now() - startedAt < 3000, "runaway output settles at the output cap, not the deadline");
