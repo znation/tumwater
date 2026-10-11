@@ -137,7 +137,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     const key = roles.join(",");
     if (key === histRoleKey) return;
     histRoleKey = key;
-    select.innerHTML = "<option value=''>All loops</option>" + roles.map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
+    // The report views' syncRoles builds its Loop picker from the same fleet list; both go
+    // through rolePickerOptions so the escaped option markup has one home.
+    select.innerHTML = rolePickerOptions(roles);
     select.value = roles.includes(histRole) ? histRole : "";
     // Keep the scope variable in step with the repainted picker (and persist the fallback),
     // exactly as the report views' syncRoles does: a role the fleet dropped must stop filtering

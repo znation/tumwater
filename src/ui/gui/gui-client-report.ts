@@ -197,10 +197,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   // report-role:start
   // The Loop picker's options: the fleet-wide "All loops" empty option plus one option per
-  // role, in the fleet's own order. Role names are dynamic (custom loops) and the custom-loop
-  // charset admits HTML metacharacters, so the value and label are escaped. Pure, so a test
-  // can drive it without a DOM.
-  function reportRoleOptions(roles) {
+  // role, in the fleet's own order. Shared by the report views' syncRoles and History's
+  // syncHistoryRoles: both pickers carry the same fleet's role list, so both must escape it
+  // the same way — role names are dynamic (custom loops) and the custom-loop charset admits
+  // HTML metacharacters. Pure, so a test can drive it without a DOM.
+  function rolePickerOptions(roles) {
     return "<option value=''>All loops</option>" +
       (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
   }
@@ -252,7 +253,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       const key = roles.join(",");
       if (key === rolesKey) return;
       rolesKey = key;
-      select.innerHTML = reportRoleOptions(roles);
+      select.innerHTML = rolePickerOptions(roles);
       select.value = roles.includes(role) ? role : "";
       if (select.value !== role) {
         role = select.value;

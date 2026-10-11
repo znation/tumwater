@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
-import { clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
+import { clientRegion, clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
 // /api/history's rows, its tick drill-down (the per-row details toggle and the card /api/tick
@@ -269,7 +269,9 @@ test("fetchHistory drops and re-persists a loop scope the fleet no longer lists"
   const stored: Array<[string, string]> = [];
   const select = { innerHTML: "", value: "gone-loop" };
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
-  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  // The report-role region supplies rolePickerOptions, which syncHistoryRoles repaints the
+  // picker through — the same shared helper the report views use.
+  const code = [ESC_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
   await run(
     (key: string) => (key === "hist-role" ? "gone-loop" : null),
