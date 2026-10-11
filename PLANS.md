@@ -51,6 +51,143 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `docs/how-it-works.md` describes the Settings Clear action and names `tumwater config unset` as the path it shares.
 - `npm run test` is green.
 
+### Read and edit a queued prompt by its queue file behind the dashboard API (planned 2026-10-11 by plan; part 1/2 of "Edit a queued prompt from the dashboard Queued tab" — the server seam and endpoints its client half consumes; sibling part 2/2 requires this landed; the file-addressed twin of the landed CLI `tumwater prompt --edit` and the landed file-addressed `POST /api/prompt-cancel`; independent of the waiting TUI Pending land-queue, TUI History grep, and dashboard Settings Clear plans in code — inbox/gui only, no `src/ui/tui` or `src/ui/gui` file — though it shares `src/gui/gui-endpoint-commands.ts` and `src/gui/gui-server.ts` with the Settings Clear plan, so a landing conflict is possible and the resolver handles it)
+
+**Goal.** `tumwater prompt --edit <n>` rewrites a queued prompt's text in place and carries its
+attachments, and the dashboard's Queued tab can cancel a prompt, but the browser has no way to
+edit one: `/api/prompt-cancel` addresses a prompt by its queue file while `editRolePrompt`
+addresses it by list position, and no endpoint exposes the queued body. Add a file-addressed
+read and edit to the API — `GET /api/prompt-text` returns a prompt's editable body and `POST
+/api/prompt-edit` replaces it through the same `editRolePrompt` machinery the CLI uses.
+
+**Approach.**
+1. `src/inbox/inbox-attachments.ts`: add `export function stripImageReferenceLines(text: string): string`
+   beside `imageReferencePaths` — drop every line whose trimmed form matches the module's own
+   `IMAGE_REF_LINE` and trim trailing blank lines, documented as the reader `imageReferenceLines`
+   needs (the reference block is plumbing, never shown in an editor).
+2. `src/inbox/inbox-edit.ts`:
+   - Extract the body of `editRolePrompt` after it resolves `file` into a private
+     `editPromptAtFile(root: string, role: string, file: string, newText: string, images?: PromptImageInput[]): EditOutcome`
+     (unchanged behavior: trim, length check, read, gone-on-ENOENT, carried deferral, carried and
+     appended image references, atomic write, `prompt_edited` event). `editRolePrompt` becomes
+     `queuedFileAtPosition` → `editPromptAtFile`.
+   - Add `export function editQueuedFile(root, role, name, newText, images?): EditOutcome` —
+     `queueFileNameProblem(name)` (imported from `./inbox-cancel.js`) throws its message, then
+     `editPromptAtFile(root, role, path.join(roleInboxDir(root, role), name), newText, images)`.
+     Import `path` from `node:path` and `roleInboxDir` from `../paths.js`.
+   - Add `export function readQueuedPromptBody(root, role, name): string | null` — the same name
+     guard (throw), `readTextIfExists(path.join(roleInboxDir(root, role), name))`, `null` when the
+     file is gone, else `stripImageReferenceLines(stripNotBeforeMarker(text)).trimEnd()`. Reading
+     one file directly keeps the dashboard's lazy fetch off the per-poll path.
+3. `src/gui/gui-endpoints.ts`: add `export function handlePromptText(q: URLSearchParams, res, root)`
+   — `const roleParam = q.get("role")`; when it is non-null and `rejectBadRole(root, res, roleParam)`
+   returns, stop; `role = roleParam ?? DIRECTOR_ROLE`; `queueFileNameProblem(q.get("file"))` → 400
+   `{ error }`; `readQueuedPromptBody` → null `{ ok: true, status: "gone" }`, else
+   `{ ok: true, text }`. Imports: `readQueuedPromptBody` from `../inbox/inbox-edit.js`,
+   `queueFileNameProblem` from `../inbox/inbox-cancel.js`, `DIRECTOR_ROLE`, `rejectBadRole`. Update
+   the module doc's endpoint list.
+4. `src/gui/gui-endpoint-commands.ts`: add `export async function handlePromptEdit(req, res, root)`
+   beside `handlePromptCancel` — `readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md", "text": "..."}')`;
+   role optional exactly like cancel (`body.role !== undefined && rejectBadRole(...)` → 400, default
+   `DIRECTOR_ROLE`); `queueFileNameProblem(body.file)` → 400; `checkedPromptFields(res, body, role)`
+   → 400 on a null return (the text and images validators `/api/prompt` and `/api/prompt-role`
+   share); then `editQueuedFile(root, role, body.file as string, fields.text, fields.images)` in a
+   try/catch, answering its thrown message 400 (the same mapping the CLI's `prompt --edit` wrapper
+   applies to the combined body-plus-image cap; a filesystem failure reads as 400 like
+   `handleConfigSet`'s failed write); `edited` → 200 `{ ok: true, status: "edited", oldText,
+   newText }`, `gone` → 200 `{ ok: true, status: "gone" }`. Import `editQueuedFile` from
+   `../inbox/inbox-edit.js`; update the module doc's POST list.
+5. `src/gui/gui-server.ts`: import `handlePromptText` from `./gui-endpoints.js` and
+   `handlePromptEdit` from `./gui-endpoint-commands.js`; add `"GET /api/prompt-text": (_req, res,
+   target) => handlePromptText(target.searchParams, res, root)` beside `"GET /api/transcript"` and
+   `"POST /api/prompt-edit": (req, res) => handlePromptEdit(req, res, root)` beside
+   `"POST /api/prompt-cancel"`.
+
+**Files touched.** `src/inbox/inbox-attachments.ts`, `src/inbox/inbox-edit.ts`,
+`src/gui/gui-endpoints.ts`, `src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`,
+`test/inbox-edit.test.ts`, `test/gui-endpoints.test.ts`.
+
+**Acceptance criteria.**
+- `test/inbox-edit.test.ts`: `editQueuedFile(root, "qa", "q.md", "new text")` rewrites the named
+  queue file in place (same basename, new body) and returns `{ status: "edited", oldText, newText }`;
+  a name failing `queueFileNameProblem` (`"../x.md"`, `"q.txt"`) throws and touches nothing; a
+  missing file returns `{ status: "gone" }`; an attached `q.md` keeps its `[image attached: …]`
+  line and image file through the file-addressed entry point. `readQueuedPromptBody` returns the
+  body without the not-before marker and without the `[image attached: …]` lines (a marked,
+  attached file as the fixture), `null` for a vanished file, and throws on a bad name.
+- `test/gui-endpoints.test.ts`: a `servePromptText(root, "?role=qa&file=q.md")` helper (the
+  `handleTranscript`-style GET helper) answers 200 `{ ok: true, text: "…" }` for a seeded queue
+  file and `{ ok: true, status: "gone" }` for an absent one; a bad or missing `file` is 400 naming
+  the guard's message; a `role` the repo does not know is 400 through `rejectBadRole`. A
+  `servePromptEdit(root, { role: "qa", file: "q.md", text: "new" })` helper (the `fakeReq` POST
+  helper) answers 200 `{ ok: true, status: "edited", oldText, newText: "new" }`, and the file on
+  disk holds the new body while a sibling queue file is intact; a bad file name and an over-cap
+  text are 400; an absent file answers `{ ok: true, status: "gone" }`; a missing `file` is 400.
+- `npm run test` is green.
+
+### Edit a queued prompt from the dashboard Queued tab (planned 2026-10-11 by plan; part 2/2 of "Edit a queued prompt from the dashboard Queued tab" — the browser affordance over part 1/2's `GET /api/prompt-text` and `POST /api/prompt-edit`, requires part 1/2 landed; independent of the waiting TUI Pending land-queue, TUI History grep, and dashboard Settings Clear plans — GUI client only, no `src/ui/tui`, `src/inbox`, or `src/gui` file)
+
+**Goal.** The dashboard's Queued tab lists every queued prompt with a Cancel button, but
+correcting a typo means cancel and re-queue; `tumwater prompt --edit` has no browser surface even
+though part 1/2 serves the body and the write. Add an inline editor: an Edit button per queued
+row loads the prompt's body into a textarea in place, and Save replaces it through
+`/api/prompt-edit`.
+
+**Approach.**
+1. `src/ui/gui/gui-client-fleet.ts`, the `backlog` region:
+   - Add state beside `backlogTab`: `let backlogStatus = null` (the payload the edit helpers
+     repaint from), `let queuedEdit = null` (`{ role, file, text } | null`), and
+     `let queuedEditPainted = false`.
+   - `renderBacklog(d)`: set `backlogStatus = d` first; then
+     `if (queuedEdit && queuedEditPainted) return;` so the standing 1s poll cannot repaint over
+     the textarea the operator is typing in.
+   - The queued row map: each item gets, after the Cancel button,
+     `<button type='button' class='btn btn-sm rowaction' data-action='promptedit' data-file='…'
+     data-role='…'>Edit</button>`; when the item matches `queuedEdit`
+     (`q.file === queuedEdit.file && q.role === queuedEdit.role`), render instead a
+     `<div class='list-item'>` holding `<textarea id='queuedit' class='…'>` + `esc(queuedEdit.text)`
+     + `</textarea>` and Save/Cancel buttons (`data-action='prompteditsave'`/`'prompteditcancel'`,
+     each carrying the same `data-file`/`data-role`). Set `queuedEditPainted = true` before
+     `paintPanel` when the editor was rendered.
+   - Add `function beginQueuedEdit(role, file, text)`: `backlogTab = "queued";
+     queuedEdit = { role, file, text }; queuedEditPainted = false; renderBacklog(backlogStatus)`.
+   - Add `function endQueuedEdit()`: `queuedEdit = null; queuedEditPainted = false;
+     renderBacklog(backlogStatus)`.
+   - `setBacklogTab(tab)`: before `renderBacklog(lastStatus)`, clear `queuedEdit` and
+     `queuedEditPainted`, so switching tabs abandons an open editor.
+2. The delegated `$("backlog")` click handler (below the region) gains three arms before the
+   `.backloglink` arm: `button.rowaction[data-action='promptedit']` →
+   `await getJson("/api/prompt-text?role=" + encodeURIComponent(role) + "&file=" +
+   encodeURIComponent(file))`; a `{ status: "gone" }` answer flashes `"No longer queued — …
+   already took it"` and refreshes, otherwise `beginQueuedEdit(role, file, d.text || "")`; a thrown
+   fetch flashes the `error:` pattern. `[data-action='prompteditsave']` → read `$("queuedit")`'s
+   trimmed `value` (flash and stop when empty), `await postAction("/api/prompt-edit", { role,
+   file, text }, …)` with the `edited`/`gone` flash wording the cancel arm uses, then
+   `endQueuedEdit()`. `[data-action='prompteditcancel']` → `endQueuedEdit()`. `$` and `getJson` are
+   already in scope; `endQueuedEdit`/`beginQueuedEdit` are hoisted from the region.
+3. `docs/how-it-works.md`: the Operator notes sentence naming the Queued tab adds that each
+   queued prompt can be edited in place (Edit loads its body, Save replaces it through the same
+   path `tumwater prompt --edit` uses), beside the existing age sentence.
+
+**Files touched.** `src/ui/gui/gui-client-fleet.ts`, `test/gui-client-fleet.test.ts`,
+`docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- `test/gui-client-fleet.test.ts`: the queued rows now emit one `data-action='promptedit'` Edit
+  button per prompt beside the cancel buttons, with the queue-file address and role (the existing
+  cancel assertions stay green). `beginQueuedEdit("qa", "q.md", "new body")` paints the queued tab
+  with a `<textarea id='queuedit'>` holding `new body` and Save/Cancel buttons carrying
+  `data-file='q.md'`/`data-role='qa'`, and a following `renderBacklog(status)` writes no second
+  paint (the poll cannot clobber the editor). `endQueuedEdit()` repaints the plain list (no
+  textarea, Edit and Cancel buttons back). `setBacklogTab` while editing discards the editor and
+  paints the newly selected tab.
+- A string assertion on `GUI_CLIENT_FLEET_JS` pins the delegated handler's edit arms: the
+  `promptedit`, `prompteditsave`, and `prompteditcancel` selectors, the `/api/prompt-text?role=`
+  fetch, and the `/api/prompt-edit` post.
+- `docs/how-it-works.md` describes the Queued tab's Edit action and names `tumwater prompt --edit`
+  as the path it shares.
+- `npm run test` is green.
+
 ## Done
 
 ### Show the durable land queue in the TUI Pending pane, matching `tumwater queue` (planned 2026-10-11 by plan; sibling of the waiting dashboard Pending-view land-queue plan and of the landed `tumwater queue` CLI command, and the TUI half of that read surface; independently landable — it reuses `src/landing/landing-queue.ts`'s `readLandingQueue` and `src/landing/landing-queue-render.ts`'s `renderLandingQueue`, the CLI's own reader/renderer, rather than a copy, so the CLI, dashboard, and TUI cannot drift; shares `src/ui/tui/tui-keys.ts` with the waiting role-scoped TUI History plan — a landing conflict is possible and the resolver handles it; no new view, key, or hint; done 2026-10-11 by feature)
