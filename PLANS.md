@@ -7,25 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Finish the stale code-path citation sweep, part 5d/5: `repair-traces`, `revise-rejected` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
-
-**Goal.** The same citation invariant as part 1a/5, for `plans/repair-traces.md` and
-`plans/revise-rejected.md`. `plans/repair-traces.md` carries the moved top-level `loop` module and
-two out-of-range pins (`src/roles/roles.ts`, `test/prompt.test.ts`); `plans/revise-rejected.md` is
-inventoried as well so a later move there is caught.
-
-**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
-part 1a/5, applied to these two files.
-
-**Files touched.** Those two `plans/*.md` files. No source or test change.
-
-**Acceptance criteria.**
-- The inventory over these two files reports no cited path absent from the tree.
-- No `<path>:<line>` in them names a line past that file's end.
-- For each split module cited here, the module named beside a symbol exports it (checked against
-  the module's export list).
-- `npm run test` is green.
-
 ### Finish the stale code-path citation sweep, part 5e/5: `telemetry-role`, `disk-floor` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts)
 
 **Goal.** The same citation invariant as part 1a/5, for `plans/telemetry-role.md` and
@@ -79,6 +60,25 @@ part 1a/5, applied to these three files.
 
 **Acceptance criteria.**
 - The inventory over these three files reports no cited path absent from the tree.
+- No `<path>:<line>` in them names a line past that file's end.
+- For each split module cited here, the module named beside a symbol exports it (checked against
+  the module's export list).
+- `npm run test` is green.
+
+### Finish the stale code-path citation sweep, part 5d/5: `repair-traces`, `revise-rejected` (planned 2026-10-10 by plan; split 2026-10-10 by plan from part 5/5, which feature judged too large for one run; independent of the Agent backends series; siblings are the other citation-sweep parts; done 2026-10-10 by feature)
+
+**Goal.** The same citation invariant as part 1a/5, for `plans/repair-traces.md` and
+`plans/revise-rejected.md`. `plans/repair-traces.md` carries the moved top-level `loop` module and
+two out-of-range pins (`src/roles/roles.ts`, `test/prompt.test.ts`); `plans/revise-rejected.md` is
+inventoried as well so a later move there is caught.
+
+**Method.** The four-step inventory, split-aware map, rewrite rule, and historical-audit rule of
+part 1a/5, applied to these two files.
+
+**Files touched.** Those two `plans/*.md` files. No source or test change.
+
+**Acceptance criteria.**
+- The inventory over these two files reports no cited path absent from the tree.
 - No `<path>:<line>` in them names a line past that file's end.
 - For each split module cited here, the module named beside a symbol exports it (checked against
   the module's export list).

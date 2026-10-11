@@ -60,8 +60,8 @@ is itself a finding, so rounds cannot drift onto unrelated complaints.
 - `LandingEntry` and `LandRequest` carry `priorReview = { sha, reasons }`
   (`src/landing/landing-queue.ts`, `src/landing/landing-core.ts`). `stageTickLanding`
   (`src/tick/tick-stage.ts`) fills it from `LoopState.lastReview` only when the tick held the
-  rejected diff. It rides the landing pipeline through `landing-vetting.ts` and
-  `landing-drain.ts` onto the vet's `LandRequest`. A recovery landing (`src/loop/leftover.ts`)
+  rejected diff. It rides the landing pipeline through `src/landing/landing-vetting.ts` and
+  `src/landing/landing-drain.ts` onto the vet's `LandRequest`. A recovery landing (`src/loop/leftover.ts`)
   carries none, so an orphaned revision is reviewed like a fresh change.
 - `revisionInterdiff` (`src/git/git-diff.ts`) runs `git range-diff --creation-factor=100
   <base-of-prior>..<prior> <base-of-head>..<head>`, where each base is that version's
