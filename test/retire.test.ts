@@ -44,7 +44,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
     false,
     "no worktree registration left",
   );
-  assert.equal(await landingRefExists(root, "improve"), false, "landing ref deleted");
+  assert.equal(landingRefExists(root, "improve"), false, "landing ref deleted");
   // Branch gone: rev-parse fails.
   const branchGone = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
   assert.equal(branchGone, null, "branch deleted");

@@ -25,7 +25,7 @@ const ROLE_NOTES_TOOL = "role_notes";
 
 /** Handle one JSON-RPC line and return the response line to write, or null for a
  * notification (no `id`). `notesPath` is the server's own TUMWATER_NOTES_PATH. */
-function handleMcpLine(line: string, notesPath: string | undefined): unknown | null {
+function handleMcpLine(line: string, notesPath: string | undefined): unknown {
   let msg: Record<string, unknown>;
   try {
     msg = JSON.parse(line) as Record<string, unknown>;

@@ -27,7 +27,7 @@ interface McpResponse {
  * string is sent verbatim (for malformed frames); `notesPath === undefined` leaves
  * TUMWATER_NOTES_PATH unset, the no-notebook server configuration. */
 function runServer(
-  requests: readonly (unknown | string)[],
+  requests: readonly unknown[],
   notesPath: string | undefined,
 ): Promise<{ responses: McpResponse[]; stderr: string }> {
   return new Promise((resolve, reject) => {
