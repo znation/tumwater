@@ -5,7 +5,21 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### `tumwater config set roles '<json>'` reports success but cannot disable a built-in role, and the next `config set` rewrites tumwater.json to re-list every role (found by qa loop 2026-10-10 while exercising the `reset-counters` flow as a first-time user; the setup step's `config set roles` silently left every loop enabled)
+
+- **Symptom:** the README's Settings paragraph promises that for `tumwater config set`, "bare keys replace the whole value" while only dotted keys merge one entry. `tumwater config set roles '{"feature":{"enabled":true}}'` prints `set roles to {"feature":{"enabled":true}}` and does rewrite the file's `roles` section down to `feature`, but the *effective* config still enables every built-in role, because `loadConfig` (src/config/config.ts) starts from a base map holding every catalog role enabled (`roles: { ...base.roles }`) and then merges the file's `roles` in entry-by-entry (`merged.roles[id] = { ...(merged.roles[id] ?? { enabled: true }), ...rc }`). There is no way to shed a built-in role by replacing the section; only the dotted `config set roles.<id>.enabled false` can disable one. Worse, the replacement is not durable: the very next `config set` of any key (`setConfigKey`'s top-level branch builds `{ ...loadConfig(root), [key]: value }` and writes the whole merged object) re-expands tumwater.json's `roles` to every built-in with its defaults, silently reverting even the file edit. Both failures are silent: the command exits 0.
+- **Reproduce:** in a scratch git repo seeded with `tumwater init "…"`:
+  ```
+  tumwater config set roles '{"feature":{"enabled":true}}'   # prints: set roles to {"feature":{"enabled":true}}
+  tumwater config get roles                                    # still lists all 16 built-ins
+  tumwater config set maxConcurrent 1
+  node -e 'console.log(Object.keys(require("./tumwater.json").roles).join(","))'   # all 16 built-ins again
+  ```
+  After the first command the file's `roles` is `["feature"]` and `config get roles` already reports `feature,bugfix,plan,readme,organize,coverage,clean,dry,perf,qa,telemetry,security,robustness,improve,steward,director` (15 enabled; `telemetry` default-disabled). After the `maxConcurrent` set the file's `roles` is all 16 again.
+- **Impact:** the documented single-loop setup for a bounded run or a CI/offline harness — replace `roles` with the one role you want, then tune other keys — instead starts the whole fleet. This is exactly how a first-time user narrows an expensive run, so the failure spends real tokens and wall-clock before it is noticed.
+- **Expected:** per the README, a bare `config set roles` replaces the whole section: the effective config lists only the named roles, and later `config set` calls leave the file's section as the operator wrote it (or, if the built-in catalog is intentionally always merged, the docs and the confirmation must say a bare replacement cannot disable a role and name the dotted form as the way).
+- **Cause:** `setConfigKey`'s top-level branch (src/config/config-write.ts) mutates the *merged* config returned by `loadConfig`, not the raw file, and `writeConfigMutation` serializes that merged candidate whole; `roles` is the one top-level section whose defaults are merged per-entry rather than replaced whole, so a section replacement is always re-expanded on the next write and can never remove a built-in from the resolved view.
+- **Suggested fix:** have `setConfigKey`/`unsetConfigKey` mutate and validate against the raw file object for a whole-section write (and for the effective view, decide explicitly whether a replaced `roles` masks the catalog), or make the README and confirmation state that `roles` merges per-entry and that `roles.<id>.enabled false` is the only disable verb. A regression test should set `roles` to one entry, read the effective `roles` back, then set an unrelated key and re-read the file.
 
 ## Fixed
 
