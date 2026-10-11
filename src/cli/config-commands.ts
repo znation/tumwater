@@ -125,6 +125,13 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     const result = setConfigKey(root, key ?? "", raw);
     if (!result.ok) fail(result.error);
     say(`set ${key} to ${JSON.stringify((result as { value: unknown }).value)}`);
+    // A bare `roles` set replaces the FILE's section, but the built-in catalog always merges
+    // per entry at load, so the replacement cannot disable a role by omission. Say so here
+    // rather than let the confirmation imply the role is gone.
+    if (key === "roles")
+      say(
+        "note: the built-in role catalog still merges per entry — disable a role with `tumwater config set roles.<id>.enabled false`, not by omitting it",
+      );
     return;
   }
   // Bare config, or anything else: the whole-config dump is the default, and cli.ts's arity

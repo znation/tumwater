@@ -88,6 +88,25 @@ consumer.
 **Pinned by.** `test/worktree-pool.test.ts` — "a slot record's non-finite timestamps read as
 absent, not as a stuck pin" and "a slot record's non-finite lease numbers read as no lease".
 
+### INV-B3: a whole-config write preserves the file's own roles section
+
+**Guarantee.** Any `config set`/`unset` that does not name the `roles` section itself —
+top-level, a dotted per-role map/tier/agent key, and the budget setter both dashboards use —
+carries the raw file's `roles` section back exactly as it found it (and writes no section when
+the file had none); the director's config request (`applyConfigRequest`) does the same while
+stripping the entries of custom loops it removes. A dotted `roles.<id>.<field>` write updates
+only that field and leaves the file's other role entries untouched. No such edit re-expands the
+built-in catalog into tumwater.json; `roles` still merges per entry at load, so omission never
+disables a role and the dotted `roles.<id>.enabled false` is the disable verb.
+
+**Binds.** `src/config/config-write.ts` (`setConfigKey`, `unsetConfigKey`, `setDailyBudgetUsd`,
+`applyConfigRequest`, `preserveFileRoles`).
+
+**Pinned by.** `test/config-write.test.ts` — "a whole-config write preserves the file's own
+roles section", "a whole-config write does not add a roles section the file never had",
+"dotted writes preserve the file's own roles section", and "applyConfigRequest preserves the
+file's own roles section".
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must

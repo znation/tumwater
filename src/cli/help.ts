@@ -71,7 +71,10 @@ Usage:
                                    reverts to its default or disappears from its map or
                                    section. Dotted keys (maxDailyCostUsdPerRole.feature
                                    1.5, roles.qa.model x) merge one entry into the existing
-                                   map or role entry; bare keys replace the whole value
+                                   map or role entry; bare keys replace the whole value.
+                                   roles still merges the built-in catalog per entry, so
+                                   disable a role with roles.<id>.enabled false, not by
+                                   omitting it
   tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--json]
                                    Show (and follow) harness events; --since shows the
                                    events of the past window (capped at 7d); --grep shows

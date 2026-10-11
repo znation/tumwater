@@ -106,7 +106,9 @@ From the terminal, `tumwater config` prints the effective config as JSON, `tumwa
 key, and `tumwater config unset <key>` removes one — the inverse of `set`, so a value reverts
 to its default or disappears from its map or section; dotted keys
 (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry into the existing
-map or role entry, while bare keys replace the whole value.
+map or role entry, while bare keys replace the whole value. `roles` always merges the built-in
+catalog per entry at load, so a bare `config set roles` replaces the file's section but cannot
+disable a role by omission — disable one with `tumwater config set roles.<id>.enabled false`.
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to
 one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a map of tiers

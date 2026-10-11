@@ -215,6 +215,18 @@ test("set of a dotted role field merges the entry; a bad field fails naming the 
   assert.match(bad.stderr, /valid fields:/);
 });
 
+test("set of a bare roles section confirms and names the dotted disable verb", async () => {
+  const root = makeRepo();
+  writeConfig(root, { model: "m1" });
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "roles", '{"feature":{"enabled":true}}']));
+  assert.ok(!out.exited);
+  assert.match(out.stdout, /^set roles to \{"feature":\{"enabled":true\}\}\n/);
+  assert.match(out.stdout, /note: the built-in role catalog still merges per entry/);
+  assert.match(out.stdout, /roles\.<id>\.enabled false/);
+  const raw = readJson(path.join(root, "tumwater.json")) as { roles?: unknown };
+  assert.deepEqual(raw.roles, { feature: { enabled: true } }, "the file's section is the replacement");
+});
+
 // unset — the inverse of set: remove one value and confirm, or fail with the same screens
 // get/set run. The verbose shell wording is pinned here so a reviewer sees the exact contract.
 test("unset removes a top-level key and confirms the removed value; get then reads null", async () => {

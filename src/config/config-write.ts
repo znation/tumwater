@@ -134,7 +134,12 @@ export function setDailyBudgetUsd(
 ): { ok: true } | { ok: false; error: string } {
   const problem = checkDailyBudgetUsd(value);
   if (problem) return { ok: false, error: problem };
-  return writeConfigMutation(root, (cfg) => ({ ...cfg, maxDailyCostUsd: value }));
+  return writeConfigMutation(root, (cfg) => {
+    const next = { ...cfg, maxDailyCostUsd: value };
+    // A whole-config write: keep the file's own roles section (see preserveFileRoles).
+    preserveFileRoles(root, next);
+    return next;
+  });
 }
 
 /** The per-role maps `config get/set` reaches with dotted keys: each names ONE entry
@@ -292,7 +297,8 @@ export function setConfigKey(
       if (parsed.kind === "map") {
         const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
         oldValue = existing[parsed.role];
-        return { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
+        const next = { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } } as unknown as TumwaterConfig;
+        return preservingFileRoles(root, next);
       }
       if (parsed.kind === "tier") {
         // Setting a tier on a string `model` promotes it to the map form rather than
@@ -302,7 +308,8 @@ export function setConfigKey(
         // there and nothing is written.
         const existing = modelTierMap(record.model);
         oldValue = existing[parsed.tier];
-        return { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
+        const next = { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
+        return preservingFileRoles(root, next);
       }
       if (parsed.kind === "agent") {
         // Merge one field of one backend's entry, preserving the other field and the other
@@ -321,13 +328,22 @@ export function setConfigKey(
           if (parsed.field === "bin") delete nextRecord.agentBin;
           else delete nextRecord.piArgs;
         }
-        return next;
+        return preservingFileRoles(root, next);
       }
-      const existing = record.roles?.[parsed.id] ?? {};
-      oldValue = existing[parsed.field];
+      // Base the merge on the FILE's own roles, not the loaded (catalog-merged) map: an
+      // unrelated dotted write must not re-expand the operator's partial section to every
+      // built-in (see preserveFileRoles). A role absent from the file gets a fresh entry with
+      // just this field; the catalog still fills its other defaults at load.
+      const rawRolesCandidate = rawConfigObject(root).roles;
+      const rawRoles = isJsonObject(rawRolesCandidate)
+        ? (rawRolesCandidate as Record<string, Record<string, unknown>>)
+        : {};
+      const rawEntryCandidate = rawRoles[parsed.id];
+      const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
+      oldValue = record.roles?.[parsed.id]?.[parsed.field];
       const roles = {
-        ...record.roles,
-        [parsed.id]: { ...existing, [parsed.field]: value },
+        ...rawRoles,
+        [parsed.id]: { ...rawEntry, [parsed.field]: value },
       };
       // The merged entry is only partially typed here (the value is unknown until
       // validation); validateConfig below owns the type truth, so the cast is safe —
@@ -366,6 +382,11 @@ export function setConfigKey(
   const result = writeConfigMutation(root, (cfg) => {
     oldValue = (cfg as unknown as Record<string, unknown>)[key];
     const next = { ...cfg, [key]: value } as unknown as TumwaterConfig;
+    // `roles` merges per-entry at load (overlayDefaults seeds the catalog and lets the file
+    // override one entry), so an unrelated whole-config write must not re-expand the file's
+    // own roles section to the catalog — that would silently rewrite what the operator wrote.
+    // When the key IS `roles` the value is the replacement, so it is left alone.
+    if (key !== "roles") preserveFileRoles(root, next);
     // Writers keep one spelling: a whole-section `agents` set (the GUI Save path) drops the
     // legacy aliases the new pi form now carries, so the file can never hold both.
     if (key === "agents" && isJsonObject(value)) {
@@ -413,6 +434,25 @@ function rawConfigObject(root: string): Record<string, unknown> {
   return isJsonObject(raw) ? raw : {};
 }
 
+/** Reinstall the raw tumwater.json's `roles` section onto a whole-config write candidate (or
+ * drop it when the file had none), so a bare `config set`/`unset` of an unrelated key never
+ * re-expands the file's roles to the built-in catalog. `roles` merges per-entry at load, so
+ * this is about the bytes the operator can read and edit, not the resolved view: omission
+ * still cannot disable a role, and a partial section stays exactly as written. */
+function preserveFileRoles(root: string, candidate: TumwaterConfig): void {
+  const record = candidate as unknown as Record<string, unknown>;
+  const rawRoles = rawConfigObject(root).roles;
+  if (rawRoles === undefined) delete record.roles;
+  else record.roles = rawRoles;
+}
+
+/** preserveFileRoles, returning the candidate so a whole-config write branch can
+ * `return preservingFileRoles(root, next)` after building it. */
+function preservingFileRoles<T extends TumwaterConfig>(root: string, candidate: T): T {
+  preserveFileRoles(root, candidate);
+  return candidate;
+}
+
 /** Remove ONE value of tumwater.json from its raw CLI text (`tumwater config unset <key>`):
  * the inverse of setConfigKey. A bare top-level key is deleted (reverting to its default or
  * to absence); a dotted key (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`,
@@ -452,7 +492,10 @@ export function unsetConfigKey(
       // Absent from the file (only a default carries it): nothing to remove.
       if (!Object.hasOwn(raw, parsed.key)) return cfg;
       oldValue = raw[parsed.key];
-      return without(record, parsed.key) as unknown as TumwaterConfig;
+      const next = without(record, parsed.key) as unknown as TumwaterConfig;
+      // An unrelated unset is a whole-config write too: keep the file's own roles section.
+      if (parsed.key !== "roles") preserveFileRoles(root, next);
+      return next;
     }
     if (parsed.kind === "map") {
       const rawMapCandidate = raw[parsed.map];
@@ -461,8 +504,9 @@ export function unsetConfigKey(
       oldValue = rawMap[parsed.role];
       const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
       const next = without(existing, parsed.role);
-      if (Object.keys(next).length === 0) return without(record, parsed.map) as unknown as TumwaterConfig;
-      return { ...cfg, [parsed.map]: next } as unknown as TumwaterConfig;
+      if (Object.keys(next).length === 0)
+        return preservingFileRoles(root, without(record, parsed.map) as unknown as TumwaterConfig);
+      return preservingFileRoles(root, { ...cfg, [parsed.map]: next } as unknown as TumwaterConfig);
     }
     if (parsed.kind === "tier") {
       // A string `model` resolves to { default } (modelTierMap); unsetting a tier the FILE
@@ -472,8 +516,9 @@ export function unsetConfigKey(
       oldValue = rawTiers[parsed.tier];
       const existing = modelTierMap(record.model);
       const next = without(existing, parsed.tier);
-      if (Object.keys(next).length === 0) return without(record, "model") as unknown as TumwaterConfig;
-      return { ...cfg, model: next } as unknown as TumwaterConfig;
+      if (Object.keys(next).length === 0)
+        return preservingFileRoles(root, without(record, "model") as unknown as TumwaterConfig);
+      return preservingFileRoles(root, { ...cfg, model: next } as unknown as TumwaterConfig);
     }
     if (parsed.kind === "agent") {
       // Presence is judged against the FILE, so unsetting a field only the default (or the
@@ -489,8 +534,9 @@ export function unsetConfigKey(
       delete entry[parsed.field];
       if (Object.keys(entry).length === 0) delete agents[parsed.id];
       else agents[parsed.id] = entry;
-      if (Object.keys(agents).length === 0) return without(record, "agents") as unknown as TumwaterConfig;
-      return { ...cfg, agents } as unknown as TumwaterConfig;
+      if (Object.keys(agents).length === 0)
+        return preservingFileRoles(root, without(record, "agents") as unknown as TumwaterConfig);
+      return preservingFileRoles(root, { ...cfg, agents } as unknown as TumwaterConfig);
     }
     const rawRolesCandidate = raw.roles;
     const rawRoles = isJsonObject(rawRolesCandidate) ? rawRolesCandidate : {};
@@ -498,13 +544,14 @@ export function unsetConfigKey(
     const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
     if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
     oldValue = rawEntry[parsed.field];
-    const roles = record.roles ?? {};
-    const existing = roles[parsed.id] ?? {};
+    // Base the removal on the FILE's own roles, not the loaded (catalog-merged) map: the
+    // write must not re-expand the operator's partial section to every built-in.
+    const existing = rawEntry; // the file's own entry (its field was present, checked above)
     const nextEntry = without(existing, parsed.field);
     if (Object.keys(nextEntry).length > 0)
-      return { ...cfg, roles: { ...roles, [parsed.id]: nextEntry } } as unknown as TumwaterConfig;
+      return { ...cfg, roles: { ...rawRoles, [parsed.id]: nextEntry } } as unknown as TumwaterConfig;
     // The entry emptied: drop it, and the whole `roles` section when it was the last one.
-    const nextRoles = without(roles, parsed.id);
+    const nextRoles = without(rawRoles, parsed.id);
     if (Object.keys(nextRoles).length === 0) return without(record, "roles") as unknown as TumwaterConfig;
     return { ...cfg, roles: nextRoles } as unknown as TumwaterConfig;
   });
@@ -528,11 +575,13 @@ export function unsetConfigKey(
  * live. The request file is deleted on EVERY path (including every failure), so a malformed
  * request cannot retry forever and the file cannot survive into `git add -A`.
  *
- * Roles entries for custom loops the request removes are stripped before validation:
- * loadConfig seeds one `roles.<name>` per current custom loop and validateConfig rejects an
- * id that is neither a catalog role nor a requested custom-loop name, so without the strip a
- * removal would never apply. Only structurally valid names feed the strip — a malformed entry
- * stays in the array for validateConfig to reject.
+ * Roles entries for custom loops the request removes are stripped before validation, from the
+ * FILE's own `roles` section rather than the catalog-merged map (the rule every other
+ * whole-config write follows, see preserveFileRoles): loadConfig seeds one `roles.<name>` per
+ * current custom loop and validateConfig rejects an id that is neither a catalog role nor a
+ * requested custom-loop name, so without the strip a removal would never apply. Only
+ * structurally valid names feed the strip — a malformed entry stays in the array for
+ * validateConfig to reject.
  *
  * Returns null when no request file exists. `applied` names the custom loops now live (empty
  * unless the write happened); `ignored` lists the discarded top-level keys; `error`, when set,
@@ -575,21 +624,28 @@ export function applyConfigRequest(
       for (const entry of loops) {
         if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);
       }
-      const roles = { ...current.roles };
+      // Base the roles rewrite on the FILE's own section, not the loaded (catalog-merged)
+      // map: this whole-config write must not re-expand a partial section to every built-in
+      // (preserveFileRoles' rule). Only the removed custom loops' entries are stripped, and
+      // only from what the file actually holds.
+      const rawRolesCandidate = rawConfigObject(root).roles;
+      const roles = isJsonObject(rawRolesCandidate)
+        ? { ...(rawRolesCandidate as Record<string, unknown>) }
+        : {};
       for (const c of current.customLoops) {
         if (!requestedNames.has(c.name)) delete roles[c.name];
       }
+      const candidate = { ...current, customLoops: loops as TumwaterConfig["customLoops"] };
+      const candidateRecord = candidate as unknown as Record<string, unknown>;
+      if (rawRolesCandidate === undefined) delete candidateRecord.roles;
+      else candidateRecord.roles = roles;
       // Collapse legacy/new pi spellings before writing so a merged config (which always
       // carries the default piArgs) never lands both forms in the file — the next load's raw
       // pass rejects a file holding both `piArgs` and `agents.pi.args`.
-      const candidate = collapseAgentAliases({
-        ...current,
-        customLoops: loops as TumwaterConfig["customLoops"],
-        roles,
-      });
-      validateConfig(candidate); // throws listing every problem — nothing is written on failure
-      writeJsonAtomic(configPath(root), candidate, true);
-      applied = candidate.customLoops.map((c) => c.name);
+      const collapsed = collapseAgentAliases(candidate);
+      validateConfig(collapsed); // throws listing every problem — nothing is written on failure
+      writeJsonAtomic(configPath(root), collapsed, true);
+      applied = collapsed.customLoops.map((c) => c.name);
     });
   } catch (err) {
     applied = []; // no write happened, or it must not be reported as applied

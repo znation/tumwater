@@ -475,6 +475,145 @@ test("setConfigKey merges one roles.<id>.<field> entry; bad fields and role ids 
   assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 
+// A whole-config write must not re-expand the file's own `roles` section to the catalog:
+// `roles` merges per-entry at load, so a partial section is the operator's bytes, not a
+// disable verb. Regression: `config set roles '{"feature":{}}'` followed by any other
+// `config set` silently rewrote tumwater.json's roles to every built-in (BUGS.md 2026-10-11).
+test("a whole-config write preserves the file's own roles section", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  // The operator narrowed the section: only feature, with just the one field.
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { enabled: true }, qa: { enabled: false } } }));
+
+  // An unrelated top-level set leaves the section byte-for-byte as written.
+  assert.ok(setConfigKey(dir, "maxConcurrent", "4").ok);
+  let raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(
+    raw.roles,
+    { feature: { enabled: true }, qa: { enabled: false } },
+    "the file's roles section survives an unrelated set",
+  );
+  assert.equal(raw.maxConcurrent, 4);
+  // Omission still does not disable qa: the catalog merges per entry at load (the documented
+  // behavior the confirmation and README now name), so the file edit is not a disable verb.
+  assert.equal(loadConfig(dir).roles.qa?.enabled, false, "the file's explicit disable applies");
+  assert.equal(loadConfig(dir).roles.bugfix?.enabled, true, "a role absent from the file keeps its default");
+
+  // `config set roles` replaces the file's section, and the next unrelated set keeps that
+  // replacement instead of re-expanding it.
+  assert.ok(setConfigKey(dir, "roles", '{"feature":{"enabled":true}}').ok);
+  assert.ok(setConfigKey(dir, "maxConcurrent", "5").ok);
+  raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(raw.roles, { feature: { enabled: true } }, "the replaced section is durable");
+  assert.equal(raw.maxConcurrent, 5);
+
+  // An unrelated unset is a whole-config write too.
+  assert.ok(unsetConfigKey(dir, "maxConcurrent").ok);
+  raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(raw.roles, { feature: { enabled: true } }, "an unrelated unset leaves roles written");
+
+  // The budget setter behind both dashboards is the same whole-config write.
+  assert.ok(setDailyBudgetUsd(dir, 12).ok);
+  raw = readJson(file) as Record<string, unknown>;
+  assert.deepEqual(raw.roles, { feature: { enabled: true } }, "the budget set leaves roles written");
+});
+
+test("a whole-config write does not add a roles section the file never had", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  fs.writeFileSync(file, JSON.stringify({ maxConcurrent: 3 }));
+  assert.ok(setConfigKey(dir, "maxConcurrent", "4").ok);
+  const raw = readJson(file) as Record<string, unknown>;
+  assert.ok(!("roles" in raw), "an unrelated set does not write the catalog into the file");
+  assert.equal(loadConfig(dir).roles.feature?.enabled, true, "the loaded config still merges the catalog");
+});
+
+// The same guarantee must hold for the DOTTED write branches (map, tier, agent, role): they
+// build their candidate on the merged config too, so before the fix each re-expanded the
+// file's partial roles section to the whole catalog.
+test("dotted writes preserve the file's own roles section", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  const narrowed = { feature: { enabled: true }, qa: { enabled: false } };
+  fs.writeFileSync(file, JSON.stringify({ roles: narrowed }));
+
+  // A dotted per-role map entry, a model tier, and an agent field each leave roles written.
+  for (const [key, value] of [
+    ["maxDailyCostUsdPerRole.clean", "1.5"],
+    ["model.small", "m-small"],
+    ["agents.pi.bin", "/bin/pi"],
+  ] as const) {
+    const r = setConfigKey(dir, key, value);
+    assert.ok(r.ok, `${key}: ${JSON.stringify(r)}`);
+    assert.deepEqual(
+      (readJson(file) as Record<string, unknown>).roles,
+      { feature: { enabled: true }, qa: { enabled: false } },
+      `${key} leaves the file's roles section as written`,
+    );
+  }
+
+  // A dotted roles field merges into the FILE's own section: qa gains the field, feature stays,
+  // and no built-in role the file never held is added.
+  assert.ok(setConfigKey(dir, "roles.qa.model", "m-qa").ok);
+  const merged = { feature: { enabled: true }, qa: { enabled: false, model: "m-qa" } };
+  assert.deepEqual(
+    (readJson(file) as Record<string, unknown>).roles,
+    merged,
+    "a roles field merges into the file's own entries",
+  );
+
+  // A dotted unset preserves the same section.
+  assert.ok(unsetConfigKey(dir, "maxDailyCostUsdPerRole.clean").ok);
+  assert.deepEqual(
+    (readJson(file) as Record<string, unknown>).roles,
+    merged,
+    "a dotted unset leaves roles written",
+  );
+});
+
+// The director's config request (applyConfigRequest) is a whole-config write too: applying it
+// must not re-expand the file's partial roles section, while still stripping the roles entry
+// of a custom loop it removes (BUGS.md 2026-10-11).
+test("applyConfigRequest preserves the file's own roles section", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  fs.writeFileSync(
+    path.join(root, "tumwater.json"),
+    JSON.stringify({ roles: { feature: { enabled: true }, qa: { enabled: false } } }),
+  );
+  writeRequest(wt, { customLoops: [] });
+  const result = applyConfigRequest(root, wt);
+  assert.equal(result?.error, undefined);
+  assert.deepEqual(
+    (readJson(path.join(root, "tumwater.json")) as Record<string, unknown>).roles,
+    { feature: { enabled: true }, qa: { enabled: false } },
+    "the file's roles section survives a config request",
+  );
+});
+
+test("applyConfigRequest strips a removed custom loop's entry from the file's own roles section", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  fs.writeFileSync(
+    path.join(root, "tumwater.json"),
+    JSON.stringify({
+      customLoops: [
+        { name: "docs", task: "old task" },
+        { name: "scrape", task: "old task" },
+      ],
+      roles: { feature: { enabled: true }, docs: { enabled: false }, scrape: { enabled: false } },
+    }),
+  );
+  writeRequest(wt, { customLoops: [{ name: "docs", task: "new task" }] });
+  const result = applyConfigRequest(root, wt);
+  assert.equal(result?.error, undefined);
+  assert.deepEqual(
+    (readJson(path.join(root, "tumwater.json")) as Record<string, unknown>).roles,
+    { feature: { enabled: true }, docs: { enabled: false } },
+    "the kept loop's file entry survives and the removed loop's is stripped",
+  );
+});
+
 test("parseConfigKey rejects dotted shapes outside the per-role maps and roles entries", () => {
   // A bare key stays top-level; the dotted forms parse; anything else is an error naming
   // the supported dotted shapes.
