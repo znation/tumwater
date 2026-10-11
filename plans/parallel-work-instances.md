@@ -79,8 +79,8 @@ markdown.
   - `baseRoleOf(id)` maps `^(feature|bugfix)-([2-9]|[1-9][0-9]+)$` to its role, and any other
     id to itself.
   - `instanceIndex(id)` gives 1 for the bare id and N for `-N`.
-  - `loopIdsFor(config, role)` and `loopIds(config)` give the enabled ids, expanded by
-    instances, in config order.
+  - `loopIds(config)` gives the enabled ids, expanded by instances, in config order, and
+    `configuredInstances(config, id)` gives one role's instance count.
   - `loopEnabled(config, id)` is true when the base role is enabled and the index is at most
     its instances.
   - Custom-loop validation rejects names that match the instance pattern.
@@ -92,29 +92,29 @@ markdown.
 
 | Resource | Where |
 |---|---|
-| state file `.tumwater/state/<id>.json`, `LoopState.role` | paths.ts `statePath`, loop-state.ts |
+| state file `.tumwater/state/<id>.json`, `LoopState.role` | src/paths.ts `statePath`, src/loop/loop-state.ts |
 | pi log `.tumwater/log/<id>.pi.jsonl` | `piLogPath` |
 | sessions `sessions/<id>`, review `sessions/_review/<id>` | `sessionDir`, `reviewSessionDir` |
 | branch `tumwater/<id>`, pool lease/pin role | `branchName`; the pool's `leaseSlot({ role })` |
 | `refs/tumwater/landing/<id>`, `refs/tumwater/rejected/<id>` | `landingRefName`, `rejectedRefName` |
-| `LandingEntry.role`, interlock, landing-slot changes, `liveRoles` | landing-queue.ts, orchestrator-scheduling.ts, landing-slot.ts, landing-vetting.ts |
+| `LandingEntry.role`, interlock, landing-slot changes, `liveRoles` | src/landing/landing-queue.ts, src/orchestrator/orchestrator-scheduling.ts, src/landing/landing-slot.ts, src/landing/landing-vetting.ts |
 | per-loop inbox (a prompt to `feature` reaches instance 1), abort marker | `roleInboxDir`, `abortRequestPath` |
-| events `loop`, once-round, `deferredDue`, model-fallback episode, streaks, backoff and yield ring | events.ts, once-round.ts, loop state |
+| events `loop`, once-round, `deferredDue`, model-fallback episode, streaks, backoff and yield ring | src/events/events.ts, src/scheduling/once-round.ts, loop state |
 | notebook `state/notes/<id>` (an extra instance starts with an empty note) | `roleNotesPath` |
-| trailer `Tick: feature-2 #N` | commit-message.ts `commitTrailer` |
+| trailer `Tick: feature-2 #N` | src/git/commit-message.ts `commitTrailer` |
 
 **Normalized to the base role (`baseRoleOf`) at these choke points:**
 
 | Concern | Site |
 |---|---|
-| catalog lookup and title; `qa`/`telemetry`/`clean` special cases; `config.roles[…].instructions` | tick-prompt.ts `assembleTickPrompt` (`roleById`, the custom-loop lookup) |
-| model, thinking, interval, tier and fallback | config-views.ts `configForRole`, `roleSeamTier`, `fallbackRoleConfig` normalize their `role` argument |
-| enabled check | scheduling.ts `isEligible` uses `loopEnabled` in place of `config.roles[runner.role]?.enabled` |
-| tier and deferral sets | roles.ts `roleTier`, `yieldScaledRole`; main-red.ts's `BASELINE_BLOCKED_ROLES.has`; tick-apply.ts's `OBSERVER_ROLES.has`; scheduling.ts `deferTick` (`DEFERRABLE_ROLES`, `BUGFIX_ROLE`) |
-| bugfix's red-main handoff | loop.ts `runTick` (`this.role === "bugfix"`); qa `extractFlow` likewise |
-| commit subject `tumwater(<base>):` | tick-stage.ts `stampedSubject(ctx.role, …)`, verdict/refusal.ts. This keeps `workLanded`, the role-guidance `git log --grep`, and history attribution working |
-| per-role caps and schedules | role-cap-gates.ts `pollRoleCapGate` sums the instances' `dailyCost` against the base cap and pauses all of them; gate-polls.ts per-role quiet hours and the budget tier (`roleSeamTier`) |
-| operator fan-out | `pause`/`resume`/`wake`/`reset-counters`/`retire` with a base id reach every instance (operator-requests.ts `roleRequestTargets`; the scheduler checks `pausedRoles` for both ids); `abort`/`prompt`/`diff` address exactly the named loop id |
+| catalog lookup and title; `qa`/`telemetry`/`clean` special cases; `config.roles[…].instructions` | src/tick/tick-prompt.ts `assembleTickPrompt` (`roleById`, the custom-loop lookup) |
+| model, thinking, interval, tier and fallback | src/config/config-views.ts `configForRole`, `roleSeamTier`, `fallbackRoleConfig` normalize their `role` argument |
+| enabled check | src/scheduling/scheduling.ts `isEligible` uses `loopEnabled` in place of `config.roles[runner.role]?.enabled` |
+| tier and deferral sets | src/roles/roles.ts `roleTier`, `yieldScaledRole`, `BASELINE_BLOCKED_ROLES.has`, `OBSERVER_ROLES.has`, `DEFERRABLE_ROLES` and `BUGFIX_ROLE`; src/scheduling/scheduling.ts `deferTick` |
+| bugfix's red-main handoff | src/loop/loop.ts `runTick` (`this.role === "bugfix"`); qa `extractFlow` likewise |
+| commit subject `tumwater(<base>):` | src/git/commit-message.ts `stampedSubject(ctx.role, …)`, called from src/tick/tick-stage.ts and src/verdict/refusal.ts. This keeps `workLanded`, the role-guidance `git log --grep`, and history attribution working |
+| per-role caps and schedules | src/gates/role-cap-gates.ts `pollRoleCapGate` sums the instances' `dailyCost` against the base cap and pauses all of them; src/gates/gate-polls.ts per-role quiet hours and the budget tier (`roleSeamTier`) |
+| operator fan-out | `pause`/`resume`/`wake`/`reset-counters`/`retire` with a base id reach every instance (src/operator/operator-requests.ts `roleRequestTargets`; the scheduler checks `pausedRoles` for both ids); `abort`/`prompt`/`diff` address exactly the named loop id |
 
 ### Eligibility: which entries an instance may be given (part 2/7)
 
@@ -145,8 +145,8 @@ markdown.
 
 - **Diff3 markers.** `rebaseOntoMainLeaveConflicts` (src/landing/landing-git.ts) runs with
   `-c merge.conflictStyle=diff3`, so each hunk carries its base section.
-- **Deterministic first pass.** In `resolveConflict` (landing-merge.ts), before any pi run,
-  `resolveBacklogInsertConflicts(wt, files)` (new src/landing/backlog-conflicts.ts) handles every
+- **Deterministic first pass.** In `resolveConflict` (src/landing/landing-merge.ts), before any pi
+  run, `resolveBacklogInsertConflicts(wt, files)` (new src/landing/backlog-conflicts.ts) handles every
   conflicted `PLANS.md`, `BUGS.md` or `QUESTIONS.md` at the repo root. Each hunk is either:
   - **insert-only:** the base section is empty and both sides are non-empty. It is replaced by
     the change's lines, then a blank line if needed, then main's lines, so the newer landing
@@ -168,8 +168,9 @@ markdown.
   - It is persisted with the instance's state, so a crash, a resume, a leftover recovery or a
     revision keeps it with no extra store.
 - **Who assigns.** Only roles that currently have more than one runner (instances > 1) take
-  part. The assignment happens in `pollRunnerReasons` (orchestrator-scheduling.ts), after every
-  gate has admitted the runner and just before `reasons.set`:
+  part. The assignment happens in `pollRunnerReasons`
+  (src/orchestrator/orchestrator-scheduling.ts), after every gate has admitted the runner and
+  just before `reasons.set`:
   - The poll computes, once per multi-instance role: `eligible`, `held` (keys of claims on that
     role's runners still listed under the section), and `free = eligible − held`.
   - **A runner already holding a claim** keeps it. This covers its revision, resume, error
@@ -246,11 +247,13 @@ because another instance landed first.
   `bugfix`, and defaults to 1. It touches the schema, validation, editable keys, the example
   config and docs.
 - **Runners.**
-  - The orchestrator builds its runners from `loopIds(config)` (orchestrator.ts, the
-    `enabled.map(...)` that creates the runners).
-  - Live reload adds runners for new ids (config-live.ts). Lowering `instances` leaves the
-    surplus runners, which `loopEnabled` then skips, the same way a disabled role is handled.
-  - `knownRoleIds`, `snapshot` (status-data.ts) and the GUI's role validation list the loop ids.
+  - The orchestrator builds its runners from `loopIds(config)`
+    (src/orchestrator/orchestrator.ts, the `enabled.map(...)` that creates the runners).
+  - Live reload adds runners for new ids (src/config/config-live.ts). Lowering `instances`
+    leaves the surplus runners, which `loopEnabled` then skips, the same way a disabled role is
+    handled.
+  - `knownRoleIds` (src/config/config.ts), `snapshot` (src/status/status-data.ts) and the GUI's
+    role validation list the loop ids.
 - **Plan threshold.** The plan charter's "two or more plans" becomes a target the prompt
   substitutes: `planBacklogTarget(config) = instances(feature) + 1` *eligible* plans. The
   charter also asks for independent series when feature runs several instances.

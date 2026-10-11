@@ -142,15 +142,15 @@ fresh mtimes, so the tool rebuilds exactly what changed.
   `ensureDetachedWorktree` at `req.sha`, and releases it when the vet ends, whatever the
   outcome.
   - A vet passes its result on through the landing ref and `VettedLanding`, never through the
-    worktree. Every later step re-ensures at a commit (`landing-core.ts`, `landing-stack.ts`),
-    so no step depends on the slot after release.
+    worktree. Every later step re-ensures at a commit (`src/landing/landing-core.ts`,
+    `src/landing/landing-stack.ts`), so no step depends on the slot after release.
 - **Merge-side steps move to `_merge`.** That covers `landApprovedChange`, `landStack` with its
   bisect prefixes, and `attributeRedCheck`'s worktree.
   - Each step already calls `ensureDetachedWorktree` at a commit, so the move is a path change.
   - A new `mergeWorktreePath(root)` in src/paths.ts names the checkout.
 - **`removeLandWorktree` call sites are deleted.** A slot is reused, not removed. The call
-  sites are in landing-core.ts, landing-check-failures.ts, landing-pipeline.ts and
-  landing-batch.ts.
+  sites are in src/landing/landing-core.ts, src/landing/landing-check-failures.ts,
+  src/landing/landing-pipeline.ts and src/landing/landing-batch.ts.
 - **Startup removes legacy `_land-*` checkouts.** They hold no state, and queued landings
   re-vet from their pinned refs.
 
