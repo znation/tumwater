@@ -1,19 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
+import { GUI_CLIENT_FLEET_JS } from "../src/ui/gui/gui-client-fleet.js";
 
 // The dashboard's fleet-view backlog panel (src/ui/gui/gui-client-fleet.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
 // queuedPrompts/splitTitle, the format region supplies fmtAgo, and a recording paintPanel
 // stands in for the DOM.
 
-function backlogScope(backlogTab = "queued") {
+function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}) {
   const panels: Record<string, string> = {};
-  const scope = clientScope<{ renderBacklog(d: object): void }>(["format", "view-model", "backlog"], ["renderBacklog"], {
+  const scope = clientScope<{
+    renderBacklog(d: object): void;
+    beginQueuedEdit(role: string, file: string, text: string): void;
+    endQueuedEdit(): void;
+    setBacklogTab(tab: string): void;
+  }>(["format", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab"], {
     backlogTab,
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
     openEntryKey: () => null,
+    store: () => {},
+    lastStatus: undefined,
+    ...extra,
   });
   return { scope, panels };
 }
@@ -41,6 +50,60 @@ test("the Queued tab shows how long each prompt has waited, and unstamped ones a
   assert.match(html, /data-action='promptcancel' data-file='a\.md' data-role='director'/);
   assert.match(html, /data-action='promptcancel' data-file='b\.md' data-role='director'/);
   assert.match(html, /data-action='promptcancel' data-file='q\.md' data-role='qa'/);
+});
+
+test("the Queued tab edits a prompt in place, and the poll cannot clobber the editor", () => {
+  const { scope, panels } = backlogScope();
+  const status = {
+    questions: [], plans: [], bugs: [],
+    inboxPrompts: ["docs pass"], inboxFiles: ["a.md"], inboxQueuedAt: [null],
+    roleInboxPrompts: { qa: [{ file: "q.md", preview: "run the qa suite", queuedAtMs: null }] },
+  };
+  scope.renderBacklog(status);
+  let html = panels["backlog"] ?? "";
+  // Each queued row carries an Edit button beside Cancel, addressed by queue file and role.
+  assert.match(html, /data-action='promptedit' data-file='a\.md' data-role='director'/);
+  assert.match(html, /data-action='promptedit' data-file='q\.md' data-role='qa'/);
+  // Opening the editor swaps the matched row for a textarea loaded with the body.
+  scope.beginQueuedEdit("qa", "q.md", "new body");
+  html = panels["backlog"] ?? "";
+  assert.match(html, /<textarea id='queuedit' class='queuedit'>new body<\/textarea>/);
+  assert.match(html, /data-action='prompteditsave' data-file='q\.md' data-role='qa'/);
+  assert.match(html, /data-action='prompteditcancel' data-file='q\.md' data-role='qa'/);
+  // The standing 1s poll repaints from the same payload; an open editor must survive it.
+  const painted = panels["backlog"];
+  scope.renderBacklog(status);
+  assert.equal(panels["backlog"], painted, "no second paint while the editor is open");
+  // Ending the edit paints the plain list again.
+  scope.endQueuedEdit();
+  html = panels["backlog"] ?? "";
+  assert.doesNotMatch(html, /<textarea/);
+  assert.match(html, /data-action='promptedit' data-file='q\.md' data-role='qa'/);
+  assert.match(html, /data-action='promptcancel' data-file='q\.md' data-role='qa'/);
+});
+
+test("switching tabs abandons an open Queued editor", () => {
+  const status = {
+    questions: [], plans: ["Ready (planned 2026-10-01)"], bugs: [],
+    inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [],
+    roleInboxPrompts: { qa: [{ file: "q.md", preview: "run the qa suite", queuedAtMs: null }] },
+  };
+  const { scope, panels } = backlogScope("queued", { lastStatus: status });
+  scope.renderBacklog(status);
+  scope.beginQueuedEdit("qa", "q.md", "new body");
+  assert.match(panels["backlog"] ?? "", /<textarea/);
+  scope.setBacklogTab("plans");
+  const html = panels["backlog"] ?? "";
+  assert.doesNotMatch(html, /<textarea/);
+  assert.match(html, /li-title'>Ready/);
+});
+
+test("the queued row's delegated handler carries the edit arms", () => {
+  assert.match(GUI_CLIENT_FLEET_JS, /button\.rowaction\[data-action='promptedit'\]/);
+  assert.match(GUI_CLIENT_FLEET_JS, /button\.rowaction\[data-action='prompteditsave'\]/);
+  assert.match(GUI_CLIENT_FLEET_JS, /button\.rowaction\[data-action='prompteditcancel'\]/);
+  assert.match(GUI_CLIENT_FLEET_JS, /"\/api\/prompt-text\?role="/);
+  assert.match(GUI_CLIENT_FLEET_JS, /"\/api\/prompt-edit"/);
 });
 
 test("the other backlog tabs render unchanged alongside the queued age", () => {

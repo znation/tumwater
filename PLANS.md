@@ -6,69 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Edit a queued prompt from the dashboard Queued tab (planned 2026-10-11 by plan; part 2/2 of "Edit a queued prompt from the dashboard Queued tab" — the browser affordance over part 1/2's `GET /api/prompt-text` and `POST /api/prompt-edit`, requires part 1/2 landed; independent of the waiting TUI Pending land-queue, TUI History grep, and dashboard Settings Clear plans — GUI client only, no `src/ui/tui`, `src/inbox`, or `src/gui` file)
-
-**Goal.** The dashboard's Queued tab lists every queued prompt with a Cancel button, but
-correcting a typo means cancel and re-queue; `tumwater prompt --edit` has no browser surface even
-though part 1/2 serves the body and the write. Add an inline editor: an Edit button per queued
-row loads the prompt's body into a textarea in place, and Save replaces it through
-`/api/prompt-edit`.
-
-**Approach.**
-1. `src/ui/gui/gui-client-fleet.ts`, the `backlog` region:
-   - Add state beside `backlogTab`: `let backlogStatus = null` (the payload the edit helpers
-     repaint from), `let queuedEdit = null` (`{ role, file, text } | null`), and
-     `let queuedEditPainted = false`.
-   - `renderBacklog(d)`: set `backlogStatus = d` first; then
-     `if (queuedEdit && queuedEditPainted) return;` so the standing 1s poll cannot repaint over
-     the textarea the operator is typing in.
-   - The queued row map: each item gets, after the Cancel button,
-     `<button type='button' class='btn btn-sm rowaction' data-action='promptedit' data-file='…'
-     data-role='…'>Edit</button>`; when the item matches `queuedEdit`
-     (`q.file === queuedEdit.file && q.role === queuedEdit.role`), render instead a
-     `<div class='list-item'>` holding `<textarea id='queuedit' class='…'>` + `esc(queuedEdit.text)`
-     + `</textarea>` and Save/Cancel buttons (`data-action='prompteditsave'`/`'prompteditcancel'`,
-     each carrying the same `data-file`/`data-role`). Set `queuedEditPainted = true` before
-     `paintPanel` when the editor was rendered.
-   - Add `function beginQueuedEdit(role, file, text)`: `backlogTab = "queued";
-     queuedEdit = { role, file, text }; queuedEditPainted = false; renderBacklog(backlogStatus)`.
-   - Add `function endQueuedEdit()`: `queuedEdit = null; queuedEditPainted = false;
-     renderBacklog(backlogStatus)`.
-   - `setBacklogTab(tab)`: before `renderBacklog(lastStatus)`, clear `queuedEdit` and
-     `queuedEditPainted`, so switching tabs abandons an open editor.
-2. The delegated `$("backlog")` click handler (below the region) gains three arms before the
-   `.backloglink` arm: `button.rowaction[data-action='promptedit']` →
-   `await getJson("/api/prompt-text?role=" + encodeURIComponent(role) + "&file=" +
-   encodeURIComponent(file))`; a `{ status: "gone" }` answer flashes `"No longer queued — …
-   already took it"` and refreshes, otherwise `beginQueuedEdit(role, file, d.text || "")`; a thrown
-   fetch flashes the `error:` pattern. `[data-action='prompteditsave']` → read `$("queuedit")`'s
-   trimmed `value` (flash and stop when empty), `await postAction("/api/prompt-edit", { role,
-   file, text }, …)` with the `edited`/`gone` flash wording the cancel arm uses, then
-   `endQueuedEdit()`. `[data-action='prompteditcancel']` → `endQueuedEdit()`. `$` and `getJson` are
-   already in scope; `endQueuedEdit`/`beginQueuedEdit` are hoisted from the region.
-3. `docs/how-it-works.md`: the Operator notes sentence naming the Queued tab adds that each
-   queued prompt can be edited in place (Edit loads its body, Save replaces it through the same
-   path `tumwater prompt --edit` uses), beside the existing age sentence.
-
-**Files touched.** `src/ui/gui/gui-client-fleet.ts`, `test/gui-client-fleet.test.ts`,
-`docs/how-it-works.md`.
-
-**Acceptance criteria.**
-- `test/gui-client-fleet.test.ts`: the queued rows now emit one `data-action='promptedit'` Edit
-  button per prompt beside the cancel buttons, with the queue-file address and role (the existing
-  cancel assertions stay green). `beginQueuedEdit("qa", "q.md", "new body")` paints the queued tab
-  with a `<textarea id='queuedit'>` holding `new body` and Save/Cancel buttons carrying
-  `data-file='q.md'`/`data-role='qa'`, and a following `renderBacklog(status)` writes no second
-  paint (the poll cannot clobber the editor). `endQueuedEdit()` repaints the plain list (no
-  textarea, Edit and Cancel buttons back). `setBacklogTab` while editing discards the editor and
-  paints the newly selected tab.
-- A string assertion on `GUI_CLIENT_FLEET_JS` pins the delegated handler's edit arms: the
-  `promptedit`, `prompteditsave`, and `prompteditcancel` selectors, the `/api/prompt-text?role=`
-  fetch, and the `/api/prompt-edit` post.
-- `docs/how-it-works.md` describes the Queued tab's Edit action and names `tumwater prompt --edit`
-  as the path it shares.
-- `npm run test` is green.
-
 ### Defer a prompt from the dashboard composer, matching `tumwater prompt --at <duration>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater prompt --at <duration>` (commit 654f15b3) and the landed dashboard deferral display (`gui-client-fleet.ts`'s `delivers in`); the dashboard can already paint a deferred prompt's countdown but no dashboard surface can set the marker, so an operator must drop to the CLI to schedule one; independent of the waiting TUI Queued pane, TUI History grep, dashboard queued-prompt edit, and dashboard Settings Clear plans in code — `src/cli/cli-args.ts`'s newly exported `parseDurationMs` plus `src/inbox/inbox-submit.ts`, the two prompt handlers in `src/gui/gui-endpoint-commands.ts`, and the composer files, no `src/ui/tui` file — it shares `src/gui/gui-endpoint-commands.ts` with the landed prompt-edit and Settings Clear handlers but edits different functions, so a landing conflict is possible and the resolver handles it)
 
 **Goal.** `tumwater prompt --at <duration>` queues a prompt whose `tumwater:not-before <iso>`
@@ -220,6 +157,69 @@ patch caps.
 - `npm run test` is green.
 
 ## Done
+
+### Edit a queued prompt from the dashboard Queued tab (planned 2026-10-11 by plan; part 2/2 of "Edit a queued prompt from the dashboard Queued tab" — the browser affordance over part 1/2's `GET /api/prompt-text` and `POST /api/prompt-edit`, requires part 1/2 landed; independent of the waiting TUI Pending land-queue, TUI History grep, and dashboard Settings Clear plans — GUI client only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; done 2026-10-11 by feature)
+
+**Goal.** The dashboard's Queued tab lists every queued prompt with a Cancel button, but
+correcting a typo means cancel and re-queue; `tumwater prompt --edit` has no browser surface even
+though part 1/2 serves the body and the write. Add an inline editor: an Edit button per queued
+row loads the prompt's body into a textarea in place, and Save replaces it through
+`/api/prompt-edit`.
+
+**Approach.**
+1. `src/ui/gui/gui-client-fleet.ts`, the `backlog` region:
+   - Add state beside `backlogTab`: `let backlogStatus = null` (the payload the edit helpers
+     repaint from), `let queuedEdit = null` (`{ role, file, text } | null`), and
+     `let queuedEditPainted = false`.
+   - `renderBacklog(d)`: set `backlogStatus = d` first; then
+     `if (queuedEdit && queuedEditPainted) return;` so the standing 1s poll cannot repaint over
+     the textarea the operator is typing in.
+   - The queued row map: each item gets, after the Cancel button,
+     `<button type='button' class='btn btn-sm rowaction' data-action='promptedit' data-file='…'
+     data-role='…'>Edit</button>`; when the item matches `queuedEdit`
+     (`q.file === queuedEdit.file && q.role === queuedEdit.role`), render instead a
+     `<div class='list-item'>` holding `<textarea id='queuedit' class='…'>` + `esc(queuedEdit.text)`
+     + `</textarea>` and Save/Cancel buttons (`data-action='prompteditsave'`/`'prompteditcancel'`,
+     each carrying the same `data-file`/`data-role`). Set `queuedEditPainted = true` before
+     `paintPanel` when the editor was rendered.
+   - Add `function beginQueuedEdit(role, file, text)`: `backlogTab = "queued";
+     queuedEdit = { role, file, text }; queuedEditPainted = false; renderBacklog(backlogStatus)`.
+   - Add `function endQueuedEdit()`: `queuedEdit = null; queuedEditPainted = false;
+     renderBacklog(backlogStatus)`.
+   - `setBacklogTab(tab)`: before `renderBacklog(lastStatus)`, clear `queuedEdit` and
+     `queuedEditPainted`, so switching tabs abandons an open editor.
+2. The delegated `$("backlog")` click handler (below the region) gains three arms before the
+   `.backloglink` arm: `button.rowaction[data-action='promptedit']` →
+   `await getJson("/api/prompt-text?role=" + encodeURIComponent(role) + "&file=" +
+   encodeURIComponent(file))`; a `{ status: "gone" }` answer flashes `"No longer queued — …
+   already took it"` and refreshes, otherwise `beginQueuedEdit(role, file, d.text || "")`; a thrown
+   fetch flashes the `error:` pattern. `[data-action='prompteditsave']` → read `$("queuedit")`'s
+   trimmed `value` (flash and stop when empty), `await postAction("/api/prompt-edit", { role,
+   file, text }, …)` with the `edited`/`gone` flash wording the cancel arm uses, then
+   `endQueuedEdit()`. `[data-action='prompteditcancel']` → `endQueuedEdit()`. `$` and `getJson` are
+   already in scope; `endQueuedEdit`/`beginQueuedEdit` are hoisted from the region.
+3. `docs/how-it-works.md`: the Operator notes sentence naming the Queued tab adds that each
+   queued prompt can be edited in place (Edit loads its body, Save replaces it through the same
+   path `tumwater prompt --edit` uses), beside the existing age sentence.
+
+**Files touched.** `src/ui/gui/gui-client-fleet.ts`, `test/gui-client-fleet.test.ts`,
+`docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- `test/gui-client-fleet.test.ts`: the queued rows now emit one `data-action='promptedit'` Edit
+  button per prompt beside the cancel buttons, with the queue-file address and role (the existing
+  cancel assertions stay green). `beginQueuedEdit("qa", "q.md", "new body")` paints the queued tab
+  with a `<textarea id='queuedit'>` holding `new body` and Save/Cancel buttons carrying
+  `data-file='q.md'`/`data-role='qa'`, and a following `renderBacklog(status)` writes no second
+  paint (the poll cannot clobber the editor). `endQueuedEdit()` repaints the plain list (no
+  textarea, Edit and Cancel buttons back). `setBacklogTab` while editing discards the editor and
+  paints the newly selected tab.
+- A string assertion on `GUI_CLIENT_FLEET_JS` pins the delegated handler's edit arms: the
+  `promptedit`, `prompteditsave`, and `prompteditcancel` selectors, the `/api/prompt-text?role=`
+  fetch, and the `/api/prompt-edit` post.
+- `docs/how-it-works.md` describes the Queued tab's Edit action and names `tumwater prompt --edit`
+  as the path it shares.
+- `npm run test` is green.
 
 ### List every loop's queued prompts in a TUI Queued pane, matching `tumwater prompt --list` (planned 2026-10-11 by plan; sibling of the landed TUI Pending pane (`tumwater queue`), the landed dashboard Queued tab (`prompt --cancel`), and the waiting dashboard queued-prompt edit series (parts 1/2 and 2/2); completes `tumwater prompt --list`'s read surface on the TUI, which today shows only the director's numbered previews above every pane (`tui.tsx`'s `snap.inboxPrompts`) and each role's `p:N` count marker (`status-render.ts`'s `roleQueued`), never the role queues' contents or a deferred prompt's countdown; read-only, so it needs no server, mutation, or cancellation; independent of the waiting TUI History grep plan in behavior — it touches `tui-keys.ts`/`tui-frame.ts`/`tui.tsx` too, but its own Queued branch rather than the History branches, so a landing conflict is possible and the resolver handles it; it shares `src/inbox/inbox.ts` with the waiting dashboard queued-edit part 1/2 only at the read seam, which edits `inbox-edit.ts`; done 2026-10-11 by feature)
 

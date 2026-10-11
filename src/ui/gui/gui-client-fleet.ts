@@ -228,12 +228,32 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
 
   // ---- backlog: questions, plans, bugs, and queued prompts ----
   let backlogTab = recall("backlog") || "";
+  // backlog:start
+  // The Queued tab's in-place editor state, beside the tab choice its rows paint from:
+  // backlogStatus is the last payload renderBacklog saw, queuedEdit is the open editor
+  // ({ role, file, text } or null), and queuedEditPainted marks that its textarea is on
+  // screen so the standing 1s poll cannot repaint over what the operator is typing.
+  let backlogStatus = null;
+  let queuedEdit = null;
+  let queuedEditPainted = false;
   function setBacklogTab(tab) {
     backlogTab = tab;
     store("backlog", tab);
+    queuedEdit = null;
+    queuedEditPainted = false;
     if (lastStatus) renderBacklog(lastStatus);
   }
-  // backlog:start
+  function beginQueuedEdit(role, file, text) {
+    backlogTab = "queued";
+    queuedEdit = { role, file, text };
+    queuedEditPainted = false;
+    renderBacklog(backlogStatus);
+  }
+  function endQueuedEdit() {
+    queuedEdit = null;
+    queuedEditPainted = false;
+    renderBacklog(backlogStatus);
+  }
   const BACKLOG = [
     ["questions", "Questions", "question", "indigo", "No open questions", "Loops post here when they need a decision from you."],
     ["plans", "Plans", "plan", "blue", "Nothing planned", "The plan loop files features in PLANS.md."],
@@ -241,6 +261,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     ["queued", "Queued", "chat", "gray", "No queued prompts", "Prompts you send wait here until their loop takes them."],
   ];
   function renderBacklog(d) {
+    backlogStatus = d;
+    if (queuedEdit && queuedEditPainted) return; // an open editor owns the panel until Save or Cancel
     const items = { questions: d.questions || [], plans: d.plans || [], bugs: d.bugs || [], queued: queuedPrompts(d) };
     if (!items[backlogTab]) backlogTab = items.questions.length ? "questions" : "plans";
     paintPanel("backlogtabs", BACKLOG.map(([k, label]) => "<button type='button' role='tab' data-tab='" + k + "' aria-selected='" + (k === backlogTab) + "'" +
@@ -251,11 +273,24 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     let html;
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
     else if (key === "queued") {
-      html = list.map((q) => "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
-        "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + q.role + " loop") +
-          (q.notBeforeMs && q.notBeforeMs > Date.now() ? " · delivers in " + humanSeconds(Math.round((q.notBeforeMs - Date.now()) / 1000))
-            : (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : ""))) + "</span></div>" +
-        "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'>Cancel</button></div>").join("");
+      html = list.map((q) => {
+        const addr = "data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'";
+        // The row being edited swaps its preview for a textarea and a Save/Cancel pair; the
+        // address stays the queue-file basename, the same one /api/prompt-cancel uses.
+        if (queuedEdit && q.file === queuedEdit.file && q.role === queuedEdit.role) {
+          queuedEditPainted = true;
+          return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span>" +
+            "<textarea id='queuedit' class='queuedit'>" + esc(queuedEdit.text) + "</textarea>" +
+            "<button type='button' class='btn btn-sm rowaction' data-action='prompteditsave' " + addr + ">Save</button>" +
+            "<button type='button' class='btn btn-sm rowaction' data-action='prompteditcancel' " + addr + ">Cancel</button></div>";
+        }
+        return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
+          "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + q.role + " loop") +
+            (q.notBeforeMs && q.notBeforeMs > Date.now() ? " · delivers in " + humanSeconds(Math.round((q.notBeforeMs - Date.now()) / 1000))
+              : (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : ""))) + "</span></div>" +
+          "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' " + addr + ">Cancel</button>" +
+          "<button type='button' class='btn btn-sm rowaction' data-action='promptedit' " + addr + ">Edit</button></div>";
+      }).join("");
     } else {
       const open = openEntryKey();
       // The eligibility holds beside the title, from the payload's parallel arrays (indexed by
@@ -286,6 +321,38 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         d && d.status === "cancelled"
           ? "Cancelled: " + (d.preview || "")
           : "No longer queued — " + (cancel.dataset.role || "the director") + " already took it");
+      return;
+    }
+    const edit = clickClosest(ev, "button.rowaction[data-action='promptedit']");
+    if (edit) {
+      try {
+        const d = await getJson("/api/prompt-text?role=" + encodeURIComponent(edit.dataset.role) + "&file=" + encodeURIComponent(edit.dataset.file));
+        if (d && d.status === "gone") {
+          showFlash("No longer queued — " + (edit.dataset.role || "the director") + " already took it");
+          refresh();
+        } else {
+          beginQueuedEdit(edit.dataset.role, edit.dataset.file, (d && d.text) || "");
+        }
+      } catch (err) {
+        showFlash("error: " + err.message);
+      }
+      return;
+    }
+    const save = clickClosest(ev, "button.rowaction[data-action='prompteditsave']");
+    if (save) {
+      const area = $("queuedit");
+      const text = area ? area.value.trim() : "";
+      if (!text) { showFlash("error: prompt text is empty"); return; }
+      await postAction("/api/prompt-edit", { role: save.dataset.role, file: save.dataset.file, text }, (d) =>
+        d && d.status === "edited"
+          ? "Edited: " + (d.newText || "")
+          : "No longer queued — " + (save.dataset.role || "the director") + " already took it");
+      endQueuedEdit();
+      return;
+    }
+    const editCancel = clickClosest(ev, "button.rowaction[data-action='prompteditcancel']");
+    if (editCancel) {
+      endQueuedEdit();
       return;
     }
     const entry = clickClosest(ev, ".backloglink");
