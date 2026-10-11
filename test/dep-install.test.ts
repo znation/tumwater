@@ -58,6 +58,21 @@ function fakeInstaller(mode: "install" | "noop" | "fail" = "install"): InstallRu
   return Object.assign(run, { calls });
 }
 
+/** Run `fn` with a fake `npm` on PATH: a fresh bin dir holding `script` as npm shadows the real
+ * one while shell binaries stay reachable, and PATH is restored afterwards even when `fn` throws
+ * — the shared form of the `const bin = tmpdir(...); writeScript(...); const restore =
+ * pathPrepend(bin); try { ... } finally { restore(); }` boilerplate the npmInstall tests repeated. */
+async function withFakeNpm<T>(script: string, fn: () => Promise<T>): Promise<T> {
+  const bin = tmpdir("dep-install-bin-");
+  writeScript(path.join(bin, "npm"), script);
+  const restore = pathPrepend(bin);
+  try {
+    return await fn();
+  } finally {
+    restore();
+  }
+}
+
 test("installDrift owes nothing without a lockfile, or when the walk-up resolves every pin", () => {
   const { root, wt } = buildCheckFixture();
   assert.deepEqual(installDrift(wt), [], "no lockfile pins nothing");
@@ -161,36 +176,26 @@ test("syncRootInstall re-syncs a drifted root install and prices it as a dep_ins
 test("npmInstall installs from the pinned args and syncInstall accepts the result through the default runner", async () => {
   const wt = tmpdir("dep-install-npm-ok-");
   writeLock(wt, { ink: "7.1.1" });
-  const bin = tmpdir("dep-install-bin-");
-  writeScript(
-    path.join(bin, "npm"),
+  await withFakeNpm(
     // Record the arguments npm was pinned to, then leave the package where npm would.
     'printf "%s\\n" "$@" >> .npm-args && mkdir -p node_modules/ink && printf \'{"name":"ink","version":"7.1.1"}\' > node_modules/ink/package.json',
+    async () => {
+      const r = await syncInstall(wt); // No installer argument: the default npmInstall runs.
+      assert.deepEqual(r?.packages, ["ink"]);
+      assert.equal(r?.ok, true);
+      assert.ok((r?.durationMs ?? -1) >= 0);
+      const args = fs.readFileSync(path.join(wt, ".npm-args"), "utf8").trim().split("\n");
+      assert.deepEqual(args, ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"]);
+    },
   );
-  const restore = pathPrepend(bin); // The fake shadows the real npm; shell binaries stay reachable.
-  try {
-    const r = await syncInstall(wt); // No installer argument: the default npmInstall runs.
-    assert.deepEqual(r?.packages, ["ink"]);
-    assert.equal(r?.ok, true);
-    assert.ok((r?.durationMs ?? -1) >= 0);
-    const args = fs.readFileSync(path.join(wt, ".npm-args"), "utf8").trim().split("\n");
-    assert.deepEqual(args, ["install", "--no-save", "--ignore-scripts", "--no-audit", "--no-fund"]);
-  } finally {
-    restore();
-  }
 });
 
 test("npmInstall reports a nonzero exit with the output's last line", async () => {
-  const bin = tmpdir("dep-install-bin-");
-  writeScript(path.join(bin, "npm"), "echo 'npm warn nothing' >&2; echo 'npm error code ENOTFOUND' >&2; exit 1");
-  const restore = pathPrepend(bin);
-  try {
+  await withFakeNpm("echo 'npm warn nothing' >&2; echo 'npm error code ENOTFOUND' >&2; exit 1", async () => {
     const r = await npmInstall(tmpdir("dep-install-npm-fail-"), 30_000);
     assert.equal(r.ok, false);
     assert.equal(r.detail, "npm install exited 1: npm error code ENOTFOUND");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("npmInstall reports npm missing from PATH as a spawn error, not a crash", async () => {
@@ -207,29 +212,19 @@ test("npmInstall reports npm missing from PATH as a spawn error, not a crash", a
 });
 
 test("npmInstall reports an install that outlives its timeout", async () => {
-  const bin = tmpdir("dep-install-bin-");
-  writeScript(path.join(bin, "npm"), "sleep 5");
-  const restore = pathPrepend(bin);
-  try {
+  await withFakeNpm("sleep 5", async () => {
     const r = await npmInstall(tmpdir("dep-install-npm-slow-"), 200);
     assert.equal(r.ok, false);
     assert.equal(r.detail, "npm install timed out after 0.2s");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("npmInstall reports an install killed by a signal before the timeout", async () => {
-  const bin = tmpdir("dep-install-bin-");
-  writeScript(path.join(bin, "npm"), "kill -s TERM $$");
-  const restore = pathPrepend(bin);
-  try {
+  await withFakeNpm("kill -s TERM $$", async () => {
     const r = await npmInstall(tmpdir("dep-install-npm-signal-"), 30_000);
     assert.equal(r.ok, false);
     assert.equal(r.detail, "npm install was killed by SIGTERM");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("syncRootInstall warns when the root install fails, and stays silent with no drift", async () => {
