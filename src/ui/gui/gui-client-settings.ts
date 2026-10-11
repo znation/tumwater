@@ -1,9 +1,11 @@
 /** The dashboard's Settings view, browser-side: the curated top-level config keys
  * (EDITABLE_CONFIG_KEYS's set, mirrored here for the labels) as label + current value +
- * inline field + Save, one row per key. Values load once through GET /api/config when the
- * view is first opened — no polling loop of its own; a re-click of the tab refetches, like
+ * inline field + Save + Clear, one row per key. Values load once through GET /api/config when
+ * the view is first opened — no polling loop of its own; a re-click of the tab refetches, like
  * the other views' refresh-on-open. Save posts {key, value} to POST /api/config-set — the
- * same setConfigKey write path `tumwater config set` uses — and flashes the same
+ * same setConfigKey write path `tumwater config set` uses — and Clear posts {key} to
+ * POST /api/config-unset — the same unsetConfigKey write path `tumwater config unset` uses —
+ * so the two retract/set halves cannot drift from the CLI. Both flash the same
  * success/error toast pattern the composer's send uses (showFlash). Spliced into
  * gui-client.ts's script, reaching its helpers (esc, $, getJson, postJson, showFlash) through
  * that concatenation. */
@@ -35,6 +37,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<label for='set-" + k[0] + "'>" + esc(k[1]) + "<span class='settings-key'>" + k[0] + "</span></label>" +
       "<input class='field' id='set-" + k[0] + "' value='" + esc(settingsFieldValue(d[k[0]])) + "'>" +
       "<button type='submit' class='btn btn-sm'>Save</button>" +
+      "<button type='button' class='btn btn-sm rowaction' data-action='unset'>Clear</button>" +
       "</form>").join("");
   }
   // The view's one panel: built once, values fetched on each open of the tab (the boot's
@@ -72,6 +75,20 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     try {
       const d = await postJson("/api/config-set", { key: key, value: value });
       showFlash(d && d.oldValue === null ? "Saved " + key + " (was unset)" : "Saved " + key);
+    } catch (err) {
+      showFlash("error: " + (err && err.message ? err.message : String(err)));
+    }
+  }
+  // The row's Clear button: retract the key through /api/config-unset, then refetch so the
+  // field repaints with the reverted resolved value (unsetting the daily spend cap restores
+  // the default 50, not an empty field). The response's oldValue distinguishes a retraction
+  // (present, a null included) from a no-op (absent — the file never held the key).
+  async function clearSetting(form) {
+    const key = form.dataset.key;
+    try {
+      const d = await postJson("/api/config-unset", { key: key });
+      showFlash(d && d.oldValue !== undefined ? "Unset " + key + " (was " + JSON.stringify(d.oldValue) + ")" : "Nothing to unset for " + key + " — it was already the default");
+      await fetchSettings();
     } catch (err) {
       showFlash("error: " + (err && err.message ? err.message : String(err)));
     }

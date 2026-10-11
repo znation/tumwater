@@ -6,7 +6,7 @@ import { EventEmitter } from "node:events";
 import type http from "node:http";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -366,6 +366,10 @@ function serveConfigSet(root: string, body: unknown) {
   return captureJson((res) => handleConfigSet(fakeReq(JSON.stringify(body)), res, root));
 }
 
+function serveConfigUnset(root: string, body: unknown) {
+  return captureJson((res) => handleConfigUnset(fakeReq(JSON.stringify(body)), res, root));
+}
+
 test("handleConfig returns exactly the curated keys, resolved values with null for unset", async () => {
   const root = tmpdir();
   writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customLoops: [{ name: "watch", task: "watch" }] });
@@ -436,6 +440,45 @@ test("handleConfigSet refuses a key outside the curated set, naming it", async (
   assert.equal(missing.captured.status, 400);
   assert.match((missing.data as { error: string }).error, /key must be one of/);
   assert.doesNotMatch((missing.data as { error: string }).error, /got null/);
+});
+
+test("handleConfigUnset removes one curated key and leaves its siblings", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00" });
+  const { captured, data } = await serveConfigUnset(root, { key: "model" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, key: "model", oldValue: "gpt-5" });
+  // The file on disk is what the running fleet polls — the removal went through unsetConfigKey.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal("model" in onDisk, false);
+  assert.equal(onDisk.quietHours, "23:00-07:00");
+  // The GET surface now shows the reverted resolved value, not the removed one.
+  const after = await serveConfig(root);
+  assert.equal((after.data as Record<string, unknown>).model, null);
+});
+
+test("handleConfigUnset refuses a key outside the curated set, naming it", async () => {
+  const root = tmpdir();
+  const curated = await serveConfigUnset(root, { key: "customLoops" });
+  assert.equal(curated.captured.status, 400);
+  assert.match((curated.data as { error: string }).error, /customLoops/);
+  // A body with no key at all names no value — the shared gotSuffix convention appends
+  // nothing for an absent field rather than echoing back a literal `null` it never carried.
+  const missing = await serveConfigUnset(root, {});
+  assert.equal(missing.captured.status, 400);
+  assert.match((missing.data as { error: string }).error, /key must be one of/);
+  assert.doesNotMatch((missing.data as { error: string }).error, /got null/);
+});
+
+test("handleConfigUnset on a key the file never held is a 200 no-op with no oldValue", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { quietHours: "23:00-07:00" });
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const { captured, data } = await serveConfigUnset(root, { key: "model" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, key: "model" });
+  assert.equal("oldValue" in (data as Record<string, unknown>), false, "JSON omits the undefined oldValue");
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "the no-op write leaves the file byte-identical");
 });
 
 test("handleConfigSet refuses a bad value through setConfigKey's validator, naming the key", async () => {

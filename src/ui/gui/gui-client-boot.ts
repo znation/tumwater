@@ -58,6 +58,14 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     const form = ev.target instanceof Element ? ev.target.closest("form.settings-row") : null;
     if (form) { ev.preventDefault(); saveSetting(form); }
   });
+  // The Settings view's Clear buttons: one delegated click listener resolves the row's Clear
+  // through clickClosest and calls clearSetting (gui-client-settings). No per-row wiring, so
+  // the panel repaints freely.
+  document.addEventListener("click", (ev) => {
+    const btn = clickClosest(ev, "button[data-action='unset']");
+    const form = btn ? btn.closest("form.settings-row") : null;
+    if (form) { ev.preventDefault(); clearSetting(form); }
+  });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
   function runAct(act, arg) {
     if (act === "loop") openLoop(arg);

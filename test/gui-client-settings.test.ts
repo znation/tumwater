@@ -17,12 +17,13 @@ type SettingsFns = {
   fetchSettings(): Promise<void>;
   renderSettingsPanel(d: unknown): void;
   saveSetting(form: { dataset: Record<string, string>; querySelector(sel: string): { value: string } }): Promise<void>;
+  clearSetting(form: { dataset: Record<string, string> }): Promise<void>;
 };
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting"],
     inject,
   );
 }
@@ -40,6 +41,9 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   }
   assert.equal((html.match(/<form class='settings-row'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
   assert.equal((html.match(/type='submit'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
+  // One Clear button per curated key, beside the Save counts.
+  assert.equal((html.match(/data-action='unset'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
+  assert.match(html, /data-action='unset'>Clear<\/button>/);
   // Values are escaped; null and undefined render as an empty field.
   assert.match(html, /value='a&amp;b'/);
   assert.match(html, /id='set-model' value='gpt-5'/);
@@ -114,11 +118,67 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
   assert.match(flashes[flashes.length - 1]!, /^error: .*quietHours/);
 });
 
+test("clearSetting posts the row's key to /api/config-unset, flashes the retraction, and refetches", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let refetched = 0;
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {
+    "settings-view": { innerHTML: "", dataset: { built: "1" } },
+    settingscard: { innerHTML: "", dataset: {} },
+  };
+  const { clearSetting } = settingsScope({
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, key: "model", oldValue: "gpt-5" };
+    },
+    getJson: async () => { refetched++; return { model: null }; },
+    $: (id: string) => els[id],
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await clearSetting({ dataset: { key: "model" } });
+  assert.deepEqual(posts, [{ path: "/api/config-unset", body: { key: "model" } }]);
+  assert.deepEqual(flashes, ['Unset model (was "gpt-5")']);
+  // The resolved value is refetched so the field repaints with the reverted default.
+  assert.equal(refetched, 1);
+  // A response with no oldValue is the no-op message, and a file value of null still counts
+  // as a real retraction (only `undefined` means the file never held the key).
+  const { clearSetting: clearNull } = settingsScope({
+    postJson: async () => ({ ok: true, key: "model", oldValue: null }),
+    getJson: async () => ({}),
+    $: (id: string) => els[id],
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await clearNull({ dataset: { key: "model" } });
+  assert.equal(flashes[flashes.length - 1], "Unset model (was null)");
+  const { clearSetting: clearNoop } = settingsScope({
+    postJson: async () => ({ ok: true, key: "model" }),
+    getJson: async () => ({}),
+    $: (id: string) => els[id],
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await clearNoop({ dataset: { key: "model" } });
+  assert.match(flashes[flashes.length - 1]!, /^Nothing to unset for model/);
+  // A server-side refusal flashes the error pattern, with the server's message.
+  const { clearSetting: clearFail } = settingsScope({
+    postJson: async () => {
+      throw new Error("/api/config-unset failed: HTTP 400 — quietHours: invalid quiet hours window");
+    },
+    getJson: async () => ({}),
+    $: (id: string) => els[id],
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await clearFail({ dataset: { key: "quietHours" } });
+  assert.match(flashes[flashes.length - 1]!, /^error: .*quietHours/);
+});
+
 test("the settings region is spliced into the served script, and the boot routes #settings to it", () => {
   // The GUI page inlines GUI_CLIENT_JS, which must carry the settings blob…
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
   // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
   assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) fetchSettings\(\);/);
+  // …and the boot carries the Clear click selector beside the Save submit wiring.
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
+  assert.match(GUI_CLIENT_BOOT_JS, /clearSetting\(form\)/);
   assert.match(ESC_LINE, /const esc = /);
 });

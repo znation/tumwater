@@ -1,6 +1,7 @@
 /**
  * The dashboard's POST operator endpoint handlers (src/gui/gui-server.ts routes to them): prompt,
- * prompt-role, prompt-cancel, budget, config-set, pause, wake, restart, abort, pause-role —
+ * prompt-role, prompt-cancel, budget, config-set, config-unset, pause, wake, restart, abort,
+ * pause-role —
  * everything that writes state or queues work — plus the shared request-body helpers
  * (readPostBody, readRoleBody, checkedPromptImages, checkedPromptFields) each mutating handler
  * guards its inputs with. The GET data endpoints (transcript, backlog, report, failures, history,
@@ -13,7 +14,7 @@ import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile, queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
-import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config/config-write.js";
+import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -214,6 +215,35 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
     return;
   }
   sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue });
+}
+
+/** Handle POST /api/config-unset: the Settings view's per-key Clear — one curated key removed,
+ * through unsetConfigKey so the browser cannot drift from `tumwater config unset`'s rules
+ * (unknown-key refusal, whole-candidate validateConfig, atomic write the running fleet picks
+ * up live). The same EDITABLE_CONFIG_KEYS gate as /api/config-set, so the panel's reach stays
+ * exactly the curated set; a key outside it is refused 400 with the key named. Same body
+ * discipline (readPostBody → 400 malformed/non-object, 413 oversized). The 200 body omits
+ * `oldValue` when the file never held the key (JSON.stringify drops an undefined), so the
+ * client can tell a retraction from a no-op; a file value of `null` still serializes and is a
+ * real retraction. */
+export async function handleConfigUnset(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"key": "model"}');
+  if (!body) return;
+  const key = body.key;
+  if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
+    // An absent key reads as no value (the gotSuffix convention: append only a value the request
+    // actually carried), so a missing field is not echoed back as a literal `null` it never sent.
+    sendJson(res, 400, {
+      error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`,
+    });
+    return;
+  }
+  const result = unsetConfigKey(root, key);
+  if (!result.ok) {
+    sendJson(res, 400, { error: `${key}: ${result.error}` });
+    return;
+  }
+  sendJson(res, 200, { ok: true, key, oldValue: result.oldValue });
 }
 
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate

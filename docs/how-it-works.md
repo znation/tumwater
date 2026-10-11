@@ -286,8 +286,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   --failures`, and `tumwater diff`; the Pending view also paints the land queue as a card
   mirroring `tumwater queue`, and shows a loop's full unlanded patch in its drawer.
   Its Settings view shows the curated top-level config keys (provider, model, fallback, the daily
-  spend cap, quiet hours, the notify hook) with inline Save buttons that write through the same
-  path `tumwater config set` uses.
+  spend cap, quiet hours, the notify hook) with inline Save and Clear buttons: Save writes
+  through the same path `tumwater config set` uses, and Clear retracts through the same path
+  `tumwater config unset` uses, so the field reverts to the key's default (unsetting the daily
+  spend cap restores the default 50).
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, and Pending.
   On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
