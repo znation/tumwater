@@ -370,9 +370,9 @@ test("commitPathsAndDiscardRest commits only the given paths and discards every 
   assert.equal(await headOf(repo, "HEAD"), head);
   assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /refuse — test/);
 
-  // The note landed with its new content...
+  // The note landed with its new content…
   assert.equal(fs.readFileSync(path.join(repo, "notes.md"), "utf8"), "objection\n");
-  // ...and everything else was discarded: tracked edit reverted, untracked junk cleaned.
+  // …and everything else was discarded: tracked edit reverted, untracked junk cleaned.
   assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "seed\n");
   assert.ok(!fs.existsSync(path.join(repo, "junk.txt")));
   assert.ok(!(await isDirty(repo)), "worktree is clean after the discard");

@@ -417,7 +417,7 @@ test("parser tracks open tool calls across start, update, and end", () => {
   );
   const call = parser.openToolCalls[0];
   assert.ok(call, "one entry for the started call");
-  // A content-bearing update moves the activity clock...
+  // A content-bearing update moves the activity clock…
   call.lastActivityAt -= 60_000; // simulate a minute of silence
   const beforeUpdate = Date.now();
   parser.feed(
@@ -430,7 +430,7 @@ test("parser tracks open tool calls across start, update, and end", () => {
     }) + "\n",
   );
   assert.ok(call.lastActivityAt >= beforeUpdate, "content update moves the clock");
-  // ...but an empty-content one (bash emits it right after start) does not.
+  // …but an empty-content one (bash emits it right after start) does not.
   call.lastActivityAt -= 60_000;
   const before = call.lastActivityAt;
   parser.feed(

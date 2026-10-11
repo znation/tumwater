@@ -155,12 +155,12 @@ test("aheadOfMainDiff over the cap keeps --stat plus the largest files within bu
   // The --stat section names every changed file, even ones whose diff was cut.
   for (const f of ["zzz.txt", "mmm.txt", "aaa.txt"])
     assert.ok(out.includes(f), `--stat lists ${f}`);
-  // The two largest files' full diffs are in, ranked by size: zzz before mmm...
+  // The two largest files' full diffs are in, ranked by size: zzz before mmm…
   const zzz = out.indexOf("ZZZ-");
   const mmm = out.indexOf("MMM-");
   assert.ok(zzz >= 0, "largest file's diff included");
   assert.ok(mmm > zzz, `second-largest after the largest (zzz=${zzz}, mmm=${mmm})`);
-  // ...and the budget stops before the smallest.
+  // …and the budget stops before the smallest.
   assert.ok(!out.includes("AAA-"), "smallest file cut by the budget");
   assert.ok(out.length <= cap, `output stays within the cap (${out.length} <= ${cap})`);
 });
@@ -182,9 +182,9 @@ test("aheadOfMainDiff handles binary files ('-' numstat) without crashing", asyn
   // The --stat section names the binary file and marks it as a binary change.
   assert.ok(out.includes("blob.bin"), "--stat lists blob.bin");
   assert.match(out, /Bin 0 ->/);
-  // The largest text file's diff is still in — the '-' entry did not displace it...
+  // The largest text file's diff is still in — the '-' entry did not displace it…
   assert.ok(out.includes("BIG-"), "largest text file's diff included despite the binary entry");
-  // ...and the budget stops before the smaller files (the size-0 binary ranks after them).
+  // …and the budget stops before the smaller files (the size-0 binary ranks after them).
   assert.ok(!out.includes("SML-"), "budget stops before the smaller files");
   assert.ok(out.length <= cap);
 });

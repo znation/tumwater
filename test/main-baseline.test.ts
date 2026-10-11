@@ -274,7 +274,7 @@ test("a baseline run takes the same process-wide check permit as the scoped chec
   assert.equal(runsOf(counter), 1, "and runs once the permit frees");
 });
 
-// mainIsGreen - the redeploy gate's boolean view of checkMainBaseline (moved here from
+// mainIsGreen — the redeploy gate's boolean view of checkMainBaseline (moved here from
 // test/redeployer.test.ts, which keeps only the redeployer state machine)
 
 test("mainIsGreen: no declared check reads as green", async () => {

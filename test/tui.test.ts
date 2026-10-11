@@ -707,7 +707,7 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
 // a clean error and the whole wiring is observable without a terminal.
 
 test("tui gates on repo readiness, rejects extra args, and fails cleanly without a terminal", async () => {
-  // Not a git repo: the readiness gate fires before any TUI work -- a regression that dropped
+  // Not a git repo: the readiness gate fires before any TUI work — a regression that dropped
   // requireReadyRepo here would crash deep in snapshot() instead of naming the fix.
   let r = await cli(tmpdir(), "tui");
   assert.equal(r.code, 1);
@@ -717,7 +717,7 @@ test("tui gates on repo readiness, rejects extra args, and fails cleanly without
   await initProject(repo, "cli tui test");
 
   // A ready repo: runTui's TTY requirement surfaces as a clean CLI error (exit 1) and the
-  // command exits rather than hanging -- which also bounds this test if that ever regresses.
+  // command exits rather than hanging — which also bounds this test if that ever regresses.
   r = await cli(repo, "tui");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /needs an interactive terminal/);

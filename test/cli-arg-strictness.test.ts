@@ -55,7 +55,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.match(r.stderr, /unknown argument: --verbose/);
   assert.match(r.stderr, /valid flags for tumwater run: --branch <name>/);
 
-  // ...including version and help, which used to accept anything silently: `version --json`
+  // …including version and help, which used to accept anything silently: `version --json`
   // printed a version as if it had answered the query, and `help extra` printed usage.
   r = await cli(repo, "version", "--json");
   assert.equal(r.code, 1);

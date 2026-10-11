@@ -106,13 +106,13 @@ test("status payload marks user-defined loops with the custom flag", async () =>
 test("status payload combines persisted + live token metrics for running loops only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui metrics test");
-  // Persisted totals from completed ticks...
+  // Persisted totals from completed ticks…
   const s = freshLoopState("feature");
   s.generatedTokens = 1_000;
   s.peakContextTokens = 6_000;
   s.running = true; // a tick is in flight
   saveLoopState(repo, s);
-  // ...and the in-flight tick's log tail (800 output so far, peak context 12k).
+  // …and the in-flight tick's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })]);
   const payload = statusPayload(repo) as {
@@ -127,13 +127,13 @@ test("status payload combines persisted + live token metrics for running loops o
 test("status payload carries the current work item for running loops only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui work item test");
-  // A running loop whose in-flight tick has spoken its work item...
+  // A running loop whose in-flight tick has spoken its work item…
   const s = freshLoopState("feature");
   s.running = true;
   saveLoopState(repo, s);
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine('implement plan "Linear history on main"')]);
-  // ...and an idle loop whose log tail is a finished tick (must not leak its item).
+  // …and an idle loop whose log tail is a finished tick (must not leak its item).
   saveLoopState(repo, freshLoopState("clean"));
   const file2 = piLogPath(repo, "clean");
   writeLogLines(file2, [SESSION, assistantLine("old finished work")]);
@@ -157,12 +157,12 @@ test("status payload carries the current work item for running loops only", asyn
 test("status payload carries todayUsd per loop from its daily window", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui today spend test");
-  // A state file with today's stamp rides the payload...
+  // A state file with today's stamp rides the payload…
   const fresh = freshLoopState("clean");
   fresh.dayStamp = todayStamp();
   fresh.dayCostUsd = 12.34;
   saveLoopState(repo, fresh);
-  // ...a stale-stamp file with positive spend reads zero (dailyCost's rule)...
+  // …a stale-stamp file with positive spend reads zero (dailyCost's rule)…
   const stale = freshLoopState("dry");
   stale.dayStamp = todayStamp(Date.now() - 86_400_000);
   stale.dayCostUsd = 5.67;

@@ -530,12 +530,12 @@ test("the completion timestamp survives process restart via its state file", asy
   const swappedAt = await driveToRestart(h1.r, f1, HEAD_B, 2_000_000);
   assert.ok(fs.existsSync(autoRestartStampPath(root)), "the timestamp is written on swap");
 
-  // A second process: a fresh Redeployer reading the same file honors the cooldown...
+  // A second process: a fresh Redeployer reading the same file honors the cooldown…
   const f2 = fakeDeps();
   const h2 = harness(f2.deps, true, undefined, autoRestartRecord(root));
   assert.equal(await h2.r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000), "none", "the respawned process defers the second episode");
   assert.match(String(h2.r.status(swappedAt + 60 * 60_000).restartBlocked ?? ""), /cooldown until/);
-  // ...and past the deadline it proceeds, overwriting the file with the new completion.
+  // …and past the deadline it proceeds, overwriting the file with the new completion.
   const secondSwap = swappedAt + RESTART_COOLDOWN_MS + 20;
   assert.equal(await h2.r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS), "hold", "past the deadline: the green check starts");
   f2.green(true);

@@ -282,7 +282,7 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   let r = await cli(repo, "status", "--json");
   assert.equal(r.code, 0);
   const doc = JSON.parse(r.stdout) as Record<string, unknown>;
-  // Top-level fields -- the same document GET /api/status serves for this root. `pid` is
+  // Top-level fields — the same document GET /api/status serves for this root. `pid` is
   // absent while no harness runs (undefined does not survive JSON.stringify).
   for (const field of ["running", "inbox", "inboxPrompts", "budget", "loops", "events", "plans", "bugs", "questions"]) {
     assert.ok(field in doc, `top-level ${field} present`);
@@ -298,7 +298,7 @@ test("status --json prints the /api/status payload; bare status keeps the table"
       assert.ok(field in l, `loop field ${field} present`);
     }
   }
-  // Seeded counters surface verbatim -- the JSON is state-file data, not a re-rendering.
+  // Seeded counters surface verbatim — the JSON is state-file data, not a re-rendering.
   const feature = loops.find((l) => l.role === "feature");
   assert.ok(feature, "feature loop row present");
   assert.equal(feature!.ticks, 7);
@@ -306,13 +306,13 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   assert.equal(feature!.generated, 424242);
   assert.equal(feature!.costUsd, 1.5);
 
-  // Deep-equal against the same root's payload in this process -- one definition of fleet
+  // Deep-equal against the same root's payload in this process — one definition of fleet
   // state as JSON (status-payload.statusPayload) feeds both surfaces, so they cannot drift.
   // Both sides go through a JSON round-trip: that is exactly what the endpoint and the flag
   // emit.
   assert.deepEqual(doc, JSON.parse(JSON.stringify(statusPayload(repo))));
 
-  // Bare status still renders the table -- same command, human surface unchanged.
+  // Bare status still renders the table — same command, human surface unchanged.
   r = await cli(repo, "status");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /loop/);

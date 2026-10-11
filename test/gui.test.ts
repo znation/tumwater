@@ -707,7 +707,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   // marked region is spliced in alongside (same extraction pattern as the fmtLastTick test).
   const hs = GUI_PAGE.match(/\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/);
   assert.ok(hs, "human-seconds-fmt region found in the page");
-  // ...and through the page's shared isActivePhase helper, spliced in alongside (the same
+  // …and through the page's shared isActivePhase helper, spliced in alongside (the same
   // extraction pattern).
   const ap = GUI_PAGE.match(/\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/);
   assert.ok(ap, "active-phase-fmt region found in the page");

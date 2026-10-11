@@ -43,13 +43,13 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
     assert.equal(outcome.result, "refused");
     assert.equal(outcome.summary, "it would delete user data");
 
-    // The note landed on main with the refusal subject...
+    // The note landed on main with the refusal subject…
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): refuse — it would delete user data/);
     assert.ok(
       fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("**Refused:** it would delete user data"),
       "the objection note is the durable record on main",
     );
-    // ...and nothing else did: the tracked edit was reset and the untracked file cleaned.
+    // …and nothing else did: the tracked edit was reset and the untracked file cleaned.
     assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "seed\n", "the code change was discarded");
     assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "untracked half-work is cleaned");
 

@@ -115,9 +115,9 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
 });
 
 test("the settings region is spliced into the served script, and the boot routes #settings to it", () => {
-  // The GUI page inlines GUI_CLIENT_JS, which must carry the settings blob...
+  // The GUI page inlines GUI_CLIENT_JS, which must carry the settings blob…
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
-  // ...and the boot's view table and switchView must fetch it.
+  // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
   assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) fetchSettings\(\);/);
   assert.match(ESC_LINE, /const esc = /);

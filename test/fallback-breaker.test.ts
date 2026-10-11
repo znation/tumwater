@@ -156,10 +156,10 @@ test("recordFallbackTick doubles a failed probe's cool-down, capped, and re-open
   const started = startFallbackProbe(demoted(5_000, 100, 3));
   const first = recordFallbackTick(started, started, "error", true, 6_000, policy);
   assert.deepEqual(first, { pair: "free/qwen", capUsd: 5, failures: 4, probeAt: 6_000 + 200, cooldownMs: 200, probing: false });
-  // The next failed probe doubles again...
+  // The next failed probe doubles again…
   const second = recordFallbackTick(startFallbackProbe(first), startFallbackProbe(first), "error", true, 8_000, policy);
   assert.deepEqual(second, { pair: "free/qwen", capUsd: 5, failures: 5, probeAt: 8_000 + 300, cooldownMs: 300, probing: false });
-  // ...and then the cap holds instead of growing without bound.
+  // …and then the cap holds instead of growing without bound.
   const third = recordFallbackTick(startFallbackProbe(second), startFallbackProbe(second), "error", true, 12_000, policy);
   assert.deepEqual(third, { pair: "free/qwen", capUsd: 5, failures: 6, probeAt: 12_000 + 300, cooldownMs: 300, probing: false });
 });

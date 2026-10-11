@@ -390,12 +390,12 @@ test("the top-N cluster sections mark their cut: remainder line, no silent trunc
   // The Deltas table counts every rejection in the window (7 roles × 1).
   const deltaTotal = data.deltas.reduce((n, d) => n + d.rejections, 0);
   assert.equal(deltaTotal, 7);
-  // The section itemizes only the top 5 clusters...
+  // The section itemizes only the top 5 clusters…
   assert.equal(data.rejections.clusters.length, 5);
   assert.equal(data.rejections.clusters.reduce((n, c) => n + c.count, 0), 5);
   assert.equal(data.rejections.total, 7);
   assert.equal(data.rejections.hiddenClusters, 2);
-  // ...and says so, instead of reading as the whole window.
+  // …and says so, instead of reading as the whole window.
   const md = renderFailureMarkdown(data);
   assert.match(md, /## Top rejection clusters/);
   assert.match(md, /_\+2 more clusters holding 2 rejections_/);

@@ -220,10 +220,10 @@ test("a clustered failure that records no error text still itemizes a loss cause
     ev({ loop: "feature", ts: 200, result: "error", durationMs: 60_000, costUsd: 0.1 }),
   ];
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(events, events);
-  // The error-class cells price both spans...
+  // The error-class cells price both spans…
   assert.equal(timeSpend.find((r) => r.role === "bugfix")!.classes.error.ms, 600_000);
   assert.equal(timeSpend.find((r) => r.role === "feature")!.classes.error.ms, 60_000);
-  // ...and, rather than dropping the message-less clustered results, the ranking itemizes
+  // …and, rather than dropping the message-less clustered results, the ranking itemizes
   // them under the digest's no-text placeholder — the same one the error-clusters section uses.
   assert.deepEqual(lossCauses, [
     {

@@ -515,9 +515,9 @@ test("a config request naming a disallowed key applies customLoops and warns nam
     const runner = makeLoopRunner(repo, "director");
     enqueuePrompt(repo, "add docs and set the budget to 1");
     await runner.tick();
-    // The good half still applies...
+    // The good half still applies…
     assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
-    // ...and the ignored key is named in a warning event, not dropped silently.
+    // …and the ignored key is named in a warning event, not dropped silently.
     const warnings = eventsOfType(repo, "warning");
     assert.ok(
       warnings.some((e) => String(e.message).includes("maxDailyCostUsd")),

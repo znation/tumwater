@@ -359,7 +359,7 @@ async function tickWithWorktreePhase(
     // ENDS the tick: the role holds one landing ref, and the leftover owns it until its
     // landing resolves. With nothing to salvage the branch holds nothing either, so the reset
     // below leaves pristine main for the red-main gate.
-    // A permanent reviewer config error -- held from re-queueing -- clears once the resolved
+    // A permanent reviewer config error — held from re-queueing — clears once the resolved
     // reviewer selector changes, so fixing the model config recovers the pin automatically
     // (BUGS.md 2026-10-06).
     const reviewSelector = modelSelectorField(reviewRunConfig(ctx.config)).model;

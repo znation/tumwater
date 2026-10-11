@@ -324,13 +324,13 @@ test("initProject --dry-run writes nothing: no files, no gitignore edit, no comm
   const result = await initProject(repo, "Dry brief.", undefined, { dryRun: true });
   assert.ok(result.dryRun);
   assert.ok(!result.committed);
-  // The same lists a real run computes...
+  // The same lists a real run computes…
   assert.deepEqual(
     [...result.created].sort(),
     [".gitignore", "BUGS.md", "PRINCIPLES.md", "QUESTIONS.md", "TUMWATER.md", "tumwater.json"],
   );
   assert.deepEqual([...result.leftAlone].sort(), ["PLANS.md", "README.md"]);
-  // ...and none of it on disk: same directory listing, same tree, same HEAD.
+  // …and none of it on disk: same directory listing, same tree, same HEAD.
   assert.deepEqual(fs.readdirSync(repo).sort(), listing);
   assert.equal(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), "node_modules\n");
   assertClean(repo);

@@ -76,7 +76,7 @@ export function agentMissingMessage(resolved: ResolvedAgentBin, agent: string): 
 }
 
 /** The environment variable that overrides one agent's binary: `TUMWATER_<ID>_BIN` with the id
- * uppercased - the convention resolveAgentBin and agentMissingMessage share. */
+ * uppercased — the convention resolveAgentBin and agentMissingMessage share. */
 function agentBinEnv(agent: string): string {
   return `TUMWATER_${agent.toUpperCase()}_BIN`;
 }

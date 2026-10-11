@@ -152,11 +152,11 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   const b = freshLoopState("dry");
   b.dayStamp = todayStamp();
   b.dayCostUsd = 0.66;
-  // A stale loop contributes nothing to the fleet total...
+  // A stale loop contributes nothing to the fleet total…
   const c = freshLoopState("organize");
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
-  // ...and the badge carries the same sum (status/status-data.ts derives both from the loops).
+  // …and the badge carries the same sum (status/status-data.ts derives both from the loops).
   const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, capHitAt: null, free: false, fallback: null });
   const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const totalsRow = lines[lines.length - 1] ?? "";
@@ -183,7 +183,7 @@ test("the today column keeps its natural width under overflow like cost", () => 
   const { widths: natural, headers: cols } = tableCells(renderStatus(root, snap));
   assert.equal(natural[cols.indexOf("today")], 6, "fixture sanity: $12.34 sets the column width");
   const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
-  // Overflow past last result's minimum so at least one flexible column is shrinking...
+  // Overflow past last result's minimum so at least one flexible column is shrinking…
   const w = tableCells(
     renderStatus(root, snap, total - (natural[cols.indexOf("last result")] ?? 0)),
   ).widths;

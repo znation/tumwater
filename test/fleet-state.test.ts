@@ -383,13 +383,13 @@ test("pauseRole with a deadline writes { roles, at, until } and expiry releases 
   assert.deepEqual(marker.roles, ["clean"]);
   assert.equal(marker.until, until);
   assert.deepEqual(pausedRoles(root), ["clean"]);
-  // Expiry releases the whole set on the read side...
+  // Expiry releases the whole set on the read side…
   fs.writeFileSync(
     pausedRolesPath(root),
     JSON.stringify({ roles: ["clean"], at: Date.now() - 60_000, until: Date.now() - 30_000 }),
   );
   assert.deepEqual(pausedRoles(root), [], "a past deadline is not a pause");
-  // ...and a fresh pause starts a fresh set: the expired members already auto-resumed.
+  // …and a fresh pause starts a fresh set: the expired members already auto-resumed.
   assert.equal(pauseRole(root, "dry"), true);
   assert.deepEqual(pausedRoles(root), ["dry"]);
   // A plain pause of the standing role stays the no-op; a fresh --for overwrites the shared
