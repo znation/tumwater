@@ -72,6 +72,25 @@ window or its totals.
   sparse-note tests stay green.
 - `npm run test` is green.
 
+### Role-scoped Usage and Failures panes in `tumwater tui`: the `Ctrl+G` scope cycle (planned 2026-10-10 by plan; independent of the waiting dashboard History trailing-window, dashboard report `--since`, and prompt `--edit --attach` plans; sibling of the landed "Role-scoped Usage and Failures views in the dashboard"; completes the landed `tumwater report --role <id>` / `tumwater report --failures --role <id>` scopes in the TUI's two report panes)
+
+**Goal.** `tumwater report --role <id>` and `tumwater report --failures --role <id>` scope the day report and failure digest to one loop, and the dashboard's Usage/Failures tabs have the same scope. The TUI's Usage and Failures panes still render fleet-wide and nothing in the pane can narrow them to the loop an operator is investigating, so the TUI is the one surface that cannot answer "what did this loop spend / how did it fail". Add one session-scoped role scope the operator cycles with a single key, applied to both panes through the collectors the CLI and dashboard already share.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`: add `let scopeRole: string | null = null` beside the `view` state, with a comment that it is session-only (the view/selection/scroll state is not persisted either), so a fresh TUI starts fleet-wide. Add the `Ctrl+G` branch, gated `!budgetMode && !rolePromptFor` like the other mode-sensitive keys: cycle `scopeRole` through `[null, ...roleIds]` (index-of-then-`+1`-mod-length), and when the current view is the Usage pane (`view === roleIds.length + 2`) or the Failures pane (`view === roleIds.length + 3`), recompute `paneCache` from the scoped collector (below) and reset `paneScroll = 0` so the changed body re-enters at its head; on any other view just set `scopeRole` (the Ctrl+T entry below computes with it). Always `deps.requestRender()`.
+2. The Ctrl+T handler's two report branches change to `collectReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined)` and `collectFailureReport(root, REPORT_DEFAULT_DAYS, scopeRole ?? undefined)` — the same role parameter the CLI's `--role` and the dashboard tabs pass.
+3. `syncSnapshot` resets `scopeRole` to null when it is not in the incoming `roles` roster (a retired/renamed loop must not leave the panes silently scoped to an absent role), joining the existing stale-`view` clamp; expose `scopeRole` on `TuiKeysState` and in `state()`.
+4. `src/ui/tui/tui-frame.ts`: the `TuiView` `usage` and `failures` variants gain `scope: string | null`; `tabStrip` labels the active tab `Usage: <role>` / `Failures: <role>` and the plain `Usage` / `Failures` when the scope is null; `hintLine` for the usage/failures views gains a `["Ctrl+G", scope ? \`scope: ${scope}\` : "scope: fleet"]` pair after the scroll hint, so the key and the current scope are both on screen.
+5. `src/ui/tui/tui.tsx`: build the two views as `{ kind: "usage", scope: s.scopeRole }` and `{ kind: "failures", scope: s.scopeRole }` from the state it already reads.
+6. No new runtime dependency; the collectors, their Markdown renders, and the History/Pending panes are untouched.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`, `test/tui-keys.test.ts`, `test/tui-frame.test.ts`.
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`: with `syncSnapshot(0, false, ["feature", "clean"])` and one seeded `feature` `tick_end` (an error result with tokens, so it appears in both the usage report's totals and the failure digest's per-role table), Ctrl+G cycles `state().scopeRole` from `null` to `"feature"` to `"clean"` to `null`; on the Usage view each press recomputes `paneCache`, and the `clean`-scoped cache differs from the fleet-wide one; cycling to the Failures view under the same `clean` scope caches a digest whose text differs from the fleet-wide one; Ctrl+G leaves `scopeRole` unchanged while budget mode or role-prompt mode holds the prompt line; a later `syncSnapshot` whose roster drops the scoped role resets `scopeRole` to null.
+- `test/tui-frame.test.ts`: `tabStrip({ kind: "usage", scope: "feature" }, width)` shows `Usage: feature` while `scope: null` shows `Usage`; `hintLine` for a usage or failures view carries the `Ctrl+G` hint, naming `scope: feature` under a scope and `scope: fleet` without one.
+- `npm run test` is green.
+
 ## Done
 
 ### `tumwater prompt --edit ... --attach`: add images to a queued prompt in place (planned 2026-10-10 by plan; independent of the dashboard History and citation-sweep series; completes the landed `tumwater prompt --attach` enqueue form, whose doc-comment names the gap; done 2026-10-10 by feature)
