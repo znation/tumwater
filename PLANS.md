@@ -6,6 +6,71 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### A deterministic-time, hermetic-host gating tier: flakes get reproduced, not re-budgeted (planned 2026-10-11 by steward; promoted from the `no-repro` validation gap, carried by 48 Fixed entries — the largest non-`none` tag with no retiring infrastructure plan now that `no-fake` (shared fake catalog, landed 2026-10-04), `unclear-invariant` (invariant register, landed 2026-10-10), and `no-observability` (remainder-and-cause trace, landed 2026-10-11) each have one; builds on the existing clock seams (`test/fakes/time.ts`, `test/helpers/sleep-clock.ts`, `test/helpers/wait.ts`'s `watchdogClock`) and the `*.e2e.test.js` tier, so no runtime change and at most one seam parameter in `src/`; independent of the TUI Queued pane, TUI History grep, dashboard queued-edit/composer-defer, and agent-backends work)
+
+**Goal.** Retire the `no-repro` gap. It is recorded when a failure could not be reproduced
+deterministically — almost always because a gating test's verdict is a property of the host's
+load and wall clock rather than the code: it measures a deadline/window with real elapsed time,
+probes a live host resource, or binds a real port. State and enforce two rules a landing can be
+checked against: **a test that asserts time takes its clock from an injected seam, and a
+gating-tier test is hermetic — no live-host probe and no real listener**; and **a flake's fix
+converts the failing case to a deterministic one instead of widening its budget**.
+
+**Evidence.** The validation-gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E
+'s/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows `no-repro` on 48 Fixed entries, the largest
+non-`none` tag with no retiring plan now that the other three have landed infrastructure. The
+recurring families, each visible in the cited entries:
+- **A test measures real time.** `test/orchestrator-probe.test.ts`'s fallback-breaker test shrinks
+the cooldown to 1.5 s and measures it with fixed sleeps, so a loaded host's overshoot reads as a
+pierced pause (fixed 2026-10-06); `spawnCli.waitFor` spent its readiness deadline on `Date.now()`,
+so a host sleep timed the cold-start GUI banner wait out (fixed 2026-10-07); `tick-timing.test.ts`'s
+drain test and `cli-logs.test.ts`'s follow test each blew a fixed wait under full-suite load, every
+retry green (fixed 2026-09-30).
+- **A test reads the live host.** `systemProcessProbe.cwds` read the live `lsof` output and latched
+main red on a loaded host (fixed 2026-10-08 — the runner is now injected and the real wiring moved
+to the e2e tier); `doctor --json` sampled host `top` (fixed 2026-10-07); the live GUI test binds two
+real HTTP servers and fetches over loopback (fixed 2026-10-06).
+- **A widening fix does not retire the flake.** The SIGKILL-grandchild supervisor test's budgets
+were widened 2026-10-04 after its Fixed entry declared the load flake closed, then flaked twice
+more on 2026-10-09 and the gate promoted the re-run's pass (fixed 2026-10-09).
+
+**Approach.**
+1. State the rule in `docs/invariants.md` as a new id beside the boundary families (`INV-D1`/
+`INV-D2`): a test that asserts a deadline, window, backoff, or poll interval takes `now`/`sleep`
+through an injected seam (`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/
+sleep-clock.ts`'s `scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`), never a real
+elapsed measurement; a gating-tier (`*.test.ts`, not `*.e2e.test.ts`) test probes no live host
+(`sysctl`, `lsof`, `top`, `/proc`) and binds no real listener; and a flake fix converts the case to
+a deterministic regression. The landed citation guard (`test/invariants-doc.test.ts`) then keeps
+the register pinned to the guard and regression cases below.
+2. Add a gating-tier hermeticity guard test (modeled on the landed `test/live-checkout-guard.test.ts`
+and `test/vitest-config-guard.test.ts`): it enumerates the compiled non-e2e test files and fails on
+a live-host probe spawn (`lsof`/`top`/`sysctl`/`/proc` reads) or a real `listen(`/`createServer`
+bind, unless the file is on a small explicit allowlist naming why (the e2e-tier files and the
+guard's own fixture). It prints each violating file so the first leak is caught in the gating tier
+that would otherwise flake live.
+3. Convert the measured-time families to the injected clock and pin each with a regression that
+fails on the pre-fix shape: the fallback-breaker cooldown test, `test/helpers/cli-harness.ts`'s
+`waitFor` deadline (a controllable monotonic seam so a test can expire it instantly),
+`tick-timing.test.ts`'s drain case, `cli-logs.test.ts`'s follow case, and the supervisor grandchild
+case. Where a gating path reads `Date.now()`/`performance.now()` with no injectable clock, add the
+parameter and update only that module's callers.
+4. No new runtime dependency (PRINCIPLES.md); test-only except the minimal seam parameter in step 3.
+
+**Files touched.** `docs/invariants.md`; a new gating-tier hermeticity guard test file;
+`test/fakes/time.ts`, `test/helpers/cli-harness.ts`, `test/helpers/wait.ts`,
+`test/orchestrator-probe.test.ts`, `test/supervisor.test.ts`, `test/tick-timing.test.ts`,
+`test/cli-logs.test.ts`; the one `src/` module whose gating path needs the clock parameter (if any).
+
+**Acceptance criteria.**
+- The guard fails on a planted violation (a gating test that spawns `lsof`, and one that calls
+`listen(`) and passes on the converted tree; an `*.e2e.test.ts` file doing either stays green.
+- Each converted family runs green with the injected clock and goes red deterministically when its
+fix is removed (no loaded host), under one test per family.
+- `docs/invariants.md` carries the new id and cites the guard and the regression cases;
+`test/invariants-doc.test.ts` stays green.
+- `npm run test` is green.
+
 ### Defer a prompt from the dashboard composer, matching `tumwater prompt --at <duration>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater prompt --at <duration>` (commit 654f15b3) and the landed dashboard deferral display (`gui-client-fleet.ts`'s `delivers in`); the dashboard can already paint a deferred prompt's countdown but no dashboard surface can set the marker, so an operator must drop to the CLI to schedule one; independent of the waiting TUI Queued pane, TUI History grep, dashboard queued-prompt edit, and dashboard Settings Clear plans in code — `src/cli/cli-args.ts`'s newly exported `parseDurationMs` plus `src/inbox/inbox-submit.ts`, the two prompt handlers in `src/gui/gui-endpoint-commands.ts`, and the composer files, no `src/ui/tui` file — it shares `src/gui/gui-endpoint-commands.ts` with the landed prompt-edit and Settings Clear handlers but edits different functions, so a landing conflict is possible and the resolver handles it)
 
 **Goal.** `tumwater prompt --at <duration>` queues a prompt whose `tumwater:not-before <iso>`
