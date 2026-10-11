@@ -19,7 +19,10 @@ import { cli } from "./helpers/cli-harness.js";
 // (status, init, run's branch validation) — so node --test runs the two halves in parallel
 // processes, nearly every test here spawning the CLI. The other child-process CLI tests live
 // in their command's topic file: cli-prompt-queue.test.ts (prompt queue), cli-preflight.test.ts
-// (run's startup preflight), cli-arg-strictness.test.ts (argument strictness), cli-gui.test.ts
+// (run's startup preflight), the argument-strictness family (cli-arg-strictness.test.ts for the
+// parser-wide unknown-argument gate, cli-flag-value-errors.test.ts for malformed/missing flag
+// values, and cli-prompt-/cli-questions-/cli-tui-strictness.test.ts per command, with
+// cli-questions-list.test.ts for the list surface), cli-gui.test.ts
 // (gui), the cli-run-*.test.ts family (run's pre-boot guards, lifecycle, forced exit, live
 // window/gui, and scoped once round), doctor.test.ts, report.test.ts, and
 // tui.test.ts.

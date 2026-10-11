@@ -19,8 +19,10 @@ import { seedCounters } from "./fixtures/loop-fixtures.js";
 // `init` (including the subdirectory behavior and dry runs), and `run`'s branch validation.
 // The dispatcher, help topics, and `version` live in cli-help.test.ts; the other
 // child-process CLI tests live in their command's topic file: cli-prompt-queue.test.ts
-// carries the prompt queue, cli-preflight.test.ts run's startup preflight, and
-// cli-arg-strictness.test.ts the argument-strictness tests; cli-gui.test.ts (gui),
+// carries the prompt queue, cli-preflight.test.ts run's startup preflight, and the
+// argument-strictness family (cli-arg-strictness.test.ts and cli-flag-value-errors.test.ts
+// parser-wide, plus the per-command cli-prompt-/cli-questions-/cli-tui-strictness.test.ts
+// files and cli-questions-list.test.ts); cli-gui.test.ts (gui),
 // the cli-run-*.test.ts family (run's pre-boot guards, lifecycle, forced exit, live
 // window/gui, and scoped once round), doctor.test.ts, report.test.ts, and tui.test.ts.
 
