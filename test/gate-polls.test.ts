@@ -10,7 +10,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { defaultConfig } from "../src/config/config.js";
-import { recordDailyCost } from "../src/budget/budget.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
@@ -20,6 +19,7 @@ import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { spentLoopState } from "./fixtures/loop-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { piRunResult } from "./fakes/fake-pi.js";
@@ -98,11 +98,9 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const handbacks: string[] = [];
-  const featureState = freshLoopState("feature");
-  recordDailyCost(featureState, 10);
+  const featureState = spentLoopState("feature", 10);
   featureState.running = true;
-  const docsState = freshLoopState("docs");
-  recordDailyCost(docsState, 5);
+  const docsState = spentLoopState("docs", 5);
   docsState.running = true;
   const directorState = freshLoopState(DIRECTOR_ROLE);
   directorState.running = true;
@@ -209,8 +207,7 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
   const root = tmpdir("gate-polls-cap-");
   const config = defaultConfig();
   config.maxDailyCostUsdPerRole = { docs: 0.5, coverage: 0 };
-  const docsState = freshLoopState("docs");
-  recordDailyCost(docsState, 0.5);
+  const docsState = spentLoopState("docs", 0.5);
   const runners = [
     fakeRunner("docs", docsState, null, []),
     fakeRunner("coverage", freshLoopState("coverage"), null, []),
@@ -263,10 +260,8 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
   config.fallback = { small: "free/qwen-free" }; // strong never borrows small: it pauses
   config.fallbackModel = undefined;
   config.review = { ...config.review, enabled: false }; // isolate the per-tier set
-  const atCap = freshLoopState("docs");
-  recordDailyCost(atCap, 10);
-  const planState = freshLoopState("plan");
-  recordDailyCost(planState, 1);
+  const atCap = spentLoopState("docs", 10);
+  const planState = spentLoopState("plan", 1);
   const runners = [
     fakeRunner("docs", atCap, null, []), // small tier: borrows small's pair
     fakeRunner("plan", planState, null, []), // strong tier: resolves to pause
@@ -291,8 +286,7 @@ test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, 
   assert.ok(!first.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
 
   // Under the cap: nobody is held.
-  const under = freshLoopState("docs");
-  recordDailyCost(under, 1);
+  const under = spentLoopState("docs", 1);
   const underCtx = { ...ctx, runners: [fakeRunner("docs", under, null, []), runners[1]!, runners[2]!] };
   const second = pollFleetGates(newFleetGateStates(config), underCtx);
   assert.equal(second.budgetPausedRoles.size, 0);

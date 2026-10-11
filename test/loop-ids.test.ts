@@ -17,12 +17,12 @@ import { configForRole } from "../src/config/config-views.js";
 import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { errorMessage } from "../src/text/text.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
-import { dailyCost, recordDailyCost } from "../src/budget/budget.js";
+import { dailyCost } from "../src/budget/budget.js";
 import { newRoleCapGateState, pollRoleCapGate } from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { commitTrailer, stampedSubject } from "../src/git/commit-message.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { spentLoopState } from "./fixtures/loop-fixtures.js";
 
 test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
   assert.ok(INSTANCE_ROLES.has("feature") && INSTANCE_ROLES.has("bugfix"));
@@ -118,10 +118,8 @@ test("a commit stamps the base role and still trailers the loop id", () => {
 
 test("the per-role cap groups instances: their spend sums against the base role's cap", () => {
   const root = tmpdir("loop-ids-cap-");
-  const a = freshLoopState("feature");
-  const b = freshLoopState("feature-2");
-  recordDailyCost(a, 0.6);
-  recordDailyCost(b, 0.6);
+  const a = spentLoopState("feature", 0.6);
+  const b = spentLoopState("feature-2", 0.6);
   assert.ok(dailyCost(a) > 0.5 && dailyCost(b) > 0.5);
 
   const paused = pollRoleCapGate(

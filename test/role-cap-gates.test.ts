@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { dailyCost, recordDailyCost } from "../src/budget/budget.js";
-import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import {
   newRoleCapGateState,
@@ -14,25 +14,20 @@ import {
 } from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { spentLoopState } from "./fixtures/loop-fixtures.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
-function overCapState(role: string, usd: number): LoopState {
-  const s = freshLoopState(role);
-  recordDailyCost(s, usd);
-  return s;
-}
-
 test("roleCapPaused: the verdict boundaries", () => {
   const now = Date.now();
-  const at = overCapState("docs", 0.5);
+  const at = spentLoopState("docs", 0.5);
   assert.equal(roleCapPaused(at, 0.5, now), true, "at-cap pauses (>= cap)");
   assert.equal(roleCapPaused(at, 0.51, now), false, "below cap does not pause");
   const off = freshLoopState("docs");
   assert.equal(roleCapPaused(off, 0, now), false, "a cap of 0 disables the gate");
   assert.equal(roleCapPaused(off, undefined, now), false, "no cap means uncapped");
   // A stale stamp reads as $0 today — yesterday's spend never pauses today.
-  const stale = overCapState("docs", 10);
+  const stale = spentLoopState("docs", 10);
   stale.dayStamp = undefined;
   assert.equal(dailyCost(stale, now), 0);
   assert.equal(roleCapPaused(stale, 0.01, now), false, "stale spend is not today's spend");
@@ -41,7 +36,7 @@ test("roleCapPaused: the verdict boundaries", () => {
 test("pollRoleCapGate: one crossing logs exactly one role_cap_paused with the figures", () => {
   const root = tmpdir("role-cap-");
   const state = newRoleCapGateState();
-  const runners = [{ role: "docs", state: overCapState("docs", 0.5) }];
+  const runners = [{ role: "docs", state: spentLoopState("docs", 0.5) }];
 
   const paused = pollRoleCapGate(root, state, runners, { docs: 0.5 }, Date.now());
   assert.deepEqual([...paused], ["docs"], "the crossing role is in this poll's set");
@@ -66,7 +61,7 @@ test("pollRoleCapGate: one crossing logs exactly one role_cap_paused with the fi
 test("pollRoleCapGate: midnight lifts (role_cap_resumed) and a later crossing re-logs", () => {
   const root = tmpdir("role-cap-midnight-");
   const state = newRoleCapGateState();
-  const s = overCapState("docs", 0.5);
+  const s = spentLoopState("docs", 0.5);
   const runners = [{ role: "docs", state: s }];
   const caps = { docs: 0.5 };
 
@@ -95,7 +90,7 @@ test("pollRoleCapGate: midnight lifts (role_cap_resumed) and a later crossing re
 test("pollRoleCapGate: a cap removal or raise lifts a paused role", () => {
   const root = tmpdir("role-cap-raise-");
   const state = newRoleCapGateState();
-  const runners = [{ role: "docs", state: overCapState("docs", 0.5) }];
+  const runners = [{ role: "docs", state: spentLoopState("docs", 0.5) }];
 
   pollRoleCapGate(root, state, runners, { docs: 0.5 }, Date.now());
   const raised = pollRoleCapGate(root, state, runners, { docs: 5 }, Date.now());
@@ -113,7 +108,7 @@ test("pollRoleCapGate: a cap removal or raise lifts a paused role", () => {
 
 test("pollRoleCapGate: a restart with a still-over-cap role logs exactly one event", () => {
   const root = tmpdir("role-cap-restart-");
-  const runners = [{ role: "docs", state: overCapState("docs", 0.5) }];
+  const runners = [{ role: "docs", state: spentLoopState("docs", 0.5) }];
 
   // First "process": cross, then stop (the in-memory state dies with it).
   const first = newRoleCapGateState();
@@ -132,9 +127,9 @@ test("pollRoleCapGate: the director never enters the set, and the set is exactly
   const root = tmpdir("role-cap-director-");
   const state = newRoleCapGateState();
   const runners = [
-    { role: "docs", state: overCapState("docs", 0.5) },
+    { role: "docs", state: spentLoopState("docs", 0.5) },
     { role: "tests", state: freshLoopState("tests") },
-    { role: DIRECTOR_ROLE, state: overCapState(DIRECTOR_ROLE, 100) },
+    { role: DIRECTOR_ROLE, state: spentLoopState(DIRECTOR_ROLE, 100) },
   ];
 
   const paused = pollRoleCapGate(root, state, runners, { docs: 0.5, [DIRECTOR_ROLE]: 1 }, Date.now());
@@ -152,7 +147,7 @@ test("pollRoleCapGate: the director never enters the set, and the set is exactly
 test("pollRoleCapGate: an 80% crossing logs one role_cap_warning and stays unpaused", () => {
   const root = tmpdir("role-cap-warn-");
   const state = newRoleCapGateState();
-  const s = overCapState("docs", 0.5);
+  const s = spentLoopState("docs", 0.5);
   const runners = [{ role: "docs", state: s }];
   const caps = { docs: 1 };
 
@@ -183,7 +178,7 @@ test("pollRoleCapGate: an 80% crossing logs one role_cap_warning and stays unpau
 test("pollRoleCapGate: the warning re-arms after a dip below 80%", () => {
   const root = tmpdir("role-cap-warn-rearm-");
   const state = newRoleCapGateState();
-  const runners = [{ role: "docs", state: overCapState("docs", 0.85) }];
+  const runners = [{ role: "docs", state: spentLoopState("docs", 0.85) }];
 
   pollRoleCapGate(root, state, runners, { docs: 1 }, Date.now());
   // A raised cap drops the same spend below the band, then the old cap re-crosses it.
@@ -199,7 +194,7 @@ test("pollRoleCapGate: the warning re-arms after a dip below 80%", () => {
 test("pollRoleCapGate: a poll jumping straight to the cap logs only role_cap_paused", () => {
   const root = tmpdir("role-cap-warn-jump-");
   const state = newRoleCapGateState();
-  const runners = [{ role: "docs", state: overCapState("docs", 1) }];
+  const runners = [{ role: "docs", state: spentLoopState("docs", 1) }];
 
   const paused = pollRoleCapGate(root, state, runners, { docs: 1 }, Date.now());
   assert.deepEqual([...paused], ["docs"]);
@@ -210,8 +205,8 @@ test("pollRoleCapGate: instances warn as one group against the base cap", () => 
   const root = tmpdir("role-cap-warn-instances-");
   const state = newRoleCapGateState();
   const runners = [
-    { role: "feature", state: overCapState("feature", 0.4) },
-    { role: "feature-2", state: overCapState("feature-2", 0.4) },
+    { role: "feature", state: spentLoopState("feature", 0.4) },
+    { role: "feature-2", state: spentLoopState("feature-2", 0.4) },
   ];
 
   assert.equal(pollRoleCapGate(root, state, runners, { feature: 1 }, Date.now()).size, 0);
@@ -224,7 +219,7 @@ test("pollRoleCapGate: instances warn as one group against the base cap", () => 
 test("pollRoleCapGate: no caps configured logs nothing and returns the empty set", () => {
   const root = tmpdir("role-cap-off-");
   const state = newRoleCapGateState();
-  const runners = [{ role: "docs", state: overCapState("docs", 500) }];
+  const runners = [{ role: "docs", state: spentLoopState("docs", 500) }];
 
   for (const caps of [undefined, {}, { docs: 0 }] as (
     | Record<string, number>

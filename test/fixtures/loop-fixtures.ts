@@ -8,7 +8,8 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../../src/config/config.js";
 import { LoopRunner } from "../../src/loop/loop.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../../src/loop/loop-state.js";
+import { recordDailyCost } from "../../src/budget/budget.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "../fakes/fake-commands.js";
@@ -170,6 +171,18 @@ export function baselineFixture(role: string, testScript: string): { root: strin
   ensureParentDir(wt);
   sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
   return { root, wt };
+}
+
+/** A fresh `role` state already carrying `usd` of today's spend, recorded at `at` (the real
+ * clock by default, matching the gates' own Date.now() read) — the shared home of the
+ * freshLoopState + recordDailyCost pair used by the gate-poll, budget-gate, role-cap-gate,
+ * gate-event-best-effort, loop-id, and status-snapshot suites. A test that needs the state
+ * persisted calls saveLoopState(root, state) itself; a suite whose subject is recordDailyCost
+ * itself still calls it directly. */
+export function spentLoopState(role: string, usd: number, at?: number): LoopState {
+  const state = freshLoopState(role);
+  recordDailyCost(state, usd, at);
+  return state;
 }
 
 /** Seed each role's state file with non-zero counters plus scheduling fields. Variadic so a

@@ -15,8 +15,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
-import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
-import { recordDailyCost } from "../src/budget/budget.js";
+import { spentLoopState } from "./fixtures/loop-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import { pollBudgetGate, newBudgetGateState } from "../src/gates/budget-gates.js";
@@ -82,8 +81,7 @@ test("pollRoleCapGate: a cap pause survives an unwritable events feed", () => {
   const root = tmpdir("gate-best-effort-cap-");
   unwritableEvents(root);
   const state = newRoleCapGateState();
-  const spent = freshLoopState("docs");
-  recordDailyCost(spent, 0.5);
+  const spent = spentLoopState("docs", 0.5);
   const paused = pollRoleCapGate(
     root,
     state,
@@ -100,8 +98,7 @@ test("pollBudgetGate: a budget transition survives an unwritable events feed", (
   const config = defaultConfig();
   config.maxDailyCostUsd = 1;
   const state = newBudgetGateState(config);
-  const spent = freshLoopState("feature");
-  recordDailyCost(spent, 0.9); // past the 80% warning, under the cap: gate open, warning fires
+  const spent = spentLoopState("feature", 0.9); // past the 80% warning, under the cap: gate open, warning fires
   assert.doesNotThrow(() =>
     pollBudgetGate(state, {
       root,
@@ -153,8 +150,7 @@ test("pollFleetGates: a budget reopen hands fallback ticks back even when the fe
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
   const handbacks: string[] = [];
-  const featureState: LoopState = freshLoopState("feature");
-  recordDailyCost(featureState, 10);
+  const featureState = spentLoopState("feature", 10);
   featureState.running = true;
   const runner = {
     role: "feature",

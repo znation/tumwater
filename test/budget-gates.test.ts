@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";import { BUDGET_WARNING_FRACTION, recordDailyCost } from "../src/budget/budget.js";
+import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import { readEvents } from "../src/events/event-read.js";
-import { freshLoopState } from "../src/loop/loop-state.js";
+import { spentLoopState } from "./fixtures/loop-fixtures.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
@@ -20,15 +20,7 @@ function configWith(capUsd: number): TumwaterConfig {
   return cfg;
 }
 
-/** A loop that has already spent `usd` today (recorded against the real clock, matching
- * pollBudgetGate's own Date.now() read). */
-function spent(usd: number) {
-  const s = freshLoopState("feature");
-  recordDailyCost(s, usd);
-  return s;
-}
-
-function poll(root: string, state: ReturnType<typeof newBudgetGateState>, cfg: TumwaterConfig, modelsPath: string, states = [spent(0)]) {
+function poll(root: string, state: ReturnType<typeof newBudgetGateState>, cfg: TumwaterConfig, modelsPath: string, states = [spentLoopState("feature", 0)]) {
   return pollBudgetGate(state, { root, states, liveConfig: cfg, modelsPath });
 }
 
@@ -38,7 +30,7 @@ test("pollBudgetGate keeps the gate open under the cap and hands the live config
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(5)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 5)]);
   assert.equal(p.gate, "open");
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, cfg); // same object: no view is derived while budget remains
@@ -54,7 +46,7 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
-  const over = [spent(10)]; // exactly at the cap (>=)
+  const over = [spentLoopState("feature", 10)]; // exactly at the cap (>=)
 
   const p = poll(root, state, cfg, models, over);
   assert.equal(p.gate, "fallback");
@@ -107,7 +99,7 @@ test("a tiered fallback with two distinct pairs carries the per-tier map on the 
   cfg.fallback = { default: "free/qwen-free", strong: "free/llama-free" };
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "fallback");
   const events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
@@ -126,10 +118,10 @@ test("raising the cap resumes the gate: one budget_resumed event and the live co
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
-  poll(root, state, cfg, models, [spent(10)]); // engage the fallback first
+  poll(root, state, cfg, models, [spentLoopState("feature", 10)]); // engage the fallback first
 
   const raised = configWith(100);
-  const p = poll(root, state, raised, models, [spent(10)]);
+  const p = poll(root, state, raised, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "open");
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, raised); // the fallback view is dropped at once
@@ -143,36 +135,36 @@ test("resumed is true on exactly the reopening poll, with the fallback pair it l
   const state = newBudgetGateState(cfg);
 
   // Open → fallback: the engagement poll is not a resume, but it carries the pair.
-  const p0 = poll(root, state, cfg, models, [spent(10)]);
+  const p0 = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p0.gate, "fallback");
   assert.equal(p0.resumed, false);
   assert.deepEqual(p0.pairs, [{ provider: "free", model: "qwen-free" }]);
 
   // Holding the fallback: still not a resume.
-  assert.equal(poll(root, state, cfg, models, [spent(10)]).resumed, false);
+  assert.equal(poll(root, state, cfg, models, [spentLoopState("feature", 10)]).resumed, false);
 
   // fallback → open (cap raised): exactly the resume, naming the pair the gate just left.
-  const p2 = poll(root, state, configWith(100), models, [spent(10)]);
+  const p2 = poll(root, state, configWith(100), models, [spentLoopState("feature", 10)]);
   assert.equal(p2.gate, "open");
   assert.equal(p2.resumed, true);
   assert.deepEqual(p2.pairs, [{ provider: "free", model: "qwen-free" }]);
 
   // Staying open poll after poll: no further resumes.
-  assert.equal(poll(root, state, configWith(100), models, [spent(10)]).resumed, false);
+  assert.equal(poll(root, state, configWith(100), models, [spentLoopState("feature", 10)]).resumed, false);
 
   // paused → open is a resume too: ticks parked on the fallback view while the breaker had
   // the gate paused must be handed back exactly like fallback-held ones.
   const paidOnlyDir = tmpdir("budget-gates-paid-");
   const paidOnly = writeModelsFile(paidOnlyDir, PAID_ONLY_JSON);
   const state2 = newBudgetGateState(cfg);
-  assert.equal(poll(root, state2, cfg, paidOnly, [spent(10)]).gate, "paused");
-  const p5 = poll(root, state2, configWith(100), paidOnly, [spent(10)]);
+  assert.equal(poll(root, state2, cfg, paidOnly, [spentLoopState("feature", 10)]).gate, "paused");
+  const p5 = poll(root, state2, configWith(100), paidOnly, [spentLoopState("feature", 10)]);
   assert.equal(p5.gate, "open");
   assert.equal(p5.resumed, true);
 
   // Open from the start (no transition at all): not a resume.
   const state3 = newBudgetGateState(cfg);
-  assert.equal(poll(root, state3, cfg, models, [spent(5)]).resumed, false);
+  assert.equal(poll(root, state3, cfg, models, [spentLoopState("feature", 5)]).resumed, false);
 });
 
 test("crossing 80% of the cap warns once while the gate is open, and re-arms after dropping below", () => {
@@ -184,11 +176,11 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
   const threshold = 10 * BUDGET_WARNING_FRACTION; // 8 of a 10 cap
 
   // Under the threshold: silent.
-  poll(root, state, cfg, models, [spent(threshold - 2)]);
+  poll(root, state, cfg, models, [spentLoopState("feature", threshold - 2)]);
   assert.deepEqual(readEvents(root), []);
 
   // Crossing 80% with the gate still open: exactly one budget_warning.
-  poll(root, state, cfg, models, [spent(threshold)]);
+  poll(root, state, cfg, models, [spentLoopState("feature", threshold)]);
   let events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_warning"]);
   assert.equal(events[0]!.loop, "harness");
@@ -196,12 +188,12 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
   assert.equal(events[0]!.spentUsd, threshold);
 
   // Still above the threshold: edge-triggered, no second warning.
-  poll(root, state, cfg, models, [spent(threshold + 1)]);
+  poll(root, state, cfg, models, [spentLoopState("feature", threshold + 1)]);
   assert.equal(readEvents(root).length, 1);
 
   // Dropping back below (a new local day, a raised cap) re-arms: crossing again warns again.
-  poll(root, state, cfg, models, [spent(threshold - 3)]); // still open the whole time: no transition events
-  poll(root, state, cfg, models, [spent(threshold)]);
+  poll(root, state, cfg, models, [spentLoopState("feature", threshold - 3)]); // still open the whole time: no transition events
+  poll(root, state, cfg, models, [spentLoopState("feature", threshold)]);
   assert.deepEqual(eventTypes(root), ["budget_warning", "budget_warning"]);
 });
 
@@ -213,12 +205,12 @@ test("no budget warning at the cap itself, and none with the cap disabled", () =
 
   // Straight to the cap: the fallback transition logs its own event, the warning never
   // doubles the page on the poll the gate stops being open.
-  poll(root, state, cfg, models, [spent(10)]);
+  poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.deepEqual(eventTypes(root), ["budget_fallback"]);
 
   // A cap of 0 disables the budget entirely: no warning at any spend.
   const state2 = newBudgetGateState(configWith(0));
-  poll(root, state2, configWith(0), models, [spent(100)]);
+  poll(root, state2, configWith(0), models, [spentLoopState("feature", 100)]);
   assert.deepEqual(eventTypes(root), ["budget_fallback"]);
 });
 
@@ -236,7 +228,7 @@ test("a fallback pi prices above zero cannot engage: the gate pauses and the eve
   const cfg = configWith(10);
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused");
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, cfg); // no fallback view while nothing is engaged
@@ -260,7 +252,7 @@ test("a claude-routed fallback cannot engage even when models.json prices its na
   cfg.fallback = "claude/claude-sonnet-5-5";
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused");
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, cfg); // no fallback view while nothing is engaged
@@ -281,7 +273,7 @@ test("a subscription claude fallback engages at the cap", () => {
   cfg.fallback = "claude/claude-sonnet-5-5";
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "fallback"); // the subscription fallback is free money, not refused
   assert.deepEqual(p.roleConfig.model, {
     small: "claude/claude-sonnet-5-5",
@@ -304,7 +296,7 @@ test("a subscription claude seam stays put at the cap while a priced pi seam mov
   cfg.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "fallback");
   const feature = configForRole(p.roleConfig, "feature");
   assert.equal(feature.agent, "claude", "the free seam keeps its backend");
@@ -328,7 +320,7 @@ test("an overage subscription claude seam moves to its fallback at the cap", () 
   cfg.roles.feature = { ...cfg.roles.feature, provider: "claude", model: "claude-sonnet-5-5", enabled: true };
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "fallback");
   const feature = configForRole(p.roleConfig, "feature");
   assert.equal(feature.provider, "free", "an overage claude seam is priced and moves");
@@ -353,7 +345,7 @@ test("a demoted fallback keeps the gate paused and the role view: demotion never
     },
   };
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused"); // free but not serving: paused, like no fallback at all
   assert.equal(p.onFallback, true); // yet ticks parked in flight still run on the free pair
   assert.equal(p.roleConfig.provider, undefined);
@@ -392,7 +384,7 @@ test("a demoted strong-tier pair names itself as the pause cause when only stron
     },
   };
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused");
   assert.equal(p.priceResolved.strong.pair?.model, "llama-free", "the price-only resolution keeps the pair");
   assert.equal(p.servingResolved.strong.pair, null, "the breaker demotion drops it from the serving view");
@@ -418,7 +410,7 @@ test("review on and strong unresolvable pauses the gate; review off holds only i
   cfg.fallbackModel = undefined;
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused", "review on: nothing could land, the gate pauses");
   assert.equal(p.servingResolved.strong.pair, null);
   assert.ok(p.servingResolved.default.pair !== null, "default still resolves (borrowing small)");
@@ -427,7 +419,7 @@ test("review on and strong unresolvable pauses the gate; review off holds only i
   // Review off: the same config keeps the gate on fallback — only the strong roles are held
   // (the per-tier pause set), the rest keep ticking.
   const off = { ...cfg, review: { ...cfg.review, enabled: false } };
-  const p2 = pollBudgetGate(newBudgetGateState(off), { root, states: [spent(10)], liveConfig: off, modelsPath: models });
+  const p2 = pollBudgetGate(newBudgetGateState(off), { root, states: [spentLoopState("feature", 10)], liveConfig: off, modelsPath: models });
   assert.equal(p2.gate, "fallback");
   assert.equal(p2.servingResolved.strong.pair, null, "strong still resolves to pause — the set holds it");
 });
@@ -443,7 +435,7 @@ test("an unborrowable strong tier pauses the gate without naming the serving def
   cfg.fallbackModel = undefined;
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused");
   assert.equal(p.servingResolved.strong.pair, null);
   assert.equal(state.engaged, "free/qwen-free", "the serving default pair is still the engaged one");
@@ -466,7 +458,7 @@ test("a map with no default entry engages the gate and reports the borrowed pair
   cfg.review = { ...cfg.review, enabled: false };
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "fallback");
   assert.deepEqual(p.priceResolved.default, {
     pair: { provider: "free", model: "llama-free" },
@@ -496,7 +488,7 @@ test("a breaker-demoted pair re-resolves only the tiers using it", () => {
     },
   };
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   // The demoted strong pair re-resolves strong alone: it borrows default's own pair (a
   // downgrade, not a pause), and default/small keep exactly what they had.
   assert.equal(p.gate, "fallback");
@@ -525,7 +517,7 @@ test("the breaker map is keyed per resolved pair: tiers sharing a fallback share
   cfg.fallbackModel = undefined;
   const state = newBudgetGateState(cfg);
 
-  const p = poll(root, state, cfg, models, [spent(10)]);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "fallback");
   // The priced pair is not resolvable, so the map holds only the free pair the tiers
   // actually resolve to — small's own, default's own, and strong's borrowed default.
