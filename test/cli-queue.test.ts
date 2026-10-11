@@ -1,0 +1,68 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { initProject } from "../src/init/init.js";
+import { enqueueLanding, type LandingEntry } from "../src/landing/landing-queue.js";
+import { landQueueDir } from "../src/paths.js";
+import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { cli } from "./helpers/cli-harness.js";
+
+// The `queue` command: the durable land queue in execution order, via the CLI the way the
+// cli-diff tests `diff` — an initialized repo, child-process runs, output assertions.
+
+function entry(role: string, sha: string, tick = 1, summary = `summary from ${role} #${tick}`): LandingEntry {
+  return { role, sha, tick, summary, enqueuedAt: Date.now() };
+}
+
+test("an empty queue prints the empty line and exits 0", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue empty test");
+  assert.ok(!fs.existsSync(landQueueDir(repo)), "no queue dir yet");
+  const r = await cli(repo, "queue");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "land queue empty");
+});
+
+test("queue lists each waiting landing in execution order with its fields", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue list test");
+  enqueueLanding(repo, entry("improve", "a".repeat(40), 3, "tidy the parser"));
+  enqueueLanding(repo, entry("organize", "b".repeat(40), 4, "split the module"));
+  const r = await cli(repo, "queue");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines[0], "land queue (2):");
+  // Oldest first, one 1-based line each: role, tick, short sha, age, and summary.
+  assert.match(lines[1]!, /^  1\. improve tick #3 · aaaaaaaa · \d+s ago · tidy the parser$/);
+  assert.match(lines[2]!, /^  2\. organize tick #4 · bbbbbbbb · \d+s ago · split the module$/);
+});
+
+test("queue --json prints the collector's {entries, unreadable} document with raw fields", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue json test");
+  const sha = "c".repeat(40);
+  const before = Date.now();
+  enqueueLanding(repo, entry("improve", sha, 7, "raw payload"));
+  const r = await cli(repo, "queue", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as {
+    entries: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>;
+    unreadable: number;
+  };
+  assert.equal(payload.unreadable, 0);
+  assert.equal(payload.entries.length, 1);
+  const e = payload.entries[0]!;
+  assert.equal(e.role, "improve");
+  assert.equal(e.sha, sha, "the raw sha, not the render's short form");
+  assert.equal(e.tick, 7);
+  assert.equal(e.summary, "raw payload");
+  assert.ok(typeof e.enqueuedAt === "number" && e.enqueuedAt >= before, "numeric enqueuedAt");
+});
+
+test("queue rejects an unknown flag, naming it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue flag test");
+  const r = await cli(repo, "queue", "--wat");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("--wat"));
+});

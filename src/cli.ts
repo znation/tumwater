@@ -29,7 +29,7 @@ import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { cmdConfig, CONFIG_USAGE } from "./cli/config-commands.js";
 import { cmdRetire, cmdStop } from "./operator/operator-commands.js";
 import { cmdPrompt } from "./inbox/prompt-commands.js";
-import { cmdBacklog, cmdDiff, cmdQuestions, cmdRole, cmdStatus } from "./cli/cli-query-commands.js";
+import { cmdBacklog, cmdDiff, cmdQuestions, cmdQueue, cmdRole, cmdStatus } from "./cli/cli-query-commands.js";
 import { requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./cli/log-commands.js";
 import { bugTitleOf, cancelAndAnnounce, cancelBug, cancelPlan, editAndAnnounce, editBug, editPlan, fileBug, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
@@ -205,6 +205,9 @@ async function main(): Promise<void> {
     }
     case "diff":
       await cmdDiff(root, args);
+      break;
+    case "queue":
+      await cmdQueue(root, args);
       break;
     case "backlog":
       await cmdBacklog(root, args);

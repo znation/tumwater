@@ -169,6 +169,32 @@ export function queuedLandingRoles(root: string): Set<string> {
   return new Set(queuedLandingFiles(root).map((q) => q.entry.role));
 }
 
+/** The queue read as one view: every readable entry in execution order (oldest first) plus the
+ * number of queue files the reader skipped — torn, foreign, or vanished mid-listing. The one
+ * home of "the queue as a view": `tumwater queue` renders it and `status`'s `landQueue`
+ * projects it, so those callers cannot drift. The queue's depth is
+ * `entries.length + unreadable`: every listed file is either a readable entry or skipped, so
+ * the caller needs no second directory listing. A missing queue dir reads as
+ * `{entries: [], unreadable: 0}`. */
+export interface LandingQueueView {
+  entries: LandingEntry[];
+  unreadable: number;
+}
+
+/** Read every queue file once through the stat-keyed cache, collecting the readable entries
+ * (filename order) and counting the rest — the torn/foreign file policy readEntry already
+ * applies, surfacing the skip count instead of hiding it. */
+export function readLandingQueue(root: string): LandingQueueView {
+  const entries: LandingEntry[] = [];
+  let unreadable = 0;
+  for (const file of queueFiles(root)) {
+    const entry = readEntry(file);
+    if (entry) entries.push(entry);
+    else unreadable++;
+  }
+  return { entries, unreadable };
+}
+
 /** The head of the queue — its oldest entry — plus the file to drop on completion, or null when
  * the queue is empty or its oldest file is a vanished/torn entry. */
 export function headLanding(root: string): { entry: LandingEntry; file: string } | null {

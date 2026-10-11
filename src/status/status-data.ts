@@ -36,7 +36,7 @@ import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot
 import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
-import { queuedLandings } from "../landing/landing-queue.js";
+import { readLandingQueue } from "../landing/landing-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -285,10 +285,11 @@ export interface StatusSnapshot {
     depth: number;
     /** Each queued change in execution order (oldest first) for `status --json` readers —
      * position, role, summary, sha, age. Filled from the same
-     * `queuedLandings` pass the depth already costs (shallow per-entry copies without the
-     * optional `body`/`highFriction`), only when `depth > 0`, absent when empty — the same
-     * filling discipline `roleInboxPrompts` follows: there is nothing to render, so the
-     * common empty case carries no field. */
+     * `readLandingQueue` pass the depth already costs (shallow per-entry copies without the
+     * optional `body`/`highFriction`), only when at least one readable entry is queued — the
+     * same filling discipline `roleInboxPrompts` follows: there is nothing to render, so the
+     * common empty case carries no field. (`depth` can be positive with `entries` absent: it
+     * also counts the unreadable files the reader skips.) */
     entries?: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>;
     inFlight?: LandingInFlight;
   };
@@ -426,9 +427,12 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // still has a queue entry for what the marker names (per change, for a batch) — the
   // cross-check makes every crash ordering self-healing (a stale marker alone never displays,
   // and needs no cleanup pass).
-  const landings = queuedLandings(root);
+  const queue = readLandingQueue(root);
+  const landings = queue.entries;
   const landingMarker = readLandingMarker(root);
-  const landQueue: StatusSnapshot["landQueue"] = { depth: landings.length };
+  const landQueue: StatusSnapshot["landQueue"] = {
+    depth: landings.length + queue.unreadable,
+  };
   if (landings.length > 0) {
     landQueue.entries = landings.map((e) => ({
       role: e.role,

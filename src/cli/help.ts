@@ -117,6 +117,13 @@ Usage:
                                    patch — staged and unstaged alike); a loop with no worktree
                                    yet prints \`no worktree for <id>\`; --json prints the
                                    collector's payload as machine-readable data
+  tumwater queue [--json]          List the durable land queue in execution order (oldest
+                                   first): one line per waiting landing — position, loop, tick
+                                   number, short pinned sha, age, and summary; an empty queue
+                                   prints \`land queue empty\`, and any torn/foreign queue file
+                                   the reader skipped is counted on a trailing line; --json
+                                   prints the collector's own {entries, unreadable} document
+                                   (raw sha and numeric enqueuedAt, not the render's age)
   tumwater backlog [--json]        Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the

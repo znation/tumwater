@@ -18,6 +18,8 @@ import { backlogHolds } from "../backlog/backlog-eligibility.js";
 import { renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
+import { readLandingQueue } from "../landing/landing-queue.js";
+import { renderLandingQueue } from "../landing/landing-queue-render.js";
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
 import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
@@ -85,6 +87,21 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
     const change = await collectRoleChange(root, role);
     sayJsonOrRender(args, change, renderRoleChange);
   }
+}
+
+/** `tumwater queue`: the durable land queue in execution order, as text or as the
+ * `{entries, unreadable}` document. */
+export async function cmdQueue(root: string, args: string[]): Promise<void> {
+  // The repo half of requireReadyRepo gates: like every repo-bound query, a directory
+  // tumwater cannot read yet has no queue to show. Past the gate an absent queue dir reads
+  // as an empty queue (a `land queue empty` line, exit 0), so no landing ever queued is
+  // data, not an error.
+  rejectUnknownArgs("queue", args, [JSON_FLAG]);
+  await requireReadyRepo(root);
+  // The JSON branch prints the reader's own document — raw sha and numeric enqueuedAt, not
+  // the render's short sha and age — and the render is the collector's view with one clock
+  // read, so `tumwater queue` and `tumwater status --json`'s landQueue cannot drift.
+  sayJsonOrRender(args, readLandingQueue(root), (view) => renderLandingQueue(view, Date.now()));
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */

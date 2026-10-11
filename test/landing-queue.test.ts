@@ -14,8 +14,10 @@ import {
   queueDepth,
   queuedLandingFiles,
   queuedLandings,
+  readLandingQueue,
   staleHeadFile,
 } from "../src/landing/landing-queue.js";
+import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
 import { landQueueDir } from "../src/paths.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
@@ -222,4 +224,60 @@ test("a failed enqueue write never leaves a torn queue entry behind", () => {
   // repair never removed it.
   assert.deepEqual(queuedLandings(repo).map((e) => e.role), ["improve"]);
   assert.equal(queueDepth(repo), 1, "the failed enqueue left no file behind");
+});
+
+test("readLandingQueue returns readable entries in filename order with no skips", () => {
+  const repo = makeRepo();
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  enqueueLanding(repo, entry("organize", "b".repeat(40)));
+  enqueueLanding(repo, entry("improve", "c".repeat(40), 2));
+  const view = readLandingQueue(repo);
+  assert.deepEqual(
+    view.entries.map((e) => e.role),
+    ["improve", "organize", "improve"],
+    "filename order matches queuedLandings",
+  );
+  assert.equal(view.unreadable, 0);
+  assert.deepEqual(view.entries, queuedLandings(repo), "the view and the bare reader agree");
+});
+
+test("readLandingQueue skips a torn or foreign file and counts it as unreadable", () => {
+  const repo = makeRepo();
+  enqueueLanding(repo, entry("improve", "a".repeat(40)));
+  const dir = landQueueDir(repo);
+  // One foreign shape sorting before the real entry and one torn (empty) file after it: the
+  // view surfaces only the healthy entry and reports both files as skipped.
+  fs.writeFileSync(path.join(dir, "0000000000-000000-1.json"), JSON.stringify({ nonsense: true }));
+  fs.writeFileSync(path.join(dir, "9999999999999-000000-1.json"), "");
+  const view = readLandingQueue(repo);
+  assert.equal(view.entries.length, 1, "only the readable entry surfaces");
+  assert.equal(view.entries[0]!.role, "improve");
+  assert.equal(view.unreadable, 2, "both unreadable files are counted");
+});
+
+test("renderLandingQueue prints the unreadable skip count exactly once", () => {
+  const now = 1_000_000;
+  const lines = renderLandingQueue(
+    {
+      entries: [{ role: "improve", sha: "a".repeat(40), tick: 3, summary: "tidy", enqueuedAt: now - 5_000 }],
+      unreadable: 2,
+    },
+    now,
+  ).split("\n");
+  assert.deepEqual(lines, [
+    "land queue (3):",
+    "  1. improve tick #3 · aaaaaaaa · 5s ago · tidy",
+    "  (+2 unreadable queue files skipped)",
+  ]);
+  assert.equal(
+    renderLandingQueue({ entries: [], unreadable: 1 }, now),
+    "land queue (1):\n  (+1 unreadable queue file skipped)",
+    "a depth held only by skipped files states the skip once",
+  );
+});
+
+test("readLandingQueue reads a missing queue dir as empty with no skips", () => {
+  const repo = makeRepo();
+  assert.ok(!fs.existsSync(landQueueDir(repo)), "no queue dir before the first enqueue");
+  assert.deepEqual(readLandingQueue(repo), { entries: [], unreadable: 0 });
 });

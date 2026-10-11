@@ -16,6 +16,7 @@ const ALL_COMMANDS = [
   "history",
   "tick",
   "diff",
+  "queue",
   "backlog",
   "bug",
   "plan",
