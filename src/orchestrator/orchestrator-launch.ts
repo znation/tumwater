@@ -171,7 +171,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
           const now = Date.now();
           const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(now);
           const ranPair =
-            budgetActive && cfg !== null && cfg.model !== undefined
+            budgetActive && cfg?.model !== undefined
               ? modelPairName({ provider: cfg.provider, model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;

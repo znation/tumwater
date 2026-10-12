@@ -84,7 +84,7 @@ const MERGED_INTO_MAIN_CACHE_MAX = 128;
 async function mergedIntoMain(root: string, sha: string, mainBranch: string, head: string): Promise<boolean> {
   const key = `${root}\u0000${sha}`;
   const hit = mergedIntoMainCache.get(key);
-  if (hit && hit.head === head) return hit.merged;
+  if (hit?.head === head) return hit.merged;
   const merged = await isMergedInto(root, sha, mainBranch);
   if (mergedIntoMainCache.size >= MERGED_INTO_MAIN_CACHE_MAX && !mergedIntoMainCache.has(key)) {
     for (const [k, v] of mergedIntoMainCache) if (v.head !== head) mergedIntoMainCache.delete(k);

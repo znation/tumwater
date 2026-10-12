@@ -306,7 +306,7 @@ export function tickRows(
   const rows: TickRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];
-    if (!e || e.type !== "tick_end") continue;
+    if (e?.type !== "tick_end") continue;
     const rawResult = outcomeText(e);
     const result =
       rawResult === "queued"

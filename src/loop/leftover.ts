@@ -131,7 +131,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
   // caller clears the hold (and re-queues) once the resolved reviewer selector differs, so a
   // fixed config recovers automatically (BUGS.md 2026-10-06).
   const held = ctx.landingReviewError;
-  if (held && held.sha === sha) return { kind: "held", sha, message: held.message };
+  if (held?.sha === sha) return { kind: "held", sha, message: held.message };
   const attempts = ctx.mergeConflicts?.sha === sha ? ctx.mergeConflicts.count : 0;
   if (attempts >= MERGE_CONFLICT_LIMIT) {
     const summary = meta.subject ?? `leftover ${shortSha(sha)}`;

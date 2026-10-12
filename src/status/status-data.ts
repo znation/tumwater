@@ -329,7 +329,7 @@ function claudeWindowBlock(
   now: number,
 ): StatusSnapshot["claudeWindow"] {
   const account = readClaudeAccount(root, now);
-  if (account === null || account.billing !== "subscription") return undefined;
+  if (account?.billing !== "subscription") return undefined;
   const windows = claudeWindowEntries(account);
   if (windows.length === 0) return undefined;
   const seams = enabledRoleIds(cfg).map((role) => configForRole(cfg, role));
@@ -545,11 +545,11 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // verdict the gate computes (bootstrapStatus), so the dashboards and the scheduler agree.
     // The held set is computed with the gate's own predicate over the same loop list.
     bootstrap:
-      bootstrapNow && bootstrapNow.active
+      bootstrapNow?.active
         ? { plansDone: bootstrapNow.plansDone, untilPlansDone: bootstrapNow.untilPlansDone }
         : undefined,
     bootstrapHeld:
-      bootstrapNow && bootstrapNow.active
+      bootstrapNow?.active
         ? loops.filter((l) => bootstrapHoldsRole(l.role, openBugs(root).length > 0)).map((l) => l.role)
         : [],
     budgetPausedRoles,

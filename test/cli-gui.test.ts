@@ -227,7 +227,7 @@ test("gui --all-interfaces prints the reachable LAN URLs and serves until killed
   // lines against reality instead of a hardcoded IP. Empty on machines without one.
   const expected = Object.values(os.networkInterfaces())
     .flat()
-    .filter((a): a is os.NetworkInterfaceInfo => Boolean(a && a.family === "IPv4" && !a.internal))
+    .filter((a): a is os.NetworkInterfaceInfo => Boolean(a?.family === "IPv4" && !a.internal))
     .map((a) => a.address);
 
   const s = spawnCli(repo, ["gui", "--port", String(port), "--all-interfaces"]);

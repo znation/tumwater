@@ -253,7 +253,7 @@ async function claudeAuthProbe(
   timeoutMs: number,
 ): Promise<ClaudeAuthStatus | null> {
   const result = await claudeProbe(config, ["auth", "status"], pathEnv, timeoutMs);
-  if (result === null || result.code !== 0) return null;
+  if (result?.code !== 0) return null;
   return parseClaudeAuthStatus(result.stdout);
 }
 

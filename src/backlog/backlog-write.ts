@@ -294,7 +294,7 @@ function scanProseFlags(
       json = true;
       continue;
     }
-    if (positionFlag && arg === positionFlag.name) {
+    if (arg === positionFlag?.name) {
       rejectRepeatFlag(position !== null, positionFlag.name);
       position = parsePositionFlag(positionFlag.name, args[i + 1], positionFlag.example);
       i++;

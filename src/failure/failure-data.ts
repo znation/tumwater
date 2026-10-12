@@ -253,8 +253,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
   const stat = digestStat(root);
   const cached = failureDigestCache.get(key);
   if (
-    cached &&
-    cached.from === from &&
+    cached?.from === from &&
     cached.to === to &&
     cached.priorFrom === priorFrom &&
     sameStatIdentity(cached.stat, stat)

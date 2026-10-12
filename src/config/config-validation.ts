@@ -423,7 +423,7 @@ function checkSelectorValue(
   if (!isNonBlankString(v)) return;
   const legacy = isNonBlankString(legacyProvider) ? legacyProvider : undefined;
   const sel = parseModelSelector(v, legacy);
-  if (sel.provider !== undefined && sel.provider.trim() === "")
+  if (sel.provider?.trim() === "")
     problems.push(
       `${name} ${show(v)} parses to an empty provider half — pi would silently run its default model`,
     );

@@ -243,7 +243,7 @@ function seedBilling(
   if (typeof apiKey === "string" && apiKey !== "") return { billing: "api" };
   if (claudeThirdPartyProvider(process.env)) return { billing: "api" };
   const auth = probeAuthStatus(config);
-  if (auth === null || !auth.loggedIn) return null;
+  if (!auth?.loggedIn) return null;
   const subscription = claudeAuthUsesSubscription(auth);
   return subscription
     ? { billing: "subscription", ...(auth.subscriptionType !== undefined ? { subscriptionType: auth.subscriptionType } : {}) }

@@ -251,7 +251,7 @@ async function missingPathFindings(
     // A test file's fixtures routinely name paths from the software under test, which need
     // not exist here; the added-nonexistent-path heuristic targets real references, so it
     // spares added lines in test/ (the rename/delete scan above still covers the file).
-    if (file !== null && file.startsWith("test/")) continue;
+    if (file?.startsWith("test/")) continue;
     for (const m of line.slice(1).matchAll(tokenRe)) {
       const p = m[0];
       const top = p.slice(0, p.indexOf("/"));

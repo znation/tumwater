@@ -186,7 +186,7 @@ export function withTail<T>(
   feed: (value: T, line: string) => void,
 ): T {
   let tail = tails.get(file);
-  if (!tail || tail.dev !== st.dev || tail.ino !== st.ino || st.size < tail.offset) {
+  if (tail?.dev !== st.dev || tail.ino !== st.ino || st.size < tail.offset) {
     const { fromOffset, value } = fresh(st.size);
     const { lines, end } = readCompleteLines(file, fromOffset, st.size);
     for (const line of lines) feed(value, line);
@@ -305,7 +305,7 @@ function drainRotatedTail(
 ): void {
   const archive = `${file}.1`;
   const ast = statOrNull(archive);
-  if (!ast || ast.dev !== seen.dev || ast.ino !== seen.ino || ast.size <= offset) return;
+  if (ast?.dev !== seen.dev || ast.ino !== seen.ino || ast.size <= offset) return;
   const { lines } = readCompleteLines(archive, offset, ast.size);
   onLines(lines);
 }

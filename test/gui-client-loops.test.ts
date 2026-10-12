@@ -17,7 +17,7 @@ const { phaseDetail, loopCells } = clientScope<Loops>(
   ["format", "view-model", "loops-table"], ["phaseDetail", "loopCells"], {
     icon: iconStub,
     pill: (info: PhaseInfo) => "<span class='pill t-" + info.tone + "'>" + info.label + "</span>",
-    landingSummary: (d: { landing?: Record<string, string> }, role: string) => (d.landing || {})[role] || "",
+    landingSummary: (d: { landing?: Record<string, string> }, role: string) => d.landing?.[role] || "",
     abortConfirming: (role: string) => role === "confirming",
     rolePauseMenuOpen: (role: string) => role === "choosing",
     ROLE_PAUSE_CHOICES: [[1800, "30m"], [3600, "1h"], [7200, "2h"], [28800, "8h"], [0, "standing"]],

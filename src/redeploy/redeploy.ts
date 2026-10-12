@@ -76,7 +76,7 @@ export function redeployDeps(
       const witness = await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha);
       const onRun = baselineCheckEventLogger("harness", safeLog);
       const baseline = await checkMainBaseline(witness, liveConfig(root), onRun);
-      if (!baseline.baseline || baseline.baseline.status !== "red") {
+      if (baseline.baseline?.status !== "red") {
         return baseline.baseline ? false : null;
       }
       const retry = await checkMainBaseline(witness, liveConfig(root), onRun, true);

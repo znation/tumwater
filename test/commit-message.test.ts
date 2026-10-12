@@ -24,7 +24,7 @@ test("extractSummary caps over-long summaries at exactly 100 chars with an ellip
   // Consistent with the commit-body fields: a truncated subject is visibly marked (…)
   // rather than silently cut mid-word, and lands at exactly the cap.
   const summary = extractSummary(`SUMMARY: ${"x".repeat(500)}`);
-  assert.ok(summary && summary.length === 100, "capped at exactly 100");
+  assert.ok(summary?.length === 100, "capped at exactly 100");
   assert.match(summary!, /…$/);
 });
 
@@ -77,7 +77,7 @@ test("extractCommitBody only matches line-anchored fields", () => {
 
 test("extractCommitBody caps each field at 200 chars with an ellipsis", () => {
   const body = extractCommitBody(`WHY: ${"w".repeat(500)}\nRISK: short\n`);
-  assert.ok(body?.why && body.why.length === 200, "capped at exactly 200");
+  assert.ok(body?.why?.length === 200, "capped at exactly 200");
   assert.match(body!.why!, /…$/);
   assert.equal(body!.risk, "short", "other fields untouched by the cap");
 });

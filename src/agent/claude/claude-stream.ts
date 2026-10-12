@@ -245,7 +245,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         // fresh or open pending then folds this event's content, usage, and stop reason the
         // same way — that shared fold is why both branches live on one path.
         let out: string[] = [];
-        if (!pending || pending.id !== id) {
+        if (pending?.id !== id) {
           out = flush();
           pending = { id, content: [], usage: canonicalUsage(isJsonObject(message.usage) ? message.usage : undefined) };
         }

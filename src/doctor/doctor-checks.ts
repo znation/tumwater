@@ -189,7 +189,7 @@ export function checkBootstrap(
   config: TumwaterConfig | undefined,
 ): CheckOutcome {
   const status = config ? bootstrapStatus(root, config) : null;
-  if (status === null || !status.active) return okOutcome("not bootstrapping");
+  if (!status?.active) return okOutcome("not bootstrapping");
   return okOutcome(`bootstrapping: ${status.plansDone}/${status.untilPlansDone} plans done — plan, feature and director tick`);
 }
 

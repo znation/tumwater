@@ -114,7 +114,7 @@ test("applyConfigRequest rejects an invalid candidate: nothing written, previous
   saveConfig(root, defaultConfig());
   writeRequest(wt, { customLoops: [{ name: "Docs", task: "uppercase name" }] });
   const result = applyConfigRequest(root, wt);
-  assert.ok(result && result.error, "a validation failure surfaces as an error string");
+  assert.ok(result?.error, "a validation failure surfaces as an error string");
   assert.match(result.error, /customLoops\[0\]\.name/);
   assert.deepEqual(result.applied, []);
   assert.deepEqual(loadConfig(root), defaultConfig());
@@ -130,23 +130,23 @@ test("applyConfigRequest survives structurally malformed requests without throwi
   // premature `.name` dereference.
   writeRequest(wt, { customLoops: [null] });
   let result = applyConfigRequest(root, wt);
-  assert.ok(result && result.error && /customLoops\[0\]/.test(result.error), JSON.stringify(result));
+  assert.ok(result?.error && /customLoops\[0\]/.test(result.error), JSON.stringify(result));
   assert.deepEqual(loadConfig(root), defaultConfig());
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
   writeRequest(wt, "not json at all");
   result = applyConfigRequest(root, wt);
-  assert.ok(result && result.error, "unparseable JSON surfaces as an error string");
+  assert.ok(result?.error, "unparseable JSON surfaces as an error string");
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
   writeRequest(wt, { customLoops: "everything" });
   result = applyConfigRequest(root, wt);
-  assert.ok(result && result.error && /must be an array/.test(result.error), JSON.stringify(result));
+  assert.ok(result?.error && /must be an array/.test(result.error), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
   writeRequest(wt, ["an array, not an object"]);
   result = applyConfigRequest(root, wt);
-  assert.ok(result && result.error && /must be a JSON object/.test(result.error), JSON.stringify(result));
+  assert.ok(result?.error && /must be a JSON object/.test(result.error), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 });
 

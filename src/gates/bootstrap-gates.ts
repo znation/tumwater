@@ -87,7 +87,7 @@ export function pollBootstrapGate(
   now: number,
 ): ReadonlySet<string> {
   const status = bootstrapStatus(root, config);
-  if (status === null || !status.active) {
+  if (!status?.active) {
     if (status !== null && !fs.existsSync(bootstrapLatchPath(root))) {
       // The target was reached: latch it (so a later compression of `## Done` cannot re-enter
       // bootstrap) and announce the completion once. Both steps are best-effort: an unwritable

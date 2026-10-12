@@ -86,7 +86,7 @@ test("allRoleIds lists every catalog role exactly once, director appended last",
 test("roleById resolves every catalog id; the director and unknown ids yield undefined", () => {
   for (const role of ROLES) {
     const found = roleById(role.id);
-    assert.ok(found && found.id === role.id, `roleById(${JSON.stringify(role.id)})`);
+    assert.ok(found?.id === role.id, `roleById(${JSON.stringify(role.id)})`);
   }
   // The director is user-prompt-driven and has no find prompt by design — a Role for it
   // would let a tick prompt be built as if it were an ordinary loop.

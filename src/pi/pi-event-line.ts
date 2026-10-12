@@ -124,7 +124,7 @@ export function applyToolExecutionEvent(
   } else if (type === "tool_execution_end") {
     for (let i = calls.length - 1; i >= 0; i--) {
       const call = calls[i];
-      if (call && call.id === id) calls.splice(i, 1);
+      if (call?.id === id) calls.splice(i, 1);
     }
   }
 }

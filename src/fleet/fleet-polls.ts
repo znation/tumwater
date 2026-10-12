@@ -129,7 +129,7 @@ export function claudeWindowObservation(
   account: ClaudeAccount | null,
   now: number,
 ): HoldObservation | null {
-  if (account === null || account.billing !== "subscription") return null;
+  if (account?.billing !== "subscription") return null;
   let furthest: { type: string; resetsAt: number } | null = null;
   for (const [type, w] of Object.entries(account.windows)) {
     if (w.status !== "rejected" || w.isUsingOverage === true) continue;
@@ -157,7 +157,7 @@ export function pollClaudeWindowWarning(
   account: ClaudeAccount | null,
   now: number,
 ): string | null {
-  if (account === null || account.billing !== "subscription") return prevWarnedKey;
+  if (account?.billing !== "subscription") return prevWarnedKey;
   for (const [type, w] of Object.entries(account.windows)) {
     if (w.status !== "allowed_warning") continue;
     if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;

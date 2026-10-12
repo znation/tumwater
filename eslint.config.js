@@ -83,6 +83,7 @@ export default tseslint.config(
       "@typescript-eslint/no-unnecessary-boolean-literal-compare": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/prefer-string-starts-ends-with": "error",
+      "@typescript-eslint/prefer-optional-chain": "error",
     },
   },
   {
