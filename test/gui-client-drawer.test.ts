@@ -103,10 +103,10 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     ROLE_WAKE_CHOICES: [[1800, "30m"], [3600, "1h"]],
     phaseDetail: () => "phase detail",
     // Mirrors the real helper: an instance row also matches a wake naming its base role.
-    scheduledWakeFor: (l: { role: string; instanceOf?: string }, d: { scheduledWake?: { atMs: number; roles: string[] } }) => {
-      const w = d.scheduledWake;
-      return w && w.atMs > Date.now() && (w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf))) ? w : null;
-    },
+    scheduledWakesFor: (l: { role: string; instanceOf?: string }, d: { scheduledWake?: { atMs: number; roles: string[] }; scheduledWakes?: Array<{ atMs: number; roles: string[] }> }) =>
+      (d.scheduledWakes ?? (d.scheduledWake ? [d.scheduledWake] : [])).filter(
+        (w) => w.atMs > Date.now() && (w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf))),
+      ),
     clickClosest: () => null,
     rowAction: () => {},
     renderMarkdown: (md: string) => `<md>${md}</md>`,
@@ -213,8 +213,9 @@ test("an idle loop's drawer offers Wake later…, and its open chooser lists one
 });
 
 test("an idle loop's drawer offers Cancel scheduled wake only while a future wake names it", () => {
-  const actionsFor = (scheduledWake: unknown, instanceOf?: string) => {
-    const status = workingStatus() as unknown as { loops: Array<{ phase: string; inFlight: boolean; instanceOf?: string }>; scheduledWake?: unknown };
+  const actionsFor = (scheduledWake: unknown, instanceOf?: string, scheduledWakes?: unknown) => {
+    const status = workingStatus() as unknown as { loops: Array<{ phase: string; inFlight: boolean; instanceOf?: string }>; scheduledWake?: unknown; scheduledWakes?: unknown };
+    if (scheduledWakes !== undefined) status.scheduledWakes = scheduledWakes;
     if (instanceOf) status.loops[0]!.instanceOf = instanceOf;
     status.loops[0]!.phase = "sleeping";
     status.loops[0]!.inFlight = false;
@@ -230,6 +231,10 @@ test("an idle loop's drawer offers Cancel scheduled wake only while a future wak
   assert.doesNotMatch(actionsFor({ atMs: Date.now() - 1000, roles: ["clean"] }), /data-action='wake-cancel'/);
   // A wake naming only the base role is not cancelled by an exact-id cancel of the instance.
   assert.doesNotMatch(actionsFor({ atMs: soon, roles: ["base"] }, "base"), /data-action='wake-cancel'/);
+  // A loop named only by a later wake in the list still offers the cancel.
+  assert.match(actionsFor({ atMs: soon, roles: ["other"] }, undefined, [{ atMs: soon, roles: ["other"] }, { atMs: soon + 1000, roles: ["clean"] }]), /data-action='wake-cancel'/);
+  // An instance row: the earliest wake names only its base, a later one names its own id.
+  assert.match(actionsFor(undefined, "base", [{ atMs: soon, roles: ["base"] }, { atMs: soon + 1000, roles: ["clean"] }]), /data-action='wake-cancel'/);
 });
 
 test("the loop drawer paints a working loop's actions, metrics, ticks, and transcript with the real formatters", async () => {

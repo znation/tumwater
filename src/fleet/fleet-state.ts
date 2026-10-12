@@ -181,7 +181,13 @@ export function pausedRolesUntil(root: string): number | undefined {
  * is pending (expired deadlines are the consumer's to apply within a poll; corrupt markers are
  * skipped). A pure reader over `pendingScheduledWakes`: only the consumer removes a marker. */
 export function scheduledWake(root: string, now: number): { roles: string[]; atMs: number } | undefined {
-  return pendingScheduledWakes(root, now)[0];
+  return scheduledWakes(root, now)[0];
+}
+
+/** Every pending scheduled wake, earliest first — the list `scheduledWake` takes the head of.
+ * The same pure reader over `pendingScheduledWakes`: only the consumer removes a marker. */
+export function scheduledWakes(root: string, now: number): { roles: string[]; atMs: number }[] {
+  return pendingScheduledWakes(root, now);
 }
 
 function readPausedRoles(path: string): { roles: string[]; until?: number } {

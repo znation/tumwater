@@ -58,13 +58,15 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // row-actions:end
   // loops-table:start
   // The status pill's second line: what the phase label carried, or when an idle loop runs next.
-  // The pending operator wake that names this loop, or null. The payload's scheduledWake holds
-  // only the earliest pending wake, so a loop named only by a later wake gets null here (no
-  // per-loop cancel button; the drawer also hides it when only the base role is named); the Wake later menu's fleet-wide cancel still drops that wake.
+  // The future operator wakes that name this loop (or its base role), earliest first. Reads the
+  // payload's scheduledWakes, falling back to the lone scheduledWake of an older server.
+  function scheduledWakesFor(l, d) {
+    const all = d.scheduledWakes || (d.scheduledWake ? [d.scheduledWake] : []);
+    return all.filter((w) => w.atMs > Date.now() && (w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf))))
+      .sort((a, b) => a.atMs - b.atMs);
+  }
   function scheduledWakeFor(l, d) {
-    const w = d.scheduledWake;
-    if (!w || !(w.atMs > Date.now()) || !(w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf)))) return null;
-    return w;
+    return scheduledWakesFor(l, d)[0] || null;
   }
   function phaseDetail(l, info, d) {
     const detail = phaseDetailBase(l, info, d);

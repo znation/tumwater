@@ -26,7 +26,7 @@ import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { pausedRoles, pausedRolesUntil, scheduledWake, standingFleetPause } from "../fleet/fleet-state.js";
+import { pausedRoles, pausedRolesUntil, scheduledWakes, standingFleetPause } from "../fleet/fleet-state.js";
 import {
   orchestratorAlive,
   readOrchestratorInfo,
@@ -235,6 +235,8 @@ export interface StatusSnapshot {
   /** A pending scheduled wake (`tumwater wake --in`): the roles it targets and the deadline
    * (ms epoch); absent for no marker, an immediate or expired one, or a corrupt one. */
   scheduledWake?: { roles: string[]; atMs: number };
+  /** Every pending scheduled wake, earliest first (`scheduledWake` is its head); absent when none is pending. */
+  scheduledWakes?: { roles: string[]; atMs: number }[];
   /** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), absent
    * for a reasonless pause, a role-only pause, or no pause at all — read from the same
    * standing marker read as `paused`/`pausedUntil`, so a reason is never advertised after
@@ -430,6 +432,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One fleet-pause-marker read per poll serves both the paused flag and its deadline:
   // isFleetPaused + pausedUntil would each re-read the same marker file every second.
   const fleetPause = standingFleetPause(root);
+  // One read of the pending scheduled wakes feeds both the earliest and the full list, so they cannot disagree.
+  const wakes = scheduledWakes(root, now);
   // One land-queue pass per poll (landing-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
   // still has a queue entry for what the marker names (per change, for a batch) — the
@@ -568,7 +572,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ),
     pausedUntil: fleetPause?.until,
     pausedRolesUntil: pausedRolesUntil(root),
-    scheduledWake: scheduledWake(root, now),
+    scheduledWake: wakes[0],
+    scheduledWakes: wakes.length > 0 ? wakes : undefined,
     pauseReason: fleetPause?.reason,
     quietHours: quiet.window ?? undefined,
     inQuietHours: quiet.inWindow,

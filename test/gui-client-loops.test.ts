@@ -41,6 +41,15 @@ test("a scheduled operator wake adds a second-line phrase to the rows it targets
   assert.equal(phaseDetail({ phase: "sleeping", role: "feature" }, info, { running: false, scheduledWake: d.scheduledWake }), "operator wake in 1h");
 });
 
+test("every pending scheduled wake shows on the loop it names, not only the earliest", () => {
+  const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
+  const d = { running: true, scheduledWakes: [{ roles: ["feature"], atMs: Date.now() + 3_600_000 }, { roles: ["plan"], atMs: Date.now() + 7_200_000 }] };
+  const l = (role: string) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, role });
+  assert.match(phaseDetail(l("plan"), info, d), /operator wake in 2h$/);
+  assert.match(phaseDetail(l("feature"), info, d), /operator wake in 1h$/);
+  assert.doesNotMatch(phaseDetail(l("qa"), info, d), /operator wake/);
+});
+
 test("a sleeping loop's second line says when it wakes, and names a backoff", () => {
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const l = (patch: object) => ({ phase: "sleeping", ...patch });

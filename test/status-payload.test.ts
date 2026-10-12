@@ -548,11 +548,16 @@ test("status payload's paused alert countdown honors the pinned clock", async ()
 test("status payload and header show a pending scheduled wake only while one stands", async () => {
   const repo = makeRepo();
   await initProject(repo, "scheduled wake test");
-  let payload = statusPayload(repo) as { scheduledWake?: { roles: string[]; atMs: number } };
+  let payload = statusPayload(repo) as { scheduledWake?: { roles: string[]; atMs: number }; scheduledWakes?: { roles: string[] }[] };
   assert.equal(payload.scheduledWake, undefined, "no marker, no scheduledWake");
+  assert.equal(payload.scheduledWakes, undefined, "no marker, no scheduledWakes");
   assert.doesNotMatch(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
   requestWake(repo, ["feature"], 3_600_000);
   payload = statusPayload(repo) as typeof payload;
+  assert.deepEqual(payload.scheduledWake?.roles, ["feature"]);
+  requestWake(repo, ["plan"], 7_200_000);
+  payload = statusPayload(repo) as typeof payload;
+  assert.deepEqual(payload.scheduledWakes?.map((w) => w.roles), [["feature"], ["plan"]]);
   assert.deepEqual(payload.scheduledWake?.roles, ["feature"]);
   assert.match(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
 });

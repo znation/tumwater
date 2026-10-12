@@ -13,6 +13,7 @@ import {
   pausedRoles,
   pausedUntil,
   scheduledWake,
+  scheduledWakes,
   resumeRole,
   pauseFleet,
   resumeFleet,
@@ -416,6 +417,16 @@ test("a non-finite per-role deadline is dropped on a rewrite instead of becoming
   // past deadline and resumes every role the operator believed stopped.
   assert.equal(marker.until, undefined, "the unusable deadline is dropped, not persisted");
   assert.deepEqual(pausedRoles(root), ["docs", "dry"], "the set stays paused after the rewrite");
+});
+
+test("scheduledWakes lists every pending timed wake earliest first, headed by scheduledWake", () => {
+  const root = tmpdir();
+  assert.deepEqual(scheduledWakes(root, Date.now()), [], "no marker");
+  requestWake(root, ["plan"], 7_200_000);
+  requestWake(root, ["feature"], 3_600_000);
+  const wakes = scheduledWakes(root, Date.now());
+  assert.deepEqual(wakes.map((w) => w.roles), [["feature"], ["plan"]]);
+  assert.deepEqual(scheduledWake(root, Date.now()), wakes[0]);
 });
 
 test("scheduledWake reads the earliest pending timed wake and nothing else, leaving the markers", () => {
