@@ -78,7 +78,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The real-process plumbing (`SIGKILL` of the supervisor, reparent of the grandchild, the watch's stop-path file) is still exercised by a real child, with its own bounded guard.
 - `npm run test` is green.
 
-### Filter the dashboard Activity feed by loop and text over the events the card already carries, matching `tumwater logs --grep`/`logs --role` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater logs --grep <text>`/`--role <id>` and the landed dashboard History search plus Loop picker (`gui-client-history.ts`'s `#histgrep`/`#histrole`); the Activity card's only narrowing is the Notable/All segmented filter (`gui-page.ts`'s `#feedfilter`, `gui-client-fleet.ts`'s `renderFeed`), so an operator watching one loop's events or hunting a specific failure must drop to `tumwater logs` or scan the whole recent feed; independent of the waiting hermetic-host gating tier, dashboard composer defer, and TUI History tick-trail plans in code — `src/ui/gui` only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; it reads the event window the card already receives (`status-payload.ts`'s `RECENT_EVENTS` `eventItems`) and adds no endpoint, so its filter cannot disagree with what the card shows, only narrow it)
+## Done
+
+### Filter the dashboard Activity feed by loop and text over the events the card already carries, matching `tumwater logs --grep`/`logs --role` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater logs --grep <text>`/`--role <id>` and the landed dashboard History search plus Loop picker (`gui-client-history.ts`'s `#histgrep`/`#histrole`); the Activity card's only narrowing is the Notable/All segmented filter (`gui-page.ts`'s `#feedfilter`, `gui-client-fleet.ts`'s `renderFeed`), so an operator watching one loop's events or hunting a specific failure must drop to `tumwater logs` or scan the whole recent feed; independent of the waiting hermetic-host gating tier, dashboard composer defer, and TUI History tick-trail plans in code — `src/ui/gui` only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; it reads the event window the card already receives (`status-payload.ts`'s `RECENT_EVENTS` `eventItems`) and adds no endpoint, so its filter cannot disagree with what the card shows, only narrow it; done 2026-10-11 by feature)
 
 **Goal.** The dashboard's Activity card carries the last `RECENT_EVENTS` events as `eventItems`
 and can filter them to the notable ones, but not by loop or by text. The History view already has
@@ -109,15 +111,18 @@ one loop's recent events or find a recent failure without leaving the main scree
    - In `renderFeed(d)`, call `syncFeedRoles(d)` first. Keep the existing newest-first slice and
      Notable/All filter, then apply the loop filter (`it.loop === feedRole` when `feedRole` is
      non-empty) and the text filter (`(it.loop + " " + it.type + " " + it.message).toLowerCase().includes(feedText.toLowerCase())`
-     when `feedText` is non-empty). Keep the `#feedrole` select and `#feedgrep` input values in
-     step with the state on every paint (the History toolbar's `$("histgrep").value = histGrep`
-     idiom). Choose the empty-state wording by whether a filter is active: no events at all keeps
-     today's `No events yet` / `Nothing notable lately`; events present but filtered to none reads
-     `No recent events match this filter` with a `data-action='feedclear'` button that resets
-     `feedRole`/`feedText`, clears both inputs, persists `""` for each, and re-renders. While no
+     when `feedText` is non-empty). Keep the `#feedrole` select in step with the state on every
+     paint, but restore `#feedgrep` from `feedText` once at load and leave it untouched on later
+     paints — rewriting it every poll would wipe the operator's in-progress typing before the
+     committed text catches up. Choose the empty-state wording by whether the notable-filtered
+     set was itself non-empty: no events at all keeps today's `No events yet` / `Nothing notable
+     lately`, and events the Notable/All choice already removed keep `Nothing notable lately`, so
+     `No recent events match this filter` with a `data-action='feedclear'` button (which resets
+     `feedRole`/`feedText`, clears both inputs, persists `""` for each, and re-renders) appears
+     only when the Loop/Search filter is what emptied the feed. While no
      filter is active the rendered rows stay byte-identical to today's.
    - Wire `$("feedrole").addEventListener("change", …)` and
-     `$("feedgrep").addEventListener("change", …)` beside the existing `$("feedfilter")`
+     `$("feedgrep").addEventListener("input", …)` beside the existing `$("feedfilter")`
      listener (the markup `gui-page.ts` always ships), each storing its key and calling
      `renderFeed(lastStatus)`; add one delegated `$("feed").addEventListener("click", …)` arm for
      the `feedclear` button (the empty state's `#feed` is static markup, so the listener
@@ -141,14 +146,15 @@ one loop's recent events or find a recent failure without leaving the main scree
   - a text filter that removes every carried event paints `No recent events match this filter`
     and a `data-action='feedclear'` button, while an empty `eventItems` still paints today's
     `No events yet`;
-  - with neither filter set the painted HTML is byte-identical to the unfiltered render.
+  - with neither filter set the painted HTML is byte-identical to the unfiltered render;
+  - a render whose committed `feedText` differs from the box's live value leaves that value
+    untouched (an in-progress query survives the poll), and a window the Notable-only choice
+    emptied keeps `Nothing notable lately` rather than the filter empty state.
 - `test/gui-client-fleet.test.ts` asserts (as it does for the queued-edit wiring) that
   `GUI_CLIENT_FLEET_JS` reaches `store("feed-role"` and `store("feed-grep"`, and — importing
   `GUI_PAGE` from `../src/ui/gui/gui-page.js` — that the page ships `id="feedrole"` and
   `id="feedgrep"` inside the Activity card's header.
 - `npm run test` is green.
-
-## Done
 
 ### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
 

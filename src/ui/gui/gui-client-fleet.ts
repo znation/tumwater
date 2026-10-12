@@ -359,12 +359,41 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (entry) toggleEntry(entry.dataset.file, Number(entry.dataset.index));
   });
 
-  // ---- activity ----
+  // activity:start
+  // The Activity card's own narrowing, beside the Notable/All segmented choice: a Loop picker
+  // and a text box filter the last RECENT_EVENTS the card already carries (the same
+  // loop/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed). Both persist like
+  // the Notable/All choice, so a reload keeps the operator's scope.
   let feedFilter = recall("feed") === "all" ? "all" : "notable";
+  let feedRole = recall("feed-role") || "";
+  let feedText = recall("feed-grep") || "";
+  let feedRolesKey = "";
   const KINDS = { landing: ["merge", "green"], problem: ["fail", "red"], attention: ["question", "indigo"], info: ["info", "blue"], routine: ["dot", "gray"] };
+  // The Loop picker's options follow the fleet's role list (custom loops included), keyed so a
+  // poll with no roster change repaints nothing. A role the fleet dropped falls back to All
+  // loops and persists, exactly as the History picker's syncHistoryRoles does.
+  function syncFeedRoles(d) {
+    const select = $("feedrole");
+    if (!select || !d) return;
+    const roles = (d.loops || []).map((l) => l.role);
+    const key = roles.join(",");
+    if (key === feedRolesKey) return;
+    feedRolesKey = key;
+    select.innerHTML = rolePickerOptions(roles);
+    select.value = roles.includes(feedRole) ? feedRole : "";
+    if (select.value !== feedRole) {
+      feedRole = select.value;
+      store("feed-role", feedRole);
+    }
+  }
   function renderFeed(d) {
+    syncFeedRoles(d);
     const items = (d.eventItems || []).slice().reverse(); // newest first
-    const shown = feedFilter === "all" ? items : items.filter((it) => eventKind(it) !== "routine");
+    const notable = feedFilter === "all" ? items : items.filter((it) => eventKind(it) !== "routine");
+    const needle = feedText.toLowerCase();
+    const shown = notable.filter((it) =>
+      (!feedRole || it.loop === feedRole) &&
+      (!needle || (it.loop + " " + it.type + " " + it.message).toLowerCase().includes(needle)));
     markActive($("feedfilter"), "filter", feedFilter);
     const roles = new Set((d.loops || []).map((l) => l.role));
     paintPanel("feed", shown.length
@@ -378,8 +407,21 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           "<div class='feed-msg clamp2' title='" + esc(it.message) + "'>" + who + esc(it.message) + "</div>" +
           "<time class='feed-time' title='" + esc(fmtClock(it.ts)) + "'>" + esc(fmtAgo(it.ts)) + "</time></li>";
       }).join("")
-      : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
-        (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
+      : notable.length
+        ? "<li class='empty'><strong>No recent events match this filter</strong>" +
+          "Clear the Loop or Search box to see the recent feed again. " +
+          "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
+        : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
+          (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
+  }
+  function clearFeedFilter() {
+    feedRole = "";
+    feedText = "";
+    store("feed-role", "");
+    store("feed-grep", "");
+    if ($("feedrole")) $("feedrole").value = "";
+    if ($("feedgrep")) $("feedgrep").value = "";
+    if (lastStatus) renderFeed(lastStatus);
   }
   $("feedfilter").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "button[data-filter]");
@@ -388,6 +430,27 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     store("feed", feedFilter);
     if (lastStatus) renderFeed(lastStatus);
   });
+  $("feedrole").addEventListener("change", (ev) => {
+    feedRole = ev.target.value;
+    store("feed-role", feedRole);
+    if (lastStatus) renderFeed(lastStatus);
+  });
+  // The box's value is restored once at load and otherwise left untouched: renderFeed repaints
+  // the feed on every status poll, so writing feedText back into the box there would wipe the
+  // operator's in-progress typing before the committed text caught up. Filter on input so the
+  // feed narrows as the operator types.
+  $("feedgrep").value = feedText;
+  $("feedgrep").addEventListener("input", (ev) => {
+    feedText = ev.target.value.trim();
+    store("feed-grep", feedText);
+    if (lastStatus) renderFeed(lastStatus);
+  });
+  // The empty state's #feed is static markup, so its delegated listener registers at load like
+  // the #feedfilter one above.
+  $("feed").addEventListener("click", (ev) => {
+    if (clickClosest(ev, "button[data-action='feedclear']")) clearFeedFilter();
+  });
+  // activity:end
 
   function renderFleet(d) {
     const loops = d.loops || [];

@@ -104,6 +104,8 @@ export const GUI_PAGE = `<!doctype html>
           <div class="seg" id="feedfilter" role="tablist" aria-label="Activity filter">
             <button type="button" data-filter="notable" class="active">Notable</button><button type="button" data-filter="all">All events</button>
           </div>
+          <label><span class="sr-only">Loop</span><select class="field" id="feedrole"><option value="">All loops</option></select></label>
+          <label><span class="sr-only">Search</span><input class="field" id="feedgrep" type="search" placeholder="Search activity…" autocomplete="off"></label>
         </header>
         <ol id="feed" class="feed"></ol>
       </section>

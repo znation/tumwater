@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_FLEET_JS } from "../src/ui/gui/gui-client-fleet.js";
+import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
 
 // The dashboard's fleet-view backlog panel (src/ui/gui/gui-client-fleet.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
@@ -195,4 +196,122 @@ test("the Landed today tile shows the work/maintenance commit split", () => {
   scope.renderStats({ running: true, loops: [] });
   const html = panels["stats"] ?? "";
   assert.match(html, /4 features done · 2 bugs fixed · 2 work \/ 3 maintenance/, "the sub-line names the work vs upkeep split");
+});
+
+// The Activity card's narrowing (src/ui/gui/gui-client-fleet.ts's marked activity region): the
+// Loop picker and Search box narrow the event window the card already carries, exactly as the
+// History view's do. The scope runs the shared format/view-model/panel/role regions renderFeed
+// reaches, with the DOM, persistence, and panel paint stubbed.
+function feedScope(recalled: Record<string, string> = {}) {
+  const panels: Record<string, string> = {};
+  const els: Record<string, { value: string; innerHTML: string; children: unknown[]; addEventListener: () => void }> = {};
+  const $ = (id: string) => (els[id] ||= { value: "", innerHTML: "", children: [], addEventListener: () => {} });
+  const scope = clientScope<{ renderFeed(d: object): void }>(
+    ["format", "view-model", "click-delegate", "activity"],
+    ["renderFeed"],
+    {
+      recall: (key: string) => recalled[key] ?? null,
+      store: () => {},
+      paintPanel: (id: string, html: string) => { panels[id] = html; },
+      rolePickerOptions: (roles: string[]) =>
+        "<option value=''>All loops</option>" + (roles || []).map((r) => "<option value='" + r + "'>" + r + "</option>").join(""),
+      markActive: () => {},
+      icon: iconStub,
+      lastStatus: undefined,
+      $,
+    },
+  );
+  return { scope, panels, els };
+}
+
+test("the Activity feed narrows to one loop when its Loop picker is set", () => {
+  const { scope, panels } = feedScope({ "feed-role": "feature" });
+  scope.renderFeed({
+    loops: [{ role: "feature" }, { role: "bugfix" }],
+    eventItems: [
+      { ts: Date.now(), loop: "feature", type: "merged", message: "did a feature thing" },
+      { ts: Date.now(), loop: "bugfix", type: "question_posted", message: "did a bugfix thing" },
+    ],
+  });
+  const html = panels["feed"] ?? "";
+  assert.match(html, /did a feature thing/);
+  assert.doesNotMatch(html, /did a bugfix thing/, "the other loop's event is filtered out");
+});
+
+test("the Activity feed's Search matches loop, type, and message case-insensitively", () => {
+  const items = [
+    { ts: Date.now(), loop: "qa", type: "merged", message: "the suite FAILED" },
+    { ts: Date.now(), loop: "qa", type: "question_posted", message: "all green" },
+  ];
+  const lower = feedScope({ "feed-grep": "failed" });
+  lower.scope.renderFeed({ loops: [], eventItems: items });
+  assert.match(lower.panels["feed"] ?? "", /the suite FAILED/, "a lower-cased needle matches an upper-cased message");
+  assert.doesNotMatch(lower.panels["feed"] ?? "", /all green/);
+  const upper = feedScope({ "feed-grep": "GREEN" });
+  upper.scope.renderFeed({ loops: [], eventItems: items });
+  assert.match(upper.panels["feed"] ?? "", /all green/, "an upper-cased needle matches a lower-cased message");
+  assert.doesNotMatch(upper.panels["feed"] ?? "", /the suite FAILED/);
+});
+
+test("a filter that removes every carried event paints the clearable empty state", () => {
+  const carried = { ts: Date.now(), loop: "qa", type: "merged", message: "boom" };
+  const filtered = feedScope({ "feed-grep": "no-such-text" });
+  filtered.scope.renderFeed({ loops: [], eventItems: [carried] });
+  const html = filtered.panels["feed"] ?? "";
+  assert.match(html, /No recent events match this filter/);
+  assert.match(html, /data-action='feedclear'/);
+  // An event window that is empty to begin with keeps today's wording, filter or not.
+  const empty = feedScope({ "feed-grep": "no-such-text" });
+  empty.scope.renderFeed({ loops: [], eventItems: [] });
+  const emptyHtml = empty.panels["feed"] ?? "";
+  assert.match(emptyHtml, /No events yet/);
+  assert.doesNotMatch(emptyHtml, /No recent events match this filter/);
+});
+
+test("an in-progress Search value survives a status poll", () => {
+  const { scope, els } = feedScope();
+  const box = els.feedgrep!;
+  box.value = "half-typed";
+  scope.renderFeed({
+    loops: [],
+    eventItems: [{ ts: Date.now(), loop: "qa", type: "merged", message: "landed one" }],
+  });
+  assert.equal(box.value, "half-typed", "renderFeed leaves the box's live value alone");
+});
+
+test("a Notable-only cull keeps the notable wording, not the filter empty state", () => {
+  const { scope, panels } = feedScope({ "feed-role": "qa" });
+  scope.renderFeed({
+    loops: [{ role: "qa" }],
+    eventItems: [{ ts: Date.now(), loop: "qa", type: "tick_start", message: "working" }],
+  });
+  const html = panels["feed"] ?? "";
+  assert.match(html, /Nothing notable lately/, "the Notable choice, not the Loop picker, emptied the feed");
+  assert.doesNotMatch(html, /No recent events match this filter/);
+});
+
+test("with neither filter set the Activity feed paints the unfiltered rows byte-for-byte", () => {
+  const payload = {
+    loops: [{ role: "qa" }],
+    eventItems: [
+      { ts: Date.now(), loop: "qa", type: "merged", message: "landed one" },
+      { ts: Date.now(), loop: "qa", type: "question_posted", message: "needs you" },
+    ],
+  };
+  const plain = feedScope();
+  plain.scope.renderFeed(payload);
+  const empty = feedScope({ "feed-role": "", "feed-grep": "" });
+  empty.scope.renderFeed(payload);
+  assert.equal(empty.panels["feed"], plain.panels["feed"], "empty filters are a no-op, not a markup change");
+  assert.match(plain.panels["feed"] ?? "", /landed one/);
+  assert.match(plain.panels["feed"] ?? "", /needs you/);
+});
+
+test("the Activity filter persists its choices and the page ships the controls in the card head", () => {
+  assert.match(GUI_CLIENT_FLEET_JS, /store\("feed-role"/);
+  assert.match(GUI_CLIENT_FLEET_JS, /store\("feed-grep"/);
+  const card = GUI_PAGE.slice(GUI_PAGE.indexOf('aria-labelledby="activity-title"'));
+  const head = card.slice(0, card.indexOf("</header>"));
+  assert.match(head, /id="feedrole"/);
+  assert.match(head, /id="feedgrep"/);
 });

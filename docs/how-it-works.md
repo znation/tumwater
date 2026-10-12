@@ -278,7 +278,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   main, a spent budget, an old build, open questions, a pause), the prompt box (a prompt can be
   deferred by a duration — the same grammar and `tumwater:not-before` marker `tumwater prompt
   --at` uses), today's progress,
-  the loops grouped by what they are doing, the backlog, and the notable activity. A new
+  the loops grouped by what they are doing, the backlog, and the notable activity — a Loop picker
+  and a case-insensitive Search box narrow the recent events the card already carries to one loop
+  or a matching substring, persisted like the Notable/All choice. A new
   needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
   across reloads; the Queued tab lists each queued prompt and how long it has waited, and each
   row can be edited in place — Edit loads the prompt's body, Save replaces it through the same
