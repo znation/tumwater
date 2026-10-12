@@ -6,7 +6,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The dashboard's loop rows and drawer see every pending scheduled wake, not just the earliest (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --list` (`listWakes`/`renderWakeList` in `src/operator/operator-intent.ts`), the landed dashboard per-loop wake display (`scheduledWakeFor`/`phaseDetail` in `src/ui/gui/gui-client-loops.ts`) and drawer "Cancel scheduled wake" (`gui-client-drawer.ts`, over `POST /api/wake-cancel`). Today the status payload carries only the earliest pending wake (`scheduledWake` in `src/status/status-data.ts` → `scheduledWake(root, now)` in `src/fleet/fleet-state.ts` = `pendingScheduledWakes(root, now)[0]`). So after `wake feature --in 1h` and `wake plan --in 2h`, plan's row shows no "operator wake in 2h" and its drawer offers no cancel, though `tumwater wake --list` shows both. The comment above `scheduledWakeFor` records this gap. Read-only payload addition plus a client change; no new route or action, and no `src/ui/tui` file)
+
+**Goal.** Every loop that a pending scheduled wake names shows that wake on its dashboard row and can cancel it from its drawer, whichever wake is earliest.
+
+**Approach.**
+1. `src/fleet/fleet-state.ts`: export `scheduledWakes(root, now)`, returning `pendingScheduledWakes(root, now)` (earliest first, same pure-reader doc). Re-express `scheduledWake` as `scheduledWakes(root, now)[0]`.
+2. `src/status/status-data.ts`: add `scheduledWakes?: { roles: string[]; atMs: number }[]` to the snapshot type beside `scheduledWake`, with a doc comment. Absent when no wake is pending. In the snapshot builder, read the list ONCE (`const wakes = scheduledWakes(root, now)`) and set `scheduledWake: wakes[0]` and `scheduledWakes: wakes.length > 0 ? wakes : undefined`, so the two fields cannot disagree.
+3. `src/ui/status-payload.ts`: ship `scheduledWakes: snap.scheduledWakes` beside `scheduledWake` (same omit-undefined idiom, one-line comment). `scheduledWake` stays as is for `status --json` consumers and `wakeBadge` (`src/ui/status-render.ts`).
+4. `src/ui/gui/gui-client-loops.ts`: add `scheduledWakesFor(l, d)`. It returns the future wakes (`atMs > Date.now()`) naming `l.role`, or `l.instanceOf` when set, earliest first. It reads `d.scheduledWakes`, falling back to `[d.scheduledWake]` when the list is absent, so an older server's payload still works. `scheduledWakeFor(l, d)` becomes `scheduledWakesFor(l, d)[0] || null`, so `phaseDetail` shows the earliest wake naming THIS loop. Rewrite the comment above it: the earliest-only caveat no longer holds.
+5. `src/ui/gui/gui-client-drawer.ts`: the cancel button condition becomes `scheduledWakesFor(l, d).some((w) => w.roles.includes(l.role))`. Keep the exact-id comment. With a list, an instance row whose earliest match names only its base role can still have a later wake that names its own id.
+
+**Files.** `src/fleet/fleet-state.ts`, `src/status/status-data.ts`, `src/ui/status-payload.ts`, `src/ui/gui/gui-client-loops.ts`, `src/ui/gui/gui-client-drawer.ts`, tests below.
+
+**Acceptance criteria.**
+- `test/fleet-state.test.ts`: a new test writes two scheduled wakes and checks that `scheduledWakes` returns both, earliest first, with `scheduledWake` equal to its first element. The existing "scheduledWake reads the earliest pending timed wake and nothing else, leaving the markers" test still passes unchanged.
+- `test/status-payload.test.ts`: extend "status payload and header show a pending scheduled wake only while one stands" (or add a sibling test). With no marker, `scheduledWakes` is absent. After `requestWake(repo, ["feature"], 3_600_000)` and `requestWake(repo, ["plan"], 7_200_000)`, `scheduledWakes` maps to roles `[["feature"], ["plan"]]` and `scheduledWake.roles` is `["feature"]`.
+- `test/gui-client-loops.test.ts`: a new test, alongside "a scheduled operator wake adds a second-line phrase to the rows it targets". The payload is `scheduledWakes: [{roles:["feature"], atMs: +1h}, {roles:["plan"], atMs: +2h}]`. The plan row's `phaseDetail` ends with "operator wake in 2h", the feature row's with "operator wake in 1h", and a qa row has no operator-wake phrase. The existing test still passes: it sends only `scheduledWake`, which exercises the fallback.
+- `test/gui-client-drawer.test.ts`: the scope stub that mirrors `scheduledWakeFor` gains a `scheduledWakesFor` mirror, or the test loads the real helper. "an idle loop's drawer offers Cancel scheduled wake only while a future wake names it" gains two cases: the button shows for a loop named only by the SECOND entry of `scheduledWakes`, and it shows for an instance row (`instanceOf: "base"`) when one wake names `base` and a later one names the instance id.
+- `npm run test` passes.
 
 
 ## Done
