@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### File a new plan request or bug from the TUI backlog pane: Ctrl+N opens a one-line title editor, matching `tumwater plan|bug "<title>"` and the dashboard's New form (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug` (`fileAndAnnounce` in `src/backlog/backlog-write.ts`), the landed dashboard New form (`handleBacklogFile` over `POST /api/backlog-file` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI backlog pane's Ctrl+X cancel, Ctrl+E title edit, and Ctrl+A answer (`createTuiKeys`, `src/ui/tui/tui-keys.ts`). Today the TUI pane can cancel, retitle, and answer entries, but it cannot file a new one, so "file a bug about what I just saw" means switching to a second terminal. Only a title can be filed here: the prompt line holds one line, so a multiline body stays a CLI (`--file`) and dashboard job. No `src/gui`, `src/ui/gui`, `src/cli`, or `src/backlog` file changes)
+_None yet._
+
+## Done
+
+### File a new plan request or bug from the TUI backlog pane: Ctrl+N opens a one-line title editor, matching `tumwater plan|bug "<title>"` and the dashboard's New form (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug` (`fileAndAnnounce` in `src/backlog/backlog-write.ts`), the landed dashboard New form (`handleBacklogFile` over `POST /api/backlog-file` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI backlog pane's Ctrl+X cancel, Ctrl+E title edit, and Ctrl+A answer (`createTuiKeys`, `src/ui/tui/tui-keys.ts`). Today the TUI pane can cancel, retitle, and answer entries, but it cannot file a new one, so "file a bug about what I just saw" means switching to a second terminal. Only a title can be filed here: the prompt line holds one line, so a multiline body stays a CLI (`--file`) and dashboard job. No `src/gui`, `src/ui/gui`, `src/cli`, or `src/backlog` file changes) — done 2026-10-12
 
 **Goal.** On the Backlog view (`view === roleIds.length + 1`), Ctrl+N opens the prompt line as a "new plan" title editor, and Ctrl+N again inside that editor switches it to "new bug" (and back). Enter files the entry and wakes its loop, exactly as `handleBacklogFile` does with an empty body. Esc cancels and writes nothing.
 
@@ -39,8 +43,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing `backlog Ctrl+E …` tests pass unchanged, which shows the edit path is untouched.
 - `test/tui-frame.test.ts`: `promptPrefix` with `entryEditFor: { kind: "bug", position: null, title: "" }` renders `new bug › `, and `hintLine` for it matches `/Enter file bug/` and `/Ctrl\+N switch to plan/`. The existing `assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+E edit entry · Ctrl\+A answer question · …/)` breaks once the new pair is inserted. Update it to expect `Ctrl\+N new plan\/bug` between `Ctrl\+E edit entry` and `Ctrl\+A answer question`.
 - `npm run test` passes.
-
-## Done
 
 ### Clear a loop's notebook from the TUI's notebook view: Ctrl+X pressed twice, matching `tumwater role <id> --clear-notes` and the dashboard drawer's Clear (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes` branch in `src/cli/cli-query-commands.ts`), the landed dashboard drawer notebook Edit/Clear (`POST /api/role-notes` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI notebook view (Ctrl+N, `noteMode`/`noteCache` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). All three surfaces write through `saveRoleNote` in `src/agent/role-notes-write.ts`. Today the TUI's notebook view is read-only, so an operator who sees a stale or wrong note there has to switch to a second terminal to drop it. Replacing a notebook's text stays a CLI and dashboard job, because the TUI's prompt line holds one line and a notebook is multiline Markdown up to 4 KB. Independent of everything else: no `src/gui`, `src/ui/gui`, `src/cli`, or `src/agent` file changes; done 2026-10-12)
 

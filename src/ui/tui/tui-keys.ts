@@ -19,9 +19,9 @@ import { collectFleetChanges, collectRoleChange, type FleetChangeView, type Role
 import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
-import { submitPrompt } from "../../inbox/inbox-submit.js";
+import { promptLengthProblem, submitPrompt } from "../../inbox/inbox-submit.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
-import { tryCancelEntry, tryEditEntry } from "../../backlog/backlog-write.js";
+import { fileEntryWithBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry } from "../../backlog/backlog-write.js";
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { durationLabel } from "../../cli/cli-args.js";
@@ -44,7 +44,7 @@ import {
   roleResumeMessage,
   submitRolePromptAndWake,
 } from "../../operator/operator-intent.js";
-import { errorMessage } from "../../text/text.js";
+import { collapseWhitespace, errorMessage } from "../../text/text.js";
 import { saveRoleNote } from "../../agent/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import { fleetPausePhrase, fleetResumePhrase } from "../../text/phrases.js";
@@ -286,9 +286,10 @@ interface TuiKeysState {
   answerFor: { position: number; title: string } | null;
   /** The backlog pane's title editor (Ctrl+E on a selected plan or bug): the entry's kind, its
    * 1-based position within its section, and the heading title the operator saw, or null when
-   * no edit is open. The title rides into tryEditEntry so an entry that moved under the editor
+   * no edit is open. A null position is the new-entry form (Ctrl+N, title ""): Enter files a new
+   * entry of that kind instead of retitling one. The title rides into tryEditEntry so an entry that moved under the editor
    * is refused rather than rewritten. */
-  entryEditFor: { kind: "plan" | "bug"; position: number; title: string } | null;
+  entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null;
   /** The Queued pane's cached rows — the same list renderQueuedList printed — so a selection
    * addresses a row's role/position without re-reading the queue each frame. */
   queuedRows: QueuedListRow[];
@@ -472,7 +473,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let answerFor: { position: number; title: string } | null = null;
   let answerSavedInput = "";
   let answerSavedCursor = 0;
-  let entryEditFor: { kind: "plan" | "bug"; position: number; title: string } | null = null;
+  let entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null = null;
   let entryEditSavedInput = "";
   let entryEditSavedCursor = 0;
   // The within-body scroll offset (line index of the window head, 0 = head) for the selected
@@ -971,6 +972,30 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (key.ctrl && key.name === "n") {
+      // On the Backlog view Ctrl+N files a new entry: it opens the title editor with a null
+      // position (new plan), and pressed again inside that editor flips plan <-> bug.
+      if (entryEditFor !== null && entryEditFor.position === null) {
+        const other = entryEditFor.kind === "plan" ? "bug" : "plan";
+        entryEditFor = { ...entryEditFor, kind: other };
+        flashMessage(`new ${other} — Enter to file, Ctrl+N switches to ${other === "plan" ? "bug" : "plan"}, Esc cancels`);
+        deps.requestRender();
+        return;
+      }
+      if (
+        view === roleIds.length + 1 &&
+        !budgetMode && !rolePromptFor && !searchMode && !deferMode && !pauseEditMode && !queuedEditFor && !answerFor && !entryEditFor
+      ) {
+        const settled = settlePromptRecall(promptHistory, input, cursor);
+        promptHistory = settled.history;
+        entryEditSavedInput = settled.text;
+        entryEditSavedCursor = settled.cursor;
+        entryEditFor = { kind: "plan", position: null, title: "" };
+        input = "";
+        cursor = 0;
+        flashMessage("new plan — Enter to file, Ctrl+N switches to bug, Esc cancels");
+        deps.requestRender();
+        return;
+      }
       // Ctrl+N cycles the viewed loop's pane live transcript → notebook → change → transcript
       // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
       // loop's pending change in the TUI transcript pane"). The change step renders the same
@@ -1559,8 +1584,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (key.name === "escape" && entryEditFor) {
       // Esc cancels the title editor, restoring the previous prompt text; nothing is written.
+      const filing = entryEditFor.position === null;
       exitEntryEdit();
-      flashMessage("edit cancelled");
+      flashMessage(filing ? "new entry cancelled" : "edit cancelled");
       deps.requestRender();
       return;
     }
@@ -1730,6 +1756,23 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         const target = entryEditFor;
         if (!input.trim()) {
           flashMessage("an entry needs a title");
+        } else if (target.position === null) {
+          // New entry (Ctrl+N): file by title with an empty body and wake its loop, the same
+          // steps handleBacklogFile takes; a length problem or a throw stays in the editor.
+          try {
+            const { role, wakeText } = OPERATOR_FILE_KINDS[target.kind];
+            const problem = promptLengthProblem(wakeText(collapseWhitespace(input)), role);
+            if (problem) {
+              flashMessage(problem);
+            } else {
+              const filed = fileEntryWithBody(root, target.kind, input, "");
+              submitRolePromptAndWake(root, role, wakeText(filed.title));
+              exitEntryEdit();
+              flashMessage(`filed ${target.kind}: ${filed.title} — woke ${role}`);
+            }
+          } catch (err) {
+            flashError(err);
+          }
         } else {
           try {
             const entries = flat();

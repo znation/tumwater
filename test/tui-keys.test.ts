@@ -1842,3 +1842,55 @@ test("backlog Ctrl+E with no selection still advances the report window", () => 
   ctrlE();
   assert.equal(keys.state().entryEditFor, null);
 });
+
+test("backlog Ctrl+N files a plan by title and wakes the feature loop; Ctrl+N again files a bug", () => {
+  const { root, keys, read } = entryEditRig();
+  const ctrlN = (): void => keys.handleKey(undefined, { ctrl: true, name: "n" });
+  const type = (text: string): void => {
+    for (const ch of text) keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  };
+  const queued = (role: string): string => {
+    const dir = path.join(root, ".tumwater", "inbox", role);
+    return fs.readdirSync(dir).filter((f) => f.endsWith(".md")).map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
+  };
+  ctrlN();
+  assert.deepEqual(keys.state().entryEditFor, { kind: "plan", position: null, title: "" });
+  assert.equal(keys.state().input, "");
+  type("brand new");
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.match(read("PLANS.md"), /## Planned\n[\s\S]*### brand new \(/);
+  assert.equal(keys.state().flash, "filed plan: brand new — woke feature");
+  assert.match(queued("feature"), /brand new/);
+
+  ctrlN();
+  ctrlN();
+  assert.equal(keys.state().entryEditFor?.kind, "bug");
+  type("it broke");
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(read("BUGS.md"), /## Open\n[\s\S]*### it broke \(/);
+  assert.match(queued("bugfix"), /it broke/);
+});
+
+test("backlog Ctrl+N blank title stays open, Esc cancels and writes nothing", () => {
+  const { keys, read } = entryEditRig();
+  const plans = read("PLANS.md");
+  const bugs = read("BUGS.md");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().flash, "an entry needs a title");
+  assert.notEqual(keys.state().entryEditFor, null);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.equal(keys.state().flash, "new entry cancelled");
+  assert.equal(read("PLANS.md"), plans);
+  assert.equal(read("BUGS.md"), bugs);
+});
+
+test("Ctrl+N off the Backlog view does not open the new-entry editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().entryEditFor, null);
+});

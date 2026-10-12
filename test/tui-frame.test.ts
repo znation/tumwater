@@ -124,7 +124,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
   ); // the cycle's last step names the way back
-  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+E edit entry · Ctrl\+A answer question · PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "usage", scope: "feature", window: null }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "failures", scope: "clean", window: "1h" }), /Ctrl\+G scope: clean/);
@@ -197,6 +197,11 @@ test("the prompt line names who Enter sends to", () => {
   const base = { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null };
   assert.equal(plain(promptPrefix({ ...base, entryEditFor: edit })), "edit plan #2 › ");
   assert.match(plain(hintLine({ kind: "backlog" }, { ...base, entryEditFor: edit }, 300)), /Enter save title/);
+  const filing = { kind: "bug", position: null, title: "" } as const;
+  assert.equal(plain(promptPrefix({ ...base, entryEditFor: filing })), "new bug › ");
+  const filingHint = plain(hintLine({ kind: "backlog" }, { ...base, entryEditFor: filing }, 300));
+  assert.match(filingHint, /Enter file bug/);
+  assert.match(filingHint, /Ctrl\+N switch to plan/);
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "director › ");
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "qa › ");
   assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "daily cap $ ");
