@@ -185,15 +185,27 @@ test("buildRejectedReviewNote omits the context when the review recorded neither
   assert.match(note, /rejected in review:/);
 });
 
-// A feature change that used its last revision round must not be re-authored from scratch: the
-// plan the reviewer kept objecting to would come back unchanged. Feature is sent to replan the
-// entry instead; every other role keeps the plain re-author sentence.
+// A change that used its last revision round must not be re-authored from scratch: the same
+// purpose would come back and the round would restart at 1 forever. Feature is sent to replan
+// the PLANS.md entry it implemented; a plan-less role is sent to its notebook to record the
+// abandoned purpose and take a different theme.
 test("an exhausted feature rejection tells feature to replan, not re-author", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "feature");
   assert.ok(note.includes(NEEDS_REPLAN_NOTE), "names the replan note");
   assert.match(note, /do not re-author it/);
   assert.doesNotMatch(note, /re-author it from current main/);
   assert.ok(!buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix").includes(NEEDS_REPLAN_NOTE));
+});
+
+// A plan-less role has no entry to replan, so its exhaustion note must not invite it to
+// re-author: the same purpose re-derived from the same objections is the loop this note ends.
+test("an exhausted plan-less rejection records the purpose in the notebook instead of re-authoring", () => {
+  const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix");
+  assert.match(note, /do not re-author it/);
+  assert.match(note, /abandoned purpose/);
+  assert.match(note, /notebook/);
+  assert.match(note, /different theme/);
+  assert.doesNotMatch(note, /re-author it from current main/);
 });
 
 // The red-main handoff note is the only signal a red main reaches the healer through: the

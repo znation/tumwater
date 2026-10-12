@@ -337,16 +337,19 @@ export function buildRejectedReviewNote(review: {
   // On exhaustion the rejected diff is gone. Feature's rejected change often implemented a
   // PLANS.md entry, and re-authoring the same plan from scratch is what produced the long
   // rejection runs this note exists to end, so feature is sent to replan the entry instead.
-  // Every other role keeps the plain re-author sentence. The markdown-only replan note lands
-  // review-exempt, but a landed change clears the standing rejection
-  // (clearSupersededRejection, tick-apply.ts), so the instruction does not re-inject once the
-  // note has landed.
+  // A plan-less role has no downstream loop to replan for it, so it is sent to its own
+  // notebook instead: it records the abandoned purpose and any instances that remain
+  // unhandled, then takes a different theme on the next tick. Re-authoring the same purpose
+  // from the same objections is what restarted the round and produced the long rejection
+  // runs this note exists to end. The markdown-only replan note lands review-exempt, but a
+  // landed change clears the standing rejection (clearSupersededRejection, tick-apply.ts), so
+  // the instruction does not re-inject once the note has landed.
   let finality = "";
   if (review.exhausted) {
     finality =
       role === "feature"
         ? ` This was the change's final revision round — the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and land that markdown-only change and nothing else so the plan loop can rewrite the plan. Otherwise, redo the change against current main.`
-        : " This was the change's final revision round — the rejected diff and ref are gone, so if the change is still needed, re-author it from current main.";
+        : " This was the change's final revision round — the rejected diff and ref are gone, so do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notebook, then take a different theme on this tick: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
   }
   return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
 }

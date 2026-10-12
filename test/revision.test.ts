@@ -418,10 +418,14 @@ test("the director never gets a revision: a rejection leaves no revision state",
   });
 });
 
-test("an exhausted rejection's plain note says the rejected diff is gone", () => {
+test("an exhausted rejection's plain note sends a plan-less role to its notebook", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], at: Date.now(), exhausted: true });
   assert.match(note, /final revision round/);
-  assert.match(note, /re-author it from current main/);
+  assert.match(note, /do not re-author it/);
+  assert.match(note, /abandoned purpose/);
+  assert.match(note, /notebook/);
+  assert.match(note, /different theme/);
+  assert.doesNotMatch(note, /re-author it from current main/);
   assert.doesNotMatch(buildRejectedReviewNote({ reasons: ["still wrong"] }), /final revision round/);
 });
 
