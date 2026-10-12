@@ -5,6 +5,40 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### A corrupt or unreadable event log renders as the empty window, so the telemetry role's own evidence cannot tell "the fleet was idle" from "I could not read the log", and no other surface reports an unreadable feed (found by the user 2026-10-12 while reviewing the telemetry loop's injected digest; the digest's own `no events retained` line was the evidence)
+
+- **Symptom:** `telemetryDigest` (src/tick/telemetry-digest.ts:19-25) wraps the collector and renderer in a bare `try`/`catch` and returns `undefined` on a throw — the block is then omitted and the tick proceeds — but no damaged log reaches that branch. The read layer maps every read failure to "no data": `openForRead` swallows the open error and returns `null` (src/files/files.ts:48-54); `forEachTailChunk` returns early for a missing or empty file and swallows both a `readFileSync` failure and the open-raced case (src/files/tail.ts:82-94), where a directory left at the `events.jsonl` path lands; and `parseEventLine` returns `null` for a torn or malformed line (the skip-without-failing policy, src/events/event-read.ts:27). So `collectFailureReport` reports `emptyLog: true` (`!hasEvents && !coversFullWindow`, src/failure/failure-data.ts:484) and `renderFailureMarkdown` prints `no events retained` (src/failure/failure-render.ts:140) — the exact bytes a fresh project with no log yet renders. The role whose charter is to file "a failure that raised no alarm … or hid itself from the operator" (src/roles/role-catalog.ts:332-346) is handed positive evidence that the fleet was quiet. Nothing else reports it either: no read path logs a `warning` (`warnEvent` is called only from the write-side helpers in src/events/events.ts and src/events/notify.ts), and the doctor has no event-log check (src/doctor/doctor.ts:61-91 lists state dir, merge lock, disk space, build, orphans … but not the feed). The `undefined` branch is reserved for an unexpected throw in the collector, and it is silent the same way.
+- **Reproduce:** offline, deterministic, against the built tree (`npm run build` first) — three roots whose log is missing, unreadable, and corrupt render one identical digest line:
+  ```
+  node --input-type=module -e '
+  import fs from "node:fs";
+  import os from "node:os";
+  import path from "node:path";
+  const { telemetryDigest } = await import("./dist/src/tick/telemetry-digest.js");
+  const { collectFailureReport } = await import("./dist/src/failure/failure-data.js");
+  const mk = () => { const r = fs.mkdtempSync(path.join(os.tmpdir(), "t-")); fs.mkdirSync(path.join(r, ".tumwater/log"), { recursive: true }); return r; };
+  const line = (r) => { const d = telemetryDigest(r); return collectFailureReport(r, 1).emptyLog + " | " + d.split("\n")[3]; };
+  const a = mk();
+  const b = mk(); fs.mkdirSync(path.join(b, ".tumwater/log/events.jsonl"), { recursive: true });
+  const c = mk(); fs.writeFileSync(path.join(c, ".tumwater/log/events.jsonl"), "{not json\n");
+  console.log("no log:", line(a));
+  console.log("dir:   ", line(b));
+  console.log("junk:  ", line(c));
+  '
+  ```
+  prints
+  ```
+  no log: true | no events retained
+  dir:    true | no events retained
+  junk:   true | no events retained
+  ```
+  A fourth shape does differ — a log rotated away whose archive holds only out-of-window events renders `no events in the last 1 day` — which pins that only the *read-failed* and *never-written* cases collapse.
+- **Cause:** the read side's "every read failure is no data" policy (deliberate: a rotation or an open race must not throw into a polling loop) has no channel to say *which* failure it was, and the collector's single `emptyLog` flag then collapses "absent" onto "unreadable". The telemetry block is the one consumer that must act on the distinction, and it receives the rendered digest, not the read outcome.
+- **Impact:** an unwritable or unreadable feed is invisible to every reader at once — the telemetry loop's evidence, the TUI/GUI event feeds, `tumwater logs`, `tumwater report`, and `status` all read the same log — so all of them report a quiet fleet. The one loop chartered to catch a failure that hid itself from the operator cannot see the one failure that hides from it, and no check names it. The write side is asymmetric but at least visible: `logEventBestEffort` writes the append failure to stderr (src/events/events.ts:164-172), which a backgrounded fleet's operator need not be watching.
+- **Expected / fix sketch:** distinguish the read outcome from the window's contents — carry a `logState: "ok" | "empty" | "unreadable"` (set in `readWindowEvents`/`scanEventsFile` from the stat and parse result) on `FailureReportData` and render one header line for the unreadable case (`log unreadable — evidence missing`) in place of `no events retained`, so the role has the alarm its charter needs; add a `doctor` check that opens and parses `eventsLogPath(root)`; keep the never-fail-the-tick policy (report the state, never throw). A regression test can assert the three damaged shapes render the unreadable line and not `no events retained`.
+
+**Validation gap:** unclear-invariant — the collapse is pinned as intended by two existing tests (`test/telemetry-digest.test.ts`: "an unreadable log degrades to the empty-window digest, never a throw" and "a log of malformed lines still yields a digest"), so confirming the bug meant arguing from the roles' charter (an observer must see a failure that hid itself) rather than from a failing assertion; the reproduction itself is deterministic and offline, no fake or real run involved.
+
 ### `tumwater help config` names `fallbackModel` as a settable top-level key, but `config set` refuses to add it to a config that lacks it (found by qa loop 2026-10-11 while exercising the `config` flow as a first-time user)
 
 - **Symptom:** `tumwater help config` lists the keys `config set` accepts with the examples "quietHours ("23:00-07:00" or ""), quietHoursPerRole (per-role windows), maxDailyCostUsd, fallbackModel, among others" (src/cli/help.ts:68). Every other named key is writable on a fresh `tumwater init` config; `fallbackModel` is not. `tumwater config set fallbackModel '{"provider":"a","model":"b"}'` exits 1 with `config set fallbackModel: this config has no fallbackModel, and a writer never adds legacy fallbackModel — set `fallback` instead`. The key is only accepted when the file already carries it, so a first-time user following the command's own usage text is directed to a key the command then refuses — and the refusal (rather than the expected write) is the whole interaction.
