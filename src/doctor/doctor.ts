@@ -4,6 +4,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-i
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMaintenanceQuota, checkPause, checkQuietHours } from "./doctor-holds.js";
+import { checkNotify } from "./doctor-notify.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -83,6 +84,7 @@ export async function runDoctor(
     { name: "claude transcripts", ...checkClaudeTranscripts(config) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "event log", ...checkEventLog(root) },
+    { name: "notify", ...checkNotify(root, config) },
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "worktree pool", ...checkWorktreePool(root) },
     { name: "work instances", ...checkWorkInstances(root, config) },

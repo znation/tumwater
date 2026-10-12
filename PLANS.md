@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names a broken notify hook: a "notify" check that warns when recent pages failed (planned 2026-10-12 by plan; builds on the landed "A failing notify hook says so" plan. When the configured hook exits nonzero, is killed, or cannot start, `spawnNotifyCommand` in `src/events/notify.ts` logs a `warning` event on loop `harness` whose message starts with `notify command `. Its sources are `notifyExitWarning` and the two `notify command could not start: …` strings. Today grep finds no `notify` in `src/doctor`, so doctor says nothing about the push channel. With a typo'd hook, every page since startup was lost, and doctor still prints "ready to run". The operator learns about it only from `tumwater logs` or by running `tumwater notify --test` after the page they needed went missing. Stands alone: no scheduler, event-type, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work)
+_None yet._
+
+
+## Done
+
+### `tumwater doctor` names a broken notify hook: a "notify" check that warns when recent pages failed (planned 2026-10-12 by plan; builds on the landed "A failing notify hook says so" plan. When the configured hook exits nonzero, is killed, or cannot start, `spawnNotifyCommand` in `src/events/notify.ts` logs a `warning` event on loop `harness` whose message starts with `notify command `. Its sources are `notifyExitWarning` and the two `notify command could not start: …` strings. Today grep finds no `notify` in `src/doctor`, so doctor says nothing about the push channel. With a typo'd hook, every page since startup was lost, and doctor still prints "ready to run". The operator learns about it only from `tumwater logs` or by running `tumwater notify --test` after the page they needed went missing. Stands alone: no scheduler, event-type, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work) (done 2026-10-12)
 
 **Goal.** Add a doctor row named `notify`. It reports whether a notify command is configured and warns when that command failed to page within the last 24 hours. The warning names how many pages failed and quotes the latest failure.
 
@@ -32,9 +37,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A `test/notify.test.ts` test pins that `isNotifyFailure` holds for a warning built from each failure shape: exit code, killed by signal, and could not start.
 - No string literal `"notify command"` appears in `src/` outside `NOTIFY_FAILURE_PREFIX`'s definition. Check with grep.
 - `npm run test` passes.
-
-
-## Done
 
 ### `tumwater doctor` names loops on an error streak: an "error streaks" check that warns on each loop failing tick after tick, and says which of them are paused (planned 2026-10-12 by plan; the failure sibling of the landed hold checks in `src/doctor/doctor-holds.ts` (`checkPause`, `checkQuietHours`, `checkBudget`, `checkClaudeWindow`, `checkMaintenanceQuota`). Today grep finds no `consecutiveErrors`/`ERROR_STREAK` in `src/doctor`. When the error-streak breaker (`pollStreakGate` in `src/gates/streak-gate.ts`) pauses a loop past `ERROR_STREAK_BREAKER` failures, it writes the same per-role marker `tumwater pause --role` writes. So doctor's "pause" row reads `ok — paused loops: feature`, as if the operator chose it, and doctor still prints "ready to run". A loop past `ERROR_STREAK_WARN` that is not yet paused is also invisible to doctor, though the dashboards' "failing tick after tick" alert (`fleetAlerts` in `src/ui/fleet-alerts.ts`) names it. Stands alone: no gate, scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work) (done 2026-10-12)
 

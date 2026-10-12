@@ -64,6 +64,16 @@ export function notifyCommandEnv(type: string, loop: string, message: string): N
   });
 }
 
+/** What every notify-hook failure warning starts with. The writers below build their messages
+ * from it and `isNotifyFailure` recognizes them by it, so the doctor reader and the writer
+ * share one definition. */
+const NOTIFY_FAILURE_PREFIX = "notify command ";
+
+/** True for a warning that spawnNotifyCommand logged for a failed page. */
+export function isNotifyFailure(ev: HarnessEvent): boolean {
+  return ev.type === "warning" && ev.loop === "harness" && typeof ev.message === "string" && ev.message.startsWith(NOTIFY_FAILURE_PREFIX);
+}
+
 /** The warning for a notify hook that did not exit cleanly, or undefined for exit code 0.
  * Pure, so the wording is testable without a spawn. */
 export function notifyExitWarning(
@@ -73,9 +83,9 @@ export function notifyExitWarning(
 ): string | undefined {
   if (code === 0) return undefined;
   const hint = "check it with `tumwater notify --test`";
-  if (code === null) return `notify command was killed by ${signal} paging ${type} — ${hint}`;
+  if (code === null) return `${NOTIFY_FAILURE_PREFIX}was killed by ${signal} paging ${type} — ${hint}`;
   const gloss = code === 127 ? " (command not found)" : "";
-  return `notify command exited with code ${code}${gloss} paging ${type} — ${hint}`;
+  return `${NOTIFY_FAILURE_PREFIX}exited with code ${code}${gloss} paging ${type} — ${hint}`;
 }
 
 /** Spawn the notify command for one event: detached with stdio ignored, so it outlives the
@@ -93,7 +103,7 @@ function spawnNotifyCommand(root: string, command: string, event: HarnessEvent):
     // exceeds the OS arg limit): one warning names it and the listener keeps working. A
     // command that starts but exits nonzero is reported by the exit listener below.
     child.on("error", (err) => {
-      warnEventBestEffort(root, "harness", `notify command could not start: ${err.message}`);
+      warnEventBestEffort(root, "harness", `${NOTIFY_FAILURE_PREFIX}could not start: ${err.message}`);
     });
     // After unref() this listener does not keep the process alive: a hook that outlives the
     // caller logs nothing.
@@ -102,7 +112,7 @@ function spawnNotifyCommand(root: string, command: string, event: HarnessEvent):
       if (message) warnEventBestEffort(root, "harness", message);
     });
   } catch (err) {
-    warnEventBestEffort(root, "harness", `notify command could not start: ${errorMessage(err)}`);
+    warnEventBestEffort(root, "harness", `${NOTIFY_FAILURE_PREFIX}could not start: ${errorMessage(err)}`);
   }
 }
 

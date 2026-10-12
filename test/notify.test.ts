@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, notifyExitWarning, notifyFleetDown } from "../src/events/notify.js";
+import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, isNotifyFailure, notifyExitWarning, notifyFleetDown } from "../src/events/notify.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -382,4 +382,14 @@ test("notifyFleetDown returns silently without a usable notify command", async (
     await sleep(150);
     assert.deepEqual(recordedLines(out), []);
   }
+});
+
+test("isNotifyFailure holds for each failure shape and nothing else", () => {
+  const warning = (message: string) => ({ ts: 1, loop: "harness", type: "warning" as const, message });
+  assert.ok(isNotifyFailure(warning(notifyExitWarning("land_failed", 3, null) ?? "")));
+  assert.ok(isNotifyFailure(warning(notifyExitWarning("land_failed", null, "SIGKILL") ?? "")));
+  assert.ok(isNotifyFailure(warning("notify command could not start: spawn ENOENT")));
+  assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), loop: "feature" }));
+  assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), type: "tick_start" }));
+  assert.ok(!isNotifyFailure(warning("something else")));
 });
