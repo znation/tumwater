@@ -298,7 +298,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   spend cap restores the default 50).
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, Pending, and
-  Queued.
+  Queued. Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event
+  tail, the bottom of the page resuming the live tail.
   On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
   same collector and sparse-window note `tumwater history --since` uses.
   `Ctrl+O` cycles the pane's outcome filter (all, changes, none, problems) through the same

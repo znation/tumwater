@@ -131,6 +131,59 @@ test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body
   assert.ok(renders() > 0);
 });
 
+test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
+  const root = makeRoot();
+  // 20 events; the 5-line budget leaves a 15-event page window.
+  writeEvents(
+    root,
+    Array.from({ length: 20 }, (_, i) => ({
+      ts: 1_700_000_000_000 + i * 60_000,
+      loop: "clean",
+      type: "tick_start",
+      tick: i + 1,
+    })),
+  );
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(5, 4);
+  assert.equal(keys.state().view, 0, "starts on Activity");
+  assert.equal(keys.state().activityScroll, null, "Activity follows the live tail by default");
+
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 10, "PgUp pauses follow and pages back one budget");
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 0, "PgUp clamps at the oldest loaded event");
+
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().activityScroll, 5, "PgDn advances one budget");
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().activityScroll, 10);
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().activityScroll, null, "reaching the tail re-enables follow");
+
+  // Cycling away and back starts at the live tail again.
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 10);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "seven cycles with no roles wrap back to Activity");
+  assert.equal(keys.state().activityScroll, null, "re-entering Activity follows the live tail");
+});
+
+test("the Activity feed pages nowhere when the log fits the pane", () => {
+  const root = makeRoot();
+  writeEvents(
+    root,
+    Array.from({ length: 3 }, (_, i) => ({ ts: 1_700_000_000_000 + i, type: "tick_start", tick: i + 1 })),
+  );
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.setLineBudgets(5, 4);
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, null, "PgUp with no older events stays on the tail");
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().activityScroll, null, "PgDn likewise");
+});
+
 test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the tick rows", () => {
   const root = makeRoot();
   // Twelve completed ticks so the history pane's rows overflow the pane budget and page.

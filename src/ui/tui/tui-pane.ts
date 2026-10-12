@@ -37,7 +37,14 @@ interface TuiPaneState {
    * resolves; windowed by paneBody in change mode. */
   changeCache: string | null;
   paneScroll: number;
+  /** The Activity pane's body-window start into the loaded event tail, or null to follow the
+   * live tail (the newest eventBudget events). PgUp pauses follow; PgDn returns to the tail. */
+  activityScroll: number | null;
 }
+
+/** How many raw events the Activity pane loads per read, and the tail PgUp/PgDn page through.
+ * A fixed tail term so readEvents' stat cache hits per (file, limit) in the steady state. */
+export const ACTIVITY_EVENTS = 200;
 
 /** One loop's notebook and next tick prompt, rendered as the same Markdown the TUI's notebook
  * view windows: inspectMarkdownLines over the loop's rolePayload. Split out of the keypress
@@ -190,8 +197,14 @@ export function paneBody(
       emptyNote: "(no events yet)",
     };
   }
+  // The Activity pane loads a fixed tail once per read and windows it: null follows the live
+  // tail (the newest eventBudget events, exactly today's read), a stored offset pages back
+  // through the loaded events. Both clamp to [0, events.length - eventBudget].
+  const events = readEvents(root, ACTIVITY_EVENTS);
+  const maxStart = Math.max(0, events.length - eventBudget);
+  const start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart);
   return {
-    body: readEvents(root, eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))).slice(-eventBudget),
+    body: events.slice(start, start + eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))),
     emptyNote: "(no events yet)",
   };
 }

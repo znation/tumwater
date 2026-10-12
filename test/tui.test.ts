@@ -15,7 +15,7 @@ import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js"
 import { CLI, cli } from "./helpers/cli-harness.js";
 import { flushImmediate, waitFor } from "./helpers/wait.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
-import { writeLogLines } from "./fixtures/log-fixtures.js";
+import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, startTui, withTui } from "./fixtures/tui-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 import { setEnv } from "./helpers/env.js";
@@ -523,6 +523,45 @@ test("PgUp/PgDn are ignored in project-status list mode (no entry selected)", as
     assert.equal(tui.lastFrame(), listFrame, "PgDn with no selection re-renders the same list");
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), listFrame, "…and so does PgUp");
+  });
+});
+
+test("PgUp/PgDn page the Activity feed back through the event tail and resume the live tail", async () => {
+  const repo = await makeTuiRepo();
+  // 60 events: more than any fake-TTY pane budget, so paging has room in both directions.
+  writeEvents(
+    repo,
+    Array.from({ length: 60 }, (_, i) => ({
+      ts: 1_700_000_000_000 + i * 60_000,
+      loop: "clean",
+      type: "tick_start",
+      tick: i + 1,
+    })),
+  );
+
+  await withTui(repo, async (tui) => {
+    const live = tui.lastFrame();
+    assert.match(live, /tick #60 started/, "the live tail shows the newest event");
+    assert.match(live, /PgUp\/PgDn scroll/, "the Activity hint names the scroll keys");
+
+    // PgUp pauses follow: the frame changes and leaves the newest event behind.
+    tui.key(undefined, "pageup");
+    let frame = tui.lastFrame();
+    assert.notEqual(frame, live, "PgUp pages the feed back");
+    assert.doesNotMatch(frame, /tick #60 started/, "the paged feed no longer shows the newest event");
+
+    // PgUp clamps at the oldest loaded event.
+    for (let i = 0; i < 20; i++) tui.key(undefined, "pageup");
+    frame = tui.lastFrame();
+    assert.match(frame, /tick #1 started/, "PgUp clamps at the oldest event");
+    assert.doesNotMatch(frame, /tick #60 started/);
+    const oldest = frame;
+    tui.key(undefined, "pageup");
+    assert.equal(tui.lastFrame(), oldest, "PgUp past the oldest event is a no-op");
+
+    // PgDn returns to the live tail, exactly the frame the follow showed.
+    for (let i = 0; i < 20; i++) tui.key(undefined, "pagedown");
+    assert.equal(tui.lastFrame(), live, "PgDn returns to the live tail and re-enables follow");
   });
 });
 

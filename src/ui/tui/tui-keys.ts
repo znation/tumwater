@@ -1,5 +1,6 @@
 import { collectReport, collectReportSince } from "../../report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
+import { readEvents } from "../../events/event-read.js";
 import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
@@ -57,7 +58,7 @@ import {
   settlePromptRecall,
 } from "./tui-prompt-history.js";
 import { labeledBacklogEntries, moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
-import { roleInspectMarkdown } from "./tui-pane.js";
+import { ACTIVITY_EVENTS, roleInspectMarkdown } from "./tui-pane.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 
 /** How long a TUI flash notice stays visible (ms). */
@@ -272,6 +273,9 @@ interface TuiKeysState {
    * resolves; windowed by paneBody. */
   changeCache: string | null;
   paneScroll: number;
+  /** The Activity pane's body-window start into the loaded event tail, or null to follow the
+   * live tail. Paged by PgUp/PgDn and reset to null on every Ctrl+T view cycle. */
+  activityScroll: number | null;
   /** The History pane's active trailing window label (Ctrl+S), or null for the default
    * newest-N read; named in the hint line. */
   historySince: string | null;
@@ -422,6 +426,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // panes and the notebook view — PgDn/PgUp there. Reset to the head whenever the view is
   // entered, like entryScroll.
   let paneScroll = 0;
+  // The Activity pane's body-window start into the loaded event tail, or null to follow the
+  // live tail (the newest eventBudget events). PgUp pauses follow and pages back; PgDn returns
+  // toward the tail and re-enables follow at the bottom. Reset on every Ctrl+T view cycle, so
+  // re-entering Activity always starts at the live tail.
+  let activityScroll: number | null = null;
   // The History pane's session trailing window (Ctrl+S), a HISTORY_WINDOWS length or null for
   // the default newest-N read. Session-only like the view/scroll state; the next Ctrl+T into
   // History computes the cache with it.
@@ -901,6 +910,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       selectedQueued = null; // …and any queued-row selection, so re-entering starts at the list
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
       paneScroll = 0; // the Markdown panes always re-enter at their head
+      activityScroll = null; // Activity always re-enters at the live tail
       // Compute the pane's Markdown once per activation (this handler renders immediately), and
       // drop it on leaving — a visit's first frame is fresh, later frames only re-window.
       if (!refreshPaneCache("all")) {
@@ -977,6 +987,20 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // pane's rule) instead of editing the prompt; an empty queue has nothing to select, so
       // moveEntrySelection clears the selection. Every other view keeps today's behavior.
       selectedQueued = moveEntrySelection(queuedRows.length, selectedQueued, arrow);
+      deps.requestRender();
+      return;
+    }
+    if (page !== null && view === 0) {
+      // The Activity pane keeps the live tail by default; PgUp pauses follow and pages back
+      // through the loaded event tail, PgDn returns toward it and re-enables follow once the
+      // window reaches the tail. Both directions clamp to [0, total - eventBudget], and a log
+      // with eventBudget or fewer events stays on the tail. The read is the pane's own fixed
+      // tail term, so it hits readEvents' stat cache rather than rescanning the log.
+      const total = readEvents(root, ACTIVITY_EVENTS).length;
+      const maxStart = Math.max(0, total - eventBudget);
+      const current = activityScroll ?? maxStart;
+      const next = stepEntryScroll(current, total, eventBudget, page);
+      activityScroll = next >= maxStart ? null : next;
       deps.requestRender();
       return;
     }
@@ -1208,6 +1232,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         changeMode,
         changeCache,
         paneScroll,
+        activityScroll,
         historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
         reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),
         historyResult: cycleLabel(HISTORY_RESULTS, historyResult),

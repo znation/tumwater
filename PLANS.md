@@ -29,25 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `cmdLogs --grep` and the card's search both call `eventMatchesGrep`, and `statusPayload`'s `eventItems` come from `eventFeedItem` — one home each.
 - `npm run test` is green.
 
-### Page the TUI Activity feed back through a loaded event tail, with the live tail as the default (planned 2026-10-11 by plan; sibling of the landed GUI Activity filter (`gui-client-fleet.ts`'s `renderFeed`) and the waiting `GET /api/logs` slice search; every other TUI pane scrolls its body, but the Activity pane's fallthrough branch in `tui-pane.ts` re-slices `readEvents(root, eventBudget)` to the newest `eventBudget` events on each frame and no key handler reads a scroll for view 0, so an operator watching the terminal can never look back at an event the feed has scrolled past, while the CLI (`tumwater logs -n N`) and the dashboard can; independent of the no-repro gating tier and the TUI Queued-pane cancel plan in behavior — `src/ui/tui/tui-pane.ts`, `tui-keys.ts`, `tui-frame.ts` plus tests and docs, no shared event helper and no new endpoint)
-
-**Goal.** Let the TUI's Activity pane page back through a fixed tail of the raw event log and return to the live tail, so the terminal surface can look back the way `tumwater logs -n N` and the dashboard already can, without adding a filter or an endpoint.
-
-**Approach.**
-1. `src/ui/tui/tui-pane.ts`: export a module constant `ACTIVITY_EVENTS = 200` beside `paneBody` (a tail term the stat-cached `readEvents` caches per `(file, limit)`, so a steady-state poll still costs one stat). Add `activityScroll: number | null` to `TuiPaneState` (`null` = follow the live tail). In the activity fallthrough branch read `readEvents(root, ACTIVITY_EVENTS)` once, compute `maxStart = Math.max(0, events.length - eventBudget)` and `start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart)`, and return `events.slice(start, start + eventBudget).map(...)`. The `null` branch yields the newest `eventBudget` events exactly as today's `readEvents(root, eventBudget).slice(-eventBudget)` does for the same log.
-2. `src/ui/tui/tui-keys.ts`: add `let activityScroll: number | null = null` beside `paneScroll`, expose it through the state getter, and reset it to null in the Ctrl+T view-cycle handler beside the other per-view resets. Add a dispatch branch for the Activity view (index 0) on `pageDir`: read `const total = readEvents(root, ACTIVITY_EVENTS).length`, take the current start (`activityScroll ?? Math.max(0, total - eventBudget)`), move it by `eventBudget` in the page's direction clamped to `[0, maxStart]`, store the result in `activityScroll`, and set it back to `null` when the move reaches `maxStart` (the live tail resumes).
-3. `src/ui/tui/tui-frame.ts`: the Activity fallthrough `hintLine` branch gains `["PgUp/PgDn", "scroll"]`.
-4. `docs/how-it-works.md`: in the Ctrl+T view sentence around "cycles Activity, each loop's Transcript, …", add that Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event tail, bottom resuming the tail.
-
-**Files touched.** `src/ui/tui/tui-pane.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `test/tui-keys.test.ts`, `test/tui.test.ts`, `docs/how-it-works.md`.
-
-**Acceptance criteria.**
-- With no scrolling (`activityScroll === null`) the Activity body is the newest `eventBudget` events — the same events today's read yields for the same log.
-- PgUp on Activity pauses follow and shows older events; repeated PgDn returns to the loaded tail and re-enables follow; both directions clamp (oldest loaded event, live tail). A log with `eventBudget` or fewer events pages nowhere and does not crash.
-- Cycling away and back to Activity starts at the live tail (the view cycle resets `activityScroll` to null).
-- The Activity hint line names PgUp/PgDn as scroll.
-- `npm run test` is green.
-
 ### Defer a prompt from the TUI prompt line, matching `tumwater prompt --at <duration>` and the dashboard composer's defer field (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater prompt --at <duration>` (commit 654f15b3) and the landed dashboard defer (`src/gui/gui-endpoint-commands.ts`'s `checkedPromptFields` `defer` field threaded to `submitPrompt`/`submitRolePromptAndWake`); the TUI prompt line has `Ctrl+B` budget edit and `Ctrl+R`/`/` editors but no control that sets a prompt's `tumwater:not-before` marker, so an operator watching the terminal must drop to the CLI or the browser to schedule one; independent of the waiting TUI Queued-pane cancel and TUI Activity-scroll plans in behavior — its own `Ctrl+L` key, `deferMs` state, and prompt-line mode — though all three edit `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`, so a landing conflict is possible and the resolver handles it; the waiting `GET /api/logs` plan touches no `src/ui/tui` file; no `src/inbox` or `src/gui` change beyond the existing `notBeforeMs` parameters on `submitPrompt`/`submitRolePromptAndWake`)
 
 **Goal.** Let the operator set a duration on the TUI prompt line that rides into the next delivered prompt as the same `tumwater:not-before <iso>` marker line (`src/inbox/prompt-not-before.ts`'s `notBeforeMarker`) `tumwater prompt --at <duration>` and the dashboard composer's defer field write, for both the director prompt and a role prompt. The prompt line already hosts three mutually exclusive editors (budget via `Ctrl+B`, role via `Ctrl+R`, History search via `/`); add a fourth, `Ctrl+L` (mnemonic: **l**ater), that stores a session-scoped delay applied at submit time and shown beside the prompt target.
@@ -78,6 +59,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` is green.
 
 ## Done
+
+### Page the TUI Activity feed back through a loaded event tail, with the live tail as the default (planned 2026-10-11 by plan; sibling of the landed GUI Activity filter (`gui-client-fleet.ts`'s `renderFeed`) and the waiting `GET /api/logs` slice search; every other TUI pane scrolls its body, but the Activity pane's fallthrough branch in `tui-pane.ts` re-slices `readEvents(root, eventBudget)` to the newest `eventBudget` events on each frame and no key handler reads a scroll for view 0, so an operator watching the terminal can never look back at an event the feed has scrolled past, while the CLI (`tumwater logs -n N`) and the dashboard can; independent of the no-repro gating tier and the TUI Queued-pane cancel plan in behavior — `src/ui/tui/tui-pane.ts`, `tui-keys.ts`, `tui-frame.ts` plus tests and docs, no shared event helper and no new endpoint; done 2026-10-11 by feature)
+
+**Goal.** Let the TUI's Activity pane page back through a fixed tail of the raw event log and return to the live tail, so the terminal surface can look back the way `tumwater logs -n N` and the dashboard already can, without adding a filter or an endpoint.
+
+**Approach.**
+1. `src/ui/tui/tui-pane.ts`: export a module constant `ACTIVITY_EVENTS = 200` beside `paneBody` (a tail term the stat-cached `readEvents` caches per `(file, limit)`, so a steady-state poll still costs one stat). Add `activityScroll: number | null` to `TuiPaneState` (`null` = follow the live tail). In the activity fallthrough branch read `readEvents(root, ACTIVITY_EVENTS)` once, compute `maxStart = Math.max(0, events.length - eventBudget)` and `start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart)`, and return `events.slice(start, start + eventBudget).map(...)`. The `null` branch yields the newest `eventBudget` events exactly as today's `readEvents(root, eventBudget).slice(-eventBudget)` does for the same log.
+2. `src/ui/tui/tui-keys.ts`: add `let activityScroll: number | null = null` beside `paneScroll`, expose it through the state getter, and reset it to null in the Ctrl+T view-cycle handler beside the other per-view resets. Add a dispatch branch for the Activity view (index 0) on `pageDir`: read `const total = readEvents(root, ACTIVITY_EVENTS).length`, take the current start (`activityScroll ?? Math.max(0, total - eventBudget)`), move it by `eventBudget` in the page's direction clamped to `[0, maxStart]`, store the result in `activityScroll`, and set it back to `null` when the move reaches `maxStart` (the live tail resumes).
+3. `src/ui/tui/tui-frame.ts`: the Activity fallthrough `hintLine` branch gains `["PgUp/PgDn", "scroll"]`.
+4. `docs/how-it-works.md`: in the Ctrl+T view sentence around "cycles Activity, each loop's Transcript, …", add that Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event tail, bottom resuming the tail.
+
+**Files touched.** `src/ui/tui/tui-pane.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `test/tui-keys.test.ts`, `test/tui.test.ts`, `docs/how-it-works.md`. The three existing tests that assert the Activity hint line or build a `TuiPaneState` literal were updated mechanically in the same change: `test/tui-frame.test.ts` (the Activity hint string) and `test/tui-history.test.ts` / `test/tui-backlog.test.ts` (the new required `activityScroll` field).
+
+**Acceptance criteria.**
+- With no scrolling (`activityScroll === null`) the Activity body is the newest `eventBudget` events — the same events today's read yields for the same log.
+- PgUp on Activity pauses follow and shows older events; repeated PgDn returns to the loaded tail and re-enables follow; both directions clamp (oldest loaded event, live tail). A log with `eventBudget` or fewer events pages nowhere and does not crash.
+- Cycling away and back to Activity starts at the live tail (the view cycle resets `activityScroll` to null).
+- The Activity hint line names PgUp/PgDn as scroll.
+- `npm run test` is green.
 
 ### Retire the `no-repro` gap, part 5/5: logical time for the supervisor's parent-death watch (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5–4/5; independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
 
