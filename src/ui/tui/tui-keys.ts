@@ -966,8 +966,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     syncSnapshot(capUsd: number, budgetFree: boolean, roles: string[], directorRunning = false): void {
       currentCapUsd = capUsd;
       currentBudgetFree = budgetFree;
+      const previousCount = roleIds.length;
       roleIds = roles;
       directorInFlight = directorRunning;
+      // The panes from project status on are anchored at roleIds.length, so a roster-size
+      // change moves every one of their indices by the same delta: shift the view with them,
+      // or an unadjusted index silently renames to a different pane while its cached body
+      // stays, showing the wrong body under the tab now selected. A transcript view
+      // (1..previousCount) keeps its index — it does not depend on the roster size — and the
+      // clamp below handles one the shrunken roster no longer has.
+      if (roleIds.length !== previousCount && view > previousCount) view += roleIds.length - previousCount;
       view = Math.min(view, roleIds.length + 6); // clamp a stale index if roles changed
       // A retired or renamed loop must not leave the report panes silently scoped to an
       // absent role — drop the scope with the stale view index. The tab strip and hint then

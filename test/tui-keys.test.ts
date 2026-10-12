@@ -790,7 +790,7 @@ test("a Pending collector resolution after the operator cycled away does not cac
   assert.equal(keys.state().paneCache, null, "a late resolution does not cache onto Activity");
 });
 
-test("a Pending collector resolution after the roster size changed does not cache onto the shifted view", async () => {
+test("a Pending collector resolution after the roster size changed caches onto the still-selected Pending pane", async () => {
   const root = makeRoot();
   const fleet = { mainBranch: "main", roles: [] };
   let resolveLate!: (view: typeof fleet) => void;
@@ -805,16 +805,18 @@ test("a Pending collector resolution after the roster size changed does not cach
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (index 5, no roles)
   assert.equal(keys.state().view, 5);
   const queueText = keys.state().paneCache; // the immediate queue set, before the collector resolves
-  // A role appears while the collector is in flight: index 5 now maps to History, not Pending.
+  // A role appears while the collector is in flight: the relative panes shift with the
+  // roster, so Pending keeps its selection at its new index 6 rather than silently becoming
+  // History under the same raw index.
   keys.syncSnapshot(0, false, ["feature"], false);
-  assert.equal(keys.state().view, 5, "the clamp keeps the raw index");
+  assert.equal(keys.state().view, 6, "Pending keeps its selection when the roster grows");
   resolveLate(fleet);
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(
     keys.state().paneCache,
-    queueText,
-    "the late resolution must not cache the fleet roster onto the shifted History pane",
+    queueText + "\n\nno pending changes",
+    "the still-selected Pending pane caches the resolved roster",
   );
 });
 
@@ -835,6 +837,29 @@ test("the Queued pane caches the CLI's rendered queue list on entry and drops it
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
   assert.equal(keys.state().view, 0);
   assert.equal(keys.state().paneCache, null, "leaving Queued drops the cache");
+});
+
+test("a roster-size change shifts the relative panes by the same delta, keeping the selected pane kind", () => {
+  const root = makeRoot();
+  enqueuePrompt(root, "director text");
+  const { keys } = makeKeys(root, () => 0);
+  // Empty roster: Queued is 6, Pending 5.
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  assert.equal(keys.state().view, 6);
+  const queuedBody = keys.state().paneCache;
+  // The roster grows by one. Queued moves to 7; leaving the view unadjusted makes index 6
+  // name Pending while the cached body is still the queued list.
+  keys.syncSnapshot(0, false, ["clean"], false);
+  assert.equal(keys.state().view, 7, "Queued stays selected when the roster grows");
+  assert.equal(keys.state().paneCache, queuedBody, "the cached queued body still matches the selected pane");
+  // Pending shifts with it: from 6 (1 role) to 7 (2 roles), not to History at 6.
+  keys.syncSnapshot(0, false, ["clean", "feature"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → wrap to Activity
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (2+5)
+  assert.equal(keys.state().view, 7);
+  keys.syncSnapshot(0, false, ["clean"], false);
+  assert.equal(keys.state().view, 6, "Pending stays selected when the roster shrinks");
 });
 
 test("a flash notice expires on the injected clock", () => {
