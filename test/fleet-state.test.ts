@@ -17,7 +17,7 @@ import {
   pauseFleet,
   resumeFleet,
 } from "../src/fleet/fleet-state.js";
-import { pausedPath, pausedRolesLockPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { pausedPath, pausedRolesLockPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
@@ -418,7 +418,7 @@ test("a non-finite per-role deadline is dropped on a rewrite instead of becoming
   assert.deepEqual(pausedRoles(root), ["docs", "dry"], "the set stays paused after the rewrite");
 });
 
-test("scheduledWake reads a pending timed wake and nothing else, leaving the marker", () => {
+test("scheduledWake reads the earliest pending timed wake and nothing else, leaving the markers", () => {
   const root = tmpdir();
   assert.equal(scheduledWake(root, Date.now()), undefined, "no marker");
   const before = Date.now();
@@ -426,12 +426,16 @@ test("scheduledWake reads a pending timed wake and nothing else, leaving the mar
   const wake = scheduledWake(root, Date.now());
   assert.deepEqual(wake?.roles, ["feature"]);
   assert.ok(wake && wake.atMs >= before + 3_600_000 && wake.atMs <= Date.now() + 3_600_000, "atMs within the call's clock window");
-  assert.ok(fs.existsSync(wakeRequestPath(root)), "a pure reader leaves the marker");
+  assert.equal(fs.readdirSync(scheduledWakeDir(root)).length, 1, "a pure reader leaves the marker");
   assert.equal(scheduledWake(root, wake!.atMs), undefined, "an expired deadline reads undefined");
   requestWake(root, ["feature"]);
-  assert.equal(scheduledWake(root, Date.now()), undefined, "an immediate wake has no deadline");
-  fs.writeFileSync(wakeRequestPath(root), "{not json");
-  assert.equal(scheduledWake(root, Date.now()), undefined, "corrupt marker");
-  fs.writeFileSync(wakeRequestPath(root), JSON.stringify({ roles: ["a", 3], notBeforeMs: Date.now() + 60_000 }));
-  assert.equal(scheduledWake(root, Date.now()), undefined, "a non-string role rejects the marker");
+  assert.deepEqual(scheduledWake(root, Date.now()), wake, "an immediate wake neither shows nor hides the scheduled one");
+  requestWake(root, ["plan"], 60_000);
+  assert.deepEqual(scheduledWake(root, Date.now())?.roles, ["plan"], "the earliest deadline wins");
+  const empty = tmpdir();
+  fs.mkdirSync(scheduledWakeDir(empty), { recursive: true });
+  fs.writeFileSync(path.join(scheduledWakeDir(empty), "a.json"), "{not json");
+  assert.equal(scheduledWake(empty, Date.now()), undefined, "corrupt marker");
+  fs.writeFileSync(path.join(scheduledWakeDir(empty), "b.json"), JSON.stringify({ roles: ["a", 3], notBeforeMs: Date.now() + 60_000 }));
+  assert.equal(scheduledWake(empty, Date.now()), undefined, "a non-string role rejects the marker");
 });

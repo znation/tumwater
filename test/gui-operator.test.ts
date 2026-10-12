@@ -1,5 +1,5 @@
 import test from "node:test";
-import { readJson } from "./helpers/json-read.js";
+import { readJson, readScheduledWakes } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { initProject } from "../src/init/init.js";
 import { PAUSE_REASON_MAX } from "../src/fleet/fleet-state.js";
-import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
+import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
@@ -461,16 +461,18 @@ test("POST /api/wake with inSeconds schedules the wake like `tumwater wake --in`
     let res = await postJson(base, "/api/wake", { inSeconds: 1800 });
     assert.equal(res.status, 200);
     assert.match(((await res.json()) as { message: string }).message, /wakes in 30m/);
-    let marker = readJson(wakeRequestPath(repo)) as { at: number; notBeforeMs: number; roles: string[] };
+    let [marker] = readScheduledWakes(repo);
+    assert.ok(marker, "the scheduled marker is written");
     assert.equal(marker.notBeforeMs - marker.at, 1800000);
     assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
 
     res = await postJson(base, "/api/wake", { role: "feature", inSeconds: 60 });
     assert.equal(res.status, 200);
-    marker = readJson(wakeRequestPath(repo)) as typeof marker;
-    assert.deepEqual(marker.roles, ["feature"]);
+    assert.equal(readScheduledWakes(repo).length, 2, "the second request leaves the first standing");
+    marker = readScheduledWakes(repo)[1];
+    assert.deepEqual(marker?.roles, ["feature"]);
 
-    fs.rmSync(wakeRequestPath(repo));
+    fs.rmSync(scheduledWakeDir(repo), { recursive: true });
     for (const inSeconds of [0, -5, "30", 7776001]) {
       const bad = await postJson(base, "/api/wake", { inSeconds });
       assert.equal(bad.status, 400, String(inSeconds));

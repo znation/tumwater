@@ -15,7 +15,8 @@ import {
   timedPauseBits,
 } from "../src/operator/operator-intent.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { orchestratorStatePath, pausedPath, STATE_DIR, wakeRequestPath } from "../src/paths.js";
+import { readScheduledWakes } from "./helpers/json-read.js";
+import { orchestratorStatePath, pausedPath, scheduledWakeDir, STATE_DIR, wakeRequestPath } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { writeMarker } from "./fixtures/log-fixtures.js";
@@ -55,7 +56,7 @@ function stateOf(root: string, role: string): Record<string, unknown> {
  * writeFileSync to the marker path. */
 test("operator request markers are written atomically (tmp+rename, never a torn write)", () => {
   const root = deadRoot();
-  const wakeFile = wakeRequestPath(root);
+  const wakeDir = scheduledWakeDir(root);
   const renamed: string[] = [];
   const restoreRename = patchFsMethod("renameSync", (orig) => (from, to) => {
     renamed.push(to as string);
@@ -66,12 +67,11 @@ test("operator request markers are written atomically (tmp+rename, never a torn 
   } finally {
     restoreRename();
   }
-  assert.ok(renamed.includes(wakeFile), `expected the wake marker ${wakeFile} to land via rename`);
+  assert.ok(renamed.some((to) => path.dirname(to) === wakeDir), `expected a wake marker in ${wakeDir} to land via rename`);
   // The rename is the last step, so the marker's final content is intact and no tmp remnant
   // is left behind.
-  assert.ok(readJsonFile<{ notBeforeMs?: number }>(wakeFile)?.notBeforeMs);
-  assert.equal(fs.readdirSync(path.dirname(wakeFile)).filter((f) => f.includes(".tmp-"))
-    .length, 0);
+  assert.ok(readScheduledWakes(root)[0]?.notBeforeMs);
+  assert.equal(fs.readdirSync(wakeDir).filter((f) => f.includes(".tmp-")).length, 0);
 });
 
 test("markerApplyNote reports the no-harness tail without an orchestrator info file", () => {
@@ -158,7 +158,7 @@ test("requestWake with a positive delay schedules the marker and skips the state
   const s = stateOf(root, "fix");
   assert.equal(s.backoffSeconds, before.backoffSeconds, "the submit must not clear backoff");
   assert.equal(s.nextRunAt, before.nextRunAt, "the submit must not pull nextRunAt to now");
-  const m = readJsonFile<{ at: number; roles: string[]; notBeforeMs: number }>(path.join(root, STATE_DIR, "wake.json"));
+  const m = readScheduledWakes(root)[0];
   assert.ok(m, "the scheduled marker is written");
   assert.ok(m.notBeforeMs > Date.now() + 44 * 60_000, "the marker carries the deadline");
   assert.equal(m.notBeforeMs - m.at, 45 * 60_000, "the deadline is the marker's own instant plus the delay");
@@ -307,4 +307,23 @@ test("roleResumeMessage reports the no-op and the fleet-pause interplay note", (
 
 test("PAUSE_FOR_MAX_MS is exactly 90 days", () => {
   assert.equal(PAUSE_FOR_MAX_MS, 90 * 24 * 60 * 60 * 1000);
+});
+
+test("a later wake request leaves a pending scheduled wake standing", () => {
+  const root = deadRoot();
+  requestWake(root, ["fix"], 3_600_000);
+  requestWake(root, ["plan"]);
+  requestWake(root, ["clean"], 7_200_000);
+  const scheduled = readScheduledWakes(root);
+  assert.deepEqual(scheduled.map((m) => m.roles), [["fix"], ["clean"]]);
+  const immediate = readJsonFile<{ roles: string[]; notBeforeMs?: number }>(wakeRequestPath(root));
+  assert.deepEqual(immediate?.roles, ["plan"]);
+  assert.equal(immediate?.notBeforeMs, undefined);
+});
+
+test("submitRolePromptAndWake leaves a pending scheduled wake standing", () => {
+  const root = deadRoot();
+  requestWake(root, ["clean"], 3_600_000);
+  submitRolePromptAndWake(root, "fix", "add a test");
+  assert.deepEqual(readScheduledWakes(root).map((m) => m.roles), [["clean"]]);
 });

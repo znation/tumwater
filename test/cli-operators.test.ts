@@ -6,7 +6,7 @@
 // the remaining CLI surface (prompt, status, tui, doctor, report, run, gui).
 
 import test from "node:test";
-import { readJson } from "./helpers/json-read.js";
+import { readJson, readScheduledWakes } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -418,7 +418,7 @@ test("wake --in schedules the marker; without --in the immediate shape is unchan
   let r = await cli(repo, "wake", "--role", "qa", "--in", "45m");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /wake scheduled for qa — wakes in 45m — /);
-  const scheduled = readJson(wakeRequestPath(repo)) as { at: number; roles: string[]; notBeforeMs: number };
+  const [scheduled] = readScheduledWakes(repo);
   assert.ok(scheduled, "the scheduled marker is written");
   assert.ok(scheduled.notBeforeMs > Date.now() + 44 * 60_000, "the deadline is 45 minutes out");
   assert.deepEqual(scheduled.roles, ["qa"]);

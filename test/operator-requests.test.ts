@@ -7,6 +7,7 @@ import {
   consumeReclaimRequest,
   consumeResetRequest,
   consumeWakeRequest,
+  pendingScheduledWakes,
   type AbortableLanding,
 } from "../src/operator/operator-requests.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -15,6 +16,7 @@ import {
   eventsLogPath,
   reclaimRequestPath,
   resetRequestPath,
+  scheduledWakeDir,
   statePath,
   wakeRequestPath,
   STATE_DIR,
@@ -434,4 +436,66 @@ test("consumeReclaimRequest with no marker changes nothing", () => {
     },
   });
   assert.equal(manual, 0);
+});
+
+function scheduledWake(root: string, name: string, roles: string[], notBeforeMs: number): string {
+  const file = path.join(scheduledWakeDir(root), name);
+  writeMarker(file, { at: Date.now(), roles, notBeforeMs });
+  return file;
+}
+
+test("consumeWakeRequest applies an immediate wake.json but leaves a future scheduled file", () => {
+  const root = tmpdir();
+  const feature = fakeRunner("feature");
+  const plan = fakeRunner("plan");
+  const file = scheduledWake(root, "1-1-aa.json", ["feature"], Date.now() + 60_000);
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["plan"] });
+  consumeWakeRequest(root, asRunners(feature, plan));
+  assert.equal(plan.wakes, 1);
+  assert.equal(feature.wakes, 0);
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false);
+  assert.equal(fs.existsSync(file), true, "the scheduled wake survives");
+  writeMarker(file, { at: Date.now(), roles: ["feature"], notBeforeMs: Date.now() - 1 });
+  consumeWakeRequest(root, asRunners(feature, plan));
+  assert.equal(feature.wakes, 1);
+  assert.equal(fs.existsSync(file), false);
+  assert.ok(eventsOfType(root, "wake").some((e) => e.loop === "feature" && e.reason === "operator"));
+});
+
+test("consumeWakeRequest wakes everyone for a corrupt scheduled file and ignores tmp leftovers", () => {
+  const root = tmpdir();
+  const a = fakeRunner("feature");
+  const bad = path.join(scheduledWakeDir(root), "1-1-bad.json");
+  fs.mkdirSync(scheduledWakeDir(root), { recursive: true });
+  fs.writeFileSync(bad, "{not json");
+  const tmp = path.join(scheduledWakeDir(root), "1-1-x.json.tmp-123");
+  fs.writeFileSync(tmp, "{}");
+  consumeWakeRequest(root, asRunners(a));
+  assert.equal(a.wakes, 1);
+  assert.equal(fs.existsSync(bad), false);
+  assert.equal(fs.existsSync(tmp), true);
+});
+
+test("a legacy wake.json with a future deadline stays in place", () => {
+  const root = tmpdir();
+  const a = fakeRunner("feature");
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["feature"], notBeforeMs: Date.now() + 60_000 });
+  consumeWakeRequest(root, asRunners(a));
+  assert.equal(a.wakes, 0);
+  assert.equal(fs.existsSync(wakeRequestPath(root)), true);
+});
+
+test("pendingScheduledWakes lists future entries by deadline and deletes nothing", () => {
+  const root = tmpdir();
+  const now = Date.now();
+  scheduledWake(root, "1.json", ["b"], now + 20_000);
+  scheduledWake(root, "2.json", ["a"], now + 10_000);
+  const past = scheduledWake(root, "3.json", ["c"], now - 1);
+  const corrupt = path.join(scheduledWakeDir(root), "4.json");
+  fs.writeFileSync(corrupt, "{nope");
+  assert.deepEqual(pendingScheduledWakes(root, now), [
+    { roles: ["a"], atMs: now + 10_000 },
+    { roles: ["b"], atMs: now + 20_000 },
+  ]);
+  assert.ok(fs.existsSync(past) && fs.existsSync(corrupt));
 });

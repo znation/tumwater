@@ -12,6 +12,7 @@
  * pass a `new URL("…", import.meta.url)` without a fileURLToPath detour. */
 import fs from "node:fs";
 
+import { scheduledWakeDir } from "../../src/paths.js";
 import { errorMessage } from "../../src/text/text.js";
 
 export function readJson<T = unknown>(file: string | URL): T {
@@ -26,4 +27,12 @@ export function readJson<T = unknown>(file: string | URL): T {
   } catch (err) {
     throw new Error(`${file} is not valid JSON: ${errorMessage(err)}`);
   }
+}
+
+/** The scheduled wakes (`wake --in`) a request left under scheduledWakeDir, one parsed marker per
+ * file in name order; empty when none were written. */
+export function readScheduledWakes<T = { at: number; roles: string[]; notBeforeMs: number }>(root: string): T[] {
+  const dir = scheduledWakeDir(root);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((n) => n.endsWith(".json")).sort().map((n) => readJson<T>(`${dir}/${n}`));
 }

@@ -4,7 +4,8 @@ import { finiteNumber, stringList } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { truncate } from "../text/text.js";
-import { pausedPath, pausedRolesLockPath, pausedRolesPath, wakeRequestPath } from "../paths.js";
+import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
+import { pendingScheduledWakes } from "../operator/operator-requests.js";
 
 /** The operator pause markers: the fleet-wide pause (`tumwater pause`/`resume`) and the
  * per-role pause set (`pause --role <id>`/`resume --role <id>`), their writers and read-side
@@ -174,18 +175,13 @@ export function pausedRolesUntil(root: string): number | undefined {
   return roles.length > 0 ? until : undefined;
 }
 
-/** A pending scheduled wake (`tumwater wake --in <duration>`): the roles the marker names and
- * the deadline (ms epoch) it fires at, so status surfaces can show it — the marker is otherwise
- * invisible until `consumeWakeRequest` applies it. Undefined for an immediate wake, an expired
- * deadline (the consumer applies that within a poll), a corrupt marker, or none. Roles must be
- * a non-empty all-string array, the shape `requestedRoles` accepts. A pure reader: only the
- * consumer ever removes the marker. */
+/** The earliest pending scheduled wake (`tumwater wake --in <duration>`): the roles its marker
+ * names and the deadline (ms epoch) it fires at, so status surfaces can show it — the marker is
+ * otherwise invisible until `consumeWakeRequest` applies it. Undefined when no scheduled wake
+ * is pending (expired deadlines are the consumer's to apply within a poll; corrupt markers are
+ * skipped). A pure reader over `pendingScheduledWakes`: only the consumer removes a marker. */
 export function scheduledWake(root: string, now: number): { roles: string[]; atMs: number } | undefined {
-  const marker = readJsonFile<{ roles?: unknown; notBeforeMs?: unknown }>(wakeRequestPath(root));
-  if (!marker || !Array.isArray(marker.roles) || marker.roles.length === 0) return undefined;
-  if (!marker.roles.every((r) => typeof r === "string")) return undefined;
-  const atMs = finiteNumber(marker.notBeforeMs, undefined);
-  return atMs !== undefined && atMs > now ? { roles: marker.roles as string[], atMs } : undefined;
+  return pendingScheduledWakes(root, now)[0];
 }
 
 function readPausedRoles(path: string): { roles: string[]; until?: number } {

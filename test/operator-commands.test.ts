@@ -1,6 +1,6 @@
 import { sleep } from "./helpers/wait.js";
 import test from "node:test";
-import { readJson } from "./helpers/json-read.js";
+import { readJson, readScheduledWakes } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -125,7 +125,8 @@ test("cmdWake --in echoes the operator's duration even when the clock ticks betw
   t.mock.method(Date, "now", () => clock++);
   const { stdout } = await expectOk(() => cmdWake(root, ["--role", "clean", "--in", "45m"]));
   assert.match(stdout, /wake scheduled for clean — wakes in 45m — /);
-  const marker = readJson<{ at: number; notBeforeMs: number }>(wakeRequestPath(root));
+  const [marker] = readScheduledWakes(root);
+  assert.ok(marker, "the scheduled marker is written");
   assert.equal(marker.notBeforeMs - marker.at, 45 * 60_000, "the deadline is one clock read plus the duration");
 });
 

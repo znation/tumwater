@@ -1,3 +1,6 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { isFleetPaused } from "../fleet/fleet-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
@@ -10,7 +13,14 @@ import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../fleet/reclaim.js";
 import { formatGB } from "../text/format.js";
-import { abortRequestPath, reclaimRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
+import {
+  abortRequestPath,
+  reclaimRequestPath,
+  resetRequestPath,
+  restartRequestPath,
+  scheduledWakeDir,
+  wakeRequestPath,
+} from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that writes
  * one (the `cmd*` CLI commands in src/operator/operator-commands.ts, the dashboard's POST routes
@@ -100,11 +110,15 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   if (!deferred && !live)
     for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
   // Atomic — see requestResetCounters: a torn wake marker reads as corrupt and wakes every
-  // runner immediately, dropping a scheduled wake's notBeforeMs on the floor.
-  writeJsonAtomic(
-    wakeRequestPath(root),
-    deferred ? { at: now, roles, notBeforeMs: now + inMs } : { at: now, roles },
-  );
+  // runner immediately, dropping a scheduled wake's notBeforeMs on the floor. A scheduled wake
+  // gets its own file so a later wake request, immediate or scheduled, cannot overwrite it.
+  if (deferred) {
+    fs.mkdirSync(scheduledWakeDir(root), { recursive: true });
+    writeJsonAtomic(
+      path.join(scheduledWakeDir(root), `${now}-${process.pid}-${crypto.randomBytes(4).toString("hex")}.json`),
+      { at: now, roles, notBeforeMs: now + inMs },
+    );
+  } else writeJsonAtomic(wakeRequestPath(root), { at: now, roles });
   // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
   // marker, so say so instead of promising a poll that will not happen.
   if (deferred)

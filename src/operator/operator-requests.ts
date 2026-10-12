@@ -13,6 +13,7 @@ import {
   reclaimRequestPath,
   resetRequestPath,
   restartRequestPath,
+  scheduledWakeDir,
   statePath,
   wakeRequestPath,
   STATE_DIR,
@@ -155,15 +156,59 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
  * Each woken role logs the existing `wake` event with the operator reason, so the fleet's early
  * ticks read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
+  // A legacy wake.json (the pre-upgrade build wrote scheduled wakes here) keeps its deadline.
   const markerFile = wakeRequestPath(root);
-  if (!fs.existsSync(markerFile)) return;
-  const marker = readJsonFile<{ notBeforeMs?: unknown }>(markerFile);
   // A null marker on an existing file is a corrupt marker: `tumwater wake` already cleared the
   // state files and the marker is consumed unconditionally, so wake every runner (the same
   // superset `roleRequestTargets` gives corrupt markers) and remove it — an early return here
   // would leave the wedge in place forever, since nothing else ever deletes the marker.
+  if (fs.existsSync(markerFile) && !wakeNotDue(markerFile)) applyWakeMarker(root, markerFile, runners);
+  // Scheduled wakes: one file each, applied once due; writers only create files and only this
+  // consumer deletes them, so no lock is needed.
+  for (const file of scheduledWakeFiles(root)) if (!wakeNotDue(file)) applyWakeMarker(root, file, runners);
+}
+
+/** Whether a wake marker's deadline still lies ahead: a missing, non-numeric, or non-finite
+ * `notBeforeMs` reads as immediate, and a null (corrupt) marker is due. */
+function wakeNotDue(markerFile: string): boolean {
+  const marker = readJsonFile<{ notBeforeMs?: unknown }>(markerFile);
   const notBefore = marker === null ? undefined : finiteNumber(marker.notBeforeMs, undefined);
-  if (notBefore !== undefined && notBefore > Date.now()) return;
+  return notBefore !== undefined && notBefore > Date.now();
+}
+
+/** The scheduled-wake files in `scheduledWakeDir`, sorted; `.tmp-<pid>` leftovers of an atomic
+ * write are skipped. A missing directory is an empty list. */
+function scheduledWakeFiles(root: string): string[] {
+  const dir = scheduledWakeDir(root);
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => n.endsWith(".json"))
+    .sort()
+    .map((n) => path.join(dir, n));
+}
+
+/** The well-formed pending scheduled wakes (`tumwater wake --in`), earliest deadline first: a
+ * pure reader that skips past-deadline and corrupt files and deletes nothing, so display
+ * surfaces share one reader of the format. */
+export function pendingScheduledWakes(root: string, now: number): { roles: string[]; atMs: number }[] {
+  const out: { roles: string[]; atMs: number }[] = [];
+  for (const file of scheduledWakeFiles(root)) {
+    const roles = requestedRoles(file);
+    const marker = readJsonFile<{ notBeforeMs?: unknown }>(file);
+    const atMs = marker === null ? undefined : finiteNumber(marker.notBeforeMs, undefined);
+    if (roles && roles.length > 0 && atMs !== undefined && atMs > now) out.push({ roles, atMs });
+  }
+  return out.sort((x, y) => x.atMs - y.atMs);
+}
+
+/** Apply one wake marker that is due: wake the runners it names (every runner for a corrupt
+ * marker), write the cleared schedule for runnerless roles, then remove the marker. */
+function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]): void {
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
   for (const r of affected) {

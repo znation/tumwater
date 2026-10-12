@@ -6,7 +6,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Keep every pending scheduled wake: a later `wake` or dashboard prompt no longer silently drops a `wake --in` (planned 2026-10-12 by plan; fixes a latent overwrite in the landed `tumwater wake --in` / dashboard "Wake later". `.tumwater/wake.json` (`wakeRequestPath` in `src/paths.ts`) holds ONE request, and `requestWake` in `src/operator/operator-intent.ts` replaces it with `writeJsonAtomic`. So `wake feature --in 2h` followed by any immediate wake drops the scheduled one with no message. That includes `submitRolePromptAndWake`, which every dashboard/TUI prompt submit calls. A second `wake plan --in 1h` drops it the same way. Sibling of the waiting "Show a pending scheduled wake in `tumwater status`…" plan above: that plan's reader moves to this plan's directory if this lands first (see step 5). Independent of the entry-drawer cancel plan)
+## Done
+
+### Keep every pending scheduled wake: a later `wake` or dashboard prompt no longer silently drops a `wake --in` (planned 2026-10-12 by plan; fixes a latent overwrite in the landed `tumwater wake --in` / dashboard "Wake later". `.tumwater/wake.json` (`wakeRequestPath` in `src/paths.ts`) holds ONE request, and `requestWake` in `src/operator/operator-intent.ts` replaces it with `writeJsonAtomic`. So `wake feature --in 2h` followed by any immediate wake drops the scheduled one with no message. That includes `submitRolePromptAndWake`, which every dashboard/TUI prompt submit calls. A second `wake plan --in 1h` drops it the same way. Sibling of the waiting "Show a pending scheduled wake in `tumwater status`…" plan above: that plan's reader moves to this plan's directory if this lands first (see step 5). Independent of the entry-drawer cancel plan); done 2026-10-12 by feature
 
 **Goal.** Each scheduled wake is its own marker file, so it survives every later wake request, immediate or scheduled, until its deadline passes and a live fleet applies it. Immediate wakes keep today's `wake.json` path, contract, and wording unchanged.
 
@@ -38,8 +40,6 @@ Out of scope: two immediate wakes inside one poll (~2 s) still share `wake.json`
 - `pendingScheduledWakes` returns future entries sorted by `atMs`. It skips past-deadline and corrupt entries without deleting them.
 - `submitRolePromptAndWake` after a `wake feature --in 1h` leaves the scheduled file in place (pinned in `test/operator-intent.test.ts`).
 - `npm run test` passes.
-
-## Done
 
 ### Show a pending scheduled wake in `tumwater status`, the TUI header, and the dashboard's loop rows (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in <duration>` (`requestWake(root, roles, inMs)` in `src/operator/operator-intent.ts` writes `{ at, roles, notBeforeMs }` to `wakeRequestPath`, `.tumwater/wake.json`) and the landed dashboard "Wake later" menu (`wakeLater` in `src/ui/gui/gui-client-loops.ts`). Once a wake is scheduled, the only code that reads the marker is `consumeWakeRequest` in `src/operator/operator-requests.ts`, which applies it. No status surface shows that a wake is pending, so an operator who scheduled "wake in 2h" has no way to confirm it, and no way to see when it will fire. The timed pause already shows its countdown (`pauseBadge` in `src/ui/badges.ts`, and the `resumes in` row note in `phaseDetail`). This plan gives the scheduled wake the same treatment. It is independent of the waiting entry-drawer cancel and loop-drawer wake-later plans in behavior: it is read-only and adds no route or action. It does share `src/ui/gui/gui-client-loops.ts` with the wake-later plan, so a landing conflict is possible and the resolver handles it) (done 2026-10-12 by feature)
 

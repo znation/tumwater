@@ -164,6 +164,13 @@ export function wakeRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "wake.json");
 }
 
+/** Directory of scheduled wakes (`tumwater wake --in`): each file in it is one wake
+ * (`{ at, roles, notBeforeMs }`). A file per request is what keeps a later wake request from
+ * overwriting a pending one, as the single `wake.json` marker did. */
+export function scheduledWakeDir(root: string): string {
+  return path.join(tumwaterDir(root), "wakes");
+}
+
 /** Marker file the dashboard's restart button (the build-stale alert's refresh icon) drops for
  * a running fleet to consume: force the pending self-redeploy past its cooldown now. Presence
  * is the request; the content is just `{ at }` — like the abort markers, one untyped flag. */
