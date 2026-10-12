@@ -6,7 +6,41 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Cancel pending scheduled wakes with `tumwater wake --cancel [--role <id>]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --in` (`requestWake` in `src/operator/operator-intent.ts` writes one file per scheduled wake under `scheduledWakeDir`, `.tumwater/wakes/`), the landed per-file consumer (`consumeWakeRequest` in `src/operator/operator-requests.ts`), and the landed status display (`pendingScheduledWakes`, `scheduledWake` in `src/fleet/fleet-state.ts`, `wakeBadge`). Independent of the waiting TUI Ctrl+F pause plan: this plan touches no `src/ui` file. A dashboard "cancel scheduled wake" control is a separate, later sibling that reuses this plan's core)
+
+**Goal.** Once `wake --in 2h` is scheduled, nothing can retract it. `tumwater status` shows the pending wake, but the only way to drop it is to delete files under `.tumwater/` by hand, which loops and operators are told never to touch. Add `tumwater wake --cancel`: it removes every pending scheduled wake. `--role <id>` narrows the cancel to that one loop.
+
+**Approach.**
+1. `src/operator/operator-requests.ts`: add `export function cancelScheduledWakes(root: string, role?: string): number`, next to `pendingScheduledWakes`. It reuses the file's private `scheduledWakeFiles`, `wakeNotDue`, and `requestedRoles`. It only touches files whose deadline still lies ahead (`wakeNotDue(file)` true). Due and corrupt files stay the consumer's to apply.
+   - Without `role`: `removeQuiet` each pending file. Each counts as one.
+   - With `role`: skip files whose roles do not include it. If the role is the file's only role, `removeQuiet` the file. Otherwise rewrite the same path with `writeJsonAtomic` (from `src/files/json-files.ts`), keeping `at` and `notBeforeMs` and dropping the role from `roles`. Each touched file counts as one.
+   - Return the count.
+   - Update `consumeWakeRequest`'s comment "writers only create files and only this consumer deletes them". The new wording: a cancel also deletes or rewrites files, but only files whose deadline is still ahead, so it never races the consumer's apply of a due file. The window that is left is a deadline crossing between the cancel's read and its write. The worst case there is one extra wake for the remaining roles, the same as a wake that was never cancelled.
+2. `src/cli/cli-flag-specs.ts`: add `export const WAKE_CANCEL_FLAG: FlagSpec = { names: ["--cancel"] }`, beside `WAKE_IN_FLAG`, shaped like `DRY_RUN_FLAG`. `src/cli/cli-marker-commands.ts`: add it to `perCommandFlags.wake`, and add `--cancel` to the comment above `perCommandFlags` that lists the per-command flags.
+3. `src/operator/operator-commands.ts` `cmdWake`: when `args.includes("--cancel")` is true:
+   - If `--in` is also given, `fail("wake --cancel and --in cannot be combined")` before any file work.
+   - Otherwise resolve the role with `namedRole(root, args)`, which validates the id as other commands do, and call `cancelScheduledWakes`.
+   - Print one line through `say`. With a count above zero: `cancelled N scheduled wake(s)` (singular `wake` for 1), plus ` for <role>` when a role was named. With a count of zero: `no scheduled wake pending` (plus ` for <role>`). The exit is 0 either way, so the command is idempotent.
+   - Return without writing `wake.json` and without touching loop state. Cancelling is not a wake.
+   - No live fleet is required. The files are the whole state, and the next poll simply finds fewer of them.
+   - Update `cmdWake`'s docstring signature line to `[--in <duration> | --cancel]`.
+4. `src/cli/help.ts`: change the `tumwater wake` usage line to `tumwater wake [--role <id>] [--in <dur> | --cancel]`, and extend its description with "; --cancel drops pending scheduled wakes".
+5. README "Control the loops" row: after the sentence saying later wakes do not cancel a scheduled wake, add "`tumwater wake --cancel [--role <id>]` drops the pending scheduled wakes (or that loop's share of them)".
+
+**Files touched.** `src/operator/operator-requests.ts`, `src/operator/operator-commands.ts`, `src/cli/cli-flag-specs.ts`, `src/cli/cli-marker-commands.ts`, `src/cli/help.ts`, `README.md`, `test/operator-requests.test.ts`, `test/cli-operators.test.ts`.
+
+**Acceptance criteria.**
+- `test/operator-requests.test.ts`, new tests on `cancelScheduledWakes`:
+  - Two pending wake files plus one past-deadline file, no role: the call returns 2, removes the two pending files, and leaves the past-deadline file in place.
+  - A role cancel: a file naming `["qa"]` is removed. A file naming `["qa","feature"]` is rewritten with `roles: ["feature"]` and the same `notBeforeMs`. A file naming `["feature"]` is untouched. The call returns 2.
+  - A missing `scheduledWakeDir` returns 0 and does not throw.
+- `test/cli-operators.test.ts`, in the wake section:
+  - `wake --role qa --in 45m`, then `wake --cancel`. The second command exits 0, prints `cancelled 1 scheduled wake`, and leaves `readScheduledWakes(repo)` empty. A repeat prints `no scheduled wake pending`.
+  - `wake --cancel --role qa` prints `... for qa`.
+  - `wake --cancel --in 5m` exits 1 with the combine error, and no marker is written or removed.
+  - `pause --cancel` exits 1 with `unknown argument: --cancel`.
+  - `wake --cancel` does not create `wakeRequestPath(repo)`.
+- `npm run test` passes.
 
 
 ## Done
