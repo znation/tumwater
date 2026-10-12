@@ -373,7 +373,7 @@ fix and passes after.
 - **Reproduce:** an entry `### A plain title with no stamp` followed by body `Intro prose (planned 2026-01-02)` then `tumwater plan --edit 1 "A corrected plain title" "new body"` produced `### A corrected plain title (planned 2026-01-02)`.
 - **Cause:** the continuation loop's stop conditions were `closed` (a consumed line ends in `)`) and a line cap; a heading with balanced parens satisfied neither, so body prose was joined as if it were wrapped heading metadata.
 - **Fix:** `headingMetadata` now joins a continuation only when the start line leaves a parenthetical open — i.e. it has more `(` than `)` (the only shape a wrapped heading has). A heading that already balances its parens stops at its own line, so its body is never part of the join. `editEntryLocked` therefore sees the real heading and extracts no stamp when there was none.
-- **Test:** test/backlog-write.test.ts's `editing an unstamped entry does not adopt a stamp-like parenthetical from its body` writes an unstamped plan heading with `Intro prose (planned 2026-01-02)` as body, edits it, and asserts the rebuilt heading is stamp-free; it produced `### A corrected plain title (planned 2026-01-02)` before the fix and passes after.
+- **Test:** test/backlog-write-edit.test.ts's `editing an unstamped entry does not adopt a stamp-like parenthetical from its body` writes an unstamped plan heading with `Intro prose (planned 2026-01-02)` as body, edits it, and asserts the rebuilt heading is stamp-free; it produced `### A corrected plain title (planned 2026-01-02)` before the fix and passes after.
 
 **Validation gap:** none — the fake repo plus the in-process `editPlan` reproduced it deterministically on the first run, so no seam, shim, or observation was missing.
 

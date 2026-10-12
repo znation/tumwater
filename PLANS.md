@@ -2382,7 +2382,7 @@ unchanged.
 - src/cli/help.ts (two stanzas)
 - README.md (prompt-table wording)
 
-Tests: test/backlog-write.test.ts — a fixture with two planned entries (one eligible, one
+Tests: test/backlog-write-list.test.ts — a fixture with two planned entries (one eligible, one
 `requires X` blocked) and two open bugs (one refused): `plan --list` prints `1. …` / `2. … [blocked:
 requires X]`, `bug --list` prints the refused bug's `[refused]`; `--json` carries positions
 `[1,2]`, verbatim bodies, and the same `hold` values; `plan --cancel 2` removes exactly the
