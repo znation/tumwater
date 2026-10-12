@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names a red main: a "main red" check that warns on code loops held by the red-main gate (planned 2026-10-12 by plan; independent of the waiting "Idle loops say why they are idle, part 2/2")
+_None yet._
+
+## Done
+
+### `tumwater doctor` names a red main: a "main red" check that warns on code loops held by the red-main gate (planned 2026-10-12 by plan; independent of the waiting "Idle loops say why they are idle, part 2/2") — done 2026-10-12
 
 **Goal:** doctor's hold checks cover the pause, quiet hours, budget, claude window, maintenance quota, and error streaks, but not the hold that stops every code loop: `mainRedGate` (src/baseline/main-red.ts) ending each blocked tick `main_red` while main's suite is red. The table shows `main red` per loop, but doctor, its `--json`, the dashboard's Health card, and the TUI's Health tab say nothing. Add the check, computed from the same fact the status phase reads, so the two surfaces cannot disagree.
 
@@ -38,8 +42,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing test/status-model.test.ts cases around the main-red label (the ones exercising `snap.mainCheck`) pass unchanged.
 - `grep -n "function mainCheckRecovered" src/ui/status-model.ts` finds nothing.
 - `npm run test` passes.
-
-## Done
 
 ### Idle loops say why they are idle, part 2/2: the status phase names the skip (planned 2026-10-12 by plan; requires part 1/2 landed) — done 2026-10-12
 

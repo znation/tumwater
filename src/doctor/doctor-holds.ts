@@ -5,15 +5,15 @@ import { budgetReached, budgetWarning, fleetDailyCost } from "../budget/budget.j
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
-import { maintenanceQuotaForPoll } from "../status/status-polls.js";
+import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadLoopState } from "../loop/loop-state.js";
-import { loopIds } from "../roles/loop-ids.js";
+import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
-import { budgetPhrase, pauseReasonSuffix } from "../text/phrases.js";
+import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeWindowObservation } from "../fleet/fleet-polls.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -192,4 +192,25 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
     return phrase;
   });
   return warnOutcome(`failing tick after tick: ${phrases.join("; ")}`);
+}
+
+/** The `main red` check: names the code loops the red-main gate (mainRedGate) holds, ending
+ * each blocked tick `main_red` while main's suite is red. Read-only: it asks heldByMainRed,
+ * the predicate the status phase's `main red` label reads, so the two cannot disagree. A warn,
+ * not a fail: a red main does not stop the fleet from running. */
+export function checkMainRed(root: string, config: TumwaterConfig | undefined): CheckOutcome {
+  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  const mainCheck = mainCheckForPoll(root, config);
+  const ids = loopIds(config);
+  const held = ids
+    .map((id) => loadLoopState(root, id))
+    .filter((s) => heldByMainRed(s, mainCheck))
+    .sort((a, b) => a.role.localeCompare(b.role));
+  if (held.length === 0) return okOutcome("no loop held by a red main");
+  const err = held.find((s) => s.lastError)?.lastError;
+  const cause = err ? ` — ${squash(err, 160)}` : "";
+  const healer = ids.some((id) => baseRoleOf(id) === "bugfix")
+    ? "; the bugfix loop is exempt and repairs it"
+    : "; no bugfix loop is enabled to repair it — fix main by hand or enable bugfix";
+  return warnOutcome(`red main holds ${plural(held.length, "code loop")}: ${held.map((s) => s.role).join(", ")}${cause}${healer}`);
 }

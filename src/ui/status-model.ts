@@ -2,6 +2,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
+import { heldByMainRed } from "../status/status-polls.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
@@ -198,7 +199,7 @@ export function loopPhase(
   // the fleet-level verdict is fresher than the loop's own, so the label is stale until the
   // loop's next tick — which can be hours away (BUGS.md 2026-09-30). A check older than the
   // red tick, a failed or skipped one, or an unknown tick end all keep the label.
-  if (s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s)) return "main red";
+  if (heldByMainRed(s, mainCheck)) return "main red";
   // An error streak at or past the warning threshold (tick-apply.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
@@ -231,18 +232,6 @@ export function loopPhase(
     default:
       return "queued";
   }
-}
-
-/** Has main's newest merge-scope check retired a loop's stale `main_red` verdict? Only a
- * PASSED check stamped strictly after the loop's red tick ended counts — the fleet-level
- * green is newer evidence than the loop's own red (BUGS.md 2026-09-30). A failed or skipped
- * newest check, a check from before the red tick, or a loop with no known tick end all leave
- * the verdict standing. Single-homed here so loopPhase's main-red branch and its callers
- * cannot drift. */
-function mainCheckRecovered(mainCheck: StatusSnapshot["mainCheck"], s: LoopState): boolean {
-  return mainCheck?.status === "passed"
-    && s.lastTickEndedAt !== undefined
-    && mainCheck.at > s.lastTickEndedAt;
 }
 
 /** One rendered loop-table row's sort key: the role name, its rendered phase label

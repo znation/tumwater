@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -303,4 +303,45 @@ test("checkErrorStreaks: a second instance is reported under its own id", () => 
   const r = checkErrorStreaks(streakRoot({ "feature-2": 5 }), cfg);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /feature-2: 5 failed ticks/);
+});
+
+const RED = "main abc is red (npm test: 2 failing) — authoring skipped until main is green";
+
+function redRoot(extra: Record<string, unknown> = {}): string {
+  const root = tmpdir("tw-mainred-");
+  saveLoopState(root, { ...freshLoopState("feature"), lastResult: "main_red", lastError: RED, lastTickEndedAt: 1000, ...extra });
+  return root;
+}
+
+test("checkMainRed: unreadable config is not checked", () => {
+  const r = checkMainRed(tmpdir("tw-mainred-"), undefined);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /not checked/);
+});
+
+test("checkMainRed: no loop at main_red is ok", () => {
+  assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no loop held by a red main" });
+});
+
+test("checkMainRed: a held code loop warns naming it, the count, and the squashed error", () => {
+  const r = checkMainRed(redRoot(), bcfg({}));
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /red main holds 1 code loop: feature — main abc is red \(npm test: 2 failing\)/);
+});
+
+test("checkMainRed: a loop with a queued summary is ok", () => {
+  assert.equal(checkMainRed(redRoot({ queuedSummary: "x" }), bcfg({})).level, "ok");
+});
+
+test("checkMainRed: a passed landing check newer than the red tick retires the hold", () => {
+  const root = redRoot();
+  writeEvents(root, [{ ts: 2000, loop: "feature", type: "build_check", scope: "landing", status: "passed" }]);
+  assert.equal(checkMainRed(root, bcfg({})).level, "ok");
+});
+
+test("checkMainRed: the detail names the bugfix loop as repairer only when one is enabled", () => {
+  const without = checkMainRed(redRoot(), bcfg({}));
+  assert.match(without.detail, /no bugfix loop is enabled/);
+  const withBugfix = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, bugfix: { enabled: true } } }));
+  assert.match(withBugfix.detail, /the bugfix loop is exempt and repairs it/);
 });

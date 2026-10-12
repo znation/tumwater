@@ -159,6 +159,23 @@ function mainCheckScanFor(root: string): MainCheckScan {
   );
 }
 
+/** Has main's newest merge-scope check retired a loop's stale `main_red` verdict? Only a
+ * PASSED check stamped strictly after the loop's red tick ended counts — the fleet-level
+ * green is newer evidence than the loop's own red (BUGS.md 2026-09-30). A failed or skipped
+ * newest check, a check from before the red tick, or a loop with no known tick end all leave
+ * the verdict standing. Single-homed here beside heldByMainRed. */
+function mainCheckRecovered(mainCheck: MainCheckStatus | undefined, s: LoopState): boolean {
+  return mainCheck?.status === "passed"
+    && s.lastTickEndedAt !== undefined
+    && mainCheck.at > s.lastTickEndedAt;
+}
+
+/** Is a loop's tick verdict still the red-main hold? The one predicate behind the status
+ * phase's `main red` label and doctor's `main red` check, so the two cannot disagree. */
+export function heldByMainRed(s: LoopState, mainCheck: MainCheckStatus | undefined): boolean {
+  return s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s);
+}
+
 /** The newest merge-scope build_check in the event tail, with the main sha it verified
  * (mainCheck's derivation — see the field's comment). A gate-scope check is excluded: it
  * verified a role worktree, not main. The log-derived scan is stat-cached per events.jsonl
