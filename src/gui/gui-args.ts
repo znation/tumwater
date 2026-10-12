@@ -9,6 +9,7 @@
  * itself and returns null/false, so a handler is one guard line per argument.
  */
 import { knownRoleIdsCached } from "../config/config.js";
+import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
@@ -169,6 +170,26 @@ export function sinceMsQuery(
     return null;
   }
   return sinceMs;
+}
+
+/** Pull the required curated config key out of a config endpoint's body — the shared validator
+ * for /api/config-set and /api/config-unset, which must reject a missing or uncurated key with
+ * the same 400 wording: the panel's reach stays exactly EDITABLE_CONFIG_KEYS, and the browser and
+ * a retried request must get identical answers from both surfaces. An absent key reads as no
+ * value (the gotSuffix convention: append only a value the request actually carried). Returns
+ * the validated key, or null once the 400 is sent. */
+export function requireConfigKey(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+): string | null {
+  const key = body.key;
+  if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
+    sendJson(res, 400, {
+      error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`,
+    });
+    return null;
+  }
+  return key;
 }
 
 /** Pull the required `paused` boolean out of a pause endpoint's body — the shared validator

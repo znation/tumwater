@@ -20,9 +20,8 @@ import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } 
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { rejectBadQueueFileName, rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
+import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
-import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import type http from "node:http";
 
@@ -253,15 +252,8 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
 export async function handleConfigSet(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"key": "model", "value": "gpt-5"}');
   if (!body) return;
-  const key = body.key;
-  if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    // An absent key reads as no value (the gotSuffix convention: append only a value the request
-    // actually carried), so a missing field is not echoed back as a literal `null` it never sent.
-    sendJson(res, 400, {
-      error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`,
-    });
-    return;
-  }
+  const key = requireConfigKey(res, body);
+  if (key === null) return;
   if (body.value === undefined) {
     sendJson(res, 400, { error: `value required for ${key}` });
     return;
@@ -288,15 +280,8 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
 export async function handleConfigUnset(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"key": "model"}');
   if (!body) return;
-  const key = body.key;
-  if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    // An absent key reads as no value (the gotSuffix convention: append only a value the request
-    // actually carried), so a missing field is not echoed back as a literal `null` it never sent.
-    sendJson(res, 400, {
-      error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`,
-    });
-    return;
-  }
+  const key = requireConfigKey(res, body);
+  if (key === null) return;
   const result = unsetConfigKey(root, key);
   if (!result.ok) {
     sendJson(res, 400, { error: `${key}: ${result.error}` });
