@@ -479,6 +479,33 @@ test("wake --in schedules the marker; without --in the immediate shape is unchan
   assert.match(r.stdout, /no harness is running/);
 });
 
+test("wake --cancel drops scheduled wakes without writing a marker", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake cancel");
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  let r = await cli(repo, "wake", "--cancel");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /cancelled 1 scheduled wake$/m);
+  assert.deepEqual(readScheduledWakes(repo), []);
+  r = await cli(repo, "wake", "--cancel");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no scheduled wake pending/);
+  r = await cli(repo, "wake", "--cancel", "--role", "qa");
+  assert.match(r.stdout, /no scheduled wake pending for qa/);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "cancel is not a wake");
+
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  r = await cli(repo, "wake", "--cancel", "--in", "5m");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /wake --cancel and --in cannot be combined/);
+  assert.equal(readScheduledWakes(repo).length, 1);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)));
+
+  r = await cli(repo, "pause", "--cancel");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --cancel/);
+});
+
 test("wake --in is capped at 90d like pause --for", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli wake cap");

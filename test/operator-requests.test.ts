@@ -6,6 +6,7 @@ import {
   consumeAbortRequests,
   consumeReclaimRequest,
   consumeResetRequest,
+  cancelScheduledWakes,
   consumeWakeRequest,
   pendingScheduledWakes,
   type AbortableLanding,
@@ -498,4 +499,33 @@ test("pendingScheduledWakes lists future entries by deadline and deletes nothing
     { roles: ["b"], atMs: now + 20_000 },
   ]);
   assert.ok(fs.existsSync(past) && fs.existsSync(corrupt));
+});
+
+test("cancelScheduledWakes removes pending files and leaves a due one", () => {
+  const root = tmpdir();
+  const a = scheduledWake(root, "1-1-aa.json", ["feature"], Date.now() + 60_000);
+  const b = scheduledWake(root, "2-1-bb.json", ["qa"], Date.now() + 90_000);
+  const due = scheduledWake(root, "3-1-cc.json", ["plan"], Date.now() - 1);
+  assert.equal(cancelScheduledWakes(root), 2);
+  assert.equal(fs.existsSync(a), false);
+  assert.equal(fs.existsSync(b), false);
+  assert.equal(fs.existsSync(due), true);
+});
+
+test("cancelScheduledWakes with a role drops only that role", () => {
+  const root = tmpdir();
+  const at = Date.now() + 60_000;
+  const only = scheduledWake(root, "1-1-aa.json", ["qa"], at);
+  const shared = scheduledWake(root, "2-1-bb.json", ["qa", "feature"], at);
+  const other = scheduledWake(root, "3-1-cc.json", ["feature"], at);
+  assert.equal(cancelScheduledWakes(root, "qa"), 2);
+  assert.equal(fs.existsSync(only), false);
+  const rewritten = readJsonFile<{ roles: string[]; notBeforeMs: number }>(shared);
+  assert.deepEqual(rewritten?.roles, ["feature"]);
+  assert.equal(rewritten?.notBeforeMs, at);
+  assert.deepEqual(readJsonFile<{ roles: string[] }>(other)?.roles, ["feature"]);
+});
+
+test("cancelScheduledWakes tolerates a missing directory", () => {
+  assert.equal(cancelScheduledWakes(tmpdir()), 0);
 });

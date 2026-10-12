@@ -241,9 +241,10 @@ Usage:
                                    Zero lifetime ticks/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
                                    daily cap cannot be reset past)
-  tumwater wake [--role <id>] [--in <dur>]
+  tumwater wake [--role <id>] [--in <dur> | --cancel]
                                    Wake a backed-off fleet — the named roles (or all) tick
-                                   within one poll; --in schedules the wake for later
+                                   within one poll; --in schedules the wake for later;
+                                   --cancel drops pending scheduled wakes
   tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every harness
                                    worktree; --dry-run lists each candidate with its idle age
                                    and ignored-path count and cleans nothing

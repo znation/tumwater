@@ -4,7 +4,7 @@ import type { LoopRunner } from "../loop/loop.js";
 import { logEvent, warnEvent, warnEventBestEffort } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
-import { readJsonFile } from "../files/json-files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
@@ -163,8 +163,11 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   // superset `roleRequestTargets` gives corrupt markers) and remove it — an early return here
   // would leave the wedge in place forever, since nothing else ever deletes the marker.
   if (fs.existsSync(markerFile) && !wakeNotDue(markerFile)) applyWakeMarker(root, markerFile, runners);
-  // Scheduled wakes: one file each, applied once due; writers only create files and only this
-  // consumer deletes them, so no lock is needed.
+  // Scheduled wakes: one file each, applied once due. Writers only create files; a cancel
+  // (`cancelScheduledWakes`) also deletes or rewrites files, but only those whose deadline is
+  // still ahead, so it never races this consumer's apply of a due file. The window left is a
+  // deadline crossing between the cancel's read and its write: the worst case is one extra
+  // wake for the remaining roles, the same as a wake that was never cancelled.
   for (const file of scheduledWakeFiles(root)) if (!wakeNotDue(file)) applyWakeMarker(root, file, runners);
 }
 
@@ -204,6 +207,32 @@ export function pendingScheduledWakes(root: string, now: number): { roles: strin
     if (roles && roles.length > 0 && atMs !== undefined && atMs > now) out.push({ roles, atMs });
   }
   return out.sort((x, y) => x.atMs - y.atMs);
+}
+
+/** Drop the pending scheduled wakes (`tumwater wake --cancel`), returning how many files it
+ * removed or rewrote. Only files whose deadline still lies ahead are touched; due and corrupt
+ * files stay the consumer's to apply. Without `role` each pending file is removed. With `role`,
+ * files not naming it are skipped, a file naming only it is removed, and a file naming others
+ * too is rewritten without it (same `at` and `notBeforeMs`). */
+export function cancelScheduledWakes(root: string, role?: string): number {
+  let count = 0;
+  for (const file of scheduledWakeFiles(root)) {
+    if (!wakeNotDue(file)) continue;
+    if (role === undefined) {
+      removeQuiet(file);
+      count++;
+      continue;
+    }
+    const roles = requestedRoles(file);
+    if (!roles?.includes(role)) continue;
+    const marker = readJsonFile<{ at?: unknown; notBeforeMs?: unknown }>(file);
+    if (!marker) continue;
+    const rest = roles.filter((r) => r !== role);
+    if (rest.length === 0) removeQuiet(file);
+    else writeJsonAtomic(file, { at: marker.at, roles: rest, notBeforeMs: marker.notBeforeMs });
+    count++;
+  }
+  return count;
 }
 
 /** Apply one wake marker that is due: wake the runners it names (every runner for a corrupt

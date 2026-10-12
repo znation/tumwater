@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Cancel pending scheduled wakes with `tumwater wake --cancel [--role <id>]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --in` (`requestWake` in `src/operator/operator-intent.ts` writes one file per scheduled wake under `scheduledWakeDir`, `.tumwater/wakes/`), the landed per-file consumer (`consumeWakeRequest` in `src/operator/operator-requests.ts`), and the landed status display (`pendingScheduledWakes`, `scheduledWake` in `src/fleet/fleet-state.ts`, `wakeBadge`). Independent of the waiting TUI Ctrl+F pause plan: this plan touches no `src/ui` file. A dashboard "cancel scheduled wake" control is a separate, later sibling that reuses this plan's core)
+_None yet._
+
+
+## Done
+
+### Cancel pending scheduled wakes with `tumwater wake --cancel [--role <id>]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --in` (`requestWake` in `src/operator/operator-intent.ts` writes one file per scheduled wake under `scheduledWakeDir`, `.tumwater/wakes/`), the landed per-file consumer (`consumeWakeRequest` in `src/operator/operator-requests.ts`), and the landed status display (`pendingScheduledWakes`, `scheduledWake` in `src/fleet/fleet-state.ts`, `wakeBadge`). Independent of the waiting TUI Ctrl+F pause plan: this plan touches no `src/ui` file. A dashboard "cancel scheduled wake" control is a separate, later sibling that reuses this plan's core; done 2026-10-12)
 
 **Goal.** Once `wake --in 2h` is scheduled, nothing can retract it. `tumwater status` shows the pending wake, but the only way to drop it is to delete files under `.tumwater/` by hand, which loops and operators are told never to touch. Add `tumwater wake --cancel`: it removes every pending scheduled wake. `--role <id>` narrows the cancel to that one loop.
 
@@ -41,9 +46,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `pause --cancel` exits 1 with `unknown argument: --cancel`.
   - `wake --cancel` does not create `wakeRequestPath(repo)`.
 - `npm run test` passes.
-
-
-## Done
 
 ### Pause the fleet for a duration and with a reason from the TUI's Ctrl+F, matching `tumwater pause --for <duration> --reason <text>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater pause --for/--reason` (`cmdPause` in `src/operator/operator-commands.ts`) and the landed dashboard pause menu with reason (`handlePause` over `POST /api/pause`, which reads `forSeconds` and `reason` and calls `pauseFleet(root, untilMs, reason)`). Independent of the waiting dashboard notebook plan: this plan touches only `src/ui/tui/`, its tests, and docs, with no `src/gui` or `src/ui/gui` file. A TUI per-loop timed pause (Ctrl+P) is a separate, later sibling; done 2026-10-12)
 
