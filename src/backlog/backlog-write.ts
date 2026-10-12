@@ -270,6 +270,46 @@ export function planTitleOf(positionals: string[]): string {
   return collapseWhitespace(positionals[0] ?? "");
 }
 
+/** The one home of the prose-carrying file commands' flag classification (the `bug`/`plan`
+ * file forms and their `--edit` forms): `--json` is the one boolean, refused on a repeat
+ * (the "each flag at most once" rule every spec-parsed command and the questions parser
+ * apply); when a position flag is supplied it is the one valued flag, likewise refused on a
+ * repeat and parsed through the shared plain-decimal rule (parsePositionFlag); `--help`/`-h`
+ * rides into the prose positionals rather than being skipped, because the dispatcher's help
+ * interception stands down for text-carrying invocations (cli.ts) so a help token here is
+ * always content; every other flag-shaped token is named by rejectUnknownArgs, and every
+ * bare token is prose. Tokens keep their original order. */
+function scanProseFlags(
+  args: string[],
+  command: string,
+  positionFlag?: { name: string; example: string },
+): { json: boolean; positionals: string[]; position: number | null } {
+  let json = false;
+  let position: number | null = null;
+  const positionals: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? "";
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (positionFlag && arg === positionFlag.name) {
+      rejectRepeatFlag(position !== null, positionFlag.name);
+      position = parsePositionFlag(positionFlag.name, args[i + 1], positionFlag.example);
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      positionals.push(arg);
+      continue;
+    }
+    if (arg.startsWith("-")) rejectUnknownArgs(command, [arg], [JSON_FLAG]);
+    else positionals.push(arg);
+  }
+  return { json, positionals, position };
+}
+
 /** The shared shell of the `bug` and `plan` CLI cases — the one home of the five-step
  * sequence both commands run in cli.ts: peel the free-form positionals (the questions
  * command's prose-token pattern), reject anything flag-shaped that is not `--json`, run the
@@ -298,29 +338,9 @@ export async function fileAndAnnounce(
   // peelPositionals cannot serve this command: bug/plan's text is operator prose, and a
   // standalone --help/-h token inside it ("the TUI mishandles --help output") is content —
   // the dispatcher's help interception stands down for text-carrying invocations (cli.ts),
-  // so a help token that reaches here is always prose. peelPositionals would flag-shape it
-  // into rest and rejectUnknownArgs would refuse the whole report; instead classify here,
-  // keeping token order: --json is the one flag, --help/-h ride into the text, and any
-  // other flag-shaped token is still named by the strictness gate.
-  const positionals: string[] = [];
-  let json = false;
-  for (const arg of args) {
-    if (arg === "--json") {
-      // The "each flag at most once" rule every spec-parsed command and the questions
-      // parser apply (cli-flag-specs.ts's rejectUnknownArgs, cli-command-args.ts's
-      // rejectDuplicateFlags): a second --json was silently collapsed here while
-      // `backlog --json --json` and `questions --json --json` refuse it.
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") {
-      positionals.push(arg);
-      continue;
-    }
-    if (arg.startsWith("-")) rejectUnknownArgs(command, [arg], [JSON_FLAG]);
-    else positionals.push(arg);
-  }
+  // so a help token that reaches here is always prose, and scanProseFlags keeps it in the
+  // positionals rather than flag-shaping it into rest for rejectUnknownArgs to refuse.
+  const { json, positionals } = scanProseFlags(args, command);
   await requireReadyRepo(root);
   const wakeProblem = promptLengthProblem(wakeText(titleOf(positionals)), role);
   if (wakeProblem) fail(wakeProblem);
@@ -528,29 +548,10 @@ export async function editAndAnnounce(
   command: string,
   edit: (n: number, positionals: string[]) => { file: string; title: string },
 ): Promise<void> {
-  let position: number | null = null;
-  let json = false;
-  const positionals: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i] ?? "";
-    if (arg === "--json") {
-      rejectRepeatFlag(json, "--json");
-      json = true;
-      continue;
-    }
-    if (arg === "--edit") {
-      rejectRepeatFlag(position !== null, "--edit");
-      position = parsePositionFlag("--edit", args[i + 1], "--edit 2");
-      i++;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") {
-      positionals.push(arg);
-      continue;
-    }
-    if (arg.startsWith("-")) rejectUnknownArgs(command, [arg], [JSON_FLAG]);
-    else positionals.push(arg as string);
-  }
+  const { json, positionals, position } = scanProseFlags(args, command, {
+    name: "--edit",
+    example: "--edit 2",
+  });
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
   await requireReadyRepo(root);
   const edited = edit(position, positionals);
