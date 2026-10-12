@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
+  cancelWakes,
   markerApplyNote,
   requestAbort,
   requestResetCounters,
@@ -326,4 +327,16 @@ test("submitRolePromptAndWake leaves a pending scheduled wake standing", () => {
   requestWake(root, ["clean"], 3_600_000);
   submitRolePromptAndWake(root, "fix", "add a test");
   assert.deepEqual(readScheduledWakes(root).map((m) => m.roles), [["clean"]]);
+});
+
+test("cancelWakes reports what it dropped, fleet-wide or for one role", () => {
+  const root = tmpdir();
+  assert.equal(cancelWakes(root), "no scheduled wake pending");
+  requestWake(root, ["feature"], 60_000);
+  requestWake(root, ["qa", "docs"], 90_000);
+  assert.equal(cancelWakes(root, "nope"), "no scheduled wake pending for nope");
+  assert.equal(cancelWakes(root, "qa"), "cancelled 1 scheduled wake for qa");
+  assert.deepEqual(readScheduledWakes(root).map((w) => w.roles).sort(), [["docs"], ["feature"]]);
+  assert.equal(cancelWakes(root), "cancelled 2 scheduled wakes");
+  assert.deepEqual(readScheduledWakes(root), []);
 });

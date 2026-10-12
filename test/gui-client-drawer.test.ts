@@ -102,6 +102,11 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     roleWakeMenuOpen: () => false,
     ROLE_WAKE_CHOICES: [[1800, "30m"], [3600, "1h"]],
     phaseDetail: () => "phase detail",
+    // Mirrors the real helper: an instance row also matches a wake naming its base role.
+    scheduledWakeFor: (l: { role: string; instanceOf?: string }, d: { scheduledWake?: { atMs: number; roles: string[] } }) => {
+      const w = d.scheduledWake;
+      return w && w.atMs > Date.now() && (w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf))) ? w : null;
+    },
     clickClosest: () => null,
     rowAction: () => {},
     renderMarkdown: (md: string) => `<md>${md}</md>`,
@@ -205,6 +210,26 @@ test("an idle loop's drawer offers Wake later…, and its open chooser lists one
   assert.match(openActions, /data-action='wake-in' data-for='3600'/);
   assert.doesNotMatch(openActions, /data-for='0'/);
   assert.match(openActions, />in 1h</);
+});
+
+test("an idle loop's drawer offers Cancel scheduled wake only while a future wake names it", () => {
+  const actionsFor = (scheduledWake: unknown, instanceOf?: string) => {
+    const status = workingStatus() as unknown as { loops: Array<{ phase: string; inFlight: boolean; instanceOf?: string }>; scheduledWake?: unknown };
+    if (instanceOf) status.loops[0]!.instanceOf = instanceOf;
+    status.loops[0]!.phase = "sleeping";
+    status.loops[0]!.inFlight = false;
+    if (scheduledWake !== undefined) status.scheduledWake = scheduledWake;
+    const t = openDrawer(["toggleLoop"], { status: status as never });
+    t.scope.toggleLoop("clean");
+    return t.paintedFor("draweractions");
+  };
+  const soon = Date.now() + 60_000;
+  assert.match(actionsFor({ atMs: soon, roles: ["clean"] }), /data-action='wake-cancel'/);
+  assert.doesNotMatch(actionsFor(undefined), /data-action='wake-cancel'/);
+  assert.doesNotMatch(actionsFor({ atMs: soon, roles: ["other"] }), /data-action='wake-cancel'/);
+  assert.doesNotMatch(actionsFor({ atMs: Date.now() - 1000, roles: ["clean"] }), /data-action='wake-cancel'/);
+  // A wake naming only the base role is not cancelled by an exact-id cancel of the instance.
+  assert.doesNotMatch(actionsFor({ atMs: soon, roles: ["base"] }, "base"), /data-action='wake-cancel'/);
 });
 
 test("the loop drawer paints a working loop's actions, metrics, ticks, and transcript with the real formatters", async () => {

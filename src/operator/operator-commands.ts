@@ -22,6 +22,7 @@ import {
   markerApplyNote,
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
+  cancelWakes,
   requestAbort,
   requestResetCounters,
   requestWake,
@@ -30,7 +31,6 @@ import {
   runManualReclaim,
   timedPauseBits,
 } from "./operator-intent.js";
-import { cancelScheduledWakes } from "./operator-requests.js";
 
 /** The CLI layer of the operator commands: the `reset-counters`, `wake`, `reclaim`, `abort`,
  * `pause`, `resume`, `stop`, and `retire` commands, split out of cli.ts so the command bodies
@@ -103,9 +103,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   if (args.includes("--cancel")) {
     if (inRaw !== null) fail("wake --cancel and --in cannot be combined");
     const role = namedRole(root, args);
-    const n = cancelScheduledWakes(root, role ?? undefined);
-    const forRole = role ? ` for ${role}` : "";
-    say(n > 0 ? `cancelled ${n} scheduled wake${n === 1 ? "" : "s"}${forRole}` : `no scheduled wake pending${forRole}`);
+    say(cancelWakes(root, role ?? undefined));
     return;
   }
   const inMs = inRaw !== null ? parseDurationFlag("wake --in", inRaw) : undefined;

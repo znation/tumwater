@@ -265,6 +265,13 @@ test("Wake later opens a four-choice menu and a choice posts inSeconds", async (
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(posts, [{ path: "/api/wake", body: { inSeconds: 3600 } }]);
   assert.ok(closes.length >= 1, "the menu closes on a choice");
+  assert.equal((popovers[0]!.html.match(/data-wakecancel=/g) ?? []).length, 1);
+  posts.length = 0;
+  const before = closes.length;
+  onClick(hit("[data-wakecancel]"), {});
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(posts, [{ path: "/api/wake-cancel", body: {} }]);
+  assert.ok(closes.length > before, "the menu closes on cancel");
 });
 
 test("a loop's controls post explicit states, and an abort needs a confirming second click", async () => {
@@ -291,6 +298,10 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
       focusComposer: () => calls.push("focus"),
       setTimeout: () => 0,
     });
+
+  await scope.rowAction("wake-cancel", "docs");
+  assert.deepEqual(posts.shift(), { path: "/api/wake-cancel", body: { role: "docs" } });
+  assert.equal(flashes.shift(), "docs: scheduled wake cancelled");
 
   await scope.rowAction("wake", "feature");
   assert.deepEqual(posts.shift(), { path: "/api/wake", body: { role: "feature" } });

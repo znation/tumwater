@@ -20,7 +20,7 @@ import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from ".
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestResetCounters, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
+import { PAUSE_FOR_MAX_MS, cancelWakes, requestAbort, requestResetCounters, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
@@ -50,7 +50,7 @@ async function readPostBody(
  * wake/abort/prompt-role/pause-role family states the body-discipline-and-role-check pairing
  * once instead of two guard lines per handler. Its null return means the response is already
  * written and the handler must stop; callers keep their own `if (!body) return` bail. Exactly
- * six call sites — handlePromptRole, handleWake and handleResetCounters (allowMissing, the
+ * seven call sites — handlePromptRole, handleWake, handleWakeCancel and handleResetCounters (allowMissing, the
  * {} → all-roles default), handleAbort, handlePauseRole, and handleRoleNotes; handlePromptCancel deliberately does not ride it, since
  * its role is optional and validates only when present. */
 async function readRoleBody(
@@ -434,6 +434,15 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
     ok: true,
     message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string], inMs),
   });
+}
+
+/** Handle POST /api/wake-cancel: the dashboard's cancel of pending scheduled wakes — the same
+ * core `tumwater wake --cancel` calls (cancelWakes). A missing role cancels every pending wake;
+ * a given role validates like /api/wake and drops only its share. */
+export async function handleWakeCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
+  if (!body) return;
+  sendJson(res, 200, { ok: true, message: cancelWakes(root, body.role as string | undefined) });
 }
 
 /** Handle POST /api/reset-counters: the dashboard's counter reset — the same marker-writing

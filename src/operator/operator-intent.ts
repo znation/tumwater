@@ -13,6 +13,7 @@ import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../fleet/reclaim.js";
 import { formatGB } from "../text/format.js";
+import { cancelScheduledWakes } from "./operator-requests.js";
 import {
   abortRequestPath,
   reclaimRequestPath,
@@ -81,6 +82,16 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
   return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
+}
+
+
+/** Drop pending scheduled wakes (`tumwater wake --cancel`, the dashboard's POST /api/wake-cancel):
+ * every pending wake, or only `role`'s share of them. Returns the confirmation the CLI prints
+ * verbatim and the GUI flashes, so the surfaces cannot drift on wording. */
+export function cancelWakes(root: string, role?: string): string {
+  const n = cancelScheduledWakes(root, role);
+  const forRole = role ? ` for ${role}` : "";
+  return n > 0 ? `cancelled ${n} scheduled wake${n === 1 ? "" : "s"}${forRole}` : `no scheduled wake pending${forRole}`;
 }
 
 /** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake:

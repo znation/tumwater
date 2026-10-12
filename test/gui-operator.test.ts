@@ -747,3 +747,29 @@ test("the status payload carries per-role queue counts (roleInbox)", async () =>
   assert.ok(!("director" in payload.roleInbox), "the director's queue is the shared inbox, not roleInbox");
   assert.equal(payload.inbox, 0);
 });
+
+test("POST /api/wake-cancel drops scheduled wakes like `tumwater wake --cancel`", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui wake cancel test");
+  await withGui(repo, async ({ base }) => {
+    assert.equal((await postJson(base, "/api/wake", { role: "feature", inSeconds: 3600 })).status, 200);
+    assert.equal((await postJson(base, "/api/wake", { inSeconds: 7200 })).status, 200);
+    assert.equal(readScheduledWakes(repo).length, 2);
+
+    let res = await postJson(base, "/api/wake-cancel", { role: "nope" });
+    assert.equal(res.status, 400);
+    assert.equal(readScheduledWakes(repo).length, 2);
+
+    res = await postJson(base, "/api/wake-cancel", { role: "feature" });
+    assert.equal(res.status, 200);
+    const left = readScheduledWakes(repo);
+    assert.equal(left.length, 1);
+    assert.ok(!left[0]!.roles.includes("feature"));
+
+    res = await postJson(base, "/api/wake-cancel", {});
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, message: "cancelled 1 scheduled wake" });
+    assert.deepEqual(readScheduledWakes(repo), []);
+    assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "no immediate marker was written");
+  });
+});

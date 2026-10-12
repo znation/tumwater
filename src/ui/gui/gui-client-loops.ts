@@ -40,11 +40,11 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     roleChooser = null;
     const pausing = action === "pause" || action === "pause-for";
     const timed = action === "pause-for" && forSeconds > 0;
-    const path = action === "abort" ? "/api/abort" : action === "reset-counters" ? "/api/reset-counters" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
+    const path = action === "abort" ? "/api/abort" : action === "reset-counters" ? "/api/reset-counters" : action === "wake-cancel" ? "/api/wake-cancel" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
     const wakeIn = action === "wake-in";
     const body = pausing || action === "resume" ? { role, paused: pausing, ...(timed ? { forSeconds } : {}) } : wakeIn ? { role, inSeconds: forSeconds } : { role };
     await postAction(path, body, (d) => {
-      let msg = d && typeof d.message === "string" ? d.message : role + ": done";
+      let msg = d && typeof d.message === "string" ? d.message : action === "wake-cancel" ? role + ": scheduled wake cancelled" : role + ": done";
       if (wakeIn && !(d && typeof d.message === "string")) msg = role + " wakes in " + humanSeconds(forSeconds);
       else if (timed) msg = role + " paused for " + humanSeconds(forSeconds);
       else if (pausing || action === "resume") {
@@ -58,10 +58,18 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // row-actions:end
   // loops-table:start
   // The status pill's second line: what the phase label carried, or when an idle loop runs next.
+  // The pending operator wake that names this loop, or null. The payload's scheduledWake holds
+  // only the earliest pending wake, so a loop named only by a later wake gets null here (no
+  // per-loop cancel button; the drawer also hides it when only the base role is named); the Wake later menu's fleet-wide cancel still drops that wake.
+  function scheduledWakeFor(l, d) {
+    const w = d.scheduledWake;
+    if (!w || !(w.atMs > Date.now()) || !(w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf)))) return null;
+    return w;
+  }
   function phaseDetail(l, info, d) {
     const detail = phaseDetailBase(l, info, d);
-    const w = d.scheduledWake;
-    if (!w || !(w.atMs > Date.now()) || !(w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf)))) return detail;
+    const w = scheduledWakeFor(l, d);
+    if (!w) return detail;
     return (detail ? detail + " · " : "") + "operator wake in " + humanSeconds(Math.max(0, Math.round((w.atMs - Date.now()) / 1000)));
   }
   function phaseDetailBase(l, info, d) {
@@ -188,7 +196,8 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       role: "menu",
       html: "<div class='menu-title'>Wake every loop</div>" +
         WAKE_LATER_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-wakein='" + c[0] + "'>" +
-          icon("clock") + esc(c[1]) + "</button>").join(""),
+          icon("clock") + esc(c[1]) + "</button>").join("") +
+        "<button type='button' class='menu-item' role='menuitem' data-wakecancel='1'>" + icon("x") + "Cancel scheduled wakes</button>",
       onClosed: () => {},
     });
   }
@@ -202,6 +211,11 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       ev.preventDefault();
       if (openMenu && openMenu.root === $("wakelaterwrap")) closeMenus();
       else openWakeLaterMenu();
+      return;
+    }
+    if (t.closest("[data-wakecancel]")) {
+      closeMenus();
+      postAction("/api/wake-cancel", {}, (d) => (d && typeof d.message === "string" ? d.message : "scheduled wakes cancelled"));
       return;
     }
     const choice = t.closest("[data-wakein]");
