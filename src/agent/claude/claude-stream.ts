@@ -316,6 +316,10 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       case "result": {
         sawActivity = true;
         const out = flush();
+        // The assistant events' usage is the message-start snapshot, so the result's total
+        // is the run's real output-token count (thinking included).
+        const outputTokens = nonNegativeNumber(objectOrEmpty(event.usage).output_tokens, undefined);
+        if (outputTokens !== undefined) out.push(JSON.stringify({ type: "run_usage", outputTokens }));
         const total = nonNegativeNumber(event.total_cost_usd, undefined);
         if (total !== undefined) {
           sawRunCost = true;

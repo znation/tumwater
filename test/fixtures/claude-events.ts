@@ -108,6 +108,7 @@ export function claudeRateLimit(opts: {
  * the subtype. */
 export function claudeResult(opts: {
   totalCostUsd?: number;
+  outputTokens?: number;
   isError?: boolean;
   apiErrorStatus?: number | null;
   terminalReason?: string;
@@ -118,6 +119,7 @@ export function claudeResult(opts: {
     subtype: "success",
     is_error: opts.isError ?? false,
     ...(opts.totalCostUsd !== undefined ? { total_cost_usd: opts.totalCostUsd } : {}),
+    ...(opts.outputTokens !== undefined ? { usage: { output_tokens: opts.outputTokens } } : {}),
     ...(opts.apiErrorStatus !== undefined ? { api_error_status: opts.apiErrorStatus } : {}),
     ...(opts.terminalReason !== undefined ? { terminal_reason: opts.terminalReason } : {}),
     ...(opts.text !== undefined ? { result: opts.text } : {}),

@@ -98,6 +98,8 @@ interface PiStreamEvent {
   retryAfterSeconds?: unknown;
   /** run_cost events only: the run's authoritative cost. */
   total?: unknown;
+  /** run_usage events only: the run's authoritative output-token total. */
+  outputTokens?: unknown;
   /** rate_limit events only, the account-window reading. */
   rateLimitType?: unknown;
   status?: unknown;
@@ -515,6 +517,9 @@ export class PiStreamParser {
     // (claude's split-block messages report cost.total 0; the final result carries the real
     // number). A backend that emits none keeps the summed per-message figure (pi).
     if (event.type === "run_cost") this.costUsd = usageNumber(event.total);
+    // Likewise a run_usage replaces the summed output tokens (claude's per-message usage is
+    // the stream-start snapshot, about 8x low).
+    if (event.type === "run_usage") this.outputTokens = usageNumber(event.outputTokens);
     // A canonical rate_limit event carries an account-window reading: collect the newest per
     // type, note any overage, and treat a rejected window as the transient rate limit it is.
     if (event.type === "rate_limit") this.applyRateLimit(event);

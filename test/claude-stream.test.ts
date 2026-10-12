@@ -78,6 +78,15 @@ test("a tool_use block opens the canonical call while claude runs the tool, befo
   assert.equal(parser.openToolCalls.length, 0, "the tool result closes it");
 });
 
+test("the result's usage replaces the per-message output-token snapshots", () => {
+  const { parser } = fold([
+    claudeAssistant({ id: "m1", blocks: [claudeText("a")], usage: { input: 4, output: 2 } }),
+    claudeAssistant({ id: "m2", blocks: [claudeText("b")], usage: { input: 4, output: 3 } }),
+    claudeResult({ totalCostUsd: 0.5, outputTokens: 1000 }),
+  ]);
+  assert.equal(parser.outputTokens, 1000);
+});
+
 test("a run with no result keeps cost 0 and reports cost_unknown", () => {
   const { parser, translator } = fold([
     claudeAssistant({ id: "msg-1", blocks: [claudeText("hi")], usage: { input: 4, output: 2 } }),
