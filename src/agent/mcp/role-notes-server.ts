@@ -16,6 +16,7 @@
  */
 
 import { pathToFileURL } from "node:url";
+import { errorMessage } from "../../text/text.js";
 import { ROLE_NOTES_DESCRIPTION, ROLE_NOTES_PARAMETERS, saveRoleNote } from "../role-notes-write.js";
 
 const SERVER_NAME = "tumwater";
@@ -87,7 +88,7 @@ function handleMcpLine(line: string, notesPath: string | undefined): unknown {
         // Per MCP, a tool's own failure (bad input, a write error) is a successful JSON-RPC
         // response carrying isError, so the model sees a tool error and can retry — while a
         // JSON-RPC error would read as a transport failure of the whole server.
-        return respond(toolError(err instanceof Error ? err.message : String(err)));
+        return respond(toolError(errorMessage(err)));
       }
     }
     default:
