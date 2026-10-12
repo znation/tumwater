@@ -88,14 +88,14 @@ function stripFencedBlocks(region: string): string {
   const lines = region.split("\n");
   const kept: string[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const mark = (lines[i] ?? "").trim().match(/^(`{3,}|~{3,})/)?.[1];
+    const mark = (/^(`{3,}|~{3,})/.exec((lines[i] ?? "").trim()))?.[1];
     if (!mark) {
       kept.push(lines[i] ?? "");
       continue;
     }
     let close = i + 1;
     while (close < lines.length) {
-      const end = (lines[close] ?? "").trim().match(/^(`{3,}|~{3,})/)?.[1];
+      const end = (/^(`{3,}|~{3,})/.exec((lines[close] ?? "").trim()))?.[1];
       if (end && end.startsWith(mark.charAt(0)) && end.length >= mark.length) break;
       close++;
     }
@@ -116,7 +116,7 @@ const LIST_ITEM = /^(?:#{1,6}\s+)?(\*\*)?(?:\d+[.)]|[-*])(\*\*)?\s+(.+)$/;
  * lead (`**1. X.** body` → `X. body`), so no reason carries a dangling `**`. Emphasis inside
  * the item (`1. **X** body`) is the reviewer's own and is kept. Undefined for a non-item. */
 function listItemText(line: string): string | undefined {
-  const m = line.match(LIST_ITEM);
+  const m = LIST_ITEM.exec(line);
   if (!m?.[3]) return undefined;
   const text = m[1] && !m[2] ? m[3].replace("**", "") : m[3];
   return text.trim() || undefined;

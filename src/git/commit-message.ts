@@ -134,7 +134,7 @@ const REVISION_TRAILER = /^Revision: (\d+)$/m;
  * retriable revision keeps its round (and its rejected ref's cleanup) across a lost queue
  * marker (plans/revise-rejected.md). */
 function revisionRoundOf(message: string): number | undefined {
-  const m = message.match(REVISION_TRAILER);
+  const m = REVISION_TRAILER.exec(message);
   return m ? Number(m[1]) : undefined;
 }
 
@@ -168,7 +168,7 @@ export function stampedSubject(role: string, summary: string): string {
 export function commitSubject(message: string): string | undefined {
   const line = (message.split("\n", 1)[0] ?? "").trim();
   if (!line) return undefined;
-  const m = line.match(SUBJECT_PREFIX);
+  const m = SUBJECT_PREFIX.exec(line);
   if (!m) return line;
   const rest = line.slice(m[0].length).trim();
   return rest === "" ? undefined : rest;

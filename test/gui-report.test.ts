@@ -295,7 +295,7 @@ test("the dashboard page abbreviates millions with M, in lockstep with compactTo
   // source — same regex-extract + new Function pattern as the esc test — and every value is
   // cross-checked against the shared compactTokens so the deliberate duplicate cannot drift.
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
-  const m = GUI_PAGE.match(/const fmtTokens = \((\w+)\) => (.+);$/m);
+  const m = /const fmtTokens = \((\w+)\) => (.+);$/m.exec(GUI_PAGE);
   assert.ok(m, "fmtTokens definition found in the page");
   const fmtTokens = new Function(m[1]!, `return (${m[2]});`) as (n: number) => string;
 

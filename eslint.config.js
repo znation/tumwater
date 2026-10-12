@@ -85,6 +85,7 @@ export default tseslint.config(
       "@typescript-eslint/prefer-string-starts-ends-with": "error",
       "@typescript-eslint/prefer-optional-chain": "error",
       "@typescript-eslint/prefer-includes": "error",
+      "@typescript-eslint/prefer-regexp-exec": "error",
     },
   },
   {

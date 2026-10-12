@@ -324,7 +324,7 @@ test("a state-change line past 72 chars is cut on a word boundary with a remaind
   );
   assert.ok(line.endsWith(")"), line);
   assert.ok(line.includes("… (+"), line);
-  assert.ok(!line.match(/\S…/), `cut falls on a word boundary: ${line}`);
+  assert.ok(!(/\S…/.exec(line)), `cut falls on a word boundary: ${line}`);
   const body = line.slice(0, line.indexOf(" … (+"));
   assert.ok(body.length <= 72, `the body honors the cap: ${body.length}`);
 });

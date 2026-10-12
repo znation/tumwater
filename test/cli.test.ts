@@ -55,7 +55,7 @@ test("init creates the harness files and is idempotent", async () => {
   // the seeded .gitignore, and tumwater.json created but untracked (it stays out of the
   // commit pathspec), so init leaves the tree clean and says so with "(committed)".
   assert.equal(
-    r.stdout.match(/created .*/)?.[0],
+    (/created .*/.exec(r.stdout))?.[0],
     "created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore (committed)",
   );
   assert.match(r.stdout, /next: `tumwater run` in one terminal, `tumwater tui` in another/);

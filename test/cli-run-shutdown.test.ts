@@ -52,7 +52,7 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
 
     // The top-level process is the supervisor (src/process/supervisor.ts), not the orchestrator:
     // the event stream names the orchestrator's own pid, which must be a different process.
-    const m = s.out().match(/orchestrator started \(pid (\d+)/);
+    const m = /orchestrator started \(pid (\d+)/.exec(s.out());
     assert.ok(m, `expected an "orchestrator started (pid …)" event:\n${s.out()}`);
     assert.notEqual(Number(m[1]), s.child.pid, "the orchestrator must run as the supervisor's child");
 

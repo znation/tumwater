@@ -53,7 +53,7 @@ function declarations(text: string): string[] {
   for (const line of text.split("\n")) {
     const trimmed = line.trimStart();
     if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
-    const match = trimmed.match(DECLARATION);
+    const match = DECLARATION.exec(trimmed);
     if (match?.[1]) names.push(match[1]);
   }
   return names;

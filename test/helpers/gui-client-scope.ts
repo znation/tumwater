@@ -15,7 +15,7 @@ export function clientRegion(name: string): string {
 }
 
 /** The script's own escape function, as served. Exported for the same callers. */
-export const ESC_LINE = GUI_CLIENT_JS.match(/^\s*const esc = .*$/m)?.[0] ?? "";
+export const ESC_LINE = (/^\s*const esc = .*$/m.exec(GUI_CLIENT_JS))?.[0] ?? "";
 
 /** Run `regions` (in order, after esc) in one scope with `inject` bound as free variables, and
  * return the declarations named in `names`. */

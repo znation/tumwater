@@ -27,7 +27,7 @@ test("boundText over the limit returns head + marker + tail within the limit", (
   const text = "x".repeat(READ_LIMIT_CHARS + 5_000);
   const result = boundText(text, READ_LIMIT_CHARS);
   assert.ok(cps(result) <= READ_LIMIT_CHARS, `result is ${cps(result)} code points`);
-  const match = result.match(MARKER_RE);
+  const match = MARKER_RE.exec(result);
   assert.ok(match, "marker states the omitted character count");
   const omitted = Number(match![1]);
   // Split the result into head / marker / tail around the single marker.
@@ -111,8 +111,8 @@ test("boundReadResult of a 1000-line file stays under the read limit without inp
   const text = bigFileText(1_000);
   const result = boundReadResult(text, undefined);
   assert.ok(cps(result) <= READ_LIMIT_CHARS);
-  const marker = result.match(/\.\.\..*?\.\.\./)![0];
-  const omitted = Number(result.match(MARKER_RE)![1]);
+  const marker = /\.\.\..*?\.\.\./.exec(result)![0];
+  const omitted = Number(MARKER_RE.exec(result)![1]);
   assert.ok(omitted > 0);
   // The omitted count accounts for head, tail, and marker exactly.
   assert.equal(cps(result) - cps(marker) + omitted, cps(text));
@@ -128,8 +128,8 @@ test("boundReadResult clamps a path-swollen marker to the marker-alone bound, no
   assert.ok(cps(result) <= 500, "result stays within the limit");
   // The read marker survives, so the model keeps the re-read-with-offset/limit recovery.
   assert.match(result, /chars of this read were omitted/);
-  const marker = result.match(/\.\.\..*?\.\.\./)![0];
-  const omitted = Number(result.match(MARKER_RE)![1]);
+  const marker = /\.\.\..*?\.\.\./.exec(result)![0];
+  const omitted = Number(MARKER_RE.exec(result)![1]);
   assert.ok(omitted > 0);
   // The omitted count is exact — no phantom chars from a negative per-side budget.
   assert.equal(cps(result) - cps(marker) + omitted, cps(text));

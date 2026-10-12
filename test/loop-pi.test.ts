@@ -183,7 +183,7 @@ test("with only default declared, the resolver's config argv is unchanged from t
       resolverConfig({ ...defaultConfig(), model: "prov/only" }),
     );
     const lines = runArgs(args);
-    const selector = (line: string) => line.match(/--provider \S+ --model \S+/)?.[0];
+    const selector = (line: string) => (/--provider \S+ --model \S+/.exec(line))?.[0];
     assert.equal(
       selector(lines[1]!),
       selector(lines[0]!),

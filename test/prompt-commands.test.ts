@@ -369,7 +369,7 @@ test("prompt --attach saves the image beside the queue file, ends the text with 
   const text = fs.readFileSync(path.join(dir, md[0] as string), "utf8");
   // The reference line is the queue file's last line, naming the absolute saved path.
   const refLine = text.trimEnd().split("\n").pop() as string;
-  const m = refLine.match(/^\[image attached: (.+)\]$/) ?? [];
+  const m = (/^\[image attached: (.+)\]$/.exec(refLine)) ?? [];
   const saved = m[1] as string;
   assert.ok(fs.statSync(saved).size > 0, "the image bytes landed beside the queue file");
   assert.equal(path.basename(saved), (md[0] as string).replace(/\.md$/, "") + ".png");

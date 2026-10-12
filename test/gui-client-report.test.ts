@@ -79,7 +79,7 @@ function makeDom() {
     "window",
     "Element",
     "clickClosest",
-    `${GUI_CLIENT_REPORT_JS.match(/\/\/ report-tip:start\n([\s\S]*?)\n  \/\/ report-tip:end/)![1]}\nreturn { attachReportTip, hideReportTip };`,
+    `${/\/\/ report-tip:start\n([\s\S]*?)\n  \/\/ report-tip:end/.exec(GUI_CLIENT_REPORT_JS)![1]}\nreturn { attachReportTip, hideReportTip };`,
   ) as (doc: unknown, win: unknown, element: unknown, clickClosest: unknown) => {
     attachReportTip(): void;
     hideReportTip(): void;

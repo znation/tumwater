@@ -99,7 +99,7 @@ followed by numbered reasons (for an approval, state what you checked and why it
  * and the TUMWATER_REFUSED reason here — so the anchored-line shape lives in one place instead
  * of drifting. */
 export function labeledLine(text: string, label: string): string | null {
-  const match = text.match(new RegExp(`^\\s*${label}:\\s*(.+)\\s*$`, "m"));
+  const match = new RegExp(`^\\s*${label}:\\s*(.+)\\s*$`, "m").exec(text);
   return match?.[1] ? match[1].trim() : null;
 }
 
@@ -197,7 +197,7 @@ export interface FlowResult {
 export function extractFlow(text: string): FlowResult | null {
   const value = labeledLine(text, "FLOW");
   if (!value) return null;
-  const match = value.match(/^(.*)\s*[—-]\s*(passed|bug)\s*$/i);
+  const match = /^(.*)\s*[—-]\s*(passed|bug)\s*$/i.exec(value);
   if (!match?.[1]) return null;
   return { flow: match[1].trim(), result: match[2]!.toLowerCase() as "passed" | "bug" };
 }

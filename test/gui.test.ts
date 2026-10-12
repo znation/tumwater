@@ -362,11 +362,11 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test and
   // sortLoops. fmtLastTick is pure (no DOM), so nothing is injected.
-  const m = GUI_PAGE.match(/\/\/ last-tick-fmt:start\n([\s\S]*?)\n  \/\/ last-tick-fmt:end/);
+  const m = /\/\/ last-tick-fmt:start\n([\s\S]*?)\n  \/\/ last-tick-fmt:end/.exec(GUI_PAGE);
   assert.ok(m, "last-tick-fmt region found in the page");
   // fmtLastTick now formats its age through the page's shared humanSeconds helper, so the
   // helper's marked region is spliced into the sandbox too (same extraction pattern).
-  const hs = GUI_PAGE.match(/\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/);
+  const hs = /\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/.exec(GUI_PAGE);
   assert.ok(hs, "human-seconds-fmt region found in the page");
   const fmtLastTick = new Function(`${hs[1]}\n${m[1]}\nreturn fmtLastTick;`)() as (ts: number | null) => string;
 
@@ -606,7 +606,7 @@ test("the poll chain survives a rejected refresh — pollLoop always reschedules
   // own pollLoop body against a refresh that rejects on its first call and succeeds on its
   // second, with setTimeout captured so no real time passes.
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
-  const src = GUI_PAGE.match(/\/\/ One poll in flight[\s\S]*?setTimeout\(pollLoop, 1000\);\n  \}/)?.[0];
+  const src = (/\/\/ One poll in flight[\s\S]*?setTimeout\(pollLoop, 1000\);\n  \}/.exec(GUI_PAGE))?.[0];
   assert.ok(src, "the poll chain is present in the page script");
   const scheduled: Array<{ fn: () => unknown; ms: number }> = [];
   let calls = 0;
@@ -646,7 +646,7 @@ test("the dashboard page escapes dynamic text, and /api/backlog serves bodies ra
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // The capture anchors at the statement's terminating semicolon (end of line), not the first
   // `;` — the replacement map contains one inside its "&amp;" string literal.
-  const m = GUI_PAGE.match(/const esc = \((\w+)\) => (.+);$/m);
+  const m = /const esc = \((\w+)\) => (.+);$/m.exec(GUI_PAGE);
   assert.ok(m, "esc definition found in the page");
   const esc = new Function(m[1]!, `return (${m[2]});`) as (s: string) => string;
   assert.equal(esc("<img src=x onerror=alert(1)>"), "&lt;img src=x onerror=alert(1)&gt;", "tags are neutralized");
@@ -701,15 +701,15 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc, sortLoops,
   // and fmtLastTick tests. fmtNextRun is pure (no DOM), so nothing is injected.
-  const m = GUI_PAGE.match(/\/\/ next-run-fmt:start\n([\s\S]*?)\n  \/\/ next-run-fmt:end/);
+  const m = /\/\/ next-run-fmt:start\n([\s\S]*?)\n  \/\/ next-run-fmt:end/.exec(GUI_PAGE);
   assert.ok(m, "next-run-fmt region found in the page");
   // fmtNextRun's countdown goes through the page's shared humanSeconds helper too, so its
   // marked region is spliced in alongside (same extraction pattern as the fmtLastTick test).
-  const hs = GUI_PAGE.match(/\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/);
+  const hs = /\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/.exec(GUI_PAGE);
   assert.ok(hs, "human-seconds-fmt region found in the page");
   // …and through the page's shared isActivePhase helper, spliced in alongside (the same
   // extraction pattern).
-  const ap = GUI_PAGE.match(/\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/);
+  const ap = /\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/.exec(GUI_PAGE);
   assert.ok(ap, "active-phase-fmt region found in the page");
   const fmtNextRun = new Function(`${hs[1]}\n${ap[1]}\n${m[1]}\nreturn fmtNextRun;`)() as
     (l: { phase: string; nextRunAt: number; backoffSeconds: number; yieldMultiplier?: number }, fleetRunning: boolean) => string;
