@@ -4,6 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   imageReferenceLines,
+  imageReferencePaths,
+  movePromptImages,
   PROMPT_IMAGES_MAX_COUNT,
   promptImagesProblem,
   savePromptImages,
@@ -147,9 +149,10 @@ test("savePromptImages keeps the validated extension when the client name's safe
   assert.equal(path.basename(saved.paths[0]!), `${stem}.png`, "non-ASCII basename keeps its extension");
   assert.equal(path.basename(saved.paths[1]!), `${stem}.jpeg`, "so does a mixed-script one");
   for (const p of saved.paths) assert.ok(fs.existsSync(p) && !fs.existsSync(p + ".md"));
-  // And the dequeue-side cleanup takes them with the prompt, as it does every extension'd image.
-  assert.equal(dequeueRolePrompt(root, "qa"), "look");
-  assert.deepEqual(fs.readdirSync(dir), [], "no orphaned image survives the dequeue");
+  // The cancel-side cleanup matches exactly these extension'd shapes and takes them with the
+  // prompt (a dequeue leaves them for the tick to read; cancel removes them).
+  assert.equal(cancelQueuedFile(root, "qa", path.basename(queueFile)).status, "cancelled");
+  assert.deepEqual(fs.readdirSync(dir), [], "no orphaned image survives the cancel");
 });
 
 test("imageReferenceLines appends one absolute-path line per image", () => {
@@ -174,7 +177,7 @@ test("submitRolePrompt with images queues text + reference lines and saves the f
   assert.ok(fs.existsSync(directorQueued.split("\n")[2]!.slice("[image attached: ".length, -1)));
 });
 
-test("dequeuing and cancelling a prompt remove its same-stem image files", () => {
+test("dequeuing keeps a prompt's image files for the run; cancelling removes them", () => {
   const root = tmpdir();
   const file = enqueueRolePrompt(root, "qa", "look");
   const saved = savePromptImages(root, "qa", file, [png(), { name: "b.png", dataBase64: PNG.toString("base64") }]);
@@ -186,8 +189,10 @@ test("dequeuing and cancelling a prompt remove its same-stem image files", () =>
   fs.writeFileSync(neighbor, "next prompt");
   assert.ok(fs.existsSync(saved.paths[0]!));
   assert.equal(dequeueRolePrompt(root, "qa"), "look");
-  assert.ok(!fs.existsSync(saved.paths[0]!), "dequeue removed the image");
-  assert.ok(!fs.existsSync(saved.paths[1]!), "dequeue removed the second image");
+  // Regression (BUGS.md 2026-10-11): the tick's pi agent reads these files during its run,
+  // so a dequeue must leave them on disk; only fulfillment or cancel removes them.
+  assert.ok(fs.existsSync(saved.paths[0]!), "dequeue keeps the first image for the run");
+  assert.ok(fs.existsSync(saved.paths[1]!), "dequeue keeps the second image for the run");
   assert.ok(fs.existsSync(neighbor), "a different prompt's file survives");
 
   const file2 = enqueueRolePrompt(root, "qa", "look again");
@@ -196,7 +201,7 @@ test("dequeuing and cancelling a prompt remove its same-stem image files", () =>
   const name = path.basename(file2);
   const outcome = cancelQueuedFile(root, "qa", name);
   assert.equal(outcome.status, "cancelled");
-  assert.ok(!fs.existsSync(saved2.paths[0]!), "cancel removed the image with the prompt");
+  assert.ok(!fs.existsSync(saved2.paths[0]!), "cancel removes the image with the prompt");
 });
 
 test("cancelling a prompt does not delete a hyphen-named sibling prompt's queue file", () => {
@@ -237,7 +242,7 @@ test("stripVanishedImageReferences drops only vanished references and records th
   const stripped = stripVanishedImageReferences(text);
   assert.match(stripped.text, new RegExp(`\\[image attached: ${live.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`));
   assert.doesNotMatch(stripped.text, /gone\.png\]$/);
-  assert.match(stripped.text, /\[image attachments dropped: 1 image file was consumed/);
+  assert.match(stripped.text, /\[image attachments dropped: 1 image file was missing/);
   assert.equal(stripped.dropped, 1);
   // No references, no change: the common case costs nothing.
   const plain = stripVanishedImageReferences("just text");
@@ -247,12 +252,36 @@ test("stripVanishedImageReferences drops only vanished references and records th
 test("requeueUnfulfilled never re-queues a dangling image reference", () => {
   const root = tmpdir();
   const queued = submitRolePrompt(root, "qa", "look at this", [png()]);
-  assert.equal(dequeueRolePrompt(root, "qa"), queued); // the dequeue consumed the image file
+  const image = imageReferencePaths(queued)[0]!;
+  assert.equal(dequeueRolePrompt(root, "qa"), queued); // the dequeue leaves the image on disk
+  fs.rmSync(image); // ... but something outside the tick removed it before the requeue
   const pending = new PendingPrompt(root, "qa");
   pending.record(queued);
   pending.requeueUnfulfilled(pending.get());
   const requeued = queuedRolePrompts(root, "qa")[0]!;
   assert.ok(requeued.startsWith("look at this"));
   assert.doesNotMatch(requeued, /\[image attached: /, "no reference to a file that is gone");
-  assert.match(requeued, /\[image attachments dropped: 1 image file was consumed/);
+  assert.match(requeued, /\[image attachments dropped: 1 image file was missing/);
+});
+
+test("movePromptImages carries saved attachments to the new stem and rewrites their lines", () => {
+  const root = tmpdir();
+  const dir = roleInboxDir(root, "qa");
+  const from = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", from, [png()]);
+  assert.ok("paths" in saved);
+  const stranger = path.join(dir, "unrelated.png");
+  fs.writeFileSync(stranger, PNG);
+  const text = `look\n\n[image attached: ${saved.paths[0]!}]\n[image attached: ${stranger}]`;
+  const to = enqueueRolePrompt(root, "qa", "unused holder for the new stem");
+  const moved = movePromptImages(from, to, text);
+  assert.equal(moved.problem, null);
+  const toStem = path.basename(to, ".md");
+  const movedPath = path.join(dir, `${toStem}${path.extname(saved.paths[0]!)}`);
+  assert.ok(fs.existsSync(movedPath), "the saved attachment moved to the new stem");
+  assert.ok(!fs.existsSync(saved.paths[0]!), "the old-stem name is gone");
+  assert.match(moved.text, new RegExp(`\\[image attached: ${movedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`));
+  // A writer-shaped line naming a file the harness never saved beside this prompt is content.
+  assert.match(moved.text, new RegExp(`\\[image attached: ${stranger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]`));
+  assert.ok(fs.existsSync(stranger), "a hand-typed reference is left where it is");
 });

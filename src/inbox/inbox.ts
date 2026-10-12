@@ -314,11 +314,10 @@ export function queuedRolePromptCount(root: string, role: string): number {
  * queue file instead of popping oldest-first, so the prompt recorded at requeue time is the
  * one reclaimed, whatever else was enqueued or cancelled meanwhile — so the race policy lives
  * once. */
-export function takeQueuedFile(root: string, role: string, file: string): string | null {
+export function takeQueuedFile(file: string): string | null {
   const text = readTextIfExists(file);
   if (text === null) return null; // Cancelled mid-listing.
   if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
-  removeSameStemSiblings(root, role, file);
   return text;
 }
 
@@ -329,13 +328,18 @@ export function takeQueuedFile(root: string, role: string, file: string): string
  * prefix match is never enough: a hand-placed sibling prompt's file may share the stem followed
  * by a hyphen (`a-notes.md` beside `a.md`), and deleting it would take another prompt with
  * this one — files like that are left alone. ENOENT-tolerant through removeQueueFile, and a
- * queue directory that is already gone leaves nothing to clean. Called by takeQueuedFile, so
- * both dequeue and cancel take the attachments with the prompt — an image never outlives the
- * prompt that referenced it. Best-effort: the prompt file is already off the queue by the time
- * this runs, so a sibling that cannot be removed (EACCES, a directory standing where an image
- * should be, EBUSY) must not throw — that would lose the dequeued text, with no queue entry
- * left to retry it. Each failure is warned so the orphaned file stays visible. */
-function removeSameStemSiblings(root: string, role: string, file: string): void {
+ * queue directory that is already gone leaves nothing to clean. Called by the cancel paths
+ * (inbox-cancel.ts's takeCancelledPrompt) and by a fulfilled tick's settle sweep
+ * (src/inbox/pending-prompt.ts's settleImages): a cancelled or consumed prompt takes its
+ * attachments with it. A DEQUEUE does not call this — the tick's agent still reads the
+ * referenced files, so they must survive until the prompt is fulfilled or cancelled, and a
+ * requeue first moves them to the new queue file's stem (movePromptImages) so this sweep
+ * finds them under the stem the requeued file actually names.
+ * Best-effort: the prompt file is already off the queue by the time this runs, so a sibling
+ * that cannot be removed (EACCES, a directory standing where an image should be, EBUSY) must
+ * not throw — that would lose the taken text, with no queue entry left to retry it. Each
+ * failure is warned so the orphaned file stays visible. */
+export function removeSameStemSiblings(root: string, role: string, file: string): void {
   const dir = path.dirname(file);
   const stem = path.basename(file, ".md");
   let entries: string[];
@@ -367,11 +371,19 @@ function removeSameStemSiblings(root: string, role: string, file: string): void 
  * with a raw ENOENT. When the removal itself hits ENOENT the cancel won after our read —
  * the prompt was cancelled, so it must not be executed: null (skip), never the text we
  * already read. Non-ENOENT errors (e.g. EACCES) are rethrown — they are not a race with a
- * cancel. */
-export function dequeueRolePrompt(root: string, role: string): string | null {
+ * cancel. A caller that must clean the prompt's attachments afterwards (a tick's
+ * pending-prompt bookkeeping) needs the file's stem too, so dequeueRolePromptEntry also
+ * returns the queue file it took. */
+export function dequeueRolePromptEntry(root: string, role: string): { text: string; file: string } | null {
   const oldest = queuedFiles(root, role).find(deliverablePredicate(Date.now()));
   if (!oldest) return null;
-  return takeQueuedFile(root, role, oldest);
+  const text = takeQueuedFile(oldest);
+  return text === null ? null : { text, file: oldest };
+}
+
+/** Remove and return the oldest prompt queued for one loop; see dequeueRolePromptEntry. */
+export function dequeueRolePrompt(root: string, role: string): string | null {
+  return dequeueRolePromptEntry(root, role)?.text ?? null;
 }
 
 /** Full text of the oldest prompt queued for one loop, read WITHOUT consuming it — the
@@ -398,9 +410,15 @@ export function enqueuePrompt(root: string, prompt: string): string {
   return enqueueRolePrompt(root, DIRECTOR_ROLE, prompt);
 }
 
+/** Remove and return the oldest prompt queued for the director, with its queue file; see
+ * dequeueRolePromptEntry. */
+export function dequeuePromptEntry(root: string): { text: string; file: string } | null {
+  return dequeueRolePromptEntry(root, DIRECTOR_ROLE);
+}
+
 /** Remove and return the oldest prompt queued for the director; see dequeueRolePrompt. */
 export function dequeuePrompt(root: string): string | null {
-  return dequeueRolePrompt(root, DIRECTOR_ROLE);
+  return dequeueRolePromptEntry(root, DIRECTOR_ROLE)?.text ?? null;
 }
 
 /** Full text of every prompt queued for the director; see queuedRolePrompts. */

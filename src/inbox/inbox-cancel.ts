@@ -3,7 +3,7 @@ import { logEventBestEffort } from "../events/events.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix } from "../text/text.js";
-import { promptPreview, queuedFileAtPosition, queuedFiles, takeQueuedFile } from "./inbox.js";
+import { promptPreview, queuedFileAtPosition, queuedFiles, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 
 /** The cancel half of the prompt queues: removing a queued prompt by per-loop position
  * (`tumwater prompt --cancel`), by list-wide position numbering, by queue-file basename
@@ -27,8 +27,11 @@ export type CancelOutcome = { status: "cancelled"; text: string } | { status: "g
  * cancelQueuedFile (file-addressed), so the two cannot drift on the event, its preview
  * width, or what counts as gone. */
 function takeCancelledPrompt(root: string, role: string, file: string): CancelOutcome {
-  const text = takeQueuedFile(root, role, file);
+  const text = takeQueuedFile(file);
   if (text === null) return { status: "gone" };
+  // A cancelled prompt's image attachments go with it; a dequeue leaves them for the tick to
+  // read and they are removed on fulfillment (src/inbox/pending-prompt.ts).
+  removeSameStemSiblings(root, role, file);
   logEventBestEffort(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };
 }

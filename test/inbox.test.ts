@@ -244,29 +244,6 @@ test("queuedPrompts skips a file that vanishes between listing and reading", (t)
   }
 });
 
-test("dequeue survives the queue directory vanishing before the attachment cleanup", (t) => {
-  const dir = tmpdir();
-  enqueuePrompt(dir, "with images");
-
-  // A concurrent cleanup (retention, an operator's rm -r) removes the whole queue directory
-  // between the prompt's removal and the attachment-sibling sweep: readdirSync hits ENOENT.
-  // The sweep is best-effort by contract ("a queue directory that is already gone leaves
-  // nothing to clean") — the dequeue must still hand back the prompt text, never the error.
-  // The first listing readdir (queuedFiles) must pass through; only the sweep's readdir fails.
-  const original = fs.readdirSync.bind(fs);
-  let calls = 0;
-  t.mock.method(fs, "readdirSync", ((...args: unknown[]) => {
-    if (++calls > 1) throw errnoError("ENOENT");
-    return original(...(args as [string, never]));
-  }) as typeof fs.readdirSync);
-  try {
-    assert.equal(dequeuePrompt(dir), "with images");
-  } finally {
-    t.mock.restoreAll();
-  }
-  assert.deepEqual(queuedPrompts(dir), [], "the prompt was still taken off the queue");
-});
-
 test("cancel survives the queue directory vanishing before the attachment cleanup", (t) => {
   const dir = tmpdir();
   enqueuePrompt(dir, "raced cleanup");
@@ -288,23 +265,23 @@ test("cancel survives the queue directory vanishing before the attachment cleanu
   assert.equal(eventsOfType(dir, "prompt_cancelled").length, 1, "the event still logged");
 });
 
-test("dequeue keeps the prompt when an attachment sibling cannot be removed", (t) => {
+test("cancel keeps the prompt when an attachment sibling cannot be removed", (t) => {
   const dir = tmpdir();
   const queueFile = enqueuePrompt(dir, "with an unremovable attachment");
   const image = queueFile.replace(/\.md$/, ".png");
   fs.writeFileSync(image, "not really an image");
 
-  // The sweep is best-effort ("an image never outlives the prompt"): a sibling the process
-  // cannot unlink (EACCES, EBUSY, a directory in its place) must not throw out of the dequeue
-  // after the queue file is already gone — that would lose the prompt text with no queue entry
-  // left to retry it. The failure is warned instead, so the orphaned image stays visible.
+  // The cancel-side sweep is best-effort: a sibling the process cannot unlink (EACCES, EBUSY,
+  // a directory in its place) must not throw out of the cancel after the queue file is already
+  // gone — that would fail the cancellation with no queue entry left to retry it. The failure
+  // is warned instead, so the orphaned image stays visible.
   const original = fs.rmSync.bind(fs);
   t.mock.method(fs, "rmSync", ((...args: unknown[]) => {
     if (args[0] === image) throw errnoError("EACCES");
     return (original as (...a: unknown[]) => unknown)(...args);
   }) as typeof fs.rmSync);
   try {
-    assert.equal(dequeuePrompt(dir), "with an unremovable attachment");
+    assert.deepEqual(cancelPrompt(dir, 1), { status: "cancelled", text: "with an unremovable attachment" });
   } finally {
     t.mock.restoreAll();
   }

@@ -197,6 +197,10 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
     // unfulfilled outcome does; it is always null once a pi run has been accounted for.
     ctx.pending.requeuePendingUnfulfilled();
   }
+  // The tick that owned the dequeued request is over: remove its image files unless an
+  // unfulfilled outcome handed the request back to the queue (settleImages). Runs after the
+  // catch above, which is the last point a requeue can happen.
+  ctx.pending.settleImages();
   // Everything after the pi run — the outcome folds, the main-head read, next-run
   // scheduling, the episode warnings, and the tick_end event — is the tick's per-result
   // bookkeeping policy, not runner lifecycle: it lives in src/tick/tick-finalize.ts, which owns

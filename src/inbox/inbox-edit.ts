@@ -45,7 +45,8 @@ export type EditOutcome =
  *
  * Carries an attached prompt's `[image attached: …]` reference lines (and so their sibling
  * files) over the rewrite — the edit replaces the prompt's text, not its attachments, which
- * only cancel and dequeue take with the prompt. An optional `images` array (the CLI's
+ * stay beside the edited queue file until a cancel or the fulfilling tick's sweep removes
+ * them. An optional `images` array (the CLI's
  * `prompt --edit … --attach`) appends its newly saved reference lines after the carried ones,
  * so one command corrects the text and the images in place instead of cancel-and-re-queue;
  * the combined count must fit the per-prompt cap, and any throw after the save unlinks the

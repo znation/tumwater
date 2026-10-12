@@ -223,7 +223,7 @@ export class LoopRunner {
   private tickPrompt(agent?: string): string | null {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
     if (assembled === null) return null;
-    this.pending.record(assembled.userPrompt);
+    this.pending.record(assembled.userPrompt, assembled.userPromptFile);
     return assembled.prompt;
   }
 

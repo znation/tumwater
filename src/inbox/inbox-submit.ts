@@ -81,7 +81,7 @@ export function submitRolePrompt(
  * text with one reference line per image. The images are saved and the reference lines
  * composed inside enqueueRolePrompt's decorate hook — a single atomic write, so the queue
  * file is born complete: no poller can read a prompt whose image lines point at
- * not-yet-written files, and the dequeuer's sibling cleanup cannot race the writes. The
+ * not-yet-written files, and a concurrent cancel's sibling sweep cannot race the writes. The
  * images were validated before the enqueue (submitRolePrompt above), so savePromptImages's
  * own re-check failing here is unreachable — and if it ever fired, the decorate throw
  * happens before writeTextAtomic, leaving no queue file behind at all. */

@@ -5,7 +5,7 @@ import { baseRoleOf } from "../roles/loop-ids.js";
 import { planBacklogTarget } from "../scheduling/claims.js";
 import { configForRole } from "../config/config-views.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
-import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
+import { dequeuePromptEntry, dequeueRolePromptEntry, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../inbox/prompt-not-before.js";
 import { readBrief } from "../brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
@@ -63,10 +63,11 @@ function readRoleNote(root: string, role: string): string | undefined {
  * content. Returns null when the loop has nothing to run this tick (a director with an empty
  * inbox); `userPrompt` carries the dequeued user request — the director's, or a per-role one
  * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and
- * re-queue it if the tick leaves it unfulfilled. */
+ * re-queue it if the tick leaves it unfulfilled; `userPromptFile` is the queue file it came
+ * from, so that bookkeeping can clean the prompt's attachments by that file's stem. */
 export function assembleTickPrompt(
   { root, config, role, state, preview = false, agent }: TickPromptInput,
-): { prompt: string; userPrompt: string | null } | null {
+): { prompt: string; userPrompt: string | null; userPromptFile: string | null } | null {
   // One read of the brief yields both the prompt it carries and the owning file's name
   // (brief.ts's readBrief): readInitialPrompt + briefFile were two full reads of the same
   // file on this per-tick path.
@@ -90,14 +91,17 @@ export function assembleTickPrompt(
   const backlogIndex = renderBacklogIndexBlock(root);
   let prompt: string;
   let userPrompt: string | null = null;
+  let userPromptFile: string | null = null;
   if (role === DIRECTOR_ROLE) {
     // A deferred director prompt's `tumwater:not-before` marker line is plumbing
     // (src/inbox/prompt-not-before.ts),
     // not content — stripped here exactly like the per-role path below, so the director's tick
     // prompt and the runner's re-queue both see the operator's text alone.
-    const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
+    const entry = preview ? null : dequeuePromptEntry(root);
+    const dequeued = preview ? peekPrompt(root) : entry?.text ?? null;
     if (!dequeued) return null;
     userPrompt = stripNotBeforeMarker(dequeued);
+    userPromptFile = entry?.file ?? null;
     prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent);
   } else {
     // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
@@ -124,7 +128,8 @@ export function assembleTickPrompt(
     // (src/inbox/prompt-not-before.ts), not
     // content: it is stripped at delivery, so the loop sees the operator's text alone and the
     // runner's re-queue writes clean text.
-    const dequeued = preview ? peekRolePrompt(root, role) : dequeueRolePrompt(root, role);
+    const entry = preview ? null : dequeueRolePromptEntry(root, role);
+    const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
     const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
     // The telemetry role's evidence is the harness's own event log, one level outside this
     // worktree, so its evidence module renders it (telemetryDigest) and the tick injects it.
@@ -179,7 +184,10 @@ export function assembleTickPrompt(
       // treats it exactly like the director's dequeued request.
       userRequest: request ?? undefined,
     });
-    if (request) userPrompt = request;
+    if (request) {
+      userPrompt = request;
+      userPromptFile = entry?.file ?? null;
+    }
   }
   // A work instance holding a claim is told which entry is its one task (plans/parallel-work-
   // instances.md "Claims", part 4/7) — the harness picked it, so the charter's choosing step
@@ -207,5 +215,5 @@ export function assembleTickPrompt(
   if ((state.cutOffStreak ?? 0) > 0) {
     prompt += `\n\n${buildCutOffNote(state.cutOffStreak ?? 0)}`;
   }
-  return { prompt, userPrompt };
+  return { prompt, userPrompt, userPromptFile };
 }

@@ -3,7 +3,7 @@ import path from "node:path";
 import { removeQuiet, unlinkAllMissingTolerant } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { roleInboxDir } from "../paths.js";
-import { isNonBlankString } from "../text/text.js";
+import { errorMessage, isNonBlankString } from "../text/text.js";
 import { agree, plural } from "../text/phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
@@ -20,11 +20,12 @@ export const PROMPT_IMAGE_EXTENSIONS: readonly string[] = [".png", ".jpg", ".jpe
 
 /** Whether one directory entry is an image sibling savePromptImages writes beside a queue
  * file whose stem is `stem`: `<stem>.<image extension>` or its same-extension dedup suffix
- * `<stem>-<n>.<ext>` (n a digit run). The two call sites — savePromptImages seeding its
- * `taken` set from siblings already on disk, and inbox.ts's dequeue/cancel cleanup — share
- * this one definition, so what an edit treats as a collision is exactly what a dequeue takes
- * with the prompt. A bare prefix match is never enough: a hand-placed sibling prompt's file
- * may share the stem followed by a hyphen (`a-notes.md` beside `a.md`), and must not match. */
+ * `<stem>-<n>.<ext>` (n a digit run). The call sites — savePromptImages seeding its `taken`
+ * set from siblings already on disk, inbox.ts's cancel and fulfillment sweeps, and the
+ * requeue's move to a new stem — share this one definition, so what an edit treats as a
+ * collision is exactly what a cleanup or a requeue matches. A bare prefix match is never
+ * enough: a hand-placed sibling prompt's file may share the stem followed by a hyphen
+ * (`a-notes.md` beside `a.md`), and must not match. */
 export function isPromptImageSibling(stem: string, entry: string): boolean {
   if (!entry.startsWith(stem)) return false;
   const rest = entry.slice(stem.length);
@@ -115,7 +116,7 @@ export function promptImagesProblem(images: unknown): string | null {
  * name is never used as a file name — only its extension, which promptImagesProblem already
  * validated against PROMPT_IMAGE_EXTENSIONS on the raw name, so the extension survives any
  * basename (a name whose safe characters are all stripped, like a non-ASCII `截图.png`, keeps
- * its extension instead of collapsing to an extension-less file the dequeue cleanup could
+ * its extension instead of collapsing to an extension-less file the same-stem cleanup could
  * never match). Returns the absolute paths in order, for imageReferenceLines. Fails closed:
  * promptImagesProblem runs again here, so a caller that skipped it gets { problem } and
  * nothing written. */
@@ -182,8 +183,9 @@ export function imageReferenceLines(paths: readonly string[]): string {
 /** The absolute paths named by a prompt's `[image attached: …]` lines, in order — the reader
  * counterpart to imageReferenceLines. Used by the edit path to carry an attached prompt's
  * references (and so their sibling files) over a text rewrite: an edit replaces the prompt's
- * text, not its attachments, which only cancel and dequeue take with the prompt. A line that
- * is not exactly the writer's shape is content, not a reference, and is ignored. */
+ * text, not its attachments, which travel with the prompt until a cancel or the fulfilling
+ * tick's sweep removes them. A line that is not exactly the writer's shape is content, not a
+ * reference, and is ignored. */
 export function imageReferencePaths(text: string): string[] {
   const paths: string[] = [];
   for (const line of text.split("\n")) {
@@ -191,6 +193,72 @@ export function imageReferencePaths(text: string): string[] {
     if (referenced !== undefined) paths.push(referenced);
   }
   return paths;
+}
+
+/** Move a re-queued prompt's attachments from its old queue file's stem to the new queue
+ * file's stem and rewrite their `[image attached: …]` lines, so an attachment always travels
+ * with the prompt's current queue file: the cancel sweep and the fulfilling tick's sweep
+ * (removeSameStemSiblings, keyed on that file's stem) then find it, and a requeue can never
+ * strand a file under a stem no queue file names. Only a line naming a same-stem sibling of
+ * `fromFile` inside its directory is treated as an attachment — a hand-typed or edited
+ * `[image attached: …]` line pointing anywhere else is content and passes through unchanged,
+ * which keeps cleanup keyed to files the harness actually saved rather than to prompt text. A
+ * referenced attachment that is already gone is left for stripVanishedImageReferences to drop
+ * and record. Each attachment moves on its own: one file that is gone or cannot be renamed is
+ * left in place and named in `problem`, while the attachments around it still move, so a
+ * single missing or unmovable file cannot strand the rest under a stem no queue file names. */
+export function movePromptImages(
+  fromFile: string,
+  toFile: string,
+  text: string,
+): { text: string; problem: string | null } {
+  const dir = path.resolve(path.dirname(fromFile));
+  const fromStem = path.basename(fromFile, ".md");
+  const toStem = path.basename(toFile, ".md");
+  const toDir = path.resolve(path.dirname(toFile));
+  const taken = new Set<string>();
+  try {
+    for (const entry of fs.readdirSync(toDir)) {
+      if (isPromptImageSibling(toStem, entry)) taken.add(entry);
+    }
+  } catch {
+    // The queue directory is gone; nothing to collide with.
+  }
+  const problems: string[] = [];
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const referenced = IMAGE_REF_LINE.exec(line.trim())?.[1];
+    if (referenced === undefined) {
+      out.push(line);
+      continue;
+    }
+    const resolved = path.resolve(referenced);
+    const base = path.basename(resolved);
+    if (path.dirname(resolved) !== dir || !isPromptImageSibling(fromStem, base)) {
+      out.push(line); // Content, not this prompt's attachment.
+      continue;
+    }
+    if (!fs.existsSync(resolved)) {
+      out.push(line); // Already gone; stripVanishedImageReferences drops the line.
+      continue;
+    }
+    const ext = path.extname(base).toLowerCase();
+    let name = `${toStem}${ext}`;
+    for (let n = 2; taken.has(name); n++) name = `${toStem}-${n}${ext}`;
+    taken.add(name);
+    const target = path.join(toDir, name);
+    try {
+      fs.renameSync(resolved, target);
+    } catch (err) {
+      // Keep this attachment where it is and keep moving the others: aborting here would
+      // reverse the moves already done and orphan every attachment that survived.
+      problems.push(`${base}: ${errorMessage(err)}`);
+      out.push(line);
+      continue;
+    }
+    out.push(line.replace(referenced, target));
+  }
+  return { text: out.join("\n"), problem: problems.length > 0 ? problems.join("; ") : null };
 }
 
 /** The prompt text without its `[image attached: …]` reference lines, trailing blank lines
@@ -205,9 +273,9 @@ export function stripImageReferenceLines(text: string): string {
 }
 
 /** Drop the `[image attached: …]` lines whose files are no longer on disk from a prompt being
- * re-queued after a tick that already consumed them — takeQueuedFile removes an attached
- * image with its prompt, so a re-queued copy would otherwise send the loop's agent after
- * files that are gone. Each vanished line is replaced by one honest note naming what
+ * re-queued after a tick whose attached image is gone (removed out of band, or by a cancel),
+ * so a re-queued copy would otherwise send the loop's agent after files that are gone. Each
+ * vanished line is replaced by one honest note naming what
  * happened; references whose files still exist are kept. Unchanged text comes back untouched
  * (dropped: []) so the common no-images case costs nothing. */
 export function stripVanishedImageReferences(text: string): { text: string; dropped: number } {
@@ -224,7 +292,7 @@ export function stripVanishedImageReferences(text: string): { text: string; drop
   if (dropped === 0) return { text, dropped: 0 };
   const body = kept.join("\n").replace(/\n+$/, "");
   const note =
-    `[image attachments dropped: ${plural(dropped, "image file")} ${agree(dropped, "was", "were")} consumed` +
-    ` when an earlier tick dequeued this prompt and ${agree(dropped, "is", "are")} no longer on disk]`;
+    `[image attachments dropped: ${plural(dropped, "image file")} ${agree(dropped, "was", "were")}` +
+    ` missing when this prompt was re-queued and ${agree(dropped, "is", "are")} no longer on disk]`;
   return { text: `${body}\n\n${note}`, dropped };
 }

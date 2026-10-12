@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { enqueueRolePrompt, inboxSize, queuedRolePrompts, takeQueuedFile } from "../src/inbox/inbox.js";
+import { dequeueRolePrompt, enqueueRolePrompt, inboxSize, queuedFiles, queuedRolePrompts, takeQueuedFile } from "../src/inbox/inbox.js";
+import { cancelQueuedFile } from "../src/inbox/inbox-cancel.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
+import { imageReferenceLines, imageReferencePaths, savePromptImages } from "../src/inbox/inbox-attachments.js";
+import { roleInboxDir } from "../src/paths.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -135,11 +139,103 @@ test("reclaimForResume reclaims nothing when the file was cancelled meanwhile", 
   const pending = new PendingPrompt(dir, "feature");
   pending.requeueForResume(s, "cancelled before the resume");
   const file = s.resumePromptFile!;
-  assert.notEqual(takeQueuedFile(dir, "feature", file), null); // the user cancels it mid-flight
+  assert.notEqual(takeQueuedFile(file), null); // the user cancels it mid-flight
 
   pending.reclaimForResume(s, true);
   assert.equal(pending.get(), null);
   assert.equal(s.resumePromptFile, undefined);
+});
+
+const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+
+/** One image as submitRolePrompt takes it. */
+function png(name: string): { name: string; dataBase64: string } {
+  return { name, dataBase64: PNG.toString("base64") };
+}
+
+test("settleImages removes a fulfilled request's images and keeps a requeued request's", () => {
+  const root = tmpdir();
+  // Fulfilled: dequeued, recorded with its queue file, then settled with no requeue — the
+  // image goes by the file's stem.
+  const file = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", file, [png("a.png")]);
+  assert.ok("paths" in saved);
+  const text = "look" + imageReferenceLines(saved.paths);
+  const pending = new PendingPrompt(root, "qa");
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  pending.record(text, file);
+  assert.ok(fs.existsSync(saved.paths[0]!));
+  pending.settleImages();
+  assert.ok(!fs.existsSync(saved.paths[0]!), "a fulfilled request's image is removed");
+
+  // Unfulfilled: the request is handed back to the queue, so its image must survive the
+  // settle for the next tick to read — moved to the requeued file's stem.
+  const file2 = enqueueRolePrompt(root, "qa", "look again");
+  const saved2 = savePromptImages(root, "qa", file2, [png("b.png")]);
+  assert.ok("paths" in saved2);
+  const text2 = "look again" + imageReferenceLines(saved2.paths);
+  const pending2 = new PendingPrompt(root, "qa");
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  pending2.record(text2, file2);
+  pending2.requeueUnfulfilled(text2);
+  pending2.settleImages();
+  const moved = imageReferencePaths(queuedRolePrompts(root, "qa")[0]!)[0];
+  assert.ok(moved, "the requeued copy keeps its reference");
+  assert.ok(fs.existsSync(moved!), "a requeued request's image survives for the next tick");
+  assert.ok(!fs.existsSync(saved2.paths[0]!), "the image moved off the old stem");
+});
+
+test("cancel removes an image a requeue moved to the new queue file's stem", () => {
+  const root = tmpdir();
+  const file = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", file, [png("a.png")]);
+  assert.ok("paths" in saved);
+  const text = "look" + imageReferenceLines(saved.paths);
+  const pending = new PendingPrompt(root, "qa");
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  pending.record(text, file);
+  pending.requeueUnfulfilled(text);
+  pending.settleImages();
+  const requeuedFile = queuedFiles(root, "qa")[0]!;
+  const moved = imageReferencePaths(queuedRolePrompts(root, "qa")[0]!)[0]!;
+  assert.ok(fs.existsSync(moved), "the requeue moved the image");
+  assert.equal(cancelQueuedFile(root, "qa", path.basename(requeuedFile)).status, "cancelled");
+  assert.ok(!fs.existsSync(moved), "cancel removed the requeued prompt's image");
+});
+
+test("a requeue whose prompt lost one attachment still carries the survivors", () => {
+  const root = tmpdir();
+  const file = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", file, [png("a.png"), png("b.png")]);
+  assert.ok("paths" in saved);
+  const text = "look" + imageReferenceLines(saved.paths);
+  const pending = new PendingPrompt(root, "qa");
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  pending.record(text, file);
+  fs.rmSync(saved.paths[1]!); // one attachment vanishes out of band before the requeue
+  pending.requeueUnfulfilled(text);
+  pending.settleImages();
+  const requeuedFile = queuedFiles(root, "qa")[0]!;
+  const requeuedText = queuedRolePrompts(root, "qa")[0]!;
+  const survivor = imageReferencePaths(requeuedText)[0]!;
+  assert.ok(fs.existsSync(survivor), "the surviving attachment moved to the new queue file's stem");
+  assert.ok(!fs.existsSync(saved.paths[0]!), "the old-stem name is gone");
+  assert.match(requeuedText, /\[image attachments dropped: 1 image file was missing/);
+  assert.equal(cancelQueuedFile(root, "qa", path.basename(requeuedFile)).status, "cancelled");
+  assert.ok(!fs.existsSync(survivor), "cancel sweeps the survivor, so no image is orphaned");
+});
+
+test("settleImages never deletes a file named by hand-typed prompt text", () => {
+  const root = tmpdir();
+  const dir = roleInboxDir(root, "qa");
+  fs.mkdirSync(dir, { recursive: true });
+  const victim = path.join(dir, "unrelated.png");
+  fs.writeFileSync(victim, PNG);
+  const file = enqueueRolePrompt(root, "qa", "keep");
+  const pending = new PendingPrompt(root, "qa");
+  pending.record(`keep\n\n[image attached: ${victim}]`, file);
+  pending.settleImages();
+  assert.ok(fs.existsSync(victim), "a hand-typed writer-shaped line is content, not an attachment");
 });
 
 /** A user prompt enqueued while the interrupted tick's request sits re-queued — the
