@@ -185,14 +185,17 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // "prompt" and "prompt --role" use. Resolves to the confirmation to show; rejects when the
   // server did not take it (the caller keeps the text so it can be fixed and resent). Pending
   // images ride along as { name, dataBase64 } and are named in the confirmation.
-  async function sendPrompt(target, text, images) {
+  async function sendPrompt(target, text, images, defer) {
     const attached = images && images.length ? " with " + plural(images.length, "image") : "";
+    const deferred = defer ? " — delivers in " + defer : "";
+    const body = images && images.length ? { text, images } : { text };
+    if (defer) body.defer = defer;
     if (target === "director") {
-      await postJson("/api/prompt", images && images.length ? { text, images } : { text });
-      return "Queued for the director — it runs next" + attached;
+      await postJson("/api/prompt", body);
+      return "Queued for the director — it runs next" + attached + deferred;
     }
-    await postJson("/api/prompt-role", images && images.length ? { role: target, text, images } : { role: target, text });
-    return "Queued for the " + target + " loop's next tick — it wakes now" + attached;
+    await postJson("/api/prompt-role", { role: target, ...body });
+    return "Queued for the " + target + " loop's next tick — it wakes now" + attached + deferred;
   }
   // composer-send:end
   let sending = false;
@@ -200,13 +203,14 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     ev.preventDefault();
     const text = promptInput.value.trim();
     if (!text || sending) return;
+    const defer = $("promptdefer").value.trim();
     const target = promptTarget;
     sending = true;
     $("promptsend").disabled = true;
     const images = [];
     try {
       for (const img of promptImages) images.push({ name: img.name, dataBase64: await readImageAsBase64(img.file) });
-      showFlash(await sendPrompt(target, text, images));
+      showFlash(await sendPrompt(target, text, images, defer));
     } catch (err) {
       // The prompt was not accepted: keep the text and the images so they can be fixed and resent.
       showFlash("error: " + err.message);
@@ -218,6 +222,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     promptImages.length = 0;
     renderPromptImages();
     promptInput.value = "";
+    $("promptdefer").value = "";
     drafts[target] = "";
     if (target !== "director") setTarget("director");
     autosize();

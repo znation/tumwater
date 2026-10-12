@@ -10,7 +10,7 @@ import { initProject } from "../src/init/init.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { postJson, withGui } from "./fixtures/gui-fixtures.js";
@@ -559,6 +559,55 @@ test("POST /api/prompt-role queues for the named loop and rejects bad bodies lik
     const bad = await fetch(base + "/api/prompt-role", { method: "POST", body });
     assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
   }
+  });
+});
+
+// POST /api/prompt and /api/prompt-role defer: the composer's defer field rides into the
+// same submit path `tumwater prompt --at <duration>` uses, so a deferred prompt queues the
+// CLI's not-before marker and a bad defer is a 400 before anything is written.
+test("the prompt endpoints defer a prompt by duration and reject bad defer fields", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui prompt defer test");
+  await withGui(repo, async ({ base }) => {
+  const beforeMs = Date.now();
+  const res = await postJson(base, "/api/prompt", { text: "later, please", defer: "90m" });
+  assert.equal(res.status, 200);
+  const director = queuedRolePromptEntries(repo, "director");
+  assert.equal(director.length, 1);
+  const at = director[0]?.notBeforeMs;
+  assert.ok(at !== null && at !== undefined, "the queued director prompt carries a not-before marker");
+  assert.ok(
+    at! >= beforeMs + 90 * 60_000 - 1_000 && at! <= Date.now() + 90 * 60_000 + 1_000,
+    `defer 90m queues roughly now + 90m (got ${at! - beforeMs}ms)`,
+  );
+  assert.deepEqual(queuedRolePrompts(repo, "director"), [], "a future prompt is not deliverable yet");
+
+  // The role endpoint shares the field and still reports its wake.
+  const roleRes = await postJson(base, "/api/prompt-role", { role: "feature", text: "tighten docs", defer: "1h30m" });
+  assert.equal(roleRes.status, 200);
+  assert.match(((await roleRes.json()) as { message: string }).message, /wake requested for feature/);
+  const feature = queuedRolePromptEntries(repo, "feature");
+  assert.equal(feature.length, 1);
+  const roleAt = feature[0]?.notBeforeMs;
+  assert.ok(roleAt !== null && roleAt !== undefined);
+  assert.ok(roleAt! >= beforeMs + 90 * 60_000 - 1_000 && roleAt! <= Date.now() + 90 * 60_000 + 1_000);
+
+  // A bad duration or a non-string names the grammar and queues nothing; over 90d is its own
+  // 400. An absent defer queues the same marker-less prompt as before.
+  const queuedBefore = queuedRolePromptEntries(repo, "director").length;
+  for (const defer of ["soon", "30m1h", 30]) {
+    const bad = await postJson(base, "/api/prompt", { text: "bad defer", defer });
+    assert.equal(bad.status, 400, JSON.stringify(defer));
+    assert.match(((await bad.json()) as { error: string }).error, /duration like 45s, 90m, 1h30m, or 2d/);
+  }
+  const capped = await postJson(base, "/api/prompt", { text: "far future", defer: "91d" });
+  assert.equal(capped.status, 400);
+  assert.match(((await capped.json()) as { error: string }).error, /capped at 90d/);
+  assert.equal(queuedRolePromptEntries(repo, "director").length, queuedBefore, "bad defers queue nothing");
+
+  const plain = await postJson(base, "/api/prompt", { text: "now please" });
+  assert.equal(plain.status, 200);
+  assert.equal(queuedRolePromptEntries(repo, "director").at(-1)?.notBeforeMs, null, "an absent defer writes no not-before marker");
   });
 });
 

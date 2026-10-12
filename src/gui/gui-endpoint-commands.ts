@@ -15,6 +15,7 @@ import { cancelQueuedFile, queueFileNameProblem } from "../inbox/inbox-cancel.js
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
+import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
@@ -73,7 +74,7 @@ export async function handlePrompt(req: http.IncomingMessage, res: http.ServerRe
   if (!body) return;
   const fields = checkedPromptFields(res, body);
   if (!fields) return;
-  submitPrompt(root, fields.text, fields.images);
+  submitPrompt(root, fields.text, fields.images, fields.notBeforeMs);
   sendJson(res, 200, { ok: true });
 }
 
@@ -93,20 +94,45 @@ function checkedPromptImages(res: http.ServerResponse, body: Record<string, unkn
   return body.images as PromptImageInput[];
 }
 
+/** The defer field of a prompt endpoint's body, validated before anything touches the disk.
+ * Three outcomes, deliberately distinct like checkedPromptImages: `undefined` — no defer
+ * field, a prompt that runs as soon as its turn comes; a number — the epoch ms the prompt is
+ * deliverable from (`Date.now() + ms`); `null` — the field was present but not a duration
+ * this grammar accepts, or its duration is over the 90d cap, and the 400 naming the rule is
+ * already sent, so stop. The grammar is cli-args.ts's parseDurationMs — the same one
+ * `tumwater prompt --at` and `pause --for` accept — so a deferral spelled here computes the
+ * same `tumwater:not-before` marker the CLI writes. */
+function checkedPromptDefer(res: http.ServerResponse, body: Record<string, unknown>): number | undefined | null {
+  if (body.defer === undefined) return undefined;
+  const ms = typeof body.defer === "string" ? parseDurationMs(body.defer) : null;
+  if (ms === null) {
+    sendJson(res, 400, { error: "defer needs a duration like 45s, 90m, 1h30m, or 2d" });
+    return null;
+  }
+  if (ms > PAUSE_FOR_MAX_MS) {
+    sendJson(res, 400, { error: "defer is capped at 90d" });
+    return null;
+  }
+  return Date.now() + ms;
+}
+
 /** The prompt endpoints' shared body tail: requirePromptText (400 on a null return) then
- * checkedPromptImages (400 on a null return), so /api/prompt and /api/prompt-role read the
- * same two fields in the same order and a body wrong in both still answers the text problem
- * first. Null means a 400 is already sent; callers keep their own `if (!fields) return` bail. */
+ * checkedPromptImages then checkedPromptDefer (400 on a null return from either), so
+ * /api/prompt and /api/prompt-role read the same three fields in the same order and a body
+ * wrong in several still answers the text problem first. Null means a 400 is already sent;
+ * callers keep their own `if (!fields) return` bail. */
 function checkedPromptFields(
   res: http.ServerResponse,
   body: Record<string, unknown>,
   role: string = DIRECTOR_ROLE,
-): { text: string; images: PromptImageInput[] | undefined } | null {
+): { text: string; images: PromptImageInput[] | undefined; notBeforeMs: number | undefined } | null {
   const text = requirePromptText(res, body, role);
   if (text === null) return null;
   const images = checkedPromptImages(res, body);
   if (images === null) return null;
-  return { text, images };
+  const notBeforeMs = checkedPromptDefer(res, body);
+  if (notBeforeMs === null) return null;
+  return { text, images, notBeforeMs };
 }
 
 /** Handle POST /api/prompt-role: queue a prompt for one loop — the dashboard's per-row
@@ -123,7 +149,7 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const role = body.role as string;
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
-  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, fields.text, fields.images) });
+  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs) });
 }
 
 /** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —

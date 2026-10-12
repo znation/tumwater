@@ -112,7 +112,9 @@ function submitPromptWithImages(root: string, role: string, text: string, images
   return final;
 }
 
-/** A user submits a new director prompt; see submitRolePrompt. */
-export function submitPrompt(root: string, text: string, images?: PromptImageInput[]): string {
-  return submitRolePrompt(root, DIRECTOR_ROLE, text, images);
+/** A user submits a new director prompt; see submitRolePrompt. The optional `notBeforeMs` is
+ * the director-queue twin of submitRolePrompt's deferral (PLANS.md "tumwater prompt --at
+ * <duration>"). */
+export function submitPrompt(root: string, text: string, images?: PromptImageInput[], notBeforeMs?: number): string {
+  return submitRolePrompt(root, DIRECTOR_ROLE, text, images, notBeforeMs);
 }

@@ -129,8 +129,9 @@ const UNIT_ORDER: Record<keyof typeof UNIT_MS, number> = { d: 0, h: 1, m: 2, s: 
  * none zero (`0h30m` fails; write `30m`). A gap between components (whitespace, junk) and
  * an out-of-order or repeated unit return null. Returns the total in milliseconds, or
  * null. The one home for the duration grammar so parseDurationFlag's acceptance and
- * durationLabel's echo cannot drift. */
-function parseDurationMs(raw: string): number | null {
+ * durationLabel's echo cannot drift. Exported so a server surface can validate a duration
+ * without ending the process through parseDurationFlag's fail() wrapper. */
+export function parseDurationMs(raw: string): number | null {
   const re = /([1-9]\d*)([smhd])/g;
   let ms = 0;
   let consumed = 0;

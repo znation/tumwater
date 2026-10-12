@@ -275,7 +275,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Fleet: alerts for whatever needs you (a failing or stuck loop, a red
-  main, a spent budget, an old build, open questions, a pause), the prompt box, today's progress,
+  main, a spent budget, an old build, open questions, a pause), the prompt box (a prompt can be
+  deferred by a duration — the same grammar and `tumwater:not-before` marker `tumwater prompt
+  --at` uses), today's progress,
   the loops grouped by what they are doing, the backlog, and the notable activity. A new
   needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
   across reloads; the Queued tab lists each queued prompt and how long it has waited, and each
