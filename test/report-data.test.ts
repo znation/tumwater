@@ -653,10 +653,16 @@ test("collectReport scopes the day series and totals to one role, leaving fleet 
 
 test("collectReport scopes an instance id to its base role, aggregating its siblings' usage", () => {
   const root = tmpdir();
+  // The day collector buckets by local calendar day while the --since collector drops
+  // future-dated timestamps, so each anchor alone fails at one end of the clock: a bare
+  // `ago(...)` lands in yesterday's bucket on a run just after midnight, and a bare `at(0)`
+  // (noon) is future-dated before noon. The later of the two is always in today's bucket and
+  // inside the HOUR window below — the case this fixture tests.
+  const recent = (ms: number): number => Math.max(ago(ms), at(0, 0));
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "feature-2", type: "tick_end", tick: 1, result: "changed", tokens: 300, costUsd: 0.3 }),
-    JSON.stringify({ ts: ago(8 * 60_000), loop: "feature-2", type: "merged", commit: "abc1234" }),
+    JSON.stringify({ ts: recent(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: recent(9 * 60_000), loop: "feature-2", type: "tick_end", tick: 1, result: "changed", tokens: 300, costUsd: 0.3 }),
+    JSON.stringify({ ts: recent(8 * 60_000), loop: "feature-2", type: "merged", commit: "abc1234" }),
   ]);
 
   // The scope normalizes to the base role, so the instance's usage and its sibling's commits
