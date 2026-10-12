@@ -326,43 +326,59 @@ test("aborting the signal terminates a live child with SIGTERM", async () => {
 // processes; the real-process test proves the shape the injection cannot: a SIGKILLed middle
 // process reparents the grandchild, whose watch then fires.
 
-test("startParentDeathWatch fires exactly once when the parent pid changes", async () => {
+/** A watch poll the test drives by hand: `fire` runs the registered check, `armed` reports
+ * whether the watch still holds it. Logical time for a watch that needs no real process. */
+function manualPoll(): { poll: (check: () => void) => () => void; fire: () => void; armed: () => boolean } {
+  let check: (() => void) | undefined;
+  return {
+    poll: (fn) => {
+      check = fn;
+      return () => {
+        check = undefined;
+      };
+    },
+    fire: () => check?.(),
+    armed: () => check !== undefined,
+  };
+}
+
+test("startParentDeathWatch fires exactly once when the parent pid changes", () => {
   let ppid = 4242;
   let gone = 0;
-  const timer = startParentDeathWatch(() => {
+  const watch = manualPoll();
+  const stop = startParentDeathWatch(() => {
     gone += 1;
-  }, { ppid: () => ppid, intervalMs: 10 });
-  try {
-    await sleep(60);
-    assert.equal(gone, 0, "an unchanged parent pid never fires the watch");
-    ppid = 1; // reparented — the supervisor died without forwarding
-    await sleep(60);
-    assert.equal(gone, 1, "a changed parent pid fires the watch");
-    ppid = 999;
-    await sleep(60);
-    assert.equal(gone, 1, "the watch clears itself after firing");
-  } finally {
-    clearInterval(timer);
-  }
+  }, { ppid: () => ppid, poll: watch.poll });
+  watch.fire();
+  assert.equal(gone, 0, "an unchanged parent pid never fires the watch");
+  assert.equal(watch.armed(), true, "the watch is still polling");
+  ppid = 1; // reparented — the supervisor died without forwarding
+  watch.fire();
+  assert.equal(gone, 1, "a changed parent pid fires the watch");
+  assert.equal(watch.armed(), false, "the watch clears itself after firing");
+  ppid = 999;
+  watch.fire();
+  assert.equal(gone, 1, "the watch never fires again");
+  stop();
 });
 
-test("startParentDeathWatch with an expected parent fires on a parent that was gone before the watch started", async () => {
+test("startParentDeathWatch with an expected parent fires on a parent that was gone before the watch started", () => {
   // The spawner handed its pid down, but died before the child's first read: that read is
   // already launchd's 1, and only the expectation can tell the parent is gone.
   let gone = 0;
-  const timer = startParentDeathWatch(() => {
+  const reparented = manualPoll();
+  const stopDead = startParentDeathWatch(() => {
     gone += 1;
-  }, { ppid: () => 1, intervalMs: 10, expectedPpid: 4242 });
-  const alive = startParentDeathWatch(() => {
+  }, { ppid: () => 1, poll: reparented.poll, expectedPpid: 4242 });
+  const alive = manualPoll();
+  const stopAlive = startParentDeathWatch(() => {
     gone += 100;
-  }, { ppid: () => 4242, intervalMs: 10, expectedPpid: 4242 });
-  try {
-    await sleep(60);
-    assert.equal(gone, 1, "the reparented child fires; the one still under its parent does not");
-  } finally {
-    clearInterval(timer);
-    clearInterval(alive);
-  }
+  }, { ppid: () => 4242, poll: alive.poll, expectedPpid: 4242 });
+  reparented.fire();
+  alive.fire();
+  assert.equal(gone, 1, "the reparented child fires; the one still under its parent does not");
+  stopDead();
+  stopAlive();
 });
 
 test("expectedSupervisorPid reads a handed-down mark only for a live-for-certain pid", () => {
@@ -385,18 +401,22 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
       `import { startParentDeathWatch } from ${JSON.stringify(supervisorUrl)};\n` +
         `import fs from "node:fs";\n` +
         `const [started, gone, expectedPpid] = process.argv.slice(2);\n` +
+        // The watch's poll is driven by SIGUSR2 from the test, fired only after the supervisor
+        // is dead and the grandchild reparented: the verdict follows the signal, not a real
+        // poll budget, so a loaded host cannot stretch it. The handler is registered before
+        // `started` is written, so the test never signals a default-action death.
+        `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, {\n` +
+        `  expectedPpid: Number(expectedPpid),\n` +
+        `  poll: (check) => {\n` +
+        `    const onSignal = () => check();\n` +
+        `    process.on("SIGUSR2", onSignal);\n` +
+        `    return () => process.off("SIGUSR2", onSignal);\n` +
+        `  },\n` +
+        `});\n` +
         `fs.writeFileSync(started, String(process.pid));\n` +
-        // A deliberately slow arm: the watch starts well after the test has seen `started`
-        // and SIGKILLed the supervisor. That makes deterministic the production race where a
-        // child dies-before-first-read (its startup runs long before it arms the watch), and
-        // the handed-down pid is what makes the watch fire anyway.
-        `await new Promise((r) => setTimeout(r, 300));\n` +
-        `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, { intervalMs: 250, expectedPpid: Number(expectedPpid) });\n` +
         `setInterval(() => {}, 10_000);\n` +
         // A leak guard, not part of the behavior under test: it must sit far beyond the
-        // test's wait budget, because under fleet load the watch's polls and this timer
-        // stretch together, and a self-exit that can outrun the watch starves the very
-        // signal this test waits for (the 2026-10-01 load flake failed exactly this way).
+        // test's wait budget, so a broken run cannot leak the grandchild for long.
         `setTimeout(() => process.exit(1), 180_000);\n`,
     );
     const middle = path.join(dir, "middle.mjs");
@@ -412,16 +432,26 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     const started = path.join(dir, "started");
     const gone = path.join(dir, "gone");
     supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
-    // The guards (180s) sit far above the wait budgets (15s start / 40s gone), so the only
-    // way this test can fail is a child that never arms its watch at all; with the handed-down
-    // pid the watch fires on its first poll once it does, even though the arm happens after
-    // the supervisor is already gone.
+    // The guards (180s) sit far above the wait budgets, so the only way this test can fail is
+    // a child that never arms its watch at all; once armed, the handed-down pid makes the
+    // watch fire on the first poll after the reparent.
     for (let i = 0; i < 300 && !fs.existsSync(started); i++) await sleep(50);
-    assert.ok(fs.existsSync(started), "the grandchild started with its watch running");
+    assert.ok(fs.existsSync(started), "the grandchild armed its watch");
+    const grandchildPid = Number(fs.readFileSync(started, "utf8"));
     // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor
     // just vanishes and the grandchild reparents.
     process.kill(supervisor.pid!, "SIGKILL");
-    for (let i = 0; i < 400 && !fs.existsSync(gone); i++) await sleep(100);
+    // Advance the watch: each signal runs a poll in the grandchild, which sees its parent
+    // changed and fires. A signal that lands before the reparent completes simply leaves the
+    // watch armed, so retry within the bounded guard. A dropped watch never writes `gone`.
+    for (let i = 0; i < 200 && !fs.existsSync(gone); i++) {
+      try {
+        process.kill(grandchildPid, "SIGUSR2");
+      } catch {
+        break; // the grandchild already exited
+      }
+      await sleep(50);
+    }
     assert.ok(fs.existsSync(gone), "the orphaned grandchild's watch fired and ran its stop path");
   } finally {
     // The long self-exit timers above are only a leak guard for a crashed run; a passing

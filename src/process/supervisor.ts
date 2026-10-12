@@ -26,16 +26,35 @@ export const SUPERVISOR_PID_ENV = "TUMWATER_SUPERVISOR_PID";
 /** How often the supervised generation checks that its supervisor still lives (ms). */
 const PARENT_POLL_MS = 5_000;
 
+/** Registers the watch's poll and returns its stop. The default is an unref'd interval timer;
+ * a test injects its own so the watch's verdict runs when the test drives the seam instead of
+ * after a wall-clock budget. */
+type ParentWatchPoll = (check: () => void) => () => void;
+
+/** The default poll: `check` every `intervalMs`, on a timer unref'd so an idle watch never holds
+ * the generation's event loop open. */
+function intervalPoll(intervalMs: number): ParentWatchPoll {
+  return (check) => {
+    const timer = setInterval(check, intervalMs);
+    timer.unref();
+    return () => clearInterval(timer);
+  };
+}
+
 interface ParentDeathWatchOptions {
   /** The parent-pid source; defaults to `process.ppid`. Tests inject a fake so the watch fires
    * without reparenting a real process. */
   ppid?: () => number;
-  /** The poll interval; defaults to PARENT_POLL_MS. */
+  /** The poll interval for the default poll; defaults to PARENT_POLL_MS. */
   intervalMs?: number;
   /** The parent pid to expect, when the spawner handed it down: compared against instead of
    * the watch's own first read, so a parent that died before the watch started still counts
    * as gone. Defaults to the first `ppid()` read. */
   expectedPpid?: number;
+  /** The poll seam; defaults to `intervalPoll(intervalMs)`. A test whose watch runs in another
+   * process (where `t.mock.timers` cannot reach) injects a signal- or manually-driven poll, so
+   * the verdict follows the test's advance rather than a real budget. */
+  poll?: ParentWatchPoll;
 }
 
 /** Parent-death watch for the supervised generation. The supervisor forwards only SIGTERM —
@@ -45,18 +64,25 @@ interface ParentDeathWatchOptions {
  * it. The watch polls the parent pid on an interval: once it changes, the supervisor is gone
  * without having stopped the fleet, and `onGone` runs the same graceful stop a forwarded SIGTERM
  * would have run — a killed supervisor takes its fleet down with it. The timer is unref'd so it
- * never holds the generation's event loop open past its real work. */
-export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatchOptions = {}): NodeJS.Timeout {
+ * never holds the generation's event loop open past its real work. Returns the stop that
+ * disarms the watch (a no-op once it fired or was already stopped). */
+export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatchOptions = {}): () => void {
   const ppid = opts.ppid ?? (() => process.ppid);
   const original = opts.expectedPpid ?? ppid();
-  const timer = setInterval(() => {
-    if (ppid() !== original) {
-      clearInterval(timer);
-      onGone();
-    }
-  }, opts.intervalMs ?? PARENT_POLL_MS);
-  timer.unref();
-  return timer;
+  let cancel: (() => void) | undefined;
+  let fired = false;
+  const check = () => {
+    if (fired || ppid() === original) return;
+    fired = true;
+    cancel?.();
+    onGone();
+  };
+  cancel = (opts.poll ?? intervalPoll(opts.intervalMs ?? PARENT_POLL_MS))(check);
+  return () => {
+    if (fired) return;
+    fired = true;
+    cancel?.();
+  };
 }
 
 /** The supervisor pid a supervised child was handed, or undefined when the mark is absent or

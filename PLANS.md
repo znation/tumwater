@@ -6,19 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Retire the `no-repro` gap, part 5/5: logical time for the supervisor's parent-death watch (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5–4/5; independent of the TUI, dashboard, and agent-backends work)
-
-**Goal.** Convert the process-death family. `test/supervisor.test.ts`'s "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" waits on real watch budgets (15s start / 40s gone) that were widened after the flake recurred (BUGS.md 2026-10-09), so a loaded host decides the verdict.
-
-**Approach.** Drive the grandchild watch's polls on logical time. The watch runs in the spawned grandchild process, so `test/helpers/wait.ts`'s `watchdogClock` (in-process `t.mock.timers`) cannot reach it; thread a clock/interval seam into `startParentDeathWatch` that the grandchild script selects through its environment (or an equivalent injected poll seam), and advance it from the test once the grandchild has started. Keep a bounded real-time guard only for the process plumbing (`SIGKILL`, reparenting, file creation), never for the watch's own verdict.
-
-**Files touched.** `test/supervisor.test.ts`, `src/process/supervisor.ts` (`startParentDeathWatch`, for the seam parameter only).
-
-**Acceptance criteria.**
-- The grandchild case reaches its verdict by advancing the injected watch clock, not by a real budget; a regression that drops the watch fails at that advance.
-- The real-process plumbing (`SIGKILL` of the supervisor, reparent of the grandchild, the watch's stop-path file) is still exercised by a real child, with its own bounded guard.
-- `npm run test` is green.
-
 ### Cancel a queued prompt from the TUI Queued pane, matching `tumwater prompt --cancel` and the dashboard Queued tab's Cancel (planned 2026-10-11 by plan; sibling of the landed TUI Queued pane (`renderQueuedList`, read-only) and the landed CLI `tumwater prompt --cancel` plus the dashboard Queued tab's per-row Cancel; the pane renders the list but no key can act on it, so cancelling a mis-typed or stale prompt means dropping to the CLI or the browser; independent of the waiting `no-repro` hermetic-host gating tier (parts 2/5, 4/5, 5/5) in behavior — `src/ui/tui` plus tests and docs, no `src/inbox` or `src/gui` change beyond reading the existing `cancelRolePrompt`; a later TUI edit sibling is not part of this plan)
 
 **Goal.** The TUI's Queued pane (`Ctrl+T` past Pending) renders `tumwater prompt --list`'s output through `renderQueuedList`, but it is read-only: `paneBody`'s queued branch only windows the cached string from `src/ui/tui/tui-keys.ts`'s `Ctrl+T` handler, and no key handler reads the queue. Add row selection and a cancel key to the pane so an operator can remove the selected prompt in place, through the CLI's own per-role `cancelRolePrompt` path.
@@ -62,6 +49,19 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` is green.
 
 ## Done
+
+### Retire the `no-repro` gap, part 5/5: logical time for the supervisor's parent-death watch (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5–4/5; independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
+
+**Goal.** Convert the process-death family. `test/supervisor.test.ts`'s "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" waits on real watch budgets (15s start / 40s gone) that were widened after the flake recurred (BUGS.md 2026-10-09), so a loaded host decides the verdict.
+
+**Approach.** Drive the grandchild watch's polls on logical time. The watch runs in the spawned grandchild process, so `test/helpers/wait.ts`'s `watchdogClock` (in-process `t.mock.timers`) cannot reach it; thread a clock/interval seam into `startParentDeathWatch` that the grandchild script selects through its environment (or an equivalent injected poll seam), and advance it from the test once the grandchild has started. Keep a bounded real-time guard only for the process plumbing (`SIGKILL`, reparenting, file creation), never for the watch's own verdict.
+
+**Files touched.** `test/supervisor.test.ts`, `src/process/supervisor.ts` (`startParentDeathWatch`: the `poll` seam, and the stop-function return that lets a seam own its own cancel), `src/redeploy/self-reload.ts` (returns that stop in place of `clearInterval`). The seam landed as `opts.poll`, a `(check) => stop` defaulting to an unref'd interval; the two in-process watch tests were converted to a hand-fired poll too, so no watch test still sleeps on a real interval.
+
+**Acceptance criteria.**
+- The grandchild case reaches its verdict by advancing the injected watch clock, not by a real budget; a regression that drops the watch fails at that advance.
+- The real-process plumbing (`SIGKILL` of the supervisor, reparent of the grandchild, the watch's stop-path file) is still exercised by a real child, with its own bounded guard.
+- `npm run test` is green.
 
 ### Retire the `no-repro` gap, part 3/5: make `drainInFlightWork`'s restart windows injectable (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 4/5 and 5/5; independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
 

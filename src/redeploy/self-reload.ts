@@ -78,13 +78,12 @@ export function watchReloadSupervisor(onGone: () => void, seams: SupervisorWatch
   const mark = (seams.env ?? process.env)[DASHBOARD_CHILD_ENV];
   if (mark === undefined) return () => {};
   const supervisor = Number(mark);
-  const timer = startParentDeathWatch(onGone, {
+  return startParentDeathWatch(onGone, {
     ...(seams.ppid ? { ppid: seams.ppid } : {}),
     intervalMs: seams.intervalMs ?? SUPERVISOR_POLL_MS,
     // An older supervisor's "1" names no pid (1 is launchd/init): the watch's first read stands.
     ...(Number.isInteger(supervisor) && supervisor > 1 ? { expectedPpid: supervisor } : {}),
   });
-  return () => clearInterval(timer);
 }
 
 /** Hand this process's dashboard duty to a fresh copy of itself (`process.argv.slice(1)` re-runs
