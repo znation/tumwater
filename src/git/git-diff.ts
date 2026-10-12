@@ -89,7 +89,7 @@ export async function changedFiles(wt: string): Promise<string[]> {
     if (p) files.push(p);
     // A rename/copy is followed by one extra record holding the origin path (no status
     // prefix); consume it so its raw text is never mistaken for a status line.
-    if (record[0] === "R" || record[0] === "C") i++;
+    if (record.startsWith("R") || record.startsWith("C")) i++;
   }
   return files;
 }

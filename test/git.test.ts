@@ -432,7 +432,7 @@ test("runGit keeps git's stderr on a noisy nonzero exit (format unchanged)", asy
   await assert.rejects(
     runGit(repo, ["rev-parse", "--verify", "no-such-ref"]),
     (err: unknown) =>
-      err instanceof Error && /^git rev-parse --verify no-such-ref failed \(128\): fatal: /.test(err.message),
+      err instanceof Error && err.message.startsWith("git rev-parse --verify no-such-ref failed (128): fatal: "),
   );
 });
 

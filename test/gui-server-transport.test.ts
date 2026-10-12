@@ -384,7 +384,7 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
       `server kept up to ${maxSeen} bytes buffered of a rejected body (bound ${maxBuffered})`,
     );
     // Give the server a moment to finish draining what is still in flight.
-    for (let waited = 0; waited < 2000 && !/^HTTP\/1\.1 413/.test(response); waited += 50) {
+    for (let waited = 0; waited < 2000 && !response.startsWith("HTTP/1.1 413"); waited += 50) {
       await sleep(50);
     }
     assert.match(response, /^HTTP\/1\.1 413/, "the oversized upload still gets the 413");

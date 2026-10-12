@@ -96,7 +96,7 @@ function stripFencedBlocks(region: string): string {
     let close = i + 1;
     while (close < lines.length) {
       const end = (lines[close] ?? "").trim().match(/^(`{3,}|~{3,})/)?.[1];
-      if (end && end[0] === mark[0] && end.length >= mark.length) break;
+      if (end && end.startsWith(mark.charAt(0)) && end.length >= mark.length) break;
       close++;
     }
     if (close < lines.length) i = close; // matched: drop opener..closer; unmatched: drop the marker only

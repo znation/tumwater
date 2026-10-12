@@ -154,7 +154,7 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
  */
 export function workLanded(subjects: string[]): boolean {
   return subjects.some(
-    (subject) => /^tumwater\((feature|bugfix|director)\):/.test(subject) || !/^tumwater\(/.test(subject),
+    (subject) => /^tumwater\((feature|bugfix|director)\):/.test(subject) || !subject.startsWith("tumwater("),
   );
 }
 

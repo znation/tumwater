@@ -47,7 +47,7 @@ export function suggestClosest(
   for (const candidate of candidates) {
     const lower = candidate.toLowerCase();
     const distance = editDistance(needle, lower);
-    if (distance > 1 && distance <= maxDistance && lower[0] !== needle[0]) continue;
+    if (distance > 1 && distance <= maxDistance && lower.slice(0, 1) !== needle.slice(0, 1)) continue;
     if (best === null || distance < best.distance) best = { candidate, distance };
   }
   return best !== null && best.distance <= maxDistance ? best.candidate : null;

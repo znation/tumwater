@@ -73,7 +73,7 @@ test("parseQuietHours: malformed values fail with an actionable message", () => 
   // The optional key names the config field in every message; the per-role map passes its
   // dotted key so a rejected entry names the key actually set, not the fleet-wide quietHours.
   const perRole = parseQuietHours("25:00-07:00", "quietHoursPerRole.qa");
-  assert.ok(!perRole.ok && /^quietHoursPerRole\.qa times/.test(perRole.error));
+  assert.ok(!perRole.ok && perRole.error.startsWith("quietHoursPerRole.qa times"));
 });
 
 // inQuietHours — the membership decision at the boundaries: a same-day window is the

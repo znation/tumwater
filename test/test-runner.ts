@@ -110,7 +110,7 @@ function escapeNamePattern(name: string): string {
 /** The e2e tier: files whose name carries `.e2e.` are excluded from the unfiltered (gating)
  * run — they are the live-orchestrator cases whose fixed wall-clock budgets are not reliable
  * under machine load (BUGS.md 2026-09-21) — and are selected only by an explicit filter. */
-const E2E_PATTERN = /\.e2e\.test\.js$/;
+const E2E_SUFFIX = ".e2e.test.js";
 
 /** Pick which compiled test files under `distDir` to run. No filters → every file except the
  * `.e2e.test.js` tier (run that via `npm run test:e2e`). Otherwise a file is selected when its
@@ -150,7 +150,7 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
   const parsed = filters.map(parseFilter);
   const namedFile = parsed.some((p) => p.file !== "");
   const picked = !namedFile
-    ? named.filter((n) => !E2E_PATTERN.test(n.file))
+    ? named.filter((n) => !n.file.endsWith(E2E_SUFFIX))
     : named.filter((n) => parsed.some((p) => p.file !== "" && n.name.includes(p.file)));
   if (picked.length === 0) {
     // A near-miss filter gets the shared did-you-mean every other unknown-value error

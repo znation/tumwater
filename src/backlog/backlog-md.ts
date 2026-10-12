@@ -53,10 +53,10 @@ export function fenceTracker(): { inside(line: string): boolean; open(): boolean
           // opener — taken as one, no later bare fence line can close it and the fence runs to
           // EOF, swallowing the rest of the document as fenced content.
           const info = line.replace(/^ {0,3}/, "").slice(marker.length);
-          if (marker.charAt(0) === "`" && info.includes("`")) return false;
+          if (marker.startsWith("`") && info.includes("`")) return false;
           fence = { char: marker.charAt(0), length: marker.length };
         }
-        else if (marker.charAt(0) === fence.char && marker.length >= fence.length && line.trim() === marker)
+        else if (marker.startsWith(fence.char) && marker.length >= fence.length && line.trim() === marker)
           fence = null;
         return true; // The fence line itself is fence syntax, never structure.
       }
