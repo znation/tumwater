@@ -7,6 +7,7 @@ import {
   parseDeferInput,
   parsePauseInput,
   parseRolePauseInput,
+  parseRoleWakeInput,
   parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
@@ -364,4 +365,16 @@ test("parseRolePauseInput takes only an optional duration and enforces the 90d c
     assert.equal(r.ok, false);
     assert.match(!r.ok ? r.error : "", /takes only a duration/);
   }
+});
+
+test("parseRoleWakeInput wakes now when empty, schedules a duration, cancels on 'cancel', and caps at 90d", () => {
+  assert.deepEqual(parseRoleWakeInput(""), { ok: true });
+  assert.deepEqual(parseRoleWakeInput("  "), { ok: true });
+  assert.deepEqual(parseRoleWakeInput("cancel"), { ok: true, cancel: true });
+  assert.deepEqual(parseRoleWakeInput("CANCEL"), { ok: true, cancel: true });
+  assert.deepEqual(parseRoleWakeInput("2h"), { ok: true, inMs: 7_200_000 });
+  assert.deepEqual(parseRoleWakeInput("91d"), { ok: false, error: "wake is capped at 90d" });
+  const bad = parseRoleWakeInput("soon");
+  assert.equal(bad.ok, false);
+  assert.match(!bad.ok ? bad.error : "", /a loop wake takes a duration/);
 });

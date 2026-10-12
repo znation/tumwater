@@ -187,6 +187,9 @@ test("pause-edit mode shows its own hint keys and prompt prefix", () => {
   const forRole = { ...base, pauseEditRole: "qa" };
   assert.equal(plain(promptPrefix(forRole)), "pause qa › ");
   assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null }, forRole, 300).map((s) => s.text).join("").includes("Enter pause qa"), true);
+  const wake = { ...forRole, pauseEditWake: true };
+  assert.equal(plain(promptPrefix(wake)), "wake qa › ");
+  assert.equal(hintLine({ kind: "activity", role: null, grep: null }, wake, 300).map((s) => s.text).join("").includes("Enter wake qa"), true);
 });
 
 test("the prompt line names who Enter sends to", () => {

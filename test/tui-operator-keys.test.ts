@@ -1,6 +1,6 @@
 /** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor on an unpaused loop, an immediate resume on a paused one) and
  * its fleet-pause interplay note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's
- * wake marker, and the keys' inertness outside transcript views and in budget mode.
+ * wake editor, and the keys' inertness outside transcript views and in budget mode.
  * Like the other topic-named slices (loop-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
  * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the
@@ -9,6 +9,7 @@ import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isFleetPaused, pauseFleet, pausedRoles, standingFleetPause } from "../src/fleet/fleet-state.js";
+import { listWakes, requestWake } from "../src/operator/operator-intent.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
@@ -166,13 +167,73 @@ test("Ctrl+C with no director tick in flight flashes the notice and writes no ma
   });
 });
 
-test("Ctrl+W flashes the wake confirmation and drops the wake marker for the viewed role", async () => {
+const typeText = (tui: { key(str: string | undefined, name: string): void }, text: string): void => {
+  for (const ch of text) tui.key(ch, ch);
+};
+
+test("Ctrl+W opens the wake editor; Enter on an empty line wakes the viewed role now", async () => {
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "w", { ctrl: true });
+    assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "the editor writes nothing until Enter");
+    tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /wake requested for clean/);
     assert.equal(fs.existsSync(wakeRequestPath(repo)), true);
+  });
+});
+
+test("Ctrl+W then a duration schedules the viewed role's wake", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "w", { ctrl: true });
+    typeText(tui, "2h");
+    tui.key(undefined, "return");
+    const wakes = listWakes(repo, "clean", Date.now());
+    assert.equal(wakes.length, 1);
+    assert.ok(Math.abs(wakes[0]!.atMs - (Date.now() + 7_200_000)) < 60_000);
+    assert.match(tui.lastFrame(), /wake scheduled for clean/);
+  });
+});
+
+test("Ctrl+W then 'cancel' drops the viewed role's scheduled wakes", async () => {
+  const repo = await makeTuiRepo();
+  requestWake(repo, ["clean"], 3_600_000);
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "w", { ctrl: true });
+    typeText(tui, "cancel");
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /cancelled 1 scheduled wake for clean/);
+    assert.deepEqual(listWakes(repo, "clean", Date.now()), []);
+  });
+});
+
+test("Ctrl+W with an invalid entry flashes and stays in the editor; Esc restores the draft", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    typeText(tui, "draft");
+    tui.key(undefined, "w", { ctrl: true });
+    typeText(tui, "soon");
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /a loop wake takes a duration/);
+    assert.match(tui.lastFrame(), /wake clean ›/);
+    tui.key(undefined, "escape");
+    assert.match(tui.lastFrame(), /draft/);
+    assert.doesNotMatch(tui.lastFrame(), /wake clean ›/);
+  });
+});
+
+test("a second Ctrl+W closes the wake editor without writing", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "w", { ctrl: true });
+    tui.key(undefined, "w", { ctrl: true });
+    assert.doesNotMatch(tui.lastFrame(), /wake clean ›/);
+    assert.equal(fs.existsSync(wakeRequestPath(repo)), false);
   });
 });
 

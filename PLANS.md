@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Schedule or cancel one loop's wake from the TUI: Ctrl+W on a transcript opens a wake editor, matching `tumwater wake <role> --in <duration>` / `--cancel` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in`/`--cancel` (`requestWake`/`cancelWakes` in `src/operator/operator-intent.ts`), the dashboard drawer's "Wake later…" and cancel, and the TUI's per-loop Ctrl+P duration editor (`parseRolePauseInput` in `src/ui/tui/tui-input.ts`). Today the TUI's Ctrl+W can only wake the viewed loop at once (`flashMessage(requestWake(root, [role]))` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). It cannot schedule a wake or drop one, though every other surface can. Independent of the landed status-table wake marker: no `src/ui/status-render.ts` or `src/ui/badges.ts` change)
+_None yet._
+
+## Done
+
+### Schedule or cancel one loop's wake from the TUI: Ctrl+W on a transcript opens a wake editor, matching `tumwater wake <role> --in <duration>` / `--cancel` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in`/`--cancel` (`requestWake`/`cancelWakes` in `src/operator/operator-intent.ts`), the dashboard drawer's "Wake later…" and cancel, and the TUI's per-loop Ctrl+P duration editor (`parseRolePauseInput` in `src/ui/tui/tui-input.ts`). Today the TUI's Ctrl+W can only wake the viewed loop at once (`flashMessage(requestWake(root, [role]))` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). It cannot schedule a wake or drop one, though every other surface can. Independent of the landed status-table wake marker: no `src/ui/status-render.ts` or `src/ui/badges.ts` change) — done 2026-10-12
 
 **Goal.** On a loop's transcript view, Ctrl+W opens a one-line editor, the same way Ctrl+P does on an unpaused loop. Enter on an empty line wakes the loop now, as Ctrl+W does today. A duration (`45m`, `2h`) schedules the wake. `cancel` drops that loop's pending scheduled wakes. Esc cancels the editor.
 
@@ -43,8 +47,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `promptPrefix`/`hintLine` with `pauseEditMode: true, pauseEditRole: "qa", pauseEditWake: true` read `wake qa`. The existing `pause qa` expectations still pass.
 - Every existing Ctrl+P per-loop pause test in `test/tui-operator-keys.test.ts` still passes unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### The TUI and `tumwater status` table show each loop's own pending scheduled wake (planned 2026-10-12 by plan; sibling of the landed dashboard per-loop wake display (`scheduledWakesFor`/`phaseDetail` in `src/ui/gui/gui-client-loops.ts`) and the landed `scheduledWakes` snapshot field (`src/status/status-data.ts`, filled from `scheduledWakes(root, now)` in `src/fleet/fleet-state.ts`). Today the terminal shows only the header's `wakeBadge(snap.scheduledWake, now)`, which names the EARLIEST wake. So after `wake feature --in 1h` and `wake plan --in 2h`, nothing in the TUI says plan has a wake coming, though the dashboard row and `tumwater wake --list` both do. Render-only: no snapshot, payload, `src/ui/gui`, or `src/operator` change) — done 2026-10-12
 

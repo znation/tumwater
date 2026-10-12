@@ -85,12 +85,12 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number; title: string } | null }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number; title: string } | null }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor) keys = [["Enter", "save title"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.answerFor) keys = [["Enter", "record answer"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.queuedEditFor) keys = [["Enter", "save the edit"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.pauseEditMode) keys = [["Enter", mode.pauseEditRole ? `pause ${mode.pauseEditRole}` : "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.pauseEditMode) keys = [["Enter", mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.deferMode) keys = [["Enter", "save the delay"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -118,12 +118,12 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number; title: string } | null }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number; title: string } | null }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
   if (mode.entryEditFor) return [{ text: `edit ${mode.entryEditFor.kind} #${mode.entryEditFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.answerFor) return [{ text: `answer #${mode.answerFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.queuedEditFor) return [{ text: `edit ${mode.queuedEditFor.role}`, tone: "brand" }, { text: " › " }];
-  if (mode.pauseEditMode) return [{ text: mode.pauseEditRole ? `pause ${mode.pauseEditRole}` : "pause", tone: "brand" }, { text: " › " }];
+  if (mode.pauseEditMode) return [{ text: mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause", tone: "brand" }, { text: " › " }];
   if (mode.deferMode) return [{ text: "defer", tone: "brand" }, { text: " › " }];
   // A pending delay is named beside the target (e.g. `director (defer 45m) › `), so the
   // operator sees what the next Enter will schedule before pressing it.

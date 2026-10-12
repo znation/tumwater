@@ -364,8 +364,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   on an unpaused loop opens a duration editor (empty pauses until resumed, Esc cancels) that
   writes the same `pauseRole` marker `tumwater pause --role --for` does — the deadline is the
   paused-roles marker's one shared field, as with the CLI — and on a paused loop resumes it at
-  once, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
-  its backoff, `Ctrl+N` cycles the pane live transcript → notebook → change and back: the
+  once, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` opens a wake editor (empty
+  wakes it now, a duration like `2h` schedules the wake, `cancel` drops its scheduled wakes), `Ctrl+N` cycles the pane live transcript → notebook → change and back: the
   notebook step is a read-only view of the loop's notebook and next tick's assembled prompt
   (the same two things the dashboard drawer shows; the tab strip reads Notebook and PgUp/PgDn
   page it), and the change step is the loop's collected unlanded work — branch, commits ahead

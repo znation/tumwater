@@ -217,6 +217,26 @@ export function parseRolePauseInput(
   return { ok: true, forMs: ms };
 }
 
+/** Parse the TUI's Ctrl+W per-loop wake line: empty wakes the loop now, a duration schedules
+ * the wake, `cancel` drops its pending scheduled wakes. Anything else is refused rather than
+ * guessed. Same 90d cap `tumwater wake --in` enforces. */
+export function parseRoleWakeInput(
+  text: string,
+): { ok: true; inMs?: number; cancel?: true } | { ok: false; error: string } {
+  const t = text.trim();
+  if (t === "") return { ok: true };
+  if (t.toLowerCase() === "cancel") return { ok: true, cancel: true };
+  const ms = parseDurationMs(t);
+  if (ms === null) {
+    return {
+      ok: false,
+      error: 'a loop wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now',
+    };
+  }
+  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "wake is capped at 90d" };
+  return { ok: true, inMs: ms };
+}
+
 /** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
  * error so the flash can show it and the editor stays open for a fix — whitespace-only input
  * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc

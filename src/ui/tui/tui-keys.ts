@@ -39,6 +39,7 @@ import {
 import {
   requestAbort,
   requestWake,
+  cancelWakes,
   rolePauseMessage,
   roleResumeMessage,
   submitRolePromptAndWake,
@@ -54,6 +55,7 @@ import {
   parseDeferInput,
   parsePauseInput,
   parseRolePauseInput,
+  parseRoleWakeInput,
   parseRolePromptInput,
 } from "./tui-input.js";
 import {
@@ -249,6 +251,8 @@ interface TuiKeysState {
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the fleet editor (Ctrl+F). */
   pauseEditRole: string | null;
+  /** the per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P) */
+  pauseEditWake: boolean;
   /** The pending defer delay as a human label (durationLabel), or null when the next prompt
    * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
   defer: string | null;
@@ -404,6 +408,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let deferSavedCursor = 0;
   let pauseEditMode = false;
   let pauseEditRole: string | null = null;
+  let pauseEditWake = false;
   let pauseSavedInput = "";
   let pauseSavedCursor = 0;
   // The prompt line's session history (tui-prompt-history.ts's rules): every successfully submitted
@@ -591,6 +596,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     if (!pauseEditMode) return;
     pauseEditMode = false;
     pauseEditRole = null;
+    pauseEditWake = false;
     input = pauseSavedInput;
     cursor = pauseSavedCursor;
     promptHistory = resetPromptRecall(promptHistory);
@@ -855,7 +861,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     // Per-loop controls on the transcript pane: Ctrl+P
-    // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W wakes it,
+    // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W opens the wake editor,
     // and Ctrl+R opens the role-prompt editor for it.
     // They call the same marker-writing/submit cores the CLI's --role flags do, so the
     // surfaces cannot drift on marker format, idempotence, or wording. Guarded to the
@@ -865,8 +871,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     // Every branch is a disk write that can fail (a lock timeout, a torn fs), and an
     // unguarded throw would escape this keypress handler and kill the TUI — flash the
     // reason instead, the same contract the prompt-submit path below honors.
-    if (key.ctrl && key.name === "p" && pauseEditRole !== null) {
-      // A second Ctrl+P closes the per-loop pause editor, mirroring Ctrl+F's second press.
+    if (key.ctrl && (key.name === "p" || key.name === "w") && pauseEditRole !== null) {
+      // A second Ctrl+P or Ctrl+W closes the per-loop pause/wake editor, mirroring Ctrl+F's second press.
       exitPauseEditMode();
       deps.requestRender();
       return;
@@ -932,8 +938,24 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         } else if (key.name === "a") {
           const result = requestAbort(root, role);
           flashMessage(result.ok ? result.message : `error: ${result.error}`);
+        } else if (rolePromptFor || searchMode) {
+          flashMessage(
+            rolePromptFor
+              ? "finish or cancel the role prompt first (Esc cancels)"
+              : "finish or cancel the search first (Esc cancels)",
+          );
         } else {
-          flashMessage(requestWake(root, [role]));
+          // Ctrl+W opens the one-line wake editor; nothing is written until Enter. Empty wakes now.
+          const settled = settlePromptRecall(promptHistory, input, cursor);
+          promptHistory = settled.history;
+          pauseSavedInput = settled.text;
+          pauseSavedCursor = settled.cursor;
+          pauseEditMode = true;
+          pauseEditRole = role;
+          pauseEditWake = true;
+          input = "";
+          cursor = 0;
+          flashMessage(`wake ${role}: [duration], e.g. "2h", or "cancel" (empty wakes now) — Enter to apply, Esc to cancel`);
         }
       } catch (err) {
         flashError(err);
@@ -1571,8 +1593,21 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         // Enter in pause-edit mode parses "[duration] [reason]" and writes the same marker
         // `tumwater pause --for/--reason` does. An invalid entry flashes and STAYS in the editor.
         const target = pauseEditRole;
+        const wakeParsed = pauseEditWake && target !== null ? parseRoleWakeInput(input) : null;
         const parsed = target !== null ? parseRolePauseInput(input) : parsePauseInput(input);
-        if (!parsed.ok) {
+        if (wakeParsed) {
+          if (!wakeParsed.ok) {
+            flashMessage(wakeParsed.error);
+          } else {
+            try {
+              const message = wakeParsed.cancel ? cancelWakes(root, target!) : requestWake(root, [target!], wakeParsed.inMs);
+              exitPauseEditMode();
+              flashMessage(message);
+            } catch (err) {
+              flashError(err);
+            }
+          }
+        } else if (!parsed.ok) {
           flashMessage(parsed.error);
         } else if (target !== null) {
           try {
@@ -1829,6 +1864,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         deferMode,
         pauseEditMode,
         pauseEditRole,
+        pauseEditWake,
         defer: deferMs === null ? null : durationLabel(deferMs),
         view,
         scopeRole,
