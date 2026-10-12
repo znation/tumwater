@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { parseConfigKey, setConfigKey, unsetConfigKey, setDailyBudgetUsd } from "../src/config/config-write.js";
+import { helpTopic } from "../src/cli/help.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 
 // setConfigKey — `tumwater config set`'s engine: one top-level key, the value JSON-parsed
@@ -40,6 +41,27 @@ test("setConfigKey parses JSON values, keeps literal strings, and preserves othe
   assert.ok(r.ok && r.value === "gpt-5" && r.oldValue === "gpt-5");
   raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
   assert.equal(raw.model, "gpt-5", "config set model gpt-5 (unquoted) persists the literal string gpt-5");
+});
+
+// The `tumwater help config` example lists settable top-level keys (BUGS.md 2026-10-11): it
+// named the legacy `fallbackModel`, which `config set` refuses to add to a fresh config, so
+// the usage text pointed a first-time user at a key the command then rejected. The example's
+// keys are read from the help text itself and run through the writer, so help cannot name a
+// legacy-only key the writer refuses absent a prior value again.
+test("the config help example names no key the writer refuses as legacy-only", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+
+  const stanza = helpTopic("config")!;
+  const match = /top-level key — ([\s\S]*?), among others/.exec(stanza);
+  assert.ok(match, "the config help still describes its settable-key example");
+  const keys = match![1]!.split(",").map((s) => /^\s*([A-Za-z][A-Za-z0-9]*)/.exec(s)![1]!);
+  assert.ok(keys.includes("fallback"), "the example names the current fallback key");
+  assert.ok(!keys.includes("fallbackModel"), "the example drops the legacy-only fallbackModel");
+  for (const key of keys) {
+    const r = setConfigKey(dir, key, "{}");
+    if (!r.ok) assert.doesNotMatch(r.error, /writer never adds legacy/, `help example key ${key} is refused as legacy`);
+  }
 });
 
 test("setConfigKey rejects an unknown key and a type-invalid value, leaving the file untouched", () => {

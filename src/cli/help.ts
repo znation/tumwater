@@ -65,7 +65,7 @@ Usage:
                                    JSON; get one key's resolved value as JSON; set one
                                    top-level key — quietHours ("23:00-07:00" or ""),
                                    quietHoursPerRole (per-role windows), maxDailyCostUsd,
-                                   fallbackModel, among others
+                                   fallback, among others
                                    (JSON-parsed when parseable, else a literal string) —
                                    and confirm it; unset one key, removing its value so it
                                    reverts to its default or disappears from its map or

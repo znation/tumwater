@@ -71,6 +71,20 @@ as feed items, composing grep and role" (the handler's answer equals
 `readEventsTailWithEnd(...).events.filter(eventMatchesGrep).map(eventFeedItem)`) and "the live
 server routes GET /api/logs to the slice handler".
 
+### INV-A4: the config help example names no key the writer refuses as legacy-only
+
+**Guarantee.** No key `tumwater help config` presents as a settable top-level example is
+refused by `tumwater config set` as a legacy-only key absent a prior value — notably the
+legacy-only `fallbackModel`, which `setConfigKey` declines to add to a config that lacks it.
+
+**Binds.** `src/cli/help.ts` (the `config` stanza's example list), `src/config/config-write.ts`
+(`setConfigKey`'s legacy `provider`/`fallbackModel` refusal).
+
+**Pinned by.** `test/config-write.test.ts` — "the config help example names no key the writer
+refuses as legacy-only" (reads the example's key list out of `helpTopic("config")` and asserts
+`setConfigKey` does not refuse each as legacy, and that the list names `fallback` and not
+`fallbackModel`).
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the
