@@ -157,6 +157,22 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
   assert.equal(lossCausesHidden, 0, "both merge causes are owned, not hidden");
 });
 
+test("a merge_blocked landing whose merge-scope check was killed at its own deadline names that cause", () => {
+  const blocked = ev({ ts: 100, loop: "feature", tick: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
+  const { lossCauses } = timeAndSpend(
+    [blocked],
+    [
+      blocked,
+      ev({ ts: 90, loop: "feature", type: "land_queued", commit: "def5678" }),
+      ev({ ts: 110, loop: "feature", type: "build_check", scope: "batch", status: "failed", timeoutMs: 300000, deadlineLateMs: 20 }),
+      ev({ ts: 120, loop: "feature", type: "land_failed", commit: "def5678", result: "merge_blocked" }),
+    ],
+  );
+  assert.equal(lossCauses.length, 1);
+  assert.equal(lossCauses[0]!.kind, "merge-blocked");
+  assert.match(lossCauses[0]!.example, /batch build check killed at its 300s deadline/);
+});
+
 test("a queued tick that failed retriably, was rebased, and recovered into a landing prices into the landed cell (BUGS.md 2026-10-10)", () => {
   // A first merge_blocked keeps the pin; the vet had already rebased the ref to sha2, so
   // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.
