@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names the claude subscription window: a "claude window" check that warns while a rejected window holds the subscription claude seams (planned 2026-10-12 by plan; the subscription sibling of the landed "budget" check (`checkBudget` in `src/doctor/doctor-holds.ts`) and the last fleet hold doctor does not report, after "pause", "quiet hours", "budget", and "maintenance quota". On a subscription-only claude fleet a run is exempt from the dollar cap, so "budget" reads ok while `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until the rejected window's `resetsAt`, which can be hours away. Today grep finds no `claudeWindow`/`claude window` in `src/doctor`. So doctor prints "ready to run" over a fleet that starts no claude tick, and the operator has to read the status header's `Claude 5h · rejected` badge to learn why. Independent of the landed "A failing notify hook says so" plan: no `src/events` file. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work)
+_None yet._
+
+
+## Done
+
+### `tumwater doctor` names the claude subscription window: a "claude window" check that warns while a rejected window holds the subscription claude seams (planned 2026-10-12 by plan; the subscription sibling of the landed "budget" check (`checkBudget` in `src/doctor/doctor-holds.ts`) and the last fleet hold doctor does not report, after "pause", "quiet hours", "budget", and "maintenance quota". On a subscription-only claude fleet a run is exempt from the dollar cap, so "budget" reads ok while `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until the rejected window's `resetsAt`, which can be hours away. Today grep finds no `claudeWindow`/`claude window` in `src/doctor`. So doctor prints "ready to run" over a fleet that starts no claude tick, and the operator has to read the status header's `Claude 5h · rejected` badge to learn why. Independent of the landed "A failing notify hook says so" plan: no `src/events` file. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work; done 2026-10-12)
 
 **Goal.** `tumwater doctor` (and `--json`) gets a "claude window" row right after "budget". It warns while a rejected subscription window holds the claude seams, naming the window and the countdown to its reset. Otherwise it is ok and names the most constrained window's state.
 
@@ -32,9 +37,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/doctor.test.ts`: the check-name pin list in the test that asserts the order of `runDoctor`'s rows gains `"claude window"` between `"budget"` and `"maintenance quota"`. That is the one existing assertion this plan changes. Find it with `grep -n '"maintenance quota"' test/doctor.test.ts`.
 - `grep -n "checkClaudeWindow" src/doctor/doctor.ts` finds the import and the row.
 - The project's check (`npm run test`) passes.
-
-
-## Done
 
 ### A failing notify hook says so: a nonzero exit logs one warning naming the code and the paged event (planned 2026-10-12 by plan; independent of the waiting "The notify hook pages when the fleet goes down" plan, and it touches the same spawn block in `src/events/notify.ts`. If that plan has landed, the spawn lives in its `spawnNotifyCommand(root, command, event)`. If not, it is still inline in `newNotifier`. Put the change wherever the spawn is at implementation time. Today the notifier spawns the hook with `stdio: "ignore"` and only listens for `error`, which fires when the shell itself cannot start. With `shell: true`, a typo'd or uninstalled binary (`notfy-send`, a missing `terminal-notifier`), a `curl -f` against a dead webhook, or a script that crashes all exit nonzero. That exit is dropped, because the module doc says "a nonzero exit is the command's problem, not the fleet's". So a broken hook silently swallows every page. The operator learns this only by running `tumwater notify --test`, which already reports the exit code (`runNotifyHook` in `src/cli/notify-command.ts`). They usually run it after the page they needed went missing.) (done 2026-10-12)
 

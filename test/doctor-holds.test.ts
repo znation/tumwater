@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkBudget, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkClaudeWindow, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { humanSeconds } from "../src/text/datetime.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("checkPause: no markers is ok", () => {
@@ -204,4 +206,49 @@ test("checkMaintenanceQuota: unreadable config is not checked", () => {
   const r = checkMaintenanceQuota(tmpdir("tw-mq-"), undefined, true, MNOW);
   assert.equal(r.level, "ok");
   assert.match(r.detail, /not checked/);
+});
+
+const CW_NOW = 1_800_000_000_000;
+
+test("checkClaudeWindow: no account, or an API-billed rejected window, is ok", () => {
+  const root = tmpdir("tw-hold-");
+  const none = checkClaudeWindow(root, CW_NOW);
+  assert.equal(none.level, "ok");
+  assert.match(none.detail, /no subscription window reported/);
+  writeClaudeAccount(root, {
+    billing: "api",
+    observedAt: CW_NOW,
+    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
+  });
+  assert.equal(checkClaudeWindow(root, CW_NOW).level, "ok");
+});
+
+test("checkClaudeWindow: a rejected subscription window warns with the countdown", () => {
+  const root = tmpdir("tw-hold-");
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: CW_NOW,
+    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
+  });
+  const out = checkClaudeWindow(root, CW_NOW);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /5h window rejected/);
+  assert.ok(out.detail.includes(humanSeconds(7200)));
+});
+
+test("checkClaudeWindow: overage, an elapsed reset, a warning, and no windows are all ok", () => {
+  const root = tmpdir("tw-hold-");
+  const seed = (w: Record<string, { status: string; resetsAt?: number; utilization?: number; isUsingOverage?: boolean; observedAt: number }>) =>
+    writeClaudeAccount(root, { billing: "subscription", observedAt: CW_NOW, windows: w });
+  seed({ five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, isUsingOverage: true, observedAt: CW_NOW } });
+  assert.equal(checkClaudeWindow(root, CW_NOW).level, "ok");
+  seed({ five_hour: { status: "rejected", resetsAt: CW_NOW, observedAt: CW_NOW - 1000 } });
+  assert.equal(checkClaudeWindow(root, CW_NOW).level, "ok");
+  seed({ five_hour: { status: "allowed_warning", utilization: 0.83, resetsAt: CW_NOW + 1000, observedAt: CW_NOW } });
+  const warning = checkClaudeWindow(root, CW_NOW);
+  assert.equal(warning.level, "ok");
+  assert.match(warning.detail, /nearing its limit/);
+  assert.match(warning.detail, /83% used/);
+  seed({});
+  assert.match(checkClaudeWindow(root, CW_NOW).detail, /no window reported yet/);
 });

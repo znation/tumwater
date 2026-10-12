@@ -12,10 +12,12 @@ import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix } from "../text/phrases.js";
+import { claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeWindowObservation } from "../fleet/fleet-polls.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
- * (checkBudget), and `maintenance quota` (checkMaintenanceQuota), all read-only reports of holds on ticking.
+ * (checkBudget), `claude window` (checkClaudeWindow), and `maintenance quota` (checkMaintenanceQuota), all read-only reports of holds on ticking.
  *
  * The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause
@@ -134,4 +136,28 @@ export function checkMaintenanceQuota(
   const base = `${used}/${allowance} maintenance landings in the last 24h (${config.maintenancePerWorkLanding} per work landing + ${MAINTENANCE_DAILY_FLOOR} floor)`;
   const anyMaintenance = loops.some((l) => commitTier(l.role) === "maintenance");
   return okOutcome(anyMaintenance ? base : `${base}; no maintenance loop enabled`);
+}
+
+/** The `claude window` check: whether a rejected subscription window holds the subscription claude
+ * seams. Read-only and built on claudeWindowObservation, the verdict the scheduler's fleet hold
+ * uses, so it cannot disagree with the hold. A hold is a warn because it stops every subscription
+ * claude seam until the window resets; otherwise the most constrained window's state is reported
+ * as ok (a rejected window spending overage reads `rejected` here: overage spends, it does not
+ * hold). API-billed claude never holds. */
+export function checkClaudeWindow(root: string, now: number = Date.now()): CheckOutcome {
+  const account = readClaudeAccount(root, now);
+  if (account?.billing !== "subscription") return okOutcome("no subscription window reported");
+  const held = claudeWindowObservation(account, now);
+  if (held?.kind === "subscription-window" && held.windowType !== undefined && held.resetsAt !== undefined) {
+    return warnOutcome(
+      `${claudeWindowLabel(held.windowType)} window rejected — subscription claude seams hold until it resets in ${humanSeconds(secondsUntil(held.resetsAt, now))}`,
+    );
+  }
+  const top = claudeWindowEntries(account)[0];
+  if (top === undefined) return okOutcome("subscription; no window reported yet");
+  const pct = typeof top.utilization === "number" ? ` (${Math.round(top.utilization * 100)}% used)` : "";
+  const label = claudeWindowLabel(top.type);
+  return okOutcome(
+    top.status === "allowed_warning" ? `${label} window nearing its limit${pct}` : `${label} window ${top.status}${pct}`,
+  );
 }
