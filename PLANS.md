@@ -31,6 +31,30 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater diff --role <id> --stat` prints per-file change summaries in place of the patches (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
+
+**Goal.** `tumwater diff --role <id>` prints a loop's full ahead-of-main patch and its full uncommitted patch. Each can run to 200 KB (`aheadOfMainDiff`'s default cap, and `DIFF_MAX_BYTES` in `src/change/change-data.ts`). The quick question an operator usually asks, "which files is this loop touching, and how much?", has no compact answer today. `git diff --stat` answers it. After this change, `--stat` prints the same header, commit lines, and uncommitted file list, with each patch replaced by its `git diff --stat` summary.
+
+**Approach.**
+- **Flag.** Add `export const STAT_FLAG: FlagSpec = { names: ["--stat"] };` to `src/cli/cli-flag-specs.ts`, beside `JSON_FLAG`. In `cmdDiff` (`src/cli/cli-query-commands.ts`), add it to the `rejectUnknownArgs("diff", …)` list.
+- **Requires --role.** When `--stat` is present and `parseRoleFlag` returns null, `fail("diff --stat needs --role <id> (the fleet roster prints no patch)")`. The fleet view carries no patch, so the flag would mean nothing there.
+- **Collector.** Give `collectRoleChange(root, role, opts: { stat?: boolean } = {})` in `src/change/change-data.ts` an options bag. When `opts.stat` is set:
+  - `diff` becomes `(await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`)) ?? ""`, still only when `ahead > 0`. It does not go through `aheadOfMainDiff`.
+  - `uncommittedDiff` becomes `(await gitTry(wt, "diff", "--stat", "HEAD")) ?? ""`, still only when `dirtyFiles` is non-empty. It does not go through `cappedWorkingDiff`.
+  - No cap applies: a stat summary is one line per file.
+  - The `RoleChangeView` shape is unchanged. Update the doc comments on `diff` and `uncommittedDiff` to say that under `--stat` they hold the stat summary.
+  - `cmdDiff` passes `{ stat: args.includes("--stat") }`. `collectFleetChanges` and the TUI's `collectChange` call keep the default (no options), so their behavior does not change.
+- **Renderer.** No change: `renderRoleChange` already prints `view.diff` and `view.uncommittedDiff` verbatim after the commit lines and the `uncommitted (N files): …` line.
+- **JSON.** `--stat --json` prints the same payload shape, with `diff`/`uncommittedDiff` holding the stat summaries.
+
+**Files.** `src/cli/cli-flag-specs.ts`, `src/cli/cli-query-commands.ts`, `src/change/change-data.ts`, `src/cli/help.ts` (the `tumwater diff --role <id> [--json]` usage line becomes `[--stat] [--json]`, and its description gains "; --stat prints each patch's per-file `git diff --stat` summary instead"), README.md (the "See a loop's pending change" row gains a `--stat` clause), test/cli-diff.test.ts.
+
+**Acceptance criteria.**
+- New test in test/cli-diff.test.ts, using `seededFeatureRepo` plus an `fs.appendFileSync(path.join(wt, "widget.md"), "more\n")` uncommitted edit. `diff --role feature --stat` exits 0. Its stdout includes `1 commit ahead of main`, `add widget.md`, `uncommitted (1 file): widget.md`, and a `widget.md |` stat line. It includes neither `+# widget` nor `+more`.
+- `diff --role feature --stat --json` parses. Its `diff` and `uncommittedDiff` each include `widget.md |`, and neither includes `+# widget`.
+- `diff --stat` without `--role` exits nonzero, and its stderr includes `diff --stat needs --role`.
+- Existing tests in test/cli-diff.test.ts, test/change-data.test.ts, test/change-render.test.ts, and the TUI tests pass unchanged. `diff --role feature` without `--stat` still prints `+# widget`.
+
 ## Done
 
 ### The doctor refusals row says when a refused plan's prerequisites have left `## Planned`, so a refusal that may be stale stands out (planned 2026-10-12 by plan; done 2026-10-12 by feature; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
