@@ -6,7 +6,29 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Clear a loop's notebook from the TUI's notebook view: Ctrl+X pressed twice, matching `tumwater role <id> --clear-notes` and the dashboard drawer's Clear (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes` branch in `src/cli/cli-query-commands.ts`), the landed dashboard drawer notebook Edit/Clear (`POST /api/role-notes` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI notebook view (Ctrl+N, `noteMode`/`noteCache` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). All three surfaces write through `saveRoleNote` in `src/agent/role-notes-write.ts`. Today the TUI's notebook view is read-only, so an operator who sees a stale or wrong note there has to switch to a second terminal to drop it. Replacing a notebook's text stays a CLI and dashboard job, because the TUI's prompt line holds one line and a notebook is multiline Markdown up to 4 KB. Independent of everything else: no `src/gui`, `src/ui/gui`, `src/cli`, or `src/agent` file changes)
+
+**Goal.** On a loop's transcript view with the notebook step shown (Ctrl+N once), Ctrl+X arms a clear and a second Ctrl+X clears that loop's notebook. The arm-then-confirm pattern matches the backlog pane's Ctrl+X cancel. The pane then re-renders with the "none yet" notebook placeholder.
+
+**Approach.**
+- `src/ui/tui/tui-keys.ts`, `createTuiKeys`: add a local `let notesClearArmed: string | null = null` (the role id a second Ctrl+X would clear) beside `cancelArmed`. Disarm it at the top of `handleKey` the same way: `const armedNotes = notesClearArmed; notesClearArmed = null;`. Update the "Every key starts disarmed" comment so it names both arms. It stays off `TuiKeyState`, because no renderer reads it.
+- Add a new branch placed before the two existing `key.ctrl && key.name === "x"` branches. Guard it with `key.ctrl && key.name === "x" && noteMode` plus the same editor-mode guard those branches use (`!budgetMode && !rolePromptFor && !searchMode && !deferMode && !pauseEditMode && !queuedEditFor && !answerFor && !entryEditFor`) and the transcript range check (`view >= 1 && view <= roleIds.length`). Let `role = roleIds[view - 1]!`.
+  - If `armedNotes === role`, run `flashMessage(\`${role}: ${saveRoleNote(roleNotesPath(root, role), "")}\`)`, which shows "clean: notebook cleared", the CLI's `say` wording. Then refresh the view in place: `noteCache = roleInspectMarkdown(root, role); paneScroll = 0;`. Wrap both calls in one try/catch with `flashError(err)`, as the Ctrl+N notebook entry does.
+  - Otherwise set `notesClearArmed = role` and flash `press Ctrl+X again to clear ${role}'s notebook — any other key keeps it`.
+  - Call `deps.requestRender(); return;` either way.
+- Import `saveRoleNote` from `../../agent/role-notes-write.js` and `roleNotesPath` from `../../paths.js`. Check with grep first in case either import already exists.
+- Ctrl+X on the live transcript or the change step stays inert. The new branch's `noteMode` guard keeps it out of those views, and the existing Ctrl+X branches only match the backlog and queued views.
+- `src/ui/tui/tui-frame.ts`, `hintLine`: in the `view.kind === "transcript"` branch, when `view.note` is set, insert `["Ctrl+X", "clear notebook"]` right after the `Ctrl+N` pair. The live-transcript and change hints stay unchanged.
+- Docs: `docs/how-it-works.md`, the TUI paragraph that describes the notebook step as "a read-only view", must say Ctrl+X pressed twice clears the notebook (as `tumwater role <id> --clear-notes` does). In README.md's "Check state" row, extend the sentence "the dashboard's loop drawer edits or clears the notebook the same way" with "and the TUI's notebook view (Ctrl+N) clears it with Ctrl+X pressed twice". `src/cli/help.ts` documents no TUI keys (grep `Ctrl+N` there first to confirm), so it needs no change.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `test/tui-notebook.test.ts`, `test/tui-frame.test.ts`, `docs/how-it-works.md`, README.md.
+
+**Acceptance criteria.**
+- Add a test to `test/tui-notebook.test.ts`, using its `seedNote` helper and `withTui`. Seed a note for `clean`, then press Ctrl+T and Ctrl+N. The first Ctrl+X leaves the note file's content unchanged and the frame shows "press Ctrl+X again". The second Ctrl+X empties `roleNotesPath(repo, "clean")` (read back as `""`), and the frame shows "notebook cleared" and the "none yet" placeholder, the same text the existing test "a loop with no notebook shows the none-yet placeholder…" asserts.
+- In the same file, a test that pressing another key between the two Ctrl+X presses (for example PgDn) disarms the clear: the note survives a following single Ctrl+X.
+- In the same file, a test that Ctrl+X on the live transcript (notebook step not shown) leaves the note file unchanged.
+- `test/tui-frame.test.ts`: the existing exact-string `hint({ … note: true, change: false })` assertion is updated to include `Ctrl+X clear notebook` after `Ctrl+N change`. The `note: false` transcript and `change: true` assertions stay unchanged.
+- `npm run test` passes.
 
 ## Done
 
