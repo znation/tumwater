@@ -6,7 +6,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### A failing notify hook says so: a nonzero exit logs one warning naming the code and the paged event (planned 2026-10-12 by plan; independent of the waiting "The notify hook pages when the fleet goes down" plan, and it touches the same spawn block in `src/events/notify.ts`. If that plan has landed, the spawn lives in its `spawnNotifyCommand(root, command, event)`. If not, it is still inline in `newNotifier`. Put the change wherever the spawn is at implementation time. Today the notifier spawns the hook with `stdio: "ignore"` and only listens for `error`, which fires when the shell itself cannot start. With `shell: true`, a typo'd or uninstalled binary (`notfy-send`, a missing `terminal-notifier`), a `curl -f` against a dead webhook, or a script that crashes all exit nonzero. That exit is dropped, because the module doc says "a nonzero exit is the command's problem, not the fleet's". So a broken hook silently swallows every page. The operator learns this only by running `tumwater notify --test`, which already reports the exit code (`runNotifyHook` in `src/cli/notify-command.ts`). They usually run it after the page they needed went missing.)
+
+**Goal.** When the configured notify hook exits nonzero or is killed by a signal, the fleet logs one `warning` event from loop `harness`. The warning names the event type it was paging and the exit code or signal, and adds a "command not found" gloss for code 127. It tells the operator to check the hook with `tumwater notify --test`. The warning reaches `tumwater logs`, the TUI Activity feed, and the dashboard, like every other warning. The page itself is not retried, and the fleet's behavior is otherwise unchanged.
+
+**Approach.**
+1. `src/events/notify.ts`:
+   - Add an exported pure `notifyExitWarning(type: string, code: number | null, signal: NodeJS.Signals | null): string | undefined`. It returns `undefined` for `code === 0`. For code 127 it returns `` `notify command exited with code 127 (command not found) paging ${type} — check it with \`tumwater notify --test\`` ``. For any other nonzero code it returns the same text without the gloss. For a signal (`code === null`) it returns `` `notify command was killed by ${signal} paging ${type} — …` ``, with the same suffix.
+   - In the spawn block, next to the existing `child.on("error", …)`, add `child.on("exit", (code, signal) => { const message = notifyExitWarning(event.type, code, signal); if (message) warnEventBestEffort(root, "harness", message); })`. Keep `stdio: "ignore"`, `detached: true`, and `child.unref()` unchanged. The hook must still outlive the orchestrator, so capturing stderr through a pipe is out of scope: a piped hook could get SIGPIPE once the parent exits. An `exit` listener does not keep the event loop alive after `unref()`. So when the process is gone before the hook finishes, no warning is logged, which is acceptable. This includes the fleet-down plan's supervisor path, where the supervisor exits right after spawning. If the spawn itself fails, node emits `error` and no `exit` with a code, so the existing "could not start" warning stays the only one for that case. The implementer confirms this in the spawn-failure test below.
+   - `"warning"` stays off `NOTIFY_EVENT_TYPES`, so a failure warning can never page in turn. The per-type `NOTIFY_MIN_GAP_MS` throttle already bounds spawns, so it also bounds these warnings.
+   - Rewrite the doc comment above `newNotifier`. Replace "a nonzero exit is the command's problem, not the fleet's" with the new contract: a nonzero exit or kill is logged as one warning, and the page is not retried.
+2. `src/config/config-schema.ts`: the `notify?: string` doc comment gains one clause: a nonzero exit logs a warning.
+3. `docs/invariants.md`: add an entry next to INV-E1 with the next free `INV-E` number: "a notify hook that exits nonzero leaves a warning naming the paged type". It binds `notifyExitWarning` and the notifier's `exit` listener, and it is pinned by the spawn test below. Use `grep -n '^### INV-E' docs/invariants.md` to find the next number at landing time.
+4. README.md's `notify` sentence (outside the tumwater:prompt markers, ending "verify it with `tumwater notify --test`") gains "; a hook that exits nonzero logs a warning".
+
+**Files touched.** `src/events/notify.ts`, `src/config/config-schema.ts`, `test/notify.test.ts`, `docs/invariants.md`, `README.md`.
+
+**Acceptance criteria.**
+- New `test/notify.test.ts` unit test for `notifyExitWarning`: `(…, 0, null)` returns `undefined`. `("budget_paused", 127, null)` contains `code 127`, `command not found`, `budget_paused`, and `tumwater notify --test`. `("land_failed", 3, null)` contains `code 3` and not `command not found`. `("land_failed", null, "SIGKILL")` contains `SIGKILL`.
+- New `test/notify.test.ts` spawn test, modelled on "a notify command whose spawn fails logs one warning and does not throw out of the listener". It uses a `subscribeEvents` collector of `warning` messages and `newNotifier(root)` with `update({ notify: "exit 3" })`, then logs a `budget_paused` event. `waitFor` sees exactly one warning matching `/exited with code 3 paging budget_paused/`. A second case with `notify: "tumwater-no-such-command-xyz"` sees a warning matching `/code 127 \(command not found\)/`.
+- New spawn test: a hook that exits 0 (`recorderCommand(out)`) records its line and produces no warning. Wait for the recorded line with `waitFor`, then `sleep` briefly before asserting that the warnings are empty.
+- The existing "a notify command whose spawn fails logs one warning and does not throw out of the listener" test still passes. Extend it to assert that, after a short `sleep`, the collected warnings hold exactly one entry (no second exit warning).
+- The existing allowlist-pin test "NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap" passes unchanged, because this plan does not touch the list.
+- `grep -n "problem, not the fleet" src/events/notify.ts` finds nothing.
+- The project's check (`npm run test`) passes.
 
 ## Done
 
