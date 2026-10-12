@@ -6,7 +6,53 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Operator backlog writes land on main, part 1/2: a filed plan or bug is committed as `tumwater(operator): File <kind>: <title>` (planned 2026-10-12 by plan; independent of every other entry; part 2/2 below builds on its helper. `tumwater bug`/`tumwater plan` (`fileAndAnnounce` → `announceFiled` in `src/backlog/backlog-write.ts`), the dashboard's New form (`handleBacklogFile` in `src/gui/gui-endpoint-commands.ts`), and the TUI backlog pane's Ctrl+N (`createTuiKeys` in `src/ui/tui/tui-keys.ts`) all write through `appendEntry`, which rewrites the primary checkout's PLANS.md/BUGS.md under `primaryWorktreeLockPath` and never commits: `src/backlog`'s only git use is backlog-structure.ts's read-only `changeBaseRev`/`fileContentAt`, and no writer there stages or commits. So the entry is invisible to the loop the command wakes, whose worktree branches from main. The `<backlog-index>` block (`renderBacklogIndexBlock`, read from the primary checkout) names it with line ranges that do not match the loop's own PLANS.md. And the dirty file makes `ffMainTo`'s working-tree arm (`src/landing/landing-git.ts`) fail: `git merge --ff-only` refuses with "Your local changes to the following files would be overwritten by merge" (reproduced 2026-10-12 in a scratch repo) on every landing that touches that file, until a human commits it by hand (e.g. commit faadab30, "BUGS.md: file stale-claim persistence…"). This is CLI-side only: no landing, scheduler, or event change)
+
+**Goal.** Every surface that files a new plan or bug commits that one file on main right after the write, so main holds the entry, the woken loop sees it, and the primary checkout stays clean for the next fast-forward.
+
+**Approach.**
+- A new module `backlog-commit.ts` in `src/backlog/`, exporting `commitOperatorBacklogEdit(root: string, file: string, subject: string): Promise<boolean>`. Inside `withStateLockAsync(primaryWorktreeLockPath(root), …)` (the lock `ffMainTo`'s working-tree arm takes, so the commit and a fast-forward cannot interleave):
+  1. Resolve `primary = await currentBranch(root)` and `main = targetBranch(loadConfigSafe(root).config?.baseBranch, primary)`, the resolution `collectRoleChange` in `src/change/change-data.ts` uses.
+  2. Return false when `primary` is null or differs from `main`. That is the case where `ffMainTo` takes its ref-push arm and the working tree is not main's, so the write stays uncommitted as today.
+  3. Otherwise run `gitTry(root, ...COMMIT_IDENT, "commit", "--only", "-m", subject, "--", file)` and return whether it succeeded. `--only` with a pathspec commits just that file's working-tree content (any earlier uncommitted operator edits to it included) and leaves other staged or dirty paths alone.
+  The helper never throws: a git failure returns false and the entry stays written, as today. Build the subject with `stampedSubject("operator", "File " + kind + ": " + title)` from `src/git/commit-message.ts`, so `commitSubject` strips it like a loop's stamp.
+- Keep `appendEntry` and the sync `fileBug`/`filePlan`/`fileEntryWithBody`/`*FromText` writers unchanged, so their direct callers and tests are unaffected. Commit after the write instead:
+  - **CLI.** Make `announceFiled` async. It awaits `commitOperatorBacklogEdit(root, filed.file, …)` before `submitRolePromptAndWake`, so the woken loop's next sync sees the commit. `fileAndAnnounce` awaits it on both its `--file` and positional paths. The `kind` is the `command` argument (`bug`/`plan`). Printed output and `--json` payloads are unchanged.
+  - **Dashboard.** `handleBacklogFile` awaits the commit after `fileEntryWithBody` and before its wake.
+  - **TUI.** The Ctrl+N branch of the entry editor in `createTuiKeys` calls `void commitOperatorBacklogEdit(…)` after `fileEntryWithBody`. That is fire-and-forget, because the key handler is synchronous and the helper never rejects. The wake and flash stay synchronous, so "backlog Ctrl+N files a plan by title and wakes the feature loop; Ctrl+N again files a bug" in test/tui-keys.test.ts keeps passing as written (its rig root is not a git repo on main, so the helper returns false).
+- The gap between the sync write and the async commit is milliseconds. A fast-forward landing in it fails as `merge_blocked`, and the batch re-stacks (`BATCH_RESTACK_ATTEMPTS` in `src/landing/landing-stack.ts`), which is strictly better than today's file that stays dirty indefinitely.
+
+**Files.** a new module `backlog-commit.ts` in `src/backlog/`, `src/backlog/backlog-write.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/tui/tui-keys.ts`, a new `backlog-commit.test.ts` in `test/`, README.md ("Steer the project" row: filed entries are committed to main), docs/invariants.md (one INV-B entry: "an operator-filed entry is committed on main under the primary-worktree lock", pinned to the new test).
+
+**Acceptance criteria.**
+- In a `makeRepo` + `initProject` repo on main, `tumwater bug "x"` through the test `cli` helper leaves `git status --porcelain` empty, and `git log -1 --format=%s` reads `tumwater(operator): File bug: x`. The same holds for `tumwater plan "y"` (`File plan: y`) and for `tumwater plan --file <path>`.
+- With an unrelated file staged beforehand, filing a bug commits only BUGS.md, and the unrelated file is still staged.
+- With the primary checked out on a branch other than the base branch, filing leaves BUGS.md modified in the working tree and HEAD unchanged. `commitOperatorBacklogEdit` returns false and does not throw. It also returns false for a non-git directory.
+- `POST /api/backlog-file` in a git repo on main leaves the checkout clean, with the operator commit on top.
+- Existing tests pass unchanged, including "a filed bug cannot be clobbered by a landing that fast-forwards the same file" (test/backlog-write.test.ts) and the TUI Ctrl+N test named above.
+
+### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
+- `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
+- `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
+- the dashboard's drawer cancel, edit, and question answer (`tryCancelEntry`/`tryEditEntry`/`tryAnswerQuestion` call sites in `src/gui/gui-endpoint-commands.ts`);
+- the TUI backlog pane's Ctrl+X, Ctrl+E, and Ctrl+A (the same three `try*` call sites in `createTuiKeys`, `src/ui/tui/tui-keys.ts`).
+A cancelled entry still reads as eligible on main, and an answered question stays open in every loop's worktree)
+
+**Goal.** Each of those writes commits its one file on main, exactly as part 1/2's filings do.
+
+**Approach.** After each successful write, call `commitOperatorBacklogEdit(root, file, subject)`:
+- **Subjects.** All built with `stampedSubject("operator", …)`: `Cancel <kind>: <title>`, `Edit <kind>: <title>` (the new title), and `Answer question: <title>`.
+- **Where to await.** The CLI announce functions and the dashboard handlers are async and await it. The TUI key branches call it fire-and-forget (`void …`), as part 1/2's Ctrl+N does.
+- **Failures.** A refused or no-op outcome (stale position, title mismatch, `UNCLOSED_FENCE_MESSAGE`) writes nothing and commits nothing.
+- **Unchanged.** No change to the sync `try*`/`cancel*`/`edit*`/`answerQuestion*` writers, or to any printed output or JSON payload.
+
+**Files.** `src/backlog/backlog-write.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/tui/tui-keys.ts`, the `backlog-commit.test.ts` part 1/2 adds, README.md (the same "Steer the project" and "Answer open questions" rows), docs/invariants.md (widen part 1/2's INV entry to name cancel, edit, and answer).
+
+**Acceptance criteria.**
+- In a repo on main, `tumwater bug --cancel 1`, `tumwater plan --edit 1 "z"`, and `tumwater questions answer 1 "yes"` each leave `git status --porcelain` empty, with the matching `tumwater(operator): …` subject as HEAD's subject.
+- A `--cancel` naming a missing position fails as today and adds no commit (HEAD unchanged).
+- The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
+- Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
 ## Done
 
