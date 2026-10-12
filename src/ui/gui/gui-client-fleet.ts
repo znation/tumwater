@@ -326,7 +326,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           "<button type='button' class='li-open backloglink' data-file='" + key + "' data-index='" + i + "'><span class='li-title'>" + esc(t.title) + "</span>" +
           (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") +
           (mark ? "<span class='li-meta'>" + esc(mark.trim()) + "</span>" : "") + "</button>" +
-          (key === "questions" ? "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + i + "'>Answer</button>" : "") + "</div>";
+          (key === "questions" ? "<button type='button' class='btn btn-sm backloglink' data-file='questions' data-index='" + i + "'>Answer</button>" : "") + "</div>";
       }).join("");
     }
     if (key === "plans" || key === "bugs") {

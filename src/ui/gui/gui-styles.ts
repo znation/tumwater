@@ -394,6 +394,7 @@ export const GUI_STYLES = String.raw`
   .drawer-head h2 { margin: 2px 0 8px; font-size: 19px; line-height: 1.3; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
   .drawer-head h2.mono { font-size: 18px; letter-spacing: 0; }
   .drawer-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 18px; }
+  .drawer-actions textarea { flex-basis: 100%; min-height: 60px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
   .drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   #drawermeta, #entrybody { display: flex; flex-direction: column; gap: 18px; }
   .drawer-actions .confirming { color: var(--red); background: var(--red-bg); border-color: var(--red-line); }

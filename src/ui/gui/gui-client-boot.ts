@@ -67,6 +67,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     if (form) { ev.preventDefault(); clearSetting(form); }
   });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
+  // run-act:start
   function runAct(act, arg) {
     if (act === "loop") openLoop(arg);
     else if (act === "close") closeDrawer();
@@ -89,12 +90,25 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     } else if (act === "answer") {
       const q = ((lastStatus && lastStatus.questions) || [])[Number(arg)];
       if (q !== undefined) draftForDirector("Answer to the open question “" + splitTitle(q).title + "”: ");
+    } else if (act === "answer-record") {
+      const q = ((lastStatus && lastStatus.questions) || [])[Number(arg)];
+      const area = $("answertext");
+      const decision = area ? area.value.trim() : "";
+      if (q === undefined) return;
+      if (!decision) { showFlash("Write an answer first"); return; }
+      postAction("/api/question-answer", { position: Number(arg) + 1, title: q, decision }, (d) => {
+        closeDrawer();
+        return d && d.status === "answered"
+          ? "Answered “" + splitTitle(q).title + "” — moved to ## Answered"
+          : "That question was already answered or moved — refreshed";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
       if (title !== undefined) draftForDirector("About “" + splitTitle(title).title + "”: ");
     }
   }
+  // run-act:end
   onClick((t, ev) => {
     const act = t.closest("[data-act]");
     if (act) { ev.preventDefault(); runAct(act.dataset.act, act.dataset.arg || ""); return; }

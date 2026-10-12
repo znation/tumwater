@@ -297,7 +297,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     paintPanel("drawerhead", "<div class='kicker'>" + esc(ENTRY_KINDS[file] || "Entry") + (t.meta ? " · " + esc(t.meta) : "") + "</div>" +
       "<h2 id='drawertitle'>" + esc(t.title) + "</h2>");
     const action = file === "questions"
-      ? "<button type='button' class='btn btn-sm btn-primary' data-act='answer' data-arg='" + index + "'>" + icon("chat") + "Answer in the composer</button>"
+      ? "<textarea id='answertext' rows='3' placeholder='Your answer — recorded in QUESTIONS.md'></textarea>" +
+        "<button type='button' class='btn btn-sm btn-primary' data-act='answer-record' data-arg='" + index + "'>" + icon("chat") + "Record answer</button>" +
+        "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + index + "'>Ask the director instead</button>"
       : "<button type='button' class='btn btn-sm' data-act='mention' data-arg='" + esc(file + ":" + index) + "'>" + icon("chat") + "Ask the director about this</button>";
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
     paintPanel("entrybody", "<div class='drawer-actions'>" + action + "</div><div class='md'>" +

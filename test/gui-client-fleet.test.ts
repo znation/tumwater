@@ -453,3 +453,11 @@ test("the Plans and Bugs tabs offer a New form that survives polls and drops on 
     assert.doesNotMatch(panels["backlog"] ?? "", /backlognew/);
   }
 });
+
+test("the Questions tab's Answer button opens the entry drawer instead of drafting", () => {
+  const { scope, panels } = backlogScope("questions");
+  scope.renderBacklog({ questions: ["Which backend?"], plans: [], bugs: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} });
+  const html = panels["backlog"] ?? "";
+  assert.match(html, /backloglink' data-file='questions' data-index='0'>Answer</);
+  assert.doesNotMatch(html, /data-act='answer'/);
+});

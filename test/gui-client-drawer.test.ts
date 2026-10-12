@@ -290,6 +290,8 @@ test("an open question entry offers the composer's answer action, an empty body 
   t.scope.toggleEntry("questions", 2);
   await flush();
   assert.match(t.paintedFor("drawerhead"), /Open question/);
+  assert.match(t.paintedFor("entrybody"), /id='answertext'/);
+  assert.match(t.paintedFor("entrybody"), /data-act='answer-record' data-arg='2'/);
   assert.match(t.paintedFor("entrybody"), /data-act='answer' data-arg='2'/);
   assert.match(t.paintedFor("entrybody"), /No details for this entry\./);
 });

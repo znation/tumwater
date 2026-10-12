@@ -158,3 +158,23 @@ test("route survives a malformed percent-escape in the fragment instead of abort
   assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
   assert.deepEqual(calls, ["renderFleet"]);
 });
+
+test("answer-record posts the trimmed answer for the Nth question, and nothing when empty", () => {
+  const posts: unknown[] = [];
+  const flashes: string[] = [];
+  const mk = (value: string) => clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: { questions: ["First", "Which backend? · asked by plan"] },
+      $: () => ({ value }),
+      showFlash: (m: string) => flashes.push(m),
+      postAction: (path: string, body: unknown) => posts.push([path, body]),
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  mk("  use sqlite \n").runAct("answer-record", "1");
+  assert.deepEqual(posts, [["/api/question-answer", { position: 2, title: "Which backend? · asked by plan", decision: "use sqlite" }]]);
+  mk("   ").runAct("answer-record", "1");
+  assert.equal(posts.length, 1);
+  assert.deepEqual(flashes, ["Write an answer first"]);
+});
