@@ -67,7 +67,8 @@ async function tickCommitStat(root: string, sha: string | null): Promise<string>
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
  * marker), duration, usage, and the pinned commit sha when the block's `land_queued`/`landed`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
- * TUI use, so the trail reads exactly like the feed it came from. */
+ * TUI use, so the trail reads exactly like the feed it came from. A queued tick whose landing
+ * has finished shows that verdict in the header and ends with the landing's outcome line. */
 export function renderTickDetail(d: TickDetail): string {
   const summary: string[] = [];
   if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
@@ -77,7 +78,9 @@ export function renderTickDetail(d: TickDetail): string {
   const sha = tickCommitSha(d);
   let header = `${d.role} tick #${d.tick} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
-  return [header, ...d.events.map(formatEvent)].join("\n");
+  const lines = [header, ...d.events.map(formatEvent)];
+  if (d.landing !== null) lines.push(formatEvent(d.landing));
+  return lines.join("\n");
 }
 
 /** `tumwater tick <role> [<n>] [--last] [--stat] [--json]`: print one completed tick's full event

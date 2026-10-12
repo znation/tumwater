@@ -107,7 +107,8 @@ Usage:
                                    (result or in-flight, duration, tokens/cost, the pinned
                                    commit sha) then every event of that tick's block in time
                                    order; a still-running tick shows its events so far, marked
-                                   in flight; --last shows the newest completed tick's trail
+                                   in flight; a queued tick shows its landing's verdict and
+                                   outcome line once the landing finishes; --last shows the newest completed tick's trail
                                    instead of numbering one; --stat appends the pinned
                                    commit's per-file git show --stat summary; --json prints
                                    the collector's payload as machine-readable data

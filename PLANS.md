@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater tick` resolves a queued tick to its landing verdict, as `tumwater history` already does, and ends the trail with the landing's outcome line (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Shares `src/tick/tick-detail.ts` and `test/tick-detail.test.ts` with the landed `tick --stat` plan (now in Done), but not behavior: `renderTickDetail` now takes its header sha from `tickCommitSha`, and the landing line appends after the trail, before any `--stat` text)
+## Done
+
+### `tumwater tick` resolves a queued tick to its landing verdict, as `tumwater history` already does, and ends the trail with the landing's outcome line (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Shares `src/tick/tick-detail.ts` and `test/tick-detail.test.ts` with the landed `tick --stat` plan (now in Done), but not behavior: `renderTickDetail` now takes its header sha from `tickCommitSha`, and the landing line appends after the trail, before any `--stat` text) (done 2026-10-12)
 
 **Goal.** A changed tick ends `queued`: its `tick_end` is logged before the landing slot vets and merges the pinned commit, and the slot's later `landed`/`land_failed` event falls outside the tick's block. `tickRows` in `src/history/history-data.ts` already joins each queued row to that verdict through `bucketLandingEvents` + `resolveQueuedResult`, so `tumwater history` says `changed` or `rejected`. `readTickDetail` in `src/tick/tick-detail-data.ts` uses the raw `outcomeText(end)`, so `tumwater tick` says `queued` about the same tick, forever. The two surfaces disagree, and the drill-down meant to explain a tick cannot tell the operator whether its work reached main. `renderTickDetail` feeds the CLI, the TUI History drill-down (`src/ui/tui/tui-keys.ts`) and `GET /api/tick` (`src/gui/gui-endpoints.ts`), so one collector change fixes all three.
 
@@ -48,8 +50,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - A `changed` (non-queued) tick has `landing === null` and its result is unchanged.
 - test/tick-detail.test.ts: `renderTickDetail` over the resolved tick 1 has a header matching `/tick #1 — changed/`, and its last line matches `/landing of sha1 complete/` (match whatever `shortSha` yields). Over a non-queued tick it prints the same line count as before.
 - `cmdTick --json` on the resolved tick parses with a `landing` object. The existing test "renderTickDetail prints the summary header, the commit sha, and formatEvent lines" passes unedited, as does every existing test in test/tick-detail.test.ts, test/tick-detail-data.test.ts, and test/history-data.test.ts.
-
-## Done
 
 ### `tumwater tick <role> [<n>] --stat` appends the tick's commit's per-file `git show --stat` summary to its event trail (planned 2026-10-12 by plan; sibling of the landed `tumwater diff --role <id> --stat`; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files) (done 2026-10-12)
 

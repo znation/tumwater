@@ -159,3 +159,37 @@ test("a tick the scan never saw reads as not found, start or end", () => {
   // Another loop's tick 1 does not answer for feature's.
   assert.equal(readTickDetail(root, "helper", 1), null);
 });
+
+test("a queued tick resolves to its landing's verdict and outcome event; a pending landing stays queued", () => {
+  const root = tmpdir();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
+  writeEvents(root, [
+    startEvent({ ts: 1000, tick: 1 }),
+    ev({ ts: 1100, type: "land_queued", commit: "sha1" }),
+    endEvent({ ts: 1200, tick: 1, result: "queued" }),
+    ev({ ts: 1300, type: "landed", commit: "sha1", result: "changed" }),
+    startEvent({ ts: 2000, tick: 2 }),
+    ev({ ts: 2100, type: "land_queued", commit: "sha2" }),
+    endEvent({ ts: 2200, tick: 2, result: "queued" }),
+    ev({ ts: 2300, type: "land_failed", commit: "sha2", result: "rejected" }),
+    startEvent({ ts: 3000, tick: 3 }),
+    ev({ ts: 3100, type: "land_queued", commit: "sha3" }),
+    endEvent({ ts: 3200, tick: 3, result: "queued" }),
+    startEvent({ ts: 4000, tick: 4 }),
+    endEvent({ ts: 4100, tick: 4, result: "changed" }),
+  ]);
+  const one = readTickDetail(root, "feature", 1)!;
+  assert.equal(one.result, "changed");
+  assert.equal(one.landing?.type, "landed");
+  assert.ok(!one.events.some((e) => e.type === "landed"));
+  const two = readTickDetail(root, "feature", 2)!;
+  assert.equal(two.result, "rejected");
+  assert.equal(two.landing?.type, "land_failed");
+  assert.ok(!two.events.some((e) => e.type === "land_failed"));
+  const three = readTickDetail(root, "feature", 3)!;
+  assert.equal(three.result, "queued");
+  assert.equal(three.landing, null);
+  const four = readTickDetail(root, "feature", 4)!;
+  assert.equal(four.result, "changed");
+  assert.equal(four.landing, null);
+});

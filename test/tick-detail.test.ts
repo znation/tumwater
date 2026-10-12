@@ -337,3 +337,22 @@ test("tick --stat names a missing or foreign commit instead of failing", async (
   ]);
   assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(commit 00000000 is not in this repository\)/);
 });
+
+test("renderTickDetail and cmdTick --json show a queued tick's resolved landing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick detail landing test");
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
+  writeEvents(repo, [
+    start({ ts: 1000, tick: 1 }),
+    ev({ ts: 1100, type: "land_queued", commit: "sha1abcdef" }),
+    end({ ts: 1200, tick: 1, result: "queued" }),
+    ev({ ts: 1300, type: "landed", commit: "sha1abcdef", result: "changed" }),
+  ]);
+  const text = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], false))).stdout;
+  assert.match(text, /tick #1 — changed/);
+  const lines = text.trimEnd().split("\n");
+  assert.match(lines[lines.length - 1]!, /landing of sha1abc\w* complete/);
+  const payload = JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], true))).stdout) as TickDetail;
+  assert.equal(payload.landing?.type, "landed");
+  assert.equal(renderTickDetail(readTickDetail(repo, "bugfix", 1)!), text.trimEnd());
+});
