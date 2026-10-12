@@ -211,14 +211,12 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
     addEventListener: (type: string, fn: (ev: unknown) => void) => { (listeners[id + ":" + type] ||= []).push(fn); },
   });
   const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void }>(
-    ["format", "view-model", "click-delegate", "activity"],
+    ["format", "view-model", "click-delegate", "activity", "report-role"],
     ["renderFeed", "clearFeedFilter"],
     {
       recall: (key: string) => recalled[key] ?? null,
       store: () => {},
       paintPanel: (id: string, html: string) => { panels[id] = html; },
-      rolePickerOptions: (roles: string[]) =>
-        "<option value=''>All loops</option>" + (roles || []).map((r) => "<option value='" + r + "'>" + r + "</option>").join(""),
       markActive: () => {},
       icon: iconStub,
       lastStatus: undefined,

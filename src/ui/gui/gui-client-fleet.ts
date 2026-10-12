@@ -368,7 +368,6 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   let feedFilter = recall("feed") === "all" ? "all" : "notable";
   let feedRole = recall("feed-role") || "";
   let feedText = recall("feed-grep") || "";
-  let feedRolesKey = "";
   const KINDS = { landing: ["merge", "green"], problem: ["fail", "red"], attention: ["question", "indigo"], info: ["info", "blue"], routine: ["dot", "gray"] };
   // Server-backed search state. feedResults is the /api/logs slice once it answers (newest
   // first, the shape renderFeed consumes), null while the card paints its carried window; the
@@ -415,20 +414,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   }
   // The Loop picker's options follow the fleet's role list (custom loops included), keyed so a
   // poll with no roster change repaints nothing. A role the fleet dropped falls back to All
-  // loops and persists, exactly as the History picker's syncHistoryRoles does.
+  // loops and persists, exactly as syncRolePicker does for the report and History pickers.
   function syncFeedRoles(d) {
-    const select = $("feedrole");
-    if (!select || !d) return;
-    const roles = (d.loops || []).map((l) => l.role);
-    const key = roles.join(",");
-    if (key === feedRolesKey) return;
-    feedRolesKey = key;
-    select.innerHTML = rolePickerOptions(roles);
-    select.value = roles.includes(feedRole) ? feedRole : "";
-    if (select.value !== feedRole) {
-      feedRole = select.value;
-      store("feed-role", feedRole);
-    }
+    if (!d) return;
+    feedRole = syncRolePicker("feedrole", (d.loops || []).map((l) => l.role), feedRole, "feed-role");
   }
   function renderFeed(d) {
     syncFeedRoles(d);

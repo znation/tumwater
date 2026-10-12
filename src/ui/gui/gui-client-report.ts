@@ -205,13 +205,34 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   // report-role:start
   // The Loop picker's options: the fleet-wide "All loops" empty option plus one option per
-  // role, in the fleet's own order. Shared by the report views' syncRoles and History's
-  // syncHistoryRoles: both pickers carry the same fleet's role list, so both must escape it
-  // the same way — role names are dynamic (custom loops) and the custom-loop charset admits
-  // HTML metacharacters. Pure, so a test can drive it without a DOM.
+  // role, in the fleet's own order. syncRolePicker escapes every role through it, so the three
+  // Loop pickers (the report views', History's, and the Activity feed's) render role names the
+  // same way — role names are dynamic (custom loops) and the custom-loop charset admits HTML
+  // metacharacters. Pure, so a test can drive it without a DOM.
   function rolePickerOptions(roles) {
     return "<option value=''>All loops</option>" +
       (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
+  }
+  // Repaint one Loop picker from the fleet's role list, returning the scope to keep filtering
+  // with. Every picker (the report views' syncRoles, History's syncHistoryRoles, the Activity
+  // feed's syncFeedRoles) does the same thing: rebuild only when the roster changes, keep the
+  // persisted choice while the fleet still lists it, and fall back to All loops — persisting
+  // that fallback — when it does not, so a dimmed picker never scopes the request to a ghost
+  // loop. The last-painted roster is tracked per select id, so the pickers never share a key.
+  const rolePickerKeys = {};
+  function syncRolePicker(selectId, roles, current, storeKey) {
+    const select = $(selectId);
+    if (!select) return current;
+    const key = roles.join(",");
+    if (key === rolePickerKeys[selectId]) return current;
+    rolePickerKeys[selectId] = key;
+    select.innerHTML = rolePickerOptions(roles);
+    select.value = roles.includes(current) ? current : "";
+    if (select.value !== current) {
+      store(storeKey, select.value);
+      return select.value;
+    }
+    return current;
   }
   // The report views' Loop picker offers base roles only: the scoped collectors
   // (collectReport/collectFailureReport) fold an instance id (feature-2) into its base role, so
@@ -280,25 +301,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     // The persisted Loop scope for this view: "" is the fleet-wide report. Only a view that
     // configured a rolePickerId reads it, so a view without a picker never touches storage.
     let role = o.roleKey ? recall(o.roleKey) || "" : "";
-    let rolesKey = "";
     let fetchedAt = 0;
-    // Keep this view's Loop picker in step with the fleet's role list (custom loops included):
-    // rebuild only when the list changes, keep the persisted choice while it is still listed,
-    // and fall back to All loops when the fleet has dropped it.
+    // Keep this view's Loop picker in step with the fleet's role list (custom loops included).
     function syncRoles(d) {
       if (!o.rolePickerId || !d) return;
-      const select = $(o.rolePickerId);
-      if (!select) return;
-      const roles = reportBaseRoles(d.loops);
-      const key = roles.join(",");
-      if (key === rolesKey) return;
-      rolesKey = key;
-      select.innerHTML = rolePickerOptions(roles);
-      select.value = roles.includes(role) ? role : "";
-      if (select.value !== role) {
-        role = select.value;
-        store(o.roleKey, role);
-      }
+      role = syncRolePicker(o.rolePickerId, reportBaseRoles(d.loops), role, o.roleKey);
     }
     async function fetchView(throttled) {
       if (throttled && Date.now() - fetchedAt < 60000) return;

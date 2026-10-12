@@ -18,7 +18,6 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   let histFilter = "all";
   let histRows = null;
   let histFetchedAt = 0;
-  let histRoleKey = "";
   const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["problems", "Problems"]];
   function buildHistoryView() {
     if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed tick, newest first.</p></div>" +
@@ -132,25 +131,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     renderHistory();
   }
   // history-detail:end
-  // The loop picker's options follow the fleet's role list (custom loops included).
+  // The loop picker's options follow the fleet's role list (custom loops included), keyed so a
+  // poll with no roster change repaints nothing. A role the fleet dropped falls back to All
+  // loops and persists, exactly as syncRolePicker does for the report and Activity pickers.
   function syncHistoryRoles(d) {
-    const select = $("histrole");
-    if (!select || !d) return;
-    const roles = (d.loops || []).map((l) => l.role);
-    const key = roles.join(",");
-    if (key === histRoleKey) return;
-    histRoleKey = key;
-    // The report views' syncRoles builds its Loop picker from the same fleet list; both go
-    // through rolePickerOptions so the escaped option markup has one home.
-    select.innerHTML = rolePickerOptions(roles);
-    select.value = roles.includes(histRole) ? histRole : "";
-    // Keep the scope variable in step with the repainted picker (and persist the fallback),
-    // exactly as the report views' syncRoles does: a role the fleet dropped must stop filtering
-    // the request, or the picker would read All loops while the rows stayed scoped to the ghost.
-    if (select.value !== histRole) {
-      histRole = select.value;
-      store("hist-role", histRole);
-    }
+    if (!d) return;
+    histRole = syncRolePicker("histrole", (d.loops || []).map((l) => l.role), histRole, "hist-role");
   }
   async function fetchHistory(throttled) {
     if (throttled && Date.now() - histFetchedAt < 4000) return;
