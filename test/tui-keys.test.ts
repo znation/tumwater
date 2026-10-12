@@ -31,11 +31,11 @@ import { readJson } from "./helpers/json-read.js";
 const makeRoot = (): string => tmpdir("tui-keys-");
 
 /** A handler wired to a controllable clock, a quit recorder, and a render-request recorder. */
-function makeKeys(root: string, now: () => number) {
+function makeKeys(root: string, now: () => number, tickStat?: () => Promise<string>) {
   const quit = (): number => (quit.count += 1);
   quit.count = 0;
   let renders = 0;
-  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}) }); // Health never resolves: no real probes
+  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}), tickStat }); // Health never resolves: no real probes
   return { keys, quitCount: () => quit.count, renders: () => renders };
 }
 
@@ -530,6 +530,68 @@ test("Ctrl+N on the History pane swaps the rows for the newest completed tick's 
   keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().trailMode, false);
   assert.equal(keys.state().trailCache, null);
+});
+
+function historyTrailRoot(): string {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "tick_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "work" },
+  ]);
+  return root;
+}
+
+function openHistory(keys: ReturnType<typeof makeKeys>["keys"]): void {
+  keys.syncSnapshot(0, false, ["clean"]);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+}
+
+test("the History trail appends the tick commit's stat once it resolves", async () => {
+  const root = historyTrailRoot();
+  let resolve!: (s: string) => void;
+  const { keys, renders } = makeKeys(root, () => 0, () => new Promise<string>((r) => (resolve = r)));
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  const plain = renderTickDetail(readTickDetail(root, "clean", 1)!);
+  assert.equal(keys.state().trailCache, plain, "the trail shows at once, before the stat");
+  const before = renders();
+  resolve(" a.ts | 1 +");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(keys.state().trailCache, `${plain}\n\n a.ts | 1 +`);
+  assert.ok(renders() > before, "the resolution requests a render");
+});
+
+test("a late stat never overwrites a trail that was exited or re-read", async () => {
+  const root = historyTrailRoot();
+  const resolves: Array<(s: string) => void> = [];
+  const { keys } = makeKeys(root, () => 0, () => new Promise<string>((r) => resolves.push(r)));
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // exit
+  resolves[0]!("late");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(keys.state().trailCache, null);
+
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // re-enter
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // re-read
+  const plain = keys.state().trailCache;
+  resolves[1]!("stale");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(keys.state().trailCache, plain, "the first read's stat is dropped");
+  resolves[2]!("fresh");
+  await new Promise((r) => setImmediate(r));
+  assert.match(keys.state().trailCache ?? "", /fresh$/);
+});
+
+test("a rejecting stat leaves the plain trail and flashes", async () => {
+  const root = historyTrailRoot();
+  const { keys } = makeKeys(root, () => 0, () => Promise.reject(new Error("git exploded")));
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await new Promise((r) => setImmediate(r));
+  assert.equal(keys.state().trailMode, true);
+  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.match(keys.state().flash!, /git exploded/);
 });
 
 test("Ctrl+N on an empty History flashes and leaves the rows shown", () => {

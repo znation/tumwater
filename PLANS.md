@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### The TUI's History tick trail (Ctrl+N) ends with the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` and the dashboard drill-down (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. TUI sibling of the Done "dashboard's History drill-down shows the tick commit's per-file stat" plan)
+## Done
+
+### The TUI's History tick trail (Ctrl+N) ends with the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` and the dashboard drill-down (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. TUI sibling of the Done "dashboard's History drill-down shows the tick commit's per-file stat" plan, done 2026-10-12)
 
 **Goal.** `tumwater tick … --stat` and the dashboard's History drill-down (`GET /api/tick`'s `stat`) both show which files a tick's pinned commit changed. The TUI's History-pane trail (Ctrl+N in `createTuiKeys`, `src/ui/tui/tui-keys.ts`) shows only `renderTickDetail` text. Append the same stat text so all three surfaces agree.
 
@@ -48,8 +50,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - New test: Ctrl+N twice (exit) before the stat resolves leaves `trailCache` null after resolution; and a Ctrl+G re-read before resolution is not overwritten by the first tick's stat.
 - New test: a rejecting `tickStat` leaves `trailMode` on with the plain trail text and sets the flash.
 - The existing "Ctrl+N on the History pane swaps the rows for the newest completed tick's trail", Ctrl+G, and roster-change trail tests pass unchanged.
-
-## Done
 
 ### The dashboard's History drill-down shows the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Dashboard sibling of the landed `tick --stat` plan (in Done). A TUI sibling is not planned yet: the TUI trail is computed synchronously in `createTuiKeys`, and `tickCommitStat` is async; done 2026-10-12)
 

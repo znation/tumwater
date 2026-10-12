@@ -13,8 +13,8 @@ import {
   type HistoryResultClass,
 } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
-import { readTickDetail } from "../../tick/tick-detail-data.js";
-import { renderTickDetail } from "../../tick/tick-detail.js";
+import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
+import { renderTickDetail, tickDetailStat } from "../../tick/tick-detail.js";
 import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
 import { readBrief, renderBrief } from "../../brief.js";
@@ -245,6 +245,9 @@ interface TuiKeysDeps {
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
   collectChange?(root: string, role: string): Promise<RoleChangeView>;
+  /** The History trail's per-file stat footer; defaults to tick-detail's tickDetailStat so
+   * tests need not shell out to git. */
+  tickStat?(root: string, detail: TickDetail): Promise<string>;
 }
 
 /** The state render reads back each frame: the prompt line, the modes it names in the hint
@@ -387,6 +390,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const collectPending = deps.collectPending ?? collectFleetChanges;
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r));
   const collectChange = deps.collectChange ?? collectRoleChange;
+  const tickStat = deps.tickStat ?? tickDetailStat;
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // tui-backlog.ts's one definition, shared with the render so stale-selection clamping cannot
   // drift.
@@ -506,6 +510,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // computed once on entry and only re-windowed each frame.
   let trailMode = false;
   let trailCache: string | null = null;
+  let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
   // Ctrl+N's third step: the viewed loop's collected unlanded change (the CLI's
   // `renderRoleChange` text). changeCache is null until the async collector resolves, and the
   // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
@@ -674,11 +679,33 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // (Ctrl+N), so the trail cannot keep showing a retired loop's tick after Ctrl+G or a roster
   // change drops the History scope. The reader throw is caught and flashed rather than escaping
   // a key or sync path, the same guard the initial Ctrl+N entry uses.
+  // Append the tick commit's per-file stat to the trail text once it resolves — the join
+  // `tumwater tick --stat` uses. Applies only while the trail is still on and no read or reset
+  // bumped trailGen since the request, so an older tick's stat never overwrites a newer view.
+  const loadTrailStat = (detail: TickDetail): void => {
+    const gen = trailGen;
+    const text = renderTickDetail(detail);
+    void tickStat(root, detail).then(
+      (stat) => {
+        if (!trailMode || gen !== trailGen) return;
+        trailCache = `${text}\n\n${stat}`;
+        deps.requestRender();
+      },
+      (err: unknown) => {
+        if (!trailMode || gen !== trailGen) return;
+        flashError(err);
+        deps.requestRender();
+      },
+    );
+  };
+
   const refreshTrail = (): void => {
+    trailGen++;
     try {
       const row = readTickRows(root, 1, historyRole)[0];
       const detail = row === undefined ? null : readTickDetail(root, row.loop, row.tick);
       trailCache = detail === null ? null : renderTickDetail(detail);
+      if (detail !== null) loadTrailStat(detail);
     } catch (err) {
       trailCache = null;
       flashError(err);
@@ -1015,6 +1042,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // one tick's full event trail instead (the CLI's `tumwater tick --last` text), so it is
       // handled before the transcript guard below.
       if (view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !pauseEditMode && !queuedEditFor && !answerFor && !entryEditFor) {
+        trailGen++;
         if (trailMode) {
           trailMode = false;
           trailCache = null;
@@ -1032,6 +1060,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
               const detail = readTickDetail(root, row.loop, row.tick);
               trailCache = detail === null ? null : renderTickDetail(detail);
               trailMode = true;
+              if (detail !== null) loadTrailStat(detail);
             } catch (err) {
               trailCache = null;
               flashError(err);
@@ -1380,6 +1409,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       noteCache = null;
       changeMode = false;
       changeCache = null;
+      trailGen++;
       trailMode = false; // the tick trail is History-only; a cycle away drops its snapshot too
       trailCache = null;
       view = (view + 1) % (roleIds.length + 9); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → health → brief → events
