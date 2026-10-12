@@ -51,6 +51,10 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     [loopPhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [loopPhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
     [loopPhase(at({ nextRunAt: now - 1_000 }), true), "queued", false],
+    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "no-free-entry" }, "feature-2"), true), "idle", false],
+    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "claim-hold" }), true), "idle", false],
+    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-backlog" }), true), "deferred", false],
+    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-no-work" }), true), "deferred", false],
   ];
   for (const [phase, key, live] of cases) {
     const info = model.phaseInfo(phase);
@@ -60,7 +64,11 @@ test("every phase label loopPhase renders maps to a known status on the page", (
   }
   // A queued loop is not necessarily waiting for a slot; the detail must not claim it is.
   assert.ok(!model.phaseInfo("queued").detail.includes("free slot"), "queued detail does not blame slots");
-  assert.match(model.phaseInfo("queued").detail, /no work to claim, deferred/);
+  assert.doesNotMatch(model.phaseInfo("queued").detail, /slot|deferred/);
+  assert.equal(model.phaseInfo("idle: no unclaimed plans").detail, "no unclaimed plans");
+  assert.equal(model.phaseInfo("deferred (backlog open)").detail, "backlog open");
+  for (const p of ["idle: no unclaimed bugs", "idle: sibling mid-entry", "deferred (no new work)"])
+    assert.equal(model.loopRank(p), loopRank(p), p);
   // The label's tail rides along as the pill's detail line.
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
   assert.equal(model.phaseInfo("landing 1m · build check").detail, "1m · build check");

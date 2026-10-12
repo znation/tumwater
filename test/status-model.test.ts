@@ -743,16 +743,27 @@ test("loopPhase reads held: bootstrap for idle role loops while bootstrap holds"
 });
 
 // Parallel work instances, part 6/7: the idle/landing work text — the claim's title, the
-// no-unclaimed note for a skipped extra instance, and null for everything else.
+// and null for everything else.
 test("idleClaimText names the claimed entry, or why an extra instance is idle", () => {
   const claim = { file: "PLANS.md" as const, key: "plan a", title: "Plan A", at: 1, source: "assigned" as const };
   assert.equal(idleClaimText({ role: "feature", claim }, "queued"), "Plan A");
   assert.equal(idleClaimText({ role: "feature", claim }, "sleeping (for 30m)"), "Plan A");
   assert.equal(idleClaimText({ role: "feature", claim }, "landing 3m"), "Plan A");
-  assert.equal(idleClaimText({ role: "feature-2" }, "queued"), "idle — no unclaimed plans");
-  assert.equal(idleClaimText({ role: "bugfix-3" }, "queued"), "idle — no unclaimed bugs");
-  // A bare role with no claim, or an instance that is not in the `queued` skip state, has no text.
+  // No claim: null — the phase label carries any idle reason itself.
+  assert.equal(idleClaimText({ role: "feature-2" }, "queued"), null);
   assert.equal(idleClaimText({ role: "feature" }, "queued"), null);
   assert.equal(idleClaimText({ role: "feature-2" }, "sleeping (for 30m)"), null);
   assert.equal(idleClaimText({ role: "feature-2" }, "working 3m"), null);
+});
+
+test("loopPhase names the scheduling poll's skip for a due, idle loop", () => {
+  const due = (role: string, extra: Partial<ReturnType<typeof freshLoopState>>) => ({ ...freshLoopState(role), nextRunAt: Date.now() - 1_000, ...extra });
+  assert.equal(loopPhase(due("feature-2", { skipReason: "no-free-entry" }), true), "idle: no unclaimed plans");
+  assert.equal(loopPhase(due("bugfix-2", { skipReason: "no-free-entry" }), true), "idle: no unclaimed bugs");
+  assert.equal(loopPhase(due("feature", { skipReason: "claim-hold" }), true), "idle: sibling mid-entry");
+  assert.equal(loopPhase(due("clean", { skipReason: "deferred-backlog" }), true), "deferred (backlog open)");
+  assert.equal(loopPhase(due("clean", { skipReason: "deferred-no-work" }), true), "deferred (no new work)");
+  assert.equal(loopPhase(due("clean", {}), true), "queued");
+  assert.match(loopPhase(due("clean", { skipReason: "claim-hold", nextRunAt: Date.now() + 600_000 }), true), /^sleeping \(/);
+  assert.match(loopPhase(due("clean", { skipReason: "claim-hold", running: true, lastTickStartedAt: Date.now() - 90_000 }), true), /^working/);
 });

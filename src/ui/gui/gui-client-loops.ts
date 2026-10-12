@@ -106,11 +106,10 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       const text = l.currentWork || l.claim || landingSummary(d, l.role);
       const pending = info.key === "working" ? "Starting up…" : info.key === "reviewing" ? "Reviewing the change…" : "Landing the change…";
       activity = text ? "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>" : "<div class='muted'>" + pending + "</div>";
-    } else if (l.claim || (l.instanceOf && info.key === "queued")) {
-      // An idle instance holding a claim names its entry; an idle extra with none (skipped for
-      // want of a free entry) says why. The queued key is the tell that the skip, not a
-      // sleep or a gate, left it idle.
-      const text = l.claim || ("idle — no unclaimed " + (l.instanceOf === "bugfix" ? "bugs" : "plans"));
+    } else if (l.claim) {
+      // An idle instance holding a claim names its entry; the pill detail carries why an
+      // idle loop with none is idle.
+      const text = l.claim;
       activity = "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>";
     } else if (l.lastResult) {
       const r = resultInfo(l.lastResult);

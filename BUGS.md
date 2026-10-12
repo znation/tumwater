@@ -5,7 +5,12 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+
+## Fixed
+
 ### The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot: idle extra instances with nothing to claim, need-based deferrals and claim-group holds. With one of six slots busy it read as a scheduling bug (found by operator session 2026-10-12)
+
+**Fixed 2026-10-12 by feature:** PLANS.md "Idle loops say why they are idle", part 2/2. `loopPhase` now maps `LoopState.skipReason` to `idle: no unclaimed plans|bugs`, `idle: sibling mid-entry`, `deferred (backlog open)` and `deferred (no new work)`. The browser twin (`phaseInfo`) has matching `idle`/`deferred` keys, and the queued detail reads "due — starts on the next poll". Tests: test/status-model.test.ts "loopPhase names the scheduling poll's skip…" and "idleClaimText names the claimed entry…", plus test/gui-client.test.ts "every phase label loopPhase renders maps to a known status on the page".
 
 **Needs review 2026-10-12 by feature: too large for one run** — the remaining finer phase labels need a new persisted skip-reason field written by the scheduling pass (orchestrator-scheduling.ts), a state schema/reader change, new `loopPhase` labels in status-model.ts and its browser twin, and updates to idleClaimText/gui-client-loops.ts plus pinned tests. **Split 2026-10-12 by plan:** the remaining work is planned in PLANS.md as "Idle loops say why they are idle", parts 1/2 and 2/2. Part 2/2 moves this entry to Fixed.
 
@@ -25,8 +30,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
   Then change the leftover `queued` detail to something true for a loop that is merely due, such as "due — starts on the next poll". Keep the slot wording for parked waiters only. Change the server's status-model.ts and its browser twin in gui-client-model.ts together: test/gui-client.test.ts pins them against each other.
 - **Partial progress 2026-10-12 (bugfix):** the leftover `queued` detail no longer claims a slot wait; it reads "due — not running: no work to claim, deferred, or starting on the next poll" (src/ui/gui/gui-client-model.ts phaseInfo), true for every state that falls through to `queued`. Still open: the finer phase labels (`idle: …`, `deferred (…)`) from the fix sketch, which need persisted deferral state.
-
-## Fixed
 
 ### The "Claude 5h" window shows below "Claude 7d" in the GUI budget card; the operator wants the shorter window first (found by operator session 2026-10-12) (fixed 2026-10-12 by bugfix loop)
 

@@ -1,5 +1,5 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf, instanceIndex } from "../roles/loop-ids.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
@@ -57,18 +57,10 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
 
 /** The work text a row shows in place of live progress while it is idle or landing
  * (plans/parallel-work-instances.md "Observability", part 6/7): the claim's heading when the
- * instance holds one, otherwise — for an idle extra instance that was skipped for want of a
- * free entry — `idle — no unclaimed <plans|bugs>`. Returns null for a row with neither, so the
- * state cell keeps its plain phase. An extra instance is skipped without touching its backoff,
- * so the `queued` phase is the tell that the skip, not a sleep or a gate, left it idle. */
-export function idleClaimText(
-  s: { claim?: LoopState["claim"]; role: string },
-  phase: string,
-): string | null {
-  if (s.claim) return s.claim.title;
-  if (phase === "queued" && instanceIndex(s.role) >= 2)
-    return `idle — no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
-  return null;
+ * instance holds one. Returns null otherwise, so the state cell keeps its plain phase — an
+ * idle instance's phase label (`idle: no unclaimed plans`) carries its own reason. */
+export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _phase: string): string | null {
+  return s.claim ? s.claim.title : null;
 }
 
 /** The loop's state label — the one precedence ladder shared by the status table and both
@@ -77,7 +69,8 @@ export function idleClaimText(
  * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
  * it — in-flight work finishes through both fleet gates); the director's "waiting for
  * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
- * error or quiet-kill streak at its threshold ("failing"); sleep; then "queued".
+ * error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling poll's recorded skip (`idle: …` / `deferred (…)`, from
+ * LoopState.skipReason), else "queued".
  * Pass `root` so an in-flight tick expands into live detail (elapsed · turn · ctx · tool);
  * without it a working loop shows plain "working". `live`, when given, is the frame's
  * precomputed tail (see workingDetail) — it skips the log read; without it an in-flight tick
@@ -226,7 +219,18 @@ export function loopPhase(
     const remain = Math.max(1, secondsUntil(s.nextRunAt, Date.now()));
     return `sleeping (for ${humanSeconds(remain)})`;
   }
-  return "queued";
+  switch (s.skipReason) {
+    case "no-free-entry":
+      return `idle: no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
+    case "claim-hold":
+      return "idle: sibling mid-entry";
+    case "deferred-backlog":
+      return "deferred (backlog open)";
+    case "deferred-no-work":
+      return "deferred (no new work)";
+    default:
+      return "queued";
+  }
 }
 
 /** Has main's newest merge-scope check retired a loop's stale `main_red` verdict? Only a

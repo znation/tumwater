@@ -196,15 +196,13 @@ test("a row hides the pooled worktree slot and its pin", () => {
   assert.doesNotMatch(name, /Pinned worktree slot/);
 });
 
-// Parallel work instances, part 6/7: an idle instance's activity names the entry it claimed,
-// and a skipped extra instance with none says why.
-test("an idle instance's activity shows its claimed entry, or the no-unclaimed note", () => {
+// Parallel work instances, part 6/7: an idle instance's activity names the entry it claimed;
+// the reason an unclaimed one is idle rides on its phase pill instead.
+test("an idle instance's activity shows its claimed entry, and its pill the idle reason", () => {
   const claimed = row({ role: "feature-2", phase: "queued", claim: "Plan A" });
   assert.match(claimed.activity, /Plan A/);
-  const skipped = row({ role: "feature-2", phase: "queued", instanceOf: "feature" });
-  assert.match(skipped.activity, /idle — no unclaimed plans/);
-  const bug = row({ role: "bugfix-3", phase: "queued", instanceOf: "bugfix" });
-  assert.match(bug.activity, /idle — no unclaimed bugs/);
-  // A bare role with no claim keeps its ordinary idle rendering.
-  assert.ok(!row({ role: "feature", phase: "queued" }).activity.includes("no unclaimed"));
+  const skipped = row({ role: "feature-2", phase: "idle: no unclaimed plans", instanceOf: "feature" });
+  assert.ok(!skipped.activity.includes("no unclaimed"));
+  assert.match(skipped.status, /Idle/);
+  assert.match(skipped.status, /no unclaimed plans/);
 });

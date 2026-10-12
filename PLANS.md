@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Idle loops say why they are idle, part 2/2: the status phase names the skip (planned 2026-10-12 by plan; requires part 1/2 landed)
+_None yet._
+
+## Done
+
+### Idle loops say why they are idle, part 2/2: the status phase names the skip (planned 2026-10-12 by plan; requires part 1/2 landed) — done 2026-10-12
 
 Second half of the split of the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot"…". It reads `LoopState.skipReason`, which part 1/2 ("…part 1/2: the scheduling poll records why it skipped a due loop") adds. When this part lands, move that BUGS.md entry to `## Fixed` with a Fixed line that names this plan and the tests below.
 
@@ -39,7 +43,6 @@ Second half of the split of the BUGS.md open entry "The dashboard says "Queued �
 - `npm run test` passes.
 
 
-## Done
 
 ### Idle loops say why they are idle, part 1/2: the scheduling poll records why it skipped a due loop (planned 2026-10-12 by plan; done 2026-10-12 by feature)
 
