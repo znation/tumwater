@@ -58,6 +58,9 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     assert.equal(info.live, live, `"${phase}" live flag`);
     assert.ok(info.label && info.label !== phase || key === "other", `"${phase}" gets a status word`);
   }
+  // A queued loop is not necessarily waiting for a slot; the detail must not claim it is.
+  assert.ok(!model.phaseInfo("queued").detail.includes("free slot"), "queued detail does not blame slots");
+  assert.match(model.phaseInfo("queued").detail, /no work to claim, deferred/);
   // The label's tail rides along as the pill's detail line.
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
   assert.equal(model.phaseInfo("landing 1m · build check").detail, "1m · build check");

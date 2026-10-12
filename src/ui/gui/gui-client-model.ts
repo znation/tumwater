@@ -35,7 +35,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "held: bootstrap") return { key: "bootstrap", label: "Bootstrap hold", tone: "amber", live: false, detail: "waiting for enough plans to be done" };
     if (p.startsWith("held: maintenance quota")) return { key: "quota", label: "Maintenance hold", tone: "amber", live: false, detail: after(24) };
     if (p.startsWith("sleeping")) return { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
-    if (p === "queued") return { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — waiting for a free slot" };
+    if (p === "queued") return { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — not running: no work to claim, deferred, or starting on the next poll" };
     if (p === "waiting for prompts") return { key: "waiting", label: "Waiting", tone: "gray", live: false, detail: "runs when you send it a prompt" };
     if (p === "stopped") return { key: "stopped", label: "Stopped", tone: "gray", live: false, detail: "the fleet is not running" };
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };

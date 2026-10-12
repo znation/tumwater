@@ -70,9 +70,9 @@ test("a sleeping loop's second line says when it wakes, and names a backoff", ()
 });
 
 test("a queued loop's second line keeps the phase's reason, a working loop's keeps the phase detail", () => {
-  const queued = { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — waiting for a free slot" };
+  const queued = { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — not running: no work to claim, deferred, or starting on the next poll" };
   assert.equal(phaseDetail({ phase: "queued", nextRunAt: now - 5_000, backoffSeconds: 0 }, queued, { running: true }),
-    "due — waiting for a free slot");
+    "due — not running: no work to claim, deferred, or starting on the next poll");
   // Backoff wins over the reason: when it will actually run again is the useful line.
   assert.equal(phaseDetail({ phase: "queued", nextRunAt: now + 60_000, backoffSeconds: 20 }, queued, { running: true }),
     "backing off — retries in 1m");

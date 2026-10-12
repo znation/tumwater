@@ -22,6 +22,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
   - A deferral reads `deferred (backlog open)` or `deferred (no new work)`. The poll's per-role `deferredDue` lives only in orchestrator memory, so it must first be persisted where the status readers look.
 
   Then change the leftover `queued` detail to something true for a loop that is merely due, such as "due — starts on the next poll". Keep the slot wording for parked waiters only. Change the server's status-model.ts and its browser twin in gui-client-model.ts together: test/gui-client.test.ts pins them against each other.
+- **Partial progress 2026-10-12 (bugfix):** the leftover `queued` detail no longer claims a slot wait; it reads "due — not running: no work to claim, deferred, or starting on the next poll" (src/ui/gui/gui-client-model.ts phaseInfo), true for every state that falls through to `queued`. Still open: the finer phase labels (`idle: …`, `deferred (…)`) from the fix sketch, which need persisted deferral state.
 
 ## Fixed
 
