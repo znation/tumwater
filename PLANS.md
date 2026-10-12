@@ -31,6 +31,26 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### The dashboard's History drill-down shows the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Dashboard sibling of the landed `tick --stat` plan (in Done). A TUI sibling is not planned yet: the TUI trail is computed synchronously in `createTuiKeys`, and `tickCommitStat` is async)
+
+**Goal.** `tumwater tick <role> <n> --stat` ends a tick's trail with its pinned commit's `git show --stat` summary. The dashboard's History drill-down card (fed by `GET /api/tick`) shows only the trail, so an operator in the browser can see that a tick changed something but not which files. `/api/tick` should carry the same stat text, and the card should show it under the trail.
+
+**Approach.**
+- **Shared helper.** In `src/tick/tick-detail.ts`, export one new `tickDetailStat(root: string, d: TickDetail): Promise<string>` that returns `tickCommitStat(root, tickCommitSha(d))`. `tickCommitSha` and `tickCommitStat` stay module-local. `cmdTick`'s `--stat` branch calls `tickDetailStat`, so the CLI and the endpoint share one rule (the sha, the "(no commit: …)" text, and the "(commit … is not in this repository)" text).
+- **Endpoint.** `handleTick` in `src/gui/gui-endpoints.ts` becomes `async` (returns `Promise<void>`, as `handleDiff` does; the `"GET /api/tick"` route in `src/gui/gui-server.ts` needs no change because `RouteHandler` already admits async handlers). It always computes the stat. There is no query flag (opinionated default): a drill-down is one request on click, and the cost is one `git show --stat`. The 200 payload becomes `{ ...detail, text: renderTickDetail(detail), stat: await tickDetailStat(root, detail) }`. `text` stays exactly as today. The 400 and 404 paths are unchanged and compute no stat.
+- **Client.** In `src/ui/gui/gui-client-history.ts` (the `history-detail` region), `fetchHistDetail` stores `stat: typeof d.stat === "string" ? d.stat : ""` in the ok cache entry. An older server that sends no `stat` is not an error. `histDetailCardHtml` appends `"<pre class='mono hist-detail-stat'>" + esc(entry.stat) + "</pre>"` after the trail (or after the "No events" placeholder) when `entry.stat` is non-empty. The existing `.hist-detail pre` rule in `src/ui/gui/gui-styles.ts` already styles it, so no CSS change is needed.
+- **Docs.** None. As of planning, neither README.md nor docs/how-it-works.md describes the dashboard's History drill-down card (`grep -n drill` finds only the TUI's), so neither needs a clause.
+
+**Files.** `src/tick/tick-detail.ts`, `src/gui/gui-endpoints.ts`, `src/ui/gui/gui-client-history.ts`, test/gui-endpoints.test.ts, test/gui-server-api.test.ts, test/gui-client-history.test.ts, test/tick-detail.test.ts (only if a `--stat` assertion needs the shared helper).
+
+**Acceptance criteria.**
+- test/gui-endpoints.test.ts "handleTick serves one tick's collector payload plus its pre-rendered text" is updated to `await` the handler and to assert `data` deep-equals `{ ...detail, text: renderTickDetail(detail), stat: "(no commit: this tick queued no landing)" }`. That fixture has no `land_queued` event.
+- A new handleTick test seeds a `land_queued` event whose `commit` is a sha that is not in the (non-git) temp dir and asserts that `stat` matches `/^\(commit [0-9a-f]+ is not in this repository\)$/`.
+- The handleTick error-cases test still passes: 400 for a missing or unknown role and for a bad tick, 404 for a missed tick, and no `stat` key on any error body.
+- test/gui-client-history.test.ts: with `getJson` answering `{ text: "…", stat: " a.ts | 2 +-" }`, the open card contains `hist-detail-stat` and `a.ts | 2 +-`. With the answer lacking `stat`, the card has no `hist-detail-stat` and the entry's state is still `ok`.
+- The existing `tumwater tick --stat` tests in test/tick-detail.test.ts pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater tick` resolves a queued tick to its landing verdict, as `tumwater history` already does, and ends the trail with the landing's outcome line (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Shares `src/tick/tick-detail.ts` and `test/tick-detail.test.ts` with the landed `tick --stat` plan (now in Done), but not behavior: `renderTickDetail` now takes its header sha from `tickCommitSha`, and the landing line appends after the trail, before any `--stat` text) (done 2026-10-12)
