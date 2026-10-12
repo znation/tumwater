@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### The dashboard's History drill-down shows the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Dashboard sibling of the landed `tick --stat` plan (in Done). A TUI sibling is not planned yet: the TUI trail is computed synchronously in `createTuiKeys`, and `tickCommitStat` is async)
+## Done
+
+### The dashboard's History drill-down shows the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Dashboard sibling of the landed `tick --stat` plan (in Done). A TUI sibling is not planned yet: the TUI trail is computed synchronously in `createTuiKeys`, and `tickCommitStat` is async; done 2026-10-12)
 
 **Goal.** `tumwater tick <role> <n> --stat` ends a tick's trail with its pinned commit's `git show --stat` summary. The dashboard's History drill-down card (fed by `GET /api/tick`) shows only the trail, so an operator in the browser can see that a tick changed something but not which files. `/api/tick` should carry the same stat text, and the card should show it under the trail.
 
@@ -50,8 +52,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - test/gui-client-history.test.ts: with `getJson` answering `{ text: "…", stat: " a.ts | 2 +-" }`, the open card contains `hist-detail-stat` and `a.ts | 2 +-`. With the answer lacking `stat`, the card has no `hist-detail-stat` and the entry's state is still `ok`.
 - The existing `tumwater tick --stat` tests in test/tick-detail.test.ts pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater tick` resolves a queued tick to its landing verdict, as `tumwater history` already does, and ends the trail with the landing's outcome line (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Shares `src/tick/tick-detail.ts` and `test/tick-detail.test.ts` with the landed `tick --stat` plan (now in Done), but not behavior: `renderTickDetail` now takes its header sha from `tickCommitSha`, and the landing line appends after the trail, before any `--stat` text) (done 2026-10-12)
 

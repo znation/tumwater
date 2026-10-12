@@ -95,6 +95,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     const trail = lines.join("\n");
     return "<div class='hist-detail'><div class='hist-detail-head mono'>" + esc(head) + "</div>" +
       (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this tick's block.</div>") +
+      (entry.stat ? "<pre class='mono hist-detail-stat'>" + esc(entry.stat) + "</pre>" : "") +
       "</div>";
   }
   // Expand or collapse one row's card. Opening fetches the trail on first expand only — an
@@ -124,7 +125,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         throw new Error(
           "/api/tick answered " + role + " tick " + tick + " without a text field — the running server's build may not match this dashboard",
         );
-      histDetails.set(key, { state: "ok", text: d.text });
+      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "" });
     } catch (err) {
       histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Tick detail unavailable" });
     }

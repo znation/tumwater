@@ -193,6 +193,9 @@ test("histDetailCardHtml branches on the entry's state: loading, error, then the
   assert.match(card, /event &lt;two&gt;/);
   // A text with only the header line (an event-less block) says so instead of an empty pre.
   assert.match(histDetailCardHtml({ state: "ok", text: "clean tick #1 — unpaired" }), /No events in this tick's block/);
+  // The commit stat shows under the trail when present, and is absent otherwise.
+  assert.match(histDetailCardHtml({ state: "ok", text: "h\ne", stat: " a.ts | 2 +-" }), /hist-detail-stat.*a\.ts \| 2 \+-/);
+  assert.doesNotMatch(histDetailCardHtml({ state: "ok", text: "h\ne", stat: "" }), /hist-detail-stat/);
 });
 
 test("the drill-down toggle expands one row's card, caches it, and collapses on re-toggle", async () => {
@@ -269,6 +272,26 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   toggleHistDetail("clean", "9");
   toggleHistDetail("clean", "9");
   assert.equal(histDetails.get("clean#9")?.state, "error", "the error caches like an answer");
+});
+
+test("the fetched tick detail keeps the server's stat, and an older server's missing stat is not an error", async () => {
+  for (const [answer, shown] of [[{ text: "h\ne", stat: " a.ts | 2 +-" }, true], [{ text: "h\ne" }, false]] as const) {
+    const scope = clientScope<{
+      histDetails: Map<string, { state: string; stat?: string }>;
+      toggleHistDetail(role: string, tick: string): void;
+      historyTableHtml(rows: object[] | null, filter: string, known: Set<string>, sinceKey?: string): string;
+    }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
+      icon: iconStub,
+      getJson: () => Promise.resolve(answer),
+      renderHistory: () => {},
+    });
+    scope.toggleHistDetail("clean", "9");
+    await sleep(0);
+    assert.equal(scope.histDetails.get("clean#9")?.state, "ok");
+    const html = scope.historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
+    assert.equal(html.includes("hist-detail-stat"), shown);
+    if (shown) assert.match(html, /a\.ts \| 2 \+-/);
+  }
 });
 
 test("a malformed tick-detail payload errors naming the endpoint, the tick, and the likely cause", async () => {

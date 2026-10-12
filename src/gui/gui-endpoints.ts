@@ -29,7 +29,7 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
-import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
+import { renderTickDetail, tickDetailStat, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
@@ -262,7 +262,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
  * does not hold — never ran, or rotation ate it — answers 404 with tickNotFoundMessage, the
  * CLI's exact not-found wording,
  * never a crash. Reads files directly, so it works whether or not the fleet is running. */
-export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
   const tick = intQuery(q, res, "tick", "positive");
@@ -272,7 +272,7 @@ export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: s
     sendJson(res, 404, { error: tickNotFoundMessage(role as string, tick) });
     return;
   }
-  sendJson(res, 200, { ...detail, text: renderTickDetail(detail) });
+  sendJson(res, 200, { ...detail, text: renderTickDetail(detail), stat: await tickDetailStat(root, detail) });
 }
 /** Handle GET /api/role?role=<id>: one loop's inspection payload — rolePayload's object,
  * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next tick

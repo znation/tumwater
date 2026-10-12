@@ -64,6 +64,12 @@ async function tickCommitStat(root: string, sha: string | null): Promise<string>
   return out.trimEnd();
 }
 
+/** The pinned commit's stat text for a tick, shared by `tick --stat` and GET /api/tick so both
+ * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)" texts. */
+export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
+  return tickCommitStat(root, tickCommitSha(d));
+}
+
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
  * marker), duration, usage, and the pinned commit sha when the block's `land_queued`/`landed`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
@@ -139,7 +145,7 @@ export async function cmdTick(
   }
   // --json swaps the renderer for the collector's own payload, exactly as history --json: a
   // JSON document in every exit-0 case, never prose.
-  const statText = stat ? await tickCommitStat(root, tickCommitSha(detail)) : null;
+  const statText = stat ? await tickDetailStat(root, detail) : null;
   if (json) sayJson(statText === null ? detail : { ...detail, stat: statText });
   else say(statText === null ? renderTickDetail(detail) : `${renderTickDetail(detail)}\n\n${statText}`);
 }
