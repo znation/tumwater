@@ -19,7 +19,7 @@ import { TOKEN_VALUE_ERROR } from "../cli/cli-flag-specs.js";
  * which is why the `?? []` below is load-bearing.
  */
 export function lanAddresses(
-  interfaces: { [name: string]: os.NetworkInterfaceInfo[] | undefined } = os.networkInterfaces(),
+  interfaces: Record<string, os.NetworkInterfaceInfo[] | undefined> = os.networkInterfaces(),
 ): string[] {
   const out: string[] = [];
   for (const addrs of Object.values(interfaces)) {

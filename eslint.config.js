@@ -32,7 +32,9 @@
 // than a value the union carries — write the caller's decision as a plain boolean instead
 // (landing-slot.ts's `apply` became true = write, the fix that landed with the rule);
 // no-inferrable-types flags an annotation the initializer already implies (`x: string = "a"`),
-// which adds a second place to edit when the default changes.
+// which adds a second place to edit when the default changes;
+// consistent-indexed-object-style flags `{ [k: string]: V }` where `Record<string, V>` says
+// the same thing in one spelling.
 //
 // Import hygiene: no-import-type-side-effects flags an import whose every specifier is an
 // inline `type` (`import { type A, type B } from "./x.js"`). With verbatimModuleSyntax,
@@ -75,6 +77,7 @@ export default tseslint.config(
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/no-inferrable-types": "error",
+      "@typescript-eslint/consistent-indexed-object-style": "error",
     },
   },
   {
