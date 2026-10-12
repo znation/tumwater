@@ -31,6 +31,28 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### TUI: a read-only Brief tab shows the initial prompt, matching `tumwater brief` and the dashboard's Settings card (planned 2026-10-12 by plan; sibling of the landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) and the landed dashboard Settings "Initial prompt" card (`GET /api/brief`). The project prompt says the GUI and TUI both give the user a main prompt and that the user only writes the initial prompt, yet the TUI cannot show it: `grep -rn brief src/ui/tui/` finds nothing. It is read-only because the TUI's prompt line holds one line and a brief can be up to `INITIAL_PROMPT_MAX_CHARS` of multiline text. Replacing it stays a job for the CLI (`--file`) and the dashboard, the same split the TUI notebook view uses. Independent of the refused part 2/2 above: no `src/gui`, `src/ui/gui`, or `src/backlog` file changes)
+
+**Goal.** `Ctrl+T` gains a tenth stop, **Brief**, after Health. It shows the brief file's name and then the current initial prompt, the same text `tumwater brief` prints, and `PgUp`/`PgDn` scroll it.
+
+**Approach.**
+- **One renderer.** Add `renderBrief(brief: { file: string; prompt: string }): string` to `src/brief.ts`, returning `` `${brief.file}\n${brief.prompt}` ``. `cmdBrief`'s plain-text branch calls it instead of its inline template, so the CLI and the TUI cannot drift. `--json` is unchanged.
+- **View.** Add `{ kind: "brief" }` to the `TuiView` union in `src/ui/tui/tui-frame.ts`. `tabStrip` appends `["brief", "Brief"]` after `["health", "Health"]`. `hintLine` gives `brief` the same key list as `health` (Enter send, ↑↓ history, PgUp/PgDn scroll, Ctrl+T next view, Ctrl+D quit).
+- **Index.** The brief view is index `roleIds.length + 8`:
+  - in `createTuiKeys` (`src/ui/tui/tui-keys.ts`), the Ctrl+T modulus goes from `roleIds.length + 8` to `roleIds.length + 9` (update its trailing comment to name brief), and the roster-change clamp goes from `Math.min(view, roleIds.length + 7)` to `+ 8`;
+  - in `src/ui/tui/tui.tsx`'s pane mapping, insert `view === roleIds.length + 8 ? { kind: "brief" }` after the health arm.
+- **Entry.** Add an `else if (view === roleIds.length + 8)` arm to the Ctrl+T handler's entry chain, after the Health arm. It is synchronous like Queued: `const brief = readBrief(root); paneCache = brief ? renderBrief(brief) : null;`. Each entry reads the file fresh. The existing `view >= roleIds.length + 2 && page !== null` branch already pages `paneCache`, so no paging change is needed.
+- **Body.** In `paneBody` (`src/ui/tui/tui-pane.ts`), add a `brief` branch shaped like the `health` branch: it windows `paneCache` with `entryBodyWindow` when that is non-empty, and otherwise returns no lines. Its `emptyNote` is `"(no project brief with a prompt block — run \`tumwater init\` first)"`. Update the module's doc comment to list brief among the panes.
+
+**Files.** `src/brief.ts`, `src/cli/brief-command.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui.tsx`, `src/ui/tui/tui-pane.ts`, test/tui-frame.test.ts, test/tui-keys.test.ts, test/tui.test.ts, docs/how-it-works.md (the `Ctrl+T` view list in the TUI bullet), README.md (the "Check state" row's `tumwater brief` entry also names the TUI's Brief tab and the dashboard's Settings card).
+
+**Acceptance criteria.**
+- `tabStrip({ kind: "brief" }, 200)` reads `Activity  Transcript  Backlog  Usage  Failures  History  Pending  Queued  Health  [Brief]   Ctrl+T next`. The existing `tabStrip` assertions in test/tui-frame.test.ts gain `  Brief` after `Health`.
+- In test/tui-keys.test.ts, with no roles in an `initializedRepo()` fixture (test/fixtures/repo-fixtures.ts, whose README.md carries a prompt block), cycling from Health with one Ctrl+T gives `view === 8` and `paneCache === renderBrief(readBrief(root)!)`. One more Ctrl+T wraps to `view === 0` with `paneCache === null`. Existing tests that wrap past Health (the "eight cycles with no roles wrap back to Activity" loop, the "cycling past Health wraps to Activity" assertion, and the `health → activity` steps) take one more Ctrl+T and otherwise pass unchanged.
+- With the brief's prompt block removed, entering Brief leaves `paneCache === null`, and `paneBody({ kind: "brief" }, …)` returns no body lines and the init emptyNote.
+- In test/tui.test.ts, the cycle from Health shows `[Brief]` with the brief file's name in the frame before wrapping to `[Activity]`. Its existing `→ health` then `→ events`/wrap steps take one more Ctrl+T.
+- `tumwater brief` without flags prints the same text as before (the existing brief-command tests pass unchanged).
+
 ## Done
 
 ### Dashboard: view and replace the initial prompt from the Settings view (planned 2026-10-12 by plan; done 2026-10-12 by feature; independent of the refused part 2/2 above and touches none of its files except docs/invariants.md. The landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) is the only way to read or replace the initial prompt. The project prompt says the GUI gives the user a main prompt and that the user only writes the initial prompt, yet the dashboard has no route that names the brief: `grep -n brief src/gui/*.ts src/ui/gui/*.ts` finds nothing. `cmdBrief` also keeps its checks (empty, `INITIAL_PROMPT_MAX_CHARS`, marker), its locked write, and its commit inline, so a second caller would have to copy them)
