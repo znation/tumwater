@@ -104,14 +104,14 @@ test("the tab strip names every view and brackets the current one", () => {
 });
 
 test("the hint line says what the keys do in each view and mode", () => {
-  const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor }, 300));
+  const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor, answerFor }, 300));
   assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: fleet · / search · Ctrl+T next view · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
   // The Activity pane names its exact-loop scope and its text search, the raw id or the fleet
   // and "search" or the active pattern, matching the History pane's conventions.
   assert.match(hint({ kind: "activity", role: "feature", grep: null }), /Ctrl\+G scope: feature · \/ search/);
   assert.match(hint({ kind: "activity", role: null, grep: "widget" }), /Ctrl\+G scope: fleet · \/ search: widget/);
   // At the fake TTY's 100 columns the daily-cap key (placed before the new ones) stays visible.
-  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 100)), /Ctrl\+B daily cap/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
@@ -124,7 +124,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
   ); // the cycle's last step names the way back
-  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+A answer question · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "usage", scope: "feature", window: null }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "failures", scope: "clean", window: "1h" }), /Ctrl\+G scope: clean/);
@@ -142,7 +142,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "queued" }), /Ctrl\+X cancel/);
   // The Queued editor names its save/cancel keys, like the budget and role editors.
   assert.equal(
-    plain(hintLine({ kind: "queued" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" } }, 300)),
+    plain(hintLine({ kind: "queued" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null }, 300)),
     "Enter save the edit · Esc cancel · Ctrl+D quit",
   );
   assert.equal(hint({ kind: "activity", role: null, grep: null }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
@@ -174,22 +174,22 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "history", since: null, result: null, role: null, grep: null, trail: false } as const,
     { kind: "pending" } as const,
     { kind: "queued" } as const,
-  ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 300)), /Ctrl\+D quit/);
+  ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
-  const spans = hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 300);
+  const spans = hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300);
   assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
 });
 
 test("the prompt line names who Enter sends to", () => {
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null })), "director › ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: null, queuedEditFor: null })), "qa › ");
-  assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null })), "daily cap $ ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: true, defer: null, queuedEditFor: null })), "defer › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "director › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "qa › ");
+  assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "daily cap $ ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: true, defer: null, queuedEditFor: null, answerFor: null })), "defer › ");
   // A pending delay is named beside the target; the defer editor's own prefix never repeats it.
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: "45m", queuedEditFor: null })), "director (defer 45m) › ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: "1h", queuedEditFor: null })), "qa (defer 1h) › ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" } })), "edit clean › ");
-  assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null })), 11);
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: "45m", queuedEditFor: null, answerFor: null })), "director (defer 45m) › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: "1h", queuedEditFor: null, answerFor: null })), "qa (defer 1h) › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null })), "edit clean › ");
+  assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), 11);
 });
 
 test("activity and transcript lines take the tones of what they report", () => {
@@ -239,4 +239,12 @@ test("the page's event kinds are tone's", () => {
   for (const [type, result] of cases) {
     assert.equal(pageKind({ type, ...(result === undefined ? {} : { result }) }), eventKind(type, result), `${type}/${result}`);
   }
+});
+
+test("the answer editor names Enter record answer, drops the defer hint, and prefixes the line", () => {
+  const hint = plain(hintLine({ kind: "backlog" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: { position: 2, title: "q" } }, 300));
+  assert.match(hint, /record answer/);
+  assert.doesNotMatch(hint, /defer/);
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: { position: 2, title: "q" } })), "answer #2 › ");
+  assert.match(plain(hintLine({ kind: "backlog" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+A answer question/);
 });

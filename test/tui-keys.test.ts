@@ -1674,3 +1674,92 @@ test("the adapter's output drives the dispatch exactly like the readline pairs d
   dispatch("d", { ctrl: true }); // Ctrl+D quits through the mapped shape
   assert.equal(quitCount(), 1);
 });
+
+test("the backlog pane answers the selected open question through tryAnswerQuestion", () => {
+  const root = makeRoot();
+  const qPath = path.join(root, "QUESTIONS.md");
+  const questions = (a: string, b: string) =>
+    `# Questions\n\n## Open\n\n### ${a}\n\nbody a\n\n### ${b}\n\nbody b\n\n## Answered\n\n_None yet._\n`;
+  fs.writeFileSync(qPath, questions("First?", "Second?"));
+  fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n\n## Planned\n\n### A plan\n\nbody\n\n## Done\n\n_None yet._\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, [], false);
+  for (const ch of "draft") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.equal(keys.state().answerFor, null, "list mode does not open the editor");
+  // With no loops the backlog pane is the second view: one Ctrl+T from Activity.
+  const backlogView = (): void => {
+    for (let i = 0; i < 12 && keys.state().view !== 1; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+    assert.equal(keys.state().view, 1);
+    keys.handleKey(undefined, { name: "down" });
+  };
+  backlogView();
+  assert.notEqual(keys.state().selectedEntry, null, "reached the backlog pane with an entry selected");
+  // The plan is first: Ctrl+A flashes and keeps the line.
+  for (let i = 0; i < 5 && keys.state().selectedEntry !== 0; i++) keys.handleKey(undefined, { name: "down" });
+  const draft = keys.state().input;
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.equal(keys.state().answerFor, null);
+  assert.equal(keys.state().flash, "only an open question can be answered here");
+  assert.equal(keys.state().input, draft);
+
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.deepEqual(keys.state().answerFor, { position: 2, title: "Second?" });
+  assert.equal(keys.state().input, "");
+
+  // Whitespace-only stays; Ctrl+B, Ctrl+L, and arrows are inert.
+  keys.handleKey(" ", { name: "space" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash!, /needs a decision/);
+  assert.notEqual(keys.state().answerFor, null);
+  const sel = keys.state().selectedEntry;
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  keys.handleKey(undefined, { ctrl: true, name: "l" });
+  keys.handleKey(undefined, { name: "up" });
+  assert.notEqual(keys.state().answerFor, null);
+  assert.equal(keys.state().budgetMode, false);
+  assert.equal(keys.state().deferMode, false);
+  assert.equal(keys.state().selectedEntry, sel);
+
+  // Esc restores the draft and writes nothing.
+  const before = fs.readFileSync(qPath, "utf8");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().answerFor, null);
+  assert.equal(keys.state().input, draft);
+  assert.equal(fs.readFileSync(qPath, "utf8"), before);
+
+  // A question that moved under the editor writes nothing and leaves the editor.
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  fs.writeFileSync(qPath, questions("Other?", "Different?"));
+  const moved = fs.readFileSync(qPath, "utf8");
+  for (const ch of "go") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(fs.readFileSync(qPath, "utf8"), moved);
+  assert.match(keys.state().flash!, /already answered or moved/);
+  assert.equal(keys.state().answerFor, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.equal(keys.state().input, draft);
+
+  // Ctrl+T clears an open editor and restores the draft; Enter records the answer.
+  fs.writeFileSync(qPath, questions("First?", "Second?"));
+  backlogView();
+  for (let i = 0; i < 5 && keys.state().selectedEntry !== 2; i++) keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().answerFor, null);
+  assert.equal(keys.state().input, draft);
+  backlogView();
+  for (let i = 0; i < 5 && keys.state().selectedEntry !== 2; i++) keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  for (const ch of "yes") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  const after = fs.readFileSync(qPath, "utf8");
+  assert.match(after, /## Answered[\s\S]*### Second\?[\s\S]*\*\*Answered \d{4}-\d{2}-\d{2} by operator:\*\* yes/);
+  assert.match(after, /## Open[\s\S]*### First\?[\s\S]*## Answered/);
+  assert.equal(keys.state().answerFor, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash!, /answered question #2/);
+  assert.equal(keys.state().input, draft);
+});
