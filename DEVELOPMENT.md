@@ -3,6 +3,7 @@
 ```bash
 npm install && npm run build && npm link   # build from source and put `tumwater` on PATH
 npm test                                   # lint + build + the unit suite (what the landing gate runs)
+npm run test:gate                          # lint + build + only the tests your change reaches
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
 npm test 'loop#resume'                     # …and inside them, only tests whose name contains "resume"
@@ -21,12 +22,35 @@ config: it makes `npx vitest` refuse to start here (BUGS.md 2026-10-05). Non-npm
 replace the gate's check with `check.command` in tumwater.json (`command`, optional `cwd` and
 `timeoutSeconds`).
 
-Both suite scripts start with `scripts/live-checkout-guard.mjs`, which refuses to run in a
+Every suite script starts with `scripts/live-checkout-guard.mjs`, which refuses to run in a
 checkout a live fleet runs from (its `.tumwater/state/orchestrator.json` names a live pid): the
 suite's first steps recompile and restamp the `dist/` that fleet executes and its dashboards
 watch. Run suites in a worktree. For the same reason a test never writes the running checkout's
 own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` serves a copy of
 `dist/src` from a fixture repo instead.
+
+## The gate runs the affected tests
+
+The fleet's review gate runs `npm run test:gate` before each model review
+(`check.gateCommand` in tumwater.json). It runs the same lint and build as `npm test`, then only
+the test files the change can reach (`test-runner.js --affected`, selection in
+`test/affected-tests.ts`). The full `npm test` still runs once per landing, on the rebased tree,
+and on main's baseline. A dependency the selection misses therefore costs a later rejection,
+never a red main. Over the fleet's recent commits the selection averaged about half the suite's
+time.
+
+The selection follows the compiled tree. It reads imports, `new URL("…", import.meta.url)` file
+references, and, for the CLI, the command each call to the test harness names. So keep these
+visible to it:
+
+- Reach another file by import or by `new URL("…", import.meta.url)`, not by assembling a path
+  from strings. A test that reads directories or derives paths from `import.meta` itself runs on
+  every code change.
+- Call the CLI through `test/helpers/cli-harness.ts` with the command as a string literal
+  (`cli(repo, "logs", …)`, `spawnCli(repo, ["run", …])`, `[CLI, "status"]`). A computed command
+  makes the file depend on every command.
+- Changes to `package.json`, the lockfile, `tsconfig.json` or the runner itself always run the
+  full suite, as does any file the selector cannot map. It says so in its first line of output.
 
 ## CI
 

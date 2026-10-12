@@ -21,11 +21,11 @@ function runGuard(cwd: string): { status: number | null; stdout: string; stderr:
   return spawnSync(process.execPath, [GUARD], { cwd, encoding: "utf8" });
 }
 
-test("both suite scripts run the live-checkout guard before anything lints, compiles, or stamps", () => {
+test("every suite script runs the live-checkout guard before anything lints, compiles, or stamps", () => {
   const pkg = readJson(fileURLToPath(new URL("../../package.json", import.meta.url))) as {
     scripts?: Record<string, string>;
   };
-  for (const name of ["test", "test:e2e"])
+  for (const name of ["test", "test:gate", "test:e2e"])
     assert.match(pkg.scripts?.[name] ?? "", /^node scripts\/live-checkout-guard\.mjs && /, `"${name}" starts with the guard`);
 });
 

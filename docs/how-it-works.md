@@ -46,9 +46,10 @@ merge step lands them, so other loops keep ticking while a change is under revie
   its tip: main green (or no verdict) rejects the change with the check's output, no model run;
   main red is not the change's failure, so its pin is kept for a later re-land and the red goes
   to bugfix. Optionally, `check.gateCommand` names a cheaper check (say, only the tests a diff
-  touches) that this per-change step runs instead. It is off by default. The full check then
-  still runs once per landing, over the batch or the single change, and a red result there
-  blocks the merge.
+  touches) that this per-change step runs instead. It is off by default; tumwater's own fleet
+  sets it to `npm run test:gate`. The full check then still runs once per landing, over the batch
+  or the single change, and a red result there blocks the merge. `check.timeoutSeconds` (default
+  300) bounds every check, the detected `npm test` included.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review. Each reviewer run is capped at
   `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`; at least 3600 while

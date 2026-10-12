@@ -5,6 +5,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printCoverageTable } from "./coverage-table.js";
+import { buildDepGraph, selectAffected } from "./affected-tests.js";
 import { findOnPath } from "../src/files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
@@ -353,6 +354,36 @@ export function splitCoverageArgv(argv: readonly string[]): { filters: string[];
   return { filters: argv.filter((a) => a !== "--coverage"), coverage: argv.includes("--coverage") };
 }
 
+/** Split `--affected` (or `--affected=<ref>`) off the runner's argv: the mode `npm run test:gate`
+ * runs, which selects the test files a change can reach (test/affected-tests.ts) instead of
+ * taking filters. `ref` is the branch the change is measured against, `main` when bare. The
+ * last occurrence wins. Exported for test/test-runner.test.ts. */
+export function splitAffectedArgv(argv: readonly string[]): { rest: string[]; ref: string | undefined } {
+  let ref: string | undefined;
+  const rest: string[] = [];
+  for (const arg of argv) {
+    if (arg === "--affected") ref = "main";
+    else if (arg.startsWith("--affected=")) ref = arg.slice("--affected=".length) || "main";
+    else rest.push(arg);
+  }
+  return { rest, ref };
+}
+
+/** Every repo-relative path a change touches in `repoRoot`: committed since its merge-base with
+ * `ref`, plus staged, unstaged and untracked (not ignored) files, deleted paths included and a
+ * rename as both its paths. An error names what git could not answer: the caller then runs the
+ * full suite rather than guess. Exported for test/test-runner.test.ts to pin on a real repo. */
+export function changedSinceBase(repoRoot: string, ref: string): { files: string[] } | { error: string } {
+  const run = (args: string[]) => spawnSync("git", args, { cwd: repoRoot, encoding: "utf8", timeout: 30_000 });
+  const base = run(["merge-base", "HEAD", ref]);
+  if (base.status !== 0) return { error: `no merge-base between HEAD and ${ref}` };
+  const tracked = run(["diff", "--name-only", "--no-renames", "-z", base.stdout.trim()]);
+  const untracked = run(["ls-files", "--others", "--exclude-standard", "-z"]);
+  if (tracked.status !== 0 || untracked.status !== 0) return { error: "git could not list the changed files" };
+  const files = `${tracked.stdout}${untracked.stdout}`.split("\0").filter((f) => f !== "");
+  return { files: [...new Set(files)].sort() };
+}
+
 /** Whether this node knows `--test-coverage-exclude`: the flag arrived in v22.5.0, above the
  * package's >=20.3 engines floor, so a supported node must never be handed it. Exported for
  * test/test-runner.test.ts to pin the boundary. */
@@ -395,13 +426,46 @@ export function buildNodeTestArgs(
   ];
 }
 
+/** The `--affected` selection: the gating files test/affected-tests.ts finds the change since its
+ * merge-base with `ref` can reach, announced in one line. Whatever cannot be decided (git cannot
+ * answer, or a change the selector will not map) announces why and selects the full suite, the
+ * safe answer for a pre-check. */
+function affectedTestFiles(distDir: string, ref: string): TestFileSelection {
+  const full = selectTestFiles([], distDir);
+  if (full.error) return full;
+  const distRoot = path.dirname(distDir);
+  const repoRoot = path.dirname(distRoot);
+  const changed = changedSinceBase(repoRoot, ref);
+  const pick = "error" in changed ? { reason: changed.error } : selectAffected(buildDepGraph(distRoot, repoRoot), changed.files);
+  if (pick.reason !== undefined) {
+    console.log(`affected tests: ${pick.reason}; running the full suite`);
+    return full;
+  }
+  const stem = (name: string) => path.basename(name).replace(/\.[jt]sx?$/, "");
+  const wanted = new Set(pick.tests.map(stem));
+  const keep = full.names.map((name, i) => ({ name, file: full.files[i]! })).filter((n) => wanted.has(stem(n.name)));
+  const count = "files" in changed ? changed.files.length : 0;
+  console.log(`affected tests: ${keep.length} of ${full.files.length} test files reach the ${count} changed file(s) since ${ref}`);
+  return { names: keep.map((n) => n.name), files: keep.map((n) => n.file) };
+}
+
 function main(): void {
-  const { filters, coverage } = splitCoverageArgv(process.argv.slice(2));
+  const { rest, ref } = splitAffectedArgv(process.argv.slice(2));
+  const { filters, coverage } = splitCoverageArgv(rest);
   const distDir = defaultDistDir();
-  const sel = selectTestFiles(filters, distDir);
+  if (ref !== undefined && (filters.length > 0 || coverage)) {
+    process.stderr.write("tumwater: --affected picks its own test files; it takes no filters and no --coverage\n");
+    process.exit(1);
+  }
+  const sel = ref === undefined ? selectTestFiles(filters, distDir) : affectedTestFiles(distDir, ref);
   if (sel.error) {
     process.stderr.write(`tumwater: ${sel.error}\n`);
     process.exit(1);
+  }
+  // node --test with no files would discover tests on its own, so an empty selection stops here.
+  if (sel.files.length === 0) {
+    console.log("affected tests: none to run");
+    process.exit(0);
   }
   // One line of what is about to run — only on the filtered path; the unfiltered suite keeps
   // byte-identical output for the harness's build gate.

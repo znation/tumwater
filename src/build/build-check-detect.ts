@@ -26,6 +26,9 @@ export type BuildCheck =
       rootDir: string;
       /** The npm script to run — `test` preferred, then `typecheck`, else `build`. */
       script: string;
+      /** Hard cap on the run, in ms, when `check.timeoutSeconds` is configured; absent, the
+       * caller's bound applies (the shared 300 s in production). */
+      timeoutMs?: number;
     }
   | {
       kind: "command";
@@ -115,17 +118,20 @@ export function detectBuildCheck(
   maxLevels = WALK_UP_LEVELS,
 ): BuildCheck | null {
   const c = config?.check;
+  // check.timeoutSeconds bounds the npm walk-up's check too: it is how a repo whose suite
+  // outgrows 300 s under load says so (the fleet's own gate runs were timing out there).
+  const configuredMs = typeof c?.timeoutSeconds === "number" && c.timeoutSeconds > 0 ? c.timeoutSeconds * 1000 : undefined;
   if (c && isNonBlankString(c.command)) {
-    const seconds = typeof c.timeoutSeconds === "number" && c.timeoutSeconds > 0 ? c.timeoutSeconds : BUILD_CHECK_TIMEOUT_MS / 1000;
     return {
       kind: "command",
       command: c.command,
       cwd: path.resolve(startDir, isNonBlankString(c.cwd) ? c.cwd : "."),
-      timeoutMs: seconds * 1000,
+      timeoutMs: configuredMs ?? BUILD_CHECK_TIMEOUT_MS,
     };
   }
   const root = walkUp(startDir, maxLevels, (dir) => (hasInstall(dir) ? dir : null));
-  return root === null ? null : buildCheckFrom(root);
+  const found = root === null ? null : buildCheckFrom(root);
+  return found !== null && found.kind === "npm" && configuredMs !== undefined ? { ...found, timeoutMs: configuredMs } : found;
 }
 
 /** The configured per-change gate command (`check.gateCommand`, PLANS.md Land-queue speed 3e) when

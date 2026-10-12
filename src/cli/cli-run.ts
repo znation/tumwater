@@ -163,6 +163,9 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const enabled = loopIds(config);
   // A scoped round's loop list is exactly the filter; otherwise every enabled loop runs.
   const roles = roleFilter !== null ? [roleFilter] : enabled;
+  // Main's green verdicts outlive this generation: the redeployer and the loops' red-main gate
+  // start from the ones the previous generation verified instead of re-running the suite.
+  (await import("../baseline/main-baseline.js")).persistBaselineVerdicts(root);
   // A once round never self-redeploys: it runs one round on the build it booted and exits,
   // so the hand-off machinery (and its build stamp) stays daemon-only.
   const redeploy = once

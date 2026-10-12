@@ -74,9 +74,9 @@ export async function runScopedBuildCheck(
     gateCommand === undefined ? config : { check: { ...config?.check, command: gateCommand } },
   );
   if (!check) return null;
-  // A configured command carries its own timeout (check.timeoutSeconds); an npm check runs
-  // under the caller's. Effective here so the reason text and the skip warning agree with
-  // what runBuildCheck enforced.
+  // A configured check.timeoutSeconds bounds either kind; otherwise an npm check runs under the
+  // caller's bound. Effective here so the reason text and the skip warning agree with what
+  // runBuildCheck enforced.
   const effectiveMs = checkTimeoutMs(check, timeoutMs);
   // One permit covers both attempts (the killed-check retry re-runs under the permit it
   // holds); durationMs prices the run itself, not the wait for a permit.

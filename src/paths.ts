@@ -144,6 +144,12 @@ export function autoRestartStampPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "auto-restart.json");
 }
 
+/** The green main-baseline verdicts the fleet keeps across restarts (baseline/main-baseline.ts's
+ * persistBaselineVerdicts): SHAs whose suite passed, so a new generation does not re-verify them. */
+export function baselineVerdictsPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "baseline-verdicts.json");
+}
+
 /** Marker file `tumwater reset-counters` drops for a running fleet to consume (it must also
  * zero the runners' in-memory counters, or their next save resurrects the old values). */
 export function resetRequestPath(root: string): string {

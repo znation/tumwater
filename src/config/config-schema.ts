@@ -156,7 +156,8 @@ export interface CheckConfig {
   gateCommand?: string;
   /** Working directory for the command, resolved relative to the worktree root; defaults to ".". */
   cwd?: string;
-  /** Hard cap on one run, in seconds; defaults to the built-in 300 s. */
+  /** Hard cap on one run, in seconds; defaults to the built-in 300 s. It bounds whichever check
+   * runs: `command`, `gateCommand`, or the npm script detected when no command is set. */
   timeoutSeconds?: number;
 }
 

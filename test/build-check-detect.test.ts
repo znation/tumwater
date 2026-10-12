@@ -5,6 +5,8 @@ import path from "node:path";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { buildCheckFixture } from "./fixtures/loop-fixtures.js";
 import { projManifest } from "./fakes/fake-commands.js";
+import { checkTimeoutMs } from "../src/build/build-check.js";
+import type { CheckConfig } from "../src/config/config-schema.js";
 import {
   BUILD_CHECK_TIMEOUT_MS,
   detectBuildCheck,
@@ -84,6 +86,16 @@ test("scripts.test is preferred, then typecheck, then build", () => {
 
   const bd = installRoot({ build: "make" });
   assert.deepEqual(detectBuildCheck(bd), { kind: "npm", rootDir: bd, script: "build" });
+});
+
+test("check.timeoutSeconds bounds the npm-detected check too, and checkTimeoutMs enforces it", () => {
+  const root = installRoot({ test: "npm test" });
+  const check = detectBuildCheck(root, { check: { timeoutSeconds: 900 } as CheckConfig });
+  assert.deepEqual(check, { kind: "npm", rootDir: root, script: "test", timeoutMs: 900_000 });
+  assert.equal(checkTimeoutMs(check!, BUILD_CHECK_TIMEOUT_MS), 900_000, "the configured bound beats the caller's");
+  const plain = detectBuildCheck(root, { check: { gateCommand: "npm run test:gate" } as CheckConfig });
+  assert.deepEqual(plain, { kind: "npm", rootDir: root, script: "test" }, "no timeoutSeconds, no bound of its own");
+  assert.equal(checkTimeoutMs(plain!, 1234), 1234, "the caller's bound applies");
 });
 
 test("a whitespace-only script value is skipped, not trusted — npm run of it would exit 0 unverified", () => {

@@ -12,6 +12,9 @@ import { gitTry } from "../git/git-run.js";
 import { treeDiffFiles } from "../git/git-diff.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
+import { baselineVerdictsPath } from "../paths.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build/build-check.ts — which keeps running and
@@ -113,13 +116,54 @@ const baselineCache = new Map<string, MainBaseline>();
 const BASELINE_CACHE_MAX = 256;
 
 /** Insert or update `sha`'s verdict, evicting the oldest entry when a NEW SHA would exceed the
- * cap. Both write sites route through here so the cap cannot be bypassed. */
+ * cap. Both write sites route through here so the cap cannot be bypassed, and so does the
+ * mirror on disk (saveGreens). */
 function rememberBaseline(sha: string, baseline: MainBaseline): void {
   if (!baselineCache.has(sha) && baselineCache.size >= BASELINE_CACHE_MAX) {
     const oldest = baselineCache.keys().next().value;
     if (oldest !== undefined) baselineCache.delete(oldest);
   }
   baselineCache.set(sha, baseline);
+  saveGreens();
+}
+
+/** The file the cache's greens are mirrored to (persistBaselineVerdicts), or undefined while no
+ * fleet process has asked for it: the CLI and the tests keep the cache in memory only. */
+let greensFile: string | undefined;
+
+/** Mirror the green verdicts to disk, so the fleet's next generation starts with them. A restart
+ * used to empty the cache, and the first tick after every restart re-ran the suite on a main the
+ * previous generation had already verified (41 of 319 baseline runs over 2026-10-02..12 started
+ * within 10 minutes of an orchestrator start). Only greens are kept: a green is a fact about an
+ * immutable tree, while a red is provisional (shouldRerunRed) and is cheap to rediscover. Best
+ * effort: a failed write costs at most a re-run after the next restart. */
+function saveGreens(): void {
+  if (greensFile === undefined) return;
+  const greens = [...baselineCache.values()]
+    .filter((b) => b.status === "green")
+    .map((b) => (b.inheritedFrom === undefined ? { sha: b.sha } : { sha: b.sha, inheritedFrom: b.inheritedFrom }));
+  try {
+    writeJsonAtomic(greensFile, { greens });
+  } catch {
+    // A read-only or full disk: the in-memory cache still answers this generation.
+  }
+}
+
+/** Load the green verdicts a previous generation saved under `root` and keep mirroring them
+ * there (saveGreens). Called once at fleet startup (cli/cli-run.ts). An entry the cache already
+ * holds is left as it is, and a malformed file or entry reads as no data. */
+export function persistBaselineVerdicts(root: string): void {
+  const file = baselineVerdictsPath(root);
+  greensFile = undefined; // the load below re-writes nothing it just read
+  const stored = readJsonFile<{ greens?: unknown }>(file);
+  const entries: unknown[] = Array.isArray(stored?.greens) ? stored.greens : [];
+  for (const entry of entries) {
+    if (!isJsonObject(entry) || typeof entry.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(entry.sha)) continue;
+    if (baselineCache.has(entry.sha)) continue;
+    const from = typeof entry.inheritedFrom === "string" ? { inheritedFrom: entry.inheritedFrom } : {};
+    rememberBaseline(entry.sha, { status: "green", sha: entry.sha, ...from });
+  }
+  greensFile = file;
 }
 
 /** In-flight dedup: concurrent ticks on the same not-yet-cached SHA (a fresh main move wakes
