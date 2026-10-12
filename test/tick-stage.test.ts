@@ -278,6 +278,92 @@ test("an assigned tick that moves a different plan gets a stage-check finding", 
   assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /moved a different one/);
 });
 
+/** A feature-2 worktree over STAGE_PLANS whose uncommitted change moved `names` into Done and
+ * wrote feature.ts — the shape of an unassigned primary's tick at staging. */
+async function movedPlansTick(names: string[]): Promise<{ root: string; wt: string }> {
+  const root = await initializedRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), STAGE_PLANS);
+  commitIn(root, "plans");
+  const wt = await ensureWorktree(root, "feature-2", "main");
+  let doc = STAGE_PLANS;
+  for (const name of names) {
+    doc = doc
+      .replace(new RegExp(`### ${name}[^\\n]*\\n\\nBody\\.\\n\\n`), "")
+      .replace("## Done", `## Done\n\n### ${name} (planned 2026-01-01 by operator; done 2026-01-02 by feature-2)`);
+  }
+  fs.writeFileSync(path.join(wt, "PLANS.md"), doc);
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  return { root, wt };
+}
+
+const twoFeatureInstances = (c: TumwaterConfig): void => {
+  (c.roles as Record<string, { enabled?: boolean; instances?: number }>).feature = { enabled: true, instances: 2 };
+};
+
+// BUGS.md 2026-10-12: an unassigned primary re-authored the entries its siblings held (24 of 29
+// staged claims). The held titles ride its prompt; staging is the deterministic backstop.
+test("an unassigned tick that moves a plan a sibling holds gets a finding, not a second claim", async () => {
+  const { root, wt } = await movedPlansTick(["Alpha"]);
+  const state = freshLoopState("feature-2");
+  state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    role: "feature-2",
+    config: twoFeatureInstances,
+    finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(state.claim, undefined, "the sibling's entry is not claimed a second time");
+  assert.equal(calls.stageFixRequests.length, 1, "the duplicate costs one fix-up turn");
+  assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /a sibling instance holds: "Alpha/);
+  // The fix-up turn left the change as it was: it still queues, and the gate has the final say.
+  assert.equal(outcome.result, "queued");
+});
+
+test("a fix-up that drops a sibling's held entry leaves nothing to land", async () => {
+  const { root, wt } = await movedPlansTick(["Alpha"]);
+  const state = freshLoopState("feature-2");
+  state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    role: "feature-2",
+    config: twoFeatureInstances,
+    finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
+  });
+  // The author takes the finding: it reverts the entry's move and the work done for it.
+  ctx.requestStageFix = async (fixWt: string, findings: string[]) => {
+    calls.stageFixRequests.push({ wt: fixWt, findings });
+    sh(fixWt, "git", "checkout", "--", "PLANS.md");
+    fs.rmSync(path.join(fixWt, "feature.ts"));
+    return null;
+  };
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "no_change", "no duplicate reaches the gate, the review, or the merge slot");
+  assert.equal(calls.pins.length, 0, "nothing was pinned");
+  assert.ok(calls.warnings.some((w) => /nothing to land/.test(w)), calls.warnings.join("\n"));
+});
+
+test("an unassigned tick that moves a held plan and a free one claims the free one", async () => {
+  const { root, wt } = await movedPlansTick(["Alpha", "Beta"]);
+  const state = freshLoopState("feature-2");
+  state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    role: "feature-2",
+    config: twoFeatureInstances,
+    finalText: "Done.\nSUMMARY: implement both\nVERIFIED: npm test\n",
+  });
+
+  await stageTickLanding(ctx);
+
+  assert.equal(state.claim?.key, "beta", "the free entry is this tick's claim");
+  assert.equal(state.claim?.source, "staged");
+  const findings = calls.stageFixRequests[0]?.findings.join("\n") ?? "";
+  assert.match(findings, /a sibling instance holds: "Alpha/);
+  assert.doesNotMatch(findings, /moved a different one/, "the staged claim's own move is not a finding");
+});
+
 test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () => {
   const { root, wt } = await setup();
   const state: LoopState = { ...freshLoopState("improve"), ticks: 3 };

@@ -20,7 +20,8 @@ import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
-import { assignedMovedFinding } from "./stage-check.js";
+import { entryKey } from "../backlog/backlog-eligibility.js";
+import { assignedMovedFinding, heldMovedFinding } from "./stage-check.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the tick staging needs no export from it). */
@@ -134,16 +135,21 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // actionable section records the claim so a sibling is not assigned it while this change
   // lands. A single-runner base has no sibling to hold the entry from, so it stages nothing
   // and is unchanged by claims. An assigned tick that moved a DIFFERENT entry gets a finding,
-  // so the one fix-up turn can put it back. An unreadable file or git hiccup yields no move
-  // and no finding.
+  // so the one fix-up turn can put it back. So does an unassigned tick that moved an entry a
+  // sibling holds (the poll's heldElsewhere, which its prompt listed as off-limits): that entry
+  // is never claimed a second time, and the fix-up turn is asked to drop the duplicate work
+  // (BUGS.md 2026-10-12). An unreadable file or git hiccup yields no move and no finding.
   const moved =
     ctx.mainBranch &&
     INSTANCE_ROLES.has(baseRoleOf(ctx.role)) &&
     configuredInstances(ctx.config, ctx.role) > 1
       ? await stagedMovedEntries(ctx.wt, ctx.mainBranch, ctx.role).catch(() => [])
       : [];
-  if (moved.length > 0 && s.claim === undefined) {
-    const first = moved[0]!;
+  const heldBySiblings = new Set(s.claim === undefined ? (s.heldElsewhere ?? []).map(entryKey) : []);
+  const heldMoved = heldMovedFinding(heldBySiblings, moved);
+  const claimable = moved.filter((m) => !heldBySiblings.has(m.key));
+  if (claimable.length > 0 && s.claim === undefined) {
+    const first = claimable[0]!;
     s.claim = { file: first.file, key: first.key, title: first.title, at: Date.now(), source: "staged" };
     // The assignment is durable in state before this event; an unwritable feed must not reject
     // the tick and make a claim that did land look unapplied (logEventBestEffort).
@@ -160,6 +166,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
 
   const findings = await ctx.stageCheck(ctx.wt);
   if (assignedMoved) findings.push(assignedMoved);
+  if (heldMoved) findings.push(heldMoved);
   if (findings.length > 0) {
     const before = findings.length;
     const fixUp = await ctx.requestStageFix(ctx.wt, findings);

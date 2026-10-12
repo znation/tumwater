@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { stageCheckFindings } from "../src/tick/stage-check.js";
+import { heldMovedFinding, stageCheckFindings } from "../src/tick/stage-check.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -322,4 +322,19 @@ test("the git-level check leaves the index clean, so change detection still sees
 
   assert.equal(sh(wt, "git", "diff", "--cached", "--name-only"), "", "nothing is left staged");
   assert.match(sh(wt, "git", "status", "--porcelain"), /src\/a\.ts/, "the worktree change remains");
+});
+
+// BUGS.md 2026-10-12: an unassigned primary re-authored entries its siblings held. The held
+// titles reach its prompt as advice; staging names a held entry the change moved anyway.
+test("heldMovedFinding names a moved entry a sibling holds, and nothing otherwise", () => {
+  const held = new Set(["alpha"]);
+  const alpha = { key: "alpha", title: "Alpha (planned 2026-01-01 by operator)" };
+  const beta = { key: "beta", title: "Beta (planned 2026-01-01 by operator)" };
+  assert.match(
+    heldMovedFinding(held, [beta, alpha]) ?? "",
+    /moved a backlog entry a sibling instance holds: "Alpha \(planned 2026-01-01 by operator\)".*revert every edit made for it/,
+  );
+  assert.equal(heldMovedFinding(held, [beta]), undefined, "a free entry is this tick's to take");
+  assert.equal(heldMovedFinding(held, []), undefined, "nothing moved");
+  assert.equal(heldMovedFinding(new Set(), [alpha]), undefined, "nothing held");
 });

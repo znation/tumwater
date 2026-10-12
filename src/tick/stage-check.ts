@@ -92,6 +92,27 @@ export function assignedMovedFinding(
   return `this tick is assigned one backlog entry but moved a different one: "${moved[0]!.title}"`;
 }
 
+/** The staging finding for an unassigned tick that moved a backlog entry a sibling instance
+ * holds — one the poll listed in the tick's `<held-entries>` note (LoopState.heldElsewhere).
+ * The note is advice the model can ignore; this is the deterministic backstop at the same
+ * point as assignedMovedFinding (BUGS.md 2026-10-12: 24 of 29 staged claims duplicated a
+ * sibling's held entry, and each duplicate cost a gate check, a review, and a conflict
+ * resolver run holding the merge slot). The fix-up turn is asked to drop the duplicate work.
+ * A change that held nothing else then ends with no change to land. undefined when no moved
+ * entry is held. */
+export function heldMovedFinding(
+  heldKeys: ReadonlySet<string>,
+  moved: readonly { key: string; title: string }[],
+): string | undefined {
+  const dup = moved.find((m) => heldKeys.has(m.key));
+  if (dup === undefined) return undefined;
+  return (
+    `this tick moved a backlog entry a sibling instance holds: "${dup.title}" — it is that ` +
+    `instance's task (see <held-entries>), so revert every edit made for it, including the ` +
+    `entry's move, and leave nothing behind if that was the whole change`
+  );
+}
+
 /** One `git diff --name-status -M` entry: the status letter (`A`/`M`/`D`/`R`/`C`/`T`), the
  * destination (current) path, and — for a rename or copy — the origin path. */
 interface NameStatusEntry {
