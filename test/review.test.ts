@@ -258,7 +258,7 @@ test("a verdict-less completed reply is recovered with one follow-up turn, not a
       assert.equal(eventsOfType(root, "review_verdict").length, 1);
       // The recovery is observable in the event feed.
       const warnings = eventsOfType(root, "warning");
-      assert.ok(warnings.some((e) => /follow-up turn/.test(String(e.message))));
+      assert.ok(warnings.some((e) => String(e.message).includes('follow-up turn')));
       // Exactly one --continue run happened, after the fresh review run.
       const lines = fs.readFileSync(flags, "utf8").trim().split("\n");
       assert.equal(lines.length, 2);
@@ -345,7 +345,7 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
       }
       const events = readEvents(root);
       assert.equal(events.filter((e) => e.type === "review_failed").length, REVIEW_FAILURE_LIMIT + 2);
-      assert.ok(!events.some((e) => e.type === "warning" && /discarding unreviewed/.test(String(e.message))));
+      assert.ok(!events.some((e) => e.type === "warning" && String(e.message).includes('discarding unreviewed')));
   });
 });
 

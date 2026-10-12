@@ -130,7 +130,7 @@ test("applyConfigRequest survives structurally malformed requests without throwi
   // premature `.name` dereference.
   writeRequest(wt, { customLoops: [null] });
   let result = applyConfigRequest(root, wt);
-  assert.ok(result?.error && /customLoops\[0\]/.test(result.error), JSON.stringify(result));
+  assert.ok(result?.error?.includes('customLoops[0]'), JSON.stringify(result));
   assert.deepEqual(loadConfig(root), defaultConfig());
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
@@ -141,12 +141,12 @@ test("applyConfigRequest survives structurally malformed requests without throwi
 
   writeRequest(wt, { customLoops: "everything" });
   result = applyConfigRequest(root, wt);
-  assert.ok(result?.error && /must be an array/.test(result.error), JSON.stringify(result));
+  assert.ok(result?.error?.includes('must be an array'), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
   writeRequest(wt, ["an array, not an object"]);
   result = applyConfigRequest(root, wt);
-  assert.ok(result?.error && /must be a JSON object/.test(result.error), JSON.stringify(result));
+  assert.ok(result?.error?.includes('must be a JSON object'), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 });
 

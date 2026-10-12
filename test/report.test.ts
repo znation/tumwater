@@ -443,7 +443,7 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
   const out = renderReportMarkdown(data);
   assert.match(out, /^role: feature$/m);
   assert.match(out, /^\*\*Totals:\*\* 500 output tokens · 1 ticks · 1 commits · \$0\.50$/m);
-  assert.ok(!/features done · 0 bugs fixed/.test(out), "the fleet backlog cells are dropped from the totals line");
+  assert.ok(!out.includes('features done · 0 bugs fixed'), "the fleet backlog cells are dropped from the totals line");
   assert.ok(!out.includes("of which landing runs"), "no landing-share line prints");
   assert.match(out, /role scope: landing runs and backlog tallies \(features done \/ bugs fixed\) are fleet-wide and omitted/);
 });

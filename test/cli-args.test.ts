@@ -181,7 +181,7 @@ test("rejectUnknownArgs adds a did-you-mean hint for a near-miss flag", () => {
   assert.match(r.stderr, /did you mean `--port`\?/);
   // A token far from every accepted flag gets only the valid-flags list, no hint.
   const stray = expectFail(() => rejectUnknownArgs("logs", ["extra"], LOGS_SPECS));
-  assert.ok(!/did you mean/.test(stray.stderr), "no hint for a token unlike every flag");
+  assert.ok(!stray.stderr.includes('did you mean'), "no hint for a token unlike every flag");
 });
 
 test("rejectUnknownArgs rejects unknown tokens with the command's valid flags listed", () => {

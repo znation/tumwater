@@ -187,7 +187,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       assert.equal(headLanding(repo)?.entry.sha, outcome.commit, "the queue holds only the fresh change");
       assert.deepEqual(eventsOfType(repo, "land_queued").map((e) => e.commit), [outcome.commit]);
       assert.ok(
-        eventsOfType(repo, "warning").some((e) => /discarding leftover/.test(String(e.message))),
+        eventsOfType(repo, "warning").some((e) => String(e.message).includes('discarding leftover')),
         "a warning names the discard",
       );
     },
@@ -420,7 +420,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       const failed = eventsOfType(repo, "review_failed");
       assert.equal(failed.length, 2, "both the tick's review and its recovery review failed");
       assert.ok(
-        failed.some((e) => /no parseable VERDICT/.test(String(e.message))),
+        failed.some((e) => String(e.message).includes('no parseable VERDICT')),
         `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
       );
       // Tick 2's own result was `queued`; the first landing's review failure (still in the shared
@@ -469,8 +469,8 @@ test("a persistent recovery review failure feeds the error streak and reads fail
       assert.ok(
         warnings.some(
           (e) =>
-            /3 consecutive tick failures/.test(String(e.message)) &&
-            /review failed: reviewer backend down/.test(String(e.message)),
+            String(e.message).includes('3 consecutive tick failures') &&
+            String(e.message).includes('review failed: reviewer backend down'),
         ),
         `expected one warning naming the review failure, got: ${JSON.stringify(warnings)}`,
       );
@@ -517,8 +517,8 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
       assert.ok(
         eventsOfType(repo, "warning").some(
           (e) =>
-            /permanent provider configuration error/.test(String(e.message)) &&
-            /model_not_supported/.test(String(e.message)),
+            String(e.message).includes('permanent provider configuration error') &&
+            String(e.message).includes('model_not_supported'),
         ),
         "one warning names the permanent config error",
       );

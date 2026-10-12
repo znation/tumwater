@@ -380,7 +380,7 @@ test("the feature role reads its plan from the injected index, matches the revie
   assert.match(find, /append the note .* under its heading, skip it, and implement the next available plan that fits/);
   assert.match(find, /land exactly one plan/);
   assert.match(find, /skip entries already carrying a \*\*Needs review …\*\* note/i);
-  assert.ok(!/split before implementing/.test(find), "the inline-split instruction is gone");
+  assert.ok(!find.includes('split before implementing'), "the inline-split instruction is gone");
   assert.match(find, /correct the entry in the same change instead of refusing/);
 });
 test("the feature find text moves a done plan under the EXISTING ## Done heading", () => {
@@ -392,7 +392,7 @@ test("the feature find text moves a done plan under the EXISTING ## Done heading
   assert.match(find, /never add, remove, or rename a `## ` heading/i);
   assert.match(find, /leave a `_None yet\._` placeholder there/);
   assert.match(find, /`grep -n '\^## ' PLANS\.md` must list the same headings before and after/);
-  assert.ok(!/Done section/.test(find), "the 'create a section' wording is gone");
+  assert.ok(!find.includes('Done section'), "the 'create a section' wording is gone");
 });
 test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading", () => {
   const find = oneLine(roleById("bugfix")!.find);
@@ -400,7 +400,7 @@ test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading
   assert.match(find, /paste it as the first entry under the file's existing `## Fixed` heading/);
   assert.match(find, /never add, remove, or rename a `## ` heading/i);
   assert.match(find, /`grep -n '\^## ' BUGS\.md` must list the same headings before and after/);
-  assert.ok(!/Fixed section/.test(find), "the 'create a section' wording is gone");
+  assert.ok(!find.includes('Fixed section'), "the 'create a section' wording is gone");
 });
 test("the plan role prioritizes a Needs review plan, clears the note after splitting, and stops while plans wait", () => {
   const find = oneLine(roleById("plan")!.find);
@@ -409,7 +409,7 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently landable sub-plans that cross-reference each other/);
   assert.match(find, /then remove the note/);
-  assert.ok(!/refining the weakest/.test(find), "the refine-the-weakest clause is gone");
+  assert.ok(!find.includes('refining the weakest'), "the refine-the-weakest clause is gone");
   assert.match(find, /holds one more eligible plan than there are feature instances/);
   assert.match(find, /not blocked, refused, needs-review or needs-replan/);
   assert.match(find, /prefer a plan independent of the waiting series/);

@@ -67,7 +67,7 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted tick res
     assert.equal(result.ok, true);
     const line = runArgs(args)[0]!;
     assert.ok(line.includes("--continue"), "resume continues the role's session");
-    assert.ok(!/-n /.test(line), "no -n when resuming");
+    assert.ok(!line.includes('-n '), "no -n when resuming");
   } finally {
     restore();
   }

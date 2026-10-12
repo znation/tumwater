@@ -259,7 +259,7 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
     "an on-time timeout rejects on its first occurrence — no retry is owed",
   );
   assert.ok(
-    events.some((e) => e.type === "warning" && /rejecting the merge/.test(String(e.message))),
+    events.some((e) => e.type === "warning" && String(e.message).includes('rejecting the merge')),
     "the operator sees why the landing did not proceed",
   );
 

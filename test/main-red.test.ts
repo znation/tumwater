@@ -300,7 +300,7 @@ test("mainTipVerdict reports unavailable, without throwing, when main's ref dang
   fs.writeFileSync(path.join(root, ".git", "refs", "heads", "main"), `${"deadbeef".repeat(5)}\n`);
   const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
   assert.equal(verdict.status, "unavailable");
-  assert.ok(verdict.status === "unavailable" && /invalid reference/.test(verdict.why), verdict.status === "unavailable" ? verdict.why : "");
+  assert.ok(verdict.status === "unavailable" && verdict.why.includes('invalid reference'), verdict.status === "unavailable" ? verdict.why : "");
 });
 
 // BUGS.md 2026-09-30: a FAILED baseline run the host slept through is no verdict about main —

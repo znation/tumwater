@@ -94,7 +94,7 @@ test("a post-listen server error is recorded, not swallowed by the listen-time r
     // the failure is visible in the feed.
     server.emit("error", new Error("EMFILE: accept failed"));
     const warning = readEvents(repo).find(
-      (e) => e.type === "warning" && /dashboard server error/.test(String(e.message ?? "")),
+      (e) => e.type === "warning" && String(e.message ?? "").includes('dashboard server error'),
     );
     assert.ok(warning, "the post-listen error was recorded as a warning event");
     assert.match(String(warning.message ?? ""), /EMFILE/);

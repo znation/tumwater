@@ -807,7 +807,7 @@ test("a no-re-run nudge that dies on the backend is strike-free and its error na
       assert.equal(state.lastReview?.verdict, "failed");
       assert.ok(result.nudgeRun, "the failed nudge's spend still folds into the totals");
       const events = readEvents(green.root);
-      assert.ok(!events.some((e) => e.type === "warning" && /discarding unreviewed/.test(String(e.message))));
+      assert.ok(!events.some((e) => e.type === "warning" && String(e.message).includes('discarding unreviewed')));
     },
   );
 });

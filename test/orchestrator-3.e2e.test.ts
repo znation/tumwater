@@ -313,7 +313,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
       "no failed landing",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "warning" && /land queue/.test(String(e.message))).length,
+      readEvents(repo).filter((e) => e.type === "warning" && String(e.message).includes('land queue')).length,
       1,
       "one harness warning for the torn head drop",
     );
@@ -798,10 +798,10 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const indexOf = (predicate: (e: (typeof events)[number]) => boolean) => events.findIndex(predicate);
     const restartAt = indexOf((e) => e.type === "restart");
     const waitAt = indexOf(
-      (e) => e.type === "warning" && /restart hand-off waiting on the in-flight landing of dry/.test(String((e as unknown as { message: string }).message)),
+      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('restart hand-off waiting on the in-flight landing of dry'),
     );
     const lapseAt = indexOf(
-      (e) => e.type === "warning" && /the landing of dry outlived its 0\.5s deadline — aborted/.test(String((e as unknown as { message: string }).message)),
+      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the landing of dry outlived its 0.5s deadline — aborted'),
     );
     const cleanAbortedAt = indexOf((e) => e.type === "tick_end" && e.loop === "clean" && e.result === "aborted");
     const dryFailedAt = indexOf((e) => e.type === "land_failed" && e.loop === "dry");

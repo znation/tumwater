@@ -30,7 +30,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
     assert.ok(
-      warnings.some((w) => /retrying the pi run once/.test(w)),
+      warnings.some((w) => w.includes('retrying the pi run once')),
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
     );
     // A predict-stream timeout is a transient failure of the local backend, not the provider
@@ -60,7 +60,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
     assert.ok(
-      warnings.some((w) => /rate-limited the request \(429/.test(w)),
+      warnings.some((w) => w.includes('rate-limited the request (429')),
       `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,
     );
     // The run that ended on the 429 is this role's input to the orchestrator's fleet-wide hold

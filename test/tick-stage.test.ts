@@ -342,7 +342,7 @@ test("a fix-up that drops a sibling's held entry leaves nothing to land", async 
 
   assert.equal(outcome.result, "no_change", "no duplicate reaches the gate, the review, or the merge slot");
   assert.equal(calls.pins.length, 0, "nothing was pinned");
-  assert.ok(calls.warnings.some((w) => /nothing to land/.test(w)), calls.warnings.join("\n"));
+  assert.ok(calls.warnings.some((w) => w.includes('nothing to land')), calls.warnings.join("\n"));
 });
 
 test("an unassigned tick that moves a held plan and a free one claims the free one", async () => {

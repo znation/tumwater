@@ -543,7 +543,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     assert.equal(await landHead(repo, runner, defaultConfig(), "dry"), "changed");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dry\): Update x\.txt$/);
     const warnings = warningMessages(repo);
-    assert.ok(warnings.some((w) => /reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x\.txt"/.test(w)), JSON.stringify(warnings));
+    assert.ok(warnings.some((w) => w.includes('reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x.txt"')), JSON.stringify(warnings));
   });
 });
 
@@ -575,6 +575,6 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     // continuation, so the model sees its own work rather than a cold prompt.
     assert.equal(runs.filter((r) => r.includes("--continue")).length, 1, JSON.stringify(runs));
     const warnings = warningMessages(repo);
-    assert.ok(warnings.some((w) => /recovered it with a follow-up turn/.test(w)), JSON.stringify(warnings));
+    assert.ok(warnings.some((w) => w.includes('recovered it with a follow-up turn')), JSON.stringify(warnings));
   });
 });

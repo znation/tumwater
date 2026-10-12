@@ -509,7 +509,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     await waitFor(
       () => {
         const order = loopOrder();
-        return order.indexOf("perf-hunter") !== -1 && order.indexOf("perf-hunter") < order.indexOf("docs-auditor");
+        return order.includes("perf-hunter") && order.indexOf("perf-hunter") < order.indexOf("docs-auditor");
       },
       "the reorder to show in the status table",
     );

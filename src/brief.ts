@@ -62,7 +62,7 @@ export function briefTemplate(projectName: string, initialPrompt: string): strin
 function ownsBrief(text: string): boolean {
   const start = text.indexOf(PROMPT_START);
   if (start < 0) return false;
-  return text.indexOf(PROMPT_END, start + PROMPT_START.length) >= 0;
+  return text.includes(PROMPT_END, start + PROMPT_START.length);
 }
 
 /** The first brief candidate (TUMWATER.md before README.md) that exists on disk and whose

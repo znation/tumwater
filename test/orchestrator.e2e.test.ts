@@ -757,7 +757,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
     await waitFor(
       () =>
         readEvents(repo).some(
-          (e) => e.type === "warning" && /primary checkout moved to experiment/.test(String(e.message)),
+          (e) => e.type === "warning" && String(e.message).includes('primary checkout moved to experiment'),
         ),
       "one divergence warning",
     );
@@ -765,7 +765,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
     // Edge-triggered: more polls on the foreign branch stay quiet.
     await sleep(FAST_POLL_MS * 5);
     const during = readEvents(repo).filter(
-      (e) => e.type === "warning" && /primary checkout moved/.test(String(e.message)),
+      (e) => e.type === "warning" && String(e.message).includes('primary checkout moved'),
     );
     assert.equal(during.length, 1, JSON.stringify(during));
 
@@ -776,7 +776,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
     await waitFor(
       () =>
         readEvents(repo).filter(
-          (e) => e.type === "warning" && /primary checkout moved/.test(String(e.message)),
+          (e) => e.type === "warning" && String(e.message).includes('primary checkout moved'),
         ).length === 2,
       "a second warning after re-arming",
     );

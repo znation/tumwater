@@ -112,7 +112,7 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
     const warnings = warningMessages(repo);
     assert.ok(
-      warnings.some((w) => /refusal contradicted by its own reply/.test(w) && w.includes("seed.txt")),
+      warnings.some((w) => w.includes('refusal contradicted by its own reply') && w.includes("seed.txt")),
       `warning names the kept work: ${JSON.stringify(warnings)}`,
     );
   });

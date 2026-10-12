@@ -60,7 +60,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     // The warning event carries both thresholds.
     const events = readEvents(repo);
     const warnings = events.filter(
-      (e) => e.type === "warning" && /high-friction/.test(String(e.message)),
+      (e) => e.type === "warning" && String(e.message).includes('high-friction'),
     );
     assert.equal(warnings.length, 1, "exactly one high-friction warning event");
     assert.match(
@@ -102,7 +102,7 @@ test("a changed tick past only thrashTurns is not flagged high-friction", async 
     // trailer on the commit.
     const events = readEvents(repo);
     assert.ok(
-      !events.some((e) => e.type === "warning" && /high-friction/.test(String(e.message))),
+      !events.some((e) => e.type === "warning" && String(e.message).includes('high-friction')),
       "no high-friction warning event",
     );
     assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
@@ -129,7 +129,7 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
     // No high-friction warning event…
     const events = readEvents(repo);
     assert.ok(
-      !events.some((e) => e.type === "warning" && /high-friction/.test(String(e.message))),
+      !events.some((e) => e.type === "warning" && String(e.message).includes('high-friction')),
       "no high-friction warning event",
     );
     // …the reviewer prompt carries no marker, and the commit has no Friction line.

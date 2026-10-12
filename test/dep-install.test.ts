@@ -236,7 +236,7 @@ test("syncRootInstall warns when the root install fails, and stays silent with n
   writeLock(root, { ink: "7.1.1" });
   await syncRootInstall(root, "feature", fakeInstaller("fail"));
   assert.equal(eventsOfType(root, "dep_install")[0]?.status, "failed");
-  assert.ok(warningMessages(root).some((m) => /root install did not pick up main's dependencies \(ink\)/.test(m)));
+  assert.ok(warningMessages(root).some((m) => m.includes('root install did not pick up main\'s dependencies (ink)')));
 });
 
 test("syncRootInstall resolves when the events feed is unwritable, leaving the post-ff landing un-rejected", async () => {

@@ -236,7 +236,7 @@ test("a spawn-failure warning whose event write throws falls back to stderr, not
     notifier.update({ notify: `echo ${"x".repeat(2_000_000)}` });
     logEvent(root, { loop: "feature", type: "budget_paused" });
     await waitFor(
-      () => /notify command could not start/.test(stderr.err()),
+      () => stderr.err().includes('notify command could not start'),
       "the stderr fallback for the unwritable warning",
     );
     assert.match(

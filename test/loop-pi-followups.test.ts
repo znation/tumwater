@@ -126,7 +126,7 @@ test("requestSummary's 429 takes the shared transient retry: warns, waits the hi
     // the whole recording instead: both attempts continue the authoring session, and the
     // follow-up never re-names it.
     const recorded = fs.readFileSync(args, "utf8");
-    assert.ok(!/-n /.test(recorded), "the follow-up never re-names the session");
+    assert.ok(!recorded.includes('-n '), "the follow-up never re-names the session");
     assert.equal((recorded.match(/--continue/g) ?? []).length, 2, "both attempts continue the authoring session");
     assert.match(recorded, /required closing block/, "both attempts ask for the SUMMARY block");
   } finally {
@@ -194,7 +194,7 @@ test("requestStageFix resumes the tick's session with the findings and folds its
     // prompt's newlines) cannot be read per line — assert over the whole recording instead.
     const recorded = fs.readFileSync(args, "utf8");
     assert.match(recorded, /--continue/, "the fix-up continues the authoring session");
-    assert.ok(!/-n /.test(recorded), "the fix-up never re-names the session");
+    assert.ok(!recorded.includes('-n '), "the fix-up never re-names the session");
     assert.match(recorded, /task id is missing/, "the first finding is in the prompt");
     assert.match(recorded, /stray file in the diff/, "the second finding is in the prompt");
     assert.match(recorded, /closing block again/, "the run asks for the closing block again");

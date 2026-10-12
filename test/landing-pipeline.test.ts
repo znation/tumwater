@@ -88,7 +88,7 @@ test("a torn head is dropped with a warning and the healthy entry behind it land
     assert.equal(fs.existsSync(torn), false, "the torn head was dropped");
     assert.ok(
       readEvents(root).some(
-        (e) => e.type === "warning" && /land queue head 1-000000-0\.json is unreadable/.test(String(e.message)),
+        (e) => e.type === "warning" && String(e.message).includes('land queue head 1-000000-0.json is unreadable'),
       ),
       "the drop carried one warning event",
     );
@@ -582,7 +582,7 @@ test("an aborted vetted change settles despite an unwritable state file: no thro
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta, "beta's pin was untouched");
     assert.ok(
       readEvents(root).some(
-        (e) => e.type === "warning" && /the aborted landing for alpha could not be settled/.test(String(e.message)),
+        (e) => e.type === "warning" && String(e.message).includes('the aborted landing for alpha could not be settled'),
       ),
       "the failed state write is warned about, not swallowed",
     );
@@ -859,7 +859,7 @@ test("a failing state write in the merge's error path still frees the merge slot
     assert.equal(queueDepth(root), 2, "every entry stays queued and un-vetted");
     assert.ok(
       readEvents(root).some(
-        (e) => e.type === "warning" && /the merge error for alpha could not be saved/.test(String(e.message)),
+        (e) => e.type === "warning" && String(e.message).includes('the merge error for alpha could not be saved'),
       ),
       "the failed state write is warned about, not swallowed",
     );
@@ -930,7 +930,7 @@ test("an unwritable state file on a settling landing warns instead of rejecting 
     assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
     assert.ok(
       readEvents(root).some(
-        (e) => e.type === "warning" && /landing task for improve/.test(String(e.message)),
+        (e) => e.type === "warning" && String(e.message).includes('landing task for improve'),
       ),
       "the state-write failure is warned about, not swallowed",
     );

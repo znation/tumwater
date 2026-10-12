@@ -41,7 +41,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
       assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
       const warnings = warningMessages(repo);
       assert.ok(
-        !warnings.some((w) => /retrying the pi run once/.test(w)),
+        !warnings.some((w) => w.includes('retrying the pi run once')),
         `no retry warning expected: ${JSON.stringify(warnings)}`,
       );
     },

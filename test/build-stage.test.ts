@@ -242,8 +242,8 @@ test("swapDist names the lost dist and its dist.prev backup when even the restor
       (err: unknown) => {
         const message = String((err as Error).message);
         return (
-          /simulated rename failure/.test(message) &&
-          /simulated restore failure/.test(message) &&
+          message.includes('simulated rename failure') &&
+          message.includes('simulated restore failure') &&
           message.includes("dist is missing") &&
           message.includes(prev)
         );

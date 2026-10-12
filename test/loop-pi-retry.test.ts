@@ -33,7 +33,7 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
     const [firstArgs, retryArgs] = runArgs(args);
     assert.match(firstArgs!, /-n tumwater-feature-3-author/, "the first attempt starts fresh");
     assert.match(retryArgs!, /--continue/, "the retry resumes the first attempt's session");
-    assert.ok(!/-n /.test(retryArgs!), "the retry does not re-name the session");
+    assert.ok(!(retryArgs!).includes('-n '), "the retry does not re-name the session");
 
     assert.deepEqual(sleeps, [3000], "the 3s hint is waited out before the retry");
     // The failed attempt folds BEFORE the wait and the retry, so the 429 it ended on reaches
@@ -201,7 +201,7 @@ test("a severed stream (terminated) warns and earns the one retry like the other
     assert.equal(runArgs(args).length, 2, "the severed-stream run is retried once");
     assert.equal(usage.length, 2, "both attempts fold — the failed one before the wait");
     assert.ok(
-      warns.some((w) => /severed the in-flight stream \(terminated\)/.test(w)),
+      warns.some((w) => w.includes('severed the in-flight stream (terminated)')),
       `the warning names the severing: ${warns.join(" | ")}`,
     );
   } finally {
@@ -227,11 +227,11 @@ test("a provider request timeout (Request timed out.) warns and earns the one re
     assert.match(retryLine!, /--continue/, "the retry resumes the first attempt's session");
     assert.equal(usage.length, 2, "both attempts fold — the failed one before the pause");
     assert.ok(
-      warns.some((w) => /provider request timed out after accepting the connection/.test(w)),
+      warns.some((w) => w.includes('provider request timed out after accepting the connection')),
       `the warning names the timeout: ${warns.join(" | ")}`,
     );
     assert.ok(
-      !warns.some((w) => /does not cover this kind/.test(w)),
+      !warns.some((w) => w.includes('does not cover this kind')),
       `the retry now covers the timeout kind — no floor warning: ${warns.join(" | ")}`,
     );
     assert.deepEqual(
@@ -261,7 +261,7 @@ test("a provider request timeout on pi's stderr earns the same retry and warning
     assert.equal(runArgs(args).length, 2, "the stderr-arrived timeout is retried once");
     assert.match(runArgs(args)[1]!, /--continue/, "the retry resumes the first attempt's session");
     assert.ok(
-      warns.some((w) => /provider request timed out after accepting the connection/.test(w)),
+      warns.some((w) => w.includes('provider request timed out after accepting the connection')),
       `the warning names the timeout: ${warns.join(" | ")}`,
     );
     assert.deepEqual(sleeps, [60_000], "the retry waits the minute-scale refill pause");
@@ -291,15 +291,15 @@ test("a retry that ends on an uncovered backend kind still issues its own floor 
     assert.equal(runArgs(args).length, 2, "the covered timeout earned exactly one retry");
     assert.equal(usage.length, 2, "both attempts fold — the retry folds before the floor");
     assert.ok(
-      warns.some((w) => /provider request timed out after accepting the connection/.test(w)),
+      warns.some((w) => w.includes('provider request timed out after accepting the connection')),
       `the first attempt's warning names the covered timeout: ${warns.join(" | ")}`,
     );
     assert.ok(
-      warns.some((w) => /provider backend failure \(connection error\)/.test(w)),
+      warns.some((w) => w.includes('provider backend failure (connection error)')),
       `the retry's own floor warning names the uncovered kind: ${warns.join(" | ")}`,
     );
     assert.equal(
-      warns.filter((w) => /does not cover this kind/.test(w)).length,
+      warns.filter((w) => w.includes('does not cover this kind')).length,
       1,
       `the floor warning is emitted exactly once: ${warns.join(" | ")}`,
     );
@@ -328,11 +328,11 @@ test("a retry that ends on a covered backend kind emits no false floor warning",
     assert.equal(runArgs(args).length, 2, "the covered timeout earned exactly one retry");
     assert.equal(usage.length, 2, "both attempts fold");
     assert.ok(
-      warns.some((w) => /provider request timed out after accepting the connection/.test(w)),
+      warns.some((w) => w.includes('provider request timed out after accepting the connection')),
       `the first attempt's warning names the covered timeout: ${warns.join(" | ")}`,
     );
     assert.ok(
-      !warns.some((w) => /does not cover this kind/.test(w)),
+      !warns.some((w) => w.includes('does not cover this kind')),
       `a covered retry gets no false floor warning: ${warns.join(" | ")}`,
     );
   } finally {
