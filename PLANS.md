@@ -6,7 +6,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names a broken notify hook: a "notify" check that warns when recent pages failed (planned 2026-10-12 by plan; builds on the landed "A failing notify hook says so" plan. When the configured hook exits nonzero, is killed, or cannot start, `spawnNotifyCommand` in `src/events/notify.ts` logs a `warning` event on loop `harness` whose message starts with `notify command `. Its sources are `notifyExitWarning` and the two `notify command could not start: …` strings. Today grep finds no `notify` in `src/doctor`, so doctor says nothing about the push channel. With a typo'd hook, every page since startup was lost, and doctor still prints "ready to run". The operator learns about it only from `tumwater logs` or by running `tumwater notify --test` after the page they needed went missing. Stands alone: no scheduler, event-type, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work)
+
+**Goal.** Add a doctor row named `notify`. It reports whether a notify command is configured and warns when that command failed to page within the last 24 hours. The warning names how many pages failed and quotes the latest failure.
+
+**Approach.**
+- `src/events/notify.ts`: export `NOTIFY_FAILURE_PREFIX = "notify command "` and build every failure message from it: both `could not start` strings and both `notifyExitWarning` returns. The wording must stay the same character for character, so the existing assertions in `test/notify.test.ts` still pass. Export a pure predicate `isNotifyFailure(ev: HarnessEvent): boolean`. It is true when `ev.type === "warning"`, `ev.loop === "harness"`, and `ev.message` is a string starting with the prefix. That way the doctor reader and the writer share one definition.
+- A new `doctor-notify.ts` module in `src/doctor/`: add `checkNotify(root: string, config: TumwaterConfig | undefined, now: number = Date.now()): CheckOutcome`, built with `okOutcome`/`warnOutcome` from `./outcome.js`. It must never throw, so wrap the read in try/catch. A read error is a warn that names the error.
+  - `config?.notify` absent or `""` → ok `no notify command configured — pages are off`.
+  - Otherwise read the last day with `readEventsSince(root, NOTIFY_CHECK_WINDOW_MS)` from `src/events/event-window.ts`, where `NOTIFY_CHECK_WINDOW_MS = 24 * 3600_000` is a module constant, and filter with `isNotifyFailure`. `readEventsSince` computes its own cutoff from `Date.now()`, so re-filter on `ev.ts >= now - NOTIFY_CHECK_WINDOW_MS` to keep the `now` seam honest.
+  - No failures → ok `configured — no failed pages in the last 24h`.
+  - Failures → warn `<n> failed page(s) in the last 24h; latest <humanSeconds(age)> ago: <message>`. Take `humanSeconds` from `src/text/datetime.ts`. Pass the message through `squash` from `src/text/text.ts`. It already carries the `tumwater notify --test` hint. The row warns but does not fail, the same way the hold rows do: a dead webhook must not fail a scripted pre-flight.
+- `src/doctor/doctor.ts` `runDoctor`: insert `{ name: "notify", ...checkNotify(root, config) }` directly after the `"event log"` row.
+
+**Files touched.** `src/events/notify.ts`, a new `doctor-notify.ts` in `src/doctor/`, `src/doctor/doctor.ts`, `test/doctor.test.ts`, a new `doctor-notify.test.ts` in `test/` (or a section of `test/doctor-checks.test.ts`), `test/notify.test.ts`, and `docs/invariants.md` (the doctor section, if one lists row guarantees: grep it first).
+
+**Acceptance criteria.**
+- The fixed row-order array in `test/doctor.test.ts` "runDoctor composes the full report — fixed check order, not-running header, ready verdict" gains `"notify"` right after `"event log"`. That test's all-ok sweep still holds, because `readyRepo()` configures no notify command and therefore gets the ok "pages are off" row.
+- New `checkNotify` tests, each writing events through `warnEvent`/`logEvent` into a temp repo:
+  - No `notify` configured → ok and "pages are off".
+  - Configured with no failure warnings → ok.
+  - Configured, with one `notifyExitWarning("budget_paused", 127, null)` warning on loop `harness` → warn whose detail contains `1 failed page`, `code 127`, and `tumwater notify --test`.
+  - A failure warning older than 24h before `now` → ok.
+  - A `warning` with the same prefix on a non-`harness` loop, or a non-warning event, is not counted.
+- A `test/notify.test.ts` test pins that `isNotifyFailure` holds for a warning built from each failure shape: exit code, killed by signal, and could not start.
+- No string literal `"notify command"` appears in `src/` outside `NOTIFY_FAILURE_PREFIX`'s definition. Check with grep.
+- `npm run test` passes.
+
 
 ## Done
 
