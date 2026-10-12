@@ -6,7 +6,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The dashboard's Settings view runs `tumwater doctor`'s checks: a Health check card over `GET /api/doctor` (planned 2026-10-12 by plan; sibling of the CLI `tumwater doctor [--json]` (`runDoctor` in `src/doctor/doctor.ts`, rendered by `renderDoctor` in `src/doctor/doctor-render.ts`, called from `src/cli.ts`). Today the dashboard has no doctor surface: grep finds no `doctor` in `src/gui` or `src/ui`. So an operator who sees a stuck fleet in the browser must switch to a terminal to learn that, say, the merge lock is stale, a work-instance claim names a gone entry, or disk is under the hold floor. Read-only: no new POST, no write path, and no `src/doctor` or `src/ui/tui` change)
+
+**Goal.** The dashboard's Settings view gains a second card, "Health check". On each open of the Settings tab it runs the same checks `tumwater doctor` runs and paints the report: the header line, one row per check (level, name, detail), and the verdict. A Re-run button runs them again. The CLI and the dashboard read one `DoctorReport`, so they cannot disagree.
+
+**Approach.**
+1. `src/gui/gui-endpoints.ts`: add
+   `export async function handleDoctor(res: http.ServerResponse, root: string, run: (root: string) => Promise<DoctorReport> = runDoctor): Promise<void>`
+   that sends `sendJson(res, 200, await run(root))`. That is the same object `tumwater doctor --json` prints (`sayJsonOrRender(args, report, renderDoctor)` in `src/cli.ts`). Import `runDoctor` from `../doctor/doctor.js` and the `DoctorReport` type from `../doctor/doctor-checks.js`. The `run` parameter exists only so tests can skip the host probes. A throw reaches the server's outer 500, as `handleReclaim`'s doc comment says of that handler. Give it a doc comment in the style of its neighbours: read-only, the checks write nothing (`runDoctor`'s own contract), and it works whether or not the fleet is running.
+2. `src/gui/gui-server.ts`: add `"GET /api/doctor": (_req, res) => handleDoctor(res, root),` to `guiRoutes` beside `"GET /api/config"`, and add `handleDoctor` to the existing import from `./gui-endpoints.js`.
+3. `src/ui/gui/gui-client-settings.ts`, inside the `settings-view` region:
+   - `buildSettingsView` appends a second card after `settingscard`: `<div class='card' id='doctorcard'>`, with a head row holding the title "Health check", the line "The same checks as `tumwater doctor`.", and `<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>`, then a body `<div id='doctorbody'><div class='empty'>Checking…</div></div>`.
+   - A pure `renderDoctorReport(d)` returns the body HTML: `esc(d.header)`, then one row per `d.checks` entry, then `esc(d.verdict)`. Each row is a level badge, the name, and the detail, all esc'd. Build the badge inline as `<span class='pill t-" + tone + "'>" + esc(level) + "</span>` with tone `green` for `ok`, `amber` for `warn`, and `red` for `fail`, using the existing `.t-*` classes in `src/ui/gui/gui-styles.ts`. Do not call `gui-client.ts`'s `pill`, because it sits outside the regions the settings test loads. A missing or non-array `checks` renders the rows as nothing; it does not throw.
+   - `async function fetchDoctor()` calls `buildSettingsView()`, sets `doctorbody` to the Checking… placeholder, then `renderDoctorReport(await getJson("/api/doctor"))`. On error it paints `errorPanel("Health check could not run", err, "empty")`.
+   - Update the file's top doc comment to mention the card and its endpoint.
+4. `src/ui/gui/gui-client-boot.ts`: change `if (v === "settings") fetchSettings();` so it also calls `fetchDoctor()`. Add one delegated click listener beside the Settings Clear listener: `clickClosest(ev, "button[data-action='doctor-rerun']")` → `ev.preventDefault(); fetchDoctor();`.
+5. Docs: in README.md's Audit row, after `--json prints the report as JSON, for scripts`, add `; the dashboard's Settings view runs the same checks in its Health check card`. In docs/how-it-works.md's Settings-view sentence ("Its Settings view shows the curated top-level config keys …"), add a sentence saying the view also runs `tumwater doctor`'s checks on each open, with a Re-run button. Neither docs/invariants.md nor `src/cli/help.ts` changes, because no guarantee or CLI flag changes.
+
+**Files touched.** `src/gui/gui-endpoints.ts`, `src/gui/gui-server.ts`, `src/ui/gui/gui-client-settings.ts`, `src/ui/gui/gui-client-boot.ts`, `test/gui-endpoints.test.ts`, `test/gui-client-settings.test.ts`, README.md, docs/how-it-works.md.
+
+**Acceptance criteria.**
+- `test/gui-endpoints.test.ts`: `handleDoctor` with a stub `run` that returns a fixed `DoctorReport` answers 200 with exactly that report (`captureJson` from `./fakes/fake-res.js`), and the stub receives the `root` it was given.
+- `test/gui-endpoints.test.ts`: a live-route test modelled on "the live server routes GET /api/logs to the slice handler" (`startLocalGui` on a `tmpdir()` root) fetches `/api/doctor` and gets 200. The body has a string `header`, an array `checks` whose entries each carry `name`, a `level` in `ok|warn|fail`, and `detail`, and a string `verdict`. The test does not pin the levels, because they depend on the host.
+- `test/gui-client-settings.test.ts`: add `renderDoctorReport` and `fetchDoctor` to `settingsScope`'s name list. Then:
+  - `renderDoctorReport` esc's the header, a check's name and detail, and the verdict (a `<b>&` detail does not appear raw), and maps `ok`/`warn`/`fail` to `t-green`/`t-amber`/`t-red`.
+  - `renderDoctorReport({ header: "h", verdict: "v" })` (no `checks`) returns HTML holding both strings and does not throw.
+  - `fetchDoctor` with an injected `getJson` that rejects paints the error panel into `doctorbody`.
+  - The test "renderSettings renders one row per curated key …" still passes unchanged: the curated rows and `SETTINGS_KEYS` are untouched.
+- `grep -n "doctor" src/ui/gui/gui-client-boot.ts` shows the Settings open path calling `fetchDoctor` and the `doctor-rerun` listener.
+- `npm run test` passes.
 
 ## Done
 
