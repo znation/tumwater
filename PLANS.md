@@ -31,6 +31,26 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### The doctor refusals row says when a refused plan's prerequisites have left `## Planned`, so a refusal that may be stale stands out (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
+
+**Goal.** `checkRefusedEntries` in `src/doctor/doctor-backlog.ts` warns about every refused entry in the same words. A common refusal is "prerequisite not landed yet". That refusal outlives its reason: no loop clears a Refused note, so once the prerequisite lands, nothing tells the operator the objection may be gone. The live repo shows this today. "Operator backlog writes land on main, part 2/2" is refused because part 1/2 had not landed, and part 1/2 is now under `## Done`. After this change, the refusals row adds a clause to such an entry saying its prerequisites are no longer planned, so the refusal may be stale.
+
+**Approach.**
+- **Helper.** In `src/backlog/backlog-eligibility.ts`, export `prerequisitesLanded(title: string, plannedParts: ReadonlySet<string>): PartRef[]`. It returns `requiredParts(title)` when that list is non-empty and none of its refs is in `plannedParts` (matched through the private `partKey`, the same way `entryHoldAgainst` matches). Otherwise it returns `[]`. A heading with no parseable `requires … landed` clause therefore never counts as stale. Leave `entryHoldAgainst` unchanged.
+- **Check.** In `checkRefusedEntries`, build `const parts = plannedPartKeys(planned)` once from the PLANS.md entries list already read there (hoist `plannedPlanEntries(root)` into a local). Record `landed = prerequisitesLanded(entry.title, parts)` on each held item from both sources. This uses the same rule `backlogHolds` applies to both files.
+- **Wording.**
+  - When the first held entry's `landed` is non-empty, insert `; its prerequisite(s) <refs> are no longer planned, so the refusal may be stale` right after the truncated-note parenthetical. Render each ref as `${series} ${part}/${of}` (the `holdMark` rendering) and join with `, `.
+  - In the `andMore` list, suffix each such entry with ` [prerequisites no longer planned]`.
+  - All other text stays the same: the ok detail, the warn level, and the remedy tail (`answer the objection and delete the note, or retract …`).
+
+**Files.** `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `test/doctor-backlog.test.ts`, `test/backlog-eligibility.test.ts` (backlog helpers are tested there), README.md (the Audit row's "planned plans and open bugs held by a Refused note" gains ", flagging one whose prerequisites are no longer planned").
+
+**Acceptance criteria.**
+- `prerequisitesLanded` returns the refs for `S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed)` against an empty set. It returns `[]` against a set built by `plannedPartKeys` from a `S, part 1/2: y` entry. It returns `[]` for a heading without a `requires` clause. It returns the refs for a wrapped heading whose `(planned …; requires part 1/2 landed. …` stays open past the line.
+- A PLANS.md fixture with a refused `S, part 2/2: …; requires part 1/2 landed)` heading and no part 1/2 under `## Planned` makes `checkRefusedEntries` warn with `S 1/2 are no longer planned, so the refusal may be stale` in its detail. The same fixture plus a planned `S, part 1/2: …` entry warns without `may be stale`.
+- A second refused entry with landed prerequisites shows ` [prerequisites no longer planned]` in the `(and N more: …)` list.
+- The two existing `checkRefusedEntries` tests and the doctor row-order test in test/doctor.test.ts pass unchanged.
+
 ## Done
 
 ### A wrapped heading's prerequisite clause holds its plan: `requiredParts` reads a heading parenthetical that stays open past the heading line (planned 2026-10-12 by plan; done 2026-10-12; independent of the refused part 2/2 above, and touches none of its files)
