@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names quiet hours: a "quiet hours" check for the fleet window and per-role windows that are holding now (planned 2026-10-12 by plan; this is the scheduled sibling of the landed "pause" check (`checkPause` in `src/doctor/doctor-holds.ts`). Today grep finds no `quiet` in `src/doctor`, so at 23:30 under `quietHours: "23:00-07:00"` doctor prints "ready to run" over a fleet that starts no role tick until 07:00. An operator who runs `doctor` to learn why the loops are idle then has to run `status` as well. This plan stands alone: it adds no snapshot, GUI, or scheduler change, and the dashboard's Health check card shows the new row without extra work)
+_None yet._
+
+## Done
+
+### `tumwater doctor` names quiet hours: a "quiet hours" check for the fleet window and per-role windows that are holding now (done 2026-10-12; planned 2026-10-12 by plan; this is the scheduled sibling of the landed "pause" check (`checkPause` in `src/doctor/doctor-holds.ts`). Today grep finds no `quiet` in `src/doctor`, so at 23:30 under `quietHours: "23:00-07:00"` doctor prints "ready to run" over a fleet that starts no role tick until 07:00. An operator who runs `doctor` to learn why the loops are idle then has to run `status` as well. This plan stands alone: it adds no snapshot, GUI, or scheduler change, and the dashboard's Health check card shows the new row without extra work)
 
 **Goal.** `tumwater doctor` (and `--json`) gains one row, `quiet hours`, placed right after `pause` because both report deliberate holds on ticking. It decides membership with the same parser and predicate the scheduler's gate uses, so its verdict cannot disagree with the hold. Like every doctor check, it is read-only.
 
@@ -37,10 +41,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/doctor.test.ts`: the pinned `report.checks.map((c) => c.name)` list in the fresh-root test gains `"quiet hours"` right after `"pause"`. That test's "every check but node is ok" loop still passes, because a fresh root has no `quietHours`.
 - `grep -n '"quiet hours"' src/doctor/doctor.ts` shows the entry right after `pause`.
 - `npm run test` passes.
-
-
-
-## Done
 
 ### `tumwater doctor` names a standing operator pause: a "pause" check for the fleet pause (deadline, reason) and the per-role paused set (planned 2026-10-12 by plan; today `runDoctor` in `src/doctor/doctor.ts` has no check that reads the pause markers — grep finds no `isFleetPaused`/`standingFleetPause`/`pausedRoles` in `src/doctor`. So doctor can print "ready to run" over a fleet that will start no tick until `tumwater resume`, and an operator who runs `doctor` to learn why the loops are idle has to also run `status` to get the answer. Independent of the dashboard Health check card plan above: that one touches no `src/doctor` file, and once both land the card shows this row with no extra work, done 2026-10-12)
 

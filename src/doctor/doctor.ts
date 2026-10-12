@@ -3,7 +3,7 @@ import { envPath } from "../files/files.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
-import { checkPause } from "./doctor-holds.js";
+import { checkPause, checkQuietHours } from "./doctor-holds.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -69,6 +69,7 @@ export async function runDoctor(
     // information, never a warning — a young project is not misconfigured.
     { name: "bootstrap", ...checkBootstrap(root, config) },
     { name: "pause", ...checkPause(root) },
+    { name: "quiet hours", ...checkQuietHours(config) },
     { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
     { name: "tier models", ...(await checkTierModels(root)) },
     { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },
