@@ -6,6 +6,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### List every pending scheduled wake: `tumwater wake --list [--role <id>] [--json]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --cancel` and dashboard wake-cancel; independent of the TUI Ctrl+P plan)
+
+**Goal.** Each `wake --in` writes its own file under `scheduledWakeDir`, and several can be pending at once, but `tumwater status` and the dashboard show only the earliest (`fleet-state.ts` returns `pendingScheduledWakes(root, now)[0]`). So an operator can't see what `wake --cancel` would drop. `wake --list` prints every pending scheduled wake, earliest first. With `--role <id>` it prints only the wakes naming that loop, and with `--json` it prints them as JSON for scripts. It is a read-only view: it writes, deletes, and wakes nothing.
+
+**Approach.**
+1. *Flag spec.* In `src/cli/cli-flag-specs.ts`, beside `WAKE_CANCEL_FLAG`, add `export const WAKE_LIST_FLAG: FlagSpec = { names: ["--list"] };` with a one-line doc comment. In `src/cli/cli-marker-commands.ts`, extend `perCommandFlags.wake` to `[ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG]` (import both). Update the comment above `perCommandFlags` that lists which flags `wake` alone accepts.
+2. *Core.* In `src/operator/operator-intent.ts`, beside `cancelWakes`, add `export function listWakes(root: string, role: string | undefined, now: number): { roles: string[]; atMs: number }[]`. It returns `pendingScheduledWakes(root, now)`, filtered to the entries whose `roles` include `role` when `role` is given. Entries keep their full `roles` list, so a wake shared with other loops still names them all. Also add `export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, role?: string): string`. For an empty list it returns `no scheduled wake pending` plus ` for <role>` when `role` is set, the same wording `cancelWakes` uses. Otherwise it returns one line per wake, numbered from 1: `` `${i}. in ${humanSeconds(secondsUntil(w.atMs, now))} — ${w.roles.join(", ")}` ``, using `humanSeconds` and `secondsUntil` from `src/text/datetime.ts`, which `wakeBadge` uses too. The lines are joined with `\n`.
+3. *Command.* In `cmdWake` (`src/operator/operator-commands.ts`), before the `--cancel` branch: when `args.includes("--list")`, fail with `wake --list cannot be combined with --in or --cancel` if either flag is present. Otherwise read `const now = Date.now()` once, resolve `namedRole(root, args)`, and call `listWakes`. With `--json`, print `JSON.stringify(wakes)` (`[]` when empty). Without it, `say(renderWakeList(...))`, then return. Outside `--list`, `--json` fails with `wake --json requires --list`. Extend `cmdWake`'s doc comment with the `--list` form.
+4. *Help/docs.* In `src/cli/help.ts`, change the wake entry's usage to `tumwater wake [--role <id>] [--in <dur> | --cancel | --list [--json]]` and add to its description: "--list shows every pending scheduled wake, earliest first (--json for scripts)". In README.md's "Control the loops" row, after "drops the pending scheduled wakes (or that loop's share of them)", add ", `tumwater wake --list [--role <id>] [--json]` lists them". Do not touch `FREEFORM_VALUED_FLAGS`, because `--list` takes no value.
+
+**Files touched.** `src/cli/cli-flag-specs.ts`, `src/cli/cli-marker-commands.ts`, `src/operator/operator-intent.ts`, `src/operator/operator-commands.ts`, `src/cli/help.ts`, `README.md`, `test/cli-operators.test.ts`, and `test/operator-requests.test.ts` (or whichever test file already imports from `operator-intent.ts`; check with grep).
+
+**Acceptance criteria.**
+- Unit tests for `renderWakeList`: an empty list gives `no scheduled wake pending`, and with role `qa` gives `no scheduled wake pending for qa`. Two wakes at `now + 45m` (`["qa"]`) and `now + 2h` (`["feature", "qa"]`) render as `1. in 45m — qa\n2. in 2h — feature, qa`.
+- Unit test for `listWakes`: with the two wakes above plus a `["clean"]` one, `role: "feature"` returns only the 2h entry with `roles` `["feature", "qa"]`. Without a role it returns all three, earliest first.
+- CLI test in `test/cli-operators.test.ts`, beside "wake --cancel drops scheduled wakes without writing a marker": after `wake --role qa --in 45m` and `wake --role feature --in 2h`, `wake --list` exits 0 and its stdout matches `/^1\. in 4[45]m — qa$/m` and `/^2\. in (2h|1h59m|1h) — feature$/m`. Before writing that regex, check `humanSeconds`'s output for just under 2h and loosen it accordingly. `wake --list --role qa` lists only the qa wake. `wake --list --json` parses as a two-element array with `roles` and `atMs`. `readScheduledWakes(repo)` still has 2 entries afterwards, and `wakeRequestPath(repo)` does not exist.
+- CLI test: with nothing pending, `wake --list` prints `no scheduled wake pending` and `wake --list --json` prints `[]`. `wake --list --cancel` and `wake --list --in 5m` exit 1 with `wake --list cannot be combined with --in or --cancel`. `wake --json` exits 1 with `wake --json requires --list`. `reset-counters --list` is still rejected as an unknown argument.
+- `npm run test` passes.
+
+
 
 ## Done
 
