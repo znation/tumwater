@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, notifyFleetDown } from "../src/events/notify.js";
+import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, notifyExitWarning, notifyFleetDown } from "../src/events/notify.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -237,6 +237,64 @@ test("a notify command whose spawn fails logs one warning and does not throw out
     logEvent(root, { loop: "feature", type: "budget_paused" });
     await waitFor(() => warnings.length > 0, "the spawn-failure warning");
     assert.match(warnings[0] ?? "", /notify command could not start/);
+    await sleep(300);
+    assert.equal(warnings.length, 1);
+  } finally {
+    off();
+    notifier.dispose();
+  }
+});
+
+test("notifyExitWarning words a nonzero exit or kill and says nothing for a clean exit", () => {
+  assert.equal(notifyExitWarning("land_failed", 0, null), undefined);
+  const missing = notifyExitWarning("budget_paused", 127, null) ?? "";
+  for (const part of ["code 127", "command not found", "budget_paused", "tumwater notify --test"]) {
+    assert.ok(missing.includes(part), part);
+  }
+  const three = notifyExitWarning("land_failed", 3, null) ?? "";
+  assert.match(three, /code 3/);
+  assert.doesNotMatch(three, /command not found/);
+  assert.match(notifyExitWarning("land_failed", null, "SIGKILL") ?? "", /SIGKILL/);
+});
+
+test("a notify hook that exits nonzero logs one warning naming the paged type", async () => {
+  for (const [notify, pattern] of [
+    ["exit 3", /exited with code 3 paging budget_paused/],
+    ["tumwater-no-such-command-xyz", /code 127 \(command not found\)/],
+  ] as const) {
+    const root = tmpdir();
+    const warnings: string[] = [];
+    const off = subscribeEvents((event) => {
+      if (event.type === "warning" && typeof event.message === "string") warnings.push(event.message);
+    });
+    const notifier = newNotifier(root);
+    notifier.update({ notify });
+    try {
+      logEvent(root, { loop: "feature", type: "budget_paused" });
+      await waitFor(() => warnings.some((w) => pattern.test(w)), `the exit warning for ${notify}`);
+      await sleep(200);
+      assert.equal(warnings.length, 1);
+    } finally {
+      off();
+      notifier.dispose();
+    }
+  }
+});
+
+test("a notify hook that exits 0 records its line and logs no warning", async () => {
+  const root = tmpdir();
+  const out = path.join(root, "out.txt");
+  const warnings: string[] = [];
+  const off = subscribeEvents((event) => {
+    if (event.type === "warning" && typeof event.message === "string") warnings.push(event.message);
+  });
+  const notifier = newNotifier(root);
+  notifier.update({ notify: recorderCommand(out) });
+  try {
+    logEvent(root, { loop: "feature", type: "budget_paused" });
+    await waitFor(() => recordedLines(out).length > 0, "the recorded line");
+    await sleep(300);
+    assert.deepEqual(warnings, []);
   } finally {
     off();
     notifier.dispose();

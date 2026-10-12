@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A failing notify hook says so: a nonzero exit logs one warning naming the code and the paged event (planned 2026-10-12 by plan; independent of the waiting "The notify hook pages when the fleet goes down" plan, and it touches the same spawn block in `src/events/notify.ts`. If that plan has landed, the spawn lives in its `spawnNotifyCommand(root, command, event)`. If not, it is still inline in `newNotifier`. Put the change wherever the spawn is at implementation time. Today the notifier spawns the hook with `stdio: "ignore"` and only listens for `error`, which fires when the shell itself cannot start. With `shell: true`, a typo'd or uninstalled binary (`notfy-send`, a missing `terminal-notifier`), a `curl -f` against a dead webhook, or a script that crashes all exit nonzero. That exit is dropped, because the module doc says "a nonzero exit is the command's problem, not the fleet's". So a broken hook silently swallows every page. The operator learns this only by running `tumwater notify --test`, which already reports the exit code (`runNotifyHook` in `src/cli/notify-command.ts`). They usually run it after the page they needed went missing.)
+_None yet._
+
+
+## Done
+
+### A failing notify hook says so: a nonzero exit logs one warning naming the code and the paged event (planned 2026-10-12 by plan; independent of the waiting "The notify hook pages when the fleet goes down" plan, and it touches the same spawn block in `src/events/notify.ts`. If that plan has landed, the spawn lives in its `spawnNotifyCommand(root, command, event)`. If not, it is still inline in `newNotifier`. Put the change wherever the spawn is at implementation time. Today the notifier spawns the hook with `stdio: "ignore"` and only listens for `error`, which fires when the shell itself cannot start. With `shell: true`, a typo'd or uninstalled binary (`notfy-send`, a missing `terminal-notifier`), a `curl -f` against a dead webhook, or a script that crashes all exit nonzero. That exit is dropped, because the module doc says "a nonzero exit is the command's problem, not the fleet's". So a broken hook silently swallows every page. The operator learns this only by running `tumwater notify --test`, which already reports the exit code (`runNotifyHook` in `src/cli/notify-command.ts`). They usually run it after the page they needed went missing.) (done 2026-10-12)
 
 **Goal.** When the configured notify hook exits nonzero or is killed by a signal, the fleet logs one `warning` event from loop `harness`. The warning names the event type it was paging and the exit code or signal, and adds a "command not found" gloss for code 127. It tells the operator to check the hook with `tumwater notify --test`. The warning reaches `tumwater logs`, the TUI Activity feed, and the dashboard, like every other warning. The page itself is not retried, and the fleet's behavior is otherwise unchanged.
 
@@ -30,8 +35,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing allowlist-pin test "NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap" passes unchanged, because this plan does not touch the list.
 - `grep -n "problem, not the fleet" src/events/notify.ts` finds nothing.
 - The project's check (`npm run test`) passes.
-
-## Done
 
 ### The notify hook pages when the fleet goes down: the supervisor runs `notify` on `supervisor_exit` (planned 2026-10-12 by plan; independent of the TUI Health tab plan. It edits the same `NOTIFY_EVENT_TYPES` list and module-doc count sentence as the landed sibling "The notify hook pages on the claude subscription window" plan (now in Done), so it builds on that list of eleven. Today the most page-worthy moment is silent: the hook never runs when the fleet dies. `newNotifier` (`src/events/notify.ts`) subscribes through `subscribeEvents`, which only sees events logged in the orchestrator generation's own process. When a generation exits unasked or the crash-loop guard trips, that process is already gone. The `supervisor_exit` event is written by the *supervisor* process: `superviseRunCommand` in `src/cli/cli-run.ts` calls `logEvent(root, fleetDownEvent(...))` from its `onFleetDown` hook. So nothing pages, and every other notify page stops too, because the process that sends them is down.) — done 2026-10-12
 

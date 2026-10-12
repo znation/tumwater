@@ -274,6 +274,18 @@ throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing
 **Pinned by.** `test/cli-run-shutdown.test.ts` — "a fleet that goes down unasked runs the notify
 hook once"; `test/notify.test.ts` — the `notifyFleetDown` tests.
 
+### INV-E3: a notify hook that exits nonzero leaves a warning naming the paged type
+
+**Guarantee.** When the notify hook exits nonzero or is killed by a signal while the fleet is
+still running, one `warning` from loop `harness` names the paged event type and the exit code or
+signal; a clean exit logs nothing and the page is not retried.
+
+**Binds.** `src/events/notify.ts` (`notifyExitWarning` and the `exit` listener in
+`spawnNotifyCommand`).
+
+**Pinned by.** `test/notify.test.ts` — the `notifyExitWarning` test and "a notify hook that exits
+nonzero logs one warning naming the paged type".
+
 ## Hermetic, deterministic gating tests
 
 The gating tier (`npm test`'s `*.test.ts` files, which run on every landing) reads the host's

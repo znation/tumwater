@@ -322,7 +322,7 @@ export interface TumwaterConfig {
    * posted question; the supervisor itself runs this one for supervisor_exit; src/events/notify.ts owns the
    * allowlist and the per-type one-minute throttle). The command runs detached with
    * TUMWATER_EVENT_TYPE, TUMWATER_EVENT_LOOP, and TUMWATER_EVENT_MESSAGE (the line
-   * `tumwater logs` renders) in its environment. Absent or an empty string disables. */
+   * `tumwater logs` renders) in its environment; a nonzero exit logs a warning. Absent or an empty string disables. */
   notify?: string;
   /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
    * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` —

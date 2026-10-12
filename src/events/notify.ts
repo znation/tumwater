@@ -64,8 +64,22 @@ export function notifyCommandEnv(type: string, loop: string, message: string): N
   });
 }
 
+/** The warning for a notify hook that did not exit cleanly, or undefined for exit code 0.
+ * Pure, so the wording is testable without a spawn. */
+export function notifyExitWarning(
+  type: string,
+  code: number | null,
+  signal: NodeJS.Signals | null,
+): string | undefined {
+  if (code === 0) return undefined;
+  const hint = "check it with `tumwater notify --test`";
+  if (code === null) return `notify command was killed by ${signal} paging ${type} — ${hint}`;
+  const gloss = code === 127 ? " (command not found)" : "";
+  return `notify command exited with code ${code}${gloss} paging ${type} — ${hint}`;
+}
+
 /** Spawn the notify command for one event: detached with stdio ignored, so it outlives the
- * caller, and never awaited. A failed spawn is one warning, never a throw. */
+ * caller, and never awaited. A failed spawn or a nonzero exit is one warning, never a throw. */
 function spawnNotifyCommand(root: string, command: string, event: HarnessEvent): void {
   try {
     const child = spawn(command, [], {
@@ -77,9 +91,15 @@ function spawnNotifyCommand(root: string, command: string, event: HarnessEvent):
     child.unref();
     // The shell itself could not start (spawn failed asynchronously — e.g. the command line
     // exceeds the OS arg limit): one warning names it and the listener keeps working. A
-    // command that starts but exits nonzero is not a harness concern and is ignored.
+    // command that starts but exits nonzero is reported by the exit listener below.
     child.on("error", (err) => {
       warnEventBestEffort(root, "harness", `notify command could not start: ${err.message}`);
+    });
+    // After unref() this listener does not keep the process alive: a hook that outlives the
+    // caller logs nothing.
+    child.on("exit", (code, signal) => {
+      const message = notifyExitWarning(event.type, code, signal);
+      if (message) warnEventBestEffort(root, "harness", message);
     });
   } catch (err) {
     warnEventBestEffort(root, "harness", `notify command could not start: ${errorMessage(err)}`);
@@ -100,9 +120,9 @@ export function notifyFleetDown(root: string, event: HarnessEvent): void {
 
 /** Subscribe to this process's event feed and spawn the configured command for allowlisted
  * events. Fire-and-forget: the spawn is never awaited from the poll loop — the command runs
- * detached with stdio ignored, so it outlives whatever the orchestrator does next, and a
- * nonzero exit is the command's problem, not the fleet's. `"warning"` is deliberately not on
- * the allowlist, so a failed spawn's warning can never recurse into another spawn. */
+ * detached with stdio ignored, so it outlives whatever the orchestrator does next. A nonzero
+ * exit or kill is logged as one warning and the page is not retried. `"warning"` is deliberately not on
+ * the allowlist, so a failure warning can never recurse into another spawn. */
 export function newNotifier(
   root: string,
   minGapMs: number = NOTIFY_MIN_GAP_MS,
