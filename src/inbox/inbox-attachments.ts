@@ -50,6 +50,12 @@ export interface PromptImageInput {
 }
 
 const IMAGE_REF_LINE = /^\[image attached: (.+)\]$/;
+
+/** The path a prompt line references, or undefined when the line (trimmed) is not exactly the
+ * `[image attached: …]` shape imageReferenceLines writes. */
+function referencedImagePath(line: string): string | undefined {
+  return IMAGE_REF_LINE.exec(line.trim())?.[1];
+}
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
 /** The image-count rule: at most PROMPT_IMAGES_MAX_COUNT entries. Split out of
@@ -189,7 +195,7 @@ export function imageReferenceLines(paths: readonly string[]): string {
 export function imageReferencePaths(text: string): string[] {
   const paths: string[] = [];
   for (const line of text.split("\n")) {
-    const referenced = IMAGE_REF_LINE.exec(line.trim())?.[1];
+    const referenced = referencedImagePath(line);
     if (referenced !== undefined) paths.push(referenced);
   }
   return paths;
@@ -227,7 +233,7 @@ export function movePromptImages(
   const problems: string[] = [];
   const out: string[] = [];
   for (const line of text.split("\n")) {
-    const referenced = IMAGE_REF_LINE.exec(line.trim())?.[1];
+    const referenced = referencedImagePath(line);
     if (referenced === undefined) {
       out.push(line);
       continue;
@@ -267,7 +273,7 @@ export function movePromptImages(
  * the writer's shape is content and stays. The reader-side counterpart to
  * imageReferencePaths: the same line predicate, applied to drop rather than collect. */
 export function stripImageReferenceLines(text: string): string {
-  const kept = text.split("\n").filter((line) => IMAGE_REF_LINE.exec(line.trim()) === null);
+  const kept = text.split("\n").filter((line) => referencedImagePath(line) === undefined);
   while (kept.length > 0 && (kept[kept.length - 1] as string).trim() === "") kept.pop();
   return kept.join("\n");
 }
@@ -282,7 +288,7 @@ export function stripVanishedImageReferences(text: string): { text: string; drop
   const kept: string[] = [];
   let dropped = 0;
   for (const line of text.split("\n")) {
-    const referenced = IMAGE_REF_LINE.exec(line.trim())?.[1];
+    const referenced = referencedImagePath(line);
     if (referenced !== undefined && !fs.existsSync(referenced)) {
       dropped++;
       continue;
