@@ -6,7 +6,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names a standing operator pause: a "pause" check for the fleet pause (deadline, reason) and the per-role paused set (planned 2026-10-12 by plan; today `runDoctor` in `src/doctor/doctor.ts` has no check that reads the pause markers — grep finds no `isFleetPaused`/`standingFleetPause`/`pausedRoles` in `src/doctor`. So doctor can print "ready to run" over a fleet that will start no tick until `tumwater resume`, and an operator who runs `doctor` to learn why the loops are idle has to also run `status` to get the answer. Independent of the dashboard Health check card plan above: that one touches no `src/doctor` file, and once both land the card shows this row with no extra work)
+
+**Goal.** `tumwater doctor` (and `--json`) gains one row named `pause`, placed right after `bootstrap` because both report deliberate holds on ticking. It reads the same markers the scheduler reads, so its verdict cannot disagree with what the fleet does. It is read-only, like every doctor check.
+
+**Approach.**
+1. New module `doctor-holds.ts` in `src/doctor/` (doctor-checks.ts already runs past 500 lines). Export
+   `checkPause(root: string, now: number = Date.now()): CheckOutcome`, built from `standingFleetPause`, `pausedRoles`, and `pausedRolesUntil` in `src/fleet/fleet-state.ts`, all of which never throw and treat an expired marker as absent. Countdowns use `humanSeconds(secondsUntil(until, now))` from `src/text/datetime.ts`, and the reason uses `pauseReasonSuffix` from `src/text/phrases.ts`. Do not import `src/ui/badges.ts`, because doctor does not depend on the UI layer. Outcomes:
+   - No fleet pause and no paused roles: `okOutcome("not paused")`.
+   - Fleet paused: `warnOutcome`. The detail is `fleet paused — no loop starts a tick until \`tumwater resume\`` when there is no deadline, or `fleet paused — auto-resumes in <countdown>` when the marker carries a future `until`. Either form then gets `pauseReasonSuffix(reason)`. When roles are also paused, append `; ` plus the roles phrase below. A fleet pause is a warn because it stops every loop. A warn never changes doctor's exit code (`CheckOutcome`'s contract in `src/doctor/outcome.ts`), so the verdict stays "ready to run".
+   - Only roles paused: `okOutcome` with the roles phrase `paused loops: <a, b>`, plus ` (auto-resume in <countdown>)` when `pausedRolesUntil` is defined. This is ok because the operator chose those loops by name and every other loop keeps ticking.
+   Doc comment: say which markers it reads, that it is read-only, and why the levels split as they do.
+2. `src/doctor/doctor.ts`: import `checkPause` and add `{ name: "pause", ...checkPause(root) },` directly after the `bootstrap` entry in `runDoctor`'s `checks` array.
+3. `src/doctor/outcome.ts`: add `doctor-holds.ts` to the top doc comment's list of modules that import from it.
+4. Docs: README.md's Audit row changes `tumwater doctor` (pre-flight; …)` so the parenthetical also says it names a standing fleet or per-role pause. Keep the rest of the row as it is. No change to docs/invariants.md (no new guarantee: the check reuses the scheduler's readers) and none to `src/cli/help.ts` (no flag changes).
+
+**Files touched.** a new `doctor-holds.ts` in `src/doctor/`, `src/doctor/doctor.ts`, `src/doctor/outcome.ts`, a new `doctor-holds.test.ts` in `test/`, `test/doctor.test.ts`, README.md.
+
+**Acceptance criteria.**
+- A new `doctor-holds.test.ts` in `test/` uses a `mkdtemp` root and writes the markers with the real writers `pauseFleet(root, untilMs?, reason?)` and `pauseRole(root, role, untilMs?)` from `src/fleet/fleet-state.ts`. It covers:
+  - No markers gives `{ level: "ok", detail: "not paused" }`.
+  - `pauseFleet(root)` gives `warn`, with a detail containing `tumwater resume`.
+  - `pauseFleet(root, now + 90 * 60_000, "deploy freeze")` with `checkPause(root, now)` gives `warn`, with a detail containing `auto-resumes in` and `"deploy freeze"`.
+  - `pauseRole(root, "cleanup")` alone gives `ok`, with a detail containing `cleanup`.
+  - A fleet pause plus a paused role gives `warn`, and the detail names the role.
+  - An expired fleet pause (an `until` in the past, written through `pauseFleet` if it accepts one, otherwise by writing the marker JSON directly to `pausedPath(root)` from `src/paths.ts`) gives `not paused`.
+- `test/doctor.test.ts`: the pinned `report.checks.map((c) => c.name)` list in the fresh-root test gains `"pause"` right after `"bootstrap"`. That test's "every check but node is ok" loop still passes, because a fresh root has no pause marker.
+- `grep -n '"pause"' src/doctor/doctor.ts` shows the entry right after `bootstrap`.
+- `npm run test` passes.
 
 
 ## Done
