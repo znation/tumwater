@@ -6,7 +6,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names quiet hours: a "quiet hours" check for the fleet window and per-role windows that are holding now (planned 2026-10-12 by plan; this is the scheduled sibling of the landed "pause" check (`checkPause` in `src/doctor/doctor-holds.ts`). Today grep finds no `quiet` in `src/doctor`, so at 23:30 under `quietHours: "23:00-07:00"` doctor prints "ready to run" over a fleet that starts no role tick until 07:00. An operator who runs `doctor` to learn why the loops are idle then has to run `status` as well. This plan stands alone: it adds no snapshot, GUI, or scheduler change, and the dashboard's Health check card shows the new row without extra work)
+
+**Goal.** `tumwater doctor` (and `--json`) gains one row, `quiet hours`, placed right after `pause` because both report deliberate holds on ticking. It decides membership with the same parser and predicate the scheduler's gate uses, so its verdict cannot disagree with the hold. Like every doctor check, it is read-only.
+
+**Approach.**
+1. In `src/doctor/doctor-holds.ts`, add and export
+   `checkQuietHours(config: TumwaterConfig | undefined, now: Date = new Date()): CheckOutcome`. Build it from `quietHoursStatus`, `roleQuietHold` and `quietWindowEnd` in `src/scheduling/quiet-hours.ts`, plus `DIRECTOR_ROLE` from `src/roles/roles.ts`. Do not import `src/ui/badges.ts` (`quietBadge`), because doctor does not depend on the UI layer. Outcomes:
+   - Fleet window: take `quietHoursStatus(config?.quietHours, now)`.
+     - `window === null` (unset, blank, malformed, or a broken config, which `checkInit` already reports) adds no fleet phrase.
+     - Inside the window: `warnOutcome` with `quiet now (<window>) — no role loop starts a tick until <quietWindowEnd(window)>; the director is exempt`. This is a warn for the same reason a fleet pause is: it stops every autonomous loop. A warn never changes doctor's exit code (`CheckOutcome`'s contract in `src/doctor/outcome.ts`).
+     - Outside the window: the ok phrase `<window> (not in the window now)`.
+   - Per-role windows: take the keys of `config?.quietHoursPerRole`, minus `DIRECTOR_ROLE`, that satisfy `roleQuietHold(config.quietHoursPerRole, key, now)`, sorted. When any are held, add the phrase `quiet loops: <role> until <end>, …`, where `<end>` is `quietWindowEnd` of that role's string. This alone is ok, for the same reason paused roles are ok in `checkPause`: the operator picked them by name. Configured per-role windows that are not holding now are not named.
+   - Composition: no fleet window and no held roles gives `okOutcome("none configured")` when neither key holds a parseable window, otherwise `okOutcome(<fleet phrase>)`. Join the fleet phrase and the roles phrase with `; `, the same way `checkPause` joins its phrases. The level is warn only when the fleet window holds.
+   - Update the module's top-level doc comment so it covers both holds. Each function's doc comment says it is read-only, that it reuses the scheduler's predicate, and why the levels split as they do.
+   - To tell "none configured" from "configured, not holding" for per-role: if `quietHoursPerRole` has at least one non-director key whose `parseQuietHours(value).ok && window !== null`, say `per-role windows set, none holding now`. Otherwise say `none configured`. Use the exported `parseQuietHours`.
+2. `src/doctor/doctor.ts`: import `checkQuietHours`, and add `{ name: "quiet hours", ...checkQuietHours(config) },` directly after the `pause` entry in `runDoctor`'s `checks` array. `config` is the `loadConfigSafe` result already in scope.
+3. README.md's Audit row: extend the `tumwater doctor` parenthetical from "naming a standing fleet or per-role pause" to "naming a standing fleet or per-role pause or quiet-hours window holding now". Leave the rest of the row alone. Make no change to docs/invariants.md (the check adds no guarantee; it reuses the gate's predicate) and none to `src/cli/help.ts` (no flags change).
+
+**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`, `test/doctor-holds.test.ts`, `test/doctor.test.ts`, README.md.
+
+**Acceptance criteria.**
+- New tests in `test/doctor-holds.test.ts`. Each passes a literal config object (cast to `TumwaterConfig`) and a fixed local `new Date(2026, 9, 12, H, M)`, so no test reads the wall clock:
+  - `undefined` config, and `{}`, both give `{ level: "ok", detail: "none configured" }`.
+  - `{ quietHours: "23:00-07:00" }` at 23:30 gives `warn`, with a detail containing `until 07:00` and `director is exempt`. At 01:00 it is also `warn` (the window wraps midnight). At 12:00 it is `ok`, with a detail containing `23:00-07:00` and `not in the window`.
+  - `{ quietHoursPerRole: { cleanup: "09:00-17:00" } }` at 12:00 gives `ok`, with a detail containing `cleanup until 17:00`. At 18:00 it gives `ok` with `per-role windows set, none holding now`.
+  - `{ quietHoursPerRole: { director: "00:00-23:59" } }` at 12:00 does not name `director`.
+  - A fleet window holding plus a held role gives `warn`, and the detail names the role after `; `.
+  - A malformed `{ quietHours: "nope" }` gives `ok` with `none configured`, because `checkInit` owns that error.
+- `test/doctor.test.ts`: the pinned `report.checks.map((c) => c.name)` list in the fresh-root test gains `"quiet hours"` right after `"pause"`. That test's "every check but node is ok" loop still passes, because a fresh root has no `quietHours`.
+- `grep -n '"quiet hours"' src/doctor/doctor.ts` shows the entry right after `pause`.
+- `npm run test` passes.
+
 
 
 ## Done
