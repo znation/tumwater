@@ -850,6 +850,33 @@ test("handleBacklogFile files a bug or plan and wakes its loop, and 400s bad inp
   assert.equal(queuedTexts(root, "feature").length, 1);
 });
 
+test("handleBacklogFile files an optional normalized body and 400s a bad one untouched", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open" }, { heading: "## Fixed" }]);
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
+  const plan = await serveBacklogFile(root, { kind: "plan", title: "add z", body: "Goal.\r\n\r\n- a  \n- b\n\n" });
+  assert.equal(plan.captured.status, 200);
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the operator[^\n]*\n\nGoal\.\n\n- a\n- b\n/);
+  assert.deepEqual(queuedTexts(root, "feature"), [planWakeText("add z")]);
+  const bug = await serveBacklogFile(root, { kind: "bug", title: "sym", body: "Steps.\n1. go" });
+  assert.equal(bug.captured.status, 200);
+  assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), /### sym \(reported by the operator[^\n]*\n\nSteps\.\n1\. go\n/);
+
+  const bugsBefore = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  const plansBefore = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  for (const body of [
+    { kind: "bug", title: "x", body: "### phantom" },
+    { kind: "plan", title: "x", body: "```\nunclosed" },
+    { kind: "plan", title: "x", body: 7 },
+  ]) {
+    assert.equal((await serveBacklogFile(root, body)).captured.status, 400, JSON.stringify(body));
+  }
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), bugsBefore);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plansBefore);
+  assert.equal(queuedTexts(root, "bugfix").length, 1);
+  assert.equal(queuedTexts(root, "feature").length, 1);
+});
+
 // ---- POST /api/backlog-cancel: the entry drawer's cancel ----
 test("handleBacklogCancel removes the entry, answers gone for a stale title, 400s bad input, wakes nobody", async () => {
   const root = tmpdir();

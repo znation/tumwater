@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { initProject } from "../src/init/init.js";
-import { fileBug, fileBugFromText, filePlan, filePlanFromText, splitEntryFile } from "../src/backlog/backlog-write.js";
+import { fileBug, fileBugFromText, filePlan, filePlanFromText, normalizeEntryBody, splitEntryFile } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
@@ -352,4 +352,9 @@ test("tumwater plan --file files from a markdown file; stray positionals and mis
   const missing = await cli(repo, "bug", "--file", path.join(repo, "nope.md"));
   assert.match(missing.stderr, /cannot read prompt file/);
   assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
+});
+
+test("normalizeEntryBody converts CRLF, trims line ends and edge blanks, keeps inner blanks", () => {
+  assert.equal(normalizeEntryBody("\r\n\nGoal.  \r\n\n- a\t\n\n\n"), "Goal.\n\n- a");
+  assert.equal(normalizeEntryBody("  \n"), "");
 });

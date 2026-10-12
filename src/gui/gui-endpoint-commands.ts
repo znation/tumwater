@@ -10,7 +10,7 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
-import { fileBug, filePlan, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
+import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
@@ -439,12 +439,11 @@ export async function handleResetCounters(req: http.IncomingMessage, res: http.S
 }
 
 /** Handle POST /api/backlog-file: the Plans/Bugs tabs' New control — the same entry and wake
- * `tumwater bug`/`tumwater plan` produce (fileBug/filePlan, then the shared wake text to the
- * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "..."}`. The empty-title and
- * wake-length checks run here, before anything is written: fileBug/filePlan's own empty check
- * exits the process through fail(), and an over-long wake would throw after the entry landed. */
+ * `tumwater bug`/`tumwater plan` produce (fileEntryWithBody, then the shared wake text to the
+ * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "...", "body": "optional markdown"}`. The empty-title and
+ * wake-length checks run here, before anything is written: the body is normalized and checked by bodyStructureProblem too, and an over-long wake would throw after the entry landed. */
 export async function handleBacklogFile(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"kind": "bug", "title": "the symptom"}');
+  const body = await readPostBody(req, res, '{"kind": "plan", "title": "...", "body": "optional markdown"}');
   if (!body) return;
   const kind = body.kind;
   if (kind !== "bug" && kind !== "plan") {
@@ -462,7 +461,18 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
     sendJson(res, 400, { error: problem });
     return;
   }
-  const filed = kind === "bug" ? fileBug(root, rawTitle, "") : filePlan(root, rawTitle, "", "");
+  const rawBody = body.body;
+  if (rawBody !== undefined && typeof rawBody !== "string") {
+    sendJson(res, 400, { error: "body must be a string" });
+    return;
+  }
+  const entryBody = normalizeEntryBody(rawBody ?? "");
+  const bodyProblem = bodyStructureProblem(entryBody);
+  if (bodyProblem) {
+    sendJson(res, 400, { error: bodyProblem });
+    return;
+  }
+  const filed = fileEntryWithBody(root, kind, rawTitle, entryBody);
   submitRolePromptAndWake(root, role, wakeText(filed.title));
   sendJson(res, 200, { ok: true, file: filed.file, title: filed.title });
 }

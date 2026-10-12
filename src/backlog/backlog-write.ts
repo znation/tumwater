@@ -491,10 +491,26 @@ export function splitEntryFile(text: string): { title: string; body: string } {
   const at = lines.findIndex((line) => line.trim() !== "");
   if (at < 0) return { title: "", body: "" };
   const title = collapseWhitespace((lines[at] ?? "").replace(/^\s*#{1,6}\s+/, ""));
-  const body = lines.slice(at + 1).map((line) => line.trimEnd());
-  trimLeadingBlankLines(body);
-  trimTrailingBlankLines(body);
-  return { title, body: body.join("\n") };
+  return { title, body: normalizeEntryBody(lines.slice(at + 1).join("\n")) };
+}
+
+/** Normalize an entry body: CRLF to LF, trailing whitespace stripped from each line, edge
+ * blank lines dropped, inner blank lines kept. */
+export function normalizeEntryBody(body: string): string {
+  const lines = body.replace(/\r\n/g, "\n").split("\n").map((line) => line.trimEnd());
+  trimLeadingBlankLines(lines);
+  trimTrailingBlankLines(lines);
+  return lines.join("\n");
+}
+
+/** File an already-validated title and body under PLANS.md's `## Planned` (plan) or BUGS.md's
+ * `## Open` (bug). Shared by the `--file` forms and the dashboard file endpoint; the caller has
+ * checked the title is non-empty and the body passes bodyStructureProblem. */
+export function fileEntryWithBody(root: string, kind: "bug" | "plan", title: string, body: string): FiledEntry {
+  const t = collapseWhitespace(title);
+  return kind === "plan"
+    ? appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", t, body)
+    : appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", t, body);
 }
 
 /** `tumwater plan --file`: file the markdown file's title and line-for-line body under
@@ -504,7 +520,7 @@ export function filePlanFromText(root: string, text: string, usage: string): Fil
   if (title === "") fail(`plan needs a title: ${usage}`);
   const problem = bodyStructureProblem(body);
   if (problem) fail(`the --file body cannot be filed: ${problem}`);
-  return appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", title, body);
+  return fileEntryWithBody(root, "plan", title, body);
 }
 
 /** `tumwater bug --file`: the bug twin of filePlanFromText, under BUGS.md's `## Open`. */
@@ -513,7 +529,7 @@ export function fileBugFromText(root: string, text: string, usage: string): File
   if (title === "") fail(`bug needs a symptom: ${usage}`);
   const problem = bodyStructureProblem(body);
   if (problem) fail(`the --file body cannot be filed: ${problem}`);
-  return appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", title, body);
+  return fileEntryWithBody(root, "bug", title, body);
 }
 
 /** The loop prompt a filed bug wakes the `bugfix` loop with — one wording for the CLI's

@@ -334,6 +334,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       if (backlogNew && backlogNew.kind === kind) {
         backlogNewPainted = true;
         html = "<div class='list-item'><input id='backlognew' type='text' placeholder='" + (kind === "plan" ? "Plan title" : "Bug symptom") + "'>" +
+          "<textarea id='backlognewbody' rows='6' placeholder='Details (optional, markdown)'></textarea>" +
           "<button type='button' class='btn btn-sm rowaction' data-action='backlognewsave' data-kind='" + kind + "'>Save</button>" +
           "<button type='button' class='btn btn-sm rowaction' data-action='backlognewcancel'>Cancel</button></div>" + html;
       } else {
@@ -357,7 +358,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       const input = $("backlognew");
       const title = input ? input.value.trim() : "";
       if (!title) return;
-      await postAction("/api/backlog-file", { kind: freshSave.dataset.kind, title }, (d) => "Filed: " + d.title);
+      const bodyBox = $("backlognewbody");
+      await postAction("/api/backlog-file", { kind: freshSave.dataset.kind, title, body: bodyBox ? bodyBox.value : "" }, (d) => "Filed: " + d.title);
       endBacklogNew();
       return;
     }

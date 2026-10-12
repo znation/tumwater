@@ -38,7 +38,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
-### Give the dashboard's New plan / File a bug form an optional multiline body, matching `tumwater plan|bug --file` (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `filePlanFromText`, `fileBugFromText` in `src/backlog/backlog-write.ts`) and the landed drawer edit (`POST /api/backlog-edit`, `handleBacklogEdit`). Independent of the waiting "Answer an open question from the TUI backlog pane" plan: it touches neither `src/ui/tui/` nor `src/cli/`)
+## Done
+
+### Give the dashboard's New plan / File a bug form an optional multiline body, matching `tumwater plan|bug --file` (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `filePlanFromText`, `fileBugFromText` in `src/backlog/backlog-write.ts`) and the landed drawer edit (`POST /api/backlog-edit`, `handleBacklogEdit`). Independent of the waiting "Answer an open question from the TUI backlog pane" plan: it touches neither `src/ui/tui/` nor `src/cli/`) — done 2026-10-12
 
 **Goal.** The dashboard's Plans/Bugs tabs have a New control (`POST /api/backlog-file`, `handleBacklogFile` in `src/gui/gui-endpoint-commands.ts`). It takes a title only, so an operator filing from the dashboard can't add a goal, approach, or repro steps. They have to file the title and then reopen the entry in the drawer to edit the body. The CLI's `--file` form already files a title plus a body kept line for line, checked by `bodyStructureProblem`. This plan gives the dashboard form an optional **Details** textarea that goes through the same validation and write path.
 
@@ -64,8 +66,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/backlog-write.test.ts`: `normalizeEntryBody` converts CRLF, trims trailing whitespace on each line, and drops edge blank lines while keeping inner blank lines. The existing `splitEntryFile` and `filePlanFromText` tests pass unchanged.
 - `test/gui-client-fleet.test.ts`: "the Plans and Bugs tabs offer a New form…" also asserts the open form's HTML contains `<textarea id='backlognewbody'`, and that a poll still keeps the form byte-identical. `GUI_CLIENT_FLEET_JS` matches `/body: bodyBox \? bodyBox\.value : ""/` (or an equivalent check that the Save post carries the textarea's value).
 - `npm run test` passes.
-
-## Done
 
 ### File a structured plan request or bug report from a markdown file: `tumwater plan --file <path>` and `tumwater bug --file <path>` (`-` reads stdin), keeping the body's line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`parsePromptArgs`' `--file` branch in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug` file forms (`fileAndAnnounce`, `filePlan`, `fileBug` in `src/backlog/backlog-write.ts`). Independent of both waiting TUI plans: it touches neither `src/ui/tui/` nor the GUI) — done 2026-10-12
 

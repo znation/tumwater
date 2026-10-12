@@ -440,6 +440,8 @@ test("the Plans and Bugs tabs offer a New form that survives polls and drops on 
     scope.beginBacklogNew(kind);
     const html = panels["backlog"] ?? "";
     assert.match(html, /<input id='backlognew'/);
+    assert.match(html, /<textarea id='backlognewbody'/);
+    assert.match(GUI_CLIENT_FLEET_JS, /body: bodyBox \? bodyBox\.value : ""/);
     assert.match(html, new RegExp(`data-action='backlognewsave' data-kind='${kind}'`));
     assert.match(html, /data-action='backlognewcancel'/);
     scope.renderBacklog(status);
