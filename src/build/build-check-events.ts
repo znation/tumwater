@@ -23,7 +23,7 @@ export type BuildCheckScope = "gate" | "landing" | "batch";
  * BuildCheckRun.deadlineLateMs), because "timed out after 300s" for a check that ran 712 s is
  * the false claim BUGS.md 2026-09-21 recorded. The exact lateness is on the build_check event
  * either way; this only keeps sub-second jitter out of the one-line warning. */
-const DEADLINE_LATE_TOLERANCE_MS = 5_000;
+export const DEADLINE_LATE_TOLERANCE_MS = 5_000;
 
 /** How much measured sleep (BuildCheckRun.sleptMs, host-sleep.ts) inside one check's run the
  * harness treats as none. Normal dark wakes are seconds; the sleep-caused failures BUGS.md
@@ -101,6 +101,15 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
     `timed out after ${oneDecimalSeconds(bound + late)}s (its ${bound / 1000}s deadline fired ` +
     `${oneDecimalSeconds(late)}s late: ${cause})`
   );
+}
+
+/** The note an on-time deadline kill carries when the host was starved: the load average
+ * beyond the core count means the check shared the machine with the rest of the fleet, so the
+ * 300 s kill is a statement about the deadline under load, not a measured verdict on the
+ * change (BUGS.md 2026-10-12). Empty when the host had a core to spare. */
+export function loadedHostPhrase(load: { load1: number; cpus: number }): string {
+  if (!(load.cpus > 0) || !(load.load1 > load.cpus)) return "";
+  return ` (host load average ${Math.round(load.load1)} on ${load.cpus} cores: the check ran starved, so the kill says nothing about the change itself)`;
 }
 
 /** The `<label> was killed by <signal> after <secs>s; <proceeding>` sentence for an external

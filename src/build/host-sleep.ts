@@ -21,6 +21,7 @@
  * instead of suspending the host. */
 
 import fs from "node:fs";
+import os from "node:os";
 import { execFileAsync } from "../process/process.js";
 
 /** One reading of whatever sleep clocks the platform exposes. Every field is optional:
@@ -103,3 +104,14 @@ export function sleptMsBetween(a: SleepSample, b: SleepSample): number | undefin
   }
   return undefined;
 }
+
+/** The host's one-minute load average beside its core count — the starvation evidence an
+ * on-time deadline kill needs to be read as the fleet's own weather rather than a slow change. */
+interface HostLoad {
+  load1: number;
+  cpus: number;
+}
+
+export type LoadSampler = () => HostLoad;
+
+export const sampleHostLoad: LoadSampler = () => ({ load1: os.loadavg()[0] ?? 0, cpus: os.cpus().length });

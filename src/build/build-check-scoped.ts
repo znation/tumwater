@@ -19,7 +19,9 @@ import {
   owesCleanRetry,
   installFailedPhrase,
   killedPhrase,
+  loadedHostPhrase,
   timedOutPhrase,
+  DEADLINE_LATE_TOLERANCE_MS,
   SLEEP_SPAN_TOLERANCE_MS,
   sleptPhrase,
   UNVERIFIED_TREE,
@@ -27,7 +29,7 @@ import {
 } from "./build-check-events.js";
 import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../concurrency/check-permit.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
-import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
+import { sampleHostLoad, sampleSleepClock, type LoadSampler, type SleepSampler } from "./host-sleep.js";
 import { type InstallRunner, npmInstall } from "./dep-install.js";
 
 /** Run the project's declared check for a named scope — the detect → run → build_check
@@ -67,6 +69,7 @@ export async function runScopedBuildCheck(
   sampleSleep: SleepSampler = sampleSleepClock,
   install: InstallRunner = npmInstall,
   permitWait?: PermitWaitHooks,
+  sampleLoad: LoadSampler = sampleHostLoad,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
   const check = detectBuildCheck(
@@ -138,7 +141,11 @@ export async function runScopedBuildCheck(
         )
       : sleepFailed
         ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, UNVERIFIED_TREE)
-        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}`;
+        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}${
+            // An on-time kill (the late-deadline wording already names its own cause) names the
+            // starved host when the load average says the fleet was the check's competition.
+            (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(sampleLoad())
+          }`;
   const outcome: BuildCheckOutcome = unverifiedSkip
     ? {
         status: "failed",

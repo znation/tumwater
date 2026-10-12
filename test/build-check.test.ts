@@ -203,6 +203,23 @@ test("a deadline the host slept through is reported as when it really fired, on 
   );
 });
 
+test("an on-time merge-scope timeout names a starved host, and stays silent on an idle one", async () => {
+  // BUGS.md 2026-10-12: 28 of 29 landing build-check failures in a window were the 300 s
+  // deadline firing on time under the fleet's own load; the reason must carry that evidence.
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "sleep 5" }));
+  const run = (load1: number) =>
+    runScopedBuildCheck(root, ROLE, "landing", wt, undefined, 400, undefined, undefined, undefined, () => ({
+      load1,
+      cpus: 18,
+    }));
+  const starved = await run(61.4);
+  assert.equal(starved!.outcome.status, "failed");
+  assert.match(starved!.outcome.outputTail?.[0] ?? "", /timed out after 0\.4s; the tree is unverified \(host load average 61 on 18 cores/);
+  const idle = await run(3);
+  assert.doesNotMatch(idle!.outcome.outputTail?.[0] ?? "", /host load/);
+});
+
 test("a landing- or batch-scope timeout is a deterministic reject, not an environmental skip", async () => {
   // BUGS.md 2026-09-18: the landing check is the last gate before main, so a suite that never
   // finished must not read as "environmental" and merge the unverified tree. The gate scope
