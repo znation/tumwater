@@ -610,6 +610,32 @@ test("a no-op rebase skips the re-check and seeds the baseline for the landed SH
   assert.equal(runs.length, 0, "the landing path seeded the green verdict for the SHA that became main");
 });
 
+test("a no-op rebase with no verified head still runs the landing check and fails closed", async () => {
+  // The gate's build pre-check timing out leaves GateResult.verifiedHead undefined while the
+  // landing rebase stays a no-op (main did not move under review). Trusting the no-op alone
+  // would land a tree no check ever judged; the landing-scope check must run and reject.
+  const { root, wt } = await initializedWorktree();
+  declareBuildCheck(root, wt, "exit 1"); // a deterministic red the gate never ran
+  sh(wt, "git", "reset", "--hard", "main"); // the branch sits on current main → no-op rebase
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  const { ctx } = makeCtx(root);
+  const mainBefore = mainSha(root);
+
+  // No fourth argument: the gate made no green observation of this tree (a skipped pre-check).
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "merge_blocked", "an unverified no-op rebase must not land unchecked");
+  assert.equal(mainSha(root), mainBefore, "nothing lands on the unverified tree");
+  assert.deepEqual(
+    eventsOfType(root, "build_check").map((e) => [e.scope, e.status]),
+    [["landing", "failed"]],
+    "the landing-scope check ran and rejected the tree",
+  );
+  assert.equal(eventsOfType(root, "merged").length, 0);
+  assertWorktreeSettled(wt); // no rebase left in progress
+});
+
 test("with check.gateCommand set, a no-op rebase still runs the full check before landing", async () => {
   // PLANS.md Land-queue speed 3e: the gate ran only the cheaper gateCommand, so its green says
   // nothing about check.command — the no-op skip would land a tree the full suite never saw.

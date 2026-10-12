@@ -115,7 +115,7 @@ export async function mergeToMain(
   // because the conflict-retry path rebases twice: after pi resolves, the second attempt's
   // rebase is a no-op even though its tree (the resolution) was never checked.
   const preMergeHead = await headOf(wt, "HEAD");
-  const first = await tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
+  const first = await tryMerge(ctx, wt, summary, verifiedHead);
   if (first !== "merge_conflict") return first;
   if (!(await resolveConflict(ctx, wt, preMergeHead))) return "merge_conflict";
   // A resolution whose diff ahead of main introduces lines the reviewed change never added, or
@@ -128,9 +128,9 @@ export async function mergeToMain(
     const recheck = await ctx.recheckResolved(wt);
     if (recheck.verdict === "rejected") return "rejected";
     if (recheck.verdict === "retry") return "merge_conflict";
-    return tryMerge(ctx, wt, summary, preMergeHead, recheck.verifiedHead ?? verifiedHead);
+    return tryMerge(ctx, wt, summary, recheck.verifiedHead ?? verifiedHead);
   }
-  return tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
+  return tryMerge(ctx, wt, summary, verifiedHead);
 }
 
 /** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before`,
@@ -139,7 +139,6 @@ async function tryMerge(
   ctx: MergeContext,
   wt: string,
   summary: string,
-  preMergeHead: string,
   verifiedHead?: string,
 ): Promise<TickResult> {
   return withLock(mergeLockDir(ctx.root), async () => {
@@ -159,7 +158,7 @@ async function tryMerge(
     // main moved between commit and landing, which under concurrency is the common case (review
     // runs outside this lock).
     const target = await headOf(wt, "HEAD");
-    if (!(await verifyLanding(ctx, wt, target, preMergeHead, verifiedHead)))
+    if (!(await verifyLanding(ctx, wt, target, verifiedHead)))
       return "merge_blocked";
     const mainBefore = await headOf(ctx.root, ctx.mainBranch);
     if (!(await ffMainTo(ctx.root, target, ctx.mainBranch))) return "merge_blocked";
@@ -226,12 +225,15 @@ export async function exemptSkipBlockReason(
  * structurally unsound (backlogStructureReason: a duplicated or dropped `## ` section heading,
  * with a warning event so a broken conflict resolution shows on the dashboards) or when the
  * project's declared check FAILS on the rebased tree; every other outcome lands. Skips:
- * - no-op rebase (`rebasedHead === preMergeHead`): main did not move under us, so the landing
- *   tree is byte-identical to what this gate invocation already checked (or to a tree nothing
- *   checks — exempt diff / review disabled). When `verifiedHead` names it, seed the red-main
- *   baseline with the SHA that becomes main: every role's next fresh tick then hits the cache
- *   instead of re-running the full suite on an already-verified tree. Not taken when a
- *   `check.gateCommand` is configured: the gate then ran only that, not the full check.
+ * - a no-op rebase whose exact tree the gate verified (`rebasedHead === verifiedHead`): main
+ *   did not move under us, so the landing tree is byte-identical to what the gate's pre-check
+ *   already ran green. Seed the red-main baseline with the SHA that becomes main: every role's
+ *   next fresh tick then hits the cache instead of re-running the full suite on an
+ *   already-verified tree. A no-op rebase the gate did NOT verify — its pre-check was skipped
+ *   (a timeout, a killed run) — falls through and runs the landing-scope check, which fails
+ *   closed on the same timeout; an exempt diff or a project with no declared check falls
+ *   through to its own arm below. Not taken when a `check.gateCommand` is configured: the gate
+ *   then ran only that, not the full check.
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
  * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
  * An environmental skip (no npm / broken toolchain) warns and proceeds — deliberately NOT
@@ -243,21 +245,19 @@ async function verifyLanding(
   ctx: MergeContext,
   wt: string,
   rebasedHead: string,
-  preMergeHead: string,
   verifiedHead?: string,
 ): Promise<boolean> {
-  // With a check.gateCommand configured the gate ran only that cheaper check, so a no-op
-  // rebase's tree has never been through the full check: fall through and run it here, once —
-  // the landing scope is what verifies a single change (and each change of an abandoned
-  // stack), and a gateCommand green must never seed the baseline (PLANS.md Land-queue speed 3e).
-  // The verifiedHead arm covers a conflict resolution the re-review gate just judged: the
-  // in-lock rebase is then a no-op, so the tree is byte-identical to what that pre-check ran
-  // green on, and the same trust (and the same gateCommand caveat) applies.
-  if (
-    (rebasedHead === preMergeHead || (verifiedHead !== undefined && rebasedHead === verifiedHead)) &&
-    gateCommandOf(ctx.config) === undefined
-  ) {
-    if (rebasedHead === verifiedHead) noteGreenBaseline(rebasedHead);
+  // Trust only the tree the gate actually verified. The identity means the in-lock rebase was
+  // a no-op on exactly the head the pre-check ran green on (a real conflict resolution's
+  // re-review sets verifiedHead to the resolved head, and that second rebase is then a no-op).
+  // A no-op rebase the gate never verified — its pre-check timed out or was killed and left
+  // GateResult.verifiedHead undefined — falls through and runs the landing-scope check, which
+  // fails closed on the same timeout. With a check.gateCommand configured the gate ran only
+  // that cheaper check, so even a verified no-op rebase must run the full check here: the
+  // landing scope is what verifies a single change (and each change of an abandoned stack),
+  // and a gateCommand green must never seed the baseline (PLANS.md Land-queue speed 3e).
+  if (rebasedHead === verifiedHead && gateCommandOf(ctx.config) === undefined) {
+    noteGreenBaseline(rebasedHead);
     return true;
   }
   const files = await aheadOfMainFiles(wt, ctx.mainBranch);
