@@ -67,7 +67,7 @@ function readPromptFile(file: string): string {
  * shared by the init and prompt parsers (two call sites — parseInitArgs' and parsePromptArgs'
  * --file branches), so the wording cannot drift between them. The flag token itself is
  * claimed by each parser's stray-argument accounting; this helper only owns the value. */
-function promptFileValue(file: string | undefined): string {
+export function promptFileValue(file: string | undefined): string {
   if (!file) fail("--file needs a path");
   return file;
 }
@@ -210,6 +210,23 @@ type PromptArgs =
  * re-parses them, and a second readFileSync(0) on a drained pipe would see an empty prompt. */
 let stdinPrompt: string | null = null;
 
+/** Read a `--file` value: `-` reads stdin (memoized in stdinPrompt, with the stdin read error
+ * and emptiness check beside the read), any other path goes through readPromptFileChecked.
+ * Shared by `prompt --file` and the `bug`/`plan` file forms. */
+export function readPromptFileArg(file: string): string {
+  if (file !== "-") return readPromptFileChecked(file);
+  if (stdinPrompt === null) {
+    try {
+      stdinPrompt = fs.readFileSync(0, "utf8");
+    } catch (err) {
+      stdinPrompt = "";
+      fail(`cannot read prompt file "-" (stdin): ${errorMessage(err)}`);
+    }
+  }
+  failEmptyPromptFile(file, stdinPrompt);
+  return stdinPrompt;
+}
+
 /** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
  * equals-form refusal inside it (ROLE_FLAG rides in with its shared missing-value wording). */
 const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
@@ -344,22 +361,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // stdin; errorMessage names it, and the operator passes a real pipe instead).
     const file = promptFileValue(args[fileFlag + 1]);
     failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim, ...atClaim, ...attachClaims);
-    let contents: string;
-    if (file === "-") {
-      if (stdinPrompt === null) {
-        try {
-          stdinPrompt = fs.readFileSync(0, "utf8");
-        } catch (err) {
-          stdinPrompt = "";
-          fail(`cannot read prompt file "-" (stdin): ${errorMessage(err)}`);
-        }
-      }
-      // Stdin skips readPromptFile, so its emptiness check stays beside the read.
-      contents = stdinPrompt;
-      failEmptyPromptFile(file, contents);
-    } else {
-      contents = readPromptFileChecked(file);
-    }
+    const contents = readPromptFileArg(file);
     return { mode: "enqueue", role, text: contents, atDelayMs, attachPaths: attachPaths };
   }
 

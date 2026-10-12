@@ -119,6 +119,9 @@ test("helpTopicForArgs answers a --help flag-only invocation with the command's 
   assert.equal(helpTopicForArgs("prompt", ["--role", "qa", "--help"]), helpTopic("prompt"));
   // bug admits no valued flags, so a flag-only --json rides beside --help.
   assert.equal(helpTopicForArgs("bug", ["--json", "--help"]), helpTopic("bug"));
+  // --file's value is a path, plumbing like --role's.
+  assert.equal(helpTopicForArgs("plan", ["--file", "x.md", "--help"]), helpTopic("plan"));
+  assert.match(helpTopic("plan") ?? "", /plan --file <path>/);
 });
 
 test("helpTopicForArgs stands down for a free-form command carrying prose", () => {

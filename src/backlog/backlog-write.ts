@@ -15,6 +15,7 @@ import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
+import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
 import { plannedPlanEntries, openBugEntries } from "./backlog.js";
 import { backlogHolds, holdMark } from "./backlog-eligibility.js";
 import { numberedList } from "../text/markdown.js";
@@ -426,7 +427,10 @@ function scanProseFlags(
  * prompt answers to, so fileAndAnnounce checks it (promptLengthProblem) BEFORE calling
  * `file` — otherwise an over-long operator text would write its entry and only then throw
  * inside submitRolePromptAndWake, half-applying the command with the backlog file already
- * grown. */
+ * grown. With `--file <path>` (`-` reads stdin) the entry comes from a markdown file instead
+ * of positionals: `fileText` receives its text (splitEntryFile: first line the title, the rest
+ * the body kept line for line), the same preflight runs on that title, and any positional
+ * alongside --file is refused. */
 export async function fileAndAnnounce(
   root: string,
   args: string[],
@@ -435,7 +439,23 @@ export async function fileAndAnnounce(
   role: string,
   wakeText: (title: string) => string,
   titleOf: (positionals: string[]) => string,
+  fileText: (text: string) => FiledEntry,
 ): Promise<void> {
+  const fileFlag = args.indexOf("--file");
+  if (fileFlag >= 0) {
+    const file = promptFileValue(args[fileFlag + 1]);
+    const rest = args.filter((_, i) => i !== fileFlag && i !== fileFlag + 1);
+    rejectRepeatFlag(rest.includes("--file"), "--file");
+    const { json, positionals } = scanProseFlags(rest, command);
+    const stray = positionals[0];
+    if (stray !== undefined) fail(`unexpected argument ${JSON.stringify(stray)} — with --file the entry comes from the file`);
+    await requireReadyRepo(root);
+    const text = readPromptFileArg(file);
+    const wakeProblem = promptLengthProblem(wakeText(splitEntryFile(text).title), role);
+    if (wakeProblem) fail(wakeProblem);
+    announceFiled(root, command, fileText(text), role, wakeText, json);
+    return;
+  }
   // peelPositionals cannot serve this command: bug/plan's text is operator prose, and a
   // standalone --help/-h token inside it ("the TUI mishandles --help output") is content —
   // the dispatcher's help interception stands down for text-carrying invocations (cli.ts),
@@ -445,10 +465,55 @@ export async function fileAndAnnounce(
   await requireReadyRepo(root);
   const wakeProblem = promptLengthProblem(wakeText(titleOf(positionals)), role);
   if (wakeProblem) fail(wakeProblem);
-  const filed = file(positionals);
+  announceFiled(root, command, file(positionals), role, wakeText, json);
+}
+
+/** The tail both fileAndAnnounce forms share: wake the `role` loop with the filed entry's
+ * title, then print the confirmation (the wake line rides the prose output only). */
+function announceFiled(
+  root: string,
+  command: string,
+  filed: FiledEntry,
+  role: string,
+  wakeText: (title: string) => string,
+  json: boolean,
+): void {
   const wake = submitRolePromptAndWake(root, role, wakeText(filed.title));
   sayFiled(command, filed, json);
   if (!json) say(wake);
+}
+
+/** Split a markdown entry file into its title and body: the title is the first non-blank line
+ * (a leading `#`-marker stripped, folded through collapseWhitespace), the body every later
+ * line kept as written with trailing whitespace stripped and edge blank lines dropped. */
+export function splitEntryFile(text: string): { title: string; body: string } {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const at = lines.findIndex((line) => line.trim() !== "");
+  if (at < 0) return { title: "", body: "" };
+  const title = collapseWhitespace((lines[at] ?? "").replace(/^\s*#{1,6}\s+/, ""));
+  const body = lines.slice(at + 1).map((line) => line.trimEnd());
+  trimLeadingBlankLines(body);
+  trimTrailingBlankLines(body);
+  return { title, body: body.join("\n") };
+}
+
+/** `tumwater plan --file`: file the markdown file's title and line-for-line body under
+ * PLANS.md's `## Planned`. A body that would grow a phantom section writes nothing. */
+export function filePlanFromText(root: string, text: string, usage: string): FiledEntry {
+  const { title, body } = splitEntryFile(text);
+  if (title === "") fail(`plan needs a title: ${usage}`);
+  const problem = bodyStructureProblem(body);
+  if (problem) fail(`the --file body cannot be filed: ${problem}`);
+  return appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", title, body);
+}
+
+/** `tumwater bug --file`: the bug twin of filePlanFromText, under BUGS.md's `## Open`. */
+export function fileBugFromText(root: string, text: string, usage: string): FiledEntry {
+  const { title, body } = splitEntryFile(text);
+  if (title === "") fail(`bug needs a symptom: ${usage}`);
+  const problem = bodyStructureProblem(body);
+  if (problem) fail(`the --file body cannot be filed: ${problem}`);
+  return appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", title, body);
 }
 
 /** The loop prompt a filed bug wakes the `bugfix` loop with — one wording for the CLI's

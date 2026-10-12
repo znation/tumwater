@@ -38,7 +38,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
-### File a structured plan request or bug report from a markdown file: `tumwater plan --file <path>` and `tumwater bug --file <path>` (`-` reads stdin), keeping the body's line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`parsePromptArgs`' `--file` branch in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug` file forms (`fileAndAnnounce`, `filePlan`, `fileBug` in `src/backlog/backlog-write.ts`). Independent of both waiting TUI plans: it touches neither `src/ui/tui/` nor the GUI)
+## Done
+
+### File a structured plan request or bug report from a markdown file: `tumwater plan --file <path>` and `tumwater bug --file <path>` (`-` reads stdin), keeping the body's line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`parsePromptArgs`' `--file` branch in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug` file forms (`fileAndAnnounce`, `filePlan`, `fileBug` in `src/backlog/backlog-write.ts`). Independent of both waiting TUI plans: it touches neither `src/ui/tui/` nor the GUI) — done 2026-10-12
 
 **Goal.** The brief says the operator "only write[s] the markdown/initial prompt". But the CLI can't file a markdown plan request with any structure. `filePlan` folds its body through `collapseWhitespace`, so a request with Goal / Approach paragraphs or a bullet list lands as one long line. `fileBug` writes no body at all, so repro steps either get crammed into the heading or lost. `tumwater prompt --file` already reads a prompt from a file or stdin. This plan gives `plan` and `bug` the same `--file <path>` form. The file's first non-blank line is the title. Every line after it is the entry body, kept line for line, and checked by the same `bodyStructureProblem` guard the dashboard's in-place edit uses, so a `## `/`### ` line or an unclosed fence can't grow a phantom section.
 
@@ -71,8 +73,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `parsePromptArgs`' existing `--file` tests pass unchanged.
 - `helpTopicForArgs("plan", ["--file", "x.md", "--help"])` returns the plan topic, and `helpTopic("plan")` includes the `--file` stanza.
 - `npm run test` passes.
-
-## Done
 
 ### Cancel a planned feature or open bug from the TUI backlog pane, matching `tumwater plan|bug --cancel <n>` and the dashboard drawer's Cancel (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug --cancel` (`cancelPlan`/`cancelBug` in `src/backlog/backlog-write.ts`) and the landed drawer Cancel (`POST /api/backlog-cancel`, `handleBacklogCancel` in `src/gui/gui-endpoint-commands.ts`, both calling `tryCancelEntry`). Independent in behavior of the waiting "Answer an open question from the TUI backlog pane" plan (that one handles questions with Ctrl+A, this one handles plans/bugs with Ctrl+X). Both add branches and guards to `createTuiKeys` in `src/ui/tui/tui-keys.ts` and a hint to `hintLine`, so a landing conflict is possible and the resolver handles it. Independent of the waiting dashboard-drawer edit plan: this plan calls `tryCancelEntry` as it stands and does not change `backlog-write.ts`) (done 2026-10-12)
 

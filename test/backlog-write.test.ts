@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { initProject } from "../src/init/init.js";
-import { fileBug, filePlan } from "../src/backlog/backlog-write.js";
+import { fileBug, fileBugFromText, filePlan, filePlanFromText, splitEntryFile } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
@@ -283,3 +283,73 @@ test("help topics resolve for bug and plan", async () => {
   }
 });
 
+
+test("splitEntryFile takes the first non-blank line as the title and keeps the body's lines", () => {
+  const want = { title: "Title", body: "Goal.\n\n- a\n- b" };
+  assert.deepEqual(splitEntryFile("# Title\n\nGoal.\n\n- a\n- b\n"), want);
+  assert.deepEqual(splitEntryFile("\n\n### Title\n\nGoal.\n\n- a\n- b\n"), want);
+  assert.deepEqual(splitEntryFile("# Title\r\n\r\nGoal.\r\n\r\n- a\r\n- b\r\n"), want);
+  assert.deepEqual(splitEntryFile("Only a title\n"), { title: "Only a title", body: "" });
+});
+
+test("filePlanFromText and fileBugFromText keep the body's line structure", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "from text");
+  filePlanFromText(repo, "# Plan it\n\nGoal.\n\n- a\n- b\n", "usage");
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  assert.match(plans, /### Plan it \(reported by the operator [^)]*\)\n\nGoal\.\n\n- a\n- b\n/);
+  fileBugFromText(repo, "Bug sym\n\n1. step\n2. step\n", "usage");
+  const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  assert.match(bugs, /### Bug sym \(reported by the operator [^)]*\)\n\n1\. step\n2\. step\n/);
+});
+
+test("filePlanFromText refuses a structure-breaking body and an empty title, writing nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "from text bad");
+  const before = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  const code = (text: string) => assert.throws(() => filePlanFromText(repo, text, "usage"));
+  const realExit = process.exit;
+  const realWrite = process.stderr.write;
+  const msgs: string[] = [];
+  process.stderr.write = ((m: unknown) => {
+    msgs.push(String(m));
+    return true;
+  }) as typeof process.stderr.write;
+  process.exit = ((c?: number) => {
+    throw new Error(`exit ${c}`);
+  }) as typeof process.exit;
+  try {
+    code("T\n\n## Sneaky\n");
+    code("T\n\n```\nopen fence\n");
+    code("  \n\n");
+  } finally {
+    process.exit = realExit;
+    process.stderr.write = realWrite;
+  }
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), before);
+  assert.ok(msgs.some((m) => m.includes("the --file body cannot be filed:")), msgs.join("|"));
+  filePlanFromText(repo, "T\n\n```\n## fenced\n```\n", "usage");
+  assert.match(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), /\n## fenced\n/);
+});
+
+test("tumwater plan --file files from a markdown file; stray positionals and missing paths fail", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli file forms");
+  const md = path.join(repo, "req.md");
+  fs.writeFileSync(md, "# From file\n\n- one\n- two\n");
+  const ok = await cli(repo, "plan", "--file", md);
+  assert.equal(ok.code, 0, ok.stderr);
+  assert.match(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), /### From file \([^)]*\)\n\n- one\n- two\n/);
+  assert.equal(queuedRolePrompts(repo, "feature").length, 1);
+  const stray = await cli(repo, "bug", "--file", md, "extra");
+  assert.equal(stray.code, 1);
+  assert.match(stray.stderr, /unexpected argument "extra" — with --file the entry comes from the file/);
+  const noPath = await cli(repo, "bug", "--file");
+  assert.match(noPath.stderr, /--file needs a path/);
+  const twice = await cli(repo, "bug", "--file", md, "--file", md);
+  assert.equal(twice.code, 1);
+  assert.match(twice.stderr, /--file may only be given once/);
+  const missing = await cli(repo, "bug", "--file", path.join(repo, "nope.md"));
+  assert.match(missing.stderr, /cannot read prompt file/);
+  assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
+});
