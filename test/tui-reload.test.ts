@@ -26,7 +26,7 @@ class FakeTerminal extends EventEmitter implements TuiStdin, TuiStdout {
   columns = 120;
   rawModes: boolean[] = [];
   writes: string[] = [];
-  #queue: string[] = [];
+  readonly #queue: string[] = [];
 
   setRawMode(mode: boolean): void {
     this.rawModes.push(mode);

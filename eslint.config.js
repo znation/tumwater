@@ -1,7 +1,8 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries six rules on purpose: three for promise misuse tsc cannot see, two for type spellings
-// whose meaning is not what the author read, and one for a type-only import that silently
-// stays a runtime side effect under verbatimModuleSyntax.
+// carries seven rules on purpose: three for promise misuse tsc cannot see, two for type
+// spellings whose meaning is not what the author read, one for a type-only import that silently
+// stays a runtime side effect under verbatimModuleSyntax, and one for a private member that is
+// never reassigned but is not marked `readonly`.
 //
 // Promise misuse: no-floating-promises flags an un-awaited async call, which typechecks fine
 // and silently races (33521347 dropped the await on 25 e2e waits and CI broke);
@@ -28,6 +29,10 @@
 // module stays a runtime dependency the author did not ask for; a top-level `import type`
 // removes the statement entirely. (The two adapter modules fixed for this landed as the rule
 // was enabled.)
+//
+// Immutability: prefer-readonly flags a private member that is assigned once and never
+// reassigned again, where `readonly` documents the invariant and turns a later accidental
+// reassignment into a compile error rather than a silently shared mutation.
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -55,6 +60,7 @@ export default tseslint.config(
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/prefer-readonly": "error",
     },
   },
 );

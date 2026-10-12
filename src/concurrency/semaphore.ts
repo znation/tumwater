@@ -4,7 +4,7 @@
 
 export class Semaphore {
   /** A parked waiter: its scheduling tier plus the resolver that hands it the permit. */
-  private waiters: Array<{ tier: number; resolve: () => void }> = [];
+  private readonly waiters: Array<{ tier: number; resolve: () => void }> = [];
   /** Permits currently held, tracked separately from capacity (rather than as an "available"
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
    * represent that state — it would over-admit new work after a shrink. */
