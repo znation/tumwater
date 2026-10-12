@@ -6,7 +6,49 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Edit a planned feature's or open bug's title from the TUI backlog pane, matching `tumwater plan|bug --edit <n>` and the dashboard drawer's Edit (planned 2026-10-12 by plan; sibling of the landed TUI backlog Ctrl+X cancel and Ctrl+A answer; independent of the dashboard multiline-answer plan above)
+
+**Goal.** The TUI backlog pane can cancel a selected plan or bug (Ctrl+X twice) and answer a selected question (Ctrl+A), but it cannot edit an entry. The CLI (`plan|bug --edit <n>`) and the dashboard drawer (`POST /api/backlog-edit` → `tryEditEntry`) both can. Add Ctrl+E (mnemonic **E**dit) on a selected plan or bug. It opens a prompt-line editor pre-filled with the entry's title. Enter saves the new title through the same non-exiting `tryEditEntry` core the dashboard uses, keeping the entry's body line for line and its `(planned …)`/`(reported …)` stamp. The prompt line is single-line, so this edits the title only. Body editing stays with the dashboard drawer and the CLI `--file` forms.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`, `createTuiKeys`. Mirror the Ctrl+A answer editor (`answerFor`, `answerSavedInput`/`answerSavedCursor`, `exitAnswerMode`):
+   - Add the state `let entryEditFor: { kind: "plan" | "bug"; position: number; title: string } | null = null`, plus `entryEditSavedInput`/`entryEditSavedCursor`. Add an `exitEntryEdit()` modeled on `exitAnswerMode`. Expose `entryEditFor` in the snapshot object next to `answerFor`, and add it to the snapshot type with a doc comment like `answerFor`'s.
+   - Add a new branch placed **before** the general Ctrl+E (report-window) branch. Its guard: `key.ctrl && key.name === "e"`, no other editor open, `view === roleIds.length + 1 && selectedEntry !== null`.
+     - Resolve the entry with `flat()` and clamp `sel` as the Ctrl+X branch does.
+     - A question flashes `only a plan or open bug can be edited here`.
+     - For a plan or bug, compute `kind`/`position` exactly as the Ctrl+X branch does. Settle prompt recall the way Ctrl+A does, then set `entryEditFor = { kind, position, title: picked.title }`. Pre-fill `input = stripEntryStamp(picked.title)` (import from `../../backlog/backlog-structure.js`) with the cursor at the end. Flash `editing <kind> #<n> — Enter to save, Esc to cancel`.
+     - An emptied list does nothing.
+     - Ctrl+E on the backlog pane with no selection keeps falling through to the report-window branch, unchanged.
+   - Every `!answerFor` guard, and every `answerFor` arm of the "finish or cancel … first" flash chains (the Ctrl+B branch and its siblings), gains the matching `entryEditFor` term. The edit flash reads `finish or cancel the entry edit first (Esc cancels)`. Use grep to confirm that each site carrying `answerFor` also carries `entryEditFor`.
+   - Wherever `exitAnswerMode()` runs on Ctrl+T, `exitEntryEdit()` runs too. Add an Esc branch beside the `answerFor` one: `exitEntryEdit()` and flash `edit cancelled`.
+   - Add an Enter arm beside the `answerFor` one:
+     - A whitespace-only line flashes `an entry needs a title` and stays in the editor.
+     - Otherwise, re-read `flat()` and take the entry at the target's flat index. Plans come first, so the index is `position - 1` for a plan and `plans + position - 1` for a bug. If that entry is missing or its title differs from `target.title`, treat it as moved without writing.
+     - If it matches, call `tryEditEntry(root, kind, position, target.title, input, entry.body)`. Re-reading the body at Enter keeps a concurrent body edit from being clobbered by a stale copy.
+     - On `edited`: exit the editor, keep `selectedEntry` (same position), and flash `edited <kind> #<n>: <outcome.title>`.
+     - On `gone`/`moved`: exit the editor, set `selectedEntry = null` and `entryScroll = 0`, and flash `that <kind> was already removed or moved — nothing edited`.
+     - A throw goes through `flashError` and stays in the editor.
+2. `src/ui/tui/tui-frame.ts`:
+   - Add an **optional** `entryEditFor?: { kind: "plan" | "bug"; position: number; title: string } | null` to the mode parameter of `hintLine` and `promptPrefix`. Optional so the existing test call sites in `test/tui-frame.test.ts` compile unchanged.
+   - `hintLine`: when it is set, show `[["Enter", "save title"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]`. Add `entryEditFor` to the `!mode.answerFor` condition that gates the trailing hints.
+   - Backlog view keys: insert `["Ctrl+E", "edit entry"]` after `["Ctrl+X", "cancel entry"]`.
+   - `promptPrefix`: when it is set, return the prefix `edit <kind> #<n>` in the `brand` tone.
+3. `src/ui/tui/tui.tsx`: pass `entryEditFor: s.entryEditFor` in the `mode` object built for `hintLine`/`promptPrefix`.
+4. Docs: in the README.md "Steer the project" row, extend "and the TUI's backlog pane does too, with Ctrl+X pressed twice on the selected entry" with "and edits the selected entry's title with Ctrl+E". (docs/how-it-works.md does not list the backlog pane's keys today, so it needs no change.)
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`, README.md, `test/tui-keys.test.ts`, `test/tui-frame.test.ts`.
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, modeled on `the backlog pane answers the selected open question through tryAnswerQuestion` and the `backlog Ctrl+X …` tests, against a temp repo whose PLANS.md/BUGS.md carry stamped entries with multi-line bodies:
+  - Ctrl+E on a selected bug pre-fills the stamp-stripped title. Retyping it and pressing Enter rewrites the heading with the new title, the original stamp, and a byte-identical body. The flash names `edited bug #<n>`.
+  - Ctrl+E on a selected question flashes `only a plan or open bug can be edited here` and writes nothing.
+  - Esc restores the prior prompt draft and leaves the file byte-identical.
+  - A blank title on Enter flashes `an entry needs a title` and keeps the editor open.
+  - If the entry is rewritten on disk between Ctrl+E and Enter, nothing is edited and the moved notice flashes.
+  - While the edit is open, Ctrl+B flashes `finish or cancel the entry edit first (Esc cancels)`.
+  - Ctrl+E on the backlog pane with no selection still advances the report window (existing behavior).
+- `test/tui-frame.test.ts`: `hintLine` with `entryEditFor` set shows `save title`. The backlog view's hint lists `Ctrl+E edit entry`. `promptPrefix` shows `edit plan #2`.
+- `npm run test` passes.
 
 ## Done
 
@@ -38,7 +80,6 @@ _None yet._
   - The existing stale, out-of-range, blank, non-integer, missing-title, and 409-fence assertions still pass unchanged.
 - The CLI positional `tumwater questions answer <n> "a\nb"` still folds to `a b`. Its existing test "a multi-line decision folds to one line, so no line of it can start a new section" in `test/question-commands.test.ts` passes untouched.
 - `npm run test` passes.
-
 
 ### `tumwater prompt --edit <n> --file <path>`: rewrite a queued prompt from a file (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`readPromptFileArg` in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" and "`tumwater questions answer <n> --file <path>`" plans: it touches only `parsePromptArgs`, `src/cli/help.ts`'s prompt stanza, README.md's Steer row, and prompt tests — no `src/ui`, `src/gui`, `src/backlog`, or question file; done 2026-10-12 by feature)
 
