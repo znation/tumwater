@@ -1,5 +1,5 @@
 import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
-import { removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
+import { removeLandingChange, resolveWaitStage, setLandingChangeStatus } from "./landing-slot.js";
 import { dropLanding, queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort } from "../events/events.js";
@@ -115,7 +115,16 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         foldUsage: v.foldUsage,
         runGatePi: (opts) => v.author.runGatePi(opts),
         runPi: async (w, prompt, s, cfg) => {
-          await semaphore.acquire(MERGE_TIER);
+          // A parked resolver names its wait (resolve-wait, then resolving once granted) the way
+          // a parked check does (withCheckPermit): on 2026-10-12 one waited 2.5 min for a permit
+          // with the merge queue behind it, reading as "merging". tryAcquire is acquire's own
+          // fast path for this tier (MERGE_TIER ignores the maintenance reserve).
+          if (!semaphore.tryAcquire()) {
+            const hooks = resolveWaitStage(root, v.entry.role);
+            hooks.waiting();
+            await semaphore.acquire(MERGE_TIER);
+            hooks.granted();
+          }
           try {
             return await v.author.runLandingPi(w, prompt, s, cfg);
           } finally {

@@ -31,6 +31,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { RunsPi } from "../loop/loop-pi.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased tree
  * with the project's declared check when main moved under it, fast-forward, and — when the rebase
@@ -382,15 +383,24 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   const since = await changeBaseRev(wt, ctx.mainBranch, preMergeHead);
   const change = (await commitMessage(wt, preMergeHead)) ?? "";
   const { commits, omitted } = await mainCommitsTouching(wt, since, ctx.mainBranch, remaining);
-  const pi = await ctx.runPi(
-    wt,
-    buildConflictPrompt(ctx.role, remaining, check, { change, main: commits, mainOmitted: omitted }),
-    `tumwater-${ctx.role}-${ctx.tick}-conflict`,
-    // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
-    // tolerant of latency, and edits code inside landing. Its spend still folds into the
-    // authoring role's usage — the fold belongs to the loop's wiring, not to the config.
-    resolverConfig(ctx.config),
-  );
+  // The landing cell names the resolver run, not "merging" (a no-op outside a queued landing):
+  // the run holds the merge slot, and every queued landing waits on it. Back to `merging` once it
+  // ends, whatever happened — the merge's git steps come next, or the landing ends.
+  setLandingStage(ctx.root, ctx.role, "resolving");
+  let pi: PiRunResult;
+  try {
+    pi = await ctx.runPi(
+      wt,
+      buildConflictPrompt(ctx.role, remaining, check, { change, main: commits, mainOmitted: omitted }),
+      `tumwater-${ctx.role}-${ctx.tick}-conflict`,
+      // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
+      // tolerant of latency, and edits code inside landing. Its spend still folds into the
+      // authoring role's usage — the fold belongs to the loop's wiring, not to the config.
+      resolverConfig(ctx.config),
+    );
+  } finally {
+    setLandingStage(ctx.root, ctx.role, "merging");
+  }
   if (!pi.ok || hasConflictMarkers(wt, remaining)) {
     await abortSync(wt);
     return false;

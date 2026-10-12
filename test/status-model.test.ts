@@ -505,6 +505,7 @@ test("the build-check and merging landing stages render their label and never re
     ["rebasing", "rebasing"],
     ["check-wait", "waiting for a check slot"],
     ["build-check", "build check"],
+    ["resolve-wait", "waiting to resolve conflicts"],
     ["merging", "merging"],
   ] as const) {
     const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt, stage });
@@ -534,6 +535,26 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   // No log to read (or no root): the honest stage label alone.
   const bare = loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
   assert.equal(bare, "landing 1m30s · reviewing");
+});
+
+test("the resolving landing stage carries the conflict resolver's live detail, not the review's", () => {
+  const root = tmpdir();
+  // The vet's reviewer finished; the merge's resolver then started as another gate run, and its
+  // `tumwater_run` marker reset the gate accumulator — the cell counts the resolver's turns only.
+  writePiLog(root, "clean", [
+    JSON.stringify({ type: "tumwater_run", kind: "gate", label: "review" }),
+    GATE_SESSION(root, "clean"),
+    assistantLine("the review", { tokens: 50_000 }),
+    assistantLine("VERDICT: approve", { tokens: 51_000 }),
+    JSON.stringify({ type: "tumwater_run", kind: "gate" }),
+    GATE_SESSION(root, "clean"),
+    assistantLine("resolving PLANS.md", { tokens: 12_000 }),
+    toolStart("bash", { command: "grep -n '<<<<<<<' PLANS.md" }),
+  ]);
+  const landing = { status: "landing", startedAt: Date.now() - 90_000, stage: "resolving" } as const;
+  const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, landing);
+  assert.match(phase, /^landing 1m3[01]s · resolving conflicts · turn 2 · ctx 12\.0k · bash grep/, `unexpected shape: ${phase}`);
+  assert.equal(loopPhase(freshLoopState("clean"), true, undefined, false, null, false, landing), "landing 1m30s · resolving conflicts");
 });
 
 test("a landing cell with no recorded start renders the bare `landing` head", () => {

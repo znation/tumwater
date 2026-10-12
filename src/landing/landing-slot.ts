@@ -26,11 +26,22 @@ import { consecutiveFailuresWarning } from "../text/phrases.js";
  * tip behind a repeat failure, or a stack's shared check) — and `reviewing`, the adversarial
  * reviewer's pi run, whose live turns/context/tool the dashboards read from the role's raw log;
  * `check-wait` covers any wait for a process-wide check permit (check-permit.ts) before a check
- * starts, so a queued check never reads as a running one. `merging` is the merge slot only —
- * the stack's assembly, the in-lock re-check's git steps, and the fast-forward onto main.
- * Everything else a landing does (verdict parsing, state saves) is sub-second bookkeeping
+ * starts, so a queued check never reads as a running one. `resolving` is the merge's conflict
+ * resolver (landing-merge.ts's resolveConflict) — a model run whose live detail reads like a
+ * reviewer's — and `resolve-wait` the resolver parked for its agent permit before it starts
+ * (resolveWaitStage); both used to read as `merging`, so a resolver holding the whole merge
+ * queue for minutes looked like a slow fast-forward (2026-10-12). `merging` is the merge slot's
+ * own git steps — the stack's assembly, the in-lock re-check's rebase, and the fast-forward onto
+ * main. Everything else a landing does (verdict parsing, state saves) is sub-second bookkeeping
  * between these. */
-export type LandingStage = "rebasing" | "check-wait" | "build-check" | "reviewing" | "merging";
+export type LandingStage =
+  | "rebasing"
+  | "check-wait"
+  | "build-check"
+  | "reviewing"
+  | "resolve-wait"
+  | "resolving"
+  | "merging";
 
 /** Where one change stands in the landing pipeline (land-queue speed 2c) — the per-change status
  * the marker carries, so each role's row says what the pipeline is doing with ITS change rather
@@ -204,7 +215,8 @@ export function removeLandingChange(root: string, role: string): void {
 }
 
 /** Advance a landing's stage — called by the landing path at each transition: review.ts before
- * its pre-check (`build-check`) and before its reviewer run (`reviewing`), landing-core.ts's
+ * its pre-check (`build-check`) and before its reviewer run (`reviewing`), landing-merge.ts
+ * around its conflict resolver run (`resolving`, then `merging`), landing-core.ts's
  * reviewPinnedChange once the gate returns (`merging`, whatever it decided — a finished
  * reviewer's last turns must not sit in the cell accruing a false `no pi output` flag while the
  * change waits for its merge), and landing-stack.ts around a stack's shared check. It stages
@@ -228,6 +240,18 @@ export function checkWaitStage(root: string, roles: readonly string[]): PermitWa
   return {
     waiting: () => roles.forEach((role) => setLandingStage(root, role, "check-wait")),
     granted: () => roles.forEach((role) => setLandingStage(root, role, "build-check")),
+  };
+}
+
+/** The landing cell's hooks around the merge's conflict resolver waiting for its agent permit
+ * (landing-drain.ts's merge wiring): `resolve-wait` while parked, `resolving` once the permit
+ * arrives — checkWaitStage's shape for the maxConcurrent semaphore, so a resolver queued behind
+ * busy agents never reads as one running. Called only when the permit was not free. A no-op
+ * for a role with no record, like setLandingStage. */
+export function resolveWaitStage(root: string, role: string): PermitWaitHooks {
+  return {
+    waiting: () => setLandingStage(root, role, "resolve-wait"),
+    granted: () => setLandingStage(root, role, "resolving"),
   };
 }
 

@@ -18,6 +18,7 @@ import {
   landingUsage,
   readLandingMarker,
   removeLandingChange,
+  resolveWaitStage,
   setLandingChangeStatus,
   setLandingStage,
   writeLandingMarker,
@@ -293,6 +294,22 @@ test("checkWaitStage shows check-wait while parked, then build-check once the pe
   assert.deepEqual(stages(), ["alpha=check-wait", "beta=check-wait"]);
   hooks.granted();
   assert.deepEqual(stages(), ["alpha=build-check", "beta=build-check"]);
+});
+
+// The merge's conflict resolver parked for its agent permit names that wait, then resolving once
+// granted — checkWaitStage's shape, for one role — so neither reads as the merge's git steps.
+test("resolveWaitStage shows resolve-wait while parked, then resolving once the permit arrives", () => {
+  const root = makeRepo();
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
+  const stages = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
+  const hooks = resolveWaitStage(root, "alpha");
+  hooks.waiting();
+  assert.deepEqual(stages(), ["alpha=resolve-wait", "beta=rebasing"], "only the resolving change's record moves");
+  hooks.granted();
+  assert.deepEqual(stages(), ["alpha=resolving", "beta=rebasing"]);
+  resolveWaitStage(root, "delta").waiting(); // no record: a no-op
+  assert.deepEqual(stages(), ["alpha=resolving", "beta=rebasing"]);
 });
 
 // The marker (BUGS.md 2026-09-23) carries one record per change the pipeline holds: each vet

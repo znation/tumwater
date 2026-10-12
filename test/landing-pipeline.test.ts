@@ -253,6 +253,13 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
     // one, runs at once and leaves its mark.
     await waitFor(() => ctx.semaphore.waiting === 2 || fs.existsSync(order), "alpha's resolver to reach the permit");
     assert.equal(fs.existsSync(order), false, "the resolver waits for a permit like any pi run");
+    // The landing cell names the parked resolver's wait — not "merging" (2026-10-12: a resolver
+    // parked 2.5 min with the merge queue behind it read as a slow fast-forward).
+    assert.equal(
+      landingChanges(readLandingMarker(root)!).find((c) => c.role === "alpha")?.stage,
+      "resolve-wait",
+      "the parked resolver's stage",
+    );
 
     ctx.semaphore.release(); // the tick ends: the merge's resolver is first in line
     held = false;
@@ -305,6 +312,13 @@ test("a change settled early in a batch writes back before a slower batch-mate's
     await waitFor(() => pipeline.vetted.size === 2, "both changes to be vetted", 60_000);
     pipeline.merge = null;
     await waitForFile(started, 60_000);
+    // The running resolver names itself in beta's landing cell: its minutes are the resolver's,
+    // not the merge's git steps (2026-10-12).
+    assert.equal(
+      landingChanges(readLandingMarker(root)!).find((c) => c.role === "beta")?.stage,
+      "resolving",
+      "the running resolver's stage",
+    );
 
     assert.equal(
       loadLoopState(root, "alpha").consecutiveErrors,

@@ -50,6 +50,8 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
   "check-wait": "waiting for a check slot",
   "build-check": "build check",
   reviewing: "reviewing",
+  "resolve-wait": "waiting to resolve conflicts",
+  resolving: "resolving conflicts",
   merging: "merging",
 };
 
@@ -102,10 +104,11 @@ export function idleClaimText(
  * start, never another change's), never the authoring tick's,
  * and its stage scopes the cell to the phase the landing is actually in: `reviewing` carries
  * the reviewer run's live detail exactly as a reviewing tick does (`landing 3m · reviewing ·
- * turn 2 · ctx 18.0k · bash npm test`); `build-check` and `merging` render just the stage
- * (`landing 1m · build check`) and never read the log — no reviewer is running then, and the
- * log's newest run is typically a finished one (the author's, a previous review) whose turns
- * are stale and whose silence would read as a false stall; a record with no stage (an older
+ * turn 2 · ctx 18.0k · bash npm test`), and `resolving` the conflict resolver's the same way;
+ * `build-check`, `resolve-wait` and `merging` render just the stage (`landing 1m · build
+ * check`) and never read the log — no reviewer or resolver is running then, and the log's
+ * newest run is typically a finished one (the author's, a previous review) whose turns are
+ * stale and whose silence would read as a false stall; a record with no stage (an older
  * writer mid-upgrade) keeps the bare elapsed label. */
 export function loopPhase(
   s: LoopState,
@@ -131,10 +134,12 @@ export function loopPhase(
     const head = landing.startedAt === undefined ? "landing" : `landing ${duration(Date.now() - landing.startedAt)}`;
     if (!landing.stage) return head;
     const staged = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;
-    if (landing.stage !== "reviewing") return staged;
-    // The reviewer writes the role's own log from its leased pooled slot: the GATE accumulator,
+    if (landing.stage !== "reviewing" && landing.stage !== "resolving") return staged;
+    // The reviewer writes the role's own log from its leased pooled slot, and the conflict
+    // resolver from the merge worktree, both as gate runs (loop-pi.ts): the GATE accumulator,
     // read here rather than taken from `live` — the landing role's tick has ended, so the
-    // frame's per-running-loop tail is not this run's (callers pass null for it).
+    // frame's per-running-loop tail is not this run's (callers pass null for it). Each run's
+    // `tumwater_run` marker resets that accumulator, so neither shows the other's counts.
     return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
   }
   if (s.running) {
