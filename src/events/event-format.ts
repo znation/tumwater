@@ -322,6 +322,9 @@ export function eventMessage(e: HarnessEvent): string {
       return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and ticks again`;
+    case "main_red_hold":
+      // The message already names the SHA, script, and consequence; the problem tone comes from PROBLEM_EVENTS.
+      return textOr(e.message);
     case "maintenance_quota_hold":
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
       // keeping maintenance landings in proportion to work. Names the window's counts so the

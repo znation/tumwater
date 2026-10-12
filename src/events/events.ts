@@ -70,6 +70,7 @@ export interface HarnessEvent {
     | "role_cap_warning" // the role's local-day spend crossed 80% of its maxDailyCostUsdPerRole cap while it is still ticking (src/gates/role-cap-gates.ts); carries role, spentUsd, capUsd
     | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd
     | "role_cap_resumed" // the cap was raised/removed or a new local day started; that role ticks again (carries role)
+    | "main_red_hold" // main's declared check is verified red; warnMainRedOnce (src/baseline/main-red.ts) logs it once per process per newly verified red main SHA, and every code loop skips authoring until main is green; carries sha, script, message
     | "maintenance_quota_hold" // code-maintenance landings in the rolling 24 h window reached the allowance (plans/work-ratio.md, part 1b/4, src/gates/maintenance-quota.ts); the enabled maintenance loops start no new ticks until it re-opens; carries work, maint, allowance
     | "maintenance_quota_resumed" // the rolling window re-opened below the allowance; the held maintenance loops tick again; carries work, maint, allowance
     | "bootstrap_complete" // the bootstrap gate's plan target was reached (plans/work-ratio.md, part 2/2); the latch .tumwater/bootstrap-complete.json is written and the held maintenance loops are admitted; carries plansDone, untilPlansDone

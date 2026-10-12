@@ -21,12 +21,12 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
  * instead of burning runs that are guaranteed to fail. Split out of loop.ts — which keeps the
  * tick lifecycle around it — because this is a self-contained policy with its own per-process
- * state (one harness-level warning per newly-discovered red SHA) and its own event contract; what
+ * state (one harness-level `main_red_hold` event per newly-discovered red SHA) and its own event contract; what
  * it borrows from the loop is identity and the role's worktree, and it consumes
  * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
  * which stays unaware of ticks. */
 
-/** The last main SHA for which this process logged a red-main warning (the baseline check):
+/** The last main SHA for which this process logged a red-main hold event (the baseline check):
  * one harness-level warning per newly-discovered red SHA, not one per blocked role's tick —
  * module-level so every runner in the fleet shares it. A restart re-logs once: the cache is
  * cold then too, and an operator restarting into a still-red main should see why nothing lands. */
@@ -40,17 +40,19 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
   return `${mainRedPhrase(red.sha)} (${red.script}${firstLine ? `: ${firstLine}` : ""}) — ${action}`;
 }
 
-/** Log the fleet-wide red-main warning for `red`'s SHA at most once per process. Module-level
+/** Log the fleet-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at most once per process. Module-level
  * (with lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes
  * the red first logs it, the other stays silent. */
 function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
-  warnEventBestEffort(
-    root,
-    "harness",
-    redMainMessage(red, "code merges blocked until main is green"),
-  );
+  logEventBestEffort(root, {
+    loop: "harness",
+    type: "main_red_hold",
+    sha: red.sha,
+    script: red.script,
+    message: redMainMessage(red, "code merges blocked until main is green"),
+  });
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role

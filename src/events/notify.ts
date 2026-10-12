@@ -13,7 +13,7 @@ import { childEnv } from "../process/process.js";
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
  * only sees events THIS process logs. Every allowlisted type but `supervisor_exit` is logged by
  * the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
- * role-cap-gates.ts and disk-gate.ts, src/fleet/fleet-polls.ts, landing-slot.ts, landing-questions.ts,
+ * role-cap-gates.ts and disk-gate.ts, src/baseline/main-red.ts, src/fleet/fleet-polls.ts, landing-slot.ts, landing-questions.ts,
  * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
  * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyFleetDown; events appended by
  * operator CLI commands go straight to the file and are out of scope by design.
@@ -31,6 +31,7 @@ export const NOTIFY_EVENT_TYPES = [
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
+  "main_red_hold", // main's own check is red — every code loop is held until a fix lands
   "land_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
   "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it

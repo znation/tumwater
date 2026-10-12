@@ -51,6 +51,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "role_streak_paused",
       "role_cap_paused",
       "disk_low",
+      "main_red_hold",
       "land_failed",
       "restart_blocked",
       "question_posted",
@@ -114,6 +115,23 @@ test("a posted question spawns the notify command once with the posting role and
     assert.equal(line.loop, "feature");
     assert.equal(line.message, formatEvent(event));
     assert.ok(line.message.includes("question posted: Which storage?"), `unexpected message: ${line.message}`);
+  } finally {
+    notifier.dispose();
+  }
+});
+
+test("a main_red_hold spawns the notify command once with the harness loop and the red-main line", async () => {
+  const root = tmpdir();
+  const out = path.join(root, "notify-out.txt");
+  const notifier = newNotifier(root);
+  notifier.update({ notify: recorderCommand(out) });
+  try {
+    logEvent(root, { loop: "harness", type: "main_red_hold", sha: "abc1234", script: "test", message: "main abc1234 is red (test: x) — code merges blocked until main is green" });
+    await waitFor(() => recordedLines(out).length === 1, "one recorded line");
+    const line = parseLine(recordedLines(out)[0] ?? "");
+    assert.equal(line.type, "main_red_hold");
+    assert.equal(line.loop, "harness");
+    assert.ok(line.message.includes(" main ") && line.message.includes("is red"), `unexpected message: ${line.message}`);
   } finally {
     notifier.dispose();
   }

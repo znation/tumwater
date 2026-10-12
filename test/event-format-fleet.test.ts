@@ -341,6 +341,13 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   assert.match(rlResumed, /429 hold lifted — role loops on every provider tick again$/, `rate-limit resumed line: ${rlResumed}`);
 });
 
+test("formatEvent renders main_red_hold as its message with no warning prefix", () => {
+  const message = "main abc1234 is red (test: x) — code merges blocked until main is green";
+  const line = formatEvent({ ts: 0, type: "main_red_hold", loop: "harness", message } as never);
+  assert.ok(line.endsWith(message), `line: ${line}`);
+  assert.ok(!line.includes("warning:"), `line: ${line}`);
+});
+
 // The disk-floor events (the gate sampler's disk_low/disk_ok/disk_reclaim) render each GB field
 // one-decimal. A torn or hand-edited event whose value is missing or non-numeric must read "0.0",
 // never "NaN", for freeGB, holdGB, and freedGB alike.

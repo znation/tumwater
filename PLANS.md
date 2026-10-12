@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The notify hook pages when main goes red: the once-per-SHA red-main warning becomes a typed `main_red_hold` event on the allowlist (planned 2026-10-12 by plan; independent of every other entry. When main's declared check fails, `mainRedGate` in `src/baseline/main-red.ts` holds every code loop (each tick ends `main_red`), and no change merges until a bugfix lands. This is the fleet's widest stop after `supervisor_exit`. Today `warnMainRedOnce` logs it as a generic `warning` on loop `harness` through `warnEventBestEffort`. `NOTIFY_EVENT_TYPES` in `src/events/notify.ts` matches on event type and deliberately leaves `"warning"` off, so a red main pages nobody. The operator finds out from the dashboard's "main is red" alert or from `tumwater doctor`'s "main red" row, and only if they happen to look. Stands alone: no scheduler, gate, snapshot, GUI, or TUI change)
+_None yet._
+
+## Done
+
+### The notify hook pages when main goes red: the once-per-SHA red-main warning becomes a typed `main_red_hold` event on the allowlist (planned 2026-10-12 by plan; independent of every other entry. When main's declared check fails, `mainRedGate` in `src/baseline/main-red.ts` holds every code loop (each tick ends `main_red`), and no change merges until a bugfix lands. This is the fleet's widest stop after `supervisor_exit`. Today `warnMainRedOnce` logs it as a generic `warning` on loop `harness` through `warnEventBestEffort`. `NOTIFY_EVENT_TYPES` in `src/events/notify.ts` matches on event type and deliberately leaves `"warning"` off, so a red main pages nobody. The operator finds out from the dashboard's "main is red" alert or from `tumwater doctor`'s "main red" row, and only if they happen to look. Stands alone: no scheduler, gate, snapshot, GUI, or TUI change) (done 2026-10-12)
 
 **Goal.** The first time this process sees a verified-red main SHA, it logs one typed `main_red_hold` event, and the configured `notify` command pages it. The feed line keeps today's wording. It still fires once per red SHA, and never for an unverified or skipped baseline.
 
@@ -39,8 +43,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The failure digest's warning section (`messageSection(current, "warning", …)` in `src/failure/failure-data.ts`) no longer lists red-main notices. This is intended: those ticks are already itemized in the error section via `main_red` outcomes (INV-C1). Make no change there.
 - README's notify sentence names main going red.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` names a red main: a "main red" check that warns on code loops held by the red-main gate (planned 2026-10-12 by plan; independent of the waiting "Idle loops say why they are idle, part 2/2") — done 2026-10-12
 

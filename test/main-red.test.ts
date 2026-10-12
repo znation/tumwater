@@ -6,7 +6,7 @@ import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/baseline/
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
-import { eventsOfType, harnessWarnings, warningEvents } from "./fixtures/log-fixtures.js";
+import { eventsOfType, mainRedHolds, warningEvents } from "./fixtures/log-fixtures.js";
 import { baselineFixture, fakeNpm, runsOf } from "./fixtures/loop-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
@@ -83,11 +83,14 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     assert.equal(check.status, "failed");
     assert.equal(check.script, "test");
 
-    const warnings = warningEvents(events);
-    assert.equal(warnings.length, 1, "one harness-level warning for the newly-discovered red SHA");
-    const warning = warnings[0];
+    const holds = mainRedHolds(root);
+    assert.equal(holds.length, 1, "one main_red_hold for the newly-discovered red SHA");
+    const warning = holds[0];
     assert.ok(warning);
     assert.equal(warning.loop, "harness", "fleet-wide, not per role");
+    assert.equal(warning.sha, sha);
+    assert.equal(warning.script, "test");
+    assert.equal(warningEvents(events).length, 0, "no generic warning for the red SHA");
     const message = warning as { message?: string };
     assert.ok(message.message?.includes(shortSha(sha)), `warning names the red SHA: ${message.message}`);
     assert.ok(message.message?.includes("test"), "warning names the failing script");
@@ -108,8 +111,8 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
     const again = await mainRedGate(root, "feature", wt);
     assert.equal(again?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
-    const warnings = harnessWarnings(root);
-    assert.equal(warnings.length, 1, "one harness warning for the red SHA, not one per blocked tick");
+    const holds = mainRedHolds(root);
+    assert.equal(holds.length, 1, "one main_red_hold for the red SHA, not one per blocked tick");
   } finally {
     restore();
   }
@@ -221,8 +224,9 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     assert.equal(checks[0]?.loop, "bugfix");
     assert.equal(checks[0]?.scope, "baseline");
     assert.equal(checks[0]?.status, "failed");
-    const warnings = events.filter((e) => e.type === "warning" && e.loop === "harness");
-    assert.equal(warnings.length, 1, "one fleet-wide warning for the red SHA");
+    const holds = mainRedHolds(root);
+    assert.equal(holds.length, 1, "one fleet-wide main_red_hold for the red SHA");
+    assert.equal(holds[0]?.loop, "harness");
 
     // A blocked role on the same SHA still reads the cached red and does NOT add a second
     // warning: the healer's check and the gate share the once-per-SHA guard.
@@ -230,9 +234,9 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     assert.equal(blocked?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the cached verdict was reused — no second run");
     assert.equal(
-      harnessWarnings(root).length,
+      mainRedHolds(root).length,
       1,
-      "the healer's check did not add a second warning",
+      "the healer's check did not add a second main_red_hold",
     );
   } finally {
     restore();
@@ -368,9 +372,9 @@ test("mainTipVerdict reports red with the fleet-wide warning, once per SHA", asy
     assert.ok(verdict.status === "red");
     assert.equal(verdict.status === "red" ? verdict.sha : "", mainSha(root));
     const sha = mainSha(root);
-    const warnings = harnessWarnings(root);
-    assert.equal(warnings.length, 1, "one harness-level warning for the newly-discovered red SHA");
-    const message = warnings[0] as { message?: string } | undefined;
+    const holds = mainRedHolds(root);
+    assert.equal(holds.length, 1, "one main_red_hold for the newly-discovered red SHA");
+    const message = holds[0] as { message?: string } | undefined;
     assert.match(message?.message ?? "", new RegExp(shortSha(sha)));
     assert.match(message?.message ?? "", /tip-failure/);
 
@@ -379,7 +383,7 @@ test("mainTipVerdict reports red with the fleet-wide warning, once per SHA", asy
     const again = await mainTipVerdict(root, "feature", "main", defaultConfig());
     assert.ok(again.status === "red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA");
-    assert.equal(harnessWarnings(root).length, 1);
+    assert.equal(mainRedHolds(root).length, 1);
   } finally {
     restore();
   }

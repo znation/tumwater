@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
-import { eventsOfType, harnessWarnings } from "./fixtures/log-fixtures.js";
+import { eventsOfType, mainRedHolds } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
@@ -65,8 +65,8 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     assert.equal(checks[0]!.loop, "feature");
     assert.ok(Number(checks[0]!.durationMs) >= 0);
 
-    // Exactly one harness-level warning for the red SHA: script name + clipped first failure line.
-    const warnings = harnessWarnings(repo);
+    // Exactly one harness-level main_red_hold for the red SHA: script name + clipped first failure line.
+    const warnings = mainRedHolds(repo);
     assert.equal(warnings.length, 1);
     const message = String(warnings[0]?.message ?? "");
     assert.match(message, /is red \(test: baseline-failure-line\)/);
@@ -166,7 +166,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       assert.equal(checks[0]!.loop, "bugfix");
       assert.equal(checks[0]!.scope, "baseline");
       assert.equal(checks[0]!.status, "failed");
-      assert.equal(harnessWarnings(repo).length, 1);
+      assert.equal(mainRedHolds(repo).length, 1);
     },
   );
 });
@@ -254,8 +254,8 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
 
     // No red-main block event: the harness-level "is red … blocked" warning is for a VERIFIED
     // red SHA only — an unverifiable main must not announce itself as red.
-    const harnessEvents = harnessWarnings(repo);
-    assert.equal(harnessEvents.length, 0, `no verified-red warning for an unverified main:\n${JSON.stringify(harnessEvents)}`);
+    const harnessEvents = mainRedHolds(repo);
+    assert.equal(harnessEvents.length, 0, `no main_red_hold for an unverified main:\n${JSON.stringify(harnessEvents)}`);
   } finally {
     restorePath();
   }

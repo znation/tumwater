@@ -320,9 +320,10 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     // run.
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:failed"]);
     const warnings = warningMessagesOf(events);
+    const holds = eventsOfType(root, "main_red_hold").map((e) => String(e.message));
     assert.ok(
-      warnings.some((m) => m.startsWith(`main ${shortSha(movedMainSha)} is red (build: error TS2345: boom)`)),
-      `the fleet-wide red-main warning fires; got: ${JSON.stringify(warnings)}`,
+      holds.some((m) => m.startsWith(`main ${shortSha(movedMainSha)} is red (build: error TS2345: boom)`)),
+      `the fleet-wide main_red_hold fires; got: ${JSON.stringify(holds)}`,
     );
     assert.ok(
       warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(movedMainSha)} is red — not this change's failure; landing kept`),

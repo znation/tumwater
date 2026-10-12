@@ -100,7 +100,7 @@ outputs once it has sat unused that long, whatever the free space; 0 disables), 
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, a role's own cap warning or cap pause, low disk
 space holding new work, a claude subscription window nearing its limit or holding the claude
-seams, an error-streak breaker trip, a failed landing, a blocked restart, a posted question, the
+seams, an error-streak breaker trip, main's own check going red, a failed landing, a blocked restart, a posted question, the
 fleet going down — the command gets
 `TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment;
 verify it with `tumwater notify --test`; a hook that exits nonzero logs a warning).
