@@ -45,6 +45,8 @@ import {
   submitRolePromptAndWake,
 } from "../../operator/operator-intent.js";
 import { errorMessage } from "../../text/text.js";
+import { saveRoleNote } from "../../agent/role-notes-write.js";
+import { roleNotesPath } from "../../paths.js";
 import { fleetPausePhrase, fleetResumePhrase } from "../../text/phrases.js";
 import { usdCap } from "../../text/format.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
@@ -449,6 +451,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
   // so cycling back into the view always starts at today's heading list.
   let selectedEntry: number | null = null;
+  /** The role whose notebook a second Ctrl+X would clear, null once any other key lands. */
+  let notesClearArmed: string | null = null;
   let cancelArmed: { kind: "plan" | "bug"; position: number; title: string } | null = null;
   // The Queued pane's row selection (null = list mode): the index into queuedRows of the
   // prompt shown in full. Cleared on every Ctrl+T, like selectedEntry, so cycling back into
@@ -700,9 +704,12 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   };
 
   const handleKey = (str: string | undefined, key: { ctrl?: boolean; name?: string }): void => {
-    // Every key starts disarmed; only the backlog Ctrl+X branch reads `armed`.
+    // Every key starts disarmed; only the backlog Ctrl+X branch reads `armed` and only the
+    // notebook Ctrl+X branch reads `armedNotes`.
     const armed = cancelArmed;
     cancelArmed = null;
+    const armedNotes = notesClearArmed;
+    notesClearArmed = null;
     if (key.ctrl && key.name === "d") {
       deps.quit();
       return;
@@ -1224,6 +1231,29 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // re-filters the rows now and resets the scroll so the changed body re-enters at its head.
       historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
       refreshPaneCache("history");
+      deps.requestRender();
+      return;
+    }
+    if (
+      key.ctrl && key.name === "x" && noteMode &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !pauseEditMode && !queuedEditFor && !answerFor && !entryEditFor &&
+      view >= 1 && view <= roleIds.length
+    ) {
+      // Ctrl+X twice clears the viewed loop's notebook through the writer the CLI's
+      // `--clear-notes` and the dashboard drawer share, then re-renders the notebook view.
+      const role = roleIds[view - 1]!;
+      if (armedNotes === role) {
+        try {
+          flashMessage(`${role}: ${saveRoleNote(roleNotesPath(root, role), "")}`);
+          noteCache = roleInspectMarkdown(root, role);
+          paneScroll = 0;
+        } catch (err) {
+          flashError(err);
+        }
+      } else {
+        notesClearArmed = role;
+        flashMessage(`press Ctrl+X again to clear ${role}'s notebook — any other key keeps it`);
+      }
       deps.requestRender();
       return;
     }

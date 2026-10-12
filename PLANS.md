@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Clear a loop's notebook from the TUI's notebook view: Ctrl+X pressed twice, matching `tumwater role <id> --clear-notes` and the dashboard drawer's Clear (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes` branch in `src/cli/cli-query-commands.ts`), the landed dashboard drawer notebook Edit/Clear (`POST /api/role-notes` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI notebook view (Ctrl+N, `noteMode`/`noteCache` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). All three surfaces write through `saveRoleNote` in `src/agent/role-notes-write.ts`. Today the TUI's notebook view is read-only, so an operator who sees a stale or wrong note there has to switch to a second terminal to drop it. Replacing a notebook's text stays a CLI and dashboard job, because the TUI's prompt line holds one line and a notebook is multiline Markdown up to 4 KB. Independent of everything else: no `src/gui`, `src/ui/gui`, `src/cli`, or `src/agent` file changes)
+_None yet._
+
+## Done
+
+### Clear a loop's notebook from the TUI's notebook view: Ctrl+X pressed twice, matching `tumwater role <id> --clear-notes` and the dashboard drawer's Clear (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes` branch in `src/cli/cli-query-commands.ts`), the landed dashboard drawer notebook Edit/Clear (`POST /api/role-notes` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI notebook view (Ctrl+N, `noteMode`/`noteCache` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). All three surfaces write through `saveRoleNote` in `src/agent/role-notes-write.ts`. Today the TUI's notebook view is read-only, so an operator who sees a stale or wrong note there has to switch to a second terminal to drop it. Replacing a notebook's text stays a CLI and dashboard job, because the TUI's prompt line holds one line and a notebook is multiline Markdown up to 4 KB. Independent of everything else: no `src/gui`, `src/ui/gui`, `src/cli`, or `src/agent` file changes; done 2026-10-12)
 
 **Goal.** On a loop's transcript view with the notebook step shown (Ctrl+N once), Ctrl+X arms a clear and a second Ctrl+X clears that loop's notebook. The arm-then-confirm pattern matches the backlog pane's Ctrl+X cancel. The pane then re-renders with the "none yet" notebook placeholder.
 
@@ -29,8 +33,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - In the same file, a test that Ctrl+X on the live transcript (notebook step not shown) leaves the note file unchanged.
 - `test/tui-frame.test.ts`: the existing exact-string `hint({ … note: true, change: false })` assertion is updated to include `Ctrl+X clear notebook` after `Ctrl+N change`. The `note: false` transcript and `change: true` assertions stay unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### Schedule or cancel one loop's wake from the TUI: Ctrl+W on a transcript opens a wake editor, matching `tumwater wake <role> --in <duration>` / `--cancel` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in`/`--cancel` (`requestWake`/`cancelWakes` in `src/operator/operator-intent.ts`), the dashboard drawer's "Wake later…" and cancel, and the TUI's per-loop Ctrl+P duration editor (`parseRolePauseInput` in `src/ui/tui/tui-input.ts`). Today the TUI's Ctrl+W can only wake the viewed loop at once (`flashMessage(requestWake(root, [role]))` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). It cannot schedule a wake or drop one, though every other surface can. Independent of the landed status-table wake marker: no `src/ui/status-render.ts` or `src/ui/badges.ts` change) — done 2026-10-12
 

@@ -366,7 +366,7 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   paused-roles marker's one shared field, as with the CLI — and on a paused loop resumes it at
   once, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` opens a wake editor (empty
   wakes it now, a duration like `2h` schedules the wake, `cancel` drops its scheduled wakes), `Ctrl+N` cycles the pane live transcript → notebook → change and back: the
-  notebook step is a read-only view of the loop's notebook and next tick's assembled prompt
+  notebook step shows the loop's notebook and next tick's assembled prompt, and `Ctrl+X` pressed twice there clears the notebook (as `tumwater role <id> --clear-notes` does)
   (the same two things the dashboard drawer shows; the tab strip reads Notebook and PgUp/PgDn
   page it), and the change step is the loop's collected unlanded work — branch, commits ahead
   of main, the ahead-of-main patch, and its dirty files and uncommitted patch — the same

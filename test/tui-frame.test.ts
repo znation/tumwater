@@ -118,7 +118,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
   ); // the notebook's next step is the change view
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),

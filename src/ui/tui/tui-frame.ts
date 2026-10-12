@@ -95,7 +95,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
-    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notebook"], ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
+    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notebook"], ...(view.note ? [["Ctrl+X", "clear notebook"] as [string, string]] : []), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["Ctrl+X", "cancel entry"], ["Ctrl+E", "edit entry"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];

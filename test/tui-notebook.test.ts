@@ -96,3 +96,44 @@ test("PgUp/PgDn page the notebook body and clamp at both ends", async () => {
     assert.equal(tui.lastFrame(), tail);
   });
 });
+
+test("Ctrl+X twice in the notebook view clears the loop's notebook; the first press only arms", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "stale note\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "n", { ctrl: true });
+    assert.match(tui.lastFrame(), /Ctrl\+X clear notebook/);
+    tui.key(undefined, "x", { ctrl: true });
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "stale note\n");
+    assert.match(tui.lastFrame(), /press Ctrl\+X again/);
+    tui.key(undefined, "x", { ctrl: true });
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "");
+    assert.match(tui.lastFrame(), /notebook cleared/);
+    assert.match(tui.lastFrame(), /_\(none yet — the role's own earlier ticks write it/);
+  });
+});
+
+test("another key between the two Ctrl+X presses disarms the notebook clear", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "keep me\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "n", { ctrl: true });
+    tui.key(undefined, "x", { ctrl: true });
+    tui.key(undefined, "pagedown");
+    tui.key(undefined, "x", { ctrl: true });
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+  });
+});
+
+test("Ctrl+X on the live transcript leaves the notebook alone", async () => {
+  const repo = await makeTuiRepo();
+  seedNote(repo, "clean", "keep me\n");
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "x", { ctrl: true });
+    tui.key(undefined, "x", { ctrl: true });
+    assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "keep me\n");
+  });
+});
