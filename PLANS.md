@@ -6,7 +6,39 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### File a new plan request or bug from the TUI backlog pane: Ctrl+N opens a one-line title editor, matching `tumwater plan|bug "<title>"` and the dashboard's New form (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug` (`fileAndAnnounce` in `src/backlog/backlog-write.ts`), the landed dashboard New form (`handleBacklogFile` over `POST /api/backlog-file` in `src/gui/gui-endpoint-commands.ts`), and the landed TUI backlog pane's Ctrl+X cancel, Ctrl+E title edit, and Ctrl+A answer (`createTuiKeys`, `src/ui/tui/tui-keys.ts`). Today the TUI pane can cancel, retitle, and answer entries, but it cannot file a new one, so "file a bug about what I just saw" means switching to a second terminal. Only a title can be filed here: the prompt line holds one line, so a multiline body stays a CLI (`--file`) and dashboard job. No `src/gui`, `src/ui/gui`, `src/cli`, or `src/backlog` file changes)
+
+**Goal.** On the Backlog view (`view === roleIds.length + 1`), Ctrl+N opens the prompt line as a "new plan" title editor, and Ctrl+N again inside that editor switches it to "new bug" (and back). Enter files the entry and wakes its loop, exactly as `handleBacklogFile` does with an empty body. Esc cancels and writes nothing.
+
+**Approach.**
+- Reuse the existing title editor and add no new mode, so the editor-mode guards at their ~30 sites stay untouched. Widen `entryEditFor`'s type from `{ kind: "plan" | "bug"; position: number; title: string }` to `position: number | null`, where `null` means "filing a new entry" (and `title` is `""`). Change it in three places: `TuiKeyState.entryEditFor` (its doc comment must name the null case), the local `let entryEditFor` in `createTuiKeys`, and the `mode` parameter types of `hintLine` and `promptPrefix` in `src/ui/tui/tui-frame.ts`. Then grep `entryEditFor` across `src/ui/tui` (including `tui.tsx`, which only forwards it) to confirm no other reader does arithmetic on `position`.
+- `src/ui/tui/tui-keys.ts`, the `key.ctrl && key.name === "n"` block in `handleKey`: put two branches at its top, ahead of the History-view branch.
+  1. `if (entryEditFor !== null && entryEditFor.position === null)`: flip `entryEditFor.kind` (assign a new object, `{ ...entryEditFor, kind: other }`), flash `new ${kind} — Enter to file, Ctrl+N switches to ${other}, Esc cancels`, then `deps.requestRender(); return;`.
+  2. `if (view === roleIds.length + 1 && <the same editor-mode guard the Ctrl+E title-edit branch uses>)`: save the prompt the way Ctrl+E does (`settlePromptRecall(promptHistory, input, cursor)` into `entryEditSavedInput`/`entryEditSavedCursor`), set `entryEditFor = { kind: "plan", position: null, title: "" }`, `input = ""`, `cursor = 0`, flash `new plan — Enter to file, Ctrl+N switches to bug, Esc cancels`, then render and return. This works with or without a selected entry.
+  With any other editor open, Ctrl+N still reaches the existing transcript guard and returns, as it does today.
+- The Enter handler's `else if (entryEditFor)` branch: when `target.position === null`, take a new path before the existing title-edit code.
+  - A blank `input.trim()` flashes "an entry needs a title" and stays open (same wording as the edit path).
+  - Otherwise: `const { role, wakeText } = OPERATOR_FILE_KINDS[target.kind]; const problem = promptLengthProblem(wakeText(collapseWhitespace(input)), role);`. A problem flashes and stays open with nothing written (the check `handleBacklogFile` runs before writing).
+  - Otherwise, inside a try/catch with `flashError(err)` that stays open on a throw: `const filed = fileEntryWithBody(root, target.kind, input, ""); submitRolePromptAndWake(root, role, wakeText(filed.title)); exitEntryEdit(); flashMessage(\`filed ${target.kind}: ${filed.title} — woke ${role}\`)`.
+  - Imports: `fileEntryWithBody` and `OPERATOR_FILE_KINDS` join the existing `../../backlog/backlog-write.js` import. Add `promptLengthProblem` from `../../inbox/inbox-submit.js` (merge with the existing `submitPrompt` import) and `collapseWhitespace` from `../../text/text.js` (merge with `errorMessage`). `submitRolePromptAndWake` is already imported.
+- Esc (`key.name === "escape" && entryEditFor`) keeps calling `exitEntryEdit()`. Flash "new entry cancelled" when `position === null`, and keep "edit cancelled" otherwise.
+- `src/ui/tui/tui-frame.ts`:
+  - `promptPrefix`: when `mode.entryEditFor.position === null`, render `new ${kind}` in place of `edit ${kind} #${position}`.
+  - `hintLine`: when the new-entry editor is open, show `[["Enter", \`file ${kind}\`], ["Ctrl+N", \`switch to ${other}\`], ["Esc", "cancel"], ["Ctrl+D", "quit"]]`. The edit form keeps `Enter save title`.
+  - The `view.kind === "backlog"` list hint gains `["Ctrl+N", "new plan/bug"]` after `["Ctrl+E", "edit entry"]`.
+- README.md "Steer the project" row: extend "the TUI's backlog pane does too, with Ctrl+X pressed twice on the selected entry (Ctrl+E edits its title)" so the parenthetical also says Ctrl+N files a new plan or bug by title and wakes its loop. Before writing, check with grep that `docs/how-it-works.md` documents none of the backlog pane's keys (it lists only the Backlog view's name today); if so, it needs no change. `src/cli/help.ts` documents no TUI keys.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `test/tui-keys.test.ts`, `test/tui-frame.test.ts`, README.md.
+
+**Acceptance criteria.**
+- `test/tui-keys.test.ts`, using `entryEditRig` (it starts on the Backlog view):
+  - Ctrl+N gives `state().entryEditFor` equal to `{ kind: "plan", position: null, title: "" }` and an empty input. Typing a title and pressing Enter appends a `### <title> (` heading under PLANS.md's `## Planned` (read back from the file), clears `entryEditFor`, flashes `filed plan: <title> — woke feature`, and queues a prompt for `feature` containing the title. Check the queue with the same queued-prompt reader the existing TUI prompt-submit tests use (find it by grep before writing).
+  - Ctrl+N twice and then Enter files under BUGS.md's `## Open` and wakes `bugfix`.
+  - A blank title flashes "an entry needs a title" and leaves both files unchanged with the editor still open. Esc restores the saved draft, flashes "new entry cancelled", and writes nothing.
+  - Ctrl+N on a non-Backlog view (for example Activity, view 0) leaves `entryEditFor` null.
+- The existing `backlog Ctrl+E …` tests pass unchanged, which shows the edit path is untouched.
+- `test/tui-frame.test.ts`: `promptPrefix` with `entryEditFor: { kind: "bug", position: null, title: "" }` renders `new bug › `, and `hintLine` for it matches `/Enter file bug/` and `/Ctrl\+N switch to plan/`. The existing `assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+E edit entry · Ctrl\+A answer question · …/)` breaks once the new pair is inserted. Update it to expect `Ctrl\+N new plan\/bug` between `Ctrl\+E edit entry` and `Ctrl\+A answer question`.
+- `npm run test` passes.
 
 ## Done
 
