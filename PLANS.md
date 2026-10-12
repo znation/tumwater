@@ -74,6 +74,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/gui-client-fleet.test.ts`: the Questions-tab Answer button carries `data-file='questions' data-index='<i>'` rather than `data-act='answer'`.
 - `npm run test` is green.
 
+### Show the Claude window's usage as a meter in the dashboard, and say when usage is unreported (planned 2026-10-12 by director from a user request; the TUI header already prints `Claude 5h · 64%` through `claudeWindowBadge` in `src/ui/badges.ts` whenever `utilization` is reported, so this is a `src/ui/gui` change only)
+
+**Why.** The dashboard's `windowLine` in `src/ui/gui/gui-client-operator.ts` already prints the percentage when the window carries `utilization` (0–1) and falls back to the status word `ok` otherwise. The claude CLI's `rate_limit_event` (parsed in `src/agent/claude/claude-stream.ts`) reports `utilization` only intermittently, so most of the time the card reads "ok" and the operator cannot tell that the number is simply unreported. No other data source exists without a network call, which the zero-dependency principle and the offline-test rule rule out; do not synthesize a percentage from elapsed time.
+
+**Goal.** Fill a progress bar from `utilization` when it is reported, and make the unreported case read as unreported rather than as a health verdict.
+
+**Approach.** In `src/ui/gui/gui-client-operator.ts`:
+1. `windowLinesHtml` renders, for each window with a numeric `utilization`, the existing `window-line` span followed by `<span class='meter<tone>'><span style='width:N%'></span></span>` (N = `Math.min(100, Math.round(utilization * 100))`; tone from the existing `windowLineTone`: `t-red`/`t-amber`), reusing the `.meter` styles the spend card uses; the percentage text stays in the line.
+2. When `utilization` is not a number, `windowLine` uses `ok · usage not reported` in place of the bare `ok` (the `near limit`/`limited`/`reset` words stay as they are), and no meter is drawn.
+3. Pin both in a test beside the existing `windowLine`/budget-card tests in `test/gui-client.test.ts` (add `windowLinesHtml` to its scope list if needed): a reported 0.64 renders `64%` and a `width:64%` meter, 1.2 clamps to `width:100%`, an unreported `allowed` window renders `usage not reported` and no `meter`.
+4. `plans/agent-backends.md` §8's table row and `docs/how-it-works.md` (if it names the window card) note the meter and the unreported wording.
+
+**Files touched.** `src/ui/gui/gui-client-operator.ts`, `test/gui-client.test.ts`, `plans/agent-backends.md`, possibly `docs/how-it-works.md`. The `.meter` CSS is reused unchanged.
+
+**Acceptance criteria.**
+- A window with `utilization: 0.64` shows `Claude 5h · 64% · resets HH:MM` and a meter 64% wide, amber/red per status.
+- A window without `utilization` shows `Claude 5h · ok · usage not reported · resets HH:MM` and no meter.
+- The TUI header string from `claudeWindowBadge` is unchanged.
+- `npm run test` is green.
+
 ## Done
 
 ### Filter the TUI Activity feed by loop and text, matching the dashboard Activity filter and `tumwater logs --grep` (planned 2026-10-12 by plan; sibling of the landed TUI Activity page-back (`activityScroll`/`ACTIVITY_EVENTS` in `tui-pane.ts`) and the landed dashboard Activity loop/text filter (`gui-client-fleet.ts`'s `feedRole`/`feedText` and its `/api/logs` search) plus the landed `GET /api/logs` slice endpoint (`handleLogs`); the pane pages through the newest `ACTIVITY_EVENTS` events but cannot narrow them, while the CLI (`tumwater logs --grep`) and the dashboard's Loop picker + Search can, so an operator watching one loop or hunting one failure must scan the whole feed; independent of the waiting TUI prompt-line defer (`Ctrl+L`) and TUI Queued-pane edit (`Ctrl+E`) plans in behavior — its own `activityRole`/`activityGrep` state, its own `Ctrl+G` branch on view 0, and its own `/` target — though all three edit `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`, so a landing conflict is possible and the resolver handles it; it reads the same events the pane already loads (`readEvents(root, ACTIVITY_EVENTS)`) and adds no endpoint, so its filter can only narrow what the feed shows; the match rules come from `eventMatchesGrep`/`eventRole`, the same homes `tumwater logs --grep` and `handleLogs` use; done 2026-10-12 by feature)
