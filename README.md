@@ -28,7 +28,7 @@ spend on a subscription) and is not part of `npm test`, which stays green withou
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.1.1**: working harness. The director and 14 of the 15 roles are enabled by default; `telemetry`,
+**v0.1.3**: working harness. The director and 14 of the 15 roles are enabled by default; `telemetry`,
 which files harness bugs from tumwater's own event log, is opt-in (`roles.telemetry.enabled`).
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
