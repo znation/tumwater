@@ -6,7 +6,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Schedule a fleet wake from the dashboard, matching `tumwater wake --in <duration>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in` (`WAKE_IN_FLAG` in `src/cli/cli-flag-specs.ts` over `requestWake(root, roles, inMs)` in `src/operator/operator-intent.ts`) and the landed dashboard wake controls (`handleWake` over `POST /api/wake`, the Loops card's `#wakeall` button); `requestWake` already takes `inMs` and writes a `notBeforeMs` marker, but `handleWake` never passes one, so the operator who wants the fleet to start again after a break has to switch to the CLI; independent of the waiting question-answer part 2/2, reset-counters, and pause-reason plans in behavior (an optional body field on an existing route plus its own menu), though it shares `src/gui/gui-endpoint-commands.ts` with reset-counters and pause-reason and `src/ui/gui/gui-page.ts`'s Loops header with reset-counters, so a landing conflict is possible and the resolver handles it)
+## Done
+
+### Schedule a fleet wake from the dashboard, matching `tumwater wake --in <duration>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in` (`WAKE_IN_FLAG` in `src/cli/cli-flag-specs.ts` over `requestWake(root, roles, inMs)` in `src/operator/operator-intent.ts`) and the landed dashboard wake controls (`handleWake` over `POST /api/wake`, the Loops card's `#wakeall` button); `requestWake` already takes `inMs` and writes a `notBeforeMs` marker, but `handleWake` never passes one, so the operator who wants the fleet to start again after a break has to switch to the CLI; independent of the waiting question-answer part 2/2, reset-counters, and pause-reason plans in behavior (an optional body field on an existing route plus its own menu), though it shares `src/gui/gui-endpoint-commands.ts` with reset-counters and pause-reason and `src/ui/gui/gui-page.ts`'s Loops header with reset-counters, so a landing conflict is possible and the resolver handles it); done 2026-10-12 by feature
 
 **Goal.** From the dashboard's Loops card, schedule a wake of every loop for later ("in 30 minutes"), writing the same deferred marker `tumwater wake --in 30m` writes.
 
@@ -22,8 +24,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/gui-client.test.ts`: clicking `#wakelater` renders four `[data-wakein]` items; clicking the 1-hour item posts `{ path: "/api/wake", body: { inSeconds: 3600 } }` and closes the menu.
 - `#wakeall` keeps posting `{}` (the existing wake client test stays green unchanged).
 - `npm run test` passes.
-
-## Done
 
 ### Give a fleet pause a reason from the dashboard, matching `tumwater pause --reason <text>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater pause --reason` (`cmdPause` in `src/operator/operator-commands.ts` over `pauseFleet(root, untilMs, reason)` in `src/fleet/fleet-state.ts`) and the landed dashboard pause menu (`openPauseMenu`/`setFleetPause` in `src/ui/gui/gui-client-operator.ts` over `handlePause` / `POST /api/pause`); `PAUSE_REASON_MAX`'s doc comment already anticipates "any later GUI path", and the dashboard already *shows* a reason (the payload's `pauseReason` reaches `fleetAlerts` in `src/ui/fleet-alerts.ts`), but its pause menu cannot write one, so an operator who pauses from the browser leaves the fleet's other watchers no note; independent of the waiting question-answer part 2/2, disk-row reclaim, and reset-counters plans in behavior (its own body field on an existing route), though it shares `src/gui/gui-endpoint-commands.ts` with reclaim and reset-counters, so a landing conflict is possible and the resolver handles it) (done 2026-10-12 by feature)
 

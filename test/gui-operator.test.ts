@@ -454,6 +454,32 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   });
 });
 
+test("POST /api/wake with inSeconds schedules the wake like `tumwater wake --in`", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui wake in test");
+  await withGui(repo, async ({ base }) => {
+    let res = await postJson(base, "/api/wake", { inSeconds: 1800 });
+    assert.equal(res.status, 200);
+    assert.match(((await res.json()) as { message: string }).message, /wakes in 30m/);
+    let marker = readJson(wakeRequestPath(repo)) as { at: number; notBeforeMs: number; roles: string[] };
+    assert.equal(marker.notBeforeMs - marker.at, 1800000);
+    assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+
+    res = await postJson(base, "/api/wake", { role: "feature", inSeconds: 60 });
+    assert.equal(res.status, 200);
+    marker = readJson(wakeRequestPath(repo)) as typeof marker;
+    assert.deepEqual(marker.roles, ["feature"]);
+
+    fs.rmSync(wakeRequestPath(repo));
+    for (const inSeconds of [0, -5, "30", 7776001]) {
+      const bad = await postJson(base, "/api/wake", { inSeconds });
+      assert.equal(bad.status, 400, String(inSeconds));
+      assert.match(((await bad.json()) as { error: string }).error, /inSeconds/);
+    }
+    assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "rejected bodies leave no marker");
+  });
+});
+
 test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui reset test");

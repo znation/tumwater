@@ -171,4 +171,32 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     postAction("/api/reset-counters", {}, (d) => (d && typeof d.message === "string" ? d.message : "counters reset")));
   $("wakeall").addEventListener("click", () =>
     postAction("/api/wake", {}, (d) => (d && typeof d.message === "string" ? d.message : "every loop woken")));
+  // wake-later:start
+  const WAKE_LATER_CHOICES = [[1800, "In 30 minutes"], [3600, "In 1 hour"], [7200, "In 2 hours"], [28800, "In 8 hours"]];
+  function openWakeLaterMenu() {
+    openPopover("wakelaterwrap", {
+      menu: true,
+      role: "menu",
+      html: "<div class='menu-title'>Wake every loop</div>" +
+        WAKE_LATER_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-wakein='" + c[0] + "'>" +
+          icon("clock") + esc(c[1]) + "</button>").join(""),
+      onClosed: () => {},
+    });
+  }
+  function wakeLater(inSeconds) {
+    closeMenus();
+    return postAction("/api/wake", { inSeconds }, (d) =>
+      d && typeof d.message === "string" ? d.message : "wake scheduled in " + humanSeconds(inSeconds));
+  }
+  onClick((t, ev) => {
+    if (t.closest("#wakelater")) {
+      ev.preventDefault();
+      if (openMenu && openMenu.root === $("wakelaterwrap")) closeMenus();
+      else openWakeLaterMenu();
+      return;
+    }
+    const choice = t.closest("[data-wakein]");
+    if (choice) wakeLater(Number(choice.dataset.wakein));
+  });
+  // wake-later:end
 `;

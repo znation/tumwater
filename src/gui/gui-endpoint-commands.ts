@@ -392,17 +392,37 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
   sendJson(res, 200, { ok: true, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }), ...(stored ? { reason: stored } : {}) });
 }
 
+/** The `inSeconds` rule of /api/wake: undefined when absent, the delay in milliseconds when
+ * valid, null after sending the 400 (a positive finite number within the CLI's 90-day cap).
+ * A duration, not a deadline: requestWake takes `inMs` and reads its own clock. */
+function wakeInSecondsMs(res: http.ServerResponse, body: Record<string, unknown>): number | undefined | null {
+  const inSeconds = body.inSeconds;
+  if (inSeconds === undefined) return undefined;
+  if (typeof inSeconds !== "number" || !Number.isFinite(inSeconds) || inSeconds <= 0) {
+    sendJson(res, 400, { error: `inSeconds must be a positive number of seconds${gotSuffix(inSeconds)}` });
+    return null;
+  }
+  if (inSeconds * 1000 > PAUSE_FOR_MAX_MS) {
+    sendJson(res, 400, { error: `inSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(inSeconds)}` });
+    return null;
+  }
+  return Math.round(inSeconds * 1000);
+}
+
 /** Handle POST /api/wake: the dashboard's per-row wake control — the same marker-writing
  * core `tumwater wake` calls (requestWake), so the CLI and the GUI cannot drift on the
  * state-file edits or the marker. `{}`/a missing role targets every configured role (the
  * CLI's all-roles default); a given role validates exactly like /api/transcript. Same body
- * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). */
+ * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). An
+ * optional `inSeconds` schedules the wake for later, like `tumwater wake --in` (same 90-day cap). */
 export async function handleWake(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
   if (!body) return;
+  const inMs = wakeInSecondsMs(res, body);
+  if (inMs === null) return;
   sendJson(res, 200, {
     ok: true,
-    message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
+    message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string], inMs),
   });
 }
 

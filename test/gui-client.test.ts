@@ -239,6 +239,34 @@ test("renderMarkdown renders the backlog's and digest's Markdown without ever pa
   assert.equal(renderMarkdown("wrapped\nprose"), "<p>wrapped prose</p>");
 });
 
+test("Wake later opens a four-choice menu and a choice posts inSeconds", async () => {
+  const posts: Array<{ path: string; body: unknown }> = [];
+  const popovers: Array<{ html: string }> = [];
+  const closes: string[] = [];
+  const handlers: Array<(t: unknown, ev: unknown) => void> = [];
+  const hit = (sel: string, dataset: Record<string, string> = {}) => ({ closest: (q: string) => (q === sel ? { dataset } : null) });
+  clientScope<object>(["format", "post-action", "wake-later"], [], {
+    $: (id: string) => id,
+    $$: () => [],
+    icon: iconStub,
+    openMenu: null,
+    openPopover: (_id: string, opts: { html: string }) => popovers.push(opts),
+    onClick: (fn: (t: unknown, ev: unknown) => void) => handlers.push(fn),
+    closeMenus: () => closes.push("close"),
+    postJson: async (path: string, body: unknown) => { posts.push({ path, body }); return { ok: true }; },
+    showFlash: () => {},
+    refresh: () => {},
+  });
+  const onClick = handlers[0]!;
+  onClick(hit("#wakelater"), { preventDefault() {} });
+  assert.equal(popovers.length, 1);
+  assert.equal((popovers[0]!.html.match(/data-wakein=/g) ?? []).length, 4);
+  onClick(hit("[data-wakein]", { wakein: "3600" }), {});
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(posts, [{ path: "/api/wake", body: { inSeconds: 3600 } }]);
+  assert.ok(closes.length >= 1, "the menu closes on a choice");
+});
+
 test("a loop's controls post explicit states, and an abort needs a confirming second click", async () => {
   const posts: Array<{ path: string; body: unknown }> = [];
   const flashes: string[] = [];
