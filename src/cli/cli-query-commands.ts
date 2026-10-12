@@ -8,7 +8,7 @@ import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
-import { knownRoleIdsCached } from "../config/config.js";
+import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
@@ -22,29 +22,41 @@ import { readLandingQueue } from "../landing/landing-queue.js";
 import { renderLandingQueue } from "../landing/landing-queue-render.js";
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
+import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
+import { saveRoleNote } from "../agent/role-notes-write.js";
+import { roleNotesPath } from "../paths.js";
+import { errorMessage } from "../text/text.js";
 import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
 import { answerQuestion, answerQuestionFromText, sayAnswered, sayQuestionList } from "./question-commands.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
 const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 
+/** `role`'s notebook-write flags: clear the note, or replace it from a file (`-` for stdin). */
+const CLEAR_NOTES_SPEC = { names: ["--clear-notes"] };
+const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<path>" };
+
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
- * neither a flag nor the value of a --role flag. Returns the id (null when absent) and the
+ * neither a flag nor the value of a --role or --notes-file flag. Returns the id (null when absent) and the
  * remaining arguments — flags only, ready for rejectUnknownArgs and sayJsonOrRender. The
  * id may also arrive as --role <id>, the flag spelling every other role-targeting command
  * shares; the collector's caller rejects both spellings at once rather than silently
  * picking one. Lives here because it exists only for this one command's mixed
  * positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
-  const roleIdx = args.indexOf("--role");
+  const valueIdx = new Set<number>();
+  for (const flag of ["--role", "--notes-file"]) {
+    const at = args.indexOf(flag);
+    if (at >= 0) valueIdx.add(at + 1);
+  }
   let id: string | null = null;
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
-    // A non-flag token that is not a --role flag's value is the positional, taken once;
+    // A non-flag token that is not a --role or --notes-file flag's value is the positional, taken once;
     // everything else — flags and their values alike — rides in rest for rejectUnknownArgs
     // and flagValue to claim.
-    if (!arg.startsWith("-") && id === null && !(roleIdx >= 0 && i === roleIdx + 1)) {
+    if (!arg.startsWith("-") && id === null && !valueIdx.has(i)) {
       id = arg;
       continue;
     }
@@ -212,7 +224,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the fleet never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -221,6 +233,22 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   if (!id) fail("tumwater role needs a role id");
   if (positional !== null && flagId !== null && flagId !== positional)
     fail("give the role id once — as the positional or as --role <id>, not both");
+  const clear = rest.includes("--clear-notes");
+  const notesFile = flagValue(rest, "--notes-file");
+  if (clear || rest.includes("--notes-file")) {
+    if (clear && rest.includes("--notes-file")) fail("give --clear-notes or --notes-file, not both");
+    if (rest.includes("--json")) fail("--json does not apply to a notebook write");
+    if (id === DIRECTOR_ROLE) fail("the director has no notebook");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const text = clear ? "" : readPromptFileArg(notesFile || fail("--notes-file needs a path"));
+    try {
+      say(`${id}: ${saveRoleNote(roleNotesPath(root, id), text)}`);
+    } catch (err) {
+      fail(errorMessage(err));
+    }
+    return;
+  }
   // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the
   // collector; here the id just has to be non-null for the thunk's types.
   sayJsonOrRender(rest, () => rolePayload(root, id), renderRoleMarkdown);

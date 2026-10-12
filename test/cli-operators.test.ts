@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, orchestratorStatePath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli } from "./helpers/cli-harness.js";
@@ -343,6 +343,51 @@ test("role prints one loop's standing prompt, and a queued prompt survives inspe
   assert.equal(payload.id, "feature");
   assert.equal(payload.title, "feature implementer");
   assert.match(payload.nextPrompt, /check the scheduler first/);
+});
+
+test("role --clear-notes and --notes-file write the loop's notebook", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role notes");
+  const notes = roleNotesPath(repo, "feature");
+  const file = path.join(repo, "n.md");
+  fs.writeFileSync(file, "use fleet.ts");
+
+  let r = await cli(repo, "role", "feature", "--notes-file", file);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: notebook saved/);
+  assert.equal(fs.readFileSync(notes, "utf8"), "use fleet.ts");
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /use fleet\.ts/);
+
+  fs.writeFileSync(notes, "old");
+  r = await cli(repo, "role", "--notes-file", file, "feature");
+  assert.equal(r.code, 0);
+  assert.equal(fs.readFileSync(notes, "utf8"), "use fleet.ts");
+
+  const big = path.join(repo, "big.md");
+  fs.writeFileSync(big, "x".repeat(4097));
+  r = await cli(repo, "role", "feature", "--notes-file", big);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /shorten it to at most 4096 bytes/);
+  assert.equal(fs.readFileSync(notes, "utf8"), "use fleet.ts");
+
+  r = await cli(repo, "role", "feature", "--clear-notes");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: notebook cleared/);
+  assert.equal(fs.readFileSync(notes, "utf8"), "");
+  r = await cli(repo, "role", "feature", "--json");
+  assert.equal((JSON.parse(r.stdout) as { note: string | null }).note, null);
+
+  for (const [args, msg] of [
+    [["feature", "--clear-notes", "--notes-file", "x"], /not both/],
+    [["feature", "--clear-notes", "--json"], /--json does not apply/],
+    [["director", "--clear-notes"], /director has no notebook/],
+    [["bogus", "--clear-notes"], /unknown role: bogus/],
+  ] as const) {
+    r = await cli(repo, "role", ...args);
+    assert.equal(r.code, 1, args.join(" "));
+    assert.match(r.stderr, msg);
+  }
 });
 
 test("role validates its arguments like every other command", async () => {

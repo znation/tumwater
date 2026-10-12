@@ -202,6 +202,11 @@ Usage:
                                    the next tick's assembled prompt (the oldest queued prompt appears in it
                                    and is NOT consumed — one is dequeued per tick); --json prints the collector's payload
                                    as machine-readable data
+  tumwater role <id> --clear-notes Clear that loop's notebook
+  tumwater role <id> --notes-file <path>
+                                   Replace that loop's notebook from a file ("-" reads stdin;
+                                   4 KB cap); a tick running at that moment may still
+                                   overwrite it through its own role_notes call
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --file <path>    Queue a prompt read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>

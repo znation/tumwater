@@ -258,7 +258,9 @@ next fresh session (where things live, what was ruled out, what to look at next)
 `.tumwater/state/notes/<role>.md`, is capped at 4 KB, and is the only state carried between a
 role's ticks besides the repo itself. A tick sees the note when one exists and may replace it
 with the bundled `role_notes` tool; the director, whose work is the operator's prompt rather
-than a recurring search, has no notebook.
+than a recurring search, has no notebook. The operator can clear or replace a note with
+`tumwater role <id> --clear-notes` or `--notes-file <path>`; a tick running at that moment may
+still overwrite it through its own `role_notes` call.
 
 ## Configuration
 

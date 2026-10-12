@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Clear or replace a loop's notebook from the CLI: `tumwater role <id> --clear-notes` and `tumwater role <id> --notes-file <path>` (planned 2026-10-12 by plan; sibling of the landed read-only notebook views — `tumwater role <id>` (`rolePayload` in `src/roles/role-view.ts`), the dashboard loop drawer, and the TUI's Ctrl+N notebook pane; independent of the TUI backlog title-edit plan above)
+_None yet._
+
+## Done
+
+### Clear or replace a loop's notebook from the CLI: `tumwater role <id> --clear-notes` and `tumwater role <id> --notes-file <path>` (planned 2026-10-12 by plan; sibling of the landed read-only notebook views — `tumwater role <id>` (`rolePayload` in `src/roles/role-view.ts`), the dashboard loop drawer, and the TUI's Ctrl+N notebook pane; independent of the TUI backlog title-edit plan above; done 2026-10-12 by feature)
 
 **Goal.** A role's notebook (`.tumwater/state/notes/<role>.md`, `roleNotesPath` in `src/paths.ts`)
 rides into every fresh tick (`src/tick/tick-prompt.ts`), yet only the model can change it, through
@@ -75,8 +79,6 @@ which already exports `saveRoleNote`.
   arguments like every other command") pass unchanged.
 - `tumwater help role` lists both new forms.
 - `npm run test` passes.
-
-## Done
 
 ### Edit a planned feature's or open bug's title from the TUI backlog pane, matching `tumwater plan|bug --edit <n>` and the dashboard drawer's Edit (planned 2026-10-12 by plan; sibling of the landed TUI backlog Ctrl+X cancel and Ctrl+A answer; independent of the dashboard multiline-answer plan above; done 2026-10-12 by feature)
 
