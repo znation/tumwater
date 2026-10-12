@@ -19,12 +19,32 @@
  * Bash timeout fires before tumwater's quiet kill and the model sees a tool error rather than a
  * dead run. */
 
-/** The host-session variables that carry operator intent rather than the session's state, so a
- * run inherits them: which cloud provider to authenticate through, an OAuth token, and an
- * output cap. Every other `CLAUDE_CODE_*` is the session's own. */
-const CLAUDE_CODE_ALLOWLIST = new Set([
+/** The cloud-provider switches that make a claude run bill as API rather than a claude.ai
+ * subscription: Bedrock, Vertex, and Azure Foundry. They carry operator intent, so the run
+ * environment keeps them (the allowlist below); claude-account's seedBilling and this module's
+ * `claudeThirdPartyProvider` classify all three as API billing. */
+const THIRD_PARTY_PROVIDER_VARS = [
   "CLAUDE_CODE_USE_BEDROCK",
   "CLAUDE_CODE_USE_VERTEX",
+  "CLAUDE_CODE_USE_FOUNDRY",
+] as const;
+
+/** True when `base` carries one of the third-party provider switches. seedBilling
+ * (claude-account.ts) and the run's stream translator (claude-backend.ts) both answer billing
+ * through this, so a provider run agrees with the account file about its own billing even when
+ * claude's `system/init` omits a usable `apiKeySource`. */
+export function claudeThirdPartyProvider(base: NodeJS.ProcessEnv): boolean {
+  return THIRD_PARTY_PROVIDER_VARS.some((name) => base[name] !== undefined);
+}
+
+/** The host-session variables that carry operator intent rather than the session's state, so a
+ * run inherits them: which cloud provider to authenticate through (Bedrock, Vertex, or Azure
+ * Foundry), an OAuth token, and an output cap. Every other `CLAUDE_CODE_*` is the session's
+ * own. The three provider switches must all survive together: seeds that classify billing
+ * treat any of them as API, so a run that dropped one would disagree with the account file
+ * about its own provider. */
+const CLAUDE_CODE_ALLOWLIST = new Set<string>([
+  ...THIRD_PARTY_PROVIDER_VARS,
   "CLAUDE_CODE_OAUTH_TOKEN",
   "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
 ]);

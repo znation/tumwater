@@ -16,7 +16,7 @@ import { claudeAccountPath } from "../../paths.js";
 import type { PiRunResult } from "../../pi/pi-run-result.js";
 import type { RateWindow } from "../../pi/pi-stream.js";
 import { claudeBackend } from "./claude-backend.js";
-import { claudeEnv } from "./claude-env.js";
+import { claudeEnv, claudeThirdPartyProvider } from "./claude-env.js";
 
 /** How a claude run is paid for: a claude.ai subscription, or API credit (an API key or a
  * third-party provider). */
@@ -241,12 +241,7 @@ function seedBilling(
 ): { billing: ClaudeBilling; subscriptionType?: string } | null {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (typeof apiKey === "string" && apiKey !== "") return { billing: "api" };
-  if (
-    process.env.CLAUDE_CODE_USE_BEDROCK !== undefined ||
-    process.env.CLAUDE_CODE_USE_VERTEX !== undefined ||
-    process.env.CLAUDE_CODE_USE_FOUNDRY !== undefined
-  )
-    return { billing: "api" };
+  if (claudeThirdPartyProvider(process.env)) return { billing: "api" };
   const auth = probeAuthStatus(config);
   if (auth === null || auth.loggedIn !== true) return null;
   const subscription = claudeAuthUsesSubscription(auth);

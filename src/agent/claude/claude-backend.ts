@@ -25,7 +25,7 @@ import { routeModel } from "../../config/model-selector.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
 import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { claudeArgs } from "./claude-args.js";
-import { claudeEnv } from "./claude-env.js";
+import { claudeEnv, claudeThirdPartyProvider } from "./claude-env.js";
 import { claudeTranslator } from "./claude-stream.js";
 import { resumableSession, type SessionRecord } from "../session-ledger.js";
 import type {
@@ -179,7 +179,10 @@ export const claudeBackend: AgentBackend = {
   },
 
   translator(): StreamTranslator {
-    return claudeTranslator();
+    // A third-party provider (Bedrock/Vertex/Foundry) bills as API even when claude's
+    // `system/init` omits a usable `apiKeySource`; seedBilling reads the same environment to
+    // seed the account file, so both must classify it the same way.
+    return claudeTranslator({ thirdPartyProvider: claudeThirdPartyProvider(process.env) });
   },
 
   resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {

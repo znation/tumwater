@@ -30,8 +30,9 @@ export interface ClaudeStreamTranslator extends StreamTranslator {
 }
 
 interface ClaudeTranslatorOptions {
-  /** True when the run targets a third-party provider (an `ANTHROPIC_BASE_URL`/proxy the
-   * isolation env could not scrub): the run bills as API even when `apiKeySource` is absent. */
+  /** True when the run targets a third-party provider (Bedrock, Vertex, or Foundry — see
+   * `claudeThirdPartyProvider`, src/agent/claude/claude-env.ts): the run bills as API even
+   * when `apiKeySource` is absent or `"none"`. */
   thirdPartyProvider?: boolean;
 }
 

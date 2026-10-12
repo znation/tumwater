@@ -313,8 +313,8 @@ Environment, layered on today's (`TUMWATER_RUN`, `NODE_OPTIONS` preload, noteboo
 - **Removed** (finding 2):
   - `CLAUDECODE`
   - every `CLAUDE_CODE_*` and `CLAUDE_AGENT_SDK_*`, except the operator-intent allowlist:
-    `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_OAUTH_TOKEN`,
-    `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+    `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`,
+    `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
   - `CLAUDE_PID`, `CLAUDE_EFFORT`
   - `ANTHROPIC_BASE_URL`, only when `CLAUDECODE` was set (a host session's proxy, not the
     operator's)

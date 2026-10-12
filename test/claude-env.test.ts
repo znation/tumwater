@@ -39,12 +39,14 @@ test("claudeEnv keeps the operator-intent allowlist", () => {
     CLAUDECODE: "1",
     CLAUDE_CODE_USE_BEDROCK: "1",
     CLAUDE_CODE_USE_VERTEX: "1",
+    CLAUDE_CODE_USE_FOUNDRY: "1",
     CLAUDE_CODE_OAUTH_TOKEN: "token",
     CLAUDE_CODE_MAX_OUTPUT_TOKENS: "8000",
     ANTHROPIC_BASE_URL: "http://host-proxy.invalid",
   });
   assert.equal(out.CLAUDE_CODE_USE_BEDROCK, "1");
   assert.equal(out.CLAUDE_CODE_USE_VERTEX, "1");
+  assert.equal(out.CLAUDE_CODE_USE_FOUNDRY, "1");
   assert.equal(out.CLAUDE_CODE_OAUTH_TOKEN, "token");
   assert.equal(out.CLAUDE_CODE_MAX_OUTPUT_TOKENS, "8000");
 });

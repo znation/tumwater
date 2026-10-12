@@ -86,6 +86,26 @@ test("runAgent runs the claude backend on a fake and folds its stream", async ()
   });
 });
 
+test("a third-party provider run is API billing even when init reports apiKeySource none", async () => {
+  // plans/agent-backends.md §7: Bedrock/Vertex/Foundry are API billing, which is what
+  // seedBilling and the smoke check's expectedBilling answer from the same environment. A
+  // Foundry run's init can report apiKeySource "none", which the translator would otherwise
+  // read as the claude.ai subscription; it must follow the provider switch instead.
+  const dir = tmpdir();
+  const restoreFoundry = setEnv("CLAUDE_CODE_USE_FOUNDRY", "1");
+  try {
+    await withClaudeReplay([
+      claudeInit({ apiKeySource: "none", sessionId: "s1" }),
+      claudeResult({ totalCostUsd: 0.01 }),
+    ], async () => {
+      const result = await runAgent(claudeRun(dir));
+      assert.equal(result.billing, "api");
+    });
+  } finally {
+    restoreFoundry();
+  }
+});
+
 test("an unterminated final native line is still translated at stream end", async () => {
   // A backend may flush a complete JSON event and close without its trailing newline — the
   // last write landed, but its terminator did not. The native line buffer must feed that tail
