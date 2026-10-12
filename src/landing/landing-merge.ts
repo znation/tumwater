@@ -373,7 +373,8 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
     return continueOrAbortRebase(wt);
   }
   // The prompt names the project's own check, detected the way the in-lock re-check detects it,
-  // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
+  // as the one verifyLanding runs on the resolution — so the resolver neither guesses a runner
+  // (BUGS.md 2026-10-05) nor re-runs the check itself while the merge slot waits on it.
   const check = detectBuildCheck(wt, ctx.config) ?? undefined;
   // Show both sides' intent: the change's own commit message and the main commits that touched
   // a conflicted file since the merge-base. The

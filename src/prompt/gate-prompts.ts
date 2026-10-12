@@ -51,9 +51,15 @@ function conflictIntentBlocks(intent: ConflictIntent): string {
 }
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. `check` — the project's
- * resolved check, as the tick prompt threads it — names the command that keeps the tests passing:
- * told only to keep them passing, the 2026-10-04 resolver guessed `npx vitest run` in a node:test
- * repo (BUGS.md 2026-10-05). Undefined keeps the generic sentence. `intent` — this branch's own
+ * resolved check, as the tick prompt threads it — is named so the resolver knows which command
+ * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
+ * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
+ * that check itself: landing-merge.ts's verifyLanding runs it on the resolved tree before
+ * anything lands, and the resolver runs inside the merge slot, so its own copy of the run held
+ * every queued landing. On 2026-10-12 the resolvers' own suite runs were 86% of their wall time
+ * (951 of 1,104 s over seven runs; one spent 6 min re-testing a tree identical to main).
+ * Undefined keeps the generic sentence and adds no such rule: with no declared check the
+ * harness verifies nothing. `intent` — this branch's own
  * commit message and the main commits that touched the conflicted files since the merge-base —
  * shows the resolver what both sides meant instead of only the markers; omitted, the prompt is
  * unchanged. `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is the
@@ -65,7 +71,13 @@ export function buildConflictPrompt(
   intent?: ConflictIntent,
   today?: string,
 ): string {
-  const verify = check ? ` — verify with ${describeCheck(check)} (the project's declared check)` : "";
+  const noCheckRunRule = check
+    ? `
+- Do not run ${describeCheck(check)} (the project's declared check) or the full test suite: the
+  harness runs that check on the resolved tree before it lands, and every queued landing waits
+  on this run. If you combined code from both sides, a compile or the one or two test files
+  that cover it is enough.`
+    : "";
   const intentBlocks = intent ? conflictIntentBlocks(intent) : "";
   const removalCitation = intent ? ` (see "What main changed in these files" above)` : "";
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A rebase of
@@ -79,7 +91,7 @@ ${files.map((f) => `- ${f}`).join("\n")}
 ${intentBlocks ? intentBlocks + "\n" : ""}
 Resolve every conflict marker (<<<<<<<, =======, >>>>>>>) by combining the intent of BOTH sides:
 "ours" is this branch's change, "theirs" is the latest main. Do not simply pick one side unless
-the two changes are genuinely alternatives. Keep the project building and its tests passing${verify}.
+the two changes are genuinely alternatives. Keep the project building and its tests passing.
 
 Rules for this run:
 - Edit files only. Never run any git command that changes state (no add, commit, merge, rebase,
@@ -91,7 +103,7 @@ Rules for this run:
   change is re-derived on top of current main by its author if it still matters. Never merge
   the branch's version back in over main's deliberate removal${removalCitation}.
 - Never touch the .tumwater directory or tumwater.json.
-${TEST_RUNNER_RULE}
+${TEST_RUNNER_RULE}${noCheckRunRule}
 - When a conflicted file is a markdown backlog file (PLANS.md, BUGS.md, QUESTIONS.md), its
   \`## \` section headings are structure, not text: the result keeps exactly one of each
   \`## \` heading, and every \`### \` entry sits under the section its own side put it in —

@@ -127,25 +127,33 @@ test("buildConflictPrompt forbids state-changing git commands (harness concludes
 
 // BUGS.md 2026-10-05: told only to keep the tests passing, a resolver guessed `npx vitest run` in
 // a node:test repo and killed the suite's tests mid-run. The prompt names the project's own check
-// the way the tick rules do, and carries the shared test-runner rule either way.
-test("buildConflictPrompt names the project's declared check and forbids a guessed test runner", () => {
+// the way the tick rules do, and carries the shared test-runner rule either way. Since 2026-10-12
+// it names the check as the one the HARNESS runs on the resolved tree and tells the resolver not
+// to run it: resolvers' own suite runs were 86% of their wall time, inside the serial merge slot.
+test("buildConflictPrompt names the project's declared check and tells the resolver not to run it", () => {
   const npm = oneLine(buildConflictPrompt("organize", ["a.ts"], { kind: "npm", rootDir: ".", script: "test" }));
-  assert.match(npm, /Keep the project building and its tests passing — verify with `npm run test` \(the project's declared check\)\./);
+  assert.match(
+    npm,
+    /- Do not run `npm run test` \(the project's declared check\) or the full test suite: the harness runs that check on the resolved tree before it lands/,
+  );
+  assert.match(npm, /a compile or the one or two test files that cover it is enough\./);
+  assert.doesNotMatch(npm, /verify with/);
   const configured = oneLine(
     buildConflictPrompt("organize", ["a.ts"], { kind: "command", command: "pytest -q", cwd: "/tmp/r", timeoutMs: 1000 }),
   );
-  assert.match(configured, /verify with `pytest -q` \(the project's declared check\)\./);
-  // No check: the generic sentence, with no command to name.
+  assert.match(configured, /Do not run `pytest -q` \(the project's declared check\)/);
+  // No check: the generic sentence, and no rule — with nothing declared, the harness verifies nothing.
   const none = buildConflictPrompt("organize", ["a.ts"]);
   assert.match(none, /Keep the project building and its tests passing\.\n/);
-  assert.doesNotMatch(none, /verify with/);
+  assert.doesNotMatch(none, /Do not run|verify with/);
   for (const p of [npm, configured, oneLine(none)]) assert.ok(p.includes(oneLine(TEST_RUNNER_RULE)), "the test-runner rule");
 });
 
 test("buildConflictPrompt keeps the project building and ends by stopping", () => {
   const p = buildConflictPrompt("improve", ["a.txt"]);
-  // The harness only re-checks conflict markers after this run; keeping the build green
-  // is pi's own diligence, so the prompt must ask for it.
+  // The harness re-checks conflict markers after this run and runs the declared check (when
+  // there is one) before landing; a resolution that combines both sides still has to make sense
+  // as code, so the prompt asks for it.
   assert.match(p, /Keep the project building and its tests passing/);
   // The run's only job is resolving the markers: it ends by stopping — no new task,
   // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
