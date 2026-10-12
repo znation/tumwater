@@ -205,7 +205,10 @@ discards a role's in-flight landing.
   exempt — its queued prompts simply wait in the inbox. `pause --for <duration>` (e.g. `2h`)
   lifts itself when the deadline passes, so a quieted fleet resumes without an operator. A
   fleet pause may carry `--reason <text>` — the why behind the pause, surfaced on `status`,
-  the TUI, and the dashboard (a per-role pause carries no reason).
+  the TUI, and the dashboard (a per-role pause carries no reason). The dashboard's per-loop
+  pause button also offers timed pauses (the same choices as the fleet menu, matching
+  `pause --role <id> --for`), and a timed role pause shows its auto-resume countdown on the
+  loop's row and drawer.
 - The error-streak circuit breaker acts on the same evidence the per-role warning uses: after
   10 consecutive failed ticks a role is paused through the same per-role marker (a
   `role_streak_paused` event names the streak and the cause), so a loop failing on its own

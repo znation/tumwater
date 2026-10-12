@@ -10,10 +10,14 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // row-actions:start
   let confirmAbort = null; // { role, until } while an abort waits for its confirming click
   const abortConfirming = (role) => Boolean(confirmAbort && confirmAbort.role === role && confirmAbort.until > Date.now());
+  let rolePauseMenuRole = null; // the role whose duration chooser is open, until rolePauseMenuUntil
+  let rolePauseMenuUntil = 0;
+  const rolePauseMenuOpen = (role) => rolePauseMenuRole === role && rolePauseMenuUntil > Date.now();
+  const ROLE_PAUSE_CHOICES = [[1800, "30m"], [3600, "1h"], [7200, "2h"], [28800, "8h"], [0, "standing"]];
   // A loop's controls, from its table row or its drawer: prompt (aims the composer at the loop),
   // wake, pause/resume (the target state is always explicit), and abort, which discards the
   // tick's work — the first click arms it, a second within 5 s fires it.
-  async function rowAction(action, role) {
+  async function rowAction(action, role, forSeconds) {
     if (action === "prompt") {
       setTarget(role);
       focusComposer();
@@ -25,15 +29,25 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       setTimeout(() => { if (confirmAbort && confirmAbort.role === role && confirmAbort.until <= Date.now()) { confirmAbort = null; rerender(); } }, 5100);
       return;
     }
+    if (action === "pause-for" && forSeconds === undefined) {
+      rolePauseMenuRole = role;
+      rolePauseMenuUntil = Date.now() + 10000;
+      rerender();
+      return;
+    }
     confirmAbort = null;
-    const path = action === "abort" ? "/api/abort" : action === "pause" || action === "resume" ? "/api/pause-role" : "/api/wake";
-    const body = action === "pause" || action === "resume" ? { role, paused: action === "pause" } : { role };
+    rolePauseMenuRole = null;
+    const pausing = action === "pause" || action === "pause-for";
+    const timed = action === "pause-for" && forSeconds > 0;
+    const path = action === "abort" ? "/api/abort" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
+    const body = pausing || action === "resume" ? { role, paused: pausing, ...(timed ? { forSeconds } : {}) } : { role };
     await postAction(path, body, (d) => {
       let msg = d && typeof d.message === "string" ? d.message : role + ": done";
-      if (action === "pause" || action === "resume") {
+      if (timed) msg = role + " paused for " + humanSeconds(forSeconds);
+      else if (pausing || action === "resume") {
         msg = role + (d && d.changed
-          ? (action === "pause" ? " paused — it starts no new ticks" : " resumed")
-          : (action === "pause" ? " was already paused" : " was not paused"));
+          ? (pausing ? " paused — it starts no new ticks" : " resumed")
+          : (pausing ? " was already paused" : " was not paused"));
       }
       return msg;
     });
@@ -50,6 +64,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing landed lately" : "";
     if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note;
     if (info.key === "queued") return (backoff || info.detail) + note;
+    if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedRoles || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000)));
     return info.detail;
   }
   function loopCells(l, d) {
@@ -95,7 +110,11 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
         ? "<button type='button' class='icon-btn rowaction confirming' data-action='abort' data-role='" + esc(l.role) + "' title='Click again to abort the running tick'>" + icon("stop") + "Abort?</button>"
         : b("abort", "stop", "Abort " + l.role + "'s running tick", "danger");
     } else actions += b("wake", "bolt", "Wake " + l.role + " now");
-    actions += paused ? b("resume", "play", "Resume " + l.role) : b("pause", "pause", "Pause " + l.role);
+    if (paused) actions += b("resume", "play", "Resume " + l.role);
+    else if (rolePauseMenuOpen(l.role)) {
+      actions += ROLE_PAUSE_CHOICES.map((c) => "<button type='button' class='icon-btn rowaction' data-action='pause-for' data-for='" + c[0] +
+        "' data-role='" + esc(l.role) + "' title='Pause " + esc(l.role) + " " + (c[0] ? "for " + c[1] : "until resumed") + "'>" + esc(c[1]) + "</button>").join("");
+    } else actions += b("pause", "pause", "Pause " + l.role) + b("pause-for", "clock", "Pause " + l.role + " for a duration");
     return { info, cells: [name, status, activity, spent, "<div class='actions'>" + actions + "</div>"] };
   }
   // loops-table:end
@@ -144,7 +163,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   }
   $("loops").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "button.rowaction");
-    if (b) { ev.preventDefault(); rowAction(b.dataset.action, b.dataset.role); return; }
+    if (b) { ev.preventDefault(); rowAction(b.dataset.action, b.dataset.role, b.dataset.for === undefined ? undefined : Number(b.dataset.for)); return; }
     const tr = clickClosest(ev, "tr[data-role]");
     if (tr) toggleLoop(tr.dataset.role);
   });

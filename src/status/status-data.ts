@@ -26,7 +26,7 @@ import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { pausedRoles, standingFleetPause } from "../fleet/fleet-state.js";
+import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../fleet/fleet-state.js";
 import {
   orchestratorAlive,
   readOrchestratorInfo,
@@ -227,6 +227,11 @@ export interface StatusSnapshot {
    * fleet. JSON.stringify drops the undefined field, so `status --json` carries it only while
    * a timed fleet pause stands. Fresh per poll, like `paused`. */
   pausedUntil?: number;
+  /** The paused-roles marker's one shared `until` (ms epoch) — the field `pause --role <id>
+   * --for` writes — while a timed per-role pause stands; absent for a standing role pause, a
+   * fleet-only pause, or after expiry. Read with `pausedRoles` from one marker parse, so it is
+   * present only while that set is non-empty. */
+  pausedRolesUntil?: number;
   /** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), absent
    * for a reasonless pause, a role-only pause, or no pause at all — read from the same
    * standing marker read as `paused`/`pausedUntil`, so a reason is never advertised after
@@ -559,6 +564,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
         .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
     ),
     pausedUntil: fleetPause?.until,
+    pausedRolesUntil: pausedRolesUntil(root),
     pauseReason: fleetPause?.reason,
     quietHours: quiet.window ?? undefined,
     inQuietHours: quiet.inWindow,

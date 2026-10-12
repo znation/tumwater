@@ -14,9 +14,25 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { LOCAL_FREE_MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { orchestratorStatePath, pausedPath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet/fleet-state.js";
+
+test("pausedRolesUntil carries a timed role pause's shared deadline only while the set is non-empty", async () => {
+  const repo = tmpdir();
+  await initProject(repo, "paused roles until");
+  assert.equal(snapshot(repo).pausedRolesUntil, undefined);
+  pauseRole(repo, "clean");
+  assert.equal(snapshot(repo).pausedRolesUntil, undefined, "a standing role pause has no deadline");
+  const until = Date.now() + 30 * 60_000;
+  pauseRole(repo, "clean", until);
+  assert.equal(snapshot(repo).pausedRolesUntil, until);
+  assert.equal((statusPayload(repo) as { pausedRolesUntil?: number }).pausedRolesUntil, until);
+  fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["clean"], at: Date.now() - 60_000, until: Date.now() - 1 }));
+  assert.equal(snapshot(repo).pausedRolesUntil, undefined, "an expired deadline is absent");
+  fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: [], at: Date.now(), until }));
+  assert.equal(snapshot(repo).pausedRolesUntil, undefined, "an empty set advertises no deadline");
+});
 
 test("pausedUntil carries only a standing fleet timed-pause deadline", async () => {
   const repo = tmpdir();

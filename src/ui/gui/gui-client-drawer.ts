@@ -106,7 +106,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
     if (info.live) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to abort", "btn-danger confirming") : btn("abort", "stop", "Abort this tick", "btn-danger");
     else actions += btn("wake", "bolt", "Wake now");
-    actions += paused ? btn("resume", "play", "Resume") : btn("pause", "pause", "Pause");
+    if (paused) actions += btn("resume", "play", "Resume");
+    else if (rolePauseMenuOpen(l.role)) {
+      actions += ROLE_PAUSE_CHOICES.map((c) => "<button type='button' class='btn btn-sm rowaction' data-action='pause-for' data-for='" + c[0] +
+        "' data-role='" + esc(l.role) + "'>" + esc(c[1]) + "</button>").join("");
+    } else actions += btn("pause", "pause", "Pause") + btn("pause-for", "clock", "Pause for…");
 
     const working = info.live || info.key === "vetted";
     const now = working
@@ -311,6 +315,6 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   $("scrim").addEventListener("click", closeDrawer);
   $("drawer").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "button.rowaction");
-    if (b) rowAction(b.dataset.action, b.dataset.role);
+    if (b) rowAction(b.dataset.action, b.dataset.role, b.dataset.for === undefined ? undefined : Number(b.dataset.for));
   });
 `;

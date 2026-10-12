@@ -493,6 +493,30 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, changed: false, paused: false }, "resuming an unpaused role is idempotent");
 
+  // A timed pause writes the CLI's shared `until`; a later one overwrites it; bad forSeconds 400s.
+  const t0 = Date.now();
+  res = await post({ role: "feature", paused: true, forSeconds: 3600 });
+  assert.equal(res.status, 200);
+  const timed = (await res.json()) as { until: number };
+  assert.ok(Math.abs(timed.until - (t0 + 3_600_000)) < 2000);
+  assert.equal(readJson<{ until: number }>(pausedRolesPath(repo)).until, timed.until);
+  res = await post({ role: "feature", paused: true, forSeconds: 60 });
+  assert.ok(Math.abs(((await res.json()) as { until: number }).until - (Date.now() + 60_000)) < 2000);
+  for (const [body, re] of [
+    [{ role: "feature", paused: false, forSeconds: 60 }, /only applies when pausing/],
+    [{ role: "feature", paused: true, forSeconds: 0 }, /positive number/],
+    [{ role: "feature", paused: true, forSeconds: -5 }, /positive number/],
+    [{ role: "feature", paused: true, forSeconds: "9" }, /positive number/],
+    [{ role: "feature", paused: true, forSeconds: 1e9 }, /capped at/],
+  ] as const) {
+    const bad = await post(body);
+    assert.equal(bad.status, 400, JSON.stringify(body));
+    assert.match(((await bad.json()) as { error: string }).error, re);
+  }
+  res = await post({ role: "feature", paused: false });
+  assert.equal(res.status, 200);
+  assert.equal(fs.existsSync(pausedRolesPath(repo)), false);
+
   // Unknown / missing / non-string roles get the shared rejectBadRole 400 wording, and a
   // non-boolean paused gets the /api/pause wording — none of them writes a marker.
   for (const body of [

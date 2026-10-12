@@ -94,6 +94,8 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     pill: (info: { tone: string; label: string }) => `<pill ${info.tone}:${info.label}>`,
     icon: iconStub,
     abortConfirming: () => false,
+    rolePauseMenuOpen: () => false,
+    ROLE_PAUSE_CHOICES: [[3600, "1h"]],
     phaseDetail: () => "phase detail",
     clickClosest: () => null,
     rowAction: () => {},
@@ -200,6 +202,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(actions, /Abort this tick/);
   assert.match(actions, /btn-danger/);
   assert.match(actions, /data-action='pause'/);
+  assert.match(actions, /data-action='pause-for'/);
   assert.doesNotMatch(actions, /data-action='resume'/);
   assert.match(actions, /<i:stop>/);
 

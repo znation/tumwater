@@ -248,8 +248,8 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
     "/api/pause-role": { ok: true, changed: true },
     "/api/abort": { ok: true, message: "abort requested for feature" },
   };
-  const scope = clientScope<{ rowAction(action: string, role: string): Promise<void>; abortConfirming(role: string): boolean }>(
-    ["post-action", "row-actions"], ["rowAction", "abortConfirming"], {
+  const scope = clientScope<{ rowAction(action: string, role: string, forSeconds?: number): Promise<void>; abortConfirming(role: string): boolean }>(
+    ["format", "post-action", "row-actions"], ["rowAction", "abortConfirming"], {
       closeMenus: () => {},
       postJson: async (path: string, body: unknown) => {
         posts.push({ path, body });
@@ -279,6 +279,17 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   await scope.rowAction("pause", "docs");
   posts.shift();
   assert.equal(flashes.shift(), "docs was already paused");
+
+  // pause-for: the first click opens the chooser (no post); a choice posts forSeconds.
+  await scope.rowAction("pause-for", "docs");
+  assert.equal(posts.length, 0);
+  answers["/api/pause-role"] = { ok: true, changed: true };
+  await scope.rowAction("pause-for", "docs", 3600);
+  assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true, forSeconds: 3600 } });
+  assert.equal(flashes.shift(), "docs paused for 1h");
+  await scope.rowAction("pause-for", "docs", 0);
+  assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true } });
+  assert.equal(flashes.shift(), "docs paused — it starts no new ticks");
 
   // The first abort click only arms it; the second fires.
   await scope.rowAction("abort", "feature");

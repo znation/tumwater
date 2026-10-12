@@ -163,14 +163,26 @@ export function resumeFleet(root: string): boolean {
  * can poll it every cycle without a guard. Lives here beside pauseFleet for the same
  * single-definition reason: producer (CLI, GUI) and every consumer read one module. */
 export function pausedRoles(root: string): string[] {
-  const state = readJsonFile<{ roles: unknown; at: number; until?: number }>(pausedRolesPath(root));
-  if (!state) return [];
+  return readPausedRoles(pausedRolesPath(root)).roles;
+}
+
+/** The paused-roles marker's future shared deadline (`pause --role <id> --for` wrote it), only
+ * while the set is non-empty; undefined for a standing pause, no pause, or after expiry. Shares
+ * readPausedRoles with pausedRoles so the set and its deadline cannot disagree. */
+export function pausedRolesUntil(root: string): number | undefined {
+  const { roles, until } = readPausedRoles(pausedRolesPath(root));
+  return roles.length > 0 ? until : undefined;
+}
+
+function readPausedRoles(path: string): { roles: string[]; until?: number } {
+  const state = readJsonFile<{ roles: unknown; at: number; until?: number }>(path);
+  if (!state) return { roles: [] };
   // A non-finite `until` is ignored, the same wrong-shape read standingMarker applies: the
   // set stays paused, but on no deadline, so a corrupt value cannot expire the roles it was
   // meant to hold.
   const until = finiteNumber(state.until, undefined);
-  if (until !== undefined && until <= Date.now()) return [];
-  return stringList(state.roles);
+  if (until !== undefined && until <= Date.now()) return { roles: [] };
+  return { roles: stringList(state.roles), until };
 }
 
 /** The paused-roles marker is structured state several processes rewrite read-modify-write

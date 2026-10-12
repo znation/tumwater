@@ -290,6 +290,27 @@ export async function handleConfigUnset(req: http.IncomingMessage, res: http.Ser
   sendJson(res, 200, { ok: true, key, oldValue: result.oldValue });
 }
 
+/** The shared `forSeconds` rule of /api/pause and /api/pause-role: undefined when absent, the
+ * deadline in epoch milliseconds when valid, null after sending the 400 (only with
+ * `paused: true`, a positive finite number, within the CLI's 90-day cap). */
+function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknown>, pausing: boolean): number | undefined | null {
+  const forSeconds = body.forSeconds;
+  if (forSeconds === undefined) return undefined;
+  if (!pausing) {
+    sendJson(res, 400, { error: "forSeconds only applies when pausing (paused: true)" });
+    return null;
+  }
+  if (typeof forSeconds !== "number" || !Number.isFinite(forSeconds) || forSeconds <= 0) {
+    sendJson(res, 400, { error: `forSeconds must be a positive number of seconds${gotSuffix(forSeconds)}` });
+    return null;
+  }
+  if (forSeconds * 1000 > PAUSE_FOR_MAX_MS) {
+    sendJson(res, 400, { error: `forSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(forSeconds)} — pause without it for a standing pause` });
+    return null;
+  }
+  return Date.now() + Math.round(forSeconds * 1000);
+}
+
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate
  * `tumwater pause [--for <duration>]` and `resume` write, via fleet/fleet-state.ts's shared writers
  * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
@@ -303,22 +324,8 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
   if (!body) return;
   const value = requirePausedFlag(res, body);
   if (value === null) return;
-  const forSeconds = body.forSeconds;
-  if (forSeconds !== undefined) {
-    if (!value) {
-      sendJson(res, 400, { error: "forSeconds only applies when pausing (paused: true)" });
-      return;
-    }
-    if (typeof forSeconds !== "number" || !Number.isFinite(forSeconds) || forSeconds <= 0) {
-      sendJson(res, 400, { error: `forSeconds must be a positive number of seconds${gotSuffix(forSeconds)}` });
-      return;
-    }
-    if (forSeconds * 1000 > PAUSE_FOR_MAX_MS) {
-      sendJson(res, 400, { error: `forSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(forSeconds)} — pause without it for a standing pause` });
-      return;
-    }
-  }
-  const untilMs = typeof forSeconds === "number" ? Date.now() + Math.round(forSeconds * 1000) : undefined;
+  const untilMs = pauseForSecondsMs(res, body, value);
+  if (untilMs === null) return;
   if (value) pauseFleet(root, untilMs);
   else resumeFleet(root);
   sendJson(res, 200, { ok: true, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
@@ -385,8 +392,10 @@ export async function handlePauseRole(req: http.IncomingMessage, res: http.Serve
   if (!body) return;
   const value = requirePausedFlag(res, body);
   if (value === null) return;
+  const untilMs = pauseForSecondsMs(res, body, value);
+  if (untilMs === null) return;
   const changed = value
-    ? pauseRole(root, body.role as string)
+    ? pauseRole(root, body.role as string, untilMs)
     : resumeRole(root, body.role as string);
-  sendJson(res, 200, { ok: true, changed, paused: value });
+  sendJson(res, 200, { ok: true, changed, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
 }

@@ -19,6 +19,8 @@ const { phaseDetail, loopCells } = clientScope<Loops>(
     pill: (info: PhaseInfo) => "<span class='pill t-" + info.tone + "'>" + info.label + "</span>",
     landingSummary: (d: { landing?: Record<string, string> }, role: string) => (d.landing || {})[role] || "",
     abortConfirming: (role: string) => role === "confirming",
+    rolePauseMenuOpen: (role: string) => role === "choosing",
+    ROLE_PAUSE_CHOICES: [[1800, "30m"], [3600, "1h"], [7200, "2h"], [28800, "8h"], [0, "standing"]],
   });
 
 const now = Date.now();
@@ -96,6 +98,21 @@ test("an idle loop's activity is its last result in words with the reason that e
   assert.ok(!clean.activity.includes("review crashed"));
   // Never ticked.
   assert.ok(row({ role: "new", phase: "sleeping" }).activity.includes("No ticks yet"));
+});
+
+test("the pause-for control offers duration choices and a timed pause shows its countdown", () => {
+  const idle = { role: "docs", phase: "sleeping", inFlight: false };
+  const closed = row(idle).actions;
+  assert.ok(closed.includes("data-action='pause-for'") && !closed.includes("data-for="), "a clock control arms the chooser");
+  assert.ok(closed.includes("data-action='pause'"), "the standing pause stays");
+  const open = row({ ...idle, role: "choosing" }).actions;
+  for (const s of [1800, 3600, 7200, 28800, 0]) assert.ok(open.includes("data-for='" + s + "'"), String(s));
+  const paused = row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"], pausedRolesUntil: Date.now() + 3_600_000 });
+  assert.match(paused.status, /resumes in 1h/);
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"] }).status, /resumes in/);
+  const until = Date.now() + 3_600_000;
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"], pausedRolesUntil: until, paused: true }).status, /resumes in/, "a fleet pause overrides the role deadline");
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedRoles: ["other"], pausedRolesUntil: until }).status, /resumes in/, "a loop outside the timed set shows no deadline");
 });
 
 test("each row's actions match its state: wake when idle, abort (two-click) when in flight, resume when paused", () => {
