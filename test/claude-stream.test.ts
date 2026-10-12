@@ -240,6 +240,25 @@ test("init reports billing and the rate-limit window, newest per type", () => {
   );
 });
 
+test("a 2.1.295 rate_limit_event yields one reading per unifiedWindows entry", () => {
+  const { parser } = fold([
+    claudeRateLimit({
+      type: "five_hour",
+      status: "allowed",
+      unifiedWindows: {
+        five_hour: { utilization: 0.18, resetsAt: 1790000000 },
+        seven_day: { utilization: 0.29, resetsAt: 1790400000 },
+      },
+    }),
+  ]);
+  const by = new Map(parser.rateWindows.map((w) => [w.type, w]));
+  assert.equal(by.size, 2);
+  assert.equal(by.get("five_hour")?.utilization, 0.18);
+  assert.equal(by.get("five_hour")?.status, "allowed", "the top-level status goes to the binding window");
+  assert.equal(by.get("seven_day")?.utilization, 0.29);
+  assert.equal(by.get("seven_day")?.resetsAt, 1790400000);
+});
+
 test("init maps apiKeySource to API billing", () => {
   const { parser } = fold([claudeInit({ apiKeySource: "ANTHROPIC_API_KEY" })]);
   assert.equal(parser.billing, "api");

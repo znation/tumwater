@@ -86,10 +86,13 @@ export function claudeRateLimit(opts: {
   utilization?: number;
   overageStatus?: string;
   isUsingOverage?: boolean;
+  /** claude 2.1.295's per-window readings: `unifiedWindows.<type> = {utilization, resetsAt}`. */
+  unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number }>;
 } = {}): string {
   return JSON.stringify({
     type: "rate_limit_event",
     rate_limit_info: {
+      ...(opts.unifiedWindows !== undefined ? { unifiedWindows: opts.unifiedWindows } : {}),
       rateLimitType: opts.type ?? "five_hour",
       status: opts.status ?? "allowed",
       ...(opts.resetsAt !== undefined ? { resetsAt: opts.resetsAt } : {}),

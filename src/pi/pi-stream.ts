@@ -430,6 +430,8 @@ export class PiStreamParser {
     if (typeof event.overageStatus === "string") reading.overageStatus = event.overageStatus;
     if (event.isUsingOverage === true) reading.isUsingOverage = true;
     const existing = this.rateWindows.findIndex((w) => w.type === type);
+    // A reading without a status (a non-binding window's utilization) keeps the last known one.
+    if (reading.status === "" && existing >= 0) reading.status = this.rateWindows[existing]?.status ?? "";
     if (existing >= 0) this.rateWindows[existing] = reading;
     else this.rateWindows.push(reading);
     if (reading.isUsingOverage === true) this.usedOverage = true;

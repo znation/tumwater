@@ -282,12 +282,25 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         const info = objectOrEmpty(event.rate_limit_info);
         const rateLimitType = str(info.rateLimitType);
         const status = str(info.status);
-        const resetsAt = nonNegativeNumber(info.resetsAt, undefined);
+        // claude 2.1.295 reports every window's utilization and reset under `unifiedWindows`,
+        // keyed by window type, and only the binding window's status at the top level.
+        const windows: string[] = [];
+        for (const [type, raw] of Object.entries(objectOrEmpty(info.unifiedWindows))) {
+          if (type === rateLimitType || !isJsonObject(raw)) continue;
+          const reading: Json = { type: "rate_limit", rateLimitType: type };
+          const windowResets = nonNegativeNumber(raw.resetsAt, undefined);
+          if (windowResets !== undefined) reading.resetsAt = windowResets;
+          const windowUtil = nonNegativeNumber(raw.utilization, undefined);
+          if (windowUtil !== undefined) reading.utilization = windowUtil;
+          windows.push(JSON.stringify(reading));
+        }
+        const own = rateLimitType === undefined ? undefined : objectOrEmpty(objectOrEmpty(info.unifiedWindows)[rateLimitType]);
+        const resetsAt = nonNegativeNumber(info.resetsAt, undefined) ?? nonNegativeNumber(own?.resetsAt, undefined);
         const out: Json = { type: "rate_limit" };
         if (rateLimitType !== undefined) out.rateLimitType = rateLimitType;
         if (status !== undefined) out.status = status;
         if (resetsAt !== undefined) out.resetsAt = resetsAt;
-        const utilization = nonNegativeNumber(info.utilization, undefined);
+        const utilization = nonNegativeNumber(info.utilization, undefined) ?? nonNegativeNumber(own?.utilization, undefined);
         if (utilization !== undefined) out.utilization = utilization;
         const overageStatus = str(info.overageStatus);
         if (overageStatus !== undefined) out.overageStatus = overageStatus;
@@ -296,7 +309,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
           // resetsAt is a unix-seconds stamp; retryAfterSeconds is the wait the loop honors.
           out.retryAfterSeconds = Math.max(0, Math.round(resetsAt - Date.now() / 1000));
         }
-        return [JSON.stringify(out)];
+        return [JSON.stringify(out), ...windows];
       }
       case "result": {
         sawActivity = true;
