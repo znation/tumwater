@@ -15,6 +15,7 @@ import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
+import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../cli/question-commands.js";
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
@@ -209,6 +210,45 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
       ? { ok: true, status: "edited", oldText: outcome.oldText, newText: outcome.newText }
       : { ok: true, status: "gone" },
   );
+}
+
+/** Handle POST /api/question-answer: record the operator's answer to the Nth open question
+ * exactly as `tumwater questions answer` does, through the non-exiting tryAnswerQuestion core.
+ * The body carries the `title` the operator saw at `position`; a different title there, or no
+ * such position, answers 200 { ok: true, status: "gone" } (the outbox moved on — data for the
+ * flash line, like /api/prompt-cancel). An unclosed fence in `## Open` answers 409; a blank
+ * decision, a non-positive-integer position, or a missing title answers 400, and so does a
+ * filesystem failure (handleConfigSet's precedent). */
+export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"position": 1, "title": "<heading>", "decision": "..."}');
+  if (!body) return;
+  const { position, title, decision } = body;
+  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
+    sendJson(res, 400, { error: "position must be a positive integer" });
+    return;
+  }
+  if (typeof title !== "string" || title === "") {
+    sendJson(res, 400, { error: "title must be a non-empty string" });
+    return;
+  }
+  if (typeof decision !== "string" || decision.trim() === "") {
+    sendJson(res, 400, { error: 'questions answer needs a decision: questions answer <n> "<decision>"' });
+    return;
+  }
+  let outcome: AnswerOutcome;
+  try {
+    outcome = tryAnswerQuestion(root, position, decision, title);
+  } catch (err) {
+    sendJson(res, 400, { error: errorMessage(err) });
+    return;
+  }
+  if (outcome.status === "answered") {
+    sendJson(res, 200, { ok: true, status: "answered", question: outcome.title, decision: outcome.decision });
+  } else if (outcome.status === "fenced") {
+    sendJson(res, 409, { ok: false, error: UNCLOSED_FENCE_MESSAGE });
+  } else {
+    sendJson(res, 200, { ok: true, status: "gone" });
+  }
 }
 
 /** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —

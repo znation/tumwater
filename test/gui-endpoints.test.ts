@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handlePromptEdit, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handlePromptEdit, handleQuestionAnswer, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -744,4 +744,38 @@ test("handlePromptEdit rewrites the named file, leaving a sibling intact, with g
   const unknown = await servePromptEdit(root, { role: "ghost", file: "q.md", text: "x" });
   assert.equal(unknown.captured.status, 400);
   assert.match((unknown.data as { error: string }).error, /unknown role "ghost"/);
+});
+
+test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bodies and fences", async () => {
+  const root = tmpdir();
+  const file = path.join(root, "QUESTIONS.md");
+  const T1 = "First: which renderer?";
+  const T2 = "Second: which backend?";
+  fs.writeFileSync(file, `# Questions\n\n## Open\n\n### ${T1}\n\nbody one\n\n### ${T2}\n\nbody two\n\n## Answered\n`);
+  const serve = (body: unknown) => captureJson((res) => handleQuestionAnswer(fakeReq(JSON.stringify(body)), res, root));
+
+  const ok = await serve({ position: 1, title: T1, decision: "use\nink" });
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { ok: true, status: "answered", question: T1, decision: "use ink" });
+  const md = fs.readFileSync(file, "utf8");
+  assert.match(md, new RegExp(`## Answered[\\s\\S]*### ${T1}[\\s\\S]*\\*\\*Answered \\d{4}-\\d{2}-\\d{2} by operator:\\*\\* use ink`));
+
+  // The first title is stale now (the second entry is position 1), and position 5 is out of range.
+  const stale = await serve({ position: 1, title: T1, decision: "x" });
+  assert.deepEqual([stale.captured.status, stale.data], [200, { ok: true, status: "gone" }]);
+  const range = await serve({ position: 5, title: T2, decision: "x" });
+  assert.deepEqual([range.captured.status, range.data], [200, { ok: true, status: "gone" }]);
+  assert.equal(fs.readFileSync(file, "utf8"), md);
+
+  assert.equal((await serve({ position: 1, title: T2, decision: "  " })).captured.status, 400);
+  assert.equal((await serve({ position: 1.5, title: T2, decision: "x" })).captured.status, 400);
+  assert.equal((await serve({ position: 1, decision: "x" })).captured.status, 400);
+  assert.equal(fs.readFileSync(file, "utf8"), md);
+
+  const fenced = "# Questions\n\n## Open\n\n### Q\n\n```\nunclosed\n\n## Answered\n";
+  fs.writeFileSync(file, fenced);
+  const f = await serve({ position: 1, title: "Q", decision: "x" });
+  assert.equal(f.captured.status, 409);
+  assert.match((f.data as { error: string }).error, /unclosed code fence/);
+  assert.equal(fs.readFileSync(file, "utf8"), fenced);
 });

@@ -114,12 +114,38 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   return { openIdx, answeredIdx, openEnd, fenceOpen: fencedEntries.open(), blocks };
 }
 
-/** The `tumwater questions answer` entry point: run the whole read-modify-write under the
- * cross-process primary-worktree lock (paths.ts), shared with `tumwater bug`/`plan` and a
- * landing's working-tree fast-forward, so an answer and a landed change to QUESTIONS.md cannot
- * each overwrite the other's whole-file write. */
+/** What `tryAnswerQuestion` did: `answered` wrote the file; the rest refuse as data and leave it
+ * untouched — `missing` (no Nth open question, `open` counts them), `moved` (the block at the
+ * position is not the `expectedTitle` the caller saw) and `fenced` (an unclosed fence in
+ * `## Open`). */
+export type AnswerOutcome =
+  | { status: "answered"; title: string; decision: string }
+  | { status: "missing"; open: number }
+  | { status: "moved"; title: string }
+  | { status: "fenced" };
+
+export const UNCLOSED_FENCE_MESSAGE =
+  "QUESTIONS.md's ## Open section holds an unclosed code fence — every reader quotes the rest of the file as that entry's body, so answering would corrupt the file; close or remove the fence and re-run";
+
+/** The `tumwater questions answer` entry point: `tryAnswerQuestion` without a title check, its
+ * refusals mapped to `fail` (exit 1) with the CLI's wording. Returns the answered question's
+ * title plus the collapsed decision that landed in the file. */
 export function answerQuestion(root: string, n: number, rawDecision: string): { title: string; decision: string } {
-  return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision));
+  const outcome = tryAnswerQuestion(root, n, rawDecision);
+  if (outcome.status === "missing") fail(`no question at position ${n} (${outcome.open} open)`);
+  if (outcome.status === "fenced") fail(UNCLOSED_FENCE_MESSAGE);
+  if (outcome.status !== "answered") fail(`no question at position ${n}`);
+  return { title: outcome.title, decision: outcome.decision };
+}
+
+/** The non-exiting answer core, for callers (the dashboard server) that must not end the
+ * process: runs the whole read-modify-write under the cross-process primary-worktree lock
+ * (paths.ts), shared with `tumwater bug`/`plan` and a landing's working-tree fast-forward, so an
+ * answer and a landed change to QUESTIONS.md cannot each overwrite the other's whole-file write.
+ * With `expectedTitle`, a block at position `n` titled otherwise is `moved` and nothing is
+ * written; the comparison runs inside the lock, after the scan. */
+export function tryAnswerQuestion(root: string, n: number, rawDecision: string, expectedTitle?: string): AnswerOutcome {
+  return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision, expectedTitle));
 }
 
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
@@ -129,11 +155,10 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
  * `--reason` precedent): verbatim multi-line text could carry a line that starts with `## ` or
  * `### ` and grow a phantom section no reader wrote. The Open section that is left empty regains
  * its `_None yet._` placeholder; a file with no
- * `## Answered` section gains one. An out-of-range position fails with the
- * `prompt --cancel` wording and exits 1. Returns the answered question's title for the
- * confirmation line, plus the collapsed decision that actually landed in the file so callers
+ * `## Answered` section gains one. Returns the outcome (see `AnswerOutcome`); on `answered`
+ * the title for the confirmation line, plus the collapsed decision that actually landed in the file so callers
  * report what was written rather than the caller's raw whitespace. */
-function answerQuestionLocked(root: string, n: number, rawDecision: string): { title: string; decision: string } {
+function answerQuestionLocked(root: string, n: number, rawDecision: string, expectedTitle: string | undefined): AnswerOutcome {
   const decision = collapseWhitespace(rawDecision);
   const file = path.join(root, "QUESTIONS.md");
   const md = readTextOrNull(file);
@@ -141,7 +166,7 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string): { t
   const scan = lines === null ? null : scanQuestions(lines);
   const openCount = scan === null ? 0 : scan.blocks.length;
   if (scan === null || n < 1 || n > scan.blocks.length) {
-    fail(`no question at position ${n} (${openCount} open)`);
+    return { status: "missing", open: openCount };
   }
   const scanned = scan as { openIdx: number; answeredIdx: number; openEnd: number; fenceOpen: boolean; blocks: OpenEntryBlock[] };
   // A fence inside ## Open left unclosed runs to EOF (CommonMark), so the whole tail — the
@@ -150,9 +175,10 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string): { t
   // second ## Answered at the file's end, while the question still lists as open: refuse
   // instead, and tell the operator the one local repair (close or remove the fence).
   if (scanned.fenceOpen) {
-    fail("QUESTIONS.md's ## Open section holds an unclosed code fence — every reader quotes the rest of the file as that entry's body, so answering would corrupt the file; close or remove the fence and re-run");
+    return { status: "fenced" };
   }
   const block = scanned.blocks[n - 1] as OpenEntryBlock;
+  if (expectedTitle !== undefined && block.title !== expectedTitle) return { status: "moved", title: block.title };
   const moved = lines!.slice(block.start, block.end);
   trimTrailingBlankLines(moved);
 
@@ -190,7 +216,7 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string): { t
     if (out !== "" && !out.endsWith("\n")) out += "\n";
     out += `\n## Answered\n\n${answerLines.join("\n")}`;
     writeTextAtomic(file, out);
-    return { title: block.title, decision };
+    return { status: "answered", title: block.title, decision };
   }
   const fenced2 = fenceTracker();
   let answeredAt = -1;
@@ -224,7 +250,7 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string): { t
   trimLeadingBlankLines(tail);
   const result = head.concat("", answerLines, tail);
   writeTextAtomic(file, result.join("\n"));
-  return { title: block.title, decision };
+  return { status: "answered", title: block.title, decision };
 }
 
 /** The one confirmation line `questions answer` prints in prose mode: which position was

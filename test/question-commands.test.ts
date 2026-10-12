@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
-import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/cli/question-commands.js";
+import { answerQuestion, tryAnswerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/cli/question-commands.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
@@ -396,3 +396,35 @@ test("an answered question cannot be clobbered by a landing that fast-forwards t
 function read(file: string): string {
   return fs.readFileSync(file, "utf8");
 }
+
+test("tryAnswerQuestion returns missing, moved and fenced as data, leaving the file byte-identical", () => {
+  const root = tmpdir();
+  const file = seed(root, twoQuestionFile());
+  const before = fs.readFileSync(file, "utf8");
+  assert.deepEqual(tryAnswerQuestion(root, 9, "x"), { status: "missing", open: 2 });
+  assert.deepEqual(tryAnswerQuestion(root, 2, "x", "First: which renderer? (asked by director 2026-10-01)"), {
+    status: "moved",
+    title: "Second: which backend? (asked by bugfix 2026-10-03)",
+  });
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+
+  const fencedText = "# Questions\n\n## Open\n\n### Q one\n\n```\nunclosed\n\n## Answered\n";
+  const fencedFile = seed(root, fencedText);
+  assert.deepEqual(tryAnswerQuestion(root, 1, "x"), { status: "fenced" });
+  assert.equal(fs.readFileSync(fencedFile, "utf8"), fencedText);
+});
+
+test("tryAnswerQuestion writes the same bytes as answerQuestion, and refuses a title an earlier answer shifted", () => {
+  const a = tmpdir();
+  const b = tmpdir();
+  const fa = seed(a, twoQuestionFile());
+  const fb = seed(b, twoQuestionFile());
+  answerQuestion(a, 1, "use ink");
+  const first = tryAnswerQuestion(b, 1, "use ink", "First: which renderer? (asked by director 2026-10-01)");
+  assert.equal(first.status, "answered");
+  assert.equal(fs.readFileSync(fb, "utf8"), fs.readFileSync(fa, "utf8"));
+  // The second entry is now position 1; a click still naming the first title writes nothing.
+  const after = fs.readFileSync(fb, "utf8");
+  assert.equal(tryAnswerQuestion(b, 1, "x", "First: which renderer? (asked by director 2026-10-01)").status, "moved");
+  assert.equal(fs.readFileSync(fb, "utf8"), after);
+});
