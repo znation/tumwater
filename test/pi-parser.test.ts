@@ -179,7 +179,7 @@ test("parser does not treat a bare sentinel as a refusal", () => {
   // BUGS.md 2026-09-23: the refusal comes only from an anchored line with a reason — a bare
   // sentinel is a mention, not a declaration, and must not route the tick to handleRefusal.
   const parser = new PiStreamParser();
-  parser.feed(assistantLine(`${REFUSED_SENTINEL}`) + "\n");
+  parser.feed(assistantLine(REFUSED_SENTINEL) + "\n");
   assert.equal(parser.refused, false);
   assert.equal(parser.refusedReason, "");
 });

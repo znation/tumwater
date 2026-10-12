@@ -32,7 +32,7 @@ test("extractRefusal tolerates leading whitespace and extra spaces after the col
 });
 
 test("extractRefusal returns null for a bare sentinel with no reason", () => {
-  assert.equal(extractRefusal(`${REFUSED_SENTINEL}`), null);
+  assert.equal(extractRefusal(REFUSED_SENTINEL), null);
   assert.equal(extractRefusal(`preamble\n${REFUSED_SENTINEL}:\n`), null, "colon but empty reason");
 });
 

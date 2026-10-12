@@ -98,7 +98,7 @@ test("the gate's green pre-check attests the runner's counts in the event and th
   const promptFile = path.join(tmpdir(), "review-prompt");
   await withPi(
     `for a in "$@"; do printf '%s' "$a" >> '${promptFile}'; done\n` +
-      `${reviewerStub()}`,
+      reviewerStub(),
     async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
@@ -753,7 +753,7 @@ test("a reviewer that re-runs the suite even after the no-re-run nudge fails the
   await withPi(
     [
       TOUCH_SESSION,
-      `${logPromptsTo(prompts)}`,
+      logPromptsTo(prompts),
       `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
       ...rerunCallEvents("c2", RERUN_COMMAND),
       `  printf '%s\n' '${assistantLine("ran the suite again; still no verdict")}'`,

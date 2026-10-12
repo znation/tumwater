@@ -51,7 +51,7 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
       `f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
       `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
-      `printf '%s\\n' "$n role=${"$"}{role:-?} verdict=$(printf '%s' "$*" | grep -c VERDICT)" >> "${runDir}/who.log"`,
+      `printf '%s\\n' "$n role=\${role:-?} verdict=$(printf '%s' "$*" | grep -c VERDICT)" >> "${runDir}/who.log"`,
       // Role and run kind from the real markers, not the cwd: non-director runs happen in
       // pooled `_slot-<n>` checkouts (worktree-pool), so `case $PWD in *clean*)` can no
       // longer see the role. The role comes from the slot lease; the reviewer's run carries
@@ -161,8 +161,8 @@ test("the director's tick starts immediately while every maxConcurrent slot is b
       // director keeps its own `<role>` worktree and leases no slot, so its lease probe
       // reads empty.
       leasedRoleShell(),
-      `printf '%s\\n' "${"$"}{role:-director}" >> "${runDir}/order.log"`,
-      `case "${"$"}{role:-director}" in`,
+      `printf '%s\\n' "\${role:-director}" >> "${runDir}/order.log"`,
+      `case "\${role:-director}" in`,
       `director) ;;`,
       `*) sleep 5 ;;`,
       `esac`,

@@ -809,7 +809,7 @@ test("a review's session is named by its role and tick", async () => {
   const argsFile = path.join(tmpdir(), "pi-args");
   await withPi(
     `printf '%s\\n' "$@" > '${argsFile}'\n` +
-      `${reviewerStub()}`,
+      reviewerStub(),
     async () => {
       await reviewGate(root, wt); // tick 1 gate run
       const gateArgs = fs.readFileSync(argsFile, "utf8").split("\n");

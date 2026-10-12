@@ -94,7 +94,7 @@ test("boundReadResult keeps whole lines and reports the omitted amount", () => {
   assert.ok(text.includes(tail), "tail is an exact suffix starting at a line boundary");
   // First and last lines survive.
   assert.ok(result.startsWith("line 1:"), "first line kept");
-  assert.ok(result.trimEnd().endsWith(`line ${600}: ${"b".repeat(40)}`), "last line kept");
+  assert.ok(result.trimEnd().endsWith(`line 600: ${"b".repeat(40)}`), "last line kept");
 });
 
 test("boundReadResult passes through ranged, short, and empty results", () => {

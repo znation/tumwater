@@ -192,7 +192,7 @@ export function checkModelTripleField(
     checkKnownKeys(m, TIER_MAP_KEYS, `${prefix}model`, problems);
     if (obj.provider !== undefined)
       problems.push(
-        `${prefix}model as a map by tier cannot coexist with ${prefix ? `${prefix}` : "the legacy top-level "}provider — move the provider into each tier's selector (got provider ${show(obj.provider)})`,
+        `${prefix}model as a map by tier cannot coexist with ${prefix ? prefix : "the legacy top-level "}provider — move the provider into each tier's selector (got provider ${show(obj.provider)})`,
       );
     for (const [tier, v] of Object.entries(m))
       if (!isNonBlankString(v))

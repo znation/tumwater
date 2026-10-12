@@ -81,6 +81,7 @@ export default tseslint.config(
       "@typescript-eslint/consistent-indexed-object-style": "error",
       "@typescript-eslint/prefer-find": "error",
       "@typescript-eslint/no-unnecessary-boolean-literal-compare": "error",
+      "@typescript-eslint/no-unnecessary-template-expression": "error",
     },
   },
   {
