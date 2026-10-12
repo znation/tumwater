@@ -180,6 +180,9 @@ export const WAKE_IN_FLAG: FlagSpec = {
 /** The `--cancel` flag spec for `tumwater wake --cancel`: drop pending scheduled wakes. */
 export const WAKE_CANCEL_FLAG: FlagSpec = { names: ["--cancel"] };
 
+/** `wake --list`: print the pending scheduled wakes instead of writing one. Takes no value. */
+export const WAKE_LIST_FLAG: FlagSpec = { names: ["--list"] };
+
 /** The `--reason <text>` flag spec, accepted by `pause` alone (the operator pause's why):
  * one definition of the flag's spelling and value shape, beside ROLE_FLAG and durationFlagSpec,
  * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value

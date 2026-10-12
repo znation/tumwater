@@ -4,7 +4,7 @@ import path from "node:path";
 import { isFleetPaused } from "../fleet/fleet-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
-import { formatDate, formatTime } from "../text/datetime.js";
+import { formatDate, formatTime, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -13,7 +13,7 @@ import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../fleet/reclaim.js";
 import { formatGB } from "../text/format.js";
-import { cancelScheduledWakes } from "./operator-requests.js";
+import { cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
 import {
   abortRequestPath,
   reclaimRequestPath,
@@ -92,6 +92,21 @@ export function cancelWakes(root: string, role?: string): string {
   const n = cancelScheduledWakes(root, role);
   const forRole = role ? ` for ${role}` : "";
   return n > 0 ? `cancelled ${n} scheduled wake${n === 1 ? "" : "s"}${forRole}` : `no scheduled wake pending${forRole}`;
+}
+
+/** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `role`, only the
+ * wakes naming that loop. Entries keep their full roles list. Read-only. */
+export function listWakes(root: string, role: string | undefined, now: number): { roles: string[]; atMs: number }[] {
+  const wakes = pendingScheduledWakes(root, now);
+  return role ? wakes.filter((w) => w.roles.includes(role)) : wakes;
+}
+
+/** `wake --list`'s text: one numbered line per wake, or the empty wording `cancelWakes` uses. */
+export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, role?: string): string {
+  if (wakes.length === 0) return `no scheduled wake pending${role ? ` for ${role}` : ""}`;
+  return wakes
+    .map((w, i) => `${i + 1}. in ${humanSeconds(secondsUntil(w.atMs, now))} — ${w.roles.join(", ")}`)
+    .join("\n");
 }
 
 /** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake:

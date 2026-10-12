@@ -506,6 +506,42 @@ test("wake --cancel drops scheduled wakes without writing a marker", async () =>
   assert.match(r.stderr, /unknown argument: --cancel/);
 });
 
+test("wake --list shows pending scheduled wakes read-only", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake list");
+  let r = await cli(repo, "wake", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no scheduled wake pending/);
+  r = await cli(repo, "wake", "--list", "--json");
+  assert.equal(r.stdout.trim(), "[]");
+  await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  await cli(repo, "wake", "--role", "feature", "--in", "2h");
+  r = await cli(repo, "wake", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. in 4[45]m — qa$/m);
+  assert.match(r.stdout, /^2\. in 2h — feature$/m);
+  r = await cli(repo, "wake", "--list", "--role", "qa");
+  assert.match(r.stdout, /^1\. in 4[45]m — qa$/m);
+  assert.doesNotMatch(r.stdout, /feature/);
+  r = await cli(repo, "wake", "--list", "--json");
+  const parsed = JSON.parse(r.stdout);
+  assert.equal(parsed.length, 2);
+  assert.deepEqual(Object.keys(parsed[0]).sort(), ["atMs", "roles"]);
+  assert.equal(readScheduledWakes(repo).length, 2);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)));
+  for (const extra of [["--cancel"], ["--in", "5m"]]) {
+    r = await cli(repo, "wake", "--list", ...extra);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /wake --list cannot be combined with --in or --cancel/);
+  }
+  r = await cli(repo, "wake", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /wake --json requires --list/);
+  r = await cli(repo, "reset-counters", "--list");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --list/);
+});
+
 test("wake --in is capped at 90d like pause --for", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli wake cap");

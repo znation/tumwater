@@ -1,9 +1,11 @@
 import {
   DRY_RUN_FLAG,
+  JSON_FLAG,
   durationFlagSpec,
   PAUSE_FOR_OVERFLOW_HINT,
   REASON_FLAG,
   WAKE_CANCEL_FLAG,
+  WAKE_LIST_FLAG,
   WAKE_IN_FLAG,
   rejectUnknownArgs,
   ROLE_FLAG,
@@ -37,13 +39,13 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
 export async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
   // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
   // operator pause's why); `wake` alone accepts `--in <duration>` (the scheduled wake) and `--cancel` (drop the pending
-  // scheduled wakes);
+  // scheduled wakes), `--list` (show them), and `--json` (with --list);
   // `reclaim` alone accepts `--dry-run`; the other marker commands keep the plain --role
   // vocabulary, so a stray --for, --reason, --in, --cancel, or --dry-run fails fast instead of being
   // silently ignored.
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
     "reset-counters": [ROLE_FLAG],
-    wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG],
+    wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG],
     abort: [ROLE_FLAG],
     pause: [
       ROLE_FLAG,

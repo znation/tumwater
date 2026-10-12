@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### List every pending scheduled wake: `tumwater wake --list [--role <id>] [--json]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --cancel` and dashboard wake-cancel; independent of the TUI Ctrl+P plan)
+_None yet._
+
+
+## Done
+
+### List every pending scheduled wake: `tumwater wake --list [--role <id>] [--json]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --cancel` and dashboard wake-cancel; independent of the TUI Ctrl+P plan); done 2026-10-12 by feature
 
 **Goal.** Each `wake --in` writes its own file under `scheduledWakeDir`, and several can be pending at once, but `tumwater status` and the dashboard show only the earliest (`fleet-state.ts` returns `pendingScheduledWakes(root, now)[0]`). So an operator can't see what `wake --cancel` would drop. `wake --list` prints every pending scheduled wake, earliest first. With `--role <id>` it prints only the wakes naming that loop, and with `--json` it prints them as JSON for scripts. It is a read-only view: it writes, deletes, and wakes nothing.
 
@@ -24,10 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - CLI test in `test/cli-operators.test.ts`, beside "wake --cancel drops scheduled wakes without writing a marker": after `wake --role qa --in 45m` and `wake --role feature --in 2h`, `wake --list` exits 0 and its stdout matches `/^1\. in 4[45]m — qa$/m` and `/^2\. in (2h|1h59m|1h) — feature$/m`. Before writing that regex, check `humanSeconds`'s output for just under 2h and loosen it accordingly. `wake --list --role qa` lists only the qa wake. `wake --list --json` parses as a two-element array with `roles` and `atMs`. `readScheduledWakes(repo)` still has 2 entries afterwards, and `wakeRequestPath(repo)` does not exist.
 - CLI test: with nothing pending, `wake --list` prints `no scheduled wake pending` and `wake --list --json` prints `[]`. `wake --list --cancel` and `wake --list --in 5m` exit 1 with `wake --list cannot be combined with --in or --cancel`. `wake --json` exits 1 with `wake --json requires --list`. `reset-counters --list` is still rejected as an unknown argument.
 - `npm run test` passes.
-
-
-
-## Done
 
 ### Give one loop a timed pause from the TUI: Ctrl+P on an unpaused loop takes a duration, matching `tumwater pause --role <id> --for <duration>` (planned 2026-10-12 by plan; sibling of the landed TUI Ctrl+F fleet pause editor (`pauseEditMode`, `exitPauseEditMode`, `parsePauseInput` in `src/ui/tui/tui-input.ts`) and the landed CLI per-role timed pause (`cmdPause`'s `--role` branch in `src/operator/operator-commands.ts` over `pauseRole(root, role, untilMs)` in `src/fleet/fleet-state.ts` and `rolePauseMessage(root, role, changed, timed, now)` in `src/operator/operator-intent.ts`) and the dashboard's per-loop `pause-for` chooser. Today the TUI's Ctrl+P on a loop's transcript only toggles a standing pause, so "hold feature for 2h" means a second terminal. Independent of the waiting "Cancel pending scheduled wakes from the dashboard" plan: this plan touches no `src/gui`, `src/ui/gui`, or `src/operator` file); done 2026-10-12 by feature
 
