@@ -1,5 +1,5 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries ten rules on purpose: four for promise misuse tsc cannot see, three for type
+// carries eleven rules on purpose: four for promise misuse tsc cannot see, four for type
 // spellings whose meaning is not what the author read, one for a type-only import that silently
 // stays a runtime side effect under verbatimModuleSyntax, one for a private member that is
 // never reassigned but is not marked `readonly`, and one for a comparator-less `sort` on a
@@ -30,7 +30,9 @@
 // narrowing the type actually does not provide; no-invalid-void-type flags `void` as a union
 // constituent (`boolean | void`), where the author meant a callback's return is ignored rather
 // than a value the union carries — write the caller's decision as a plain boolean instead
-// (landing-slot.ts's `apply` became true = write, the fix that landed with the rule).
+// (landing-slot.ts's `apply` became true = write, the fix that landed with the rule);
+// no-inferrable-types flags an annotation the initializer already implies (`x: string = "a"`),
+// which adds a second place to edit when the default changes.
 //
 // Import hygiene: no-import-type-side-effects flags an import whose every specifier is an
 // inline `type` (`import { type A, type B } from "./x.js"`). With verbatimModuleSyntax,
@@ -72,6 +74,7 @@ export default tseslint.config(
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/prefer-readonly": "error",
+      "@typescript-eslint/no-inferrable-types": "error",
     },
   },
   {

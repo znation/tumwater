@@ -112,7 +112,7 @@ export const DEFAULT_SCOPE = `- Do exactly ONE focused task, then stop. Small, c
  * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
  * be configured. `scope` is the Scope section's rules: DEFAULT_SCOPE unless the tick's role
  * states its own (Role.scope). */
-function commonRules(check?: BuildCheck, briefFile: string = "README.md", scope: string = DEFAULT_SCOPE, dialect: PromptDialect = PI_DIALECT): string {
+function commonRules(check?: BuildCheck, briefFile = "README.md", scope: string = DEFAULT_SCOPE, dialect: PromptDialect = PI_DIALECT): string {
   const verify = check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
