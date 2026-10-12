@@ -381,6 +381,31 @@ test("startParentDeathWatch with an expected parent fires on a parent that was g
   stopAlive();
 });
 
+test("startParentDeathWatch releases a poll that fires its check synchronously at registration", () => {
+  // A poll may run its first check before returning (an eager poll). That fires the watch while
+  // its stop is still unassigned; the fired watch must still release the poll, so it never
+  // leaves a timer or signal handler armed behind a verdict it already reached.
+  let armed = false;
+  let gone = 0;
+  const stop = startParentDeathWatch(() => {
+    gone += 1;
+  }, {
+    ppid: () => 1,
+    expectedPpid: 4242,
+    poll: (check) => {
+      armed = true;
+      check();
+      return () => {
+        armed = false;
+      };
+    },
+  });
+  assert.equal(gone, 1, "the eager poll's check fires the watch at registration");
+  assert.equal(armed, false, "the fired watch released the poll it holds");
+  stop();
+  assert.equal(armed, false, "the returned stop is a no-op once fired");
+});
+
 test("expectedSupervisorPid reads a handed-down mark only for a live-for-certain pid", () => {
   assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "4242" }), 4242);
   assert.equal(expectedSupervisorPid({ [SUPERVISOR_PID_ENV]: "1" }), undefined, "1 is launchd/init, never a supervisor");

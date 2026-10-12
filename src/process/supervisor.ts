@@ -71,17 +71,26 @@ export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatch
   const original = opts.expectedPpid ?? ppid();
   let cancel: (() => void) | undefined;
   let fired = false;
+  // Release the poll at most once: a fired watch, or an explicit stop, must leave nothing armed.
+  const release = (): void => {
+    const stopPoll = cancel;
+    cancel = undefined;
+    stopPoll?.();
+  };
   const check = () => {
     if (fired || ppid() === original) return;
     fired = true;
-    cancel?.();
+    release();
     onGone();
   };
   cancel = (opts.poll ?? intervalPoll(opts.intervalMs ?? PARENT_POLL_MS))(check);
+  // A poll may run `check` synchronously while registering, firing before `cancel` was
+  // assigned; release it now so such a watch still clears the poll it holds.
+  if (fired) release();
   return () => {
     if (fired) return;
     fired = true;
-    cancel?.();
+    release();
   };
 }
 
