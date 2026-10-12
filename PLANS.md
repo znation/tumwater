@@ -6,7 +6,37 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names loops on an error streak: an "error streaks" check that warns on each loop failing tick after tick, and says which of them are paused (planned 2026-10-12 by plan; the failure sibling of the landed hold checks in `src/doctor/doctor-holds.ts` (`checkPause`, `checkQuietHours`, `checkBudget`, `checkClaudeWindow`, `checkMaintenanceQuota`). Today grep finds no `consecutiveErrors`/`ERROR_STREAK` in `src/doctor`. When the error-streak breaker (`pollStreakGate` in `src/gates/streak-gate.ts`) pauses a loop past `ERROR_STREAK_BREAKER` failures, it writes the same per-role marker `tumwater pause --role` writes. So doctor's "pause" row reads `ok — paused loops: feature`, as if the operator chose it, and doctor still prints "ready to run". A loop past `ERROR_STREAK_WARN` that is not yet paused is also invisible to doctor, though the dashboards' "failing tick after tick" alert (`fleetAlerts` in `src/ui/fleet-alerts.ts`) names it. Stands alone: no gate, scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work)
+
+**Goal.** `tumwater doctor` names every enabled loop whose `LoopState.consecutiveErrors` is at or past `ERROR_STREAK_WARN` (from `src/tick/tick-apply.ts`), with its streak and last error. It also says whether the loop is paused, so an operator can tell a breaker-held loop from one they paused, and from one still burning ticks.
+
+**Approach.**
+- In `src/doctor/doctor-holds.ts`, add `export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome`, written in the same shape as `checkBudget`:
+  - `config === undefined` → `okOutcome("not checked — tumwater.json unreadable")`.
+  - Load `loopIds(config).map((id) => loadLoopState(root, id))`. Keep only the states with `(s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN`, and sort them by role id.
+  - If none are left → `okOutcome("no loop failing consecutively")`.
+  - Otherwise `warnOutcome` with `"failing tick after tick: "` followed by one phrase per loop, joined with `"; "`. Each phrase is `` `${role}: ${n} failed ticks` ``. If the loop is in `new Set(pausedRoles(root))`, the phrase continues `, paused`. A paused loop whose streak is at or past `ERROR_STREAK_BREAKER` instead continues `` `, paused at the error-streak breaker's bar — \`tumwater resume --role ${role}\` once the cause is fixed` ``. Do not claim the breaker wrote the marker: the marker does not record who wrote it. When `lastError` is set, the phrase ends `` ` — last error: ${squash(s.lastError, 120)}` `` (`squash` from `src/text/text.ts`).
+  - This is a warn, not a fail: doctor's verdict still counts only fails, and a failing loop does not stop the fleet from running.
+  - Extend the module doc's opening list of checks to name `error streaks` (`checkErrorStreaks`), and add a short doc comment on the function in the style of its neighbours. The comment should say the check reads the same `consecutiveErrors` the breaker and `fleetAlerts` read, and the same `pausedRoles` marker the scheduler reads.
+- In `src/doctor/doctor.ts` `runDoctor`, import the check and add `{ name: "error streaks", ...checkErrorStreaks(root, config) }` directly after the `"maintenance quota"` row.
+- Tests:
+  - In `test/doctor.test.ts`, the test "runDoctor composes the full report — fixed check order, not-running header, ready verdict" pins the row order. Insert `"error streaks"` after `"maintenance quota"` there. Its all-ok sweep still holds, because a fresh repo has no loop state.
+  - In `test/doctor-holds.test.ts`, add `checkErrorStreaks` cases in the style of the existing `checkPause` tests. Seed state with `saveLoopState(root, { ...freshLoopState(id), consecutiveErrors: n, lastError })` from `src/loop/loop-state.ts`, and pause with `pauseRole` from `src/fleet/fleet-state.ts`. Cover these cases:
+    1. Unreadable config → ok "not checked".
+    2. No streaks, and a streak of `ERROR_STREAK_WARN - 1` → ok.
+    3. An unpaused loop at `ERROR_STREAK_WARN` → warn naming the role, the count, and the squashed last error.
+    4. A paused loop at `ERROR_STREAK_BREAKER` → warn containing `paused at the error-streak breaker's bar` and `tumwater resume --role <id>`.
+    5. A paused loop below the breaker → `, paused` with no resume hint.
+    6. A second instance id (`feature-2`, with `roles.feature.instances: 2`) is reported under its own id.
+- README.md: in the Usage table's "Audit" row, add to the doctor parenthetical's list of what doctor names: `loops failing tick after tick (and whether they are paused)`.
+
+**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`, `test/doctor-holds.test.ts`, `test/doctor.test.ts`, `README.md`.
+
+**Acceptance criteria.**
+- `tumwater doctor` prints an `error streaks` row directly after `maintenance quota`. It is ok with "no loop failing consecutively" on a healthy fleet. It warns, naming each enabled loop id at or past `ERROR_STREAK_WARN` with its count and last error, and marks paused loops as described above.
+- The verdict is unchanged by this row (warn, not fail).
+- The check is read-only: it calls no `saveLoopState`, `pauseRole`, or event write. The existing read-only assertion in the runDoctor full-report test still passes.
+- The updated row-order test and the new `checkErrorStreaks` tests pass under `npm run test`.
 
 
 ## Done
