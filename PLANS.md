@@ -6,21 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Retire the `no-repro` gap, part 1/5: state the deterministic-hermetic rule and add the gating-tier guard (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's "A deterministic-time, hermetic-host gating tier" plan, which feature judged too large for one run; siblings parts 2/5–5/5 convert the measured-time families; docs-and-tests only, no `src/` change; independent of the TUI Queued pane, TUI History, dashboard, and agent-backends work)
-
-**Goal.** Retire the `no-repro` validation gap — the tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows it on 48 Fixed entries, the largest non-`none` tag with no retiring infrastructure plan — by stating, once in the register, the rule parts 2/5–5/5 enforce: a gating-tier (`*.test.ts`, not `*.e2e.test.ts`) test probes no live host (`lsof`, `top`, `sysctl`, `/proc`) and binds no real listener; a test that asserts a deadline, window, backoff, or poll interval takes its clock from an injected seam (`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/sleep-clock.ts`'s `scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`); and a flake's fix converts the failing case to a deterministic regression instead of widening its budget.
-
-**Approach.**
-1. Add an invariant entry to `docs/invariants.md` (new section "Hermetic, deterministic gating tests", id `INV-F1`) with the **Guarantee** / **Binds** / **Pinned by** fields, citing the guard below and the part 2/5–5/5 regression cases.
-2. Add a scanning test to `test/invariants-doc.test.ts` — the register's own guard — that enumerates the gating test sources under `test/` (skipping `*.e2e.test.ts`) and reports every live-host probe spawn (`lsof`/`top`/`sysctl`/`/proc`) or real listener bind (`listen(`/`createServer`), unless the file is on a small explicit allowlist naming why. Factor the scan into a pure helper like the file's existing `invariantProblems(md)`, so a test can feed it planted source strings instead of writing files.
-
-**Files touched.** `docs/invariants.md`, `test/invariants-doc.test.ts`.
-
-**Acceptance criteria.**
-- The helper flags a planted `lsof` spawn and a planted `listen(` in a gating source string, and flags nothing in an `*.e2e.test.ts` string.
-- `docs/invariants.md` carries `INV-F1` with resolvable `test/...` citations; `test/invariants-doc.test.ts`'s existing register checks stay green.
-- `npm run test` is green.
-
 ### Retire the `no-repro` gap, part 2/5: an injected clock for the wait/deadline helpers and their callers (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 3/5, 4/5 and 5/5; test-only, no `src/` change; independent of the TUI, dashboard, and agent-backends work)
 
 **Goal.** Convert the poll-deadline family. `test/helpers/wait.ts`'s `waitFor` and `waitForFile` read `performance.now()` and poll with the real `sleep`, and `test/helpers/cli-harness.ts`'s `spawnCli.waitFor` does the same for a spawned CLI's output, so a loaded host can spend a readiness budget the test never intended and report the spent deadline as a product regression (the cold-start GUI banner wait, BUGS.md 2026-10-07).
@@ -154,6 +139,21 @@ one loop's recent events or find a recent failure without leaving the main scree
   `GUI_CLIENT_FLEET_JS` reaches `store("feed-role"` and `store("feed-grep"`, and — importing
   `GUI_PAGE` from `../src/ui/gui/gui-page.js` — that the page ships `id="feedrole"` and
   `id="feedgrep"` inside the Activity card's header.
+- `npm run test` is green.
+
+### Retire the `no-repro` gap, part 1/5: state the deterministic-hermetic rule and add the gating-tier guard (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's "A deterministic-time, hermetic-host gating tier" plan, which feature judged too large for one run; siblings parts 2/5–5/5 convert the measured-time families; docs-and-tests only, no `src/` change; independent of the TUI Queued pane, TUI History, dashboard, and agent-backends work; done 2026-10-11 by feature)
+
+**Goal.** Retire the `no-repro` validation gap — the tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows it on 48 Fixed entries, the largest non-`none` tag with no retiring infrastructure plan — by stating, once in the register, the rule parts 2/5–5/5 enforce: a gating-tier (`*.test.ts`, not `*.e2e.test.ts`) test probes no live host (`lsof`, `top`, `sysctl`, `/proc`) and binds no real listener; a test that asserts a deadline, window, backoff, or poll interval takes its clock from an injected seam (`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/sleep-clock.ts`'s `scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`); and a flake's fix converts the failing case to a deterministic regression instead of widening its budget.
+
+**Approach.**
+1. Add an invariant entry to `docs/invariants.md` (new section "Hermetic, deterministic gating tests", id `INV-F1`) with the **Guarantee** / **Binds** / **Pinned by** fields, citing the guard below and the part 2/5–5/5 regression cases.
+2. Add a scanning test to `test/invariants-doc.test.ts` — the register's own guard — that enumerates the gating test sources under `test/` (skipping `*.e2e.test.ts`) and reports every live-host probe spawn (`lsof`/`top`/`sysctl`/`/proc`) or real listener bind (`listen(`/`createServer`), unless the file is on a small explicit allowlist naming why. Factor the scan into a pure helper like the file's existing `invariantProblems(md)`, so a test can feed it planted source strings instead of writing files.
+
+**Files touched.** `docs/invariants.md`, `test/invariants-doc.test.ts`.
+
+**Acceptance criteria.**
+- The helper flags a planted `lsof` spawn and a planted `listen(` in a gating source string, and flags nothing in an `*.e2e.test.ts` string.
+- `docs/invariants.md` carries `INV-F1` with resolvable `test/...` citations; `test/invariants-doc.test.ts`'s existing register checks stay green.
 - `npm run test` is green.
 
 ### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)

@@ -83,6 +83,70 @@ function invariantProblems(md: string): string[] {
   return problems;
 }
 
+/** Gating test files allowed to name a live-host probe or a real bind, each with the reason it
+ * is not one. Kept explicit and small: a new gating test that reaches the host must be added
+ * here with its reason rather than slip through. */
+const HERMETIC_ALLOWLIST: Record<string, string> = {
+  "test/process.test.ts": "reads /proc through an injected fs seam, never the host",
+  "test/run-marker.test.ts": "reads /proc through an injected fs seam, never the host",
+  "test/host-sleep.test.ts": "reads the uptime pseudo-file through an injected fs seam, never the host",
+  "test/cli-gui.test.ts": "binds a loopback listener to prove the GUI's port probe sees it taken",
+  "test/cli-run-window.test.ts": "binds a loopback listener to hold the run window's port",
+};
+
+/** `/proc` is assembled, not written, so this guard's own source does not match the needle it
+ * hunts for when the scan reads it. */
+const PROC_DIR = "/pro" + "c/";
+
+/** A live-host probe spawn: a spawn/exec call whose literal command is `lsof`, `top`, or
+ * `sysctl` (the `[A-Za-z]*` admits `execFileAsync` and friends). */
+const LIVE_HOST_RE = /\b(?:spawn|exec)[A-Za-z]*\s*\(\s*["'`](?:lsof|top|sysctl)["'`]/;
+
+/** A real listener bind: a `.listen` method call or a `createServer` call. */
+const LISTENER_RE = /\.[ \t]*listen\s*\(|createServer\s*\(/;
+
+/** Every gating-tier hermeticity problem, one message per file; empty means hermetic. Gating
+ * sources are `*.test.ts` except `*.e2e.test.ts` (the e2e tier owns the live host). A passed
+ * allowlist entry whose file no longer matches is reported stale, so an exception cannot linger
+ * after the probe it excused is gone. */
+function hermeticProblems(
+  files: { path: string; text: string }[],
+  allowlist: Record<string, string> = HERMETIC_ALLOWLIST,
+): string[] {
+  const problems: string[] = [];
+  for (const { path: file, text } of files) {
+    if (!file.endsWith(".test.ts") || file.endsWith(".e2e.test.ts")) continue;
+    const probe = LIVE_HOST_RE.test(text) || text.includes(PROC_DIR);
+    const listener = LISTENER_RE.test(text);
+    const reason = allowlist[file];
+    if (reason !== undefined) {
+      if (!probe && !listener) problems.push(`${file}: allowlist entry is stale (${reason})`);
+      continue;
+    }
+    if (probe) problems.push(`${file}: probes the live host in the gating tier (lsof/top/sysctl//proc)`);
+    if (listener) problems.push(`${file}: binds a real listener in the gating tier`);
+  }
+  return problems;
+}
+
+/** Every gating test source under `test/`, recursively, as `test/...`-relative path/text
+ * pairs. e2e sources are skipped, not enumerated: the e2e tier is where the live host lives. */
+function gatingTestSources(): { path: string; text: string }[] {
+  const sources: { path: string; text: string }[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.name.endsWith(".test.ts") && !entry.name.endsWith(".e2e.test.ts")) {
+        sources.push({ path: path.relative(ROOT, full), text: fs.readFileSync(full, "utf8") });
+      }
+    }
+  };
+  walk(path.join(ROOT, "test"));
+  return sources;
+}
+
 function register(entries: string): string {
   return `# Invariants\n\n## Cross-surface agreement\n\n${entries}`;
 }
@@ -162,4 +226,39 @@ test("a test path cited outside **Pinned by.** does not satisfy the pin check", 
 test("this repo's docs/invariants.md is honest", () => {
   const md = fs.readFileSync(DOC, "utf8");
   assert.deepEqual(invariantProblems(md), []);
+});
+
+// The planted fixtures are assembled from parts so this file's own source does not carry the
+// probe/bind patterns the scan hunts for — the scan reads every gating source, this one included.
+const planted = (parts: string[]): string => parts.join("");
+
+test("a planted live-host probe and a planted listener bind are reported; an e2e source is not", () => {
+  const probe = hermeticProblems([
+    { path: "test/planted.test.ts", text: planted(["spawn", '("lsof", [])']) },
+  ]);
+  assert.ok(
+    probe.some((p) => p.includes("test/planted.test.ts") && p.includes("live host")),
+    probe.join("; "),
+  );
+  const bind = hermeticProblems([{ path: "test/planted.test.ts", text: planted(["probe.", "listen(0)"]) }]);
+  assert.ok(bind.some((p) => p.includes("real listener")), bind.join("; "));
+  const e2e = hermeticProblems([
+    {
+      path: "test/planted.e2e.test.ts",
+      text: planted(["spawn", '("lsof", [])']) + planted(["probe.", "listen(0)"]),
+    },
+  ]);
+  assert.deepEqual(e2e, []);
+});
+
+test("an allowlisted file that no longer probes or binds is reported as stale", () => {
+  const problems = hermeticProblems([{ path: "test/allowlisted.test.ts", text: "const x = 1;" }], {
+    "test/allowlisted.test.ts": "was a probe",
+  });
+  assert.ok(problems.some((p) => p.includes("allowlist entry is stale")), problems.join("; "));
+});
+
+test("this repo's gating test sources probe no live host and bind no real listener", () => {
+  const problems = hermeticProblems(gatingTestSources());
+  assert.deepEqual(problems, []);
 });

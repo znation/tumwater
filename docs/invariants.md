@@ -208,3 +208,31 @@ the CLI alive.
 **Pinned by.** `test/notify-command.test.ts` — "a hook that never exits is killed at the timeout
 and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
 injected timeout".
+
+## Hermetic, deterministic gating tests
+
+The gating tier (`npm test`'s `*.test.ts` files, which run on every landing) reads the host's
+state and time only through seams a test controls: a live probe or a real listener makes the
+suite answer the machine it happens to run on, and a live clock lets a loaded host report a
+spent budget as a product failure (the `no-repro` gap in BUGS.md). State the rule here so a new
+gating test reaches the host through the seam, not around it.
+
+### INV-F1: the gating tier probes no live host and takes its clock from a seam
+
+**Guarantee.** In the gating tier — every `test/*.test.ts` except the `*.e2e.test.ts`
+live-orchestrator files — a test probes no live host (it spawns no `lsof`/`top`/`sysctl` and
+reads no literal `/proc` path) and binds no real listener (no `.listen(`/`createServer(`),
+unless the guard's explicit allowlist names the file and why; and a test that asserts a
+deadline, window, backoff, or poll interval takes its clock from an injected seam
+(`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/sleep-clock.ts`'s
+`scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`) rather than the live one, with a
+flake fixed by converting the failing case into a deterministic regression instead of widening
+its budget.
+
+**Binds.** `test/invariants-doc.test.ts` (`hermeticProblems`, `HERMETIC_ALLOWLIST`),
+`test/fakes/time.ts`, `test/helpers/sleep-clock.ts`, `test/helpers/wait.ts`.
+
+**Pinned by.** `test/invariants-doc.test.ts` — "a planted live-host probe and a planted listener
+bind are reported; an e2e source is not" and "this repo's gating test sources probe no live host
+and bind no real listener". The deadline-clock and flake-regression halves are pinned by the
+regression cases the plan's parts 2/5–5/5 add.
