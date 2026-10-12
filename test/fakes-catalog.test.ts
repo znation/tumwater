@@ -20,7 +20,7 @@ test("failingThenIdle's script fails the first N runs on the chosen class, then 
     const r = spawnSync("sh", ["-c", script], { env: { ...process.env } });
     if (attempt <= 2) {
       assert.equal(r.status, 1, `attempt ${attempt} must fail`);
-      assert.ok(String(r.stdout).includes('429 "Rate limit exceeded"') === false && String(r.stdout).includes("429") && String(r.stdout).includes("retry after 3s"),
+      assert.ok(!String(r.stdout).includes('429 "Rate limit exceeded"') && String(r.stdout).includes("429") && String(r.stdout).includes("retry after 3s"),
         `attempt ${attempt} must carry the rate-limit error line (quotes are JSON-escaped)`);
     } else {
       assert.equal(r.status, 0, `attempt ${attempt} succeeds`);

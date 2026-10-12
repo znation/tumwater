@@ -58,7 +58,7 @@ export function subscriptionWindowRejected(
   run: Pick<PiRunResult, "transientRateLimit" | "billing" | "rateWindows">,
 ): boolean {
   return (
-    run.transientRateLimit === true &&
+    run.transientRateLimit &&
     run.billing === "subscription" &&
     (run.rateWindows ?? []).some((w) => w.status === "rejected" && w.isUsingOverage !== true)
   );
@@ -243,7 +243,7 @@ function seedBilling(
   if (typeof apiKey === "string" && apiKey !== "") return { billing: "api" };
   if (claudeThirdPartyProvider(process.env)) return { billing: "api" };
   const auth = probeAuthStatus(config);
-  if (auth === null || auth.loggedIn !== true) return null;
+  if (auth === null || !auth.loggedIn) return null;
   const subscription = claudeAuthUsesSubscription(auth);
   return subscription
     ? { billing: "subscription", ...(auth.subscriptionType !== undefined ? { subscriptionType: auth.subscriptionType } : {}) }

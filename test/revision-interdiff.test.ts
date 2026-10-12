@@ -75,5 +75,5 @@ test("revisionInterdiff caps its total length and never splits a surrogate pair"
   assert.ok(capped.length <= cap, `total stays within the cap (${capped.length} <= ${cap})`);
   assert.ok(capped.startsWith(note), "truncation note first");
   assert.ok(!hasLoneSurrogate(capped), "no lone surrogate survives the cut");
-  assert.ok(capped.includes("😀") === false, "the split pair is dropped whole");
+  assert.ok(!capped.includes("😀"), "the split pair is dropped whole");
 });

@@ -262,7 +262,7 @@ export class Redeployer {
     const red =
       this.buildRed !== null &&
       this.buildRedSha === this.build.sha &&
-      this.buildRed.done === true &&
+      this.buildRed.done &&
       this.buildRed.result === true;
     if (until === 0 || now >= until || !red) return { until, urgent: false };
     return { until: Math.min(until, (this.lastAutoRestartAt ?? 0) + RESTART_URGENT_COOLDOWN_MS), urgent: true };

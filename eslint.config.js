@@ -80,6 +80,7 @@ export default tseslint.config(
       "@typescript-eslint/no-inferrable-types": "error",
       "@typescript-eslint/consistent-indexed-object-style": "error",
       "@typescript-eslint/prefer-find": "error",
+      "@typescript-eslint/no-unnecessary-boolean-literal-compare": "error",
     },
   },
   {

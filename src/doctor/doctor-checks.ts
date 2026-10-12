@@ -448,7 +448,7 @@ export function checkWorkInstances(
   const stale = claims.filter((c) => !gone.includes(c) && now - c.at > CLAIM_IDLE_MAX_MS);
   const multi = Object.entries(config.roles)
     .filter(
-      ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled === true && (role.instances ?? 1) > 1,
+      ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled && (role.instances ?? 1) > 1,
     )
     .map(([id]) => id);
   const slots = slotCount(config);

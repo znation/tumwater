@@ -55,7 +55,7 @@ export function loopEnabled(config: TumwaterConfig, id: string): boolean {
 export function loopIds(config: TumwaterConfig): string[] {
   const ids: string[] = [];
   for (const [id, role] of Object.entries(config.roles)) {
-    if (role.enabled !== true) continue;
+    if (!role.enabled) continue;
     ids.push(id);
     if (!INSTANCE_ROLES.has(id)) continue;
     const count = role.instances ?? 1;

@@ -183,13 +183,13 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
 test("snapshot rows carry the custom flag matching the config", async () => {
   const repo = makeRepo();
   await initProject(repo, "custom flag test");
-  assert.ok(snapshot(repo).loops.every((l) => l.custom === false), "built-ins unmarked by default");
+  assert.ok(snapshot(repo).loops.every((l) => !l.custom), "built-ins unmarked by default");
 
   const cfg = loadConfig(repo);
   cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   let snap = snapshot(repo);
-  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
+  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom), "listed custom is marked");
   assert.ok(
     snap.loops.filter((l) => !l.custom).length >= allRoleIds().length - 1,
     "every enabled built-in stays unmarked",
@@ -198,5 +198,5 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   // The file breaks mid-edit: the last known-good config keeps marking the custom.
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ still editing");
   snap = snapshot(repo);
-  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "broken file keeps last-known-good customs");
+  assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom), "broken file keeps last-known-good customs");
 });
