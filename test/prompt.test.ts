@@ -92,7 +92,7 @@ test("every tick prompt keeps its commands inside the worktree and out of the pr
   });
   assert.match(prompt, /Stay inside your worktree: run commands from it/);
   // Scratch directories stay allowed (qa follows the README in one, bugfix reproduces there).
-  assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. - Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
+  assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. - Other agents run concurrently[^-]*- Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
   assert.match(oneLine(prompt), /its dist\/ is the code the running fleet executes — never build, test, or edit files in that checkout/);
   assert.match(prompt, /find \/\`/);
   assert.ok(prompt.includes("(`../../../node_modules`)"), "the install's path from the worktree");

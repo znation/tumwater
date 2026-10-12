@@ -500,3 +500,8 @@ test("the steward's tally query stands as its own sentence, not inside a parenth
   assert.match(find, /citing those entries\. One query counts both the verbatim line and the compressed `gap: <tag>` suffix:/);
   assert.ok(!find.includes("uniq -c`.);"), "no sentence-in-parentheses rendering");
 });
+
+test("the common rules send scratch files to $TMPDIR, not a fixed /tmp path", () => {
+  const prompt = oneLine(buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" }));
+  assert.match(prompt, /put scratch files under `\$TMPDIR`/);
+});

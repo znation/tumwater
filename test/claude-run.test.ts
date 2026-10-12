@@ -373,6 +373,40 @@ test("a backend that exits before reading a large stdin prompt does not crash th
   }
 });
 
+test("each run gets its own TMPDIR, removed when the run settles", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const bin = path.join(dir, "claude-tmp");
+  const seen = path.join(dir, "seen-tmpdir");
+  writeScript(bin, `printf %s "$TMPDIR" > '${seen}'; touch "$TMPDIR/x"`);
+  try {
+    const config = { ...defaultConfig(), agent: "claude" as const, model: "claude-sonnet-5-5", agents: { claude: { bin } } };
+    await runAgent(claudeRun(dir, { config }));
+    const first = fs.readFileSync(seen, "utf8");
+    await runAgent(claudeRun(dir, { config }));
+    const second = fs.readFileSync(seen, "utf8");
+    assert.match(path.basename(first), /^tumwater-run-/);
+    assert.notEqual(first, second, "two runs never share a scratch dir");
+    assert.equal(fs.existsSync(first), false, "the run's TMPDIR is swept at settle");
+  } finally {
+    restoreHome();
+  }
+});
+
+test("an unremovable scratch dir does not make the run throw", async () => {
+  const dir = tmpdir();
+  const restoreHome = setEnv("HOME", tmpdir());
+  const bin = path.join(dir, "claude-ro");
+  writeScript(bin, `mkdir "$TMPDIR/ro" && touch "$TMPDIR/ro/f" && chmod 555 "$TMPDIR/ro"`);
+  try {
+    const config = { ...defaultConfig(), agent: "claude" as const, model: "claude-sonnet-5-5", agents: { claude: { bin } } };
+    const result = await runAgent(claudeRun(dir, { config }));
+    assert.equal(typeof result.ok, "boolean", "the run settles with a result");
+  } finally {
+    restoreHome();
+  }
+});
+
 test("agents.claude.args reaches the fake's recorded argv after the harness flags", async () => {
   const dir = tmpdir();
   await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {

@@ -5,17 +5,21 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Concurrent agents write scratch output to fixed `/tmp` paths, so two ticks' suite logs share one file (`npm run test > /tmp/check.log`, `/tmp/c.log`) and an agent can read another tick's results as its own (found by operator session 2026-10-12 reading the fleet's claude transcripts)
+_None yet._
+
+## Fixed
+
+### Concurrent agents write scratch output to fixed `/tmp` paths, so two ticks' suite logs share one file (`npm run test > /tmp/check.log`, `/tmp/c.log`) and an agent can read another tick's results as its own (found by operator session 2026-10-12 reading the fleet's claude transcripts) (fixed 2026-10-12 by bugfix loop)
 
 - **Symptom:** in today's claude transcripts under `~/.claude/projects/-Users-zach-tumwater--tumwater-worktrees-*/`, `/tmp/check.log` was written by 5 sessions and `/tmp/c.log` by 6, mostly as `npm run test > <path> 2>&1; tail -N <path>`. Two pairs overlapped in time. `feature` (slot-2, session 9f01b250) ran 09:57:38–10:00:02 UTC and `dry` (slot-6, c5bb81d4) ran 09:58:12–10:02:50 UTC, both into `/tmp/check.log`. `improve` (slot-9, c3ae61a6) and `feature` (slot-3, b2153e22) started full suites into `/tmp/c.log` 4 s apart at 10:34:20 and 10:34:24 UTC. Plan ticks reuse `/tmp/plan-chk/check.log` and `/tmp/PLANS.new`; qa used `/tmp/qa_s`.
 - **Reproduce:** scan the transcripts' `Bash` `tool_use` inputs for `> /tmp/<fixed name>`, group by path, and find pairs from different sessions within a suite's runtime of each other.
 - **Cause:** agents inherit the user's environment, nothing in the tick prompt says scratch files must be per-run, and the models default to literal `/tmp` names. Only qa's charter (src/roles/role-catalog.ts) asks for `mktemp -d` under `$TMPDIR`, and `$TMPDIR` is itself one shared per-user directory.
 - **Impact:** two concurrent writers with `>` interleave or overwrite each other, so `tail` can show the other tick's pass/fail counts. An agent can then claim VERIFIED on a run that was not its own, or chase a failure from another worktree. The gate's own check bounds the damage at landing, not inside the tick. With 6+ concurrent claude agents the collisions are routine.
 - **Expected / fix sketch:** give each agent run its own `TMPDIR` (a per-run directory the harness creates and sweeps, set in the agent env for both backends). Add one COMMON_RULES line saying scratch files go under `$TMPDIR` via `mktemp`, never at a fixed `/tmp` path, because other agents run concurrently.
+- **Fix:** `runAgent` (src/agent/run-agent.ts) gives each run its own `mkdtemp` TMPDIR, set in the spawn env for both backends and removed at settle; the common rules in src/prompt/prompt.ts tell agents to put scratch files under `$TMPDIR` via `mktemp`, never a fixed `/tmp` path. Tests: test/claude-run.test.ts, test/prompt-roles.test.ts.
 
-**Validation gap:** no false read observed yet. In both overlaps each agent's `tail` appears to have shown its own totals (4474 vs 4470 tests in the `/tmp/check.log` pair, different `duration_ms` in the `/tmp/c.log` pair), so the hazard is shown by the timing, not by a wrong verdict.
+**Validation gap:** none — the collision is shown by timing in transcripts; the per-run env and prompt line are confirmed by the new tests.
 
-## Fixed
 
 ### claude 2.1.295 emits two native event types the translator does not map, `system/thinking_tokens` and `tool_progress`, so nearly every claude run logs one or two `agent_unknown_event` warnings: 65 of the 68 warning events in the fleet's first 48 minutes, all of them noise (found by operator session 2026-10-12 auditing the fleet's first hour on the claude backend) (fixed 2026-10-12 by bugfix loop)
 

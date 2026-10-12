@@ -150,6 +150,9 @@ Where you work:
 - Stay inside your worktree: run commands from it — the directory you start in, where
   \`git log\` and \`git show\` work just the same — or from a scratch directory under the system
   temp.
+- Other agents run concurrently on this machine: put scratch files under \`$TMPDIR\` (made with
+  \`mktemp\`), never at a fixed \`/tmp\` path such as \`/tmp/check.log\`, so no other run overwrites
+  or reads yours.
 - Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which the harness
   lands main into while you work, and when this project is the harness itself its dist/ is the
   code the running fleet executes — never build, test, or edit files in that checkout.${modules}

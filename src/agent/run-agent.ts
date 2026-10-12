@@ -8,6 +8,8 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files/files.js";
@@ -230,6 +232,9 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     let nativeTail = "";
     let nativeOverflow = false;
 
+    // A private TMPDIR per run: concurrent agents default to literal /tmp names, and a shared
+    // per-user TMPDIR would still collide. Removed when the run settles.
+    const runTmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"));
     const child = spawn(resolved.bin, invocation.args, {
       cwd: opts.cwd,
       // The prompt-argv backends (pi) deliver no stdin and keep stdio[0] "ignore"; a backend
@@ -246,7 +251,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // reach what a tool call backgrounds (BUGS.md 2026-09-30) — the mark is the only
       // attribution that follows a reparented orphan. Appended to any inherited mark so a
       // nested harness under test keeps the outer run's.
-      env: invocation.env,
+      env: { ...invocation.env, TMPDIR: runTmp },
     });
     if (invocation.stdin !== undefined) {
       // A backend that dies before draining its stdin — an immediately-failing startup such as
@@ -357,6 +362,13 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     const finish = (result: PiRunResult) => {
       if (settled) return;
       settled = true;
+      // Best-effort: an unremovable scratch dir (read-only subdir, a straggler still writing) must
+      // not throw out of the close handler before the run's result resolves.
+      try {
+        fs.rmSync(runTmp, { recursive: true, force: true, maxRetries: 3 });
+      } catch {
+        /* left for the OS temp sweep */
+      }
       wd.stop();
       opts.signal?.removeEventListener("abort", onAbort);
       // Surface the translator's per-run warnings once, after all native lines were fed.
