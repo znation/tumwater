@@ -38,6 +38,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
+### `tumwater prompt --edit <n> --file <path>`: rewrite a queued prompt from a file (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`readPromptFileArg` in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" and "`tumwater questions answer <n> --file <path>`" plans: it touches only `parsePromptArgs`, `src/cli/help.ts`'s prompt stanza, README.md's Steer row, and prompt tests — no `src/ui`, `src/gui`, `src/backlog`, or question file)
+
+**Goal.** `tumwater prompt --file <path>` queues a multi-line prompt read from a file (or stdin with `-`), but `prompt --edit <n>` only takes typed positional text, which the shell flattens and which is awkward for a long, structured request. `parsePromptArgs` refuses the pair outright (`refuseQueueOnlyFlag("--file", …)` fires for `--edit`; test "parsePromptArgs --edit refuses --file: the replacement text is typed, never read"). The edit storage already keeps lines: `editPromptAtFile` in `src/inbox/inbox-edit.ts` only trims the text, then length-checks and writes it. So the gap is in the parser alone. Add `--file <path>` to the `--edit` form so the operator can revise a queued prompt from a file. The prompt keeps its position, enqueue stamp, and pending `--at` deferral, as the typed edit does today.
+
+**Approach.**
+1. `src/cli/cli-command-args.ts`, `parsePromptArgs`:
+   - Narrow the `--file` refusal to `--list`/`--cancel`. Do it the same way `--attach` is exempted: `refuseQueueOnlyFlag("--file", fileFlag >= 0 && editFlag < 0)`. Update the comment above `refuseQueueOnlyFlag`, which says an edit's replacement text "is typed, never read from a file", so it says `--edit` accepts `--file` as its replacement text.
+   - In the `editFlag >= 0` branch, when `fileFlag >= 0`:
+     - Claim the `--file` pair the way `roleClaim`/`attachClaims` are claimed, both in the before-position loop and when collecting text tokens.
+     - Refuse any leftover text token with `fail("unexpected argument <json> — with --file the replacement text comes from the file")`, matching `failStrayArg`'s wording. Reuse `failStrayArg(args, "with --file the replacement text comes from the file", editFlag, editFlag + 1, fileFlag, fileFlag + 1, ...roleClaim, ...attachClaims)` if its contract fits. Check its signature first.
+     - Read the text with `readPromptFileArg(promptFileValue(args[fileFlag + 1]))`. That covers a missing value (`--file needs a path`), an unreadable file, an empty file, and memoized stdin `-`.
+     - Return `{ mode: "edit", role, position: n, text, attachPaths }` with that text untouched. `editPromptAtFile` trims it.
+   - Without `--file`, the branch is unchanged. `PromptArgs` needs no new field.
+2. `src/inbox/prompt-commands.ts`: no change expected. `cmdPrompt`'s edit branch passes `parsed.text` through. Confirm the edit confirmation line still prints. It echoes the text, so check how `sayPromptOutcome`/`sayListedOutcome` render a multi-line text. If they print it whole, leave it. If they truncate to the first line, leave that too. Don't add new rendering.
+3. `src/cli/help.ts`: in the prompt stanza, add `tumwater prompt --edit <n> --file <path> [--attach <path>]` after the existing `--edit` entry. It replaces the Nth queued prompt's text with the file's contents (`"-"` reads stdin), kept line for line. Position, age, and `--at` deferral are kept, and `--role <id>` disambiguates like `--edit`. `FREEFORM_VALUED_FLAGS.prompt` already lists `--file` and `--edit`, so it needs no change.
+4. README.md, Usage table's "Steer the project" row: extend the `tumwater prompt --edit <n> "new text" [--attach <path>]` clause with "or `--edit <n> --file <path>` to take the replacement from a file". Don't edit the prompt markers.
+
+**Files touched.** `src/cli/cli-command-args.ts`, `src/cli/help.ts`, README.md, `test/cli-command-args.test.ts`, `test/prompt-commands.test.ts`.
+
+**Acceptance criteria.**
+- `test/cli-command-args.test.ts`:
+  - Replace the test "parsePromptArgs --edit refuses --file: the replacement text is typed, never read". The new test writes a temp file holding `line one\n\nline two\n`. `parsePromptArgs(["--edit", "2", "--file", f])` then deep-equals `{mode: "edit", role: null, position: 2, text: "line one\n\nline two\n", attachPaths: []}`. With `--role bugfix` before or after the pair, the result has `role: "bugfix"`. With `--attach a.png`, `attachPaths` is `["a.png"]`.
+  - These calls fail:
+    - `["--edit", "2", "--file", f, "extra"]` and `["--edit", "2", "extra", "--file", f]` each fail naming `"extra"`;
+    - `["--edit", "2", "--file"]` fails with `--file needs a path`;
+    - an empty file fails with `is empty`;
+    - `["--list", "--file", f]` and `["--cancel", "1", "--file", f]` still fail with `--file only queues a prompt`;
+    - `["--edit", "1", "--file", f, "--at", "5m"]` still fails with `--at only queues a prompt`.
+- `test/prompt-commands.test.ts` adds a test modeled on "prompt --edit --role rewrites the entry in place and keeps its list position and stamp". It queues two bugfix prompts, then runs `cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "--file", f])` with `f` holding `first\n\nsecond paragraph\n`. The first queue file still exists, and its content (marker stripped) is `first\n\nsecond paragraph`, with the inner blank line kept. `--list` still shows it at position 1 and the other prompt at position 2. Exactly one `prompt_edited` event is logged. A missing file path exits non-zero, and the queue files are byte-identical to before.
+- The help test that matches the prompt `--edit` stanza (find it with grep for `prompt --edit` under `test/`) also matches `tumwater prompt --edit <n> --file <path>`. If no such test exists, add an assertion to the help-stanza test file that covers `tumwater help prompt`.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater questions answer <n> --file <path>`: record a multiline decision with its lines kept (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `normalizeEntryBody`, `bodyStructureProblem` in `src/backlog/backlog-write.ts`) and the landed `plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" plan: that one only calls `tryAnswerQuestion` with its existing four arguments from `src/ui/tui/tui-keys.ts`, and this plan keeps that signature working (it adds an optional trailing parameter). No `src/ui` or `src/gui` file is touched); done 2026-10-12 by feature
