@@ -37,7 +37,9 @@ import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gat
 import { errorMessage, textOr } from "../text/text.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
-import { eventLogState, type EventLogState } from "../events/event-window.js";
+import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
+import { finiteNumber } from "../files/json-object.js";
+import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse } from "../gates/startup-gate.js";
@@ -394,9 +396,14 @@ function leftoverWorktreeDirs(root: string): string[] {
   );
 }
 
-/** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the two
+/** The window of `slot_wait` events the pool row sums, and the total wait inside it that warns. */
+const SLOT_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
+const SLOT_WAIT_WARN_TOTAL_MS = 10 * 60_000;
+
+/** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
  * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
- * left behind, and a pin older than PIN_STALE_MS (a paused role holding a checkout). Read-only,
+ * left behind, a pin older than PIN_STALE_MS (a paused role holding a checkout), and the last
+ * 24 h of `slot_wait` events totalling SLOT_WAIT_WARN_TOTAL_MS (the pool is too small). Read-only,
  * like every doctor check; `now` is a test seam for the pin-age arithmetic. */
 export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome {
   const slots = readSlotsState(root).slots;
@@ -420,7 +427,32 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
         .join("; "),
     );
   }
-  return (leftover.length > 0 || stale.length > 0 ? warnOutcome : okOutcome)(parts.join(" — "));
+  let contended = false;
+  try {
+    const waits = readEventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS).events.filter(
+      (ev) => ev.type === "slot_wait" && ev.ts >= now - SLOT_WAIT_CHECK_WINDOW_MS,
+    );
+    if (waits.length > 0) {
+      let total = 0;
+      let longest = waits[0]!;
+      for (const ev of waits) {
+        const waited = finiteNumber(ev.waitedMs, 0);
+        total += waited;
+        if (waited > finiteNumber(longest.waitedMs, 0)) longest = ev;
+      }
+      contended = total >= SLOT_WAIT_WARN_TOTAL_MS;
+      const purpose = longest.purpose === "vet" ? "vet" : "tick";
+      parts.push(
+        `${plural(waits.length, "slot wait")} in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
+          finiteNumber(longest.waitedMs, 0),
+        )} (${textOr(longest.role)} ${purpose})${contended ? ` — raise worktreeSlots above ${slots.length}` : ""}`,
+      );
+    }
+  } catch (err) {
+    parts.push(`could not read the event log for slot waits: ${errorMessage(err)}`);
+  }
+  const warn = leftover.length > 0 || stale.length > 0 || contended;
+  return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
 }
 
 /** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7): the

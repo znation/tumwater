@@ -93,7 +93,7 @@ discards a role's in-flight landing.
   (`.tumwater/worktrees/_slot-<n>`, default `maxConcurrent` + 1): each is leased for one run,
   reset to that run's commit, and released back. A role whose tick is resumable keeps its slot
   pinned so the resumed session runs in the same directory; a lease that waits 30 s or more
-  logs a `slot_wait` event so `worktreeSlots` can be sized from real contention. Outside the
+  logs a `slot_wait` event so `worktreeSlots` can be sized from real contention; `tumwater doctor`'s "worktree pool" row sums the last 24 h of those waits and warns once they total 10 minutes, naming the number to raise `worktreeSlots` above. Outside the
   pool sit the director's own `.tumwater/worktrees/director`, the merge drain's `_merge`, the
   review gate's `_gate-main`, and the redeploy mirror and witness (`_main`, `_build`). Size the
   disk for about `worktreeSlots` + 3 warm checkouts of the project.

@@ -28,6 +28,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { logEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
@@ -769,4 +770,24 @@ test("checkBootstrap reports an active bootstrap, and stands down without config
   fs.mkdirSync(path.dirname(bootstrapLatchPath(root)), { recursive: true });
   fs.writeFileSync(bootstrapLatchPath(root), "");
   assert.equal(checkBootstrap(root, config).detail, "not bootstrapping");
+});
+
+test("checkWorktreePool sums the last day of slot_wait events and warns at ten minutes", () => {
+  const root = readyRepo();
+  const wait = (role: string, purpose: string, waitedMs: number) =>
+    logEvent(root, { loop: "harness", type: "slot_wait", message: "waited", role, purpose, waitedMs });
+  wait("feature", "tick", 45_000);
+  wait("clean", "vet", 90_000);
+  const quiet = checkWorktreePool(root);
+  assert.equal(quiet.level, "ok");
+  assert.match(quiet.detail, /2 slot waits in the last 24h, 2m total, longest 90s \(clean vet\)/);
+
+  wait("feature", "tick", 600_000);
+  const busy = checkWorktreePool(root);
+  assert.equal(busy.level, "warn");
+  assert.match(busy.detail, /raise worktreeSlots above 0/);
+
+  const later = checkWorktreePool(root, Date.now() + 48 * 3_600_000);
+  assert.equal(later.level, "ok");
+  assert.doesNotMatch(later.detail, /slot wait/);
 });

@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` sizes the worktree pool: the "worktree pool" row sums the last 24 h of `slot_wait` events and warns when leases waited 10 minutes or more in total (planned 2026-10-12 by plan; independent of every other entry. `logSlotWait` in `src/git/worktree-pool.ts` logs a `slot_wait` event (`role`, `purpose`, `waitedMs`, `slots`, `pinned`) whenever a pooled lease waited `SLOT_WAIT_EVENT_MS` (30 s) or more. Both `plans/worktree-pool.md` ("Observability (part 5/5)") and docs/how-it-works.md's "Worktree pool" bullet call it "the signal to raise `worktreeSlots`". But nothing adds those events up. `grep -rn slot_wait src` finds only the logger, the event union in `src/events/events.ts`, `formatEvent`'s case in `src/events/event-format.ts`, and a doc comment in `src/files/json-object.ts`. Today an operator who wants to size the pool has to scroll `tumwater logs --grep slot_wait` and add the waits by hand. `checkWorktreePool` in `src/doctor/doctor-checks.ts` reports only slots, leases, pins, and leftover checkouts. Stands alone: no pool, scheduler, event, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new text with no extra work)
+_None yet._
+
+## Done
+
+### `tumwater doctor` sizes the worktree pool: the "worktree pool" row sums the last 24 h of `slot_wait` events and warns when leases waited 10 minutes or more in total (planned 2026-10-12 by plan; independent of every other entry. `logSlotWait` in `src/git/worktree-pool.ts` logs a `slot_wait` event (`role`, `purpose`, `waitedMs`, `slots`, `pinned`) whenever a pooled lease waited `SLOT_WAIT_EVENT_MS` (30 s) or more. Both `plans/worktree-pool.md` ("Observability (part 5/5)") and docs/how-it-works.md's "Worktree pool" bullet call it "the signal to raise `worktreeSlots`". But nothing adds those events up. `grep -rn slot_wait src` finds only the logger, the event union in `src/events/events.ts`, `formatEvent`'s case in `src/events/event-format.ts`, and a doc comment in `src/files/json-object.ts`. Today an operator who wants to size the pool has to scroll `tumwater logs --grep slot_wait` and add the waits by hand. `checkWorktreePool` in `src/doctor/doctor-checks.ts` reports only slots, leases, pins, and leftover checkouts. Stands alone: no pool, scheduler, event, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new text with no extra work) (done 2026-10-12)
 
 **Goal.** `tumwater doctor`'s existing "worktree pool" row says how much slot contention the last day saw, and warns when it adds up to enough to justify raising `worktreeSlots`.
 
@@ -30,8 +34,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   3. A `slot_wait` whose `ts` falls before `now - 24h` is not counted. Pass a `now` far enough ahead of the logged events that they fall out of the window, and the detail no longer matches `/slot wait/`.
 - `grep -n slot_wait src/doctor/doctor-checks.ts` finds the new filter.
 - `npm run test` passes.
-
-## Done
 
 ### The notify hook pages when main goes red: the once-per-SHA red-main warning becomes a typed `main_red_hold` event on the allowlist (planned 2026-10-12 by plan; independent of every other entry. When main's declared check fails, `mainRedGate` in `src/baseline/main-red.ts` holds every code loop (each tick ends `main_red`), and no change merges until a bugfix lands. This is the fleet's widest stop after `supervisor_exit`. Today `warnMainRedOnce` logs it as a generic `warning` on loop `harness` through `warnEventBestEffort`. `NOTIFY_EVENT_TYPES` in `src/events/notify.ts` matches on event type and deliberately leaves `"warning"` off, so a red main pages nobody. The operator finds out from the dashboard's "main is red" alert or from `tumwater doctor`'s "main red" row, and only if they happen to look. Stands alone: no scheduler, gate, snapshot, GUI, or TUI change) (done 2026-10-12)
 
