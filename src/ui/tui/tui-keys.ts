@@ -534,14 +534,17 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // Re-read the Queued pane's rows and cached list after the queue changed (entry or cancel)
   // and clamp the row selection to the shortened queue — a selection past the new end lands
   // on the last remaining prompt, never on a stale role/position. An emptied queue clears it
-  // back to list mode. The one home of the queuedRows/paneCache pairing the Ctrl+T entry and
-  // the Ctrl+X cancel share, so the pane's list and its selectable rows cannot drift.
+  // back to list mode. The refreshed list and any clamped-in row share paneScroll, so the
+  // offset resets too: a cancel that moves the selection opens the newly selected prompt at
+  // its head. The one home of the queuedRows/paneCache pairing the Ctrl+T entry and the Ctrl+X
+  // cancel share, so the pane's list and its selectable rows cannot drift.
   const refreshQueued = (): void => {
     queuedRows = queuedListRows(root, null, listWideScope(root));
     paneCache = renderQueuedList(queuedRows, now());
     selectedQueued = selectedQueued === null || queuedRows.length === 0
       ? null
       : Math.min(selectedQueued, queuedRows.length - 1);
+    paneScroll = 0;
   };
 
   // Leave History search mode (Enter applies, Esc cancels, Ctrl+T cycles): restore the saved
@@ -986,7 +989,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // In the Queued pane, up/down select a queued prompt row in full (wrapping, the backlog
       // pane's rule) instead of editing the prompt; an empty queue has nothing to select, so
       // moveEntrySelection clears the selection. Every other view keeps today's behavior.
+      // The selected body shares paneScroll with the list, so a newly opened row must start
+      // at its head (the status pane's entryScroll reset on the same move), or it renders
+      // scrolled into the middle of the previous row's body.
       selectedQueued = moveEntrySelection(queuedRows.length, selectedQueued, arrow);
+      paneScroll = 0;
       deps.requestRender();
       return;
     }
@@ -1063,8 +1070,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       !budgetMode && !rolePromptFor && !searchMode
     ) {
       // Esc on the Queued pane returns it to list mode; the cached list is untouched (nothing
-      // was cancelled), so the pane shows the same renderQueuedList it entered with.
+      // was cancelled), so the pane shows the same renderQueuedList it entered with. The
+      // shared paneScroll resets with the body switch, like a selection move.
       selectedQueued = null;
+      paneScroll = 0;
       deps.requestRender();
       return;
     }

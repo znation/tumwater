@@ -1124,6 +1124,38 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   assert.equal(keys.state().paneCache, "");
 });
 
+test("the Queued pane resets the selected row's within-body scroll when the selection moves", () => {
+  const root = makeRoot();
+  // Two prompts each taller than the entry budget, so the body is scrolled before the move.
+  const lines = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n");
+  enqueueRolePrompt(root, "clean", `${lines}\nfirst`);
+  enqueueRolePrompt(root, "clean", `${lines}\nsecond`);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, [], false);
+  keys.setLineBudgets(5, 4);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { name: "down" }); // select the first row
+  keys.handleKey(undefined, { name: "pagedown" }); // scroll into its body
+  assert.equal(keys.state().paneScroll, 5, "PgDn advances the body by the event budget");
+  keys.handleKey(undefined, { name: "down" }); // move to the second row
+  assert.equal(keys.state().selectedQueued, 1);
+  assert.equal(keys.state().paneScroll, 0, "the newly selected row opens at its head");
+  // Esc back to list mode drops the body offset with the selection.
+  keys.handleKey(undefined, { name: "pagedown" });
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().paneScroll, 0, "leaving selection mode resets the body offset");
+
+  // A cancel that clamps the selection onto the previous row also opens it at its head:
+  // scroll into the last row, cancel it, and the clamped-in row must not inherit the offset.
+  keys.handleKey(undefined, { name: "down" }); // select the first row
+  keys.handleKey(undefined, { name: "down" }); // select the second (last) row
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().paneScroll, 5, "PgDn advances the last row's body");
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // cancel the last row
+  assert.equal(keys.state().selectedQueued, 0, "the cancel clamps the selection to the first row");
+  assert.equal(keys.state().paneScroll, 0, "the clamped-in row opens at its head");
+});
+
 test("a roster-size change shifts the relative panes by the same delta, keeping the selected pane kind", () => {
   const root = makeRoot();
   enqueuePrompt(root, "director text");
