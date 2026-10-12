@@ -1,8 +1,7 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
-import { shortSpanPhrase } from "../text/phrases.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowCells, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
 
@@ -13,33 +12,16 @@ import { gotSuffix } from "../text/text.js";
  * by history-data.ts (beside src/report/report-data.ts and src/failure/failure-data.ts); this
  * module renders them and drives the CLI. */
 
-/** The row's five unpadded cell strings — one shape shared by cellsOf and widthsOf, so a column
- * added for the cells cannot be left off the widths. */
-type RowCells = { loop: string; tick: string; result: string; duration: string; usage: string };
-
-/** Each RowCells column's measured width in terminal display columns. A mapped type on purpose:
- * adding a column to RowCells cannot leave it without a width. */
-type RowWidths = { [K in keyof RowCells]: number };
-
-/** The row's five padded columns as their unpadded strings — the one home for the cell values,
- * shared by the renderer (which pads) and the width pass (which measures). A tick with no
- * reported duration shows the em dash. */
-function cellsOf(row: TickRow): RowCells {
-  return {
-    loop: row.loop,
-    tick: String(row.tick),
-    result: row.result,
-    duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
-    usage: row.usage,
-  };
-}
+/** Each TickRowCells column's measured width in terminal display columns. A mapped type on
+ * purpose: adding a column to TickRowCells cannot leave it without a width. */
+type RowWidths = { [K in keyof TickRowCells]: number };
 
 /** Each column's width from its unpadded cell. Text cells measure terminal display columns
  * (displayWidth), not UTF-16 code units: a loop name holding CJK or emoji renders two columns
  * per code point, and a code-unit padEnd lets that row's later columns drift right of its
  * ASCII neighbors. The tick cell measures before its "#" prefix is added (the prefix rides
  * outside the pad), and duration is ASCII, so both take plain length. */
-function widthsOf(cells: RowCells): RowWidths {
+function widthsOf(cells: TickRowCells): RowWidths {
   return {
     loop: displayWidth(cells.loop),
     tick: cells.tick.length,
@@ -54,7 +36,7 @@ function widthsOf(cells: RowCells): RowWidths {
 function widestWidths(rows: TickRow[]): RowWidths {
   const widths = { loop: 0, tick: 0, result: 0, duration: 0, usage: 0 };
   for (const row of rows) {
-    const w = widthsOf(cellsOf(row));
+    const w = widthsOf(tickRowCells(row));
     widths.loop = Math.max(widths.loop, w.loop);
     widths.tick = Math.max(widths.tick, w.tick);
     widths.result = Math.max(widths.result, w.result);
@@ -69,7 +51,7 @@ function widestWidths(rows: TickRow[]): RowWidths {
  * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
  * misaligning that row against its neighbors; trimEnd strips only the trailing pad. */
 function renderRow(row: TickRow, widths: RowWidths): string {
-  const c = cellsOf(row);
+  const c = tickRowCells(row);
   return [
     row.time,
     padToWidth(c.loop, widths.loop),

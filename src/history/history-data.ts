@@ -101,21 +101,46 @@ export interface TickRow {
   detail: string;
 }
 
+/** The five unpadded cell strings of one tick row, the one home for the column values. The CLI
+ * table (history.ts's renderRow, which pads) and the TUI History pane (tui-history.ts) both
+ * build their lines from these; tickRowGrepHaystack below joins them too, so the surfaces that
+ * render or search a tick row cannot disagree about what a row's fields say. `tick` is the
+ * unpadded number (the caller adds the `#` prefix), and a null `durationMs` (the tick's start
+ * sits outside the scanned window) shows the em dash rather than a fabricated duration. */
+export interface TickRowCells {
+  loop: string;
+  tick: string;
+  result: string;
+  duration: string;
+  usage: string;
+}
+
+export function tickRowCells(row: TickRow): TickRowCells {
+  return {
+    loop: row.loop,
+    tick: String(row.tick),
+    result: row.result,
+    duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
+    usage: row.usage,
+  };
+}
+
 /** The `--grep` haystack for one rendered history row: the canonical unpadded row line — what
  * renderRow (history.ts) produces when the row is the widest in each column, so padToWidth is
  * the identity — prefixed with the raw event type so stable ids (`tick_end`) are greppable the
  * way logs --grep's haystack carries `e.type`. Built per row because the filter runs before the
  * widths of the rows actually shown are known, and shared by `tumwater history --grep` and the
- * dashboard's /api/history?grep so the two cannot disagree on the rule. A tick with no reported
- * duration shows the em dash. */
+ * dashboard's /api/history?grep so the two cannot disagree on the rule. The row's cells come
+ * from tickRowCells, the one home for their values. */
 export function tickRowGrepHaystack(row: TickRow): string {
+  const c = tickRowCells(row);
   return `tick_end ${[
     row.time,
-    row.loop,
-    `#${row.tick}`,
-    row.result,
-    row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
-    row.usage,
+    c.loop,
+    `#${c.tick}`,
+    c.result,
+    c.duration,
+    c.usage,
     row.detail,
   ]
     .join("  ")

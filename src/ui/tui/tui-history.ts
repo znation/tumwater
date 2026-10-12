@@ -5,20 +5,20 @@
  * has no full terminal width to measure columns against — so the parity with `history` is the
  * rows and their fields, not the CLI table's padding. Pure: a function of the rows it is
  * handed. */
-import { shortSpanPhrase } from "../../text/phrases.js";
-import type { TickRow } from "../../history/history-data.js";
+import { tickRowCells, type TickRow } from "../../history/history-data.js";
 
 /** The pane body for a set of tick rows: `time  loop #tick  result  duration`, then `usage`
- * and `detail` when they carry anything, joined newest-first by newlines. A null
- * `durationMs` (the tick's start sits outside the scanned window) shows the em dash, the same
- * fallback the CLI's table uses; an empty `usage` (neither tokens nor cost) and an empty
+ * and `detail` when they carry anything, joined newest-first by newlines. The cells come from
+ * history-data.ts's tickRowCells, the one home the CLI's table builds on too, so a null
+ * `durationMs` (the tick's start sits outside the scanned window) shows the em dash here the
+ * same way; an empty `usage` (neither tokens nor cost) and an empty
  * `detail` are omitted rather than leaving a gap. No rows renders `""`, which the pane's
  * `emptyNote` replaces. `row.result` is the string history-data.ts resolved (including a
  * joined landing verdict), never reclassified here. */
 export function historyPaneText(rows: readonly TickRow[]): string {
   return rows
     .map((row) => {
-      const duration = row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs);
+      const { duration } = tickRowCells(row);
       const parts = [row.time, `${row.loop} #${row.tick}`, row.result, duration];
       if (row.usage) parts.push(row.usage);
       if (row.detail) parts.push(row.detail);
