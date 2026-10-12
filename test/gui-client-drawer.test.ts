@@ -25,6 +25,9 @@ type FakeEl = {
 type DrawerScope = {
   openLoopRole(): string | null;
   openEntryKey(): string | null;
+  startNoteEdit(role: string, text: string): void;
+  stopNoteEdit(): void;
+  loadDrawerRole(role: string): Promise<void>;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
   renderLoopDrawer(d: object): void;
@@ -434,4 +437,39 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   assert.match(second, /bugfix watches the open bugs/);
   assert.match(second, /the bugfix next prompt/);
   assert.doesNotMatch(second, /clean keeps the tree tidy/);
+});
+
+test("the drawer's Notebook section offers Edit and Clear with a note, Edit alone without, and an edit holds its captured text", async () => {
+  const responses: Record<string, unknown> = { "/api/role?role=clean": { note: "first note", nextPrompt: null } };
+  const t = openDrawer(["toggleLoop", "renderLoopDrawer", "startNoteEdit", "stopNoteEdit", "loadDrawerRole"], { status: workingStatus(), responses });
+  t.scope.toggleLoop("clean");
+  await flush();
+  let role = t.paintedFor("drawerrole");
+  assert.match(role, /data-act='note-edit' data-arg='clean'/);
+  assert.match(role, /data-act='note-clear' data-arg='clean'/);
+
+  // Editing shows the captured text in a textarea; a changed payload leaves the panel alone.
+  t.scope.startNoteEdit("clean", "first note");
+  role = t.paintedFor("drawerrole");
+  assert.match(role, /<textarea id='noteedittext' rows='12'[^>]*>first note<\/textarea>/);
+  assert.match(role, /data-act='note-save'/);
+  assert.match(role, /data-act='note-discard'/);
+  const paints = t.painted.filter(([id]) => id === "drawerrole").length;
+  responses["/api/role?role=clean"] = { note: "someone else's note", nextPrompt: null };
+  await t.scope.loadDrawerRole("clean");
+  t.scope.renderLoopDrawer(workingStatus());
+  assert.equal(t.paintedFor("drawerrole"), role);
+  assert.ok(t.painted.filter(([id]) => id === "drawerrole").length >= paints);
+  assert.doesNotMatch(t.paintedFor("drawerrole"), /someone else/);
+
+  // Discarding returns to the (refetched) note view.
+  t.scope.stopNoteEdit();
+  assert.match(t.paintedFor("drawerrole"), /someone else&#39;s note/);
+
+  // No note: Edit only.
+  responses["/api/role?role=clean"] = { note: null, nextPrompt: null };
+  await t.scope.loadDrawerRole("clean");
+  role = t.paintedFor("drawerrole");
+  assert.match(role, /data-act='note-edit'/);
+  assert.doesNotMatch(role, /note-clear/);
 });

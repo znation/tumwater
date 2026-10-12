@@ -261,3 +261,34 @@ test("entry-edit starts the form; entry-edit-save posts the edit unless the titl
   scope.runAct("entry-edit-save", "plans:1");
   assert.deepEqual(posts, [["/api/backlog-edit", { kind: "plan", position: 2, title: "B (planned 2026-10-12 by plan)", newTitle: "New", newBody: "l1\n\nl2" }]]);
 });
+
+test("note-save posts the textarea, note-clear needs a second click, note-discard posts nothing", () => {
+  const posts: unknown[] = [];
+  const events: string[] = [];
+  let armed = false;
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      drawerRole: { role: "feature", state: "ok", view: { note: "old" } },
+      $: (id: string) => (id === "noteedittext" ? { value: "new\ntext" } : null),
+      startNoteEdit: (r: string, t: string) => events.push(`edit ${r} ${t}`),
+      stopNoteEdit: () => events.push("stop"),
+      noteClearArmed: () => armed,
+      armNoteClear: () => { armed = true; },
+      disarmNoteClear: () => { armed = false; },
+      loadDrawerRole: (r: string) => events.push(`load ${r}`),
+      postAction: (path: string, body: unknown, done: (d: unknown) => string) => { posts.push([path, body]); events.push(done({ message: "notebook saved (8 bytes)" })); },
+    },
+  );
+  scope.runAct("note-edit", "feature");
+  assert.deepEqual(events, ["edit feature old"]);
+  scope.runAct("note-discard", "feature");
+  assert.deepEqual(posts, []);
+  scope.runAct("note-clear", "feature");
+  assert.deepEqual(posts, []);
+  scope.runAct("note-clear", "feature");
+  assert.deepEqual(posts, [["/api/role-notes", { role: "feature", text: "" }]]);
+  scope.runAct("note-save", "feature");
+  assert.deepEqual(posts[1], ["/api/role-notes", { role: "feature", text: "new\ntext" }]);
+  assert.deepEqual(events.slice(-2), ["load feature", "notebook saved (8 bytes)"]);
+});

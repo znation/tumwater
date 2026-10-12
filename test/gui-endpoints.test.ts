@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -30,6 +30,7 @@ import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
+import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -950,4 +951,33 @@ test("handleBacklogEdit rewrites the entry, answers gone for a stale title, 400s
   assert.deepEqual(done.data, { ok: true, status: "edited", file: "PLANS.md", title: "p2" });
   assert.ok(fs.readFileSync(plansPath, "utf8").includes("### p2 (planned 2026-10-01 by plan)\n\nl1\n\nl2"));
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
+});
+
+test("handleRoleNotes writes, clears, and rejects bad input without touching the note", async () => {
+  const root = tmpdir();
+  const notes = roleNotesPath(root, "feature");
+  const post = (body: unknown) => captureJson((res) => handleRoleNotes(fakeReq(JSON.stringify(body)), res, root));
+
+  const ok = await post({ role: "feature", text: "x\ny" });
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { ok: true, message: "notebook saved (3 bytes)" });
+  assert.equal(fs.readFileSync(notes, "utf8"), "x\ny");
+
+  const bad = [
+    [{ role: "nope", text: "z" }, /^unknown role "nope"/],
+    [{ role: DIRECTOR_ROLE, text: "z" }, /^the director has no notebook$/],
+    [{ role: "feature", text: 5 }, /"text" must be a string/],
+    [{ role: "feature", text: "a".repeat(ROLE_NOTES_MAX_BYTES + 1) }, new RegExp(`note is ${ROLE_NOTES_MAX_BYTES + 1} bytes`)],
+  ] as const;
+  for (const [body, re] of bad) {
+    const r = await post(body);
+    assert.equal(r.captured.status, 400);
+    assert.match((r.data as { error: string }).error, re);
+    assert.equal(fs.readFileSync(notes, "utf8"), "x\ny", "note unchanged");
+  }
+  assert.equal(fs.existsSync(roleNotesPath(root, DIRECTOR_ROLE)), false);
+
+  const cleared = await post({ role: "feature", text: "" });
+  assert.deepEqual(cleared.data, { ok: true, message: "notebook cleared" });
+  assert.equal(fs.readFileSync(notes, "utf8"), "");
 });

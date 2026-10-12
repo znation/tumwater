@@ -138,6 +138,25 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
           ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md")
           : "That entry was removed or moved — refreshed";
       });
+    } else if (act === "note-edit") {
+      const note = drawerRole && drawerRole.view && typeof drawerRole.view.note === "string" ? drawerRole.view.note : "";
+      startNoteEdit(arg, note);
+    } else if (act === "note-discard") {
+      stopNoteEdit();
+    } else if (act === "note-save" || act === "note-clear") {
+      let text = "";
+      if (act === "note-save") {
+        const box = $("noteedittext");
+        text = box ? box.value : "";
+      } else {
+        if (!noteClearArmed(arg)) { armNoteClear(arg); return; }
+        disarmNoteClear();
+      }
+      postAction("/api/role-notes", { role: arg, text }, (d) => {
+        noteEditing = null;
+        loadDrawerRole(arg);
+        return d && typeof d.message === "string" ? d.message : "Notebook updated";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];

@@ -28,6 +28,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const wasLoop = openLoopRole();
     drawer = null;
     entryEditing = null;
+    noteEditing = null;
+    confirmNoteClear = null;
     if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView);
     drawerTicks = null;
     drawerChange = null;
@@ -236,10 +238,34 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const view = r.view && typeof r.view === "object" ? r.view : {};
       const note = typeof view.note === "string" && view.note.trim() !== "" ? view.note : null;
       const nextPrompt = typeof view.nextPrompt === "string" && view.nextPrompt.trim() !== "" ? view.nextPrompt : null;
-      body = "<div class='sec-head'><h3>Notebook</h3></div>" + (note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notebook yet.</p>") +
+      const canEdit = r.role !== "director";
+      const editing = canEdit && noteEditing && noteEditing.role === r.role;
+      const buttons = !canEdit ? "" : "<span style='margin-left:auto'><button type='button' class='btn btn-sm' data-act='note-edit' data-arg='" + esc(r.role) + "'>Edit</button>" +
+        (note ? " <button type='button' class='btn btn-sm btn-danger' data-act='note-clear' data-arg='" + esc(r.role) + "'>" + (noteClearArmed(r.role) ? "Click again to clear" : "Clear") + "</button>" : "") + "</span>";
+      const noteBody = editing
+        ? "<textarea id='noteedittext' rows='12' class='mono' style='width:100%'>" + esc(noteEditing.text) + "</textarea>" +
+          "<div><button type='button' class='btn btn-sm btn-primary' data-act='note-save' data-arg='" + esc(r.role) + "'>Save</button> " +
+          "<button type='button' class='btn btn-sm' data-act='note-discard' data-arg='" + esc(r.role) + "'>Discard</button></div>"
+        : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notebook yet.</p>";
+      body = "<div class='sec-head'><h3>Notebook</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
         "<details><summary>Next tick prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>";
     }
     return "<section>" + body + "</section>";
+  }
+  // An open notebook edit holds the draft's starting text, not the live payload, so a poll
+  // refetch neither wipes the textarea nor changes the painted panel string. Clear waits for a
+  // confirming click like entry cancel: the first click arms it for 5 s, the second posts.
+  let noteEditing = null; // { role, text }
+  let confirmNoteClear = null; // { role, until }
+  function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
+  function startNoteEdit(role, text) { noteEditing = { role, text }; confirmNoteClear = null; repaintDrawerRole(); }
+  function stopNoteEdit() { noteEditing = null; repaintDrawerRole(); }
+  const noteClearArmed = (role) => Boolean(confirmNoteClear && confirmNoteClear.role === role && confirmNoteClear.until > Date.now());
+  function disarmNoteClear() { confirmNoteClear = null; }
+  function armNoteClear(role) {
+    confirmNoteClear = { role, until: Date.now() + 5000 };
+    repaintDrawerRole();
+    setTimeout(() => { if (confirmNoteClear && confirmNoteClear.role === role && confirmNoteClear.until <= Date.now()) { confirmNoteClear = null; repaintDrawerRole(); } }, 5100);
   }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.

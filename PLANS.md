@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Edit or clear a loop's notebook from the dashboard's loop drawer, matching `tumwater role <id> --notes-file` / `--clear-notes` (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes`/`--notes-file` branch in `src/cli/cli-query-commands.ts` over `saveRoleNote` in `src/agent/role-notes-write.ts`) and the landed read-only drawer notebook (`drawerRoleSection`/`loadDrawerRole` in `src/ui/gui/gui-client-drawer.ts` over `GET /api/role`). The TUI Ctrl+N pane stays read-only and is a separate, later sibling)
+_None yet._
+
+
+## Done
+
+### Edit or clear a loop's notebook from the dashboard's loop drawer, matching `tumwater role <id> --notes-file` / `--clear-notes` (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes`/`--notes-file` branch in `src/cli/cli-query-commands.ts` over `saveRoleNote` in `src/agent/role-notes-write.ts`) and the landed read-only drawer notebook (`drawerRoleSection`/`loadDrawerRole` in `src/ui/gui/gui-client-drawer.ts` over `GET /api/role`). The TUI Ctrl+N pane stays read-only and is a separate, later sibling) — done 2026-10-12
 
 **Goal.** The loop drawer shows a loop's notebook, but correcting a stale or wrong note means switching to the CLI. Add **Edit** and **Clear** controls to the drawer's Notebook section. Both write through the same `saveRoleNote` the CLI, MCP, and pi surfaces use, so the 4 KB cap and its wording cannot drift.
 
@@ -48,8 +53,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `note-clear` posts nothing on the first click and `{ role, text: "" }` on the second.
   - `note-discard` posts nothing.
 - `npm run test` passes.
-
-## Done
 
 ### Clear or replace a loop's notebook from the CLI: `tumwater role <id> --clear-notes` and `tumwater role <id> --notes-file <path>` (planned 2026-10-12 by plan; sibling of the landed read-only notebook views — `tumwater role <id>` (`rolePayload` in `src/roles/role-view.ts`), the dashboard loop drawer, and the TUI's Ctrl+N notebook pane; independent of the TUI backlog title-edit plan above; done 2026-10-12 by feature)
 

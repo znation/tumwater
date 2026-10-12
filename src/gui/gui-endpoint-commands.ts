@@ -22,6 +22,8 @@ import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } 
 import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestResetCounters, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { saveRoleNote } from "../agent/role-notes-write.js";
+import { roleNotesPath } from "../paths.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
@@ -48,8 +50,8 @@ async function readPostBody(
  * wake/abort/prompt-role/pause-role family states the body-discipline-and-role-check pairing
  * once instead of two guard lines per handler. Its null return means the response is already
  * written and the handler must stop; callers keep their own `if (!body) return` bail. Exactly
- * five call sites — handlePromptRole, handleWake and handleResetCounters (allowMissing, the
- * {} → all-roles default), handleAbort, and handlePauseRole; handlePromptCancel deliberately does not ride it, since
+ * six call sites — handlePromptRole, handleWake and handleResetCounters (allowMissing, the
+ * {} → all-roles default), handleAbort, handlePauseRole, and handleRoleNotes; handlePromptCancel deliberately does not ride it, since
  * its role is optional and validates only when present. */
 async function readRoleBody(
   req: http.IncomingMessage,
@@ -630,4 +632,22 @@ export async function handlePauseRole(req: http.IncomingMessage, res: http.Serve
     ? pauseRole(root, body.role as string, untilMs)
     : resumeRole(root, body.role as string);
   sendJson(res, 200, { ok: true, changed, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
+}
+
+/** Handle POST /api/role-notes: the loop drawer's notebook Edit/Clear — the same saveRoleNote
+ * `tumwater role <id> --notes-file` / `--clear-notes` call, so the 4 KB cap and its wording
+ * cannot drift. `"text": ""` clears. The director has no notebook (400, the CLI's wording); a
+ * non-string text is a 400 before anything is written; an over-cap note is a 400 carrying
+ * saveRoleNote's byte-count message. */
+export async function handleRoleNotes(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readRoleBody(req, res, '{"role": "feature", "text": "…"}', root);
+  if (!body) return;
+  const role = body.role as string;
+  if (role === DIRECTOR_ROLE) return sendJson(res, 400, { error: "the director has no notebook" });
+  if (typeof body.text !== "string") return sendJson(res, 400, { error: `"text" must be a string — the full replacement note, or "" to clear it${gotSuffix(body.text)}` });
+  try {
+    sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), body.text) });
+  } catch (err) {
+    sendJson(res, 400, { error: errorMessage(err) });
+  }
 }

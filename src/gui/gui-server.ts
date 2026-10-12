@@ -48,6 +48,7 @@ import {
   handleReclaim,
   handleRestart,
   handleResetCounters,
+  handleRoleNotes,
   handleWake,
 } from "./gui-endpoint-commands.js";
 import { sendJson } from "./http-body.js";
@@ -220,6 +221,7 @@ export function startGui(
     "POST /api/pause": (req, res) => handlePause(req, res, root),
     "POST /api/wake": (req, res) => handleWake(req, res, root),
     "POST /api/reset-counters": (req, res) => handleResetCounters(req, res, root),
+    "POST /api/role-notes": (req, res) => handleRoleNotes(req, res, root),
     "POST /api/restart": (req, res) => handleRestart(req, res, root),
     "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),
     "POST /api/abort": (req, res) => handleAbort(req, res, root),
