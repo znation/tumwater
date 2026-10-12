@@ -1,6 +1,5 @@
 import { collectReport, collectReportSince } from "../../report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
-import { readEvents } from "../../events/event-read.js";
 import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
@@ -61,7 +60,7 @@ import {
   settlePromptRecall,
 } from "./tui-prompt-history.js";
 import { labeledBacklogEntries, moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
-import { ACTIVITY_EVENTS, roleInspectMarkdown } from "./tui-pane.js";
+import { activityEvents, roleInspectMarkdown } from "./tui-pane.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 
 /** How long a TUI flash notice stays visible (ms). */
@@ -289,6 +288,14 @@ interface TuiKeysState {
   /** The Activity pane's body-window start into the loaded event tail, or null to follow the
    * live tail. Paged by PgUp/PgDn and reset to null on every Ctrl+T view cycle. */
   activityScroll: number | null;
+  /** The Activity pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
+   * fleet's full tail; cleared when the incoming roster no longer names it. Separate from
+   * scopeRole for the same reason historyRole is: the feed filters by exact loop (`eventRole`),
+   * where `feature-2` is its own slot. */
+  activityRole: string | null;
+  /** The Activity pane's active free-text search (the `/` editor), or null when none; matched
+   * through eventMatchesGrep, the same rule `tumwater logs --grep` and the dashboard search use. */
+  activityGrep: string | null;
   /** The History pane's active trailing window label (Ctrl+S), or null for the default
    * newest-N read; named in the hint line. */
   historySince: string | null;
@@ -461,6 +468,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // toward the tail and re-enables follow at the bottom. Reset on every Ctrl+T view cycle, so
   // re-entering Activity always starts at the live tail.
   let activityScroll: number | null = null;
+  // The Activity pane's session exact-loop scope (Ctrl+G), a raw roster id or null for the
+  // fleet's full tail. Session-only like the view/scroll state; syncSnapshot clears it when the
+  // roster drops the id. The raw ids, not scopeCycle's base roles: the feed filters by exact
+  // loop (eventRole), so `feature-2` is its own slot.
+  let activityRole: string | null = null;
+  // The Activity pane's session free-text search (the `/` prompt-line editor), a
+  // case-insensitive substring over eventMatchesGrep's type-prefixed rendered line — the same
+  // rule `tumwater logs --grep` and the dashboard search use. null is no search; session-only
+  // like the scope, so the next read computes with it.
+  let activityGrep: string | null = null;
   // The History pane's session trailing window (Ctrl+S), a HISTORY_WINDOWS length or null for
   // the default newest-N read. Session-only like the view/scroll state; the next Ctrl+T into
   // History computes the cache with it.
@@ -487,6 +504,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // saved-draft pair, exactly like the budget and role-prompt editors: the three share one
   // prompt line and are mutually exclusive, so no editor can clobber another's saved draft.
   let searchMode = false;
+  // Which pane the shared `/` editor feeds: History's tick search or Activity's event search.
+  // The target is captured when `/` opens so a roster change mid-edit cannot retarget Enter.
+  let searchFor: "history" | "activity" = "history";
   let searchSavedInput = "";
   let searchSavedCursor = 0;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
@@ -598,10 +618,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     paneScroll = 0;
   };
 
-  // Leave History search mode (Enter applies, Esc cancels, Ctrl+T cycles): restore the saved
-  // prompt text, and reset the recall state with it — the same settle contract the budget and
-  // role-prompt editors honor. The applied historyGrep itself persists across view cycling,
-  // like historyWindow/historyResult.
+  // Leave the shared search editor (Enter applies, Esc cancels, Ctrl+T cycles): restore the
+  // saved prompt text, and reset the recall state with it — the same settle contract the budget
+  // and role-prompt editors honor. The applied activityGrep/historyGrep itself persists across
+  // view cycling, like historyWindow/historyResult.
   const exitHistorySearch = (): void => {
     if (!searchMode) return;
     searchMode = false;
@@ -911,7 +931,15 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // before. A pane showing the scope recomputes its cached Markdown and re-enters the body
       // at its head; every other view keeps the scope for the Ctrl+T entry that later computes
       // with it.
-      if (view === roleIds.length + 4) {
+      if (view === 0) {
+        // The Activity feed scopes over the same raw roster ids, so `feature-2` is its own
+        // slot; the filter reads exact loop ids through eventRole. The scroll resets because
+        // its offset indexed the old (unfiltered or differently filtered) list.
+        const slots: Array<string | null> = [null, ...roleIds];
+        const slot = slots.indexOf(activityRole);
+        activityRole = slots[(slot + 1) % slots.length] ?? null;
+        activityScroll = null;
+      } else if (view === roleIds.length + 4) {
         const slots: Array<string | null> = [null, ...roleIds];
         const slot = slots.indexOf(historyRole);
         historyRole = slots[(slot + 1) % slots.length] ?? null;
@@ -1099,20 +1127,25 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (!key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && view === roleIds.length + 4 && input === "") {
-      // `/` opens the History pane's free-text search on the prompt line (the pager's search
-      // key; this project already reserves `/` for a meta action). Guarded to the History view
-      // and to an empty line, so off History it types into the prompt as today and on History a
-      // director draft is never disturbed. Pre-fills the applied pattern so Enter re-submits it
-      // and the operator can edit it; Esc cancels without applying.
+    if (
+      !key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor &&
+      (view === 0 || view === roleIds.length + 4) && input === ""
+    ) {
+      // `/` opens a free-text search on the prompt line (the pager's search key; this project
+      // already reserves `/` for a meta action): over the History pane's tick rows on History,
+      // over the Activity feed's events on Activity. Guarded to those two views and to an empty
+      // line, so elsewhere it types into the prompt as today and a director draft is never
+      // disturbed. Pre-fills the applied pattern so Enter re-submits it and the operator can
+      // edit it; Esc cancels without applying.
       const settled = settlePromptRecall(promptHistory, input, cursor);
       promptHistory = settled.history;
       searchSavedInput = settled.text;
       searchSavedCursor = settled.cursor;
+      searchFor = view === 0 ? "activity" : "history";
       searchMode = true;
-      input = historyGrep ?? "";
+      input = (searchFor === "activity" ? activityGrep : historyGrep) ?? "";
       cursor = input.length;
-      flashMessage("search ticks: Enter to filter, Esc to cancel");
+      flashMessage(searchFor === "activity" ? "search events: Enter to filter, Esc to cancel" : "search ticks: Enter to filter, Esc to cancel");
       deps.requestRender();
       return;
     }
@@ -1144,8 +1177,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // through the loaded event tail, PgDn returns toward it and re-enables follow once the
       // window reaches the tail. Both directions clamp to [0, total - eventBudget], and a log
       // with eventBudget or fewer events stays on the tail. The read is the pane's own fixed
-      // tail term, so it hits readEvents' stat cache rather than rescanning the log.
-      const total = readEvents(root, ACTIVITY_EVENTS).length;
+      // tail term (and active loop/text filter), so it hits readEvents' stat cache rather than
+      // rescanning the log.
+      const total = activityEvents(root, activityRole, activityGrep).length;
       const maxStart = Math.max(0, total - eventBudget);
       const current = activityScroll ?? maxStart;
       const next = stepEntryScroll(current, total, eventBudget, page);
@@ -1252,15 +1286,24 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (key.name === "return") {
       if (searchMode) {
-        // Enter applies the trimmed line as the History search: an empty line clears it. The
-        // cache is recomputed now (the pane is showing) and the body re-enters at its head; a
-        // successful apply restores the saved prompt draft through exitHistorySearch.
+        // Enter applies the trimmed line to the pane the editor opened over: Activity sets
+        // activityGrep (an empty line clears it) and resets the scroll to the live tail — the
+        // offset indexed the old filtered list; History recomputes its row cache now (the pane
+        // is showing) and re-enters at its head. A successful apply restores the saved prompt
+        // draft through exitHistorySearch, the shared editor's exit.
         const pattern = input.trim();
-        historyGrep = pattern === "" ? null : pattern;
-        exitHistorySearch();
-        paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep);
-        paneScroll = 0;
-        flashMessage(historyGrep === null ? "search cleared" : `search: "${historyGrep}"`);
+        if (searchFor === "activity") {
+          activityGrep = pattern === "" ? null : pattern;
+          exitHistorySearch();
+          activityScroll = null;
+          flashMessage(activityGrep === null ? "search cleared" : `search: "${activityGrep}"`);
+        } else {
+          historyGrep = pattern === "" ? null : pattern;
+          exitHistorySearch();
+          paneCache = historyPaneCache(root, historyWindow, historyResult, historyRole, historyGrep);
+          paneScroll = 0;
+          flashMessage(historyGrep === null ? "search cleared" : `search: "${historyGrep}"`);
+        }
       } else if (budgetMode) {
         // Enter in budget mode parses + saves the cap through the shared setter (which
         // writes tumwater.json atomically; the running orchestrator picks it up on its next
@@ -1428,6 +1471,13 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         // fleet so the pane and the tab strip cannot name a loop the roster no longer has.
         if (trailMode) refreshTrail();
       }
+      // The same drop for the Activity feed's exact-loop scope: a retired or renamed loop must
+      // not leave the pane filtering on an id the roster no longer names. The scroll resets
+      // with it — the offset indexed the old filtered list.
+      if (activityRole !== null && !roleIds.includes(activityRole)) {
+        activityRole = null;
+        activityScroll = null;
+      }
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
       eventBudget = evBudget;
@@ -1458,6 +1508,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         changeCache,
         paneScroll,
         activityScroll,
+        activityRole,
+        activityGrep,
         historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
         reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),
         historyResult: cycleLabel(HISTORY_RESULTS, historyResult),

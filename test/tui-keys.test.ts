@@ -286,6 +286,113 @@ test("the Activity feed pages nowhere when the log fits the pane", () => {
   assert.equal(keys.state().activityScroll, null, "PgDn likewise");
 });
 
+test("Ctrl+G on the Activity view cycles the raw roster ids and filters the paging total", () => {
+  const root = makeRoot();
+  // Twelve events per loop: the unfiltered tail pages, and so does each loop's own set.
+  writeEvents(root, [
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "tick_start", tick: i + 1 })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "clean", type: "tick_start", tick: i + 1 })),
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  keys.setLineBudgets(5, 4);
+  assert.equal(keys.state().activityRole, null, "Activity opens fleet-wide");
+
+  // The unfiltered total is 24 and each loop's own is 12, so PgUp's clamped offset proves
+  // which filtered list the handler paged over (24 − 5 = 19 vs 12 − 5 = 7).
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 14, "the fleet-wide read pages over all 24 events");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().activityRole, "feature", "the first Ctrl+G scopes to the first raw roster id");
+  assert.equal(keys.state().activityScroll, null, "a filter change resets the pane to the live tail");
+  keys.handleKey(undefined, { name: "pageup" });
+  assert.equal(keys.state().activityScroll, 2, "paging now clamps over feature's 12 events only");
+
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().activityRole, "clean", "the cycle walks each raw roster id in turn");
+  keys.handleKey(undefined, { ctrl: true, name: "g" });
+  assert.equal(keys.state().activityRole, null, "the cycle wraps back to the fleet");
+
+  // A roster that drops the scoped id clears the scope; the scroll resets with it.
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
+  keys.handleKey(undefined, { name: "pageup" });
+  keys.syncSnapshot(0, false, ["clean"]);
+  assert.equal(keys.state().activityRole, null, "a roster drop clears the stale activity scope");
+  assert.equal(keys.state().activityScroll, null, "...and the offset over the old filtered list");
+});
+
+test("the `/` search filters the Activity feed and clears on an empty line", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "widget landed" },
+    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 2, result: "changed", summary: "gizmo swept" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  keys.setLineBudgets(5, 4);
+  assert.equal(keys.state().view, 0, "starts on Activity");
+  assert.equal(keys.state().activityGrep, null, "Activity opens unsearched");
+
+  // `/` opens on the empty line and Enter applies the typed text.
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "", "an empty search opens blank");
+  for (const ch of "widget") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().activityGrep, "widget");
+  assert.equal(keys.state().input, "", "a successful apply restores the director draft");
+  assert.equal(keys.state().flash, 'search: "widget"');
+  assert.equal(keys.state().activityScroll, null, "applying a search resets the pane to the live tail");
+
+  // Re-opening pre-fills the applied pattern; Esc cancels without changing it.
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "widget", "re-opening pre-fills the applied pattern");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().activityGrep, "widget", "Esc leaves the applied pattern unchanged");
+  assert.equal(keys.state().input, "", "Esc restores the pre-search draft");
+
+  // An empty line clears the search.
+  keys.handleKey("/", { name: "/" });
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().activityGrep, null, "an empty line clears the search");
+  assert.equal(keys.state().flash, "search cleared");
+});
+
+test("the Activity and History `/` searches are independent, and `/` elsewhere types into the prompt", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "widget landed" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature"]);
+  keys.setLineBudgets(5, 4);
+
+  // Off Activity and History, `/` types into the prompt as before.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript (view 1)
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "/", "`/` on a transcript types into the prompt");
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+
+  // Search History; the target is the History pattern, not Activity's.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4 = 5)
+  assert.equal(keys.state().view, 5, "History is roleIds.length + 4");
+  keys.handleKey("/", { name: "/" });
+  for (const ch of "clean") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().historyGrep, "clean");
+  assert.equal(keys.state().activityGrep, null, "the History search does not touch the Activity filter");
+
+  // Back on Activity, `/` opens Activity's own pattern, not History's.
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → pending → queued → activity
+  assert.equal(keys.state().view, 0);
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "", "the Activity search opens with no Activity pattern yet");
+  for (const ch of "widget") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().activityGrep, "widget");
+  assert.equal(keys.state().historyGrep, "clean", "the Activity search does not touch the History filter");
+});
+
 test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the tick rows", () => {
   const root = makeRoot();
   // Twelve completed ticks so the history pane's rows overflow the pane budget and page.
@@ -412,7 +519,9 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   keys.syncSnapshot(0, false, ["feature", "clean"]);
   assert.equal(keys.state().scopeRole, null, "a fresh TUI starts fleet-wide");
 
-  // Off a report view the key only moves the scope; no cache is computed.
+  // Off a report view the key only moves the scope; no cache is computed. (View 0 now belongs
+  // to the Activity feed's own Ctrl+G scope, so start from a transcript view.)
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().scopeRole, "feature");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
@@ -421,7 +530,7 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   assert.equal(keys.state().scopeRole, null, "the cycle wraps back to the fleet");
 
   // Usage: each press recomputes the cached Markdown, and the scoped text differs.
-  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 4);
   const fleetUsage = keys.state().paneCache;
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // → feature
@@ -453,6 +562,8 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   // The roster names an instance; the scoped collectors fold it into `feature`.
   keys.syncSnapshot(0, false, ["feature", "feature-2"]);
 
+  // Off a report view the key only moves the scope. (View 0 now belongs to the Activity feed.)
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
   const seen: Array<string | null> = [];
   for (let i = 0; i < 2; i++) {
     keys.handleKey(undefined, { ctrl: true, name: "g" });
@@ -461,7 +572,7 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   assert.deepEqual(seen, ["feature", null], "feature-2 collects feature's body, so the cycle skips it");
 
   // On the Usage pane the tab-strip scope and the collected body's own `role:` name agree.
-  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 4);
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → feature
   assert.equal(keys.state().scopeRole, "feature");
@@ -532,6 +643,7 @@ test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking ros
   const root = makeRoot();
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(50, false, ["feature", "clean"]);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript, where Ctrl+G moves the report scope
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().scopeRole, "feature");
 
@@ -544,7 +656,6 @@ test("Ctrl+G is inert while an editor holds the prompt line, and a shrinking ros
   keys.handleKey(undefined, { name: "escape" });
 
   // Role-prompt mode owns it the same way.
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().rolePromptFor, "feature");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
@@ -882,7 +993,7 @@ test("the `/` search filters the History pane through tickRowGrepHaystack and cl
   assert.doesNotMatch(keys.state().paneCache ?? "", /search:/);
 });
 
-test("`/` opens the History search only on the History view with an empty line, and search mode owns the line", () => {
+test("`/` opens a search on Activity and History with an empty line, types elsewhere, and search mode owns the line", () => {
   const root = makeRoot();
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
@@ -891,11 +1002,13 @@ test("`/` opens the History search only on the History view with an empty line, 
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(50, false, ["clean"]);
 
-  // Off History, `/` types into the prompt line.
+  // On a channel without a search, `/` types into the prompt line. Activity now owns a search
+  // itself, so step onto the loop's transcript first.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean transcript
   keys.handleKey("/", { name: "/" });
-  assert.equal(keys.state().input, "/", "`/` off History types into the prompt");
+  assert.equal(keys.state().input, "/", "`/` on a transcript types into the prompt");
   keys.handleKey(undefined, { ctrl: true, name: "u" }); // clear the draft
-  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
   assert.equal(keys.state().view, 5, "History is roleIds.length + 4");
 
   // On History with a non-empty line, `/` types instead of entering search.

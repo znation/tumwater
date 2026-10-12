@@ -7,8 +7,9 @@
 
 import type { StatusLine } from "../status-render.js";
 import { readTranscript } from "../transcript.js";
-import { readEvents } from "../../events/event-read.js";
-import { formatEvent } from "../../events/event-format.js";
+import { eventRole, readEvents } from "../../events/event-read.js";
+import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
+import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
@@ -44,7 +45,20 @@ interface TuiPaneState {
 
 /** How many raw events the Activity pane loads per read, and the tail PgUp/PgDn page through.
  * A fixed tail term so readEvents' stat cache hits per (file, limit) in the steady state. */
-export const ACTIVITY_EVENTS = 200;
+const ACTIVITY_EVENTS = 200;
+
+/** The Activity pane's loaded event tail, narrowed by its loop and text filters: the one read
+ * the pane body and the PgUp/PgDn total share, so their filtered lists cannot drift. Both
+ * match rules are the CLI's and dashboard's own: `eventRole` for the exact-loop scope (`null`
+ * = the fleet's full tail), and `eventMatchesGrep` over the type-prefixed rendered line for the
+ * case-insensitive search (`null` = no search) — `tumwater logs --grep` and `GET /api/logs`
+ * call the same two, so the three surfaces cannot disagree about what a filter matches. */
+export function activityEvents(root: string, role: string | null, grep: string | null): HarnessEvent[] {
+  const needle = grep === null ? null : grep.toLowerCase();
+  return readEvents(root, ACTIVITY_EVENTS).filter(
+    (e) => (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle)),
+  );
+}
 
 /** One loop's notebook and next tick prompt, rendered as the same Markdown the TUI's notebook
  * view windows: inspectMarkdownLines over the loop's rolePayload. Split out of the keypress
@@ -197,14 +211,16 @@ export function paneBody(
       emptyNote: "(no events yet)",
     };
   }
-  // The Activity pane loads a fixed tail once per read and windows it: null follows the live
-  // tail (the newest eventBudget events, exactly today's read), a stored offset pages back
-  // through the loaded events. Both clamp to [0, events.length - eventBudget].
-  const events = readEvents(root, ACTIVITY_EVENTS);
+  // The Activity pane loads a fixed tail once per read, narrows it by the active loop scope
+  // and text search, and windows it: null follows the live tail (the newest eventBudget
+  // events), a stored offset pages back through the loaded events. Both clamp to
+  // [0, events.length - eventBudget]. An active filter that matched nothing names the filter
+  // instead of claiming the log is empty.
+  const events = activityEvents(root, pane.role, pane.grep);
   const maxStart = Math.max(0, events.length - eventBudget);
   const start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart);
   return {
     body: events.slice(start, start + eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))),
-    emptyNote: "(no events yet)",
+    emptyNote: pane.role === null && pane.grep === null ? "(no events yet)" : "(no events match this filter)",
   };
 }

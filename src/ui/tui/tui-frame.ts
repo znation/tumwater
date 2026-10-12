@@ -53,7 +53,7 @@ export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3
  * report, the failure digest, the completed-tick history, the pending-change roster, or the
  * queued prompts — the dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =
-  | { kind: "activity" }
+  | { kind: "activity"; role: string | null; grep: string | null }
   | { kind: "transcript"; role: string; index: number; count: number; note: boolean; change: boolean }
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null; window: string | null }
@@ -66,7 +66,7 @@ export type TuiView =
  * Ctrl+T cycle can be seen rather than remembered. */
 export function tabStrip(view: TuiView, width: number): StatusLine {
   const tabs: Array<[TuiView["kind"], string]> = [
-    ["activity", "Activity"],
+    ["activity", view.kind === "activity" && view.role ? `Activity: ${view.role}` : "Activity"],
     ["transcript", view.kind === "transcript" ? `${view.note ? "Notebook" : view.change ? "Change" : "Transcript"}: ${view.role} (${view.index}/${view.count})` : "Transcript"],
     ["backlog", "Backlog"],
     ["usage", view.kind === "usage" && view.scope ? `Usage: ${view.scope}` : "Usage"],
@@ -99,7 +99,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+N", view.trail ? "history" : "tick trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   // The defer editor is the prompt line's fourth meta-editor (after budget, role, and
   // search), so every view whose hint is about sending names its state: the pending delay
   // when one is set, otherwise the way to open it. The mode branches above already name

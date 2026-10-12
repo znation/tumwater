@@ -306,7 +306,12 @@ validation, and atomic write, so an operator never has to hand-edit the file.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, Pending, and
   Queued. Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event
-  tail, the bottom of the page resuming the live tail.
+  tail, the bottom of the page resuming the live tail; `Ctrl+G` scopes the feed to the fleet or
+  one raw roster id (the same exact-loop slots History uses) and `/` on an empty prompt line
+  opens a free-text search over the same loaded tail. Both filters match through the rules
+  `tumwater logs --grep` and the dashboard Activity view use — `eventRole` for the loop and
+  `eventMatchesGrep`'s case-insensitive type-plus-rendered-line haystack for the text — and the
+  hint line names the active scope and pattern.
   On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
   same collector and sparse-window note `tumwater history --since` uses.
   `Ctrl+O` cycles the pane's outcome filter (all, changes, none, problems) through the same

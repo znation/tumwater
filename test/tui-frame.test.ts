@@ -86,7 +86,8 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
 });
 
 test("the tab strip names every view and brackets the current one", () => {
-  assert.equal(plain(tabStrip({ kind: "activity" }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true, change: false }, 200)), "Activity  [Notebook: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: true }, 200)), "Activity  [Change: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
@@ -104,7 +105,13 @@ test("the tab strip names every view and brackets the current one", () => {
 
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor }, 300));
-  assert.equal(hint({ kind: "activity" }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+T next view · Ctrl+B daily cap · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
+  assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: fleet · / search · Ctrl+T next view · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
+  // The Activity pane names its exact-loop scope and its text search, the raw id or the fleet
+  // and "search" or the active pattern, matching the History pane's conventions.
+  assert.match(hint({ kind: "activity", role: "feature", grep: null }), /Ctrl\+G scope: feature · \/ search/);
+  assert.match(hint({ kind: "activity", role: null, grep: "widget" }), /Ctrl\+G scope: fleet · \/ search: widget/);
+  // At the fake TTY's 100 columns the daily-cap key (placed before the new ones) stays visible.
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
     "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
@@ -138,9 +145,9 @@ test("the hint line says what the keys do in each view and mode", () => {
     plain(hintLine({ kind: "queued" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" } }, 300)),
     "Enter save the edit · Esc cancel · Ctrl+D quit",
   );
-  assert.equal(hint({ kind: "activity" }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
-  assert.equal(hint({ kind: "activity" }, false, null, true), "Enter save the delay · Esc cancel · Ctrl+D quit");
-  assert.match(hint({ kind: "activity" }, false, null, false, "45m"), /Ctrl\+L defer: 45m/);
+  assert.equal(hint({ kind: "activity", role: null, grep: null }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
+  assert.equal(hint({ kind: "activity", role: null, grep: null }, false, null, true), "Enter save the delay · Esc cancel · Ctrl+D quit");
+  assert.match(hint({ kind: "activity", role: null, grep: null }, false, null, false, "45m"), /Ctrl\+L defer: 45m/);
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
   assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: 1h/);
@@ -159,7 +166,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+N history/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
-    { kind: "activity" } as const,
+    { kind: "activity", role: null, grep: null } as const,
     { kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false } as const,
     { kind: "backlog" } as const,
     { kind: "usage", scope: null, window: null } as const,
@@ -169,8 +176,8 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "queued" } as const,
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
-  const spans = hintLine({ kind: "activity" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 300);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+T", "Ctrl+B", "Ctrl+F", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
+  const spans = hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null }, 300);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
 });
 
 test("the prompt line names who Enter sends to", () => {

@@ -565,6 +565,62 @@ test("PgUp/PgDn page the Activity feed back through the event tail and resume th
   });
 });
 
+test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pane shows", async () => {
+  const repo = await makeTuiRepo();
+  // The repo's one enabled loop is clean; seed a feature event too so a clean scope can be
+  // seen to drop another loop's event from the feed.
+  writeEvents(repo, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "widget landed" },
+    { ts: 1_700_000_060_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "gizmo swept" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "tick_end", tick: 2, result: "no_change", summary: "tidy imports" },
+  ]);
+
+  await withTui(repo, async (tui) => {
+    const fleet = tui.lastFrame();
+    assert.match(fleet, /\[Activity\]/, "Activity opens fleet-wide");
+    assert.match(fleet, /widget landed/);
+    assert.match(fleet, /gizmo swept/);
+    assert.match(fleet, /tidy imports/);
+    assert.match(fleet, /Ctrl\+G scope: fleet · \/ search/, "the hint names the fleet scope and the search key");
+
+    // Ctrl+G scopes the feed to the roster's clean loop: the tab strip and hint name it, and
+    // the feature loop's event leaves the pane.
+    tui.key(undefined, "g", { ctrl: true });
+    let frame = tui.lastFrame();
+    assert.match(frame, /\[Activity: clean\]/, "the tab strip names the active loop scope");
+    assert.match(frame, /Ctrl\+G scope: clean/);
+    assert.match(frame, /widget landed/);
+    assert.match(frame, /tidy imports/);
+    assert.doesNotMatch(frame, /gizmo swept/, "another loop's event leaves the scoped feed");
+
+    // `/` searches within the scope: "gizmo" lives only in feature's summary, so the scoped
+    // feed matches nothing and names the filter instead of claiming the log is empty.
+    tui.key("/", "/");
+    for (const ch of "gizmo") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    frame = tui.lastFrame();
+    assert.match(frame, /\(no events match this filter\)/, "a filter that matches nothing names the filter");
+    assert.doesNotMatch(frame, /tidy imports/);
+
+    // Reopen, clear, and search "widget": clean's widget event matches, its tidy event does not.
+    tui.key("/", "/");
+    tui.key(undefined, "u", { ctrl: true });
+    for (const ch of "widget") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    frame = tui.lastFrame();
+    assert.match(frame, /\/ search: widget/, "the hint names the active pattern");
+    assert.match(frame, /widget landed/);
+    assert.doesNotMatch(frame, /tidy imports/, "the same loop's non-matching event is filtered out");
+
+    // Ctrl+G back to the fleet keeps the search; only the matching event is fleet-visible too.
+    tui.key(undefined, "g", { ctrl: true });
+    frame = tui.lastFrame();
+    assert.match(frame, /\[Activity\]/);
+    assert.match(frame, /widget landed/);
+    assert.doesNotMatch(frame, /tidy imports/);
+  }, { columns: 200 });
+});
+
 test("a stale entry selection falls back to the empty list when entries disappear", async () => {
   const repo = await makeTuiRepo();
   writeBacklogFile(repo, "PLANS.md", [
