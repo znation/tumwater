@@ -6,7 +6,48 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Edit or clear a loop's notebook from the dashboard's loop drawer, matching `tumwater role <id> --notes-file` / `--clear-notes` (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes`/`--notes-file` branch in `src/cli/cli-query-commands.ts` over `saveRoleNote` in `src/agent/role-notes-write.ts`) and the landed read-only drawer notebook (`drawerRoleSection`/`loadDrawerRole` in `src/ui/gui/gui-client-drawer.ts` over `GET /api/role`). The TUI Ctrl+N pane stays read-only and is a separate, later sibling)
+
+**Goal.** The loop drawer shows a loop's notebook, but correcting a stale or wrong note means switching to the CLI. Add **Edit** and **Clear** controls to the drawer's Notebook section. Both write through the same `saveRoleNote` the CLI, MCP, and pi surfaces use, so the 4 KB cap and its wording cannot drift.
+
+**Approach.**
+1. Server: add `handleRoleNotes` in `src/gui/gui-endpoint-commands.ts` for `POST /api/role-notes`, with body `{"role": "<id>", "text": "<note>"}`. `"text": ""` clears the notebook.
+   - Open with `readRoleBody(req, res, '{"role": "feature", "text": "…"}', root)`, and update `readRoleBody`'s doc comment, which counts its call sites ("Exactly five call sites"), to name six.
+   - Reject `role === DIRECTOR_ROLE` (from `src/roles/roles.ts`) with 400 `"the director has no notebook"`, the CLI's wording.
+   - Reject a non-string `text` with 400 before anything is written. Do not pass it on to `saveRoleNote`'s throw.
+   - Call `saveRoleNote(roleNotesPath(root, role), text)` inside try/catch. A thrown validation error (over 4 KB) answers 400 with `{ error: errorMessage(err) }`. Success answers 200 `{ ok: true, message }`, where `message` is `saveRoleNote`'s return ("notebook cleared" / "notebook saved (N bytes)").
+   - Register `"POST /api/role-notes": (req, res) => handleRoleNotes(req, res, root)` in `src/gui/gui-server.ts`'s route table, next to `/api/reset-counters`.
+2. Client drawer (`src/ui/gui/gui-client-drawer.ts`): add `noteEditing = null; // { role, text }` with `startNoteEdit(role, text)` and `stopNoteEdit()`, mirroring `entryEditing`/`startEntryEdit`/`stopEntryEdit`. Add a clear confirm that mirrors `confirmEntryCancel`/`armEntryCancel`/`entryCancelArmed`/`disarmEntryCancel`: the first click arms it for 5 s and the second click posts.
+   - In `drawerRoleSection`, while `noteEditing` is set for the open role, render the Notebook section as `<textarea id='noteedittext' rows='12'>` holding the captured text (not the live payload, so a poll refetch does not wipe the draft and the panel string stays stable for `paintPanel`), plus Save (`data-act='note-save'`) and Discard (`data-act='note-discard'`) buttons.
+   - Otherwise, the `sec-head` gains an "Edit" button (`data-act='note-edit'`, `data-arg=role`). When a note exists it also gains "Clear" (`data-act='note-clear'`), which reads "Click again to clear" while armed.
+   - Closing the drawer clears `noteEditing` and the clear confirm.
+   - Hide both buttons for the director: its drawer has no notebook to write, so check the role against `"director"`.
+3. Client actions (`runAct` in `src/ui/gui/gui-client-boot.ts`), next to the `entry-edit*` branches:
+   - `note-edit` calls `startNoteEdit(arg, current note or "")`.
+   - `note-discard` calls `stopNoteEdit()` and repaints.
+   - `note-save` posts `{ role, text: textarea.value }` to `/api/role-notes` through `postAction`. On success it stops editing, refetches with `loadDrawerRole(role)`, and flashes the server's `message`.
+   - `note-clear` arms on the first click. On the second it posts `{ role, text: "" }`, then refetches and flashes the same way.
+   - Saving an empty textarea is allowed: it is the same write as Clear, as with `role_notes`' `""`.
+4. Docs: in README.md's "Check state" row, extend the `tumwater role <id>` sentence to say the dashboard's loop drawer edits or clears the notebook the same way. `src/cli/help.ts` lists no dashboard routes, so it needs no change.
+
+**Files touched.** `src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`, `src/ui/gui/gui-client-drawer.ts`, `src/ui/gui/gui-client-boot.ts`, README.md, and tests in `test/gui-endpoints.test.ts`, `test/gui-client-drawer.test.ts`, and `test/gui-client-boot.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-endpoints.test.ts` covers `POST /api/role-notes`:
+  - `{role:"feature", text:"x\ny"}` returns 200 and writes `roleNotesPath(root,"feature")` byte-for-byte.
+  - `text:""` empties the notebook.
+  - An unknown role gets 400 with the shared `rejectBadRole` wording.
+  - `role:"director"` gets 400 and writes nothing.
+  - A non-string `text` gets 400 and leaves the note unchanged.
+  - Text over `ROLE_NOTES_MAX_BYTES` gets 400 naming the byte count and leaves the note unchanged.
+- `test/gui-client-drawer.test.ts` covers the panel:
+  - With a note, the `drawerrole` panel shows Edit and Clear buttons. With no note, it shows Edit only.
+  - While editing, it shows a `noteedittext` textarea holding the captured text, and a payload change does not alter the painted panel.
+- `test/gui-client-boot.test.ts` covers the actions:
+  - `note-save` posts `["/api/role-notes", { role, text }]`.
+  - `note-clear` posts nothing on the first click and `{ role, text: "" }` on the second.
+  - `note-discard` posts nothing.
+- `npm run test` passes.
 
 ## Done
 
