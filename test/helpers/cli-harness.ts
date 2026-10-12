@@ -7,6 +7,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../../src/process/supervisor.js";
 import { childEnv } from "../../src/process/process.js";
+import { liveWaitClock, type WaitClock } from "./wait.js";
 import { exitWithOwnerEnv } from "../fixtures/victim-fixture.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
@@ -49,10 +50,11 @@ interface SpawnedCli {
   /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout.
    * `ms` is a deadline, not a sleep (wait.ts's waitFor): 60 s by default, because a cold CLI
    * start under fleet load ran past the old 10 s default (cli-gui's banner wait at 10.1 s,
-   * BUGS.md 2026-09-30). The deadline is measured on performance.now(), not Date.now(), for the
-   * same reason wait.ts's waitFor is: a wall-clock jump (a host sleep) must not spend a readiness
-   * budget a printed-nothing child has not used (BUGS.md 2026-10-07). */
-  waitFor(pred: (out: string) => boolean, what: string, ms?: number): Promise<void>;
+   * BUGS.md 2026-09-30). The deadline is measured on the injected `WaitClock` (wait.ts), whose
+   * default is performance.now(): a wall-clock jump (a host sleep) must not spend a readiness
+   * budget a printed-nothing child has not used (BUGS.md 2026-10-07), and a test may pass a
+   * `fakeClock` so the budget is logical and expires only when the test advances it. */
+  waitFor(pred: (out: string) => boolean, what: string, ms?: number, clock?: WaitClock): Promise<void>;
   kill(): void;
 }
 
@@ -79,18 +81,19 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
   return {
     child,
     out: () => buffer,
-    waitFor(pred, what, ms = 60_000) {
+    waitFor(pred, what, ms = 60_000, clock: WaitClock = liveWaitClock) {
       return new Promise((resolve, reject) => {
-        const started = performance.now();
-        const timer = setInterval(() => {
+        const started = clock.now();
+        const poll = (): void => {
           if (pred(buffer)) {
-            clearInterval(timer);
             resolve();
-          } else if (performance.now() - started > ms) {
-            clearInterval(timer);
+          } else if (clock.now() - started > ms) {
             reject(new Error(`timed out waiting for ${what}; output so far:\n${buffer}`));
+          } else {
+            void clock.sleep(100).then(poll);
           }
-        }, 100);
+        };
+        poll();
       });
     },
     kill: () => {

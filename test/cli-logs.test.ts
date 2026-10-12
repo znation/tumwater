@@ -10,6 +10,8 @@ import { makeRepo, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
+import { flushImmediate } from "./helpers/wait.js";
+import { fakeClock } from "./fakes/time.js";
 
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live
@@ -89,11 +91,79 @@ test("logs -f --json streams each newly landed event as a JSON line", async () =
   try {
     await s.waitFor((out) => out.includes('"tick":2'), "the initial window");
 
-    // An event appended while following must stream as JSON, not rendered prose (500ms poll).
+    // An event appended while following must stream as JSON, not rendered prose: the child's
+    // own 500 ms followFile poll is the product under test, and this wait only has to observe
+    // its output. Give the wait a logical deadline (a frozen fake clock no host load can spend)
+    // and a sleep that resolves on the child's next stdout chunk, so the live event is observed
+    // the moment it streams instead of after a real poll interval. The fallback crosses that
+    // frozen deadline only if the child never streams, so a regression fails the wait
+    // deterministically rather than hanging it.
     const live = { ts: Date.now(), loop: "clean", type: "tick_start", tick: 99 };
+    const clock = fakeClock();
+    let injectedSleeps = 0;
+    const liveWait = s.waitFor((out) => out.includes('"tick":99'), "the live event as JSON", 30_000, {
+      now: clock.now,
+      sleep: () =>
+        new Promise<void>((resolve) => {
+          injectedSleeps++;
+          const onData = (): void => {
+            clearTimeout(fallback);
+            resolve();
+          };
+          const fallback = setTimeout(() => {
+            s.child.stdout?.off("data", onData);
+            clock.advance(30_001);
+            resolve();
+          }, 60_000);
+          s.child.stdout?.once("data", onData);
+        }),
+    });
+    // The event has not landed yet, so the wait's synchronous first poll must have parked on the
+    // injected sleep: a wait that fell back to the live clock would leave this at 0 and observe
+    // the event through a real timer, not the seam under test.
+    assert.equal(injectedSleeps, 1, "the follow wait must poll through the injected sleep");
     fs.appendFileSync(eventsLogPath(repo), JSON.stringify(live) + "\n");
-    await s.waitFor((out) => out.includes('"tick":99'), "the live event as JSON");
+    await liveWait;
     assert.ok(!s.out().includes("tick #99"), `rendered prose in JSON follow:\n${s.out()}`);
+  } finally {
+    s.kill();
+  }
+});
+
+test("logs -f's wait expires on the injected clock, not a real deadline", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json follow deadline");
+  seedTickEvents(repo, 2);
+
+  const s = spawnCli(repo, ["logs", "-f", "--json"]);
+  try {
+    await s.waitFor((out) => out.includes('"tick":2'), "the initial window");
+    // A clock this test drives by hand: `sleep` parks until the test releases it, so advancing
+    // the clock is the only thing that can move the wait past its budget. A wait that ignored the
+    // seam and slept on the real host clock would leave `parked` at 0 (the assertion below fails
+    // deterministically) and would settle only after the real budget, not because of the advance.
+    let nowMs = 0;
+    let release: (() => void) | undefined;
+    let parked = 0;
+    const wait = s.waitFor((out) => out.includes('"tick":99'), "the never-arriving event", 1_000, {
+      now: () => nowMs,
+      sleep: () =>
+        new Promise<void>((resolve) => {
+          parked++;
+          release = resolve;
+        }),
+    });
+    assert.equal(parked, 1, "the wait must park on the injected sleep");
+    let settled = false;
+    void wait.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await flushImmediate();
+    assert.equal(settled, false, "the wait must not settle before the clock advances");
+    nowMs = 1_001;
+    release?.();
+    await assert.rejects(wait, /timed out waiting for the never-arriving event/);
   } finally {
     s.kill();
   }

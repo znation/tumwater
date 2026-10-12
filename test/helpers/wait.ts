@@ -30,18 +30,37 @@ export const sleep = (ms: number): Promise<void> => new Promise((resolve) => rea
  * setImmediate callbacks, which schedule work instead of awaiting a flush. */
 export const flushImmediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
+/** The monotonic clock and pause a deadline wait reads. Defaults to the live host —
+ * `performance.now()` and the real `sleep` — so a caller that passes nothing keeps today's
+ * behavior. A test passes `test/fakes/time.ts`'s `fakeClock` (or an equivalent) to make the
+ * deadline logical: `now` answers the fake time and `sleep` moves it, so a loaded host can
+ * never spend a budget the test set. */
+export interface WaitClock {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+}
+
+/** The live host's `WaitClock`: what every deadline wait below uses unless a test injects one. */
+export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
+
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
  * slower reporting of a genuine hang. The default was 20s until 2026-09-18, when it became the
  * proximate cause of landing rejections: the fleet runs this suite concurrently with its own
  * ticks, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
-export async function waitFor(fn: () => boolean, what: string, ms = 60_000): Promise<void> {
-  // performance.now(), not Date.now(): a test on watchdogClock has Date frozen between its
-  // advances, and a deadline read off it would never expire.
-  const deadline = performance.now() + ms;
+export async function waitFor(
+  fn: () => boolean,
+  what: string,
+  ms = 60_000,
+  clock: WaitClock = liveWaitClock,
+): Promise<void> {
+  // The default clock reads performance.now(), not Date.now(): a test on watchdogClock has Date
+  // frozen between its advances, and a deadline read off it would never expire. A test may pass
+  // a `fakeClock` whose `sleep` advances `now`, making expiry instant and deterministic.
+  const deadline = clock.now() + ms;
   while (!fn()) {
-    if (performance.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await sleep(100);
+    if (clock.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await clock.sleep(100);
   }
 }
 
@@ -49,11 +68,15 @@ export async function waitFor(fn: () => boolean, what: string, ms = 60_000): Pro
  * done its work — a fixed sleep races process startup when the suite runs in parallel.
  * 30s: the landing gate runs the whole suite concurrently on a saturated machine, where
  * worktree setup plus fake-pi startup can blow a 10s budget (BUGS.md load-sensitive tests). */
-export async function waitForFile(file: string, timeoutMs = 30_000): Promise<void> {
-  const start = performance.now(); // monotonic, and live under watchdogClock (see waitFor)
+export async function waitForFile(
+  file: string,
+  timeoutMs = 30_000,
+  clock: WaitClock = liveWaitClock,
+): Promise<void> {
+  const start = clock.now(); // monotonic, and live under watchdogClock (see waitFor)
   while (!fs.existsSync(file)) {
-    if (performance.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
-    await sleep(25);
+    if (clock.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
+    await clock.sleep(25);
   }
 }
 

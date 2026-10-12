@@ -6,22 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Retire the `no-repro` gap, part 2/5: an injected clock for the wait/deadline helpers and their callers (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 3/5, 4/5 and 5/5; test-only, no `src/` change; independent of the TUI, dashboard, and agent-backends work)
-
-**Goal.** Convert the poll-deadline family. `test/helpers/wait.ts`'s `waitFor` and `waitForFile` read `performance.now()` and poll with the real `sleep`, and `test/helpers/cli-harness.ts`'s `spawnCli.waitFor` does the same for a spawned CLI's output, so a loaded host can spend a readiness budget the test never intended and report the spent deadline as a product regression (the cold-start GUI banner wait, BUGS.md 2026-10-07).
-
-**Approach.**
-1. Give `test/helpers/wait.ts`'s deadline waits an optional injected monotonic clock and sleep, defaulting to today's `performance.now()`/`sleep`, so every existing caller is unchanged. `watchdogClock` already freezes `Date`/`setInterval`; the new seam is what lets a test cross a `performance.now()` deadline and answer the poll instantly.
-2. Route `spawnCli.waitFor` (`test/helpers/cli-harness.ts`) through the same seam.
-3. Convert `test/cli-logs.test.ts`'s "logs -f --json streams each newly landed event as a JSON line" test: the live event is observed by advancing the seam rather than by hoping the child's real 500ms poll lands inside a real budget. Pin it with a regression that expiring the deadline deterministically fails the wait.
-
-**Files touched.** `test/helpers/wait.ts`, `test/helpers/cli-harness.ts`, `test/cli-logs.test.ts`.
-
-**Acceptance criteria.**
-- `waitFor`/`spawnCli.waitFor` with a fake clock expire deterministically when the test advances the clock and never wait on a real deadline; with no seam passed, behavior is unchanged.
-- The `logs -f --json` follow test passes with no real-time wait and fails deterministically when the seam is not advanced.
-- `npm run test` is green.
-
 ### Retire the `no-repro` gap, part 5/5: logical time for the supervisor's parent-death watch (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5–4/5; independent of the TUI, dashboard, and agent-backends work)
 
 **Goal.** Convert the process-death family. `test/supervisor.test.ts`'s "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" waits on real watch budgets (15s start / 40s gone) that were widened after the flake recurred (BUGS.md 2026-10-09), so a loaded host decides the verdict.
@@ -173,6 +157,22 @@ one loop's recent events or find a recent failure without leaving the main scree
 **Acceptance criteria.**
 - The helper flags a planted `lsof` spawn and a planted `listen(` in a gating source string, and flags nothing in an `*.e2e.test.ts` string.
 - `docs/invariants.md` carries `INV-F1` with resolvable `test/...` citations; `test/invariants-doc.test.ts`'s existing register checks stay green.
+- `npm run test` is green.
+
+### Retire the `no-repro` gap, part 2/5: an injected clock for the wait/deadline helpers and their callers (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 3/5, 4/5 and 5/5; test-only, no `src/` change; independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
+
+**Goal.** Convert the poll-deadline family. `test/helpers/wait.ts`'s `waitFor` and `waitForFile` read `performance.now()` and poll with the real `sleep`, and `test/helpers/cli-harness.ts`'s `spawnCli.waitFor` does the same for a spawned CLI's output, so a loaded host can spend a readiness budget the test never intended and report the spent deadline as a product regression (the cold-start GUI banner wait, BUGS.md 2026-10-07).
+
+**Approach.**
+1. `test/helpers/wait.ts` exports a `WaitClock` (`now`/`sleep`) with a `liveWaitClock` default of `performance.now()`/the real `sleep`; `waitFor` and `waitForFile` take it as an optional trailing argument, so every existing caller is unchanged. `watchdogClock` already freezes `Date`/`setInterval`; the new seam is what lets a test cross a `performance.now()` deadline instantly.
+2. `spawnCli.waitFor` (`test/helpers/cli-harness.ts`) takes the same `WaitClock` and polls through it (its interval became a `clock.sleep(100)` chain), defaulting to `liveWaitClock`.
+3. Converted `test/cli-logs.test.ts`'s "logs -f --json streams each newly landed event as a JSON line" test: the live-event wait takes a frozen `fakeClock`, whose deadline no host load can spend, and a sleep that resolves on the child's next stdout chunk, so the event is observed when it streams; the test asserts the wait's synchronous first poll parked on that injected sleep, so it fails if the wait falls back to the live clock. A bounded fallback crosses the frozen deadline only if the child never streams. The child process's own 500 ms `followFile` poll is the product under test and the only real delay the success path leaves. Added "logs -f's wait expires on the injected clock, not a real deadline", which drives a hand-driven clock whose `sleep` parks: the test asserts the wait parked, is unsettled before the advance, then advances `now` and releases the poll to reject. Added `test/wait.test.ts`, pinning `waitFor`'s and `waitForFile`'s expiry and `waitFor`'s success path on a `fakeClock`.
+
+**Files touched.** `test/helpers/wait.ts`, `test/helpers/cli-harness.ts`, `test/cli-logs.test.ts`, `test/wait.test.ts`.
+
+**Acceptance criteria.**
+- `waitFor`/`waitForFile`/`spawnCli.waitFor` with a `fakeClock` expire when the test advances the clock and no longer read a real deadline; with no seam passed they read `performance.now()`/the real `sleep` as before.
+- The `logs -f --json` follow test's deadline is the injected clock (no host load can spend it); the added regression rejects deterministically when the clock crosses the budget.
 - `npm run test` is green.
 
 ### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
