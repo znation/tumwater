@@ -141,6 +141,76 @@ three surfaces cannot drift on the header or the event rendering.
 - `docs/how-it-works.md` names the History `Ctrl+N` drill-down and `tumwater tick --last`.
 - `npm run test` is green.
 
+### Filter the dashboard Activity feed by loop and text over the events the card already carries, matching `tumwater logs --grep`/`logs --role` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater logs --grep <text>`/`--role <id>` and the landed dashboard History search plus Loop picker (`gui-client-history.ts`'s `#histgrep`/`#histrole`); the Activity card's only narrowing is the Notable/All segmented filter (`gui-page.ts`'s `#feedfilter`, `gui-client-fleet.ts`'s `renderFeed`), so an operator watching one loop's events or hunting a specific failure must drop to `tumwater logs` or scan the whole recent feed; independent of the waiting hermetic-host gating tier, dashboard composer defer, and TUI History tick-trail plans in code — `src/ui/gui` only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; it reads the event window the card already receives (`status-payload.ts`'s `RECENT_EVENTS` `eventItems`) and adds no endpoint, so its filter cannot disagree with what the card shows, only narrow it)
+
+**Goal.** The dashboard's Activity card carries the last `RECENT_EVENTS` events as `eventItems`
+and can filter them to the notable ones, but not by loop or by text. The History view already has
+both (`#histrole` picker and `#histgrep` search, the search running through the shared haystack
+rule `tumwater history --grep` uses), so the narrower Activity card is the odd one out. Add a Loop
+picker and a text box to the card's header that filter the events it already carries, with the
+same persistence (`store`/`recall`) the card's Notable/All choice uses, so an operator can watch
+one loop's recent events or find a recent failure without leaving the main screen.
+
+**Approach.**
+1. `src/ui/gui/gui-page.ts`: in the Activity card's `<header class="card-head">`, beside
+   `<div class="seg" id="feedfilter">`, add `<label><span class="sr-only">Loop</span><select
+   class="field" id="feedrole"><option value="">All loops</option></select></label>` and
+   `<label><span class="sr-only">Search</span><input class="field" id="feedgrep"
+   type="search" placeholder="Search activity…" autocomplete="off"></label>`, mirroring the
+   History toolbar's `#histrole`/`#histgrep` markup.
+2. `src/ui/gui/gui-client-fleet.ts`: wrap the activity state, helpers, and listeners in
+   `// activity:start` … `// activity:end` region markers (the `// backlog:start`/`:end` pattern
+   in the same file), so `test/gui-client-fleet.test.ts` can run them through `clientScope`.
+   - Extend the existing activity state beside `let feedFilter …`: `let feedRole =
+     recall("feed-role") || "";`, `let feedText = recall("feed-grep") || "";`, and a
+     `let feedRolesKey = "";` cache key.
+   - Add `syncFeedRoles(d)`, following `gui-client-history.ts`'s `syncHistoryRoles`: rebuild the
+     `#feedrole` options from `(d.loops || []).map((l) => l.role)` through the shared
+     `rolePickerOptions` helper, keying on `roles.join(",")` so a poll with no roster change
+     repaints nothing; keep `feedRole` in step with the repainted picker (a role the fleet
+     dropped resets to `""` and persists), the same rule the History picker applies.
+   - In `renderFeed(d)`, call `syncFeedRoles(d)` first. Keep the existing newest-first slice and
+     Notable/All filter, then apply the loop filter (`it.loop === feedRole` when `feedRole` is
+     non-empty) and the text filter (`(it.loop + " " + it.type + " " + it.message).toLowerCase().includes(feedText.toLowerCase())`
+     when `feedText` is non-empty). Keep the `#feedrole` select and `#feedgrep` input values in
+     step with the state on every paint (the History toolbar's `$("histgrep").value = histGrep`
+     idiom). Choose the empty-state wording by whether a filter is active: no events at all keeps
+     today's `No events yet` / `Nothing notable lately`; events present but filtered to none reads
+     `No recent events match this filter` with a `data-action='feedclear'` button that resets
+     `feedRole`/`feedText`, clears both inputs, persists `""` for each, and re-renders. While no
+     filter is active the rendered rows stay byte-identical to today's.
+   - Wire `$("feedrole").addEventListener("change", …)` and
+     `$("feedgrep").addEventListener("change", …)` beside the existing `$("feedfilter")`
+     listener (the markup `gui-page.ts` always ships), each storing its key and calling
+     `renderFeed(lastStatus)`; add one delegated `$("feed").addEventListener("click", …)` arm for
+     the `feedclear` button (the empty state's `#feed` is static markup, so the listener
+     registers at load like `$("feedfilter")`'s).
+3. `docs/how-it-works.md`: in the dashboard Activity sentence, note the Loop picker and text box
+   narrow the recent-event feed to one loop or a case-insensitive substring, persisted like the
+   Notable/All choice.
+
+**Files touched.** `src/ui/gui/gui-page.ts`, `src/ui/gui/gui-client-fleet.ts`,
+`docs/how-it-works.md`, `test/gui-client-fleet.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-fleet.test.ts` gains a `feedScope` helper building `clientScope` over the
+  `activity` region (plus whatever shared regions `renderFeed` reaches) with a `paintPanel` stub,
+  a `$` stub returning the `#feedfilter`/`#feedrole`/`#feedgrep` stand-ins, and a `rolePickerOptions`
+  stub; the new cases:
+  - with `feedRole` set to a role present in `eventItems`, `renderFeed` paints only that loop's
+    items (the other loop's message is absent from the painted HTML);
+  - with `feedText` set, the match is case-insensitive over loop/type/message (a lower-cased
+    needle matches an upper-cased message and vice versa);
+  - a text filter that removes every carried event paints `No recent events match this filter`
+    and a `data-action='feedclear'` button, while an empty `eventItems` still paints today's
+    `No events yet`;
+  - with neither filter set the painted HTML is byte-identical to the unfiltered render.
+- `test/gui-client-fleet.test.ts` asserts (as it does for the queued-edit wiring) that
+  `GUI_CLIENT_FLEET_JS` reaches `store("feed-role"` and `store("feed-grep"`, and — importing
+  `GUI_PAGE` from `../src/ui/gui/gui-page.js` — that the page ships `id="feedrole"` and
+  `id="feedgrep"` inside the Activity card's header.
+- `npm run test` is green.
+
 ## Done
 
 ### Defer a prompt from the dashboard composer, matching `tumwater prompt --at <duration>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater prompt --at <duration>` (commit 654f15b3) and the landed dashboard deferral display (`gui-client-fleet.ts`'s `delivers in`); the dashboard can already paint a deferred prompt's countdown but no dashboard surface can set the marker, so an operator must drop to the CLI to schedule one; independent of the waiting TUI Queued pane, TUI History grep, dashboard queued-prompt edit, and dashboard Settings Clear plans in code — `src/cli/cli-args.ts`'s newly exported `parseDurationMs` plus `src/inbox/inbox-submit.ts`, the two prompt handlers in `src/gui/gui-endpoint-commands.ts`, and the composer files, no `src/ui/tui` file — it shares `src/gui/gui-endpoint-commands.ts` with the landed prompt-edit and Settings Clear handlers but edits different functions, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
