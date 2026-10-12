@@ -5,7 +5,27 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Dequeuing an attached prompt deletes its image before the tick's agent runs, so `tumwater prompt --attach` never delivers the image (found by robustness loop 2026-10-11)
+
+- **Symptom:** An attached prompt stores each image beside its queue `.md` file and appends one `[image attached: <absolute path>]` line to the queued text (`savePromptImages` + `imageReferenceLines`, src/inbox/inbox-attachments.ts). The module's own doc says the files exist "so the receiving loop's pi agent can view the file with its read tool", and README.md's `prompt` row says `--attach` "attaches an image the receiving loop reads at its next tick". But the call that pops the queue entry, `takeQueuedFile` (src/inbox/inbox.ts:231), also runs `removeSameStemSiblings` (line 235), which deletes every `<stem>.<image ext>` / `<stem>-<n>.<image ext>` sibling. `dequeueRolePrompt`/`dequeuePrompt` use `takeQueuedFile` while assembling the next tick's prompt (src/tick/tick-prompt.ts:98 and :127, `preview` false at run time), so the image is gone before `runAgent` spawns. The agent's prompt still names the path, its read tool gets ENOENT, and the attachment is silently never seen. No other code reads the reference path at tick time — `imageReferencePaths` is imported only by the edit path (src/inbox/inbox-edit.ts:89) — so `--attach` cannot work as documented.
+- **Reproduce:** against a built tree, queue one image for a role and dequeue it exactly as a tick does; the reference line survives in the returned text but the file it names does not:
+  ```
+  node --input-type=module -e '
+const fs=await import("node:fs"), os=await import("node:os"), path=await import("node:path");
+const {submitRolePrompt}=await import("./dist/src/inbox/inbox-submit.js");
+const {dequeueRolePrompt}=await import("./dist/src/inbox/inbox.js");
+const {imageReferencePaths}=await import("./dist/src/inbox/inbox-attachments.js");
+const root=fs.mkdtempSync(path.join(os.tmpdir(),"att-"));
+const png="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+const text=submitRolePrompt(root,"qa","look at this",[{name:"a.png",dataBase64:png}]);
+const saved=imageReferencePaths(text)[0];
+const dequeued=dequeueRolePrompt(root,"qa");
+console.log(dequeued, "image-exists:", fs.existsSync(saved));
+'
+  ```
+  prints the text ending in `[image attached: …a.png]` and `image-exists: false`. The same deletion is already pinned as intended by `test/inbox-attachments.test.ts` ("dequeuing and cancelling a prompt remove its same-stem image files", line 177), which asserts the file is gone after `dequeueRolePrompt` — so the suite is green while the feature is broken.
+- **Cause:** `removeSameStemSiblings` sits in `takeQueuedFile`, which serves both cancel (where taking the attachment is correct) and dequeue (where the tick still needs it). Commit 693ce725 ("Land GUI image drag-and-drop attachments with requeue-safe cleanup …") added the call there; the accompanying test encodes the same mistake. The requeue path's `stripVanishedImageReferences` exists only because dequeue had already deleted the files.
+- **Expected:** An image must survive until the tick that reads it has finished — cleanup belongs to cancel and to consuming a fulfilled prompt, not to dequeue. A fix keeps both properties (readable during the run, no image outliving its prompt) and touches `takeQueuedFile`/the cancel path plus the fulfilled-prompt cleanup (`PendingPrompt.clear`), which is larger than one robustness tick, hence this entry.
 
 ## Fixed
 
