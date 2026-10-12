@@ -45,6 +45,46 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/gui-client-drawer.test.ts`: the painted loop drawer contains `data-action='reset-counters'`.
 - `npm run test` is green.
 
+### Give a fleet pause a reason from the dashboard, matching `tumwater pause --reason <text>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater pause --reason` (`cmdPause` in `src/operator/operator-commands.ts` over `pauseFleet(root, untilMs, reason)` in `src/fleet/fleet-state.ts`) and the landed dashboard pause menu (`openPauseMenu`/`setFleetPause` in `src/ui/gui/gui-client-operator.ts` over `handlePause` / `POST /api/pause`); `PAUSE_REASON_MAX`'s doc comment already anticipates "any later GUI path", and the dashboard already *shows* a reason (the payload's `pauseReason` reaches `fleetAlerts` in `src/ui/fleet-alerts.ts`), but its pause menu cannot write one, so an operator who pauses from the browser leaves the fleet's other watchers no note; independent of the waiting question-answer part 2/2, disk-row reclaim, and reset-counters plans in behavior (its own body field on an existing route), though it shares `src/gui/gui-endpoint-commands.ts` with reclaim and reset-counters, so a landing conflict is possible and the resolver handles it)
+
+**Goal.** The dashboard's sidebar pause menu takes an optional one-line reason that rides whichever pause choice the operator clicks, and the server writes it into the fleet marker exactly as `tumwater pause --reason` does.
+
+**Approach.**
+- `src/gui/gui-endpoint-commands.ts`, `handlePause`: accept an optional `reason` in the body, validated by a new local helper `pauseReasonField(res, body, pausing)` that sits beside `pauseForSecondsMs` and follows its shape (returns `string | undefined`, or `null` once it has sent a 400):
+  - absent → `undefined`;
+  - present with `paused: false` → 400 `"reason only applies when pausing (paused: true)"` (same wording as the `forSeconds` rule);
+  - not a string → 400 `"reason must be a string"` plus `gotSuffix(reason)`;
+  - a string that is empty or whitespace-only → `undefined`, so a blank input sends a plain pause. The client already omits blank reasons, and treating them as absent keeps a retried or hand-written request harmless.
+  - No length check here. `pauseFleet` folds the text and caps it at `PAUSE_REASON_MAX` through `normalizePauseReason`, the one shared home, so the CLI and the GUI cannot drift.
+  - Then call `pauseFleet(root, untilMs, reason)`. The 200 body adds `reason: normalizePauseReason(reason)` only when that is non-empty, so the client can echo what was stored. Update `handlePause`'s doc comment to name the field.
+- `src/ui/gui/gui-client-operator.ts`, pause-control section:
+  - `openPauseMenu` adds a single-line `<input id='pausereason' maxlength=… placeholder='Reason (optional)'>` between the title and the choices. Interpolate `maxlength` as `${PAUSE_REASON_MAX}`, imported from `src/fleet/fleet-state.ts` into the `String.raw` template. This follows the precedent of `gui-client-model.ts` interpolating `STALL_SOURCE` at module build.
+  - Focus stays on the first menu item as today.
+  - `setFleetPause(paused, forSeconds, reason)` adds `body.reason = reason.trim()` only when pausing and the trimmed text is non-empty.
+  - The `[data-pause]` click handler reads `$("pausereason")?.value`.
+  - Enter in the input does nothing special. The operator still picks a duration.
+  - `pauseControlHtml`'s Resume button appends the reason to its `title` (escaped) when `d.pauseReason` is set.
+  - Update the module doc comment's pause-control sentence.
+- No change to `fleet-state.ts`, the status payload, or `fleet-alerts.ts`: the reason is already read back from the marker and rendered there.
+
+**Files touched.** `src/gui/gui-endpoint-commands.ts`, `src/ui/gui/gui-client-operator.ts`, `test/gui-operator.test.ts`, `test/gui-client.test.ts`; `docs/invariants.md` only if its dashboard/operator section pins `/api/pause`'s body (check with `grep -n "api/pause" docs/invariants.md`); README's "Control the loops" row only if it describes the dashboard pause menu.
+
+**Acceptance criteria.**
+- `test/gui-operator.test.ts` covers these cases, using that file's existing `postJson`/`postRaw` helpers and `pausedPath`:
+  - `POST /api/pause {"paused": true, "reason": "  deploying\n v2 "}` → 200 with `reason: "deploying v2"`, and the marker's `reason` is `"deploying v2"`;
+  - `{"paused": true, "forSeconds": 3600, "reason": "x"}` writes both `until` and `reason`;
+  - `{"paused": true, "reason": "   "}` writes no `reason`;
+  - `{"paused": false, "reason": "x"}` → 400 matching `/only applies when pausing/`;
+  - `{"paused": true, "reason": 5}` → 400 matching `/must be a string/`;
+  - a 300-char reason is stored at most `PAUSE_REASON_MAX` chars long.
+- `test/gui-client.test.ts`'s pause-control scope test:
+  - `setFleetPause(true, 3600, " why ")` posts `{ paused: true, forSeconds: 3600, reason: "why" }`;
+  - `setFleetPause(true, 0, "  ")` posts `{ paused: true }`;
+  - the existing calls without a reason still post the exact bodies they pin today;
+  - `pauseControlHtml({ paused: true, pauseReason: "deploy" })` contains `deploy` in the Resume button's title.
+- A pause without `reason` behaves as before: the existing `/api/pause` tests pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### Reclaim build outputs from the dashboard's disk row, matching `tumwater reclaim` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater reclaim` (`cmdReclaim` in `src/operator/operator-commands.ts`) and the landed sidebar stale-build restart button (`restartButton` in `src/ui/gui/gui-client-fleet.ts`, `runAct`'s `restart` branch in `gui-client-boot.ts`, `handleRestart` over `POST /api/restart`); the sidebar's disk row says the fleet is holding work or that free space is below the reclaim threshold, but offers no way to act on it, so the operator has to switch to the CLI; independent of the waiting question-answer parts 1/2 and 2/2, backlog-file, and Claude usage-meter plans in behavior (its own route, handler, and `data-act`), though it shares `src/gui/gui-server.ts`/`gui-endpoint-commands.ts`/`gui-client-boot.ts` with them, so a landing conflict is possible and the resolver handles it); done 2026-10-12 by feature
