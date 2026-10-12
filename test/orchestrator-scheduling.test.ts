@@ -12,6 +12,7 @@ import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
+import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
 import { HOUR } from "./helpers/oracles.js";
@@ -491,4 +492,37 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   const secondReasons = await pollRunnerReasons(second);
   assert.equal(secondReasons.has(runners[0]!), false, "the first loop is back in its gap");
   assert.equal(secondReasons.has(runners[1]!), true, "the second loop starts one tick later");
+});
+
+test("an unassigned primary is told the entries its siblings hold, and the prompt names them", async () => {
+  const root = tmpdir("tumwater-scheduling-held-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  fs.writeFileSync(path.join(root, "README.md"), "# proj\n");
+  const config = defaultConfig();
+  config.roles.feature = { enabled: true, instances: 3 };
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const feature3 = fakeRunner("feature-3", config);
+  const claim = (key: string) => ({ file: "PLANS.md" as const, key, title: key, at: 1_000_010_000, source: "assigned" as const });
+  feature2.state.claim = claim("alpha");
+  feature3.state.claim = claim("beta");
+  const roleProviders = new Map([["feature", undefined], ["feature-2", undefined], ["feature-3", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3], roleProviders));
+  assert.equal(feature.state.claim, undefined);
+  assert.equal(feature.state.heldElsewhere?.length, 2);
+  const result = assembleTickPrompt({ root, config, role: "feature", state: feature.state });
+  assert.match(result?.prompt ?? "", /<held-entries>[\s\S]*do not pick, edit, or implement them/);
+  assert.match(result?.prompt ?? "", /- ".*"/);
+});
+
+test("a stale held-entries list is cleared once the role has no claim group", async () => {
+  const root = tmpdir("tumwater-scheduling-held-stale-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  fs.writeFileSync(path.join(root, "README.md"), "# proj\n");
+  const config = defaultConfig();
+  config.roles.feature = { enabled: true, instances: 1 };
+  const feature = fakeRunner("feature", config);
+  feature.state.heldElsewhere = ["alpha"];
+  await pollRunnerReasons(schedulingCtx(root, [feature], new Map([["feature", undefined]])));
+  assert.equal(feature.state.heldElsewhere, undefined);
 });

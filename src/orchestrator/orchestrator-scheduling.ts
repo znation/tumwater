@@ -384,6 +384,9 @@ export async function pollRunnerReasons(
         if (claimGroup.hold) continue;
         const free = claimGroup.eligible.filter((e) => !claimGroup.held.has(e.key));
         const pick = assignNext(free);
+        // An unassigned runner is told which entries its siblings hold (cleared when none).
+        const heldTitles = claimGroup.eligible.filter((e) => claimGroup.held.has(e.key)).map((e) => e.title);
+        runner.state.heldElsewhere = !pick && heldTitles.length > 0 ? heldTitles : undefined;
         if (pick) {
           runner.state.claim = {
             file: baseRoleOf(runner.role) === BUGFIX_ROLE ? "BUGS.md" : "PLANS.md",
@@ -404,6 +407,8 @@ export async function pollRunnerReasons(
           continue; // an idle extra instance: no tick, no backoff climb
         }
       }
+    } else {
+      runner.state.heldElsewhere = undefined; // no claim group (e.g. instances lowered to 1)
     }
     reasons.set(runner, reason);
   }

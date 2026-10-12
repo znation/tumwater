@@ -238,6 +238,11 @@ export interface LoopState {
     at: number;
     source: "assigned" | "staged";
   };
+  /** Titles of the entries siblings hold while this instance runs unassigned (nothing free to
+   * claim): set by the scheduling poll, read by the tick prompt's exclusion note, so a primary
+   * does not author an entry a sibling already holds. Cleared whenever the poll finds nothing
+   * held or assigns a claim. */
+  heldElsewhere?: string[];
   /** The rejected change this loop owes a revision to (plans/revise-rejected.md): its head, how
    * many revision rounds have been attempted, and when the rejection was recorded. Set at a gate
    * rejection while the round is within REVISION_LIMIT; consumed when the revision stages, drops,

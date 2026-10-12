@@ -11,7 +11,7 @@ import { readBrief } from "../brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildAssignmentNote, buildConflictDiscardNote, buildRejectedReviewNote } from "../prompt/gate-prompts.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildRejectedReviewNote } from "../prompt/gate-prompts.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";
@@ -198,6 +198,9 @@ export function assembleTickPrompt(
   if (claim && userPrompt === null) {
     const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
     prompt += `\n\n${buildAssignmentNote(claim, range)}`;
+  }
+  if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
+    prompt += `\n\n${buildHeldEntriesNote(state.heldElsewhere)}`;
   }
   // A change rejected in review is the only cross-tick memory of what was built and why it
   // failed — every tick starts a fresh session, so the full reasons ride along on the next

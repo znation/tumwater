@@ -411,6 +411,17 @@ Implement or fix only that entry. If it is too large for one run, append ${NEEDS
 </assigned-entry>`;
 }
 
+/** The note appended to an unassigned work instance's prompt when siblings hold backlog entries
+ * (plans/parallel-work-instances.md "an exclusion list of held titles"): those entries are
+ * someone else's task, so choosing among the rest — or ending with nothing to do — is the
+ * instance's whole job. A pure function so its shape is pinned in tests. */
+export function buildHeldEntriesNote(titles: readonly string[]): string {
+  return `<held-entries>
+Sibling instances hold these backlog entries; do not pick, edit, or implement them, and do not edit their headings. If every remaining entry is held, treat the backlog as having nothing to do for you:
+${titles.map((t) => `- "${t}"`).join("\n")}
+</held-entries>`;
+}
+
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
  * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): at the cap recovery ordinarily hands the
  * change back to its author with markers instead, so a discard means that lineage already used
