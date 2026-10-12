@@ -11,7 +11,7 @@ import {
   type PromptImageInput,
 } from "./inbox-attachments.js";
 import { promptLengthProblem } from "./inbox-submit.js";
-import { listedQueueOutcome, queueFileNameProblem, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
+import { assertQueueFileName, listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
 import { roleInboxDir } from "../paths.js";
 
@@ -130,8 +130,7 @@ export function editRolePrompt(root: string, role: string, position: number, new
  * queueFileNameProblem — the GUI endpoint pre-checks the same guard and answers 400 before
  * anything is touched on disk. */
 export function editQueuedFile(root: string, role: string, name: string, newText: string, images?: PromptImageInput[]): EditOutcome {
-  const problem = queueFileNameProblem(name);
-  if (problem) throw new Error(problem);
+  assertQueueFileName(name);
   return editPromptAtFile(root, role, path.join(roleInboxDir(root, role), name), newText, images);
 }
 
@@ -144,8 +143,7 @@ export function editQueuedFile(root: string, role: string, name: string, newText
  * an error. Throws for a name failing queueFileNameProblem. Reading the one named file directly
  * keeps the dashboard's lazy fetch off the per-poll path. */
 export function readQueuedPromptBody(root: string, role: string, name: string): string | null {
-  const problem = queueFileNameProblem(name);
-  if (problem) throw new Error(problem);
+  assertQueueFileName(name);
   const text = readTextIfExists(path.join(roleInboxDir(root, role), name));
   if (text === null) return null;
   return stripImageReferenceLines(stripNotBeforeMarker(text)).trimEnd();

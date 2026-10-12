@@ -134,6 +134,15 @@ export function queueFileNameProblem(name: unknown): string | null {
   return null;
 }
 
+/** The file-addressed queue functions' shared entry guard: throw the reason a name fails
+ * queueFileNameProblem, so cancelQueuedFile, editQueuedFile, and readQueuedPromptBody all
+ * fail closed with the same error before touching disk. The callers run the guard anyway;
+ * naming it in one place keeps the throw contract from drifting between them. */
+export function assertQueueFileName(name: string): void {
+  const problem = queueFileNameProblem(name);
+  if (problem) throw new Error(problem);
+}
+
 /** Remove one queued prompt addressed by its queue-file basename — the file-addressed twin of
  * cancelRolePrompt, for the dashboard's per-row cancel affordance (PLANS.md 2026-09-29): the
  * address is the file itself, so a stale poll's snapshot can never cancel the wrong entry.
@@ -141,8 +150,7 @@ export function queueFileNameProblem(name: unknown): string | null {
  * Throws for a name failing queueFileNameProblem — the GUI endpoint pre-checks the same
  * guard and answers 400 before anything is touched on disk. */
 export function cancelQueuedFile(root: string, role: string, name: string): CancelOutcome {
-  const problem = queueFileNameProblem(name);
-  if (problem) throw new Error(problem);
+  assertQueueFileName(name);
   return takeCancelledPrompt(root, role, path.join(roleInboxDir(root, role), name));
 }
 
