@@ -1,5 +1,5 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries eight rules on purpose: three for promise misuse tsc cannot see, three for type
+// carries nine rules on purpose: four for promise misuse tsc cannot see, three for type
 // spellings whose meaning is not what the author read, one for a type-only import that silently
 // stays a runtime side effect under verbatimModuleSyntax, and one for a private member that is
 // never reassigned but is not marked `readonly`.
@@ -16,6 +16,10 @@
 // inside a try/catch it requires `return await promise`, because a bare `return promise`
 // lets a rejection skip the catch the author wrote to handle it, and outside one it
 // forbids the redundant `await`, which typechecks and runs either way.
+// use-unknown-in-catch-callback-variable flags a `.catch`/`.then` rejection callback whose
+// parameter is left un-annotated: TypeScript gives it `any`, so the handler can read a field
+// off it that no rejection carries; `: unknown` forces a narrow first (the three sites pass
+// the value to errorMessage or assign it to an `unknown`).
 //
 // Type spellings: await-thenable flags `await` of a value no thenable can be (an unawaited
 // sync helper awaited by habit, or a call still missing its `()`), which typechecks and runs
@@ -59,6 +63,7 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
+      "@typescript-eslint/use-unknown-in-catch-callback-variable": "error",
       "@typescript-eslint/return-await": "error",
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",

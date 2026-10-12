@@ -228,7 +228,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // reservation back so the role can schedule again, exactly as the unstarted path above
     // does; the drain's allSettled is otherwise silent about the failure.
     void task
-      .catch((err) => {
+      .catch((err: unknown) => {
         runner.state.running = false;
         warnEventBestEffort(root, runner.role, `tick task rejected: ${errorMessage(err)}`);
       })
