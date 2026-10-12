@@ -5,7 +5,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### `tumwater help config` names `fallbackModel` as a settable top-level key, but `config set` refuses to add it to a config that lacks it (found by qa loop 2026-10-11 while exercising the `config` flow as a first-time user)
+
+- **Symptom:** `tumwater help config` lists the keys `config set` accepts with the examples "quietHours ("23:00-07:00" or ""), quietHoursPerRole (per-role windows), maxDailyCostUsd, fallbackModel, among others" (src/cli/help.ts:68). Every other named key is writable on a fresh `tumwater init` config; `fallbackModel` is not. `tumwater config set fallbackModel '{"provider":"a","model":"b"}'` exits 1 with `config set fallbackModel: this config has no fallbackModel, and a writer never adds legacy fallbackModel — set `fallback` instead`. The key is only accepted when the file already carries it, so a first-time user following the command's own usage text is directed to a key the command then refuses — and the refusal (rather than the expected write) is the whole interaction.
+- **Reproduce:** `tumwater init "Build a tiny markdown-to-html converter CLI in Python."`, then `tumwater config set fallbackModel '{"provider":"a","model":"b"}'` → exit 1 with the error above, while `tumwater help config` names `fallbackModel` in the same sentence. Manually adding `"fallbackModel": {"provider":"a","model":"b"}` to tumwater.json first makes the identical set exit 0 and write the value — pinning that the refusal is the absent-key special case (src/config/config-write.ts:361-375), not an unknown key.
+- **Expected:** the command's usage names only keys a fresh config accepts (e.g. `fallback`), or qualifies `fallbackModel` as legacy-only — accepted only to fix an existing value.
+- **Cause:** help.ts:68 still lists the legacy `fallbackModel` alongside the current keys; `writeConfigKey` (src/config/config-write.ts) deliberately refuses to add legacy `provider`/`fallbackModel` to a config lacking them, so the help example and the writer disagree.
+- **Suggested fix:** drop `fallbackModel` from the help example (use `fallback`), or annotate it as legacy-only. A regression test could assert the config help text never names a key `config set` refuses on a default config.
 
 ## Fixed
 
