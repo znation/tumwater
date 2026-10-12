@@ -3,7 +3,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
-import { truncate } from "../text/text.js";
+import { collapseWhitespace, truncate } from "../text/text.js";
 import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
 import { pendingScheduledWakes } from "../operator/operator-requests.js";
 
@@ -115,7 +115,7 @@ export function pausedReason(root: string): string | undefined {
  * persisted. One home beside pauseFleet so the CLI path and any later GUI writer cannot
  * drift on the shape the marker stores. */
 export function normalizePauseReason(reason: string | undefined): string | undefined {
-  const oneLine = reason?.replace(/\s+/g, " ").trim();
+  const oneLine = reason === undefined ? undefined : collapseWhitespace(reason);
   return oneLine ? truncate(oneLine, PAUSE_REASON_MAX) : undefined;
 }
 
