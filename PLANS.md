@@ -8,6 +8,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Answer an open question from the dashboard, part 2/2: an inline answer form in the Questions tab and entry drawer (planned 2026-10-12 by plan; requires part 1/2's `POST /api/question-answer` landed; sibling of the landed dashboard queued-prompt edit (`gui-client-fleet.ts`'s Queued-tab Edit over `/api/prompt-edit`) and the CLI `tumwater questions answer`; independent of the waiting TUI Activity filter and dashboard per-loop timed pause plans in behavior — `src/ui/gui` only — though it may share `gui-client-drawer.ts` with the timed-pause plan's drawer button, so a landing conflict is possible and the resolver handles it)
 
+**Needs review 2026-10-12 by feature: blocked — part 1/2 (`tryAnswerQuestion`, `POST /api/question-answer`) has not landed (grep finds neither in `src` or `test`), so the form has no endpoint to post to**
+
 **Goal.** Make the dashboard's Answer control record the decision in QUESTIONS.md, as `tumwater questions answer` does. Keep drafting a director prompt available as a secondary action, for when the operator wants the director to act on the answer.
 
 **Approach.**
