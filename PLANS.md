@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names loops on an error streak: an "error streaks" check that warns on each loop failing tick after tick, and says which of them are paused (planned 2026-10-12 by plan; the failure sibling of the landed hold checks in `src/doctor/doctor-holds.ts` (`checkPause`, `checkQuietHours`, `checkBudget`, `checkClaudeWindow`, `checkMaintenanceQuota`). Today grep finds no `consecutiveErrors`/`ERROR_STREAK` in `src/doctor`. When the error-streak breaker (`pollStreakGate` in `src/gates/streak-gate.ts`) pauses a loop past `ERROR_STREAK_BREAKER` failures, it writes the same per-role marker `tumwater pause --role` writes. So doctor's "pause" row reads `ok — paused loops: feature`, as if the operator chose it, and doctor still prints "ready to run". A loop past `ERROR_STREAK_WARN` that is not yet paused is also invisible to doctor, though the dashboards' "failing tick after tick" alert (`fleetAlerts` in `src/ui/fleet-alerts.ts`) names it. Stands alone: no gate, scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work)
+_None yet._
+
+## Done
+
+### `tumwater doctor` names loops on an error streak: an "error streaks" check that warns on each loop failing tick after tick, and says which of them are paused (planned 2026-10-12 by plan; the failure sibling of the landed hold checks in `src/doctor/doctor-holds.ts` (`checkPause`, `checkQuietHours`, `checkBudget`, `checkClaudeWindow`, `checkMaintenanceQuota`). Today grep finds no `consecutiveErrors`/`ERROR_STREAK` in `src/doctor`. When the error-streak breaker (`pollStreakGate` in `src/gates/streak-gate.ts`) pauses a loop past `ERROR_STREAK_BREAKER` failures, it writes the same per-role marker `tumwater pause --role` writes. So doctor's "pause" row reads `ok — paused loops: feature`, as if the operator chose it, and doctor still prints "ready to run". A loop past `ERROR_STREAK_WARN` that is not yet paused is also invisible to doctor, though the dashboards' "failing tick after tick" alert (`fleetAlerts` in `src/ui/fleet-alerts.ts`) names it. Stands alone: no gate, scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work) (done 2026-10-12)
 
 **Goal.** `tumwater doctor` names every enabled loop whose `LoopState.consecutiveErrors` is at or past `ERROR_STREAK_WARN` (from `src/tick/tick-apply.ts`), with its streak and last error. It also says whether the loop is paused, so an operator can tell a breaker-held loop from one they paused, and from one still burning ticks.
 
@@ -38,8 +42,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The check is read-only: it calls no `saveLoopState`, `pauseRole`, or event write. The existing read-only assertion in the runDoctor full-report test still passes.
 - The updated row-order test and the new `checkErrorStreaks` tests pass under `npm run test`.
 
-
-## Done
 
 ### `tumwater doctor` names the claude subscription window: a "claude window" check that warns while a rejected window holds the subscription claude seams (planned 2026-10-12 by plan; the subscription sibling of the landed "budget" check (`checkBudget` in `src/doctor/doctor-holds.ts`) and the last fleet hold doctor does not report, after "pause", "quiet hours", "budget", and "maintenance quota". On a subscription-only claude fleet a run is exempt from the dollar cap, so "budget" reads ok while `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until the rejected window's `resetsAt`, which can be hours away. Today grep finds no `claudeWindow`/`claude window` in `src/doctor`. So doctor prints "ready to run" over a fleet that starts no claude tick, and the operator has to read the status header's `Claude 5h · rejected` badge to learn why. Independent of the landed "A failing notify hook says so" plan: no `src/events` file. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work; done 2026-10-12)
 

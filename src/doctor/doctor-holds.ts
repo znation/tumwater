@@ -8,6 +8,8 @@ import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { loopIds } from "../roles/loop-ids.js";
+import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
+import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
@@ -17,7 +19,8 @@ import { claudeWindowObservation } from "../fleet/fleet-polls.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
- * (checkBudget), `claude window` (checkClaudeWindow), and `maintenance quota` (checkMaintenanceQuota), all read-only reports of holds on ticking.
+ * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota` (checkMaintenanceQuota), and
+ * `error streaks` (checkErrorStreaks), all read-only reports of holds on ticking.
  *
  * The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause
@@ -160,4 +163,33 @@ export function checkClaudeWindow(root: string, now: number = Date.now()): Check
   return okOutcome(
     top.status === "allowed_warning" ? `${label} window nearing its limit${pct}` : `${label} window ${top.status}${pct}`,
   );
+}
+
+/** The `error streaks` check: names each enabled loop whose `consecutiveErrors` is at or past
+ * ERROR_STREAK_WARN, with its streak and last error, and whether it is paused. Read-only; it reads
+ * the same `consecutiveErrors` the error-streak breaker and `fleetAlerts` read, and the same
+ * `pausedRoles` marker the scheduler reads. The marker does not record who wrote it, so a paused
+ * loop at ERROR_STREAK_BREAKER's bar is described, not attributed to the breaker. A warn, not a
+ * fail: a failing loop does not stop the fleet from running. */
+export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
+  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  const failing = loopIds(config)
+    .map((id) => loadLoopState(root, id))
+    .filter((s) => (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN)
+    .sort((a, b) => a.role.localeCompare(b.role));
+  if (failing.length === 0) return okOutcome("no loop failing consecutively");
+  const paused = new Set(pausedRoles(root));
+  const phrases = failing.map((s) => {
+    const n = s.consecutiveErrors ?? 0;
+    let phrase = `${s.role}: ${n} failed ticks`;
+    if (paused.has(s.role)) {
+      phrase +=
+        n >= ERROR_STREAK_BREAKER
+          ? `, paused at the error-streak breaker's bar — \`tumwater resume --role ${s.role}\` once the cause is fixed`
+          : ", paused";
+    }
+    if (s.lastError) phrase += ` — last error: ${squash(s.lastError, 120)}`;
+    return phrase;
+  });
+  return warnOutcome(`failing tick after tick: ${phrases.join("; ")}`);
 }

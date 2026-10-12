@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkBudget, checkClaudeWindow, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -8,6 +8,7 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { humanSeconds } from "../src/text/datetime.js";
+import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("checkPause: no markers is ok", () => {
@@ -251,4 +252,55 @@ test("checkClaudeWindow: overage, an elapsed reset, a warning, and no windows ar
   assert.match(warning.detail, /83% used/);
   seed({});
   assert.match(checkClaudeWindow(root, CW_NOW).detail, /no window reported yet/);
+});
+
+function streakRoot(streaks: Record<string, number>, lastError = "boom"): string {
+  const root = tmpdir("tw-streak-");
+  for (const [id, n] of Object.entries(streaks)) {
+    saveLoopState(root, { ...freshLoopState(id), consecutiveErrors: n, lastError });
+  }
+  return root;
+}
+
+test("checkErrorStreaks: unreadable config is not checked", () => {
+  const r = checkErrorStreaks(tmpdir("tw-streak-"), undefined);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /not checked/);
+});
+
+test("checkErrorStreaks: no streak, or one below the warn bar, is ok", () => {
+  assert.deepEqual(checkErrorStreaks(tmpdir("tw-streak-"), bcfg({})), { level: "ok", detail: "no loop failing consecutively" });
+  const r = checkErrorStreaks(streakRoot({ feature: ERROR_STREAK_WARN - 1 }), bcfg({}));
+  assert.equal(r.level, "ok");
+});
+
+test("checkErrorStreaks: an unpaused loop at the warn bar warns with count and squashed last error", () => {
+  const r = checkErrorStreaks(streakRoot({ feature: ERROR_STREAK_WARN }, "line one\n   line two"), bcfg({}));
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /failing tick after tick: feature: 3 failed ticks — last error: line one line two/);
+  assert.doesNotMatch(r.detail, /paused/);
+});
+
+test("checkErrorStreaks: a paused loop at the breaker bar names the resume command", () => {
+  const root = streakRoot({ feature: ERROR_STREAK_BREAKER });
+  pauseRole(root, "feature");
+  const r = checkErrorStreaks(root, bcfg({}));
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /paused at the error-streak breaker's bar/);
+  assert.match(r.detail, /tumwater resume --role feature/);
+});
+
+test("checkErrorStreaks: a paused loop below the breaker is just paused", () => {
+  const root = streakRoot({ feature: ERROR_STREAK_WARN });
+  pauseRole(root, "feature");
+  const r = checkErrorStreaks(root, bcfg({}));
+  assert.match(r.detail, /feature: 3 failed ticks, paused — last error/);
+  assert.doesNotMatch(r.detail, /resume/);
+});
+
+test("checkErrorStreaks: a second instance is reported under its own id", () => {
+  const cfg = qcfg({ roles: { feature: { enabled: true, instances: 2 } } });
+  const r = checkErrorStreaks(streakRoot({ "feature-2": 5 }), cfg);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /feature-2: 5 failed ticks/);
 });
