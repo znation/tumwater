@@ -12,6 +12,7 @@ import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
@@ -186,6 +187,8 @@ test("an extra instance with no free entry is skipped and keeps its schedule", a
   assert.equal(feature2.state.nextRunAt, before.nextRunAt);
   assert.equal(feature2.state.backoffSeconds, before.backoffSeconds);
   assert.equal(feature2.state.claim, undefined);
+  assert.equal(feature2.state.skipReason, "no-free-entry");
+  assert.equal(loadLoopState(root, "feature-2").skipReason, "no-free-entry");
 });
 
 test("a claimed entry that lands releases the claim on the next poll", async () => {
@@ -297,6 +300,44 @@ test("a base with an outstanding revision and no claim also holds the group", as
   // too deadlocks every instance (the 2026-10-09 fleet stall).
   assert.equal(reasons.has(feature), true, "the base still ticks to finish its revision");
   assert.equal(feature.state.claim, undefined, "and is assigned no new entry");
+});
+
+test("a sibling held by an unclaimed mid-entry runner records claim-hold, cleared once admitted", async () => {
+  const root = tmpdir("tumwater-scheduling-skip-claim-hold-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.revision = { sha: "deadbeef", round: 1, at: T0 };
+  const roleProviders = new Map([["feature", undefined], ["feature-2", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roleProviders));
+  assert.equal(feature2.state.skipReason, "claim-hold");
+  assert.equal(loadLoopState(root, "feature-2").skipReason, "claim-hold");
+  feature.state.revision = undefined;
+  const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roleProviders));
+  assert.equal(reasons.has(feature2), true, "the hold cleared, so the sibling is admitted");
+  assert.equal(feature2.state.skipReason, undefined);
+  assert.equal(loadLoopState(root, "feature-2").skipReason, undefined);
+});
+
+test("a deferred maintenance role records its deferral once per episode", async () => {
+  const root = tmpdir("tumwater-scheduling-skip-deferred-");
+  const clean = fakeRunner("clean", defaultConfig());
+  clean.state.ticks = 1;
+  clean.state.lastResult = "no_change";
+  clean.state.lastMainHead = "abc"; // a deferral needs a prior head to compare against
+  const ctx = () => ({
+    ...schedulingCtx(root, [clean], new Map([["clean", undefined]])),
+    workBacklogOpen: true,
+  });
+  const reasons = await pollRunnerReasons(ctx());
+  assert.equal(reasons.has(clean), false, "the open backlog defers the due role");
+  assert.equal(clean.state.skipReason, "deferred-backlog");
+  assert.equal(loadLoopState(root, "clean").skipReason, "deferred-backlog");
+  const file = statePath(root, "clean");
+  fs.rmSync(file);
+  await pollRunnerReasons(ctx());
+  assert.equal(fs.existsSync(file), false, "the unchanged verdict does not rewrite the state file");
 });
 
 test("the reviewer's provider being held blocks every role through scheduling, and only while it stands", async () => {

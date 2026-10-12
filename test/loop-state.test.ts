@@ -125,6 +125,16 @@ test("saveLoopState from two concurrent processes never tears the file or loses 
   assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((f) => f.includes(".tmp-")), [], "no tmp leftovers");
 });
 
+test("loadLoopState drops an unknown skipReason and keeps a known one", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "clean");
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ role: "clean", skipReason: "from-the-future" }));
+  assert.equal(loadLoopState(dir, "clean").skipReason, undefined);
+  fs.writeFileSync(file, JSON.stringify({ role: "clean", skipReason: "claim-hold" }));
+  assert.equal(loadLoopState(dir, "clean").skipReason, "claim-hold");
+});
+
 test("loadLoopState fills fields missing from an older or partial file", () => {
   const dir = tmpdir();
   const file = statePath(dir, "clean");

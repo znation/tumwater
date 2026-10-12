@@ -243,6 +243,10 @@ export interface LoopState {
    * does not author an entry a sibling already holds. Cleared whenever the poll finds nothing
    * held or assigns a claim. */
   heldElsewhere?: string[];
+  /** Why the scheduling poll last skipped this loop while it was due: set by the poll for an idle
+   * extra instance with no free entry, the claim-group hold, or a need-based deferral, and
+   * cleared when the poll admits the loop or finds it not due. Absent otherwise. */
+  skipReason?: SkipReason;
   /** The rejected change this loop owes a revision to (plans/revise-rejected.md): its head, how
    * many revision rounds have been attempted, and when the rejection was recorded. Set at a gate
    * rejection while the round is within REVISION_LIMIT; consumed when the revision stages, drops,
@@ -251,6 +255,16 @@ export interface LoopState {
    * outstanding rejection, so existing state files read unchanged. */
   revision?: { sha: string; round: number; at: number };
 }
+
+/** Why a due loop was skipped by the scheduling poll (LoopState.skipReason). */
+export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work";
+
+const SKIP_REASONS: readonly string[] = [
+  "no-free-entry",
+  "claim-hold",
+  "deferred-backlog",
+  "deferred-no-work",
+];
 
 /** A new LoopState for one role, before its first tick. */
 export function freshLoopState(role: string): LoopState {
@@ -332,6 +346,7 @@ export function loadLoopState(root: string, role: string): LoopState {
   healOptionalNumber(s, "consecutiveErrors");
   healOptionalNumber(s, "unreviewFailures");
   healOptionalNumber(s, "parkedSince");
+  if (s.skipReason !== undefined && !SKIP_REASONS.includes(s.skipReason)) delete s.skipReason;
   if (s.reviewResume !== undefined) {
     const r = healRecord(s.reviewResume, (v) => {
       v.attempts = healNumber(v.attempts, 0);

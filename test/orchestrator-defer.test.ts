@@ -73,6 +73,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
       ["clean"],
       "the deferral is logged once on the transition in, not silent",
     );
+    assert.equal(loadLoopState(repo, "clean").skipReason, "deferred-backlog");
   });
 });
 

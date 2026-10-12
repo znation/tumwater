@@ -6,32 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Idle loops say why they are idle, part 1/2: the scheduling poll records why it skipped a due loop (planned 2026-10-12 by plan)
-
-Split from the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot…", which needs review as too large for one run. Part 2/2 ("…part 2/2: the status phase names the skip") reads what this part records. This part changes no rendered output.
-
-**Goal:** `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) skips a due loop silently in three long-lived ways: an idle extra instance with no free entry, the claim-group hold, and a need-based deferral. The deferral verdict lives only in the in-memory `deferredDue` map, so the status readers (which load state files) cannot tell these apart, and every one falls through to `loopPhase`'s catch-all `"queued"`. Persist the skip reason on the loop's state so part 2 can label it.
-
-**Approach:**
-- src/loop/loop-state.ts: add `export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work"` and an optional `LoopState.skipReason?: SkipReason`, with a doc comment in the style of `heldElsewhere`: set by the scheduling poll when a due loop is skipped for one of these reasons, and cleared when the poll admits the loop or finds it not due. In `loadLoopState`, drop a saved value that is not one of the four strings (`delete s.skipReason`), so a hand-edited or future value reads as absent.
-- src/orchestrator/orchestrator-scheduling.ts: add a module-private `noteSkip(root, runner, reason: SkipReason | undefined)`. It assigns `runner.state.skipReason` and calls `saveLoopState(root, runner.state)` **only when the value changes**, so a loop that stays skipped writes its state file once per episode, not once per poll. This follows the persisted claim release in the same function: a skipped loop gets no tick to save its own state. Call it:
-  - with `"deferred-backlog"` / `"deferred-no-work"` in the `if (deferredNow)` branch, mapping `DeferReason` `"backlog"` / `"no-work"`;
-  - with `"claim-hold"` before the `if (claimGroup.hold) continue;`;
-  - with `"no-free-entry"` before the idle-extra `continue` (`instanceIndex(runner.role) >= 2`);
-  - with `undefined` in the `if (!run)` branch, before the merge-queue interlock `continue` (`queuedRoles.has`), before the maintenance-headroom `continue`, and immediately before `reasons.set(runner, reason)` (admitted).
-  The earlier gate `continue`s (pauses, holds, disk/restart) leave the value alone. Those states have their own `loopPhase` labels, which rank ahead of the catch-all, and the next poll that reaches the sites above rewrites the value.
-- No event, config knob, or schema version change: the field is optional, and an older state file simply lacks it.
-
-**Files:** src/loop/loop-state.ts, src/orchestrator/orchestrator-scheduling.ts, test/orchestrator-scheduling.test.ts, test/orchestrator-defer.test.ts, docs/invariants.md (only if a new guarantee entry fits an existing section; otherwise none).
-
-**Acceptance criteria:**
-- test/orchestrator-scheduling.test.ts "an extra instance with no free entry is skipped and keeps its schedule" also asserts `feature2.state.skipReason === "no-free-entry"` and the same value from `loadLoopState(root, "feature-2")`. The test's existing assertions (unchanged `nextRunAt`/`backoffSeconds`, no claim) still hold.
-- A new test in the same file: a group held by an unclaimed mid-entry runner (reuse the fixture behind "a base with an outstanding revision and no claim also holds the group") leaves the sibling with `skipReason === "claim-hold"`. Once the hold clears and the sibling is admitted, `skipReason` is undefined in memory and on disk.
-- A new test in test/orchestrator-defer.test.ts, next to "once: a due maintenance role with an open backlog settles as deferred, runs no tick, and logs the episode": the deferred role's state reads `"deferred-backlog"` on disk. A second poll with the same verdict does not rewrite the file (assert that its mtime, or a spy on the save, stays unchanged).
-- `loadLoopState` drops an unknown `skipReason` string (a unit test in test/loop-state.test.ts).
-- No rendered output changes: test/status-model.test.ts and test/gui-client.test.ts pass untouched.
-- `npm run test` passes.
-
 ### Idle loops say why they are idle, part 2/2: the status phase names the skip (planned 2026-10-12 by plan; requires part 1/2 landed)
 
 Second half of the split of the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot"…". It reads `LoopState.skipReason`, which part 1/2 ("…part 1/2: the scheduling poll records why it skipped a due loop") adds. When this part lands, move that BUGS.md entry to `## Fixed` with a Fixed line that names this plan and the tests below.
@@ -66,6 +40,32 @@ Second half of the split of the BUGS.md open entry "The dashboard says "Queued �
 
 
 ## Done
+
+### Idle loops say why they are idle, part 1/2: the scheduling poll records why it skipped a due loop (planned 2026-10-12 by plan; done 2026-10-12 by feature)
+
+Split from the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot…", which needs review as too large for one run. Part 2/2 ("…part 2/2: the status phase names the skip") reads what this part records. This part changes no rendered output.
+
+**Goal:** `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) skips a due loop silently in three long-lived ways: an idle extra instance with no free entry, the claim-group hold, and a need-based deferral. The deferral verdict lives only in the in-memory `deferredDue` map, so the status readers (which load state files) cannot tell these apart, and every one falls through to `loopPhase`'s catch-all `"queued"`. Persist the skip reason on the loop's state so part 2 can label it.
+
+**Approach:**
+- src/loop/loop-state.ts: add `export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work"` and an optional `LoopState.skipReason?: SkipReason`, with a doc comment in the style of `heldElsewhere`: set by the scheduling poll when a due loop is skipped for one of these reasons, and cleared when the poll admits the loop or finds it not due. In `loadLoopState`, drop a saved value that is not one of the four strings (`delete s.skipReason`), so a hand-edited or future value reads as absent.
+- src/orchestrator/orchestrator-scheduling.ts: add a module-private `noteSkip(root, runner, reason: SkipReason | undefined)`. It assigns `runner.state.skipReason` and calls `saveLoopState(root, runner.state)` **only when the value changes**, so a loop that stays skipped writes its state file once per episode, not once per poll. This follows the persisted claim release in the same function: a skipped loop gets no tick to save its own state. Call it:
+  - with `"deferred-backlog"` / `"deferred-no-work"` in the `if (deferredNow)` branch, mapping `DeferReason` `"backlog"` / `"no-work"`;
+  - with `"claim-hold"` before the `if (claimGroup.hold) continue;`;
+  - with `"no-free-entry"` before the idle-extra `continue` (`instanceIndex(runner.role) >= 2`);
+  - with `undefined` in the `if (!run)` branch, before the merge-queue interlock `continue` (`queuedRoles.has`), before the maintenance-headroom `continue`, and immediately before `reasons.set(runner, reason)` (admitted).
+  The earlier gate `continue`s (pauses, holds, disk/restart) leave the value alone. Those states have their own `loopPhase` labels, which rank ahead of the catch-all, and the next poll that reaches the sites above rewrites the value.
+- No event, config knob, or schema version change: the field is optional, and an older state file simply lacks it.
+
+**Files:** src/loop/loop-state.ts, src/orchestrator/orchestrator-scheduling.ts, test/orchestrator-scheduling.test.ts, test/orchestrator-defer.test.ts, docs/invariants.md (only if a new guarantee entry fits an existing section; otherwise none).
+
+**Acceptance criteria:**
+- test/orchestrator-scheduling.test.ts "an extra instance with no free entry is skipped and keeps its schedule" also asserts `feature2.state.skipReason === "no-free-entry"` and the same value from `loadLoopState(root, "feature-2")`. The test's existing assertions (unchanged `nextRunAt`/`backoffSeconds`, no claim) still hold.
+- A new test in the same file: a group held by an unclaimed mid-entry runner (reuse the fixture behind "a base with an outstanding revision and no claim also holds the group") leaves the sibling with `skipReason === "claim-hold"`. Once the hold clears and the sibling is admitted, `skipReason` is undefined in memory and on disk.
+- A new test in test/orchestrator-defer.test.ts, next to "once: a due maintenance role with an open backlog settles as deferred, runs no tick, and logs the episode": the deferred role's state reads `"deferred-backlog"` on disk. A second poll with the same verdict does not rewrite the file (assert that its mtime, or a spy on the save, stays unchanged).
+- `loadLoopState` drops an unknown `skipReason` string (a unit test in test/loop-state.test.ts).
+- No rendered output changes: test/status-model.test.ts and test/gui-client.test.ts pass untouched.
+- `npm run test` passes.
 
 ### `tumwater doctor` names a broken notify hook: a "notify" check that warns when recent pages failed (planned 2026-10-12 by plan; builds on the landed "A failing notify hook says so" plan. When the configured hook exits nonzero, is killed, or cannot start, `spawnNotifyCommand` in `src/events/notify.ts` logs a `warning` event on loop `harness` whose message starts with `notify command `. Its sources are `notifyExitWarning` and the two `notify command could not start: …` strings. Today grep finds no `notify` in `src/doctor`, so doctor says nothing about the push channel. With a typo'd hook, every page since startup was lost, and doctor still prints "ready to run". The operator learns about it only from `tumwater logs` or by running `tumwater notify --test` after the page they needed went missing. Stands alone: no scheduler, event-type, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work) (done 2026-10-12)
 

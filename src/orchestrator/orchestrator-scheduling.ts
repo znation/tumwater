@@ -12,7 +12,7 @@ import { deferTickReason, isEligible, type DeferReason } from "../scheduling/sch
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
-import { hasOutstandingWork, saveLoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, saveLoopState, type SkipReason } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -86,6 +86,15 @@ interface SchedulingPassCtx {
   /** Per-role deferred-due memory (one-shot tick_deferred events), advanced in place. */
   deferredDue: Map<string, boolean>;
   workLandedSince: WorkLandedCache;
+}
+
+/** Record why the poll skipped a due loop on its state (LoopState.skipReason), saving only when
+ * the value changes: a skipped loop gets no tick to save its own state, and a loop that stays
+ * skipped must not rewrite its file every poll. */
+function noteSkip(root: string, runner: LoopRunner, reason: SkipReason | undefined): void {
+  if (runner.state.skipReason === reason) return;
+  runner.state.skipReason = reason;
+  saveLoopState(root, runner.state);
 }
 
 /** Decide which runners are due this poll. Mutates `deferredDue` (and once-mode settlement)
@@ -300,6 +309,7 @@ export async function pollRunnerReasons(
       // Once mode: idle and not due — settleSkipped records the skip reason (the caller's
       // summary reports it).
       if (once.active && !runner.state.running) once.settleSkipped(runner);
+      noteSkip(root, runner, undefined);
       continue;
     }
     // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT landing never
@@ -311,7 +321,10 @@ export async function pollRunnerReasons(
     // — but the landing's outcome replaces it before the interlock lets the role back into this
     // pass), and skipping here saves that branch's workLandedSince git-range query for the skipped
     // role.
-    if (queuedRoles.has(runner.role)) continue;
+    if (queuedRoles.has(runner.role)) {
+      noteSkip(root, runner, undefined);
+      continue;
+    }
     // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
     // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
     // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll
@@ -351,6 +364,7 @@ export async function pollRunnerReasons(
         // Once mode: a deferred maintenance tick decided not to run — its once-round
         // answer, so it settles instead of holding the round open for DEFER_MAX_MS.
         if (once.active) once.settle(runner.role, "deferred");
+        noteSkip(root, runner, deferral === "backlog" ? "deferred-backlog" : "deferred-no-work");
         continue;
       }
     } else if (deferredDue.get(runner.role)) {
@@ -363,7 +377,10 @@ export async function pollRunnerReasons(
     // the pass that does; without it two due maintenance loops start in the same poll. Demand
     // spends no slot: it is an explicit operator request, not idle maintenance.
     if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !hasDemand(runner)) {
-      if (maintenanceQuotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) continue;
+      if (maintenanceQuotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) {
+        noteSkip(root, runner, undefined);
+        continue;
+      }
       maintenanceQuotaAdmitted++;
     }
     // Parallel work instances (part 4/7): a multi-runner base role's claim assignment, after
@@ -384,7 +401,10 @@ export async function pollRunnerReasons(
         // The group holds an unclaimed mid-entry sibling: assign nothing this poll, or a
         // sibling could be handed that same entry (the reported `feature-2`/`bugfix-2`
         // duplication). It resolves the moment the sibling settles.
-        if (claimGroup.hold) continue;
+        if (claimGroup.hold) {
+          noteSkip(root, runner, "claim-hold");
+          continue;
+        }
         const free = claimGroup.eligible.filter((e) => !claimGroup.held.has(e.key));
         const pick = assignNext(free);
         // An unassigned runner is told which entries its siblings hold (cleared when none).
@@ -407,12 +427,14 @@ export async function pollRunnerReasons(
             title: pick.title,
           });
         } else if (instanceIndex(runner.role) >= 2) {
+          noteSkip(root, runner, "no-free-entry");
           continue; // an idle extra instance: no tick, no backoff climb
         }
       }
     } else {
       runner.state.heldElsewhere = undefined; // no claim group (e.g. instances lowered to 1)
     }
+    noteSkip(root, runner, undefined);
     reasons.set(runner, reason);
   }
   return reasons;
