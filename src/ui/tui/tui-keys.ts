@@ -17,6 +17,9 @@ import { readTickDetail } from "../../tick/tick-detail-data.js";
 import { renderTickDetail } from "../../tick/tick-detail.js";
 import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
+import { runDoctor } from "../../doctor/doctor.js";
+import { renderDoctor } from "../../doctor/doctor-render.js";
+import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { promptLengthProblem, submitPrompt } from "../../inbox/inbox-submit.js";
@@ -234,6 +237,8 @@ interface TuiKeysDeps {
   /** The Pending pane's async collector; production uses change-data's collectFleetChanges.
    * Injectable so tests can resolve a fixed roster without git plumbing. */
   collectPending?(root: string): Promise<FleetChangeView>;
+  /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe binaries or git. */
+  runDoctor?(root: string): Promise<DoctorReport>;
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
   collectChange?(root: string, role: string): Promise<RoleChangeView>;
@@ -377,6 +382,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
   const collectPending = deps.collectPending ?? collectFleetChanges;
+  const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r));
   const collectChange = deps.collectChange ?? collectRoleChange;
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // tui-backlog.ts's one definition, shared with the render so stale-selection clamping cannot
@@ -1373,7 +1379,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       changeCache = null;
       trailMode = false; // the tick trail is History-only; a cycle away drops its snapshot too
       trailCache = null;
-      view = (view + 1) % (roleIds.length + 7); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → events
+      view = (view + 1) % (roleIds.length + 8); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → health → events
       selectedEntry = null; // leaving a view drops any entry selection…
       selectedQueued = null; // …and any queued-row selection, so re-entering starts at the list
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -1415,6 +1421,22 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // prints (renderQueuedList over queuedListRows), so it paints on entry with no
           // async collector. The now() clock keeps the age/countdown suffix testable.
           refreshQueued();
+        } else if (view === roleIds.length + 7) {
+          // Health reruns `tumwater doctor`'s checks on each entry; the loading note shows until
+          // they resolve. Same stale-resolution guard as Pending: only paint while Health is current.
+          paneCache = null;
+          void runDoctorSeam(root).then(
+            (report) => {
+              if (view !== roleIds.length + 7) return;
+              paneCache = renderDoctor(report);
+              deps.requestRender();
+            },
+            (err: unknown) => {
+              if (view !== roleIds.length + 7) return;
+              flashError(err);
+              deps.requestRender();
+            },
+          );
         } else {
           paneCache = null;
         }
@@ -1896,7 +1918,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // (1..previousCount) keeps its index — it does not depend on the roster size — and the
       // clamp below handles one the shrunken roster no longer has.
       if (roleIds.length !== previousCount && view > previousCount) view += roleIds.length - previousCount;
-      view = Math.min(view, roleIds.length + 6); // clamp a stale index if roles changed
+      view = Math.min(view, roleIds.length + 7); // clamp a stale index if roles changed
       // A retired or renamed loop must not leave the report panes silently scoped to an
       // absent role — drop the scope with the stale view index. The tab strip and hint then
       // read "fleet", so a report pane still on screen must recompute its cached Markdown

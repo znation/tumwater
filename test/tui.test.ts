@@ -355,6 +355,9 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     frame = tui.lastFrame();
     assert.match(frame, /\[Queued\]/);
 
+    tui.key(undefined, "t", { ctrl: true }); // → health
+    assert.match(tui.lastFrame(), /\[Health\]/);
+
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /\[Activity\]/); // wraps back to Activity
   });
@@ -440,6 +443,7 @@ A second body line, kept verbatim.`,
     tui.key(undefined, "t", { ctrl: true }); // → history
     tui.key(undefined, "t", { ctrl: true }); // → pending
     tui.key(undefined, "t", { ctrl: true }); // → queued
+    tui.key(undefined, "t", { ctrl: true }); // → health
     tui.key(undefined, "t", { ctrl: true }); // → events
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "t", { ctrl: true }); // → project status again
@@ -823,6 +827,7 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
     tui.key(undefined, "t", { ctrl: true }); // → history
     tui.key(undefined, "t", { ctrl: true }); // → pending
     tui.key(undefined, "t", { ctrl: true }); // → queued
+    tui.key(undefined, "t", { ctrl: true }); // → health
     tui.key(undefined, "t", { ctrl: true }); // → events
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "t", { ctrl: true }); // → project status

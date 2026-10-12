@@ -86,20 +86,21 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
 });
 
 test("the tab strip names every view and brackets the current one", () => {
-  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true, change: false }, 200)), "Activity  [Notebook: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: true }, 200)), "Activity  [Change: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true, change: false }, 200)), "Activity  [Notebook: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: true }, 200)), "Activity  [Change: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued  Health   Ctrl+T next");
   const usage = tabStrip({ kind: "usage", scope: null, window: null }, 200);
   assert.deepEqual(usage.filter((s) => s.tone === "brand").map((s) => s.text), ["[Usage]"], "only the current view is bright");
-  assert.equal(plain(tabStrip({ kind: "usage", scope: "feature", window: "1h" }, 200)), "Activity  Transcript  Backlog  [Usage: feature]  Failures  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "failures", scope: "clean", window: null }, 200)), "Activity  Transcript  Backlog  Usage  [Failures: clean]  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History]  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History: feature]  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "qa", grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick: qa]  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick]  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "queued" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  [Queued]   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "usage", scope: "feature", window: "1h" }, 200)), "Activity  Transcript  Backlog  [Usage: feature]  Failures  History  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "failures", scope: "clean", window: null }, 200)), "Activity  Transcript  Backlog  Usage  [Failures: clean]  History  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History]  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History: feature]  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "qa", grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick: qa]  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick]  Pending  Queued  Health   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "health" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  Queued  [Health]   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "queued" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  [Queued]  Health   Ctrl+T next");
   assert.ok(displayWidth(plain(tabStrip({ kind: "backlog" }, 20))) <= 20);
 });
 
@@ -137,6 +138,8 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+E window: default/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "health" }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "health" }), /Ctrl\+D quit/);
   assert.match(hint({ kind: "queued" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+E edit/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+X cancel/);
@@ -174,6 +177,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "history", since: null, result: null, role: null, grep: null, trail: false } as const,
     { kind: "pending" } as const,
     { kind: "queued" } as const,
+    { kind: "health" } as const,
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
   const spans = hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300);

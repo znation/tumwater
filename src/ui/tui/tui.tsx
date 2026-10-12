@@ -158,6 +158,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
             : view === roleIds.length + 4 ? { kind: "history", since: s.historySince, result: s.historyResult, role: s.historyRole, grep: s.historyGrep, trail: s.trailMode }
               : view === roleIds.length + 5 ? { kind: "pending" }
                 : view === roleIds.length + 6 ? { kind: "queued" }
+                : view === roleIds.length + 7 ? { kind: "health" }
                   : { kind: "activity", role: s.activityRole, grep: s.activityGrep };
     // The pane's body lines (tui-pane.ts, extracted from this closure): transcripts, the
     // backlog views, usage/failures, or activity, composed at this frame's budgets.

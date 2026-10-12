@@ -9,6 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { renderDoctor } from "../src/doctor/doctor-render.js";
+import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { renderRoleChange } from "../src/change/change-render.js";
@@ -32,7 +34,7 @@ function makeKeys(root: string, now: () => number) {
   const quit = (): number => (quit.count += 1);
   quit.count = 0;
   let renders = 0;
-  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now });
+  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}) }); // Health never resolves: no real probes
   return { keys, quitCount: () => quit.count, renders: () => renders };
 }
 
@@ -339,8 +341,8 @@ test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   // Cycling away and back starts at the live tail again.
   keys.handleKey(undefined, { name: "pageup" });
   assert.equal(keys.state().activityScroll, 10);
-  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "seven cycles with no roles wrap back to Activity");
+  for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "eight cycles with no roles wrap back to Activity");
   assert.equal(keys.state().activityScroll, null, "re-entering Activity follows the live tail");
 });
 
@@ -456,7 +458,7 @@ test("the Activity and History `/` searches are independent, and `/` elsewhere t
   assert.equal(keys.state().activityGrep, null, "the History search does not touch the Activity filter");
 
   // Back on Activity, `/` opens Activity's own pattern, not History's.
-  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → pending → queued → activity
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → pending → queued → health → activity
   assert.equal(keys.state().view, 0);
   keys.handleKey("/", { name: "/" });
   assert.equal(keys.state().input, "", "the Activity search opens with no Activity pattern yet");
@@ -495,7 +497,9 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   assert.equal(keys.state().view, 6, "Queued follows Pending (roleIds.length + 6)");
   assert.equal(keys.state().paneCache, "", "an empty queue caches the empty list, not null");
   keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "cycling past Queued wraps to Activity");
+  assert.equal(keys.state().view, 7, "Health follows Queued (roleIds.length + 7)");
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "cycling past Health wraps to Activity");
   assert.equal(keys.state().paneCache, null, "leaving History, Pending, and Queued drops the cache");
 });
 
@@ -698,7 +702,8 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   // Role-prompt mode owns it the same way; it opens from a transcript view, scope kept.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // history → pending
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // pending → queued
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // queued → activity
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // queued → health
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // health → activity
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // activity → transcript feature
   assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
@@ -1207,6 +1212,7 @@ test("a Pending collector resolution after the operator cycled away does not cac
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   assert.equal(keys.state().view, 5);
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away to Activity before it resolves
   assert.equal(keys.state().view, 0);
   resolveLate(fleet);
@@ -1346,6 +1352,7 @@ test("the Queued pane caches the CLI's rendered queue list on entry and drops it
     renderQueuedList(queuedListRows(root, null, listWideScope(root)), t),
     "the pane caches the same director-first list the CLI prints",
   );
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
   assert.equal(keys.state().view, 0);
   assert.equal(keys.state().paneCache, null, "leaving Queued drops the cache");
@@ -1381,6 +1388,7 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
 
   // Cycling away and back starts in list mode with no selection.
   keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
   for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   assert.equal(keys.state().selectedQueued, null, "re-entering the pane drops the selection");
@@ -1479,8 +1487,8 @@ test("the Queued edit editor is inert to Ctrl+T and a gone file flashes on save"
   assert.equal(keys.state().queuedEditFor, null, "Ctrl+T leaves the queued editor");
   assert.equal(readQueuedPromptBody(root, "clean", base), "keep me", "Ctrl+T writes nothing");
 
-  // Re-enter, remove the file from disk, and Enter flashes the gone notice.
-  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  // Re-enter (Ctrl+T left for Health, so one more lap), remove the file from disk, and Enter flashes the gone notice.
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   keys.handleKey(undefined, { name: "down" });
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   fs.unlinkSync(path.join(root, ".tumwater", "inbox", "clean", base));
@@ -1537,6 +1545,7 @@ test("a roster-size change shifts the relative panes by the same delta, keeping 
   assert.equal(keys.state().paneCache, queuedBody, "the cached queued body still matches the selected pane");
   // Pending shifts with it: from 6 (1 role) to 7 (2 roles), not to History at 6.
   keys.syncSnapshot(0, false, ["clean", "feature"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → wrap to Activity
   for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (2+5)
   assert.equal(keys.state().view, 7);
@@ -1893,4 +1902,46 @@ test("Ctrl+N off the Backlog view does not open the new-entry editor", () => {
   keys.syncSnapshot(0, false, []);
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.equal(keys.state().entryEditFor, null);
+});
+
+test("the Health tab caches renderDoctor of the seam's report, ignores a late resolution, and flashes a rejection", async () => {
+  const root = makeRoot();
+  const report: DoctorReport = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], verdict: "healthy" } as DoctorReport;
+  let resolveDoctor!: (r: DoctorReport) => void;
+  let reject = false;
+  let renders = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => (renders += 1),
+    now: () => 0,
+    runDoctor: () => (reject ? Promise.reject(new Error("boom")) : new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve))),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 7);
+  assert.equal(keys.state().paneCache, null, "the loading note shows until the checks resolve");
+  const before = renders;
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, renderDoctor(report));
+  assert.ok(renders > before);
+  // A resolution after cycling away leaves the pane untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "a ninth press wraps");
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, null);
+  // A rejection flashes and leaves the loading note.
+  reject = true;
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, null);
+  assert.match(keys.state().flash ?? "", /boom/);
 });

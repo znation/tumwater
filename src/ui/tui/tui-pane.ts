@@ -176,6 +176,13 @@ export function paneBody(
       emptyNote: "(loading pending changes…)",
     };
   }
+  if (pane.kind === "health") {
+    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+    return {
+      body: win.lines.map((l) => toneLine(l, width)),
+      emptyNote: "(running health checks…)",
+    };
+  }
   if (pane.kind === "queued") {
     // A set selection shows the row's full prompt under a cancel header (the numbered list
     // clips long prompts); list mode windows the cached renderQueuedList string, which is

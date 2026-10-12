@@ -115,3 +115,13 @@ test("an empty queued pane holds the no-prompts note, and a cached list windows 
   assert.equal(cached.body.map((l) => l.map((s) => s.text).join("")).join("\n"), list);
   assert.equal(cached.emptyNote, "(no queued prompts)");
 });
+
+test("the health pane holds the loading note while uncached and windows the cached report once set", () => {
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const empty = paneBody({ kind: "health" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(empty.body, []);
+  assert.equal(empty.emptyNote, "(running health checks…)");
+  const report = "doctor\nok    node         fine\nhealthy";
+  const shown = paneBody({ kind: "health" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: report } });
+  assert.equal(shown.body.map((l) => l.map((x) => x.text).join("")).join("\n"), report);
+});

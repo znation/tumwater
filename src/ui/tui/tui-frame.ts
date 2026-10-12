@@ -60,7 +60,8 @@ export type TuiView =
   | { kind: "failures"; scope: string | null; window: string | null }
   | { kind: "history"; since: string | null; result: string | null; role: string | null; grep: string | null; trail: boolean }
   | { kind: "pending" }
-  | { kind: "queued" };
+  | { kind: "queued" }
+  | { kind: "health" };
 
 /** The pane's tab strip: every view by name, the current one bracketed (and bright), so the
  * Ctrl+T cycle can be seen rather than remembered. */
@@ -74,6 +75,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
     ["history", view.kind === "history" ? `${view.trail ? "Tick" : "History"}${view.role ? ": " + view.role : ""}` : "History"],
     ["pending", "Pending"],
     ["queued", "Queued"],
+    ["health", "Health"],
   ];
   const spans: StatusSpan[] = [];
   tabs.forEach(([kind, label], i) => {
@@ -102,6 +104,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+N", view.trail ? "history" : "tick trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   // The defer editor is the prompt line's fourth meta-editor (after budget, role, and

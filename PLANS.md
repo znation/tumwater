@@ -6,7 +6,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The TUI runs `tumwater doctor`'s checks: a Health tab at the end of the Ctrl+T cycle (planned 2026-10-12 by plan; terminal sibling of the CLI `tumwater doctor` (`runDoctor` in `src/doctor/doctor.ts`, rendered by `renderDoctor` in `src/doctor/doctor-render.ts`) and the landed dashboard Health check card (`GET /api/doctor` in `src/gui/gui-endpoints.ts`, painted by `src/ui/gui/gui-client-settings.ts`). Today grep finds no `doctor` in `src/ui/tui`. So an operator watching a stuck fleet in the TUI must quit it or open a second terminal to learn that the fleet is paused, in quiet hours, over budget, maintenance-held, or short on disk. Stands alone: no `src/doctor`, `src/gui`, `src/ui/gui`, or CLI change)
+### The notify hook pages on the claude subscription window: `claude_window_limited` and `claude_window_warning` join `NOTIFY_EVENT_TYPES` (planned 2026-10-12 by plan; independent of the TUI Health tab plan; the subscription sibling of the landed `budget_paused`/`budget_warning` pages. On a subscription-only claude fleet a run is exempt from the dollar cap, so `budget_paused` and `budget_warning` never fire. The constraint that actually binds is the claude.ai usage window: once it is rejected, `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until `resetsAt`, which can be hours. It logs `claude_window_limited` once per window, and `pollClaudeWindowWarning` logs `claude_window_warning` at the first `allowed_warning`. Neither type is on the allowlist in `src/events/notify.ts`, so the push channel stays silent while the fleet stands still. Stands alone: no scheduler, event, GUI, or TUI change)
+
+**Goal.** An operator with `notify` configured is paged when the subscription window nears its limit and again when it rejects and holds the claude seams. These are the same two moments the dollar cap pages on for priced fleets.
+
+**Approach.**
+1. `src/events/notify.ts`: append `"claude_window_warning"` and `"claude_window_limited"` to `NOTIFY_EVENT_TYPES`, each with a trailing comment in the existing voice. For example: `// the claude.ai subscription window first reported allowed_warning — subscription claude seams still tick; the heads-up before the hold below` and `// a rejected subscription window holds every subscription claude seam until it resets — the subscription fleet's binding stop`. Place them after `"budget_paused"` so the money/quota pages sit together. Update the module doc's "All nine allowlisted types are logged by the orchestrator's own process (…)" sentence: it becomes eleven, and its emitter list gains `src/fleet/fleet-polls.ts`. Both events are logged by `pollFleetHold`/`pollClaudeWindowWarning`, which `src/gates/gate-polls.ts` calls in the orchestrator's poll, so `subscribeEvents` sees them. The implementer confirms this by grepping for the two call sites in `gate-polls.ts`.
+2. Leave `claude_window_reset` off the list (a lift is good news, the same reason `role_cap_resumed` is off), and `rate_limit_hold` too. That hold is a minutes-scale, self-escalating backend-storm response, so paging on it would be noise. The window events need no throttle change: each fires once per window, and `NOTIFY_MIN_GAP_MS` still applies per type.
+3. Docs, same commit:
+   - In `src/config/config-schema.ts`, the `notify?: string` doc comment's parenthesized type list gains `claude_window_limited`.
+   - README.md's `notify` sentence (outside the tumwater:prompt markers: "a budget pause, a budget warning at 80% of the cap while the gate is still open, an error-streak breaker trip, …") gains "a claude subscription window nearing its limit or holding the claude seams".
+   - In `docs/backends.md`, the Billing and spend paragraph's sentence "A rejected subscription usage window holds subscription claude seams until it resets (the first `allowed_warning` is logged too)" gains: both events page a configured `notify` command.
+
+**Files touched.** `src/events/notify.ts`, `test/notify.test.ts`, `src/config/config-schema.ts`, `README.md`, `docs/backends.md`.
+
+**Acceptance criteria.**
+- In `test/notify.test.ts`, the pinned literal list in "NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap" gains the two types in their new positions. That test also gains an assertion that `claude_window_reset` is not included, with a message in the style of the existing `role_cap_resumed` one.
+- A new test in `test/notify.test.ts`, modeled on "a posted question spawns the notify command once with the posting role and rendered line", does the following. It logs `{ loop: "harness", type: "claude_window_limited", windowType: "five_hour", resetsAt: <a future epoch ms> }` and asserts one recorded line with type `claude_window_limited`, loop `harness`, and message equal to `formatEvent(event)`. It then logs a `claude_window_warning` and asserts a second line of that type, since the per-type throttle does not suppress a different type.
+- "non-allowlisted events spawn nothing, and an absent or empty notify disables the hook" also logs a `claude_window_reset` and still records zero lines.
+- `grep -n "nine" src/events/notify.ts` finds no stale count.
+- The project's check (`npm run test`) passes.
+
+## Done
+
+### The TUI runs `tumwater doctor`'s checks: a Health tab at the end of the Ctrl+T cycle (planned 2026-10-12 by plan; terminal sibling of the CLI `tumwater doctor` (`runDoctor` in `src/doctor/doctor.ts`, rendered by `renderDoctor` in `src/doctor/doctor-render.ts`) and the landed dashboard Health check card (`GET /api/doctor` in `src/gui/gui-endpoints.ts`, painted by `src/ui/gui/gui-client-settings.ts`). Today grep finds no `doctor` in `src/ui/tui`. So an operator watching a stuck fleet in the TUI must quit it or open a second terminal to learn that the fleet is paused, in quiet hours, over budget, maintenance-held, or short on disk. Stands alone: no `src/doctor`, `src/gui`, `src/ui/gui`, or CLI change) — done 2026-10-12
 
 **Goal.** A ninth tab, "Health", after Queued in the TUI's Ctrl+T cycle. It shows the same text `tumwater doctor` prints (`renderDoctor(await runDoctor(root))`), recomputed on each entry to the tab.
 
@@ -31,30 +54,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `paneBody({ kind: "health" }, …)` shows the loading note while `paneCache` is null and the cached report lines once it is set.
 - These existing tests in `test/tui-keys.test.ts` change, and nothing else should need to: the "seven cycles with no roles wrap back to Activity" loop (becomes eight), the "cycling past Queued wraps to Activity" step (now lands on Health; one more press wraps), and the `// → pending → queued → activity` three-press loop (becomes four). Grep `name: "t" }` in `test/` to confirm that no other test counts the full cycle.
 - The project's check (`npm run test`) passes.
-
-### The notify hook pages on the claude subscription window: `claude_window_limited` and `claude_window_warning` join `NOTIFY_EVENT_TYPES` (planned 2026-10-12 by plan; independent of the TUI Health tab plan; the subscription sibling of the landed `budget_paused`/`budget_warning` pages. On a subscription-only claude fleet a run is exempt from the dollar cap, so `budget_paused` and `budget_warning` never fire. The constraint that actually binds is the claude.ai usage window: once it is rejected, `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until `resetsAt`, which can be hours. It logs `claude_window_limited` once per window, and `pollClaudeWindowWarning` logs `claude_window_warning` at the first `allowed_warning`. Neither type is on the allowlist in `src/events/notify.ts`, so the push channel stays silent while the fleet stands still. Stands alone: no scheduler, event, GUI, or TUI change)
-
-**Goal.** An operator with `notify` configured is paged when the subscription window nears its limit and again when it rejects and holds the claude seams. These are the same two moments the dollar cap pages on for priced fleets.
-
-**Approach.**
-1. `src/events/notify.ts`: append `"claude_window_warning"` and `"claude_window_limited"` to `NOTIFY_EVENT_TYPES`, each with a trailing comment in the existing voice. For example: `// the claude.ai subscription window first reported allowed_warning — subscription claude seams still tick; the heads-up before the hold below` and `// a rejected subscription window holds every subscription claude seam until it resets — the subscription fleet's binding stop`. Place them after `"budget_paused"` so the money/quota pages sit together. Update the module doc's "All nine allowlisted types are logged by the orchestrator's own process (…)" sentence: it becomes eleven, and its emitter list gains `src/fleet/fleet-polls.ts`. Both events are logged by `pollFleetHold`/`pollClaudeWindowWarning`, which `src/gates/gate-polls.ts` calls in the orchestrator's poll, so `subscribeEvents` sees them. The implementer confirms this by grepping for the two call sites in `gate-polls.ts`.
-2. Leave `claude_window_reset` off the list (a lift is good news, the same reason `role_cap_resumed` is off), and `rate_limit_hold` too. That hold is a minutes-scale, self-escalating backend-storm response, so paging on it would be noise. The window events need no throttle change: each fires once per window, and `NOTIFY_MIN_GAP_MS` still applies per type.
-3. Docs, same commit:
-   - In `src/config/config-schema.ts`, the `notify?: string` doc comment's parenthesized type list gains `claude_window_limited`.
-   - README.md's `notify` sentence (outside the tumwater:prompt markers: "a budget pause, a budget warning at 80% of the cap while the gate is still open, an error-streak breaker trip, …") gains "a claude subscription window nearing its limit or holding the claude seams".
-   - In `docs/backends.md`, the Billing and spend paragraph's sentence "A rejected subscription usage window holds subscription claude seams until it resets (the first `allowed_warning` is logged too)" gains: both events page a configured `notify` command.
-
-**Files touched.** `src/events/notify.ts`, `test/notify.test.ts`, `src/config/config-schema.ts`, `README.md`, `docs/backends.md`.
-
-**Acceptance criteria.**
-- In `test/notify.test.ts`, the pinned literal list in "NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap" gains the two types in their new positions. That test also gains an assertion that `claude_window_reset` is not included, with a message in the style of the existing `role_cap_resumed` one.
-- A new test in `test/notify.test.ts`, modeled on "a posted question spawns the notify command once with the posting role and rendered line", does the following. It logs `{ loop: "harness", type: "claude_window_limited", windowType: "five_hour", resetsAt: <a future epoch ms> }` and asserts one recorded line with type `claude_window_limited`, loop `harness`, and message equal to `formatEvent(event)`. It then logs a `claude_window_warning` and asserts a second line of that type, since the per-type throttle does not suppress a different type.
-- "non-allowlisted events spawn nothing, and an absent or empty notify disables the hook" also logs a `claude_window_reset` and still records zero lines.
-- `grep -n "nine" src/events/notify.ts` finds no stale count.
-- The project's check (`npm run test`) passes.
-
-
-## Done
 
 ### `tumwater doctor` names the maintenance allowance: a "maintenance quota" check for the rolling-24 h landings against `maintenancePerWorkLanding` (done 2026-10-12; planned 2026-10-12 by plan; the last scheduler hold doctor does not report, after the landed "pause", "quiet hours", and "budget" checks (`checkPause`/`checkQuietHours`/`checkBudget` in `src/doctor/doctor-holds.ts`) and the existing "bootstrap" and "disk space" checks. Today grep finds no `maintenanceQuota`/`maintenance quota` in `src/doctor`. So when the window is full, doctor prints "ready to run" over a fleet whose clean/tests/dry/organize/improve/readme loops start no tick until the window rolls under. An operator who runs `doctor` to learn why those loops are idle then has to read the status table's `held: maintenance quota <used>/<allowance>` label. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card renders `runDoctor`'s rows, so it shows the new row with no extra work)
 
