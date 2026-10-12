@@ -39,12 +39,12 @@ function renderAssistantMessage(content: unknown): string[] {
   for (const block of contentBlocks(content)) {
     switch (block.type) {
       case "thinking": {
-        const thinking = collapseWhitespace(String(block.thinking ?? ""));
+        const thinking = collapseWhitespace(textOr(block.thinking, ""));
         if (thinking) out.push(`· ${truncate(thinking, THINKING_MAX_CHARS)}`);
         break;
       }
       case "text": {
-        for (const rawLine of String(block.text ?? "").split("\n")) {
+        for (const rawLine of textOr(block.text, "").split("\n")) {
           const line = rawLine.trim();
           if (!line) continue;
           if (textShown >= TEXT_LINES_PER_MESSAGE) {
@@ -60,7 +60,7 @@ function renderAssistantMessage(content: unknown): string[] {
         break;
       }
       case "toolCall":
-        out.push(`→ ${describeToolCall(String(block.name ?? "?"), block.arguments)}`);
+        out.push(`→ ${describeToolCall(textOr(block.name), block.arguments)}`);
         break;
     }
   }
@@ -74,7 +74,7 @@ function renderUserPrompt(content: unknown): string[] {
   const out: string[] = [];
   for (const block of contentBlocks(content)) {
     if (block.type !== "text") continue;
-    for (const line of String(block.text ?? "").split("\n")) out.push(line);
+    for (const line of textOr(block.text, "").split("\n")) out.push(line);
   }
   return out;
 }

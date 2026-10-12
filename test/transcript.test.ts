@@ -255,6 +255,23 @@ test("formatTranscript falls back for a non-string auto_retry_start errorMessage
   assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "⚠ retry 1/3: unknown error"]);
 });
 
+test("formatTranscript renders torn content-block fields as placeholders, never [object Object]", () => {
+  // pi's JSONL log is untrusted input: an object where a content block's thinking/text/name
+  // should be a string is torn, not text. The shared textOr read substitutes its placeholder
+  // (or "" for the render-nothing fields) instead of String(object)'s literal "[object
+  // Object]" leaking into the transcript pane.
+  const out = formatTranscript([
+    agentStart(),
+    userLine("p"),
+    assistantBlocks([
+      { type: "thinking", thinking: { torn: true } },
+      { type: "text", text: { line: "torn" } },
+      { type: "toolCall", id: "c1", name: { op: "read" } },
+    ]),
+  ]).flat();
+  assert.deepEqual(out, [`── run @ ${expectedTimestamp(FIXED_TS)} ──`, "→ ?"]);
+});
+
 test("readTranscript returns the last N entries oldest-first and [] without a log", () => {
   const root = tmpdir();
   assert.deepEqual(readTranscript(root, "feature"), []);

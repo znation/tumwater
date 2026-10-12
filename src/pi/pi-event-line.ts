@@ -7,7 +7,7 @@
  * layer for a pure parse: the same separation reply-contract.ts gives the sentinel/verdict text. */
 
 import { isJsonObject, parseJsonObject } from "../files/json-object.js";
-import { isNonBlankString } from "../text/text.js";
+import { isNonBlankString, textOr } from "../text/text.js";
 
 /** Which kind of pi run a raw-log `tumwater_run` marker names (src/agent/run-agent.ts writes
  * it): the tick's own authoring run ("author") or the review/landing gate's run ("gate"). A
@@ -115,7 +115,7 @@ export function applyToolExecutionEvent(
   label = "",
   command = "",
 ): void {
-  const id = String(toolCallId ?? "");
+  const id = textOr(toolCallId, "");
   if (type === "tool_execution_start") {
     calls.push({ id, label, command, lastActivityAt: Date.now() });
   } else if (type === "tool_execution_update" && toolUpdateHasContent(partialResult)) {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePiEventLine, piEventType } from "../src/pi/pi-event-line.js";
+import { applyToolExecutionEvent, parsePiEventLine, piEventType } from "../src/pi/pi-event-line.js";
 
 test("piEventType reads pi's compact type-first prefix and returns null on any other shape", () => {
   assert.equal(piEventType('{"type":"message_end","x":1}'), "message_end");
@@ -48,4 +48,17 @@ test("parsePiEventLine still fully parses non-compact shapes whose type is wante
   const types = new Set(["session"]);
   // Spaced JSON does not match the compact prefix, so it falls through to a full parse.
   assert.deepEqual(parsePiEventLine<{ type: string }>('{"type": "session"}', types), { type: "session" });
+});
+
+test("applyToolExecutionEvent reads a torn non-string toolCallId as no id, never [object Object]", () => {
+  // The toolCallId rides pi's wire as untrusted JSON. An object in its place is torn, not an
+  // id: textOr reads it as the same "" an absent id yields, so a start/end pair still matches
+  // (rather than both becoming the differ-by-nothing literal "[object Object]") and no fake id
+  // like that leaks into the stall warning or the dashboards' live flag.
+  const calls: { id: string; label: string; command: string; lastActivityAt: number }[] = [];
+  applyToolExecutionEvent(calls, "tool_execution_start", { torn: true }, undefined);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]?.id, "");
+  applyToolExecutionEvent(calls, "tool_execution_end", { torn: true }, undefined);
+  assert.equal(calls.length, 0);
 });
