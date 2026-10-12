@@ -79,6 +79,18 @@ function notionalLine(t: ReportTotals): string {
 const ROLE_SCOPE_NOTE =
   "role scope: landing runs and backlog tallies (features done / bugs fixed) are fleet-wide and omitted";
 
+/** The summary block both report shapes print, in the same order: the totals line (carrying
+ * the caller's extra `tail` cells), the landing-share line and the notional line when each is
+ * nonzero (zero means absent, so an API-only or landing-free window renders as before), and the
+ * role-scope note when the report is scoped. One home so the day report and the --since window
+ * cannot drift on the order, the omission predicates, or the scope note. */
+function pushReportSummary(lines: string[], t: ReportTotals, tail = "", scoped = false): void {
+  lines.push(totalsLine(t, tail));
+  if (t.landingRuns > 0) lines.push(landingShareLine(t));
+  if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
+  if (scoped) lines.push(ROLE_SCOPE_NOTE);
+}
+
 /** Render a trailing-window totals report as Markdown — the aggregate sibling of the
  * `logs --since` raw stream ("how much" here, "what exactly" there). Pure function of
  * SinceReport: no I/O, no clock reads (the window line's local time is rendered from the
@@ -94,16 +106,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // Same totals voice as the day report, minus the features/bugs cells: those tallies come
   // from day-granular backlog-file dates that cannot subdivide a sub-day window, so the final
   // line below states the omission instead of showing a day-rounded number.
-  lines.push(totalsLine(t));
-  // The landing share of those totals: the budget charges the landing slot's runs too, so the
-  // totals include them — this line says how much of the spend was reviewer + conflict
-  // resolution work. Omitted entirely when no landing ran (zero means absent, like the
-  // cost-by-role line), so a fleet with no landing spend renders exactly as before.
-  if (t.landingRuns > 0) lines.push(landingShareLine(t));
-  if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
-  // A role scope also names what it left out: landing usage and the backlog tallies. A scoped
-  // report never prints the landing-share line (its totals are zero), so this note replaces it.
-  if (data.role !== undefined) lines.push(ROLE_SCOPE_NOTE);
+  pushReportSummary(lines, t, "", data.role !== undefined);
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleMap(data.ticksByRole), String));
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
@@ -138,13 +141,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // dates carry no role — and states the omission through ROLE_SCOPE_NOTE below instead.
   const tail =
     data.role === undefined ? ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed` : "";
-  lines.push(totalsLine(t, tail));
-  // The landing share of those totals: the reviewer's and conflict resolution's part of spend
-  // the budget already charges, shown only when landing runs actually folded into the window
-  // (the shared zero-means-absent rule lives on landingShareLine).
-  if (t.landingRuns > 0) lines.push(landingShareLine(t));
-  if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
-  if (data.role !== undefined) lines.push(ROLE_SCOPE_NOTE);
+  pushReportSummary(lines, t, tail, data.role !== undefined);
   lines.push("");
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);
   lines.push(
