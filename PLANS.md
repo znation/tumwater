@@ -6,7 +6,59 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Pause the fleet for a duration and with a reason from the TUI's Ctrl+F, matching `tumwater pause --for <duration> --reason <text>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater pause --for/--reason` (`cmdPause` in `src/operator/operator-commands.ts`) and the landed dashboard pause menu with reason (`handlePause` over `POST /api/pause`, which reads `forSeconds` and `reason` and calls `pauseFleet(root, untilMs, reason)`). Independent of the waiting dashboard notebook plan: this plan touches only `src/ui/tui/`, its tests, and docs, with no `src/gui` or `src/ui/gui` file. A TUI per-loop timed pause (Ctrl+P) is a separate, later sibling)
+
+**Goal.** In the TUI, Ctrl+F pauses the fleet with no deadline and no note (`pauseFleet(root)` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). An operator who pauses from the terminal cannot schedule an auto-resume, and cannot leave the "why" that `status`, the dashboard, and the TUI's own fleet alert already show. Make Ctrl+F on an unpaused fleet open a one-line pause editor on the prompt line. Ctrl+F on a paused fleet keeps resuming at once, as it does today.
+
+**Approach.** These are design decisions, not open questions for the implementer.
+1. `src/ui/tui/tui-input.ts`: add a pure `parsePauseInput(text)` beside `parseDeferInput`. It returns `{ ok: true; forMs?: number; reason?: string }` or `{ ok: false; error: string }`:
+   - Trim the text. Empty means a standing pause with no reason.
+   - If the first whitespace-separated word parses with `parseDurationMs` (`src/cli/cli-args.ts`), it is the duration (`forMs`), and the rest, trimmed, is the reason. Otherwise the whole text is the reason and there is no deadline.
+   - A duration over `PAUSE_FOR_MAX_MS` returns `{ ok: false, error: "pause is capped at 90d" }`. This matches the cap `pause --for` and `/api/pause` enforce.
+   - Return `forMs` (the duration), not an epoch. The caller computes `now() + forMs`, so the function stays pure.
+   - Do not normalize the reason here. `pauseFleet` already folds and caps it through `normalizePauseReason`.
+2. `src/ui/tui/tui-keys.ts`:
+   - Add a `pauseEditMode` boolean with saved-draft fields (`pauseSavedInput`/`pauseSavedCursor`) and an `exitPauseEditMode()` that restores the draft. Model these on `deferMode`/`exitDeferMode`, including the `settlePromptRecall` settle on entry.
+   - Expose `pauseEditMode` on the exported state interface beside `deferMode`.
+   - Rework the Ctrl+F branch:
+     - It reads `isFleetPaused(root)` fresh. A paused fleet resumes exactly as it does now.
+     - An unpaused fleet enters pause-edit mode with an empty line and flashes `pause the fleet: [duration] [reason], e.g. "2h deploy freeze" (empty pauses until resumed) — Enter to pause, Esc to cancel`.
+     - Ctrl+F pressed again while in pause-edit mode leaves it, like Ctrl+L does for defer.
+   - Enter in pause-edit mode calls `parsePauseInput`:
+     - On an error, flash it and stay in the editor.
+     - Otherwise call `pauseFleet(root, forMs === undefined ? undefined : now() + forMs, reason)`, leave the editor, and flash:
+       - `fleetPausePhrase()` when the call changed state, with ` for <durationLabel(forMs)>` appended when timed and `: <reason>` when a reason was given;
+       - `fleetPausePhrase()` with the same ` for …` suffix when `pauseFleet` returns false on a timed call, because it overwrote the deadline;
+       - `"fleet is already paused"` when it returns false without a deadline.
+     - Wrap the write in try/catch with `flashError`, as the current branch does.
+   - Esc leaves the editor without writing. Ctrl+T leaves it the same way the other editors are left on a view change.
+   - Add `pauseEditMode` to every mutual-exclusion guard that lists `deferMode`, and add a `"finish or cancel the pause first (Esc cancels)"` arm to the Ctrl+B and Ctrl+L flash chains. Check them all with `grep -n deferMode src/ui/tui/tui-keys.ts`.
+3. `src/ui/tui/tui-frame.ts`:
+   - In `hintLine`, pause-edit mode shows `[["Enter", "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]]`.
+   - `promptPrefix` shows a `pause` brand span.
+   - Add an optional `pauseEditMode?: boolean` to both functions' `mode` parameter types, so existing callers and tests keep compiling.
+   - Pass it from the `mode` object in `src/ui/tui/tui.tsx`.
+   - The idle hint's `["Ctrl+F", "pause fleet"]` stays as it is.
+4. Docs:
+   - Update the `Ctrl+F` sentence in `docs/how-it-works.md` to describe the editor, its grammar, and the instant resume.
+   - Extend README.md's "Control the loops" row: where the `--reason` text names the surfaces that show it, also say that the TUI's Ctrl+F takes a duration and reason.
+
+**Files touched.** `src/ui/tui/tui-input.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`, `test/tui-operator-keys.test.ts`, `test/tui-input.test.ts` (where `parseDeferInput`'s tests live), `test/tui-frame.test.ts`, `docs/how-it-works.md`, `README.md`.
+
+**Acceptance criteria.**
+- Unit tests for `parsePauseInput` cover these inputs:
+  - `""` → standing pause with no reason;
+  - `"2h"` → `forMs` 7200000 with no reason;
+  - `"2h deploy freeze"` → duration and reason;
+  - `"deploy freeze"` → reason only;
+  - `"91d"` → the cap error.
+- In `test/tui-operator-keys.test.ts`, the existing test "Ctrl+F toggles the fleet pause marker through pauseFleet/resumeFleet and flashes the shared wording" is updated: Ctrl+F then Enter on an empty line pauses (`isFleetPaused` true), and a second Ctrl+F resumes immediately.
+- A new test covers `Ctrl+F`, typing `1h maintenance`, then Enter. After it, `standingFleetPause(repo)` (`src/fleet/fleet-state.ts`) carries an `until` about one hour ahead and the reason `maintenance`, and the frame shows the reason in the fleet alert.
+- A new test shows that Esc in the editor leaves the fleet unpaused and restores a director draft typed before Ctrl+F.
+- A new test shows that a `91d` entry flashes the cap error and keeps the editor open.
+- The test "Ctrl+F is inert while the budget editor or the role-prompt editor holds the prompt line" still passes. Ctrl+B and Ctrl+L in pause-edit mode flash the "finish or cancel the pause first" message.
+- `test/tui-frame.test.ts` asserts the pause-edit `hintLine` keys and the `pause` prompt prefix.
+- `npm run test` passes.
 
 
 ## Done
