@@ -690,6 +690,30 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () 
   );
 });
 
+test("checkClaudeTranscripts walks nested dirs, skips an unreadable one, and scales to MB", () => {
+  const home = tmpdir("doctor-claude-nested-");
+  const slug = path.join(home, ".claude", "projects", "-only-slot");
+  fs.mkdirSync(path.join(slug, "sub", "deep"), { recursive: true });
+  fs.writeFileSync(path.join(slug, "top.jsonl"), "x".repeat(1024 ** 2));
+  fs.writeFileSync(path.join(slug, "sub", "deep", "d.jsonl"), "y".repeat(1024 ** 2 / 2));
+  // A stray file beside the slug dirs is not a project.
+  fs.writeFileSync(path.join(home, ".claude", "projects", "stray.txt"), "z");
+  const locked = path.join(slug, "locked");
+  fs.mkdirSync(locked);
+  fs.writeFileSync(path.join(locked, "hidden.jsonl"), "h".repeat(4096));
+  const lockable = !runningAsRoot();
+  if (lockable) fs.chmodSync(locked, 0o000);
+  try {
+    const root = readyRepo();
+    writeConfig(root, { agent: "claude" });
+    const outcome = checkClaudeTranscripts(loadConfig(root), home);
+    assert.equal(outcome.level, "ok");
+    assert.match(outcome.detail, /^1\.5 MB across 1 project in /);
+  } finally {
+    if (lockable) fs.chmodSync(locked, 0o755);
+  }
+});
+
 // checkBootstrap is informational: it reports the gate's state without writing the latch.
 test("checkBootstrap reports an active bootstrap, and stands down without config, entry, or with the latch", () => {
   const root = readyRepo();
