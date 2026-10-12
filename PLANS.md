@@ -35,6 +35,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The real-process plumbing (`SIGKILL` of the supervisor, reparent of the grandchild, the watch's stop-path file) is still exercised by a real child, with its own bounded guard.
 - `npm run test` is green.
 
+### Cancel a queued prompt from the TUI Queued pane, matching `tumwater prompt --cancel` and the dashboard Queued tab's Cancel (planned 2026-10-11 by plan; sibling of the landed TUI Queued pane (`renderQueuedList`, read-only) and the landed CLI `tumwater prompt --cancel` plus the dashboard Queued tab's per-row Cancel; the pane renders the list but no key can act on it, so cancelling a mis-typed or stale prompt means dropping to the CLI or the browser; independent of the waiting `no-repro` hermetic-host gating tier (parts 2/5, 4/5, 5/5) in behavior — `src/ui/tui` plus tests and docs, no `src/inbox` or `src/gui` change beyond reading the existing `cancelRolePrompt`; a later TUI edit sibling is not part of this plan)
+
+**Goal.** The TUI's Queued pane (`Ctrl+T` past Pending) renders `tumwater prompt --list`'s output through `renderQueuedList`, but it is read-only: `paneBody`'s queued branch only windows the cached string from `src/ui/tui/tui-keys.ts`'s `Ctrl+T` handler, and no key handler reads the queue. Add row selection and a cancel key to the pane so an operator can remove the selected prompt in place, through the CLI's own per-role `cancelRolePrompt` path.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`: add a session `selectedQueued: number | null` beside `selectedEntry` and expose it on `TuiKeysState`; the `Ctrl+T` handler resets it to null on every cycle, like `selectedEntry`. Keep the `QueuedListRow[]` the handler already builds for `renderQueuedList` (from `queuedListRows(root, null, listWideScope(root))`), so a selection can address a row's `role`/`position` without re-reading the queue each frame. Clear or clamp it whenever the view leaves Queued.
+2. Key handling: in the Queued view (index `roleIds.length + 6`), Up/Down move `selectedQueued` through `tui-backlog.ts`'s `moveEntrySelection(count, selectedQueued, dir)` (the backlog pane's wrapping rule), a no-op when the queue is empty. `Ctrl+X` — unused elsewhere in `tui-keys.ts`'s dispatch — on a set selection calls `cancelRolePrompt(root, row.role, row.position)` from `src/inbox/inbox-cancel.ts`, re-reads the queue, refreshes the cached list and rows, clamps or clears the selection, and flashes `cancelled queued prompt #<position> for <role>` (or the outcome's own gone/miss wording via `flashError`). Esc returns the pane to list mode. `Ctrl+X` with no selection, and `Ctrl+X` in any other view, leaves the queue untouched.
+3. `src/ui/tui/tui-pane.ts`: add `selectedQueued` and the rows to `TuiPaneState`; in the queued branch, list mode keeps the cached `renderQueuedList` string, and a set selection paints a bold header `queued for <role> #<position> (Ctrl+X to cancel)` over the selected prompt's full text windowed by `entryBodyWindow`, so a prompt the numbered list clipped is readable before cancelling.
+4. `src/ui/tui/tui.tsx`: pass the new fields through in the `paneBody` state object (`state: s`).
+5. `docs/how-it-works.md`: the Queued-pane bullet names the Up/Down selection and the `Ctrl+X` cancel through `cancelRolePrompt`'s per-role path, matching `tumwater prompt --cancel`.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-pane.ts`, `src/ui/tui/tui.tsx`, `test/tui-keys.test.ts`, `test/tui.test.ts`, `docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- With a director prompt and a second loop's prompt queued, cycling to Queued, Down to a row, and `Ctrl+X` removes exactly that loop's prompt (its per-role position), leaves the other queued, and refreshes the pane's cached list to the same `renderQueuedList(queuedListRows(...))` the CLI prints for the remaining queue.
+- The selected row's full text renders under a header naming its loop and position; `Ctrl+X` with no selection leaves the queue unchanged and does not modify the prompt line, and cycling away and back starts in list mode with no selection.
+- A selection past a queue shortened by the cancel clamps rather than cancelling the wrong prompt.
+- `npm run test` is green.
+
 ## Done
 
 ### Retire the `no-repro` gap, part 3/5: make `drainInFlightWork`'s restart windows injectable (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 4/5 and 5/5; independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
