@@ -1,8 +1,10 @@
+import { PAUSE_REASON_MAX } from "../../fleet/fleet-state.js";
+
 /** The dashboard's fleet-wide operator controls, browser-side, all living in the sidebar so
  * they are in reach from every view: the daily spend badge — today's spend against the cap
  * with a meter, a button that opens a small editor for the cap (POST /api/budget, the same
- * setter as the TUI's Ctrl+B) — the pause control, a menu of timed pauses (POST
- * /api/pause with `forSeconds`, the CLI's `pause --for`) that turns into a Resume button with
+ * setter as the TUI's Ctrl+B) — the pause control, a menu of timed pauses with an
+ * optional reason (POST /api/pause with `forSeconds` and `reason`, the CLI's `pause --for`/`--reason`) that turns into a Resume button with
  * the countdown while the fleet is paused, and the sound toggle that mutes the alert cue (a
  * per-browser preference, no server call). Neither keeps optimistic state: after a successful
  * POST the next status poll re-renders them from the server's answer, and a failed one toasts
@@ -219,7 +221,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function pauseControlHtml(d) {
     if (d.paused) {
       const left = pauseLeft(d);
-      return "<button type='button' class='btn btn-warn' id='pausebadge' title='The fleet is paused — click to resume it'>" +
+      return "<button type='button' class='btn btn-warn' id='pausebadge' title='" + esc("The fleet is paused — click to resume it" + (d.pauseReason ? " (" + d.pauseReason + ")" : "")) + "'>" +
         icon("play") + "<span>Resume the fleet</span><span class='btn-note' id='pausenote'>" + (left ? esc(left) + " left" : "") + "</span></button>";
     }
     return "<button type='button' class='btn' id='pausebadge' aria-haspopup='menu' title='Pause the fleet — loops start no new ticks'>" +
@@ -241,6 +243,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       menu: true,
       role: "menu",
       html: "<div class='menu-title'>Pause the fleet</div>" +
+        "<input type='text' id='pausereason' class='menu-input' maxlength=${PAUSE_REASON_MAX} placeholder='Reason (optional)' aria-label='Pause reason' style='margin:2px 10px 4px;width:calc(100% - 20px)'>" +
         PAUSE_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-pause='" + c[0] + "'>" +
           icon(c[0] ? "clock" : "pause") + esc(c[1]) + "</button>").join("") +
         "<p class='hint' style='margin:4px 10px 4px'>In-flight ticks finish, and the director keeps running your prompts.</p>",
@@ -253,9 +256,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const first = pop.querySelector("button");
     if (first) first.focus({ preventScroll: true });
   }
-  async function setFleetPause(paused, forSeconds) {
+  async function setFleetPause(paused, forSeconds, reason) {
     const body = { paused: paused };
     if (paused && forSeconds > 0) body.forSeconds = forSeconds;
+    const why = paused && reason ? String(reason).trim() : "";
+    if (why) body.reason = why;
     // A failure changes nothing; the control still shows the real state.
     await postAction("/api/pause", body, paused
       ? "Fleet paused" + (forSeconds > 0 ? " for " + humanSeconds(forSeconds) : "") + " — in-flight ticks finish"
@@ -270,7 +275,10 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       return;
     }
     const choice = t.closest("[data-pause]");
-    if (choice) setFleetPause(true, Number(choice.dataset.pause));
+    if (choice) {
+      const input = $("pausereason");
+      setFleetPause(true, Number(choice.dataset.pause), input ? input.value : "");
+    }
   });
   // pause-control:end
 

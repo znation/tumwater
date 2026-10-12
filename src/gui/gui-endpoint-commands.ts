@@ -19,7 +19,7 @@ import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attac
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../cli/question-commands.js";
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
-import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
+import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestResetCounters, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
@@ -352,6 +352,22 @@ function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknow
   return Date.now() + Math.round(forSeconds * 1000);
 }
 
+/** The optional `reason` of /api/pause: undefined when absent or blank, the raw string when
+ * given with `paused: true` (pauseFleet folds and caps it), null after sending the 400. */
+function pauseReasonField(res: http.ServerResponse, body: Record<string, unknown>, pausing: boolean): string | undefined | null {
+  const reason = body.reason;
+  if (reason === undefined) return undefined;
+  if (!pausing) {
+    sendJson(res, 400, { error: "reason only applies when pausing (paused: true)" });
+    return null;
+  }
+  if (typeof reason !== "string") {
+    sendJson(res, 400, { error: `reason must be a string${gotSuffix(reason)}` });
+    return null;
+  }
+  return reason.trim() === "" ? undefined : reason;
+}
+
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate
  * `tumwater pause [--for <duration>]` and `resume` write, via fleet/fleet-state.ts's shared writers
  * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
@@ -359,7 +375,8 @@ function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknow
  * malformed/non-object, 413 oversized); the target state is explicit (`paused: true|false`)
  * rather than a toggle, so a retried request is idempotent. An optional `forSeconds` makes it
  * a timed pause (the marker's `until`, capped like the CLI's `--for`); it only accompanies
- * `paused: true`. */
+ * `paused: true`, as does an optional `reason` (the CLI's `pause --reason`, stored folded and
+ * capped by pauseFleet; the 200 body echoes what was stored). */
 export async function handlePause(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"paused": true, "forSeconds": 3600}');
   if (!body) return;
@@ -367,9 +384,12 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
   if (value === null) return;
   const untilMs = pauseForSecondsMs(res, body, value);
   if (untilMs === null) return;
-  if (value) pauseFleet(root, untilMs);
+  const reason = pauseReasonField(res, body, value);
+  if (reason === null) return;
+  if (value) pauseFleet(root, untilMs, reason);
   else resumeFleet(root);
-  sendJson(res, 200, { ok: true, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
+  const stored = normalizePauseReason(reason);
+  sendJson(res, 200, { ok: true, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }), ...(stored ? { reason: stored } : {}) });
 }
 
 /** Handle POST /api/wake: the dashboard's per-row wake control — the same marker-writing

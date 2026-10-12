@@ -348,7 +348,7 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
-    setFleetPause(paused: boolean, forSeconds?: number): Promise<void>;
+    setFleetPause(paused: boolean, forSeconds?: number, reason?: string): Promise<void>;
   }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause", "windowLinesHtml"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
@@ -500,6 +500,11 @@ test("the pause control offers timed pauses and shows a timed pause's countdown"
   assert.match(flashes.shift() ?? "", /^Fleet paused for 1h/);
   await scope.setFleetPause(true, 0);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true } }, "until-resumed sends no deadline");
+  await scope.setFleetPause(true, 3600, " why ");
+  assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true, forSeconds: 3600, reason: "why" } });
+  await scope.setFleetPause(true, 0, "  ");
+  assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true } }, "a blank reason is omitted");
+  assert.match(scope.pauseControlHtml({ paused: true, pauseReason: "deploy" }), /id='pausebadge' title='[^']*deploy/);
   await scope.setFleetPause(false);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: false } });
   assert.equal(flashes.pop(), "Fleet resumed");

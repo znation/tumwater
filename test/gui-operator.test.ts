@@ -7,6 +7,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { initProject } from "../src/init/init.js";
+import { PAUSE_REASON_MAX } from "../src/fleet/fleet-state.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -317,6 +318,44 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
   });
   assert.equal(res.status, 413);
   assert.equal(fs.existsSync(pausedPath(repo)), false, "an oversized body leaves the marker untouched");
+  });
+});
+
+// The pause menu's optional reason rides the same route and lands in the marker as the CLI's
+// `pause --reason` does (pauseFleet folds and caps it).
+test("POST /api/pause with a reason stores it folded and capped and rejects bad reasons", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui pause reason test");
+  await withGui(repo, async ({ base }) => {
+  const marker = () => JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until?: number; reason?: string };
+  let res = await postJson(base, "/api/pause", { paused: true, reason: "  deploying\n v2 " });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, paused: true, reason: "deploying v2" });
+  assert.equal(marker().reason, "deploying v2");
+
+  await postJson(base, "/api/pause", { paused: false });
+  res = await postJson(base, "/api/pause", { paused: true, forSeconds: 3600, reason: "x" });
+  assert.equal(res.status, 200);
+  assert.equal(marker().reason, "x");
+  assert.ok(typeof marker().until === "number", "the deadline is written too");
+
+  await postJson(base, "/api/pause", { paused: false }); // a repeat pause keeps the first marker
+  res = await postJson(base, "/api/pause", { paused: true, reason: "   " });
+  assert.equal(res.status, 200);
+  assert.equal(marker().reason, undefined, "a blank reason is a plain pause");
+
+  await postJson(base, "/api/pause", { paused: false });
+  res = await postJson(base, "/api/pause", { paused: true, reason: "y".repeat(300) });
+  assert.equal(res.status, 200);
+  assert.ok((marker().reason ?? "").length <= PAUSE_REASON_MAX);
+  assert.ok((marker().reason ?? "").length > 0);
+
+  res = await postJson(base, "/api/pause", { paused: false, reason: "x" });
+  assert.equal(res.status, 400);
+  assert.match(((await res.json()) as { error: string }).error, /only applies when pausing/);
+  res = await postJson(base, "/api/pause", { paused: true, reason: 5 });
+  assert.equal(res.status, 400);
+  assert.match(((await res.json()) as { error: string }).error, /must be a string/);
   });
 });
 
