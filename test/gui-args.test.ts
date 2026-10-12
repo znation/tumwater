@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   rejectBadRole,
+  rejectBadQueueFileName,
   intQuery,
   windowDays,
   requirePromptText,
@@ -188,4 +189,30 @@ test("requirePausedFlag returns an explicit boolean and rejects everything else"
     stringy.captured.body.includes('got \\"true\\"'),
     `expected the offending value echoed in ${stringy.captured.body}`,
   );
+});
+
+// rejectBadQueueFileName is the file-addressed twin of rejectBadRole: the three guarded
+// endpoints share it, so its accept/refuse contract and 400 wording have one home to pin.
+test("rejectBadQueueFileName accepts a plain .md basename and lets the request through", () => {
+  const { res, captured } = fakeRes();
+  assert.equal(rejectBadQueueFileName(res, "1700000000000-1-100.md"), false);
+  assert.equal(captured.status, undefined);
+  assert.equal(captured.body, "");
+});
+
+test("rejectBadQueueFileName refuses each unsafe shape with the shared 400", () => {
+  for (const [name, phrase] of [
+    ["../secret.md", "plain queue-file basename"],
+    ["sub/dir.md", "plain queue-file basename"],
+    ["prompt.txt", "queued prompt's .md file"],
+    [undefined, "file required"],
+  ] as const) {
+    const { res, captured } = fakeRes();
+    assert.equal(rejectBadQueueFileName(res, name), true);
+    assert.equal(captured.status, 400);
+    assert.ok(
+      captured.body.includes(phrase),
+      `expected ${JSON.stringify(phrase)} for ${String(name)}, got ${captured.body}`,
+    );
+  }
 });

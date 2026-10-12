@@ -28,9 +28,8 @@ import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
-import { intQuery, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
+import { intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
@@ -257,8 +256,8 @@ export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: s
  * address), so a stale poll's snapshot can never read the wrong entry; the not-before deferral
  * marker and the `[image attached: …]` reference block are stripped, both plumbing the edit
  * carries over unchanged. The role is optional (absent reads the director's queue) and
- * validates exactly like /api/transcript; a file name failing queueFileNameProblem is a
- * user-input error answered 400 with nothing read. A vanished file answers 200
+ * validates exactly like /api/transcript; a file name failing the shared
+ * rejectBadQueueFileName guard is a user-input error answered 400 with nothing read. A vanished file answers 200
  * { ok: true, status: "gone" } — the loop already dequeued it, which is data for the UI, not
  * a server fault. Reads one file directly, so it works whether or not the fleet is running. */
 export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, root: string): void {
@@ -266,11 +265,7 @@ export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, r
   if (roleParam !== null && rejectBadRole(root, res, roleParam)) return;
   const role = roleParam ?? DIRECTOR_ROLE;
   const file = q.get("file");
-  const fileProblem = queueFileNameProblem(file);
-  if (fileProblem) {
-    sendJson(res, 400, { error: fileProblem });
-    return;
-  }
+  if (rejectBadQueueFileName(res, file)) return;
   const text = readQueuedPromptBody(root, role, file as string);
   if (text === null) {
     sendJson(res, 200, { ok: true, status: "gone" });

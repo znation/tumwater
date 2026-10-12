@@ -11,7 +11,7 @@
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
 import { promptPreview } from "../inbox/inbox.js";
-import { cancelQueuedFile, queueFileNameProblem } from "../inbox/inbox-cancel.js";
+import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
@@ -20,7 +20,7 @@ import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } 
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
+import { rejectBadQueueFileName, rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
@@ -156,7 +156,7 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
  * the dashboard's per-row cancel affordance, the file-addressed twin of the CLI's
  * position-addressed `prompt --cancel`. The role is optional (absent cancels from the
  * director's queue) and validates exactly like /api/transcript; a file name failing the
- * basename guard (inbox-cancel.ts's queueFileNameProblem) is a user-input error answered 400 with
+ * shared rejectBadQueueFileName guard is a user-input error answered 400 with
  * nothing touched on disk. A vanished file answers 200 { status: "gone" } — the loop already
  * dequeued the prompt, which is data for the flash line, not a server fault. Same body
  * discipline as /api/prompt (readJsonObject → 400 malformed/non-object, 413 oversized). */
@@ -165,11 +165,7 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
   if (!body) return;
   if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
   const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
-  const fileProblem = queueFileNameProblem(body.file);
-  if (fileProblem) {
-    sendJson(res, 400, { error: fileProblem });
-    return;
-  }
+  if (rejectBadQueueFileName(res, body.file)) return;
   const outcome = cancelQueuedFile(root, role, body.file as string);
   sendJson(
     res,
@@ -183,8 +179,8 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
 /** Handle POST /api/prompt-edit: rewrite one queued prompt addressed by its queue file — the
  * dashboard's per-row edit affordance, the file-addressed twin of the CLI's position-addressed
  * `prompt --edit`. The role is optional (absent edits the director's queue) and validates
- * exactly like /api/prompt-cancel; a file name failing the basename guard (inbox-cancel.ts's
- * queueFileNameProblem) is a user-input error answered 400 with nothing touched on disk. Text
+ * exactly like /api/prompt-cancel; a file name failing the shared rejectBadQueueFileName
+ * guard is a user-input error answered 400 with nothing touched on disk. Text
  * and images validate through the same checkedPromptFields /api/prompt and /api/prompt-role
  * use; editQueuedFile throws for a bad name or an over-cap text — both user-input errors
  * answered 400 (a filesystem failure reads as 400 like handleConfigSet's failed write). A
@@ -197,11 +193,7 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
   if (!body) return;
   if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
   const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
-  const fileProblem = queueFileNameProblem(body.file);
-  if (fileProblem) {
-    sendJson(res, 400, { error: fileProblem });
-    return;
-  }
+  if (rejectBadQueueFileName(res, body.file)) return;
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
   let outcome: EditOutcome;

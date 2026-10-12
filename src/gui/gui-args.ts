@@ -11,6 +11,7 @@
 import { knownRoleIdsCached } from "../config/config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
+import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -53,6 +54,18 @@ export function rejectBadRole(root: string, res: http.ServerResponse, role: unkn
     return true;
   }
   return false;
+}
+
+/** Validate one request's file-addressed queue name (a queued prompt's basename) through
+ * inbox-cancel.ts's queueFileNameProblem, sending its reason as the shared 400 and reporting
+ * whether the request should stop — the file twin of rejectBadRole above. The three
+ * file-addressed endpoints (/api/prompt-text, /api/prompt-cancel, /api/prompt-edit) share it
+ * so their validation and 400 wording cannot drift. */
+export function rejectBadQueueFileName(res: http.ServerResponse, name: unknown): boolean {
+  const problem = queueFileNameProblem(name);
+  if (problem === null) return false;
+  sendJson(res, 400, { error: problem });
+  return true;
 }
 
 /** Read an integer query parameter with the GUI's established discipline for an explicit
