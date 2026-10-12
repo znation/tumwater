@@ -8,8 +8,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Answer an open question from the dashboard, part 2/2: an inline answer form in the Questions tab and entry drawer (planned 2026-10-12 by plan; requires part 1/2's `POST /api/question-answer` landed; sibling of the landed dashboard queued-prompt edit (`gui-client-fleet.ts`'s Queued-tab Edit over `/api/prompt-edit`) and the CLI `tumwater questions answer`; independent of the waiting TUI Activity filter and dashboard per-loop timed pause plans in behavior — `src/ui/gui` only — though it may share `gui-client-drawer.ts` with the timed-pause plan's drawer button, so a landing conflict is possible and the resolver handles it)
 
-**Needs review 2026-10-12 by feature: blocked — part 1/2 (`tryAnswerQuestion`, `POST /api/question-answer`) has not landed (grep finds neither in `src` or `test`), so the form has no endpoint to post to**
-
 **Goal.** Make the dashboard's Answer control record the decision in QUESTIONS.md, as `tumwater questions answer` does. Keep drafting a director prompt available as a secondary action, for when the operator wants the director to act on the answer.
 
 **Approach.**
@@ -43,6 +41,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing `cmdReclaim` tests in `test/operator-commands.test.ts` (live marker, nothing-to-reclaim in both modes, `--dry-run` listing) stay green unchanged.
 - `test/gui-endpoints.test.ts`: `handleReclaim` against a temp repo with no worktrees answers 200 `{ ok: true, message: "nothing to reclaim" }`. With a live fleet marked (as the `cmdReclaim` live test does), it answers 200 with a message matching `/reclaim requested/`, and `reclaimRequestPath(root)` exists. A malformed body answers 400 and writes no marker.
 - `test/gui-client-sidebar.test.ts`: the disk row's painted HTML contains `data-act='reclaim'` for a held disk and for one below `reclaimGB`. It does not contain `data-act='reclaim'` when the disk is above `reclaimGB` and not held (the recovered "last reclaim freed" case).
+- `npm run test` is green.
+
+### Reset the loops' counters from the dashboard, matching `tumwater reset-counters [--role <id>]` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater reset-counters` (`cmdResetCounters` in `src/operator/operator-commands.ts` over `requestResetCounters` in `src/operator/operator-intent.ts`) and the landed dashboard wake controls (`handleWake` over `POST /api/wake`, the Loops card's `wakeall` button, the loop drawer's `wake` action); `requestResetCounters` already never calls `fail()`, and its doc comment says no dashboard route exposes it, so the operator who wants a fresh observation window in the dashboard has to switch to the CLI; independent of the waiting question-answer part 2/2, Claude usage-meter, and disk-row reclaim plans in behavior (its own route, handler, and action), though it shares `src/gui/gui-server.ts`/`gui-endpoint-commands.ts` with the reclaim plan and `gui-client-drawer.ts` with part 2/2, so a landing conflict is possible and the resolver handles it)
+
+**Goal.** The dashboard zeroes the per-loop counters (ticks, commits, tokens, cost) the same way the CLI does: fleet-wide from the Loops card header, or for one loop from its drawer, and flashes the CLI's own confirmation.
+
+**Approach.**
+- `src/gui/gui-endpoint-commands.ts`: add `handleResetCounters`, shaped exactly like `handleWake`: `readRoleBody(req, res, '{"role": "feature"}', root, true)`, then 200 `{ ok: true, message: requestResetCounters(root, body.role === undefined ? validRoleIds(root) : [body.role as string]) }`. Add it to `readRoleBody`'s doc comment list of call sites. Register `"POST /api/reset-counters"` in `src/gui/gui-server.ts`'s route table beside `"POST /api/wake"`.
+- `src/operator/operator-intent.ts`: reword `requestResetCounters`'s doc comment so it says the CLI and `POST /api/reset-counters` share the core (drop "no dashboard route exposes reset-counters"). No behavior change.
+- `src/ui/gui/gui-page.ts`: in the Loops card header, add `<button type="button" class="btn btn-sm" id="resetall" title="Zero every loop's ticks, commits, tokens, and cost — scheduling is untouched">${iconSvg("refresh")}<span>Reset counters</span></button>` before `wakeall`.
+- `src/ui/gui/gui-client-loops.ts`: beside the `wakeall` listener, `$("resetall")` posts `postAction("/api/reset-counters", {}, (d) => d && typeof d.message === "string" ? d.message : "counters reset")`. In `rowAction`, route `action === "reset-counters"` to `/api/reset-counters` with body `{ role }` (extend the existing `path` expression; the existing `d.message` fallback covers its flash). No confirm step: the CLI has none and the reset touches observation counters only, never scheduling.
+- `src/ui/gui/gui-client-drawer.ts`: the loop drawer's actions gain `btn("reset-counters", "refresh", "Reset counters")` after the pause controls. It uses the existing `rowaction` class, so the drawer's click handler already routes it to `rowAction`.
+- `docs/how-it-works.md`'s `reset-counters` bullet and README.md's "Control the loops" row: note that the dashboard's Loops card and loop drawer reach the same reset.
+- docs/invariants.md: no new guarantee. The marker and its consumption (`consumeResetRequest`) are unchanged.
+
+**Files touched.** `src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`, `src/operator/operator-intent.ts`, `src/ui/gui/gui-page.ts`, `src/ui/gui/gui-client-loops.ts`, `src/ui/gui/gui-client-drawer.ts`, `test/gui-operator.test.ts`, `test/gui-client.test.ts`, `test/gui-client-drawer.test.ts`, `docs/how-it-works.md`, `README.md`.
+
+**Acceptance criteria.**
+- `test/gui-operator.test.ts`, beside `POST /api/wake writes the same state as \`tumwater wake\``: with no harness running, `POST /api/reset-counters` `{ role: "feature" }` answers 200 with the same message `requestResetCounters(repo, ["feature"])`'s CLI path prints, and the feature loop's saved state has its counters zeroed (seed a nonzero tick count with `saveLoopState` first). `{}` targets every configured role. `{"role": "bogus"}` answers 400 matching `/valid ids:/` and a malformed body answers 400, each leaving the seeded counters untouched.
+- `test/gui-client.test.ts`'s loop-controls test: `rowAction("reset-counters", "feature")` posts exactly `{ path: "/api/reset-counters", body: { role: "feature" } }` and flashes the server's message.
+- `test/gui-client-drawer.test.ts`: the painted loop drawer contains `data-action='reset-counters'`.
 - `npm run test` is green.
 
 ## Done
