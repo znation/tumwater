@@ -94,8 +94,10 @@ test("the tab strip names every view and brackets the current one", () => {
   assert.deepEqual(usage.filter((s) => s.tone === "brand").map((s) => s.text), ["[Usage]"], "only the current view is bright");
   assert.equal(plain(tabStrip({ kind: "usage", scope: "feature", window: "1h" }, 200)), "Activity  Transcript  Backlog  [Usage: feature]  Failures  History  Pending  Queued   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "failures", scope: "clean", window: null }, 200)), "Activity  Transcript  Backlog  Usage  [Failures: clean]  History  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History]  Pending  Queued   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "feature", grep: null }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History: feature]  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History]  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History: feature]  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "qa", grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick: qa]  Pending  Queued   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick]  Pending  Queued   Ctrl+T next");
   assert.equal(plain(tabStrip({ kind: "queued" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  [Queued]   Ctrl+T next");
   assert.ok(displayWidth(plain(tabStrip({ kind: "backlog" }, 20))) <= 20);
 });
@@ -126,23 +128,26 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+E window: default/);
   assert.match(hint({ kind: "failures", scope: null, window: "7d" }), /Ctrl\+E window: 7d/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+E window: default/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "queued" }), /PgUp\/PgDn scroll/);
   assert.equal(hint({ kind: "activity" }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
-  assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null }), /Ctrl\+S window: 1h/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null }), /Ctrl\+S window: default/);
+  assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: 1h/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: default/);
   // The History pane names its outcome class in the Ctrl+O hint, "all" or the active class.
-  assert.match(hint({ kind: "history", since: null, result: "problems", role: null, grep: null }), /Ctrl\+O result: problems/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null }), /Ctrl\+O result: all/);
+  assert.match(hint({ kind: "history", since: null, result: "problems", role: null, grep: null, trail: false }), /Ctrl\+O result: problems/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+O result: all/);
   // The History pane names its exact-loop scope in the Ctrl+G hint, the raw id or the fleet.
-  assert.match(hint({ kind: "history", since: null, result: null, role: "feature", grep: null }), /Ctrl\+G scope: feature/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null }), /Ctrl\+G scope: fleet/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }), /Ctrl\+G scope: feature/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+G scope: fleet/);
   // The History pane names its free-text search in the `/` hint, "search" or the pattern.
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: "widget" }), /\/ search: widget/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null }), /\/ search/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: "widget", trail: false }), /\/ search: widget/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /\/ search/);
+  // The History pane names its tick-trail toggle in the Ctrl+N hint, the row list or the trail.
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+N tick trail/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+N history/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
     { kind: "activity" } as const,
@@ -150,7 +155,7 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "backlog" } as const,
     { kind: "usage", scope: null, window: null } as const,
     { kind: "failures", scope: null, window: null } as const,
-    { kind: "history", since: null, result: null, role: null, grep: null } as const,
+    { kind: "history", since: null, result: null, role: null, grep: null, trail: false } as const,
     { kind: "pending" } as const,
     { kind: "queued" } as const,
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null }, 300)), /Ctrl\+D quit/);

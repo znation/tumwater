@@ -311,6 +311,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   rows through the same `tickRowGrepHaystack` haystack and case-insensitive substring rule
   `tumwater history --grep` and the dashboard's History search use, the pane's `search:` header
   and the hint line name the active pattern, and Esc cancels.
+  `Ctrl+N` swaps the pane for the newest completed tick's full event trail — the loop's newest
+  when `Ctrl+G` scopes the pane, else the fleet's — rendered from the same
+  `readTickDetail`/`renderTickDetail` pair `tumwater tick --last` and the dashboard's History
+  drill-down use; the tab strip reads `Tick` and `Ctrl+N` again returns to the rows.
   The Pending pane shows the durable land queue above the pending-change roster, reading and
   rendering it through the same `readLandingQueue`/`renderLandingQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI.

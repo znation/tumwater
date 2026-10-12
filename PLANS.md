@@ -78,74 +78,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The real-process plumbing (`SIGKILL` of the supervisor, reparent of the grandchild, the watch's stop-path file) is still exercised by a real child, with its own bounded guard.
 - `npm run test` is green.
 
-### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it)
-
-**Goal.** `tumwater tick <role> [<n>] [--last]` prints one completed tick's full event trail — a
-summary header followed by the tick's events through `formatEvent` — and the dashboard's History
-drill-down serves the same `renderTickDetail` text from `readTickDetail`. The TUI History pane
-shows only the one-line rows, so the terminal cannot see a tick's events. Add a read-only trail
-view on the History pane, rendered from the same `readTickDetail`/`renderTickDetail` pair, so the
-three surfaces cannot drift on the header or the event rendering.
-
-**Approach.**
-1. `src/ui/tui/tui-keys.ts`:
-   - Add imports `readTickDetail` from `../../tick/tick-detail-data.js` and `renderTickDetail`
-     from `../../tick/tick-detail.js` (`readTickRows` is already imported).
-   - `TuiKeysState` gains `trailMode: boolean` and `trailCache: string | null` with doc comments
-     paralleling `noteMode`/`noteCache`: `trailMode` is true only on the History view while its
-     pane shows one tick's trail, and `trailCache` is `renderTickDetail`'s text. Add the locals
-     `let trailMode = false; let trailCache: string | null = null;` beside `noteMode`/`noteCache`.
-   - In the `Ctrl+N` handler, add a History arm *before* the existing transcript guard (which
-     currently returns early for non-transcript views, so it would swallow the key): when
-     `view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode`, toggle
-     `trailMode`. On entry, read the newest completed tick through
-     `readTickRows(root, 1, historyRole)[0]` — the scoped loop's newest when `historyRole` is set
-     (`Ctrl+G`), else the fleet's newest, whose `row.loop`/`row.tick` address the detail — then
-     `readTickDetail(root, row.loop, row.tick)`, set `trailCache = detail ? renderTickDetail(detail) : null`,
-     and `trailMode = true`; no row flashes `"no completed ticks to inspect"` and leaves normal
-     History mode. Catch a collector throw like the notebook arm (clear `trailCache`, `flashError`).
-     Off entry (`trailMode` true) clear both; set `paneScroll = 0` on every transition.
-   - The `Ctrl+T` branch clears `trailMode = false; trailCache = null;` beside the notebook reset,
-     so a cycle away drops the snapshot.
-   - The `page !== null && noteMode` scroll branch becomes `page !== null && (noteMode || trailMode)`,
-     windowing `noteMode ? (noteCache ?? "") : (trailCache ?? "")`.
-   - `state()` returns the new `trailMode` and `trailCache`.
-2. `src/ui/tui/tui-frame.ts`: `TuiView`'s history variant gains `trail: boolean` beside `grep`;
-   `tabStrip`'s history label reads `${view.trail ? "Tick" : "History"}${view.role ? ": " + view.role : ""}`;
-   `hintLine`'s history `Ctrl+N` word becomes `view.trail ? "history" : "tick trail"`.
-3. `src/ui/tui/tui.tsx`: the history `pane` object gains `trail: s.trailMode`.
-4. `src/ui/tui/tui-pane.ts`: `TuiPaneState` gains `trailCache: string | null` (its `noteCache` doc
-   retargeted to "the notebook view's rendered Markdown"); the history branch gains, before the
-   normal rows, an `if (pane.trail)` case that windows `state.trailCache` through
-   `entryBodyWindow` exactly like the notebook (`toneLine` with no extra tone) and returns
-   `emptyNote: "(no tick trail)"` while the cache is null.
-5. `docs/how-it-works.md`: the TUI History paragraph (the `Ctrl+S`/`Ctrl+O`/`Ctrl+G`/`/`
-   sentences) adds that `Ctrl+N` swaps the pane for the newest completed tick's full event trail
-   — the loop's newest when `Ctrl+G` scopes the pane, else the fleet's newest — rendered from the
-   same `readTickDetail`/`renderTickDetail` pair `tumwater tick --last` and the dashboard's
-   History drill-down use, with the tab strip reading `Tick` and `Ctrl+N` again returning to the
-   rows.
-
-**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
-`src/ui/tui/tui-pane.ts`, `docs/how-it-works.md`, `test/tui-frame.test.ts`,
-`test/tui-keys.test.ts`, `test/tui.test.ts`.
-
-**Acceptance criteria.**
-- `test/tui-frame.test.ts`: every existing history literal gains `trail: false` (the field is
-  required), keeping the `History`/`History: <role>` labels green; a `trail: true` case tab-strips
-  `[Tick: qa]` and hints `Ctrl+N history`, while a `trail: false` history hint stays `tick trail`.
-- `test/tui-keys.test.ts`, new case seeding a completed tick with `writeEvents(root, [{ loop:
-  "clean", type: "tick_start", tick: 1, ts: … }, { loop: "clean", type: "tick_end", tick: 1, ts:
-  …, result: "changed", summary: "work" }])`, `syncSnapshot(0, false, ["clean"])`, then `Ctrl+T`
-  to the History view (`roleIds.length + 4`): the first `Ctrl+N` sets `trailMode` true and
-  `trailCache` matching `renderTickDetail(readTickDetail(root, "clean", 1))`, the second clears
-  both, and a `Ctrl+T` while in trail mode clears it. A separate empty-log case flashes `no
-  completed ticks to inspect` and leaves `trailMode` false.
-- `test/tui.test.ts`: a `paneBody` case for a history pane with `trail: true` windows
-  `state.trailCache` and returns `(no tick trail)` when it is null.
-- `docs/how-it-works.md` names the History `Ctrl+N` drill-down and `tumwater tick --last`.
-- `npm run test` is green.
-
 ### Filter the dashboard Activity feed by loop and text over the events the card already carries, matching `tumwater logs --grep`/`logs --role` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater logs --grep <text>`/`--role <id>` and the landed dashboard History search plus Loop picker (`gui-client-history.ts`'s `#histgrep`/`#histrole`); the Activity card's only narrowing is the Notable/All segmented filter (`gui-page.ts`'s `#feedfilter`, `gui-client-fleet.ts`'s `renderFeed`), so an operator watching one loop's events or hunting a specific failure must drop to `tumwater logs` or scan the whole recent feed; independent of the waiting hermetic-host gating tier, dashboard composer defer, and TUI History tick-trail plans in code — `src/ui/gui` only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; it reads the event window the card already receives (`status-payload.ts`'s `RECENT_EVENTS` `eventItems`) and adds no endpoint, so its filter cannot disagree with what the card shows, only narrow it)
 
 **Goal.** The dashboard's Activity card carries the last `RECENT_EVENTS` events as `eventItems`
@@ -217,6 +149,74 @@ one loop's recent events or find a recent failure without leaving the main scree
 - `npm run test` is green.
 
 ## Done
+
+### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
+
+**Goal.** `tumwater tick <role> [<n>] [--last]` prints one completed tick's full event trail — a
+summary header followed by the tick's events through `formatEvent` — and the dashboard's History
+drill-down serves the same `renderTickDetail` text from `readTickDetail`. The TUI History pane
+shows only the one-line rows, so the terminal cannot see a tick's events. Add a read-only trail
+view on the History pane, rendered from the same `readTickDetail`/`renderTickDetail` pair, so the
+three surfaces cannot drift on the header or the event rendering.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`:
+   - Add imports `readTickDetail` from `../../tick/tick-detail-data.js` and `renderTickDetail`
+     from `../../tick/tick-detail.js` (`readTickRows` is already imported).
+   - `TuiKeysState` gains `trailMode: boolean` and `trailCache: string | null` with doc comments
+     paralleling `noteMode`/`noteCache`: `trailMode` is true only on the History view while its
+     pane shows one tick's trail, and `trailCache` is `renderTickDetail`'s text. Add the locals
+     `let trailMode = false; let trailCache: string | null = null;` beside `noteMode`/`noteCache`.
+   - In the `Ctrl+N` handler, add a History arm *before* the existing transcript guard (which
+     currently returns early for non-transcript views, so it would swallow the key): when
+     `view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode`, toggle
+     `trailMode`. On entry, read the newest completed tick through
+     `readTickRows(root, 1, historyRole)[0]` — the scoped loop's newest when `historyRole` is set
+     (`Ctrl+G`), else the fleet's newest, whose `row.loop`/`row.tick` address the detail — then
+     `readTickDetail(root, row.loop, row.tick)`, set `trailCache = detail ? renderTickDetail(detail) : null`,
+     and `trailMode = true`; no row flashes `"no completed ticks to inspect"` and leaves normal
+     History mode. Catch a collector throw like the notebook arm (clear `trailCache`, `flashError`).
+     Off entry (`trailMode` true) clear both; set `paneScroll = 0` on every transition.
+   - The `Ctrl+T` branch clears `trailMode = false; trailCache = null;` beside the notebook reset,
+     so a cycle away drops the snapshot.
+   - The `page !== null && noteMode` scroll branch becomes `page !== null && (noteMode || trailMode)`,
+     windowing `noteMode ? (noteCache ?? "") : (trailCache ?? "")`.
+   - `state()` returns the new `trailMode` and `trailCache`.
+2. `src/ui/tui/tui-frame.ts`: `TuiView`'s history variant gains `trail: boolean` beside `grep`;
+   `tabStrip`'s history label reads `${view.trail ? "Tick" : "History"}${view.role ? ": " + view.role : ""}`;
+   `hintLine`'s history `Ctrl+N` word becomes `view.trail ? "history" : "tick trail"`.
+3. `src/ui/tui/tui.tsx`: the history `pane` object gains `trail: s.trailMode`.
+4. `src/ui/tui/tui-pane.ts`: `TuiPaneState` gains `trailCache: string | null` (its `noteCache` doc
+   retargeted to "the notebook view's rendered Markdown"); the history branch gains, before the
+   normal rows, an `if (pane.trail)` case that windows `state.trailCache` through
+   `entryBodyWindow` exactly like the notebook (`toneLine` with no extra tone) and returns
+   `emptyNote: "(no tick trail)"` while the cache is null.
+5. `docs/how-it-works.md`: the TUI History paragraph (the `Ctrl+S`/`Ctrl+O`/`Ctrl+G`/`/`
+   sentences) adds that `Ctrl+N` swaps the pane for the newest completed tick's full event trail
+   — the loop's newest when `Ctrl+G` scopes the pane, else the fleet's newest — rendered from the
+   same `readTickDetail`/`renderTickDetail` pair `tumwater tick --last` and the dashboard's
+   History drill-down use, with the tab strip reading `Tick` and `Ctrl+N` again returning to the
+   rows.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
+`src/ui/tui/tui-pane.ts`, `docs/how-it-works.md`, `test/tui-frame.test.ts`,
+`test/tui-keys.test.ts`, `test/tui-history.test.ts`.
+
+**Acceptance criteria.**
+- `test/tui-frame.test.ts`: every existing history literal gains `trail: false` (the field is
+  required), keeping the `History`/`History: <role>` labels green; a `trail: true` case tab-strips
+  `[Tick: qa]` and hints `Ctrl+N history`, while a `trail: false` history hint stays `tick trail`.
+- `test/tui-keys.test.ts`, new case seeding a completed tick with `writeEvents(root, [{ loop:
+  "clean", type: "tick_start", tick: 1, ts: … }, { loop: "clean", type: "tick_end", tick: 1, ts:
+  …, result: "changed", summary: "work" }])`, `syncSnapshot(0, false, ["clean"])`, then `Ctrl+T`
+  to the History view (`roleIds.length + 4`): the first `Ctrl+N` sets `trailMode` true and
+  `trailCache` matching `renderTickDetail(readTickDetail(root, "clean", 1))`, the second clears
+  both, and a `Ctrl+T` while in trail mode clears it. A separate empty-log case flashes `no
+  completed ticks to inspect` and leaves `trailMode` false.
+- `test/tui-history.test.ts`: a `paneBody` case for a history pane with `trail: true` windows
+  `state.trailCache` and returns `(no tick trail)` when it is null.
+- `docs/how-it-works.md` names the History `Ctrl+N` drill-down and `tumwater tick --last`.
+- `npm run test` is green.
 
 ### Defer a prompt from the dashboard composer, matching `tumwater prompt --at <duration>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater prompt --at <duration>` (commit 654f15b3) and the landed dashboard deferral display (`gui-client-fleet.ts`'s `delivers in`); the dashboard can already paint a deferred prompt's countdown but no dashboard surface can set the marker, so an operator must drop to the CLI to schedule one; independent of the waiting TUI Queued pane, TUI History grep, dashboard queued-prompt edit, and dashboard Settings Clear plans in code — `src/cli/cli-args.ts`'s newly exported `parseDurationMs` plus `src/inbox/inbox-submit.ts`, the two prompt handlers in `src/gui/gui-endpoint-commands.ts`, and the composer files, no `src/ui/tui` file — it shares `src/gui/gui-endpoint-commands.ts` with the landed prompt-edit and Settings Clear handlers but edits different functions, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
 

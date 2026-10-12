@@ -21,9 +21,12 @@ interface TuiPaneState {
   selectedEntry: number | null;
   entryScroll: number;
   paneCache: string | null;
-  /** The notebook or change view's rendered text (roleInspectMarkdown or renderRoleChange),
-   * computed once on Ctrl+N entry like paneCache; null when the live transcript is shown. */
+  /** The notebook view's rendered Markdown (roleInspectMarkdown), computed once on Ctrl+N
+   * entry like paneCache; null when the live transcript is shown. */
   noteCache: string | null;
+  /** The tick-trail view's rendered text (renderTickDetail), computed once on Ctrl+N entry
+   * from the History pane; null while the rows are shown or the newest tick could not be read. */
+  trailCache: string | null;
   /** The change view's rendered text (renderRoleChange), null until its async collector
    * resolves; windowed by paneBody in change mode. */
   changeCache: string | null;
@@ -117,6 +120,16 @@ export function paneBody(
     };
   }
   if (pane.kind === "history") {
+    // The tick trail (Ctrl+N) windows the cached renderTickDetail text; a null cache (the
+    // read found no tick) paints the pane's own note rather than entryBodyWindow's placeholder.
+    if (pane.trail) {
+      if (state.trailCache === null) return { body: [], emptyNote: "(no tick trail)" };
+      const win = entryBodyWindow(state.trailCache, state.paneScroll, eventBudget, width);
+      return {
+        body: win.lines.map((l) => toneLine(l, width)),
+        emptyNote: "(no tick trail)",
+      };
+    }
     // historyPaneText returns "" when the log holds no completed ticks; return no lines
     // (rather than windowing an empty string, which entryBodyWindow replaces with its
     // "no details" placeholder) so the frame prints the pane's own empty note instead.

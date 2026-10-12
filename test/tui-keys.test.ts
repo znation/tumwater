@@ -17,6 +17,8 @@ import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { readTickDetail } from "../src/tick/tick-detail-data.js";
+import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 
@@ -160,6 +162,87 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().view, 0, "cycling past Queued wraps to Activity");
   assert.equal(keys.state().paneCache, null, "leaving History, Pending, and Queued drops the cache");
+});
+
+test("Ctrl+N on the History pane swaps the rows for the newest completed tick's trail", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "tick_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "work" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
+  assert.equal(keys.state().view, 5);
+  assert.equal(keys.state().trailMode, false, "History opens on the rows");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailMode, true);
+  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailMode, false, "a second Ctrl+N returns to the rows");
+  assert.equal(keys.state().trailCache, null);
+
+  // Cycling the view away drops the trail snapshot too.
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailMode, true);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().trailMode, false);
+  assert.equal(keys.state().trailCache, null);
+});
+
+test("Ctrl+N on an empty History flashes and leaves the rows shown", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean"]);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailMode, false);
+  assert.match(keys.state().flash!, /no completed ticks to inspect/);
+});
+
+test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () => {
+  const root = makeRoot();
+  // clean's tick is newer than qa's, so the fleet read and the qa-scoped read differ.
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "qa", type: "tick_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "qa", type: "tick_end", tick: 1, result: "changed", summary: "qa work" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "tick_start", tick: 1 },
+    { ts: 1_700_000_180_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "clean work" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean", "qa"]);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → clean
+  assert.equal(keys.state().historyRole, "clean");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().trailCache ?? "", /clean work/);
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → qa
+  assert.equal(keys.state().historyRole, "qa");
+  assert.match(keys.state().trailCache ?? "", /qa work/, "the trail follows the new scope");
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // qa → fleet
+  assert.equal(keys.state().historyRole, null);
+  assert.match(keys.state().trailCache ?? "", /clean work/, "the fleet trail is the newest tick of any loop");
+});
+
+test("a roster change that retires the trail's scope re-reads it from the fleet", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "qa", type: "tick_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "qa", type: "tick_end", tick: 1, result: "changed", summary: "qa work" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "tick_start", tick: 1 },
+    { ts: 1_700_000_180_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "clean work" },
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["clean", "qa"]);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4)
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // fleet → clean
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // clean → qa
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().trailCache ?? "", /qa work/);
+  keys.syncSnapshot(0, false, ["clean"]); // qa retires
+  assert.equal(keys.state().historyRole, null, "the retired scope drops to the fleet");
+  assert.equal(keys.state().trailMode, true, "the trail stays on screen");
+  assert.match(keys.state().trailCache ?? "", /clean work/, "the trail follows the retired scope's drop");
 });
 
 test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache", () => {

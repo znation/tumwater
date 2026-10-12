@@ -13,6 +13,8 @@ import {
   type HistoryResultClass,
 } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
+import { readTickDetail } from "../../tick/tick-detail-data.js";
+import { renderTickDetail } from "../../tick/tick-detail.js";
 import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
@@ -250,6 +252,13 @@ interface TuiKeysState {
   /** The notebook view's rendered Markdown, computed once on Ctrl+N entry and windowed by
    * paneBody; null when the live transcript is shown. */
   noteCache: string | null;
+  /** Whether the History pane shows one completed tick's full event trail (Ctrl+N) instead
+   * of the row list — true only on the History view while its pane holds a trail. */
+  trailMode: boolean;
+  /** The trail view's rendered TickDetail text (renderTickDetail), computed once on Ctrl+N
+   * entry and windowed by paneBody; null while the rows are shown or when the newest
+   * completed tick could not be read. */
+  trailCache: string | null;
   /** Whether the viewed loop's pane shows the collected unlanded change (the second Ctrl+N
    * step) instead of the transcript — true only on a transcript view. */
   changeMode: boolean;
@@ -384,6 +393,12 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // view cycles.
   let noteMode = false;
   let noteCache: string | null = null;
+  // Ctrl+N on the History pane swaps the row list for the newest completed tick's full event
+  // trail (renderTickDetail over readTickDetail) — the same text `tumwater tick --last` and
+  // the dashboard's History drill-down serve. Session-only like the other pane snapshots:
+  // computed once on entry and only re-windowed each frame.
+  let trailMode = false;
+  let trailCache: string | null = null;
   // Ctrl+N's third step: the viewed loop's collected unlanded change (the CLI's
   // `renderRoleChange` text). changeCache is null until the async collector resolves, and the
   // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
@@ -476,6 +491,21 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     paneScroll = 0;
     return true;
+  };
+
+  // Re-read the pane-scoped newest completed tick into trailCache for an on-screen trail
+  // (Ctrl+N), so the trail cannot keep showing a retired loop's tick after Ctrl+G or a roster
+  // change drops the History scope. The reader throw is caught and flashed rather than escaping
+  // a key or sync path, the same guard the initial Ctrl+N entry uses.
+  const refreshTrail = (): void => {
+    try {
+      const row = readTickRows(root, 1, historyRole)[0];
+      const detail = row === undefined ? null : readTickDetail(root, row.loop, row.tick);
+      trailCache = detail === null ? null : renderTickDetail(detail);
+    } catch (err) {
+      trailCache = null;
+      flashError(err);
+    }
   };
 
   // Leave History search mode (Enter applies, Esc cancels, Ctrl+T cycles): restore the saved
@@ -656,7 +686,37 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
       // dashboard drawer use. Guarded to a transcript view and out of budget-edit and
       // role-prompt modes, the same way the per-loop controls below are; everywhere else the
-      // key falls through to applyKey.
+      // key falls through to applyKey. On the History pane the same key swaps the row list for
+      // one tick's full event trail instead (the CLI's `tumwater tick --last` text), so it is
+      // handled before the transcript guard below.
+      if (view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode) {
+        if (trailMode) {
+          trailMode = false;
+          trailCache = null;
+        } else {
+          // The newest completed tick in the pane's scope: the loop's when Ctrl+G set
+          // historyRole, else the fleet's. A log holding none flashes and leaves the rows.
+          const row = readTickRows(root, 1, historyRole)[0];
+          if (row === undefined) {
+            flashMessage("no completed ticks to inspect");
+          } else {
+            // readTickDetail reads the log and renderTickDetail renders it; a throw (an
+            // injected seam or an unexpected failure) flashes the reason and leaves the rows
+            // shown rather than escaping the handler and killing the TUI.
+            try {
+              const detail = readTickDetail(root, row.loop, row.tick);
+              trailCache = detail === null ? null : renderTickDetail(detail);
+              trailMode = true;
+            } catch (err) {
+              trailCache = null;
+              flashError(err);
+            }
+          }
+        }
+        paneScroll = 0; // either way the pane starts at its head
+        deps.requestRender();
+        return;
+      }
       if (budgetMode || rolePromptFor || roleIds.length === 0 || view < 1 || view > roleIds.length) {
         deps.requestRender();
         return;
@@ -719,6 +779,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         const slots: Array<string | null> = [null, ...roleIds];
         const slot = slots.indexOf(historyRole);
         historyRole = slots[(slot + 1) % slots.length] ?? null;
+        // A trail already on screen follows the scope: re-read the new scope's newest
+        // completed tick (or drop to the pane's no-trail note when it has none) so the trail
+        // and the tab strip cannot name different loops.
+        if (trailMode) refreshTrail();
       } else {
         const slots = scopeCycle(roleIds);
         const slot = slots.indexOf(scopeRole);
@@ -773,6 +837,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       noteCache = null;
       changeMode = false;
       changeCache = null;
+      trailMode = false; // the tick trail is History-only; a cycle away drops its snapshot too
+      trailCache = null;
       view = (view + 1) % (roleIds.length + 7); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → events
       selectedEntry = null; // leaving a view drops any entry selection…
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -848,11 +914,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (page !== null && (noteMode || changeMode)) {
-      // Within-body scroll in the notebook and change views (a transcript view): PgDn/PgUp page
-      // the cached inspection Markdown, clamped at both ends, exactly like the usage/failures
+    if (page !== null && (noteMode || changeMode || trailMode)) {
+      // Within-body scroll in the notebook, change, and tick-trail views: PgDn/PgUp page the
+      // cached inspection Markdown, clamped at both ends, exactly like the usage/failures
       // panes below.
-      const total = (noteMode ? (noteCache ?? "") : (changeCache ?? "")).split("\n").length;
+      const total = (noteMode ? (noteCache ?? "") : trailMode ? (trailCache ?? "") : (changeCache ?? "")).split("\n").length;
       paneScroll = stepEntryScroll(paneScroll, total, eventBudget, page);
       deps.requestRender();
       return;
@@ -1036,6 +1102,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       if (historyRole !== null && !roleIds.includes(historyRole)) {
         historyRole = null;
         refreshPaneCache("history");
+        // The retired scope may have been feeding an on-screen trail: re-read it from the
+        // fleet so the pane and the tab strip cannot name a loop the roster no longer has.
+        if (trailMode) refreshTrail();
       }
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
@@ -1056,6 +1125,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         paneCache,
         noteMode,
         noteCache,
+        trailMode,
+        trailCache,
         changeMode,
         changeCache,
         paneScroll,
