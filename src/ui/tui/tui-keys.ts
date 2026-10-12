@@ -24,6 +24,8 @@ import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { promptLengthProblem, submitPrompt } from "../../inbox/inbox-submit.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
+import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";
+import { stampedSubject } from "../../git/commit-message.js";
 import { fileEntryWithBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry } from "../../backlog/backlog-write.js";
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
@@ -1788,6 +1790,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
               flashMessage(problem);
             } else {
               const filed = fileEntryWithBody(root, target.kind, input, "");
+              void commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${target.kind}: ${filed.title}`));
               submitRolePromptAndWake(root, role, wakeText(filed.title));
               exitEntryEdit();
               flashMessage(`filed ${target.kind}: ${filed.title} — woke ${role}`);

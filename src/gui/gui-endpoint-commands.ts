@@ -10,6 +10,8 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
+import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
+import { stampedSubject } from "../git/commit-message.js";
 import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
@@ -492,6 +494,7 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
     return;
   }
   const filed = fileEntryWithBody(root, kind, rawTitle, entryBody);
+  await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${kind}: ${filed.title}`));
   submitRolePromptAndWake(root, role, wakeText(filed.title));
   sendJson(res, 200, { ok: true, file: filed.file, title: filed.title });
 }

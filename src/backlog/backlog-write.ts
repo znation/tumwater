@@ -27,6 +27,8 @@ import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { primaryWorktreeLockPath } from "../paths.js";
+import { commitOperatorBacklogEdit } from "./backlog-commit.js";
+import { stampedSubject } from "../git/commit-message.js";
 
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that
  * builds the heading. Computed once per call (not module load) so a long-lived process
@@ -453,7 +455,7 @@ export async function fileAndAnnounce(
     const text = readPromptFileArg(file);
     const wakeProblem = promptLengthProblem(wakeText(splitEntryFile(text).title), role);
     if (wakeProblem) fail(wakeProblem);
-    announceFiled(root, command, fileText(text), role, wakeText, json);
+    await announceFiled(root, command, fileText(text), role, wakeText, json);
     return;
   }
   // peelPositionals cannot serve this command: bug/plan's text is operator prose, and a
@@ -465,19 +467,20 @@ export async function fileAndAnnounce(
   await requireReadyRepo(root);
   const wakeProblem = promptLengthProblem(wakeText(titleOf(positionals)), role);
   if (wakeProblem) fail(wakeProblem);
-  announceFiled(root, command, file(positionals), role, wakeText, json);
+  await announceFiled(root, command, file(positionals), role, wakeText, json);
 }
 
-/** The tail both fileAndAnnounce forms share: wake the `role` loop with the filed entry's
+/** The tail both fileAndAnnounce forms share: commit the entry on main, wake the `role` loop with the filed entry's
  * title, then print the confirmation (the wake line rides the prose output only). */
-function announceFiled(
+async function announceFiled(
   root: string,
   command: string,
   filed: FiledEntry,
   role: string,
   wakeText: (title: string) => string,
   json: boolean,
-): void {
+): Promise<void> {
+  await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${command}: ${filed.title}`));
   const wake = submitRolePromptAndWake(root, role, wakeText(filed.title));
   sayFiled(command, filed, json);
   if (!json) say(wake);

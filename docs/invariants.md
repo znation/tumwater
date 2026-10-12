@@ -160,6 +160,20 @@ as empty, not unreadable" and "a readable archive does not mask an unreadable li
 `test/doctor-checks.test.ts` — "checkEventLog passes an absent log, fails an unreadable one, and
 passes a readable one".
 
+### INV-B5: an operator-filed entry is committed on main under the primary-worktree lock
+
+**Guarantee.** `tumwater bug`/`tumwater plan`, the dashboard's New form, and the TUI's Ctrl+N
+commit the one backlog file they wrote as `tumwater(operator): File <kind>: <title>` while
+holding the primary-worktree lock `ffMainTo` takes, so the entry reaches main and the primary
+checkout stays clean for the next fast-forward. Only that file is committed (other staged paths
+stay staged). When the primary is not on the base branch, or git fails, the commit is skipped
+(`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
+
+**Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-write.ts`
+(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`.
+
+**Pinned by.** `test/backlog-commit.test.ts`.
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must
