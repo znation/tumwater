@@ -354,6 +354,20 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
   }
 });
 
+test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {
+  const root = makeRepo();
+  writeEvents(root, [{ ts: Date.now(), loop: "feature", type: "tick_end" }]);
+  const log = path.join(root, ".tumwater", "log", "events.jsonl");
+  fs.chmodSync(log, 0o000);
+  try {
+    const out = checkEventLog(root);
+    assert.equal(out.level, "fail");
+    assert.match(out.detail, /^unreadable: .*events\.jsonl/);
+  } finally {
+    fs.chmodSync(log, 0o644);
+  }
+});
+
 test("checkEventLog passes an absent log, fails an unreadable one, and passes a readable one", () => {
   const absent = makeRepo();
   assert.deepEqual(checkEventLog(absent), { level: "ok", detail: "no events yet" });
