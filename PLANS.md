@@ -6,6 +6,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The notify hook pages when the fleet goes down: the supervisor runs `notify` on `supervisor_exit` (planned 2026-10-12 by plan; independent of the TUI Health tab plan. It edits the same `NOTIFY_EVENT_TYPES` list and module-doc count sentence as the landed sibling "The notify hook pages on the claude subscription window" plan (now in Done), so it builds on that list of eleven. Today the most page-worthy moment is silent: the hook never runs when the fleet dies. `newNotifier` (`src/events/notify.ts`) subscribes through `subscribeEvents`, which only sees events logged in the orchestrator generation's own process. When a generation exits unasked or the crash-loop guard trips, that process is already gone. The `supervisor_exit` event is written by the *supervisor* process: `superviseRunCommand` in `src/cli/cli-run.ts` calls `logEvent(root, fleetDownEvent(...))` from its `onFleetDown` hook. So nothing pages, and every other notify page stops too, because the process that sends them is down.)
+
+**Goal.** An operator with `notify` configured is paged once when the supervised fleet goes down without being asked to stop. Operator-requested stops (Ctrl+C, SIGTERM, `run --for` deadline) already log no `supervisor_exit`, so they page nothing.
+
+**Approach.**
+1. `src/events/notify.ts`:
+   - Extract `newNotifier`'s spawn block (the `try { spawn(command, [], { shell: true, env: notifyCommandEnv(...stripTerminalControls(formatEvent(event))), stdio: "ignore", detached: true }) … child.on("error", …) } catch …` with its two `warnEventBestEffort` warnings) into an exported `spawnNotifyCommand(root: string, command: string, event: HarnessEvent): void`. `newNotifier` calls it after its allowlist and throttle checks, so its behavior does not change.
+   - Add an exported `notifyFleetDown(root: string, event: HarnessEvent): void`. It reads the command with `loadConfigSafe(root)` from `src/config/config.ts`. A missing or invalid tumwater.json, or an absent or empty `notify`, returns silently: the 2026-09-22 fleet-down case was tumwater.json vanishing, so this path must never throw. Otherwise it calls `spawnNotifyCommand`. There is no throttle, because the supervisor exits right after this one event. Because the spawn is detached and unref'd, the hook outlives the exiting supervisor.
+   - Append `"supervisor_exit"` to `NOTIFY_EVENT_TYPES` with a comment in the list's voice, such as `// the supervisor gave up — the fleet is down; paged from the supervisor process by notifyFleetDown, since no orchestrator is left to hear it`. That keeps the allowlist the single list of paging types, which `config-schema.ts` and `notify --test` users read.
+   - Rewrite the module doc's "All eleven allowlisted types are logged by the orchestrator's own process (…)" sentence: every type but `supervisor_exit` is logged by the orchestrator's own process, and `supervisor_exit` is paged directly by `notifyFleetDown` from `src/cli/cli-run.ts`. Use the count that is true at landing time (`grep -c` the list).
+2. `src/cli/cli-run.ts`, `superviseRunCommand`'s `onFleetDown`: keep the `HarnessEvent` that `logEvent` returns and pass it to `notifyFleetDown(root, event)`. Import it statically beside `logEvent`. The implementer confirms that `src/config/config.ts` does not import `src/events/notify.ts`, so the new import makes no cycle.
+3. Docs, same commit:
+   - The `notify?: string` doc comment in `src/config/config-schema.ts` gains `supervisor_exit` in its type list, plus a note that the supervisor runs this one.
+   - README.md's `notify` sentence (outside the tumwater:prompt markers: "… a failed landing, a blocked restart, a posted question …") gains "the fleet going down".
+   - Add a `docs/invariants.md` entry next to INV-E1 with the next free `INV-E` number: "a fleet that goes down unasked runs the configured notify hook once", binding `notifyFleetDown` and `superviseRunCommand`'s `onFleetDown`, and pinned by the end-to-end test below.
+
+**Files touched.** `src/events/notify.ts`, `src/cli/cli-run.ts`, `src/config/config-schema.ts`, `test/notify.test.ts`, `test/cli-run-shutdown.test.ts`, `README.md`, `docs/invariants.md`.
+
+**Acceptance criteria.**
+- `test/notify.test.ts` "NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap": the pinned literal list gains `"supervisor_exit"` at its new position. This test breaks on purpose and is updated.
+- New `test/notify.test.ts` tests for `notifyFleetDown`:
+  - With `writeConfig(root, { ...defaultConfig(), notify: recorderCommand(out) })`, a `supervisor_exit` event (`{ loop: "harness", type: "supervisor_exit", generation: 2, code: 1, ts }`) records one line with type `supervisor_exit`, loop `harness`, and message `formatEvent(event)`. Wait for it with `waitFor`.
+  - With no tumwater.json, with a tumwater.json holding invalid JSON, and with `notify` absent, the call returns without throwing and records nothing.
+- `test/cli-run-shutdown.test.ts` "a generation that dies unasked leaves a supervisor_exit event: the fleet is never down without a trace" gains a sibling test, or an extension, that sets `cfg.notify` to a recorder command writing to a file in the repo's temp dir. After `cli(repo, "run")` exits with code 1, it asserts exactly one recorded `supervisor_exit|harness|…` line (polled with a bounded `waitFor`, because the hook is detached).
+- The existing tests in `test/cli-run-sigint.test.ts` and `test/cli-run-window.test.ts` that assert no `supervisor_exit` on operator stops still pass unchanged.
+- `grep -n "eleven" src/events/notify.ts` finds no stale count.
+- The project's check (`npm run test`) passes.
+
 ## Done
 
 ### The TUI runs `tumwater doctor`'s checks: a Health tab at the end of the Ctrl+T cycle (planned 2026-10-12 by plan; terminal sibling of the CLI `tumwater doctor` (`runDoctor` in `src/doctor/doctor.ts`, rendered by `renderDoctor` in `src/doctor/doctor-render.ts`) and the landed dashboard Health check card (`GET /api/doctor` in `src/gui/gui-endpoints.ts`, painted by `src/ui/gui/gui-client-settings.ts`). Today grep finds no `doctor` in `src/ui/tui`. So an operator watching a stuck fleet in the TUI must quit it or open a second terminal to learn that the fleet is paused, in quiet hours, over budget, maintenance-held, or short on disk. Stands alone: no `src/doctor`, `src/gui`, `src/ui/gui`, or CLI change) — done 2026-10-12
