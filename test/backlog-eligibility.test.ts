@@ -15,7 +15,7 @@ import {
   type EntryHold,
   type PartRef,
 } from "../src/backlog/backlog-eligibility.js";
-import type { BacklogEntry } from "../src/backlog/backlog-md.js";
+import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-eligibility.ts (plans, parallel-work-instances,
@@ -252,4 +252,25 @@ test("refusalNote returns the note line without its bold markers, and null for a
   );
   assert.equal(refusalNote("prose quoting **Refused 2026-10-12 by x: y** inline"), null);
   assert.equal(refusalNote(""), null);
+});
+
+const WRAPPED = "Op writes, part 2/2: x (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's module:";
+
+test("requiredParts reads a parenthetical left open by a wrapped heading", () => {
+  assert.deepEqual(requiredParts(WRAPPED), [{ series: "Op writes", part: "1", of: 2 }]);
+  assert.deepEqual(requiredParts("Foo, part 1/2: x"), []);
+});
+
+test("entryHold blocks a wrapped heading while its prerequisite is planned", () => {
+  const planned: BacklogEntry[] = [{ title: "Op writes, part 1/2: y (planned 2026-10-12)", body: "" }];
+  assert.deepEqual(entryHold(entry(WRAPPED), planned), { blockedBy: ["Op writes 1/2"] });
+  assert.equal(entryHold(entry(WRAPPED), []), null);
+});
+
+test("openParenthetical returns the outermost group still open", () => {
+  assert.equal(openParenthetical("a (b) c"), "");
+  assert.equal(openParenthetical("a (b (c))"), "");
+  assert.equal(openParenthetical("no parens"), "");
+  assert.equal(openParenthetical("a (b (c) d"), "b (c) d");
+  assert.equal(openParenthetical("a) b (c"), "c");
 });

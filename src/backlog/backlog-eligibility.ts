@@ -1,7 +1,7 @@
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work loop may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
  * **Needs review …** or **Needs replan …** note, or when its heading's trailing parenthetical
- * names a prerequisite (`requires parts 1/5–3/5 landed`) that is itself still listed under
+ * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts 1/5–3/5 landed`) that is itself still listed under
  * `## Planned`. The parsers are pure over markdown text; `eligibleEntries` is the stat-backed
  * reader for a caller that wants the list. The backlog index marks every held entry so a loop
  * skips it without re-deriving the rule. */
@@ -9,7 +9,7 @@
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
-import { trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
+import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
 import { actionableEntryRangesFor, stripEntryStamp } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
 
@@ -115,12 +115,14 @@ export function plannedPartKeys(planned: readonly BacklogEntry[]): Set<string> {
   return keys;
 }
 
-/** The prerequisite parts a plan heading's trailing parenthetical names through the clause
+/** The prerequisite parts a plan heading's trailing parenthetical (or, when the heading wraps
+ * and the parenthetical stays open past the line, its open parenthetical) names through the clause
  * `requires <ref>((, | and )<ref>)* landed`, with each range (e.g. `parts 1/5–3/5`) expanded.
  * Returns [] when the heading has no such clause or the clause does not parse — an agent judges
  * an unparseable clause, exactly as it does today. Only the heading is read, never the body. */
 export function requiredParts(title: string): PartRef[] {
-  const meta = trailingParenthetical(title);
+  let meta = trailingParenthetical(title);
+  if (meta === "") meta = openParenthetical(title);
   if (meta === "") return [];
   const m = /requires\s+(.+?)\s+landed\b/i.exec(meta);
   if (m === null) return [];
@@ -134,8 +136,8 @@ export function requiredParts(title: string): PartRef[] {
  * `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
  * (needs-replan — the plan loop owns it), or a prerequisite `(series, part)` still among
  * `planned` ({ blockedBy }). Series compare case-insensitively; part tokens compare verbatim.
- * Bodies mentioning "requires" are never consulted — only the heading's trailing
- * parenthetical. */
+ * Bodies mentioning "requires" are never consulted — only the heading's trailing or
+ * still-open parenthetical. */
 export function entryHold(entry: BacklogEntry, planned: readonly BacklogEntry[]): EntryHold {
   return entryHoldAgainst(entry, plannedPartKeys(planned));
 }

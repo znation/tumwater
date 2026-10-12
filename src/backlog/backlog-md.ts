@@ -280,7 +280,8 @@ export function headingMetadata(lines: string[], start: number): { text: string;
  * and silently dropped the epitaph's date from the day report (BUGS.md 2026-09-29). Unbalanced
  * text (no matching open paren) yields "" — the guard then treats the bullet as body text, as
  * before. The one home for this rule: entryDates reads it for `- ` epitaphs and
- * backlog-eligibility.ts's requiredParts for a heading's prerequisite clause. */
+ * backlog-eligibility.ts's requiredParts for a heading's prerequisite clause (falling back to
+ * openParenthetical when the heading's parenthetical wraps past the line). */
 export function trailingParenthetical(line: string): string {
   if (!line.endsWith(")")) return "";
   let depth = 0;
@@ -290,6 +291,21 @@ export function trailingParenthetical(line: string): string {
     else if (ch === "(" && --depth === 0) return line.slice(i + 1, -1);
   }
   return "";
+}
+
+/** The text after the outermost "(" still open at the end of `line`, or "" when every group
+ * closes: a wrapped `### ` heading's stamp parenthetical continues on the following lines, so
+ * the heading line has no closing ")". A ")" at depth 0 is ignored. */
+export function openParenthetical(line: string): string {
+  let depth = 0;
+  let open = -1;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "(") {
+      if (depth++ === 0) open = i;
+    } else if (ch === ")" && depth > 0) depth--;
+  }
+  return depth > 0 ? line.slice(open + 1) : "";
 }
 
 /** A text's LAST `<dateRe>` capture — the completion rule both branches of entryDates share:
