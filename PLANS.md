@@ -31,6 +31,38 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater tick <role> [<n>] --stat` appends the tick's commit's per-file `git show --stat` summary to its event trail (planned 2026-10-12 by plan; sibling of the landed `tumwater diff --role <id> --stat`; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
+
+**Goal.** `tumwater tick <role> <n>` prints a tick's event trail and names its pinned commit (`· commit <short sha>` in the header), but it can't say what that commit changed. Today an operator reviewing a past tick copies the sha into `git show --stat` by hand. `tumwater diff --role <id> --stat` answers the same question for a loop's *pending* work, but nothing answers it for a *finished* tick. After this change, `--stat` appends the commit's per-file summary below the trail.
+
+**Approach.**
+- **One commit rule.** In `src/tick/tick-detail.ts`, export `tickCommitSha(d: TickDetail): string | null`. It returns the `commit` of the first event in `d.events` whose type is `land_queued` or `landed` and whose `commit` is a non-empty string, else null. It is the predicate `renderTickDetail` uses inline today. `renderTickDetail` calls it, so the header's sha and the stat's sha can't differ. The header text does not change.
+- **Stat text.** Add `async function tickCommitStat(root: string, sha: string | null): Promise<string>` to the same file:
+  - With `sha === null`, it returns `(no commit: this tick queued no landing)`.
+  - Otherwise it runs `gitTry(root, "show", "--stat", "--format=", sha)` (from `src/git/git-run.ts`) and returns the output with `trimEnd()` applied. Checked against this repo: with `--format=`, the output starts directly at the first ` path | N +-` line, with no header or leading blank line.
+  - On `null` (git exit 128: the object is gone or the sha is foreign), it returns `(commit <shortSha(sha)> is not in this repository)`.
+  - The sha is the authored commit the tick pinned. A landing that rebased gives main a different sha with the same changes, so the stat describes what the tick changed. Say so in the doc comment.
+- **Flag.** Add `--stat` to the `cmdTick` signature as a fifth parameter, `stat = false`. In `src/cli.ts`'s `tick` case, add `STAT_FLAG` (already exported from `src/cli/cli-flag-specs.ts`) to `rejectUnknownArgs("tick", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG])`, and pass `rest.includes("--stat")`.
+- **cmdTick behavior with `stat`.**
+  - **Text form.** Print `renderTickDetail(detail)`, a blank line, then the stat text.
+  - **JSON form.** Print `{ ...detail, stat: <the same string> }`. Without `--stat`, the payload is unchanged (no `stat` key).
+  - **Not found.** Unchanged: the line, or `null` under `--json`, with no git call.
+- **Usage.** `TICK_USAGE` becomes `tumwater tick <role> [<n>] [--last] [--stat] [--json]`. Update the same usage in `src/cli/help.ts`, and add to its description: "--stat appends the pinned commit's per-file `git show --stat` summary". Update the `cmdTick` doc comment's usage line too.
+- **Other surfaces.** The GUI's `/api/tick` and the TUI History drill-down call `readTickDetail`/`renderTickDetail` and do not change.
+
+**Files.** `src/tick/tick-detail.ts`, `src/cli.ts`, `src/cli/help.ts`, README.md (the "Watch per-tick history" row's `tumwater tick` clause gains "`--stat` appends the tick's commit's per-file `git show --stat` summary"), test/tick-detail.test.ts.
+
+**Acceptance criteria.**
+- New test in test/tick-detail.test.ts:
+  - **Setup.** After `initProject` on a `makeRepo()` repo, read `HEAD`'s sha with `git rev-parse HEAD` (via `execFileSync`). Write a `land_queued` event carrying that sha into tick 3's block with `writeEvents`.
+  - **Text form.** `cmdTick(repo, ["bugfix", "3"], false, false, true)` prints the unchanged header (including `· commit <short sha>`), and its stdout contains a ` | ` stat line naming a file that commit added (check which files `initProject` commits, and assert one of them).
+  - **JSON form.** The same call with `json = true` parses, and its `stat` key holds the same stat line.
+- A block with no `land_queued`/`landed` commit prints `(no commit: this tick queued no landing)` under `--stat`.
+- A `land_queued` carrying `"0".repeat(40)` prints `(commit 0000000 is not in this repository)` (match whatever `shortSha` yields), and the command exits 0.
+- The binary smoke test path: `cli(repo, "tick", "bugfix", "3", "--stat")` exits 0.
+- `tick bugfix 3` without `--stat` prints byte-for-byte what it printed before, and its `--json` payload has no `stat` key.
+- The existing usage-regex assertion in test/tick-detail.test.ts ("cmdTick fails with the usage on a missing, unknown, or extra positional and a bad n") is updated to the new `TICK_USAGE`. Every other existing test in test/tick-detail.test.ts, test/help.test.ts, and test/cli-arg-strictness.test.ts passes.
+
 ## Done
 
 ### `tumwater diff --role <id> --stat` prints per-file change summaries in place of the patches (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
