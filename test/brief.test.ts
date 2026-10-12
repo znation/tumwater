@@ -11,6 +11,7 @@ import {
   briefFile,
   briefTemplate,
   readmeTemplate,
+  replaceInitialPrompt,
   readInitialPrompt,
 } from "../src/brief.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -187,4 +188,14 @@ test("readInitialPrompt truncates a hand-edited over-long prompt", () => {
   assert.ok(got.length < long.length, "shorter than the raw prompt");
   assert.ok(got.startsWith("x".repeat(INITIAL_PROMPT_MAX_CHARS)), "keeps the first cap chars");
   assert.match(got, /truncated at 4096 chars/);
+});
+
+test("replaceInitialPrompt keeps every byte outside the markers and matches readInitialPrompt's block", () => {
+  const text = `intro ${PROMPT_END} prose\n${PROMPT_START}\nold\n${PROMPT_END}\ntail\n`;
+  assert.equal(
+    replaceInitialPrompt(text, "  new  "),
+    `intro ${PROMPT_END} prose\n${PROMPT_START}\nnew\n${PROMPT_END}\ntail\n`,
+  );
+  assert.equal(replaceInitialPrompt("no markers", "x"), null);
+  assert.equal(replaceInitialPrompt(`${PROMPT_END}\n${PROMPT_START}`, "x"), null);
 });

@@ -281,6 +281,9 @@ async function main(): Promise<void> {
     case "questions":
       await (await import("./cli/cli-query-commands.js")).cmdQuestions(root, args);
       break;
+    case "brief":
+      await (await import("./cli/brief-command.js")).cmdBrief(root, args);
+      break;
     case "role":
       await (await import("./cli/cli-query-commands.js")).cmdRole(root, args);
       break;

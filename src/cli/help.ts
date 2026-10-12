@@ -195,6 +195,12 @@ Usage:
                                    Read the decision from the file (- for stdin) with its
                                    lines kept; a ## or ### heading line outside a code fence,
                                    or an unclosed fence, is refused
+  tumwater brief [--json]          Show the project's initial prompt and the file that holds it
+  tumwater brief --file <path> [--json]
+                                   Replace the initial prompt with the file's text (- for
+                                   stdin), refused when empty, over the length cap, or
+                                   containing a tumwater:prompt marker; commits that one
+                                   file on main; no wake
   tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
                                    find text, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is

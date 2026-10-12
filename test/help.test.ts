@@ -22,6 +22,7 @@ const ALL_COMMANDS = [
   "bug",
   "plan",
   "questions",
+  "brief",
   "role",
   "prompt",
   "reset-counters",

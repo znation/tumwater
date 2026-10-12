@@ -113,6 +113,25 @@ export function readInitialPrompt(root: string): string {
   return readBrief(root)?.prompt ?? "";
 }
 
+/** The full path of the file that owns the prompt block (the same candidate readBrief
+ * resolves), or null when none does — so a writer edits the file every reader reads. */
+export function briefPath(root: string): string | null {
+  const found = firstBriefText(root, ownsBrief);
+  return found ? path.join(root, found.file) : null;
+}
+
+/** `text` with the prompt block's content replaced by `prompt` (trimmed), every byte outside
+ * the two markers kept; null when the text has no well-formed block. Finds the block by
+ * extractPrompt's rule (first start marker, then the first end marker after it). */
+export function replaceInitialPrompt(text: string, prompt: string): string | null {
+  const start = text.indexOf(PROMPT_START);
+  if (start < 0) return null;
+  const bodyStart = start + PROMPT_START.length;
+  const end = text.indexOf(PROMPT_END, bodyStart);
+  if (end < 0) return null;
+  return `${text.slice(0, bodyStart)}\n${prompt.trim()}\n${text.slice(end)}`;
+}
+
 function extractPrompt(text: string): string | null {
   const start = text.indexOf(PROMPT_START);
   if (start < 0) return null;
