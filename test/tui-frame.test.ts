@@ -180,6 +180,12 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
 });
 
+test("pause-edit mode shows its own hint keys and prompt prefix", () => {
+  const base = { budget: false, rolePromptFor: null, deferMode: false, pauseEditMode: true, defer: null, queuedEditFor: null, answerFor: null };
+  assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
+  assert.equal(plain(promptPrefix(base)), "pause › ");
+});
+
 test("the prompt line names who Enter sends to", () => {
   const edit = { kind: "plan", position: 2, title: "t" } as const;
   const base = { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null };

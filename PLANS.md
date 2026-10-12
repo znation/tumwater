@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Pause the fleet for a duration and with a reason from the TUI's Ctrl+F, matching `tumwater pause --for <duration> --reason <text>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater pause --for/--reason` (`cmdPause` in `src/operator/operator-commands.ts`) and the landed dashboard pause menu with reason (`handlePause` over `POST /api/pause`, which reads `forSeconds` and `reason` and calls `pauseFleet(root, untilMs, reason)`). Independent of the waiting dashboard notebook plan: this plan touches only `src/ui/tui/`, its tests, and docs, with no `src/gui` or `src/ui/gui` file. A TUI per-loop timed pause (Ctrl+P) is a separate, later sibling)
+_None yet._
+
+
+## Done
+
+### Pause the fleet for a duration and with a reason from the TUI's Ctrl+F, matching `tumwater pause --for <duration> --reason <text>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater pause --for/--reason` (`cmdPause` in `src/operator/operator-commands.ts`) and the landed dashboard pause menu with reason (`handlePause` over `POST /api/pause`, which reads `forSeconds` and `reason` and calls `pauseFleet(root, untilMs, reason)`). Independent of the waiting dashboard notebook plan: this plan touches only `src/ui/tui/`, its tests, and docs, with no `src/gui` or `src/ui/gui` file. A TUI per-loop timed pause (Ctrl+P) is a separate, later sibling; done 2026-10-12)
 
 **Goal.** In the TUI, Ctrl+F pauses the fleet with no deadline and no note (`pauseFleet(root)` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). An operator who pauses from the terminal cannot schedule an auto-resume, and cannot leave the "why" that `status`, the dashboard, and the TUI's own fleet alert already show. Make Ctrl+F on an unpaused fleet open a one-line pause editor on the prompt line. Ctrl+F on a paused fleet keeps resuming at once, as it does today.
 
@@ -59,9 +64,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The test "Ctrl+F is inert while the budget editor or the role-prompt editor holds the prompt line" still passes. Ctrl+B and Ctrl+L in pause-edit mode flash the "finish or cancel the pause first" message.
 - `test/tui-frame.test.ts` asserts the pause-edit `hintLine` keys and the `pause` prompt prefix.
 - `npm run test` passes.
-
-
-## Done
 
 ### Edit or clear a loop's notebook from the dashboard's loop drawer, matching `tumwater role <id> --notes-file` / `--clear-notes` (planned 2026-10-12 by plan; sibling of the landed CLI notebook write (`cmdRole`'s `--clear-notes`/`--notes-file` branch in `src/cli/cli-query-commands.ts` over `saveRoleNote` in `src/agent/role-notes-write.ts`) and the landed read-only drawer notebook (`drawerRoleSection`/`loadDrawerRole` in `src/ui/gui/gui-client-drawer.ts` over `GET /api/role`). The TUI Ctrl+N pane stays read-only and is a separate, later sibling) — done 2026-10-12
 

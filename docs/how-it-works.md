@@ -348,7 +348,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   same `readQueuedPromptBody`/`editQueuedFile` pair the dashboard's Queued tab Edit uses
   (`tumwater prompt --edit` at the CLI), carrying the entry's position, enqueue stamp,
   deferral marker, and attached images over the rewrite; Esc returns to the list.
-  `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
+  `Ctrl+F` on an unpaused fleet opens a one-line pause editor (`[duration] [reason]`, e.g.
+  `2h deploy freeze`; empty pauses until resumed; Enter pauses, Esc cancels) and on a paused
+  fleet resumes at once, through the same marker `tumwater pause --for/--reason`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a
   second terminal. On the Usage and Failures panes, `Ctrl+G` cycles the base-role report scope

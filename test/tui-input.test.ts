@@ -5,6 +5,7 @@ import {
   inputViewWindow,
   parseBudgetInput,
   parseDeferInput,
+  parsePauseInput,
   parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
@@ -342,4 +343,12 @@ test("tuiTerminalError names the missing stream and points at the non-interactiv
     tuiTerminalError(true, false),
     "tumwater tui needs an interactive terminal: stdout (the dashboard) is not a TTY — use `tumwater status` or `tumwater gui` for a non-interactive view",
   );
+});
+
+test("parsePauseInput splits an optional leading duration from the reason and enforces the 90d cap", () => {
+  assert.deepEqual(parsePauseInput(""), { ok: true });
+  assert.deepEqual(parsePauseInput("2h"), { ok: true, forMs: 7_200_000 });
+  assert.deepEqual(parsePauseInput("2h deploy freeze"), { ok: true, forMs: 7_200_000, reason: "deploy freeze" });
+  assert.deepEqual(parsePauseInput("deploy freeze"), { ok: true, reason: "deploy freeze" });
+  assert.deepEqual(parsePauseInput("91d"), { ok: false, error: "pause is capped at 90d" });
 });

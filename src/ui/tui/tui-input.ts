@@ -180,6 +180,24 @@ export function parseDeferInput(
   return { ok: true, ms };
 }
 
+/** Parse the TUI's Ctrl+F pause line: "[duration] [reason]". Empty is a standing pause with no
+ * reason; a leading parseDurationMs word is the duration (`forMs`, not an epoch, so this stays
+ * pure) and the rest the reason; otherwise the whole text is the reason. Durations over the
+ * 90d cap `pause --for` and /api/pause enforce are refused. The reason is left raw —
+ * pauseFleet folds and caps it. */
+export function parsePauseInput(
+  text: string,
+): { ok: true; forMs?: number; reason?: string } | { ok: false; error: string } {
+  const t = text.trim();
+  if (t === "") return { ok: true };
+  const m = /^(\S+)(?:\s+([\s\S]*))?$/.exec(t)!;
+  const ms = parseDurationMs(m[1]!);
+  if (ms === null) return { ok: true, reason: t };
+  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "pause is capped at 90d" };
+  const reason = (m[2] ?? "").trim();
+  return reason ? { ok: true, forMs: ms, reason } : { ok: true, forMs: ms };
+}
+
 /** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
  * error so the flash can show it and the editor stays open for a fix — whitespace-only input
  * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc
