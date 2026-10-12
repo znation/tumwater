@@ -54,6 +54,7 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
     tui.key(undefined, "t", { ctrl: true }); // → pending
     tui.key(undefined, "t", { ctrl: true }); // → queued
     tui.key(undefined, "t", { ctrl: true }); // → health
+    tui.key(undefined, "t", { ctrl: true }); // → brief
     tui.key(undefined, "t", { ctrl: true }); // → activity
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     assert.match(tui.lastFrame(), /Transcript: clean \(1\/1\)/);

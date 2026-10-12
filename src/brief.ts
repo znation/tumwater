@@ -155,3 +155,9 @@ export function readBrief(root: string): { file: string; prompt: string } | null
   const found = firstBriefText(root, ownsBrief);
   return found ? { file: found.file, prompt: extractPrompt(found.text) ?? "" } : null;
 }
+
+/** The brief's plain-text form: its file name, then the initial prompt — what `tumwater brief`
+ * prints and the TUI's Brief tab shows, so the two cannot drift. */
+export function renderBrief(brief: { file: string; prompt: string }): string {
+  return `${brief.file}\n${brief.prompt}`;
+}

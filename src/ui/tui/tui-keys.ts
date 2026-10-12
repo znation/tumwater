@@ -17,6 +17,7 @@ import { readTickDetail } from "../../tick/tick-detail-data.js";
 import { renderTickDetail } from "../../tick/tick-detail.js";
 import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
+import { readBrief, renderBrief } from "../../brief.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { renderDoctor } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
@@ -1381,7 +1382,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       changeCache = null;
       trailMode = false; // the tick trail is History-only; a cycle away drops its snapshot too
       trailCache = null;
-      view = (view + 1) % (roleIds.length + 8); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → health → events
+      view = (view + 1) % (roleIds.length + 9); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → health → brief → events
       selectedEntry = null; // leaving a view drops any entry selection…
       selectedQueued = null; // …and any queued-row selection, so re-entering starts at the list
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -1439,6 +1440,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
               deps.requestRender();
             },
           );
+        } else if (view === roleIds.length + 8) {
+          // Brief is a synchronous fresh read of the file `tumwater brief` prints.
+          const brief = readBrief(root);
+          paneCache = brief ? renderBrief(brief) : null;
         } else {
           paneCache = null;
         }
@@ -1921,7 +1926,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // (1..previousCount) keeps its index — it does not depend on the roster size — and the
       // clamp below handles one the shrunken roster no longer has.
       if (roleIds.length !== previousCount && view > previousCount) view += roleIds.length - previousCount;
-      view = Math.min(view, roleIds.length + 7); // clamp a stale index if roles changed
+      view = Math.min(view, roleIds.length + 8); // clamp a stale index if roles changed
       // A retired or renamed loop must not leave the report panes silently scoped to an
       // absent role — drop the scope with the stale view index. The tab strip and hint then
       // read "fleet", so a report pane still on screen must recompute its cached Markdown

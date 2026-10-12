@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### TUI: a read-only Brief tab shows the initial prompt, matching `tumwater brief` and the dashboard's Settings card (planned 2026-10-12 by plan; sibling of the landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) and the landed dashboard Settings "Initial prompt" card (`GET /api/brief`). The project prompt says the GUI and TUI both give the user a main prompt and that the user only writes the initial prompt, yet the TUI cannot show it: `grep -rn brief src/ui/tui/` finds nothing. It is read-only because the TUI's prompt line holds one line and a brief can be up to `INITIAL_PROMPT_MAX_CHARS` of multiline text. Replacing it stays a job for the CLI (`--file`) and the dashboard, the same split the TUI notebook view uses. Independent of the refused part 2/2 above: no `src/gui`, `src/ui/gui`, or `src/backlog` file changes)
+## Done
+
+### TUI: a read-only Brief tab shows the initial prompt, matching `tumwater brief` and the dashboard's Settings card (planned 2026-10-12 by plan; sibling of the landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) and the landed dashboard Settings "Initial prompt" card (`GET /api/brief`). The project prompt says the GUI and TUI both give the user a main prompt and that the user only writes the initial prompt, yet the TUI cannot show it: `grep -rn brief src/ui/tui/` finds nothing. It is read-only because the TUI's prompt line holds one line and a brief can be up to `INITIAL_PROMPT_MAX_CHARS` of multiline text. Replacing it stays a job for the CLI (`--file`) and the dashboard, the same split the TUI notebook view uses. Independent of the refused part 2/2 above: no `src/gui`, `src/ui/gui`, or `src/backlog` file changes) — done 2026-10-12
 
 **Goal.** `Ctrl+T` gains a tenth stop, **Brief**, after Health. It shows the brief file's name and then the current initial prompt, the same text `tumwater brief` prints, and `PgUp`/`PgDn` scroll it.
 
@@ -52,8 +54,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - With the brief's prompt block removed, entering Brief leaves `paneCache === null`, and `paneBody({ kind: "brief" }, …)` returns no body lines and the init emptyNote.
 - In test/tui.test.ts, the cycle from Health shows `[Brief]` with the brief file's name in the frame before wrapping to `[Activity]`. Its existing `→ health` then `→ events`/wrap steps take one more Ctrl+T.
 - `tumwater brief` without flags prints the same text as before (the existing brief-command tests pass unchanged).
-
-## Done
 
 ### Dashboard: view and replace the initial prompt from the Settings view (planned 2026-10-12 by plan; done 2026-10-12 by feature; independent of the refused part 2/2 above and touches none of its files except docs/invariants.md. The landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) is the only way to read or replace the initial prompt. The project prompt says the GUI gives the user a main prompt and that the user only writes the initial prompt, yet the dashboard has no route that names the brief: `grep -n brief src/gui/*.ts src/ui/gui/*.ts` finds nothing. `cmdBrief` also keeps its checks (empty, `INITIAL_PROMPT_MAX_CHARS`, marker), its locked write, and its commit inline, so a second caller would have to copy them)
 

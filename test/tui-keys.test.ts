@@ -23,7 +23,8 @@ import { abortRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
+import { readBrief, renderBrief } from "../src/brief.js";
 import { readJson } from "./helpers/json-read.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
@@ -341,8 +342,8 @@ test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   // Cycling away and back starts at the live tail again.
   keys.handleKey(undefined, { name: "pageup" });
   assert.equal(keys.state().activityScroll, 10);
-  for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "eight cycles with no roles wrap back to Activity");
+  for (let i = 0; i < 9; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "nine cycles with no roles wrap back to Activity");
   assert.equal(keys.state().activityScroll, null, "re-entering Activity follows the live tail");
 });
 
@@ -458,7 +459,7 @@ test("the Activity and History `/` searches are independent, and `/` elsewhere t
   assert.equal(keys.state().activityGrep, null, "the History search does not touch the Activity filter");
 
   // Back on Activity, `/` opens Activity's own pattern, not History's.
-  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → pending → queued → health → activity
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → pending → queued → health → brief → activity
   assert.equal(keys.state().view, 0);
   keys.handleKey("/", { name: "/" });
   assert.equal(keys.state().input, "", "the Activity search opens with no Activity pattern yet");
@@ -499,7 +500,9 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().view, 7, "Health follows Queued (roleIds.length + 7)");
   keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "cycling past Health wraps to Activity");
+  assert.equal(keys.state().view, 8, "Brief follows Health (roleIds.length + 8)");
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "cycling past Brief wraps to Activity");
   assert.equal(keys.state().paneCache, null, "leaving History, Pending, and Queued drops the cache");
 });
 
@@ -703,7 +706,8 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // history → pending
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // pending → queued
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // queued → health
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // health → activity
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // health → brief
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // brief → activity
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // activity → transcript feature
   assert.equal(keys.state().view, 1);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
@@ -1213,6 +1217,7 @@ test("a Pending collector resolution after the operator cycled away does not cac
   assert.equal(keys.state().view, 5);
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away to Activity before it resolves
   assert.equal(keys.state().view, 0);
   resolveLate(fleet);
@@ -1353,6 +1358,7 @@ test("the Queued pane caches the CLI's rendered queue list on entry and drops it
     "the pane caches the same director-first list the CLI prints",
   );
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
   assert.equal(keys.state().view, 0);
   assert.equal(keys.state().paneCache, null, "leaving Queued drops the cache");
@@ -1389,6 +1395,7 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   // Cycling away and back starts in list mode with no selection.
   keys.handleKey(undefined, { name: "down" });
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
   for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   assert.equal(keys.state().selectedQueued, null, "re-entering the pane drops the selection");
@@ -1488,7 +1495,7 @@ test("the Queued edit editor is inert to Ctrl+T and a gone file flashes on save"
   assert.equal(readQueuedPromptBody(root, "clean", base), "keep me", "Ctrl+T writes nothing");
 
   // Re-enter (Ctrl+T left for Health, so one more lap), remove the file from disk, and Enter flashes the gone notice.
-  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   keys.handleKey(undefined, { name: "down" });
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   fs.unlinkSync(path.join(root, ".tumwater", "inbox", "clean", base));
@@ -1546,6 +1553,7 @@ test("a roster-size change shifts the relative panes by the same delta, keeping 
   // Pending shifts with it: from 6 (1 role) to 7 (2 roles), not to History at 6.
   keys.syncSnapshot(0, false, ["clean", "feature"], false);
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → wrap to Activity
   for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending (2+5)
   assert.equal(keys.state().view, 7);
@@ -1929,10 +1937,12 @@ test("the Health tab caches renderDoctor of the seam's report, ignores a late re
   assert.ok(renders > before);
   // A resolution after cycling away leaves the pane untouched.
   keys.handleKey(undefined, { ctrl: true, name: "t" });
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().view, 0);
   for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
   keys.handleKey(undefined, { ctrl: true, name: "t" });
-  assert.equal(keys.state().view, 0, "a ninth press wraps");
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "a tenth press wraps");
   resolveDoctor(report);
   await Promise.resolve();
   await Promise.resolve();
@@ -1944,4 +1954,26 @@ test("the Health tab caches renderDoctor of the seam's report, ignores a late re
   await Promise.resolve();
   assert.equal(keys.state().paneCache, null);
   assert.match(keys.state().flash ?? "", /boom/);
+});
+
+test("the Brief tab caches renderBrief of the brief file on entry, and holds null with no prompt block", async () => {
+  const root = await initializedRepo();
+  const { keys } = makeKeys(root, () => 0);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 8);
+  assert.equal(keys.state().paneCache, renderBrief(readBrief(root)!));
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0);
+  assert.equal(keys.state().paneCache, null);
+
+  const bare = makeRoot();
+  fs.writeFileSync(path.join(bare, "README.md"), "no prompt block here\n");
+  const bareKeys = makeKeys(bare, () => 0).keys;
+  for (let i = 0; i < 9; i++) bareKeys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(bareKeys.state().view, 0);
+  for (let i = 0; i < 8; i++) bareKeys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(bareKeys.state().view, 8);
+  assert.equal(bareKeys.state().paneCache, null);
 });

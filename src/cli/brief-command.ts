@@ -1,4 +1,4 @@
-import { readBrief } from "../brief.js";
+import { readBrief, renderBrief } from "../brief.js";
 import { editInitialPrompt } from "../brief-edit.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
@@ -19,7 +19,7 @@ export async function cmdBrief(root: string, args: string[]): Promise<void> {
   if (brief === null) fail("no project brief with a prompt block found — run `tumwater init` first");
   if (fileIdx < 0) {
     if (json) sayJson({ file: brief.file, prompt: brief.prompt });
-    else say(`${brief.file}\n${brief.prompt}`);
+    else say(renderBrief(brief));
     return;
   }
   const outcome = await editInitialPrompt(root, readPromptFileArg(args[fileIdx + 1]!));

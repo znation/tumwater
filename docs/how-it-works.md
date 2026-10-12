@@ -312,7 +312,7 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   in a Health check card, with a Re-run button.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, Pending,
-  Queued, and Health (the same checks `tumwater doctor` prints, re-run on each entry). Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event
+  Queued, Health (the same checks `tumwater doctor` prints, re-run on each entry), and Brief (the initial prompt `tumwater brief` prints, read-only). Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event
   tail, the bottom of the page resuming the live tail; `Ctrl+G` scopes the feed to the fleet or
   one raw roster id (the same exact-loop slots History uses) and `/` on an empty prompt line
   opens a free-text search over the same loaded tail. Both filters match through the rules

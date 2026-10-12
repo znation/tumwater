@@ -125,3 +125,12 @@ test("the health pane holds the loading note while uncached and windows the cach
   const shown = paneBody({ kind: "health" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: report } });
   assert.equal(shown.body.map((l) => l.map((x) => x.text).join("")).join("\n"), report);
 });
+
+test("the brief pane windows the cached brief and falls back to the init note when null", () => {
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: "README.md\nbuild it", noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state };
+  assert.equal(paneBody({ kind: "brief" }, opts).body.length, 2);
+  const empty = paneBody({ kind: "brief" }, { ...opts, state: { ...state, paneCache: null } });
+  assert.deepEqual(empty.body, []);
+  assert.match(empty.emptyNote, /run `tumwater init` first/);
+});
