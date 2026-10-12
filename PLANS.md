@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names the daily budget: a "budget" check for today's spend against `maxDailyCostUsd` and the per-role caps already reached (planned 2026-10-12 by plan; the cost sibling of the landed "pause" and "quiet hours" checks (`checkPause`/`checkQuietHours` in `src/doctor/doctor-holds.ts`). Today grep finds no `budgetSpend`/`fleetDailyCost`/`roleCapVerdicts` in `src/doctor`. So once the fleet has spent its cap, doctor still prints "ready to run" over a fleet whose priced loops hold, or run on a fallback, until local midnight. A loop over its own `maxDailyCostUsdPerRole` entry is also invisible to doctor. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card renders `runDoctor`'s rows, so it shows the new row with no extra work)
+_None yet._
+
+
+## Done
+
+### `tumwater doctor` names the daily budget: a "budget" check for today's spend against `maxDailyCostUsd` and the per-role caps already reached (done 2026-10-12; planned 2026-10-12 by plan; the cost sibling of the landed "pause" and "quiet hours" checks (`checkPause`/`checkQuietHours` in `src/doctor/doctor-holds.ts`). Today grep finds no `budgetSpend`/`fleetDailyCost`/`roleCapVerdicts` in `src/doctor`. So once the fleet has spent its cap, doctor still prints "ready to run" over a fleet whose priced loops hold, or run on a fallback, until local midnight. A loop over its own `maxDailyCostUsdPerRole` entry is also invisible to doctor. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card renders `runDoctor`'s rows, so it shows the new row with no extra work)
 
 **Goal.** One read-only doctor row named `budget` that reports today's fleet spend against the cap, warns when the cap is reached, and names base roles over their own per-role cap. It uses the same definitions the scheduler and `status` use, so its verdict cannot disagree with the gate.
 
@@ -41,8 +46,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/doctor.test.ts`'s fresh-root name list (the only test pinning the row order, per grep for `"quiet hours"`) gains `"budget"` right after `"quiet hours"`.
 - `src/doctor` imports nothing from `src/ui`.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` names quiet hours: a "quiet hours" check for the fleet window and per-role windows that are holding now (done 2026-10-12; planned 2026-10-12 by plan; this is the scheduled sibling of the landed "pause" check (`checkPause` in `src/doctor/doctor-holds.ts`). Today grep finds no `quiet` in `src/doctor`, so at 23:30 under `quietHours: "23:00-07:00"` doctor prints "ready to run" over a fleet that starts no role tick until 07:00. An operator who runs `doctor` to learn why the loops are idle then has to run `status` as well. This plan stands alone: it adds no snapshot, GUI, or scheduler change, and the dashboard's Health check card shows the new row without extra work)
 

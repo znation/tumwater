@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
+import { todayStamp } from "../src/budget/budget.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("checkPause: no markers is ok", () => {
@@ -93,4 +95,69 @@ test("checkQuietHours: fleet window plus a held role warns and names the role", 
 
 test("checkQuietHours: a malformed window reads as none configured", () => {
   assert.deepEqual(checkQuietHours(qcfg({ quietHours: "nope" }), at(12)), { level: "ok", detail: "none configured" });
+});
+
+const BNOW = new Date(2026, 9, 12, 12, 0).getTime();
+function budgetRoot(spend: Record<string, number>, stamp = todayStamp(BNOW)): string {
+  const root = tmpdir("tw-budget-");
+  for (const [role, usd] of Object.entries(spend)) {
+    saveLoopState(root, { ...freshLoopState(role), dayCostUsd: usd, dayStamp: stamp });
+  }
+  return root;
+}
+const bcfg = (c: object): TumwaterConfig =>
+  qcfg({ roles: { feature: { enabled: true }, director: { enabled: true } }, ...c });
+
+test("checkBudget: unreadable config is not checked", () => {
+  const r = checkBudget(tmpdir("tw-budget-"), undefined, null, BNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /not checked/);
+});
+
+test("checkBudget: cap 0 reports no daily cap", () => {
+  const r = checkBudget(budgetRoot({ feature: 3 }), bcfg({ maxDailyCostUsd: 0 }), null, BNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /no daily cap/);
+});
+
+test("checkBudget: under 80% is ok", () => {
+  const r = checkBudget(budgetRoot({ feature: 2 }), bcfg({ maxDailyCostUsd: 10 }), null, BNOW);
+  assert.deepEqual(r, { level: "ok", detail: "$2.00 of $10.00 today" });
+});
+
+test("checkBudget: past 80% is ok and says so", () => {
+  const r = checkBudget(budgetRoot({ feature: 8 }), bcfg({ maxDailyCostUsd: 10 }), null, BNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /past 80%/);
+});
+
+test("checkBudget: a reached cap warns and points at the fallback row", () => {
+  const r = checkBudget(budgetRoot({ feature: 10 }), bcfg({ maxDailyCostUsd: 10 }), null, BNOW);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /daily cap reached/);
+  assert.match(r.detail, /fallback row/);
+});
+
+test("checkBudget: a published figure overrides the persisted sum both ways", () => {
+  const cfg = bcfg({ maxDailyCostUsd: 10 });
+  assert.equal(checkBudget(budgetRoot({ feature: 1 }), cfg, { spentUsd: 10, capUsd: 10 }, BNOW).level, "warn");
+  assert.equal(checkBudget(budgetRoot({ feature: 10 }), cfg, { spentUsd: 1, capUsd: 10 }, BNOW).level, "ok");
+});
+
+test("checkBudget: a state stamped yesterday counts $0", () => {
+  const root = budgetRoot({ feature: 10 }, todayStamp(BNOW - 86_400_000));
+  assert.deepEqual(checkBudget(root, bcfg({ maxDailyCostUsd: 10 }), null, BNOW), { level: "ok", detail: "$0.00 of $10.00 today" });
+});
+
+test("checkBudget: a per-role cap reached is named and stays ok", () => {
+  const cfg = bcfg({ maxDailyCostUsd: 100, maxDailyCostUsdPerRole: { feature: 1 } });
+  const r = checkBudget(budgetRoot({ feature: 1.5 }), cfg, null, BNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /capped loops: feature \(/);
+});
+
+test("checkBudget: director spend is never named under a per-role cap", () => {
+  const cfg = bcfg({ maxDailyCostUsd: 100, maxDailyCostUsdPerRole: { director: 1 } });
+  const r = checkBudget(budgetRoot({ director: 5 }), cfg, null, BNOW);
+  assert.doesNotMatch(r.detail, /capped loops/);
 });

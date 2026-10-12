@@ -1,13 +1,18 @@
 import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../fleet/fleet-state.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { budgetReached, budgetWarning, fleetDailyCost } from "../budget/budget.js";
+import { roleCapVerdicts } from "../gates/role-cap-gates.js";
+import { loadLoopState } from "../loop/loop-state.js";
+import { loopIds } from "../roles/loop-ids.js";
+import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
-import { pauseReasonSuffix } from "../text/phrases.js";
+import { budgetPhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
-/** The standing-hold checks: `pause` (checkPause) and `quiet hours` (checkQuietHours), both
- * read-only reports of deliberate holds on ticking.
+/** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
+ * (checkBudget), all read-only reports of holds on ticking.
  *
  * The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause
@@ -63,4 +68,39 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
   if (phrases.length === 0) return okOutcome("none configured");
   const detail = phrases.join("; ");
   return fleet.inWindow ? warnOutcome(detail) : okOutcome(detail);
+}
+
+/** The `budget` check: today's fleet spend against `maxDailyCostUsd`, plus base roles over their
+ * own `maxDailyCostUsdPerRole` cap. Read-only and built on the scheduler's own definitions
+ * (fleetDailyCost, budgetReached, roleCapVerdicts), so the verdict cannot disagree with the gate.
+ * `published` is the running scheduler's figure (it includes runs charged since the last save)
+ * and wins over the persisted sum, as in status. A reached fleet cap is a warn because role loops
+ * run on their tier fallback or hold until local midnight (the `fallback` row says which);
+ * per-role caps reached alone are ok because the operator chose them by name. */
+export function checkBudget(
+  root: string,
+  config: TumwaterConfig | undefined,
+  published: { spentUsd: number; capUsd: number } | null,
+  now: number = Date.now(),
+): CheckOutcome {
+  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  const states = loopIds(config).map((id) => loadLoopState(root, id));
+  const spent = published?.spentUsd ?? fleetDailyCost(states, now);
+  const caps = config.maxDailyCostUsdPerRole;
+  const capped = [...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), caps, now)]
+    .filter(([, v]) => v.over)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([base, v]) => `${base} (${budgetPhrase(v.spentUsd, caps?.[base])})`);
+  const cappedPhrase = capped.length > 0 ? `; capped loops: ${capped.join(", ")}` : "";
+  const cap = config.maxDailyCostUsd;
+  if (!(cap > 0)) return okOutcome(`no daily cap; ${usd(spent)} spent today${cappedPhrase}`);
+  const view = { spentUsd: spent, capUsd: cap };
+  const phrase = budgetPhrase(spent, cap);
+  if (budgetReached(view)) {
+    return warnOutcome(
+      `daily cap reached — ${phrase} today; role loops run on their tier fallback or hold until local midnight (see the fallback row)${cappedPhrase}`,
+    );
+  }
+  if (budgetWarning(view)) return okOutcome(`${phrase} today — past 80% of the cap${cappedPhrase}`);
+  return okOutcome(`${phrase} today${cappedPhrase}`);
 }
