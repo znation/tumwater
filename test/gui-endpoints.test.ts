@@ -7,7 +7,7 @@ import type http from "node:http";
 import { readEventsTailWithEnd } from "../src/events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
+import { handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -351,6 +351,34 @@ test("the live server routes GET /api/logs to the slice handler", async () => {
     assert.equal(data.events.length, 1);
     assert.equal(data.events[0]?.loop, "feature");
     assert.match(data.events[0]?.message ?? "", /routed/);
+  } finally {
+    server.close();
+  }
+});
+
+test("handleDoctor answers the run's DoctorReport and passes it the root", async () => {
+  const report = { header: "h", checks: [{ name: "Node", level: "ok" as const, detail: "d" }], verdict: "v" };
+  let seen = "";
+  const out = await captureJson((res) => handleDoctor(res, "/some/root", async (r) => ((seen = r), report)));
+  assert.equal(out.captured.status, 200);
+  assert.deepEqual(JSON.parse(out.captured.body as string), report);
+  assert.equal(seen, "/some/root");
+});
+
+test("the live server routes GET /api/doctor to the doctor report", async () => {
+  const { server, base } = await startLocalGui(tmpdir());
+  try {
+    const res = await fetch(base + "/api/doctor");
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as { header: unknown; verdict: unknown; checks: { name: unknown; level: string; detail: unknown }[] };
+    assert.equal(typeof d.header, "string");
+    assert.equal(typeof d.verdict, "string");
+    assert.ok(Array.isArray(d.checks));
+    for (const c of d.checks) {
+      assert.equal(typeof c.name, "string");
+      assert.ok(["ok", "warn", "fail"].includes(c.level));
+      assert.equal(typeof c.detail, "string");
+    }
   } finally {
     server.close();
   }

@@ -12,6 +12,8 @@
  */
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { runDoctor } from "../doctor/doctor.js";
+import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { loadConfigSafe } from "../config/config.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { collectReport, collectReportSince } from "../report/report-data.js";
@@ -306,6 +308,17 @@ export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, r
     return;
   }
   sendJson(res, 200, { ok: true, text });
+}
+/** Handle GET /api/doctor: the same DoctorReport `tumwater doctor --json` prints, so the
+ * Settings view's Health check card and the CLI cannot disagree. Read-only — the checks write
+ * nothing (runDoctor's own contract) — and it works whether or not the fleet is running. `run`
+ * exists so tests can skip the host probes; a throw reaches the server's outer 500. */
+export async function handleDoctor(
+  res: http.ServerResponse,
+  root: string,
+  run: (root: string) => Promise<DoctorReport> = runDoctor,
+): Promise<void> {
+  sendJson(res, 200, await run(root));
 }
 /** Handle GET /api/config: the Settings view's resolved values for exactly
  * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses

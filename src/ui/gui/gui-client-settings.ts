@@ -8,7 +8,8 @@
  * so the two retract/set halves cannot drift from the CLI. Both flash the same
  * success/error toast pattern the composer's send uses (showFlash). Spliced into
  * gui-client.ts's script, reaching its helpers (esc, $, getJson, postJson, showFlash) through
- * that concatenation. */
+ * that concatenation. A second card, "Health check", runs the same checks as `tumwater doctor`
+ * through GET /api/doctor on each open (and on its Re-run button) and paints the report. */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // The curated keys, in display order: [key, label]. Mirrors the server's
   // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts) by hand — the settings test pins
@@ -45,7 +46,31 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   function buildSettingsView() {
     buildOnce("settings-view", "<div class='view-head'><div><h1>Settings</h1>" +
       "<p>The fleet-wide settings an operator edits from here; everything else lives in tumwater.json or the CLI.</p></div></div>" +
-      "<div class='card' id='settingscard'><div class='empty'>Loading…</div></div>");
+      "<div class='card' id='settingscard'><div class='empty'>Loading…</div></div>" +
+      "<div class='card' id='doctorcard'><div class='settings-row'><strong>Health check</strong>" +
+      "<span>The same checks as <code>tumwater doctor</code>.</span>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button></div>" +
+      "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>");
+  }
+  // The Health check card's body: header, one row per check (level badge, name, detail), the
+  // verdict — everything esc'd. The pill is built inline (gui-client.ts's pill sits outside
+  // this region). A missing checks array renders no rows.
+  function renderDoctorReport(d) {
+    const tones = { ok: "green", warn: "amber", fail: "red" };
+    const rows = (Array.isArray(d.checks) ? d.checks : []).map((c) =>
+      "<div class='settings-row'><span class='pill t-" + (tones[c.level] || "amber") + "'>" + esc(c.level) + "</span>" +
+      "<strong>" + esc(c.name) + "</strong><span>" + esc(c.detail) + "</span></div>").join("");
+    return "<p>" + esc(d.header) + "</p>" + rows + "<p>" + esc(d.verdict) + "</p>";
+  }
+  async function fetchDoctor() {
+    buildSettingsView();
+    const body = $("doctorbody");
+    body.innerHTML = "<div class='empty'>Checking…</div>";
+    try {
+      body.innerHTML = renderDoctorReport(await getJson("/api/doctor"));
+    } catch (err) {
+      body.innerHTML = errorPanel("Health check could not run", err, "empty");
+    }
   }
   async function fetchSettings() {
     buildSettingsView();

@@ -29,6 +29,7 @@ import {
   handleTick,
   handleRole,
   handleTranscript,
+  handleDoctor,
 } from "./gui-endpoints.js";
 import {
   handleAbort,
@@ -208,6 +209,7 @@ export function startGui(
     "GET /api/diff": (_req, res, target) => handleDiff(target.searchParams, res, root),
     "GET /api/backlog": (_req, res, target) => handleBacklog(target.searchParams, res, root),
     "GET /api/config": (_req, res) => handleConfig(res, root),
+    "GET /api/doctor": (_req, res) => handleDoctor(res, root),
     "POST /api/config-set": (req, res) => handleConfigSet(req, res, root),
     "POST /api/config-unset": (req, res) => handleConfigUnset(req, res, root),
     "POST /api/prompt": (req, res) => handlePrompt(req, res, root),

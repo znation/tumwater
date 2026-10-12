@@ -25,7 +25,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
     if (v === "pending") fetchPending();
-    if (v === "settings") fetchSettings();
+    if (v === "settings") { fetchSettings(); fetchDoctor(); }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
   // tab refetches its data. #loop/<role> opens that loop's drawer (over Fleet on a fresh load),
@@ -65,6 +65,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     const btn = clickClosest(ev, "button[data-action='unset']");
     const form = btn ? btn.closest("form.settings-row") : null;
     if (form) { ev.preventDefault(); clearSetting(form); }
+  });
+  // The Health check card's Re-run button: runs the doctor checks again.
+  document.addEventListener("click", (ev) => {
+    if (clickClosest(ev, "button[data-action='doctor-rerun']")) { ev.preventDefault(); fetchDoctor(); }
   });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
   // run-act:start

@@ -18,12 +18,14 @@ type SettingsFns = {
   renderSettingsPanel(d: unknown): void;
   saveSetting(form: { dataset: Record<string, string>; querySelector(sel: string): { value: string } }): Promise<void>;
   clearSetting(form: { dataset: Record<string, string> }): Promise<void>;
+  renderDoctorReport(d: unknown): string;
+  fetchDoctor(): Promise<void>;
 };
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor"],
     inject,
   );
 }
@@ -176,9 +178,47 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
   // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
-  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) fetchSettings\(\);/);
+  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); \}/);
+  assert.match(GUI_CLIENT_BOOT_JS, /data-action='doctor-rerun'/);
   // …and the boot carries the Clear click selector beside the Save submit wiring.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /clearSetting\(form\)/);
   assert.match(ESC_LINE, /const esc = /);
+});
+
+test("renderDoctorReport esc's every field and maps levels to tones; a missing checks array renders no rows", () => {
+  const { renderDoctorReport } = settingsScope();
+  const html = renderDoctorReport({
+    header: "<h>",
+    checks: [
+      { name: "a", level: "ok", detail: "<b>&" },
+      { name: "b", level: "warn", detail: "x" },
+      { name: "c", level: "fail", detail: "y" },
+    ],
+    verdict: "<v>",
+  });
+  assert.doesNotMatch(html, /<b>&|<h>|<v>/);
+  assert.match(html, /t-green'>ok/);
+  assert.match(html, /t-amber'>warn/);
+  assert.match(html, /t-red'>fail/);
+  const bare = renderDoctorReport({ header: "h", verdict: "v" });
+  assert.match(bare, /h/);
+  assert.match(bare, /v/);
+});
+
+test("fetchDoctor paints the error panel into doctorbody when the fetch rejects", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {
+    "settings-view": { innerHTML: "", dataset: {} },
+    doctorbody: { innerHTML: "", dataset: {} },
+  };
+  const { fetchDoctor } = settingsScope({
+    errorPanel: (title: string, err: { message: string }) => "<div>" + title + " " + err.message + "</div>",
+    $: (id: string) => els[id],
+    getJson: async () => {
+      throw new Error("boom");
+    },
+  });
+  await fetchDoctor();
+  assert.match(els.doctorbody!.innerHTML, /Health check could not run/);
+  assert.match(els.doctorbody!.innerHTML, /boom/);
 });

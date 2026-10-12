@@ -308,7 +308,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   spend cap, quiet hours, the notify hook) with inline Save and Clear buttons: Save writes
   through the same path `tumwater config set` uses, and Clear retracts through the same path
   `tumwater config unset` uses, so the field reverts to the key's default (unsetting the daily
-  spend cap restores the default 50).
+  spend cap restores the default 50). The view also runs `tumwater doctor`'s checks on each open
+  in a Health check card, with a Re-run button.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, Failures, History, Pending, and
   Queued. Activity keeps the live tail and `PgUp`/`PgDn` page it back through a fixed 200-event
