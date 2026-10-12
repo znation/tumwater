@@ -188,6 +188,20 @@ test("checkAgentBinary checks the enabled seams' agents, not always pi", () => {
   assert.match(missing.detail, /claude not found/);
 });
 
+test("checkAgentBinary joins each agent's verdict for a mixed pi and claude fleet", () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude", roles: { coverage: { model: "pi/some-model" } } });
+
+  const both = checkAgentBinary(root, fakeBins("claude", "pi"));
+  assert.equal(both.level, "ok");
+  assert.match(both.detail, /^claude: .*claude; pi: .*pi$/);
+
+  // One missing agent fails the whole check, naming that agent.
+  const onlyClaude = checkAgentBinary(root, fakeBins("claude"));
+  assert.equal(onlyClaude.level, "fail");
+  assert.match(onlyClaude.detail, /pi not found/);
+});
+
 test("checkRepo reports not-a-repo, no-commits-yet, and detached HEAD as distinct failures", async () => {
   const notRepo = await checkRepo(tmpdir());
   assert.equal(notRepo.level, "fail");
@@ -688,6 +702,16 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () 
     checkClaudeTranscripts(claudeConfig, tmpdir("doctor-empty-home-")).detail,
     /no transcript dir/,
   );
+});
+
+test("checkClaudeTranscripts reports a sub-KB tree in plain bytes", () => {
+  const home = tmpdir("doctor-claude-tiny-");
+  const slug = path.join(home, ".claude", "projects", "-tiny");
+  fs.mkdirSync(slug, { recursive: true });
+  fs.writeFileSync(path.join(slug, "t.jsonl"), "x".repeat(100));
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  assert.match(checkClaudeTranscripts(loadConfig(root), home).detail, /^100 B across 1 project in /);
 });
 
 test("checkClaudeTranscripts walks nested dirs, skips an unreadable one, and scales to MB", () => {
