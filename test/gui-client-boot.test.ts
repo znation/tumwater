@@ -178,3 +178,53 @@ test("answer-record posts the trimmed answer for the Nth question, and nothing w
   assert.equal(posts.length, 1);
   assert.deepEqual(flashes, ["Write an answer first"]);
 });
+
+test("entry-cancel arms on the first click and posts the cancel on the second", () => {
+  const posts: unknown[] = [];
+  let armed = false;
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: { plans: ["A", "B (planned 2026-10-12 by plan)"] },
+      entryCancelArmed: () => armed,
+      armEntryCancel: () => { armed = true; },
+      disarmEntryCancel: () => { armed = false; },
+      closeDrawer: () => {},
+      postAction: (path: string, body: unknown) => posts.push([path, body]),
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  scope.runAct("entry-cancel", "plans:1");
+  assert.deepEqual(posts, []);
+  scope.runAct("entry-cancel", "plans:1");
+  assert.deepEqual(posts, [["/api/backlog-cancel", { kind: "plan", position: 2, title: "B (planned 2026-10-12 by plan)" }]]);
+  // Firing disarms: the next click on the same position only re-arms.
+  scope.runAct("entry-cancel", "plans:1");
+  assert.equal(posts.length, 1);
+  scope.runAct("entry-cancel", "plans:7");
+  assert.equal(posts.length, 1);
+});
+
+test("entry-cancel re-arms instead of firing when the entry at that position changed", () => {
+  const posts: unknown[] = [];
+  let armed: string | null = null;
+  const status: { plans: string[] } = { plans: ["A", "B"] };
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: status,
+      entryCancelArmed: (_k: string, t: string) => armed === t,
+      armEntryCancel: (_k: string, t: string) => { armed = t; },
+      disarmEntryCancel: () => { armed = null; },
+      closeDrawer: () => {},
+      postAction: (path: string, body: unknown) => posts.push([path, body]),
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  scope.runAct("entry-cancel", "plans:1");
+  status.plans = ["A", "C"];
+  scope.runAct("entry-cancel", "plans:1");
+  assert.deepEqual(posts, []);
+  scope.runAct("entry-cancel", "plans:1");
+  assert.equal(posts.length, 1);
+});

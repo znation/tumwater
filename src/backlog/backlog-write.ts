@@ -136,12 +136,18 @@ function locateEntry(
   sectionTitle: string,
   n: number,
 ): ActionableEntryRange {
-  const entries = actionableEntryRanges(md, sectionTitle);
-  const entry = entries[n - 1];
+  const entry = findEntry(md, sectionTitle, n);
   if (entry === undefined) {
-    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${entries.length} in ${fileName})`);
+    const count = actionableEntryRanges(md, sectionTitle).length;
+    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${count} in ${fileName})`);
   }
   return entry;
+}
+
+/** The non-exiting lookup under locateEntry: the nth (1-based) actionable entry of the section,
+ * or undefined when the position is out of range. */
+function findEntry(md: string, sectionTitle: string, n: number): ActionableEntryRange | undefined {
+  return actionableEntryRanges(md, sectionTitle)[n - 1];
 }
 
 /** The shared read half of the two in-place entry rewrites (remove and edit): resolve the
@@ -189,11 +195,46 @@ function removeEntryLocked(
   n: number,
 ): { file: string; title: string } {
   const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
-  // The range's end is the 1-based line before the next heading (the separating blank line at a
-  // well-formed section); start-1/end-1 are its 0-based bounds, and the length is end-start+1.
+  spliceOutEntry(file, lines, entry);
+  return { file: fileName, title: entry.title };
+}
+
+/** Write `lines` back to `file` without `entry`'s range. The range's end is the 1-based line
+ * before the next heading (the separating blank line at a well-formed section); start-1/end-1
+ * are its 0-based bounds, and the length is end-start+1. */
+function spliceOutEntry(file: string, lines: string[], entry: ActionableEntryRange): void {
   lines.splice(entry.start - 1, entry.end - entry.start + 1);
   writeTextAtomic(file, lines.join("\n"));
-  return { file: fileName, title: entry.title };
+}
+
+/** What `tryCancelEntry` did: `cancelled` wrote the file; `gone` (no entry at the position) and
+ * `moved` (the entry there is not the title the caller saw) refuse as data, writing nothing. */
+export type CancelEntryOutcome =
+  | { status: "cancelled"; file: string; title: string }
+  | { status: "gone" }
+  | { status: "moved"; title: string };
+
+/** The non-exiting cancel the dashboard calls: removeEntry's lock and splice, but an
+ * out-of-range position is `gone` and a different heading at the position is `moved`, both
+ * decided inside the lock. `expectedTitle` is the heading the caller saw (the status payload's
+ * `plans`/`bugs` strings, the same `### ` text as ActionableEntryRange.title). */
+export function tryCancelEntry(
+  root: string,
+  kind: "bug" | "plan",
+  n: number,
+  expectedTitle: string,
+): CancelEntryOutcome {
+  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
+  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  return withStateLock(primaryWorktreeLockPath(root), () => {
+    const file = path.join(root, fileName);
+    const md = readTextIfExists(file) ?? "";
+    const entry = findEntry(md, sectionTitle, n);
+    if (entry === undefined) return { status: "gone" };
+    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    spliceOutEntry(file, md.split("\n"), entry);
+    return { status: "cancelled", file: fileName, title: entry.title };
+  });
 }
 
 /** The section-edit entry point, the appendEntry/removeEntry analogue: the same

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { cancelBug } from "../src/backlog/backlog-write.js";
+import { cancelBug, tryCancelEntry } from "../src/backlog/backlog-write.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -174,3 +174,26 @@ test("a non-decimal or positional cancel fails and writes nothing", async () => 
   assert.equal(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), before);
 });
 
+
+test("tryCancelEntry leaves the bytes cancelBug leaves, and reads titles the status payload uses", () => {
+  const a = makeRepo();
+  const b = makeRepo();
+  fs.writeFileSync(path.join(a, "BUGS.md"), seededBugs());
+  fs.writeFileSync(path.join(b, "BUGS.md"), seededBugs());
+  const title = openBugs(a)[1]!;
+  cancelBug(a, 2);
+  assert.deepEqual(tryCancelEntry(b, "bug", 2, title), { status: "cancelled", file: "BUGS.md", title });
+  assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), fs.readFileSync(path.join(a, "BUGS.md"), "utf8"));
+});
+
+test("tryCancelEntry answers gone and moved without writing", () => {
+  const repo = makeRepo();
+  assert.deepEqual(tryCancelEntry(repo, "plan", 1, "x"), { status: "gone" }); // no PLANS.md section entries
+  const file = path.join(repo, "BUGS.md");
+  fs.writeFileSync(file, seededBugs());
+  const before = fs.readFileSync(file, "utf8");
+  assert.deepEqual(tryCancelEntry(repo, "bug", 9, "x"), { status: "gone" });
+  const moved = tryCancelEntry(repo, "bug", 1, "not the title");
+  assert.deepEqual(moved, { status: "moved", title: openBugs(repo)[0] });
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});

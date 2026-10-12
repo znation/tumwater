@@ -304,6 +304,7 @@ test("a stale backlog response for a since-replaced entry is ignored", async () 
   assert.match(t.paintedFor("drawerhead"), /New entry/);
   assert.match(t.paintedFor("entrybody"), /<md>\*\*why\*\*<\/md>/);
   assert.match(t.paintedFor("entrybody"), /data-act='mention' data-arg='plans:1'/);
+  assert.match(t.paintedFor("entrybody"), /data-act='entry-cancel' data-arg='plans:1'/);
 });
 
 test("an open question entry offers the composer's answer action, an empty body says so", async () => {
@@ -318,6 +319,7 @@ test("an open question entry offers the composer's answer action, an empty body 
   assert.match(t.paintedFor("entrybody"), /data-act='answer-record' data-arg='2'/);
   assert.match(t.paintedFor("entrybody"), /data-act='answer' data-arg='2'/);
   assert.match(t.paintedFor("entrybody"), /No details for this entry\./);
+  assert.doesNotMatch(t.paintedFor("entrybody"), /entry-cancel/);
 });
 
 test("closing the drawer silences refreshDrawer", async () => {

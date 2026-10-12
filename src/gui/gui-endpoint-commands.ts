@@ -10,7 +10,7 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
-import { fileBug, filePlan, OPERATOR_FILE_KINDS } from "../backlog/backlog-write.js";
+import { fileBug, filePlan, OPERATOR_FILE_KINDS, tryCancelEntry, type CancelEntryOutcome } from "../backlog/backlog-write.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
@@ -465,6 +465,41 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
   const filed = kind === "bug" ? fileBug(root, rawTitle, "") : filePlan(root, rawTitle, "", "");
   submitRolePromptAndWake(root, role, wakeText(filed.title));
   sendJson(res, 200, { ok: true, file: filed.file, title: filed.title });
+}
+
+/** Handle POST /api/backlog-cancel: the entry drawer's cancel — the same lock and splice as
+ * `tumwater plan|bug --cancel <n>` through the non-exiting tryCancelEntry. Body `{"kind":
+ * "bug"|"plan", "position": <1-based>, "title": "<heading>"}`; a missing position or a
+ * different heading there answers 200 { ok: true, status: "gone" } (the list moved since the
+ * poll). No wake and no inbox prompt: removing work must not wake a loop. */
+export async function handleBacklogCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
+  if (!body) return;
+  const { kind, position, title } = body;
+  if (kind !== "bug" && kind !== "plan") {
+    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
+    return;
+  }
+  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
+    sendJson(res, 400, { error: "position must be a positive integer" });
+    return;
+  }
+  if (typeof title !== "string" || title === "") {
+    sendJson(res, 400, { error: "title must be a non-empty string" });
+    return;
+  }
+  let outcome: CancelEntryOutcome;
+  try {
+    outcome = tryCancelEntry(root, kind, position, title);
+  } catch (err) {
+    sendJson(res, 400, { error: errorMessage(err) });
+    return;
+  }
+  if (outcome.status === "cancelled") {
+    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title });
+  } else {
+    sendJson(res, 200, { ok: true, status: "gone" });
+  }
 }
 
 /** Reply for a boolean-claiming marker request (RequestResult): success maps to 200 with its

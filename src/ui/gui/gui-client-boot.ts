@@ -102,6 +102,18 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
           ? "Answered “" + splitTitle(q).title + "” — moved to ## Answered"
           : "That question was already answered or moved — refreshed";
       });
+    } else if (act === "entry-cancel") {
+      const [file, index] = arg.split(":");
+      const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
+      if (title === undefined) return;
+      if (!entryCancelArmed(arg, title)) { armEntryCancel(arg, title); return; }
+      disarmEntryCancel();
+      postAction("/api/backlog-cancel", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
+        closeDrawer();
+        return d && d.status === "cancelled"
+          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md")
+          : "That entry was already removed or moved — refreshed";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];

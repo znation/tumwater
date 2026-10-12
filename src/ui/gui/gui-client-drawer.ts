@@ -5,7 +5,8 @@
  * loop), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
  * to the bottom while the reader is there). For a backlog entry it shows the entry in full
  * (/api/backlog), rendered as Markdown, with a shortcut into the composer — answering a
- * question, or asking the director about a plan or bug. Esc, the close button, or clicking the
+ * question, or asking the director about a plan or bug — and, for a plan or bug, a two-click
+ * Cancel that removes the entry (/api/backlog-cancel). Esc, the close button, or clicking the
  * same row again closes it. Spliced into gui-client.ts's script, reaching its helpers through
  * that concatenation. */
 export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "loop", role } | { kind: "entry", file, index } while open
@@ -285,6 +286,18 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (paintPanel("transcript", html) && (initial || atBottom)) pre.scrollTop = pre.scrollHeight;
   }
 
+  // A plan/bug cancel waits for its confirming click, the confirmAbort shape: the first click
+  // arms it for 5 s, a second inside the window fires, and a timeout disarms.
+  let confirmEntryCancel = null; // { key, until }
+  // The arm records the title too: a list that shifted between the clicks must re-arm, not
+  // cancel whatever entry now sits at that position.
+  const entryCancelArmed = (key, title) => Boolean(confirmEntryCancel && confirmEntryCancel.key === key && (title === undefined || confirmEntryCancel.title === title) && confirmEntryCancel.until > Date.now());
+  function disarmEntryCancel() { confirmEntryCancel = null; }
+  function armEntryCancel(key, title) {
+    confirmEntryCancel = { key, title, until: Date.now() + 5000 };
+    refreshEntry();
+    setTimeout(() => { if (confirmEntryCancel && confirmEntryCancel.key === key && confirmEntryCancel.until <= Date.now()) { confirmEntryCancel = null; refreshEntry(); } }, 5100);
+  }
   const ENTRY_KINDS = { plans: "Planned feature", bugs: "Open bug", questions: "Open question" };
   async function refreshEntry() {
     if (!drawer || drawer.kind !== "entry") return;
@@ -306,7 +319,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       ? "<textarea id='answertext' rows='3' placeholder='Your answer — recorded in QUESTIONS.md'></textarea>" +
         "<button type='button' class='btn btn-sm btn-primary' data-act='answer-record' data-arg='" + index + "'>" + icon("chat") + "Record answer</button>" +
         "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + index + "'>Ask the director instead</button>"
-      : "<button type='button' class='btn btn-sm' data-act='mention' data-arg='" + esc(file + ":" + index) + "'>" + icon("chat") + "Ask the director about this</button>";
+      : "<button type='button' class='btn btn-sm' data-act='mention' data-arg='" + esc(file + ":" + index) + "'>" + icon("chat") + "Ask the director about this</button>" +
+        "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>";
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
     paintPanel("entrybody", "<div class='drawer-actions'>" + action + "</div><div class='md'>" +
       (d.body ? renderMarkdown(d.body) : "<p class='muted'>No details for this entry.</p>") + "</div>");

@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -848,4 +848,41 @@ test("handleBacklogFile files a bug or plan and wakes its loop, and 400s bad inp
   assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plansBefore);
   assert.equal(queuedTexts(root, "bugfix").length, 1);
   assert.equal(queuedTexts(root, "feature").length, 1);
+});
+
+// ---- POST /api/backlog-cancel: the entry drawer's cancel ----
+test("handleBacklogCancel removes the entry, answers gone for a stale title, 400s bad input, wakes nobody", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### one\n\nbody\n\n### two (found by x 2026-10-01)\n\nbody" }, { heading: "## Fixed" }]);
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### p1\n\nbody" }, { heading: "## Done" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogCancel(fakeReq(JSON.stringify(body)), res, root));
+  const bugsPath = path.join(root, "BUGS.md");
+
+  const stale = await serve({ kind: "bug", position: 1, title: "two (found by x 2026-10-01)" });
+  assert.equal(stale.captured.status, 200);
+  assert.deepEqual(stale.data, { ok: true, status: "gone" });
+  const before = fs.readFileSync(bugsPath, "utf8");
+  assert.ok(before.includes("### one"));
+
+  const done = await serve({ kind: "bug", position: 2, title: "two (found by x 2026-10-01)" });
+  assert.equal(done.captured.status, 200);
+  assert.deepEqual(done.data, { ok: true, status: "cancelled", file: "BUGS.md", title: "two (found by x 2026-10-01)" });
+  assert.ok(!fs.readFileSync(bugsPath, "utf8").includes("### two"));
+  assert.ok(fs.readFileSync(bugsPath, "utf8").includes("### one"));
+
+  const plan = await serve({ kind: "plan", position: 1, title: "p1" });
+  assert.deepEqual(plan.data, { ok: true, status: "cancelled", file: "PLANS.md", title: "p1" });
+  assert.ok(!fs.readFileSync(path.join(root, "PLANS.md"), "utf8").includes("### p1"));
+
+  const bugsNow = fs.readFileSync(bugsPath, "utf8");
+  for (const body of [
+    { kind: "todo", position: 1, title: "x" },
+    { kind: "bug", position: 0, title: "one" },
+    { kind: "bug", position: 1 },
+    { kind: "bug", position: 1, title: "" },
+  ]) {
+    assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
+  }
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
+  for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
 });
