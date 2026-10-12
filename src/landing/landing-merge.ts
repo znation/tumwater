@@ -255,7 +255,7 @@ async function verifyLanding(
   // fails closed on the same timeout. With a check.gateCommand configured the gate ran only
   // that cheaper check, so even a verified no-op rebase must run the full check here: the
   // landing scope is what verifies a single change (and each change of an abandoned stack),
-  // and a gateCommand green must never seed the baseline (PLANS.md Land-queue speed 3e).
+  // and a gateCommand green must never seed the baseline.
   if (rebasedHead === verifiedHead && gateCommandOf(ctx.config) === undefined) {
     noteGreenBaseline(rebasedHead);
     return true;
@@ -346,7 +346,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
   const check = detectBuildCheck(wt, ctx.config) ?? undefined;
   // Show both sides' intent: the change's own commit message and the main commits that touched
-  // a conflicted file since the merge-base (PLANS.md, Robust conflict landing part 1/2). The
+  // a conflicted file since the merge-base. The
   // markers alone never said why either side made the edit.
   const since = await changeBaseRev(wt, ctx.mainBranch, preMergeHead);
   const change = (await commitMessage(wt, preMergeHead)) ?? "";

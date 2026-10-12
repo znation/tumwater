@@ -288,7 +288,7 @@ test("the readme prompt names the state-only content: summary, backlog pointer �
     find,
     /one line pointing at PLANS\.md, BUGS\.md, and QUESTIONS\.md for open work — never a copy of their entries/,
   );
-  // No freshness stamp (PLANS.md "Retire the README freshness stamp"): main's build/suite state
+  // No freshness stamp: main's build/suite state
   // is volatile — it is reported live by `tumwater status`'s mainCheck, never committed, so a
   // landing no longer forces a README sync.
   assert.doesNotMatch(find, /[Ff]reshness stamp|Current main \(/);

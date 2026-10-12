@@ -17,7 +17,7 @@ import { clientScope, clientRegion, ESC_LINE, iconStub } from "./helpers/gui-cli
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 
-// The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
+// The GUI report tab: /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
 // container, and its pure SVG chart builders are extracted from a marked region and tested.
 

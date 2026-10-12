@@ -127,7 +127,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // preformatted through badges.ts's landingBadge, so the page cannot re-derive it.
     landQueue: snap.landQueue,
     landingBadge: landingBadge(snap.landQueue),
-    // Main's newest merge-scope check (PLANS.md "Retire the README freshness stamp"): the
+    // Main's newest merge-scope check: the
     // raw block is machine-readable for `status --json`, and the header badge is
     // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status
     // header renders — so the page cannot re-derive the verdict client-side. Omitted (not
@@ -155,7 +155,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // the Queued tab shows each deferred prompt's delivery countdown from it. Raw data, like
     // inboxQueuedAt.
     inboxNotBefore: snap.inboxNotBefore,
-    // Per-role queued-prompt counts (PLANS.md "Per-role prompts 2/2"): the loop table's
+    // Per-role queued-prompt counts: the loop table's
     // `p:N` state marker and the queued-prompts section's per-loop lines render from it.
     // Raw data, like inbox/inboxPrompts.
     roleInbox: snap.roleInbox,
@@ -177,7 +177,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // `paused` ahead of budget/main-red — one flag covers both dashboards through loopPhase.
     paused: snap.paused,
     pausedRoles: snap.pausedRoles,
-    // The per-role cap's held roles (PLANS.md "Per-role daily cost cap" part 2/2): an idle
+    // The per-role cap's held roles (part 2/2): an idle
     // loop in this set reads `cap paused` — the loopPhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.
     capPaused: snap.capPaused,
@@ -199,7 +199,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // The fleet marker's standing timed-pause deadline (ms epoch), absent when the fleet is
     // not timed-paused (undefined drops from the JSON). Raw data, like paused/pausedRoles —
     // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it
-    // client-side (PLANS.md "Pause countdown").
+    // client-side.
     pausedUntil: snap.pausedUntil,
     // The standing pause's operator reason (`pause --reason <text>`), absent when none
     // stands — same omit-undefined idiom as pausedUntil beside which it ships.

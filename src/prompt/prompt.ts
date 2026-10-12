@@ -259,8 +259,8 @@ interface TickPromptInput {
    * here by the caller that holds the config; a role payload's `nextPrompt` therefore shows the
    * resolved number, never a placeholder. Omitted: every role but plan. */
   planTargetNote?: string;
-  /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`,
-   * PLANS.md "Per-role prompts 1/2"), rendered as a labeled block near the top of the task text.
+  /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`),
+   * rendered as a labeled block near the top of the task text.
    * The loop still owns find-something-to-do: the request steers, the role's rules and the
    * landing gate still apply unchanged. Omitted: no queued request this tick. */
   userRequest?: string;

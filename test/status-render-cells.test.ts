@@ -107,7 +107,7 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
   }
 });
 
-// The per-loop today-spend column (PLANS.md "Per-loop today spend"): `today` sits between cost
+// The per-loop today-spend column: `today` sits between cost
 // and last tick, showing each loop's daily budget window via dailyCost — $0.00 while its stamp
 // is stale or missing, so loops that never ticked read zero without a save. It is not flexible
 // (a short fixed-width cell like cost), and the totals row sums the same windows as the badge.
@@ -253,7 +253,7 @@ test("a pending change after a main-red tick does not keep the state cell readin
   const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }));
   assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main_red — code merges blocked until main is green", `prior pair kept: ${row}`);
 });
-// The `next run` column (PLANS.md "Next-run visibility"): nextRunCell's rules — a due idle
+// The `next run` column: nextRunCell's rules — a due idle
 // loop reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
 // in-flight loops and a stopped fleet read `-` — and the column is appended last so
 // FLEXIBLE_COLUMNS' positional indices stay untouched.

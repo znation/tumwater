@@ -253,7 +253,7 @@ export interface StatusSnapshot {
    * its dist carries no stamp. Both dashboards render it in the header — a stale build is the one
    * fact about the fleet that nothing inside the fleet can otherwise see. */
   build: BuildStatus | null;
-  /** Prompts queued per loop (`tumwater prompt --role <id>`, PLANS.md "Per-role prompts 2/2"),
+  /** Prompts queued per loop (`tumwater prompt --role <id>`),
    * keyed by role id for every enabled loop except the director — the director's queue IS the
    * shared `inbox` above, so counting it here too would double-report the same prompts. Every
    * enabled loop appears (0 included) so `status --json` consumers see one stable shape, like
@@ -293,7 +293,7 @@ export interface StatusSnapshot {
     entries?: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>;
     inFlight?: LandingInFlight;
   };
-  /** Main's newest merge-scope build check (PLANS.md "Retire the README freshness stamp"):
+  /** Main's newest merge-scope build check:
    * the latest `build_check` event at the `landing`/`batch`/`baseline` scope, read from the
    * event tail — the live replacement for the committed README stamp the readme role used to
    * maintain. `sha` is the main commit the check verified: a `landed` event after the check

@@ -3,7 +3,7 @@
  * the poll-loop state) — it now lives in scheduling/ next to the workLanded policy it caches.
  * This module adds only the caching layer around it plus the one git query that feeds it.
  *
- * Caching rule (PLANS.md "Prioritize loops by need"): verdicts are cached per base head so a
+ * Caching rule: verdicts are cached per base head so a
  * quiet fleet pays no git cost in steady state. A TRUE verdict is monotone under
  * fast-forward-only main movement — once work has landed in (sinceHead, main] it stays
  * there — so true heads never re-evaluate. A FALSE verdict is valid exactly while main sits at

@@ -720,9 +720,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    // Per-loop controls on the transcript pane (PLANS.md "TUI per-loop controls"): Ctrl+P
+    // Per-loop controls on the transcript pane: Ctrl+P
     // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W wakes it,
-    // and Ctrl+R opens the role-prompt editor for it (PLANS.md "Per-role prompts 2/2").
+    // and Ctrl+R opens the role-prompt editor for it.
     // They call the same marker-writing/submit cores the CLI's --role flags do, so the
     // surfaces cannot drift on marker format, idempotence, or wording. Guarded to the
     // transcript views and out of budget-edit mode; everywhere else the keys fall through

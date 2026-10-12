@@ -28,7 +28,7 @@ import {
 // real pi subprocesses behind the fake shim; the fallback's conflict resolver is the wiring's
 // stub.
 
-// ── A red stack check lands the largest passing prefix (PLANS.md land-queue 3d) ─────────
+// ── A red stack check lands the largest passing prefix ─────────
 // Not N more gates: the batch bisects in queue order, lands each green prefix with one ff,
 // and attributes the one change a check ran red over alone through main's own baseline.
 

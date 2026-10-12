@@ -348,7 +348,7 @@ test("autoRestart defaults on and is validated as a boolean", () => {
   assert.doesNotThrow(() => validateConfig({ autoRestart: false }));
 });
 
-// --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
+// --- User-defined loops (plans/user-defined-loops.md) ---
 
 test("defaultConfig carries no customLoops and no longer exempts tumwater.json from review", () => {
   // Config changes no longer ride the commit path (plans/portability.md §3/7): the director's
@@ -627,7 +627,7 @@ test("loadConfig round-trips fallbackModel and owns its object", () => {
   assert.deepEqual(again?.fallbackModel, loaded.fallbackModel);
 });
 
-// --- changedConfigKeys (PLANS.md "Live config-change event") ---
+// --- changedConfigKeys ---
 
 test("changedConfigKeys reports added, removed, and changed top-level keys", () => {
   const prev = defaultConfig();

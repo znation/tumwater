@@ -166,7 +166,7 @@ export function loopPhase(
   }
   if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from both gates
   if (userPaused) return "paused";
-  // The loop's OWN daily cap (PLANS.md, per-role cap part 2/2): the more specific spend
+  // The loop's OWN daily cap: the more specific spend
   // state, so it names itself ahead of the fleet's budget pause — the ladder's existing
   // "user intent is more specific than spend state" argument extended one level down.
   if (capPaused) return "cap paused";

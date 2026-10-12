@@ -404,7 +404,7 @@ async function tickWithWorktreePhase(
     // whose diff can carry code changes are blocked; resume ticks skip this by construction
     // (their worktree is not pristine main). The `bugfix` healer is exempt because its fix is
     // the fleet's only way back to green, so instead of blocking it we hand it the failure
-    // (PLANS.md "Red-main handoff"): the same check runs, but a red main appends a <main-red>
+    //the same check runs, but a red main appends a <main-red>
     // note to this tick's prompt so it reproduces and fixes that failure rather than hunting
     // blind.
     if (ctx.baseRole === "bugfix") {
@@ -416,7 +416,7 @@ async function tickWithWorktreePhase(
         // The dequeued prompt never ran: put it back in its queue before returning, so it is
         // not lost to a restart (the pending field is memory-only) or dropped by the next
         // tick's outcome handling — the queue is the durable store, and once main is green
-        // the next tick dequeues it again (PLANS.md "Per-role prompts 1/2" criterion b).
+        // the next tick dequeues it again (criterion b).
         ctx.pending.requeueUnfulfilled(userPrompt);
         ctx.pending.clear();
         return blocked;

@@ -292,7 +292,7 @@ test("cancel keeps the prompt when an attachment sibling cannot be removed", (t)
   ]);
 });
 
-// --- Per-role queues (PLANS.md "Per-role prompts 1/2") ---
+// --- Per-role queues ---
 
 test("per-role queues are separate from the director's queue and from each other", () => {
   const dir = tmpdir();

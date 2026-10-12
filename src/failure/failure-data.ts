@@ -51,7 +51,7 @@ export interface OutcomeRow {
   counts: Partial<Record<TickResult, number>>;
 }
 
-/** One role's prompt-token telemetry over the window (PLANS.md, per-tick prompt-token plan):
+/** One role's prompt-token telemetry over the window:
  * the median prompt tokens a tick sent, and the share of those sent before the tick's first
  * edit. Built only from tick_end events that carry `promptTokens`; a log written before the
  * field existed yields no rows, so old digests render unchanged. */

@@ -413,7 +413,7 @@ test("loopPhase shows failing for a quiet-kill streak at the give-up threshold",
   assert.match(loopPhase(shallow, true), /^sleeping/);
 });
 
-// The operator pause (PLANS.md, fleet-pause plan): while the `tumwater pause` marker exists,
+// The operator pause: while the `tumwater pause` marker exists,
 // every idle role loop's state cell reads `paused` — after the director exemption and ahead
 // of budget paused / main red, because user intent is the most specific reason: it tells the
 // operator what to do (`resume`).

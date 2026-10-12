@@ -117,7 +117,7 @@ test("poolTimeoutKey pools the progressing-timeout variant into the plain key", 
   );
   assert.notEqual(reviewProgressing, plain);
   assert.equal(poolTimeoutKey(reviewProgressing), TICK_TIMEOUT_KEY);
-  // The resumed review's wording (PLANS.md, review-retry part 3/3) is its own cause: the next
+  // The resumed review's wording is its own cause: the next
   // attempt continues the timed-out session rather than re-reviewing from scratch, so it keeps
   // a row distinct from both the from-scratch review timeout and the plain tick timeout.
   const reviewResumed = normalizeClusterKey(

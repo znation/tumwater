@@ -15,7 +15,7 @@ import { gateMainWorktreePath } from "../paths.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 
-/** Red-main baseline gate for fresh authoring ticks (PLANS.md "Red-main baseline check"): before an
+/** Red-main baseline gate for fresh authoring ticks: before an
  * authoring run is spent on top of pristine main, verify that MAIN ITSELF is green — a red main
  * rejects every code diff deterministically at the review gate (BUGS.md's "Build broken on main"
  * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
@@ -66,7 +66,7 @@ function baselineCheckLogger(
   return baselineCheckEventLogger(role, (event) => logEventBestEffort(root, event));
 }
 
-/** Red-main handoff for the `bugfix` healer (PLANS.md "Red-main handoff"): mainRedGate exempts
+/** Red-main handoff for the `bugfix` healer: mainRedGate exempts
  * bugfix so the only role that can unblock the fleet may author, but its prompt then starts from
  * BUGS.md and knows nothing about the red suite. This runs the same per-SHA baseline check
  * (cache and provisional-red re-verification reused unchanged, so it costs at most the one run

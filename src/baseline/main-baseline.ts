@@ -25,7 +25,7 @@ import type { CheckConfigSlice } from "../config/config-schema.js";
 // main rejects every code diff deterministically at the gate (BUGS.md's "Build broken on
 // main" and "Tests red on main" entries), so while a SHA is known red the harness skips
 // authoring for the code-producing roles instead of burning runs that are guaranteed to
-// fail (PLANS.md, "Red-main baseline check").
+// fail.
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA. */
 interface MainBaseline {

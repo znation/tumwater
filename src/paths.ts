@@ -283,8 +283,7 @@ export function inboxDir(root: string): string {
 
 /** The queue directory one loop's prompts wait in (inbox.ts): the director keeps its historical
  * queue at the inbox root so existing inboxes stay readable, and every other loop gets a
- * per-role subdirectory — `tumwater prompt --role <id>` writes where only that loop reads
- * (PLANS.md "Per-role prompts 1/2"). */
+ * per-role subdirectory — `tumwater prompt --role <id>` writes where only that loop reads. */
 export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }

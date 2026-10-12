@@ -421,7 +421,7 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
   assert.equal(ends.length, 1);
   assert.equal(ends[0]?.result, "error");
   assert.match(String(ends[0]?.error), /simulated internal failure/);
-  // The tick's wall-clock span rides the event (PLANS.md, time-and-spend plan), so the
+  // The tick's wall-clock span rides the event, so the
   // failure digest can price the failure without pairing tick_start by hand.
   assert.equal(typeof ends[0]?.durationMs, "number");
   assert.ok((ends[0]?.durationMs as number) >= 0);

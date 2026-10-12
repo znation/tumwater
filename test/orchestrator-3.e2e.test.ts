@@ -354,7 +354,7 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   assert.equal(loadLoopState(repo, "clean").lastError, author.state.lastError);
 });
 
-// --- abort requests (PLANS.md, abort plan): the marker-file plumbing that reaches LoopRunner's
+// --- abort requests: the marker-file plumbing that reaches LoopRunner's
 // user-abort branch — consumption, kill, event, and the silent no-op shapes. The loop-level
 // semantics themselves are pinned in test/loop.test.ts; the CLI side in test/cli.test.ts. ---
 

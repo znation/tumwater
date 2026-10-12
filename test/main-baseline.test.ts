@@ -26,7 +26,7 @@ const ROLE = "improve";
 const CFG = defaultConfig();
 
 // --- checkMainBaseline: the red-main gate's one-shot, fleet-shared verification of main's own
-// suite (PLANS.md "Red-main baseline check"). Unlike build-check.test.ts's plain-directory
+// suite. Unlike build-check.test.ts's plain-directory
 // fixtures — enough for detection and execution in isolation — these need a REAL git repo with
 // a worktree
 // at the real location (.tumwater/worktrees/<role>): the helper keys its verdict by the
@@ -257,7 +257,7 @@ test("a configured check.command verifies main on a repo with no npm install any
 });
 
 test("a baseline run takes the same process-wide check permit as the scoped checks", { timeout: 30_000 }, async () => {
-  // PLANS.md "Land-queue speed 2b": checkMainBaseline runs the suite directly, not through
+  // checkMainBaseline runs the suite directly, not through
   // runScopedBuildCheck, so it must count against maxConcurrentChecks on its own.
   const counter = path.join(tmpdir(), "runs-permit");
   const { wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);

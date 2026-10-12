@@ -14,7 +14,7 @@ import { isPromptImageSibling } from "./inbox-attachments.js";
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
  * root; every other loop has its own subdirectory (roleInboxDir), so `tumwater prompt --role <id>`
- * queues a request only that loop's next tick sees (PLANS.md "Per-role prompts 1/2").
+ * queues a request only that loop's next tick sees.
  *
  * This module is the store: enqueueing, listing, peeking, and dequeuing, plus the shared
  * takeQueuedFile race policy. The cancel half — position-, list-, and file-addressed removal
@@ -296,7 +296,7 @@ export function renderQueuedList(rows: readonly QueuedListRow[], now: number): s
 }
 
 /** How many prompts are queued for one loop and deliverable now, without re-reading unchanged
- * contents — the snapshot's per-role counts (PLANS.md "Per-role prompts 2/2") poll every role
+ * contents — the snapshot's per-role counts poll every role
  * every second, so the count stays a listing plus one stat-cached read per file (the prompt
  * cache above keeps an unchanged file at one stat). A deferred prompt (its not-before time
  * still in the future) stays excluded, like inboxSize. A missing queue directory reads as an

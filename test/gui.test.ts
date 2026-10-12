@@ -404,7 +404,7 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastTick(ts), lastTickCell(ts));
 });
 
-// Full backlog entries (PLANS.md "Read backlog entries in full from the TUI/GUI dashboards"):
+// Full backlog entries:
 // /api/backlog serves one entry's title + body on demand, so multi-KB bodies never ride the
 // 1-second /api/status poll — and statusPayload keeps carrying titles only.
 

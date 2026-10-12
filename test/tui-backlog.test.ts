@@ -53,7 +53,7 @@ test("backlogLines with nothing at all is a single self-explanatory line", () =>
   assert.deepEqual(backlogLines([], [], []), ["(no planned features, open bugs, or open questions)"]);
 });
 
-// Entry browsing in the project-status pane (PLANS.md "Read backlog entries in full"): the
+// Entry browsing in the project-status pane: the
 // cursor math and body rendering are pure, so they are pinned here without a TTY.
 
 test("moveEntrySelection opens the first entry on down and the last on up from list mode", () => {

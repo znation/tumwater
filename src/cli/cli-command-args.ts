@@ -229,7 +229,7 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
  * it would be baked into the queued prompt (the same class of bug parseInitArgs fixed: today
  * `tumwater prompt --foo text` enqueues "--foo text"). Single-dash positionals remain prompt
  * content. `--list` and `--cancel` are mutually exclusive and may not combine with positional
- * text; `--role` is accepted in every mode (PLANS.md "Per-role prompts 1/2") and is never
+ * text; `--role` is accepted in every mode and is never
  * prompt content. `--at <duration>` (PLANS.md "tumwater prompt --at <duration>") only queues
  * a prompt: it defers delivery — parsed here with parseDurationFlag, riding the enqueue as
  * the queue file's not-before marker — so the read-only and destructive modes refuse it

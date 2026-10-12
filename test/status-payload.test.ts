@@ -149,7 +149,7 @@ test("status payload carries the current work item for running loops only", asyn
   assert.equal(payload.loops.find((l) => l.role === "clean")?.currentWork, null, "idle loop never shows a stale item");
 });
 
-// The per-loop today spend on the GUI surface (PLANS.md "Per-loop today spend"): /api/status
+// The per-loop today spend on the GUI surface: /api/status
 // carries todayUsd per loop — the daily budget window, 0 while its stamp is stale or missing,
 // same helper and semantics as the TUI's `today` column — and the page renders its cell
 // client-side from that field.
@@ -348,7 +348,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   assert.match(payload.buildBadge, /build aaaaaaaa — STALE: main \+7 commit\(s\) since; restart BLOCKED: main cccccccc is red$/);
 });
 
-// The operator pause on the GUI surface (PLANS.md, fleet-pause plan): /api/status — and
+// The operator pause on the GUI surface: /api/status — and
 // therefore `status --json`, same payload — carries `paused` while the marker exists, and a
 // paused fleet's idle role loops read `paused` in their phase payload ahead of budget paused.
 
@@ -462,7 +462,7 @@ test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () 
   assert.equal(clean.backoffSeconds, 90);
 });
 
-// The per-role cap on the payload surface (PLANS.md, per-role cap part 2/2): `status --json`
+// The per-role cap on the payload surface: `status --json`
 // carries the held roles beside pausedRoles, and a held idle loop's phase reads
 // `cap paused` — the loopPhase ladder naming the specific spend state.
 test("the status payload carries capPaused; a held idle loop's phase reads cap paused", async () => {

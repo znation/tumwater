@@ -179,7 +179,7 @@ export function assembleTickPrompt(
       briefFile: brief,
       agent: agent ?? configForRole(config, role).agent,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
-      // request block (PLANS.md "Per-role prompts 1/2"); its text is also the tick's userPrompt,
+      // request block; its text is also the tick's userPrompt,
       // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on landing)
       // treats it exactly like the director's dequeued request.
       userRequest: request ?? undefined,

@@ -79,7 +79,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
 
   const base = 1_700_000_000_000;
   // A landing check + the landed event after it: the check ran pre-merge, so the sha it
-  // verified is the landing's own (PLANS.md "Retire the README freshness stamp") — the
+  // verified is the landing's own — the
   // landed event's `commit` field, exactly as writeLandingOutcome logs it. A gate-scope
   // check verifies a role worktree, not main — it never qualifies.
   writeEvents(repo, [

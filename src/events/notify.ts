@@ -5,7 +5,7 @@ import { formatEvent } from "./event-format.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { childEnv } from "../process/process.js";
 
-/** The operator notify hook (PLANS.md "Operator notify hook"): one configured shell command
+/** The operator notify hook: one configured shell command
  * (tumwater.json's `notify`) that the orchestrator runs whenever a notable event fires — the
  * push channel beside the pull-based dashboards and `tumwater logs`.
  *

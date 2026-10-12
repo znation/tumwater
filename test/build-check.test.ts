@@ -536,7 +536,7 @@ test("runScopedBuildCheck remaps a configured command's merge-scope timeout exac
   assert.equal((check as { script?: string } | undefined)?.script, "sleep 5", "the event names the command");
 });
 
-// --- check.gateCommand (PLANS.md Land-queue speed 3e): an opt-in cheaper check for the review
+// --- check.gateCommand: an opt-in cheaper check for the review
 // gate's per-change pre-check only. The landing and batch scopes — the checks that decide what
 // reaches main — keep running the full check, or a weaker gate would land an unverified tree.
 

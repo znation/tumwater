@@ -8,7 +8,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
-// Ctrl+B budget-edit mode on the prompt line (PLANS.md, editable daily cost budget): the
+// Ctrl+B budget-edit mode on the prompt line: the
 // single interactive surface edits the cap in place — pre-filled with the current cap, Enter
 // saves through the shared setter (which writes tumwater.json), Esc/Ctrl+T restore the draft.
 test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ctrl+T exit", async () => {

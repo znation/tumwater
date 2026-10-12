@@ -430,7 +430,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
   }
 });
 
-// --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
+// --- User-defined loops (plans/user-defined-loops.md) ---
 
 test("custom loops can be added, removed, and reordered mid-run without a restart", async () => {
   const repo = await makeFastRepo("custom loop e2e test", ["clean"]);

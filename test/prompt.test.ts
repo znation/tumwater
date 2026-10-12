@@ -224,7 +224,7 @@ test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
 // Same whitespace-collapsed matching as the refusal contract above — the prose is hard-wrapped
 // and formatting ticks reflow it, so assertions match content, not layout.
 
-// Prompt contract for section-aware tick reads (PLANS.md, planned 2026-09-04): every tick
+// Prompt contract for section-aware tick reads: every tick
 // re-reads the backlog files, so the read-first rule bounds how much of each gets prefilled —
 // README in full, PLANS.md/BUGS.md only at their actionable tops, older history via git log or
 // a targeted read, and a carve-out for the steward, which curates those files whole.
@@ -331,7 +331,7 @@ test("every role prompt states the reading budget in numbers: size check, ranges
   assert.doesNotMatch(prompt, /ran out of context/);
 });
 
-// Fan-out rule (PLANS.md "Tell ticks to fan out independent tool calls in one turn", planned
+// Fan-out rule (planned
 // 2026-09-23): each assistant turn re-sends the conversation, so turns — not tool calls — are
 // the expensive unit. Independent reads/commands go out as sibling tool calls in one turn;
 // anything depending on a prior result (an edit and the test that checks it) stays sequential.
@@ -497,7 +497,7 @@ test("an omitted date defaults to todayStamp's local day — the daily budget wi
   }
 });
 
-// --- User-defined loops (plans/user-defined-loops.md, PLANS.md "User-defined loops 1/3") ---
+// --- User-defined loops (plans/user-defined-loops.md) ---
 
 test("a user-defined loop's tick prompt identifies it and carries its task as the run task", () => {
   const role = customRole("docs-auditor", "Keep the docs current.");
@@ -528,7 +528,7 @@ test("customRole yields the pinned shape while built-in prompts keep their catal
   assert.match(p, /"feature" loop \(feature implementer\)/);
 });
 
-// PLANS.md "Per-role prompts 1/2": a queued per-role prompt renders as a clearly labeled block
+// a queued per-role prompt renders as a clearly labeled block
 // near the top of the role's task text — steering, not a bypass of the role's own rules.
 test("buildTickPrompt renders a per-role user request as a labeled block", () => {
   const role = roleById("qa");

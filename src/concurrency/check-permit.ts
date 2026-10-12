@@ -4,8 +4,8 @@ import { defaultConfig } from "../config/config.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 import { Semaphore } from "./semaphore.js";
 
-/** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks,
- * PLANS.md "Land-queue speed 2b"): every full suite the harness runs — runScopedBuildCheck's
+/** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks):
+ * every full suite the harness runs — runScopedBuildCheck's
  * gate/landing/batch scopes and main-baseline.ts's checkMainBaseline, which runs the suite directly
  * — takes a permit here first, so a burst of landings cannot stack suites on the host beside the
  * authors' own test runs (the suite has load-sensitive tests). Split out of build/build-check.ts

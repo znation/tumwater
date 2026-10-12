@@ -140,7 +140,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.ok(!demoted.includes("warning"), "a routine state change is not a warning");
 });
 
-// The live concurrency-cap change event (PLANS.md, Live maxConcurrent): a routine state
+// The live concurrency-cap change event: a routine state
 // change like counters_reset — a plain line carrying from → to in that order, no warning
 // prefix.
 test("formatEvent renders the maxConcurrent change event plainly with from and to", () => {
@@ -159,7 +159,7 @@ test("formatEvent renders the maxConcurrent change event plainly with from and t
   assert.match(bare, /maxConcurrent changed:/);
 });
 
-// The live session-retention change event (PLANS.md, Live sessionRetentionDays): a routine
+// The live session-retention change event: a routine
 // state change like max_concurrent_changed — a plain line carrying from → to, no warning
 // prefix.
 test("formatEvent renders the retention change event plainly with from and to", () => {
@@ -178,7 +178,7 @@ test("formatEvent renders the retention change event plainly with from and to", 
   assert.match(bare, /sessionRetentionDays changed:/);
 });
 
-// The live config-change event (PLANS.md "Live config-change event"): a routine state change
+// The live config-change event: a routine state change
 // like its maxConcurrent/retention siblings — a plain line naming the edited keys, no warning.
 test("formatEvent renders the config change event plainly with the edited keys", () => {
   const line = formatEvent({

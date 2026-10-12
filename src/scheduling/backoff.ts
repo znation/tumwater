@@ -53,7 +53,7 @@ export function restoreMidTickWake(s: LoopState): boolean {
   return true;
 }
 
-/** Yield-scaled clocks (PLANS.md "Yield-scaled clocks"): how long a role's own recent
+/** Yield-scaled clocks: how long a role's own recent
  * results stretch its min-tick gap. The ring (LoopState.recentOutcomes) holds one char per
  * COUNTED tick — a landing (`changed`/`queued`) is `L`, every other counted result is `n`;
  * the error class (`error`/`aborted`/`quiet_killed`) is no yield evidence either way and is

@@ -1,7 +1,7 @@
 /** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P pause/resume and
  * its fleet-pause interplay note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's
- * wake marker, and the keys' inertness outside transcript views and in budget mode
- * (PLANS.md "TUI per-loop controls"). Like the other topic-named slices (loop-refusal,
+ * wake marker, and the keys' inertness outside transcript views and in budget mode.
+ * Like the other topic-named slices (loop-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
  * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the
  * harness's global stdout/stdin/readline patches never meet another file's environment. */
@@ -15,7 +15,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
-// PLANS.md "TUI per-loop controls": Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is
+// Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is
 // on screen, through the same marker-writing cores the CLI's --role flags call, so the two
 // surfaces cannot drift on marker format, idempotence, or wording (rolePauseMessage and
 // roleResumeMessage in src/operator/operator-intent.ts are the shared single writer of the

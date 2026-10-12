@@ -443,7 +443,7 @@ export const ROLE_ENTRY_KEYS = [
 export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];
 
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
- * command, the optional cheaper gate-only command (PLANS.md Land-queue speed 3e), their
+ * command, the optional cheaper gate-only command, their
  * working directory (relative to the worktree), and their timeout. */
 export const CHECK_KEYS = ["command", "gateCommand", "cwd", "timeoutSeconds"];
 

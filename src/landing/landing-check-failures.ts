@@ -149,7 +149,7 @@ export async function landingBlocked(
 
 /** Attribute a check that went red over ONE change's tree after its vet approved it — a batch
  * bisect's last step (landing-batch.ts), or a single landing's in-lock check at
- * LANDING_CHECK_FAILURE_LIMIT — by the gate's rule (PLANS.md land-queue 1/3): ask main's own
+ * LANDING_CHECK_FAILURE_LIMIT — by the gate's rule: ask main's own
  * verdict at its current tip (mainTipVerdict — usually a cache hit, since every landing seeds
  * the SHA it moved main to). Main green → the change broke the check: rejected deterministically
  * — reasons in lastReview for the author's next tick, the strike count reset, ref deleted,

@@ -12,7 +12,7 @@ import { resolveQueuedResult, bucketLandingEvents } from "../history/history-dat
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
-/** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
+/** How the Outcome table's results collapse for costing:
  * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
  * result is "error-class" — it burned agent time without landing, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
@@ -52,7 +52,7 @@ export interface TimeSpendRow {
   classes: Record<"landed" | "no_change" | "error", SpendCell>;
 }
 
-/** One ranked loss cause (PLANS.md, time-and-spend plan): an error cluster — the digest's
+/** One ranked loss cause: an error cluster — the digest's
  * own clustering, applied to the ticks that burned time — a role's total "no_change" spend,
  * the quiet loss no cluster names, or a role's total authoring spend on changes the landing
  * gate rejected (BUGS.md 2026-09-30), or a landing that failed to merge (BUGS.md 2026-10-10).

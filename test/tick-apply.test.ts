@@ -126,7 +126,7 @@ test("nextBackoffSeconds caps an initial above max and treats non-positive curre
   assert.equal(nextBackoffSeconds(29, ladder), 30); // growth still capped at max
 });
 
-// --- Yield-scaled clocks: the ring and the multiplier it feeds (PLANS.md) ---
+// --- Yield-scaled clocks: the ring and the multiplier it feeds ---
 
 test("yieldMultiplier: ten consecutive empty ticks double the gap, and it caps at 8", () => {
   // Below ten empties the plain gap stands — the ring has to say something before it

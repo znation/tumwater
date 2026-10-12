@@ -48,7 +48,7 @@ test("validateConfig rejects a typo'd key inside check", () => {
   );
 });
 
-// check.gateCommand (PLANS.md Land-queue speed 3e): the opt-in cheaper gate-only check. A string
+// check.gateCommand: the opt-in cheaper gate-only check. A string
 // like command, but blank is accepted as "off" — falling back runs the FULL check at the gate,
 // the stronger one, so an empty value can never make the gate silently weaker.
 test("validateConfig accepts check.gateCommand, blank as off, and rejects a non-string one", () => {

@@ -139,7 +139,7 @@ test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", asy
   assert.deepEqual(granted, ["holder", "merge", "other"]);
 });
 
-// ── Process-wide check cap (PLANS.md "Land-queue speed 2b"): every full suite takes one permit
+// ── Process-wide check cap: every full suite takes one permit
 // from a single semaphore sized by config.maxConcurrentChecks, so a burst of landings cannot
 // stack suites on the host. The cap lives in src/concurrency/check-permit.ts; these tests drive it
 // through

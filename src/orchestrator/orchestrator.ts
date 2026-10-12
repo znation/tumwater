@@ -253,7 +253,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the resolved branch. One warning per episode, re-armed when the checkout returns.
   let warnedBranchDivergence = false;
 
-  // Need-based deferral (PLANS.md "Prioritize loops by need"): whether qualifying work has landed
+  // Need-based deferral: whether qualifying work has landed
   // since a role's last-seen main head, cached per head (see scheduling/work-landed-cache.ts).
   const workLandedSince = new WorkLandedCache(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's

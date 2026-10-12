@@ -262,7 +262,7 @@ test("prompt --list and --cancel reject duplicates, combinations, and stray posi
   assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
 });
 
-// --- prompt --role: per-role queues from the CLI (PLANS.md "Per-role prompts 1/2") ---
+// --- prompt --role: per-role queues from the CLI ---
 
 test("prompt --role queues for one loop only, wakes it, and validates the role", async () => {
   const repo = makeRepo();

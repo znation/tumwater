@@ -53,7 +53,7 @@ test("the steward prompt restricts writes to markdown", () => {
   assert.match(find, /You edit only markdown — never source\./);
 });
 
-// Prompt contract for PLANS.md Done-section curation (PLANS.md, planned 2026-09-04): ## Done
+// Prompt contract for PLANS.md Done-section curation: ## Done
 // is bounded by construction — a ten-entry verbatim window, older entries compressed to
 // one-line epitaphs carrying title, dates, and landing hashes. Every steward tick is a fresh
 // session with no memory of earlier curation moves, so the find text must carry the whole
@@ -109,7 +109,7 @@ test("the steward prompt treats Done compression as lossy with git history as th
   );
 });
 
-// Prompt contract for BUGS.md Fixed-section curation (PLANS.md, planned 2026-09-04): ## Fixed is
+// Prompt contract for BUGS.md Fixed-section curation: ## Fixed is
 // bounded by construction — a ten-entry verbatim window, older entries compressed to one-line
 // records carrying the symptom headline, the heading's own date clause as-is, and the landing
 // commit where resolvable. Same whitespace-collapsed matching as above — the prose is

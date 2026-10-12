@@ -86,7 +86,7 @@ export function isEligible(
   // wake overrides it (the woken check below): it is an explicit demand, the same class of
   // request the director's inbox runs without any gap.
   //
-  // Yield scaling (PLANS.md "Yield-scaled clocks"): for a scalable role the gap is
+  // Yield scaling: for a scalable role the gap is
   // multiplied by the multiplier its recent results earned — a search role that keeps
   // finding nothing slows down, and the multiplication gates the "main moved" wake below
   // too, which is where the cost actually comes from (the gap check above runs first, so a

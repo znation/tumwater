@@ -198,7 +198,7 @@ test("an exhausted feature rejection tells feature to replan, not re-author", ()
 
 // The red-main handoff note is the only signal a red main reaches the healer through: the
 // harness warning event is fleet-level and no role prompt reads it, so this note's shape is
-// the contract that points `bugfix` at the failing suite (PLANS.md "Red-main handoff").
+// the contract that points `bugfix` at the failing suite.
 test("buildMainRedNote names the short SHA, script, and failure headline in a <main-red> block", () => {
   const note = buildMainRedNote("abcdef1234567890", "test", "1) foo fails");
   assert.match(note, /^<main-red>/);

@@ -230,7 +230,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     }
   }
 
-  // Prompt-token telemetry (PLANS.md, per-tick prompt-token plan): the per-role median prompt
+  // Prompt-token telemetry: the per-role median prompt
   // send and how much of the prompt budget goes out before a tick's first edit. Omitted
   // entirely when no tick_end in the window carries the fields, so old logs and their golden
   // digests render unchanged.

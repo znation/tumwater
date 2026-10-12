@@ -197,7 +197,7 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   );
   assert.match(startRevision, /reviewing 01234567 \(revision 2\) before merge$/);
 
-  // A resumed review (PLANS.md, review-retry part 3/3) continues a timed-out reviewer's
+  // A resumed review continues a timed-out reviewer's
   // session; the flag switches the verb so the feed reads it as a resume, not a fresh run.
   // The revision and model suffixes append exactly as they do on a from-scratch review.
   const startResumed = formatEvent(

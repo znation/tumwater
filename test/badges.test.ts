@@ -113,7 +113,7 @@ test("landingBadge shows the land queue depth and stays empty when idle", () => 
   assert.equal(landingBadge({ depth: 3 }), " · land queue: 3");
 });
 
-// The timed-pause countdown (PLANS.md "Pause countdown"): the badge stands only while a
+// The timed-pause countdown: the badge stands only while a
 // FUTURE fleet deadline stands, so a role-only or indefinite pause and an expired marker
 // leave the header unchanged — the read side treats an expired marker as unpaused, and the
 // badge must never claim a countdown that is over.

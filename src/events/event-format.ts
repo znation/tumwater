@@ -160,7 +160,7 @@ export function eventMessage(e: HarnessEvent): string {
       // for every result that carries one keeps the event feed self-explanatory — a bare
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${textOr(e.summary)}` : e.error ? ` — ${textOr(e.error)}` : "";
-      // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went.
+      // Per-tick usage: where the day's spend went.
       return `tick #${eventTick(e)} ${outcomeText(e)}${extra}${usagePhrase(e)}`;
     }
     case "merged":

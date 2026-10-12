@@ -126,13 +126,13 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
     warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`);
   }
-  // Per-tick usage (PLANS.md, per-tick-usage plan): the event feed is where operators see
+  // Per-tick usage: the event feed is where operators see
   // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning
   // no_change/error/rejected/refused tick shows what it spent without diffing status-table
   // snapshots. Both fields are per-tick windows (reset at tick start, folded in over every
   // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
   // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
-  // The tick's wall-clock span rides on tick_end too (PLANS.md, time-and-spend plan): the
+  // The tick's wall-clock span rides on tick_end too: the
   // failure digest prices a tick by its own durationMs first (src/failure/failure-data.ts
   // tickDurationMs), so the field is ALWAYS present — a tick that ends within the same
   // Date.now() millisecond it started (an instant early-abort error tick) or crosses a
@@ -164,7 +164,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     // The billing answer the tick's runs reported, so the report can tell notional spend from
     // real spend without re-deriving it from the file (plans/agent-backends.md part 6a).
     ...(usage.billing !== undefined ? { billing: usage.billing } : {}),
-    // Per-tick prompt-token telemetry (PLANS.md, per-tick-prompt-token plan): how many prompt
+    // Per-tick prompt-token telemetry: how many prompt
     // tokens the tick sent, how many were cache reads, and how many went out before its first
     // edit. Omitted when zero like usageFragment's fields, so a tick that sent no prompt — and
     // every tick_end written by an older build — renders byte-identically.

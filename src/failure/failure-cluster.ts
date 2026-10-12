@@ -103,7 +103,7 @@ const TICK_TIMEOUT_PROGRESSING_KEY =
 // attempt re-reviews from scratch. Same cause, same knob (review.timeoutSeconds), one row.
 const TICK_TIMEOUT_PROGRESSING_REVIEW_KEY =
   "timed out after <dur> while still making progress — the commit is kept; the next attempt reviews it from scratch";
-// The review run's wording when a resumable session remains (PLANS.md, review-retry part 3/3):
+// The review run's wording when a resumable session remains:
 // the next attempt continues this review instead of re-reviewing. Continuing the timed-out
 // session is a different cause from a from-scratch re-review, so this wording is its own
 // cluster rather than joining the pooled plain tick-timeout row. Exported for its unit tests
@@ -117,7 +117,7 @@ export const TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY =
  * cause's agent-hours, not two half-size rows the top-N cut can drop — the same pooling the
  * error-storm reducer applies, src/fleet/error-storm.ts), and a resumed review's wording maps
  * to itself, because continuing the timed-out session is a different cause from a from-scratch
- * re-review (PLANS.md, review-retry part 3/3). Enumerated so a future wording edit lands in
+ * re-review. Enumerated so a future wording edit lands in
  * this table rather than silently changing which row its timeouts count under. */
 const TIMEOUT_POOL = new Map<string, string>([
   [TICK_TIMEOUT_PROGRESSING_KEY, TICK_TIMEOUT_KEY],

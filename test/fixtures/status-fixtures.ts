@@ -86,7 +86,7 @@ export function snapshotWith(
     inbox: 0,
     inboxPrompts: [],
     // The fixture's queues are empty by default; a test passes per-role counts to exercise
-    // the `p:N` state marker (PLANS.md "Per-role prompts 2/2"). With no previews there are
+    // the `p:N` state marker. With no previews there are
     // no cancel addresses and no per-role rows either.
     inboxFiles: [],
     inboxQueuedAt: [],

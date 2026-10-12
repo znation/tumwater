@@ -41,7 +41,7 @@ test("the status header carries an inbox badge only while prompts are queued", (
   assert.match(header, /· inbox: 3 · budget: \$0\.00\/\$50 today$/);
 });
 
-// The timed-pause countdown rides the header last (PLANS.md "Pause countdown"): only a
+// The timed-pause countdown rides the header last: only a
 // FUTURE fleet-marker deadline makes it appear — a role-only pause, an indefinite pause, and
 // an expired marker all keep the header byte-identical, because the badge must never claim
 // a countdown that is over (the read side already treats an expired marker as unpaused).
@@ -203,7 +203,7 @@ test("the status header carries a mainCheck badge only after a merge-scope check
   // No check yet: no badge — the header of a quiet fleet stays byte-identical to before.
   const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(none, /· main /);
-  // Green with counts (PLANS.md "Retire the README freshness stamp" wording: the old README
+  // Green with counts (wording: the old README
   // stamp's `suite N/N (N skipped)` shape, rendered live instead of committed).
   const green = headerOf(renderStatus(tmpdir(), {
     ...snapshotWith([{ role: "clean" }]),

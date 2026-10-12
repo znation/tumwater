@@ -14,7 +14,7 @@ import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fix
 import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
-// PLANS.md "Per-role prompts 1/2" criterion (b), red-gate arm: a per-role prompt is dequeued
+// criterion (b), red-gate arm: a per-role prompt is dequeued
 // before the red-main gate runs (the gate needs the assembled prompt), so a blocked tick MUST
 // put it back — the pending field is memory-only, and a prompt lost here never runs.
 test("a role prompt queued while main is red survives the blocked tick", async () => {

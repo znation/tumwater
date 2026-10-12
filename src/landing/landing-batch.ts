@@ -141,7 +141,7 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
  * ff; any other re-stack pays one more check. Only a race lost on every attempt leaves each change
  * not yet landed its ref with "merge_blocked", nothing seeded, for leftover recovery.
  *
- * Red → LAND THE LARGEST PASSING PREFIX (PLANS.md land-queue 3d): bisect in queue order, each
+ * Red → LAND THE LARGEST PASSING PREFIX: bisect in queue order, each
  * step the same assemble → check → ff (landStack) over a prefix of the changes not yet landed
  * — the first half of the ones the last red check ran over — so every prefix that lands, lands
  * on its own green check with nothing rewritten before its ff. A green prefix lands and the rest of

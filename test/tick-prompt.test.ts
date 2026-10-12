@@ -429,7 +429,7 @@ test("the brief's initial prompt survives an over-long hand edit via the truncat
   assert.match(result.prompt, /\[initial prompt truncated at 4096 chars\]/);
 });
 
-// PLANS.md "Per-role prompts 1/2": `tumwater prompt --role <id>` queues a prompt only that
+// `tumwater prompt --role <id>` queues a prompt only that
 // loop's next tick sees — dequeued here, riding as the tick's userPrompt and an explicit
 // <user-request> block in the prompt text.
 test("a queued per-role prompt is dequeued into that role's prompt only", () => {
