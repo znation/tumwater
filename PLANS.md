@@ -6,7 +6,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names the claude subscription window: a "claude window" check that warns while a rejected window holds the subscription claude seams (planned 2026-10-12 by plan; the subscription sibling of the landed "budget" check (`checkBudget` in `src/doctor/doctor-holds.ts`) and the last fleet hold doctor does not report, after "pause", "quiet hours", "budget", and "maintenance quota". On a subscription-only claude fleet a run is exempt from the dollar cap, so "budget" reads ok while `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until the rejected window's `resetsAt`, which can be hours away. Today grep finds no `claudeWindow`/`claude window` in `src/doctor`. So doctor prints "ready to run" over a fleet that starts no claude tick, and the operator has to read the status header's `Claude 5h · rejected` badge to learn why. Independent of the landed "A failing notify hook says so" plan: no `src/events` file. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work)
+
+**Goal.** `tumwater doctor` (and `--json`) gets a "claude window" row right after "budget". It warns while a rejected subscription window holds the claude seams, naming the window and the countdown to its reset. Otherwise it is ok and names the most constrained window's state.
+
+**Approach.**
+1. `src/doctor/doctor-holds.ts`: add an exported `checkClaudeWindow(root: string, now: number = Date.now()): CheckOutcome` and list it in the module doc's first sentence alongside the other holds. It reads `readClaudeAccount(root, now)` from `src/agent/claude/claude-account.ts`, which already flips a past-`resetsAt` window to `reset`.
+   - When there is no account file, or `billing !== "subscription"`, return `okOutcome("no subscription window reported")`. API-billed claude windows never hold, as `claudeWindowObservation` already says.
+   - Hold verdict: call `claudeWindowObservation(account, now)` from `src/fleet/fleet-polls.ts`, the same function the scheduler's `pollFleetHold` uses, so doctor cannot disagree with the hold. When it returns non-null, return `warnOutcome(\`${claudeWindowLabel(obs.windowType)} window rejected — subscription claude seams hold until it resets in ${humanSeconds(secondsUntil(obs.resetsAt, now))}\`)`. `windowType` and `resetsAt` are on the subscription-window observation. If the `HoldObservation` type makes them optional, narrow on `kind === "subscription-window"` and the field types. Do not add a non-null assertion without that narrowing.
+   - Otherwise take `claudeWindowEntries(account)[0]`, the most constrained window. With no entries, return `okOutcome("subscription; no window reported yet")`. For `allowed_warning`, return ok `` `${label} window nearing its limit${pct}` ``. For any other status, return ok `` `${label} window ${status}${pct}` ``. `pct` is `` ` (${Math.round(u * 100)}% used)` `` when `utilization` is a number, else empty. A rejected window with `isUsingOverage: true` lands here and reads `rejected`, which is correct: overage spends, it does not hold.
+   - The doc comment says: read-only, built on `claudeWindowObservation`, and a hold is a warn because it stops every subscription claude seam.
+2. `src/doctor/doctor.ts`: import `checkClaudeWindow` and add `{ name: "claude window", ...checkClaudeWindow(root) }` right after the `"budget"` row in `runDoctor`'s `checks` list.
+3. `README.md`: in the Audit row's `tumwater doctor` description, after "today's spend against the daily cap", add ", a claude subscription window holding the claude seams".
+
+**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`, `test/doctor-holds.test.ts`, `test/doctor.test.ts`, `README.md`.
+
+**Acceptance criteria.**
+- New `test/doctor-holds.test.ts` cases for `checkClaudeWindow`, each seeding the account with `writeClaudeAccount(root, …)` and passing a pinned `now`:
+  - With no account file, the result is ok with "no subscription window reported". An `api`-billed account with a `rejected` future window is also ok, not warn.
+  - A subscription account with `five_hour` `rejected`, a `resetsAt` 2 h after `now`, and no overage gives a warn. The message contains `5h window rejected` and the `humanSeconds` countdown for 7200 s.
+  - The same window with `isUsingOverage: true` is ok, not warn.
+  - A `rejected` window whose `resetsAt` is at or before `now` is ok, because the reader flips it to `reset`.
+  - `allowed_warning` with `utilization: 0.83` is ok, and its message contains `nearing its limit` and `83% used`.
+  - A subscription account with `windows: {}` is ok, with "no window reported yet".
+- `test/doctor.test.ts`: the check-name pin list in the test that asserts the order of `runDoctor`'s rows gains `"claude window"` between `"budget"` and `"maintenance quota"`. That is the one existing assertion this plan changes. Find it with `grep -n '"maintenance quota"' test/doctor.test.ts`.
+- `grep -n "checkClaudeWindow" src/doctor/doctor.ts` finds the import and the row.
+- The project's check (`npm run test`) passes.
 
 
 ## Done
