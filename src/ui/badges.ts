@@ -218,6 +218,24 @@ export function wakeBadge(wake: { roles: string[]; atMs: number } | undefined, n
   return ` · wake scheduled in ${humanSeconds(secondsUntil(wake.atMs, now))} (${wake.roles.join(", ")})`;
 }
 
+/** One loop's own pending-wake marker for its state cell: ` · wake in <duration>` for the
+ * earliest future wake naming `role` (or `instanceOf`, the base role an extra instance runs),
+ * empty when none does. Same match rule as the GUI's `scheduledWakesFor` (gui-client-loops.ts
+ * keeps its own JS copy). `wakes` need not be sorted. */
+export function loopWakeMarker(
+  wakes: { roles: string[]; atMs: number }[] | undefined,
+  role: string,
+  instanceOf: string | undefined,
+  now: number,
+): string {
+  let at: number | undefined;
+  for (const w of wakes ?? []) {
+    if (w.atMs <= now || !(w.roles.includes(role) || (instanceOf !== undefined && w.roles.includes(instanceOf)))) continue;
+    if (at === undefined || w.atMs < at) at = w.atMs;
+  }
+  return at === undefined ? "" : ` · wake in ${humanSeconds(secondsUntil(at, now))}`;
+}
+
 /** The header's fleet timed-pause fragment: `· paused — auto-resumes in <duration>` while a
  * timed pause stands, empty otherwise — so an operator can tell at a glance whether a paused
  * fleet will come back on its own or needs a manual `resume` (the Timed pause plan left the

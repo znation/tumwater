@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The TUI and `tumwater status` table show each loop's own pending scheduled wake (planned 2026-10-12 by plan; sibling of the landed dashboard per-loop wake display (`scheduledWakesFor`/`phaseDetail` in `src/ui/gui/gui-client-loops.ts`) and the landed `scheduledWakes` snapshot field (`src/status/status-data.ts`, filled from `scheduledWakes(root, now)` in `src/fleet/fleet-state.ts`). Today the terminal shows only the header's `wakeBadge(snap.scheduledWake, now)`, which names the EARLIEST wake. So after `wake feature --in 1h` and `wake plan --in 2h`, nothing in the TUI says plan has a wake coming, though the dashboard row and `tumwater wake --list` both do. Render-only: no snapshot, payload, `src/ui/gui`, or `src/operator` change)
+_None yet._
+
+## Done
+
+### The TUI and `tumwater status` table show each loop's own pending scheduled wake (planned 2026-10-12 by plan; sibling of the landed dashboard per-loop wake display (`scheduledWakesFor`/`phaseDetail` in `src/ui/gui/gui-client-loops.ts`) and the landed `scheduledWakes` snapshot field (`src/status/status-data.ts`, filled from `scheduledWakes(root, now)` in `src/fleet/fleet-state.ts`). Today the terminal shows only the header's `wakeBadge(snap.scheduledWake, now)`, which names the EARLIEST wake. So after `wake feature --in 1h` and `wake plan --in 2h`, nothing in the TUI says plan has a wake coming, though the dashboard row and `tumwater wake --list` both do. Render-only: no snapshot, payload, `src/ui/gui`, or `src/operator` change) — done 2026-10-12
 
 **Goal.** In the status table shared by `tumwater status` and the TUI (`renderStatusSpans` in `src/ui/status-render.ts`), each loop that a future scheduled wake names gets a short marker on its state cell, the way a loop with queued prompts gets `p:N`.
 
@@ -28,8 +32,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - Leave `snap.scheduledWake` undefined, so the header badge does not supply the text.
 - The existing "a loop with queued prompts carries a p:N marker on its state cell" test and every other `test/status-render*.test.ts`, `test/status-header.test.ts` and `test/tui-frame.test.ts` test still pass. Rows without a wake render the same spans as before.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's loop rows and drawer see every pending scheduled wake, not just the earliest (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --list` (`listWakes`/`renderWakeList` in `src/operator/operator-intent.ts`), the landed dashboard per-loop wake display (`scheduledWakeFor`/`phaseDetail` in `src/ui/gui/gui-client-loops.ts`) and drawer "Cancel scheduled wake" (`gui-client-drawer.ts`, over `POST /api/wake-cancel`). Today the status payload carries only the earliest pending wake (`scheduledWake` in `src/status/status-data.ts` → `scheduledWake(root, now)` in `src/fleet/fleet-state.ts` = `pendingScheduledWakes(root, now)[0]`). So after `wake feature --in 1h` and `wake plan --in 2h`, plan's row shows no "operator wake in 2h" and its drawer offers no cancel, though `tumwater wake --list` shows both. The comment above `scheduledWakeFor` records this gap. Read-only payload addition plus a client change; no new route or action, and no `src/ui/tui` file) — done 2026-10-12
 

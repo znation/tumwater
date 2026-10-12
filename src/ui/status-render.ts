@@ -6,7 +6,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge, wakeBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, quietBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -238,7 +238,8 @@ export function renderStatusSpans(
   // label drives the state cell and the shared row order (sortLoopsByState).
   // Per-role prompts 2/2 — a loop with queued prompts carries a small `p:N` marker on its
   // state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
-  // operator steering one loop that something is waiting for it.
+  // operator steering one loop that something is waiting for it. A pending scheduled wake
+  // naming the loop adds a blue ` · wake in …` marker after it.
   const roleQueued = (role: string): string => {
     const n = snap.roleInbox[role] ?? 0;
     return n > 0 ? ` p:${n}` : "";
@@ -284,12 +285,13 @@ export function renderStatusSpans(
     // survives clipping), and clipping often leaves only it — the color still tells the state.
     const stateSpans: StatusSpan[] = [{ text: state, ...(tone ? { tone } : {}) }];
     const next = nextRunCell(s, phase, now, snap.running);
+    const wakeMark = loopWakeMarker(snap.scheduledWakes, s.role, s.instanceOf, now);
     const resultT = resultTone(s.lastResult);
     return [
       cell(name),
       // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
       // this role by loopPhase's `landing` argument above) rides this same phase string.
-      [...stateSpans, { text: roleQueued(s.role) }],
+      [...stateSpans, { text: roleQueued(s.role) }, ...(wakeMark ? [{ text: wakeMark, tone: "blue" as const }] : [])],
       cell(String(s.ticks)),
       cell(String(s.commits)),
       cell(compactTokens(m.generated)),

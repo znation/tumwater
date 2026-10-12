@@ -485,6 +485,15 @@ test("a loop with queued prompts carries a p:N marker on its state cell", () => 
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
 });
 
+test("a loop named by a pending scheduled wake carries a wake marker on its state cell", () => {
+  const snap = snapshotWith([{ role: "clean" }, { role: "dry" }]);
+  snap.scheduledWakes = [{ roles: ["dry"], atMs: Date.now() + 2 * 3_600_000 }];
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  assert.match(lines.find((l) => l.startsWith("dry")) ?? "", /wake in 2h/);
+  assert.doesNotMatch(lines.find((l) => l.startsWith("clean")) ?? "", /wake in/);
+  assert.doesNotMatch(lines[lines.length - 1] ?? "", /wake in/, "the totals row stays marker-free");
+});
+
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
