@@ -34,6 +34,12 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
     // The assembled prompt opens the block (the queued prompt embeds further down, past the
     // pane window): the preview seam's output is what renders, not a placeholder.
     assert.match(tui.lastFrame(), /You are the "clean" loop/);
+    assert.match(tui.lastFrame(), /Ctrl\+N change/); // the notebook's next step is the change view
+
+    // The second Ctrl+N shows the collected pending change (this fixture holds no worktree, so
+    // the collector degrades; the tab label is what the step is pinned on).
+    tui.key(undefined, "n", { ctrl: true });
+    assert.match(tui.lastFrame(), /Change: clean \(1\/1\)/);
     assert.match(tui.lastFrame(), /Ctrl\+N transcript/); // the hint offers the way back
 
     tui.key(undefined, "n", { ctrl: true });

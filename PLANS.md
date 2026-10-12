@@ -146,81 +146,6 @@ pinning the export as behavior-preserving.
 grammar it shares.
 - `npm run test` is green.
 
-### Show a loop's pending change in the TUI transcript pane, matching `tumwater diff --role <id>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater diff --role <id>` and the landed dashboard loop drawer's "Pending change" section (`gui-client-drawer.ts`'s `drawerChangeHtml`); the TUI's Pending pane (`collectFleetChanges`/`renderFleetChange`) says which loops hold work but never the per-loop patch, so an operator must drop to the CLI or the browser drawer to read one; independent of the waiting TUI Queued pane, dashboard queued-prompt edit, and dashboard defer plans in behavior — it extends the transcript pane's `Ctrl+N` inspect cycle and the `src/change` collectors, touching no `src/inbox` or `src/gui` file — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the Queued pane plan, so a landing conflict is possible and the resolver handles it)
-
-**Goal.** `tumwater diff --role <id>` prints one loop's unlanded work — the branch, the commits
-ahead of main, the ahead-of-main patch, the dirty files, and the uncommitted patch — and the
-dashboard's loop drawer shows the same collector's view. The TUI can reach neither: its Pending
-pane lists which loops hold work (`renderFleetChange`), and its `Ctrl+N` inspect mode on a
-transcript shows only the notebook and next tick prompt. Add the per-role change to that inspect
-mode, rendering the CLI's own `renderRoleChange` output from the same `collectRoleChange` view,
-so the terminal, the CLI, and the drawer cannot drift on the header, the commit lines, or the
-patch caps.
-
-**Approach.**
-1. `src/ui/tui/tui-keys.ts`:
-   - Extend the `src/change` imports beside the existing `collectFleetChanges`/`FleetChangeView`
-     and `renderFleetChange`: add `collectRoleChange, type RoleChangeView` from
-     `../../change/change-data.js` and `renderRoleChange` from `../../change/change-render.js`.
-   - Add `collectChange?(root: string, role: string): Promise<RoleChangeView>` to `TuiKeysDeps`
-     (doc: the transcript Change mode's async collector, production uses change-data's
-     `collectRoleChange`, injectable so tests resolve a fixed view without git plumbing), and in
-     the factory body `const collectChange = deps.collectChange ?? collectRoleChange;`.
-   - `TuiKeysState` gains `changeMode: boolean` and `changeCache: string | null`, with doc
-     comments paralleling `noteMode`/`noteCache`: `changeMode` is true only on a transcript view
-     whose pane shows the loop's unlanded change, and `changeCache` is `renderRoleChange`'s text,
-     null until the collector resolves. Add the matching locals `let changeMode = false; let changeCache: string | null = null;` beside `noteMode`/`noteCache`.
-   - Extend the `Ctrl+N` branch (same guards: a transcript view, out of budget/role-prompt modes)
-     from a toggle into a three-state cycle, transcript → notebook → change → transcript:
-     - `changeMode` → `changeMode = false; changeCache = null;` (back to the transcript);
-     - else `noteMode` → `noteMode = false; noteCache = null; changeMode = true; changeCache = null;`
-       then kick off the collector fire-and-forget, mirroring the Pending pane's async arm: capture
-       `const target = role;` and `void collectChange(root, target).then((change) => { if (!changeMode || roleIds[view - 1] !== target) return; changeCache = renderRoleChange(change); deps.requestRender(); }, (err: unknown) => { if (!changeMode || roleIds[view - 1] !== target) return; flashError(err); deps.requestRender(); });`;
-     - else the notebook arm as today (`noteCache = roleInspectMarkdown(root, role); noteMode = true;`).
-     `paneScroll = 0` on every transition, as today.
-   - In the `Ctrl+T` branch, reset `changeMode = false; changeCache = null;` beside the notebook
-     reset, so a cycle away drops the snapshot.
-   - The `page !== null && noteMode` scroll branch becomes `page !== null && (noteMode || changeMode)`,
-     windowing `noteMode ? (noteCache ?? "") : (changeCache ?? "")`.
-   - `state()` returns the new `changeMode` and `changeCache`.
-2. `src/ui/tui/tui-frame.ts`: `TuiView`'s transcript variant gains `change: boolean` beside
-   `note`; `tabStrip`'s transcript label becomes
-   `${view.note ? "Notebook" : view.change ? "Change" : "Transcript"}: ${view.role} (${view.index}/${view.count})`;
-   `hintLine`'s transcript `Ctrl+N` word becomes
-   `view.note ? "change" : view.change ? "transcript" : "notebook"`.
-3. `src/ui/tui/tui.tsx`: the transcript `pane` object gains `change: s.changeMode`.
-4. `src/ui/tui/tui-pane.ts`: `TuiPaneState` gains `changeCache: string | null` (its `noteCache`
-   doc retargeted to "the notebook or change view's rendered text"); the transcript branch gains,
-   after the `pane.note` case, an `if (pane.change)` case that windows `state.changeCache` through
-   `entryBodyWindow` exactly like notebook mode (`toneLine` with `l.startsWith("#")` bold) and
-   returns `emptyNote: "(loading pending change…)"` while the cache is null.
-5. `docs/how-it-works.md`: the TUI bullet naming the `Ctrl+N` notebook toggle adds the Change step
-   — the viewed loop's unlanded work (branch, commits, patch, dirty files), matching
-   `tumwater diff --role <id>` and the dashboard drawer's Pending change section.
-
-**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
-`src/ui/tui/tui-pane.ts`, `docs/how-it-works.md`, `test/tui-frame.test.ts`,
-`test/tui-keys.test.ts`, `test/tui-notebook.test.ts`, `test/tui.test.ts`.
-
-**Acceptance criteria.**
-- `test/tui-frame.test.ts`: every existing transcript literal gains `change: false` (the field is
-  required); a `change: true` case tab-strips `[Change: qa (3/14)]` and hints `Ctrl+N transcript`,
-  while the `note: false`/`note: true` hint cases stay `notebook`/`transcript` unchanged.
-- `test/tui-keys.test.ts`, new case with an injected `collectChange` resolving a fixed
-  `RoleChangeView` (e.g. `state: "ready"`, two commits, one dirty file): on a transcript view the
-  first `Ctrl+N` sets `noteMode` true, the second sets `changeMode` true with `changeCache` null
-  (the loading state), resolving the promise sets `changeCache` to `renderRoleChange(view)` and
-  repaints, and the third `Ctrl+N` returns to the transcript with both caches null. `Ctrl+T` while
-  in change mode clears it, and a collector resolution after a cycle away does not write the cache.
-- `test/tui-notebook.test.ts`: the toggle test now walks transcript → notebook → change →
-  transcript, asserting the `Change: clean` tab label on the middle press (with the real fixture's
-  collector degrading to its `no worktree`/`no pending change` line, so the label is what is
-  pinned), and that a `Ctrl+T` away and back lands on the live transcript.
-- `test/tui.test.ts`: a `paneBody` case for a transcript pane with `change: true` windows
-  `state.changeCache` and returns `(loading pending change…)` when it is null.
-- `docs/how-it-works.md` names the Change step and `tumwater diff --role <id>`.
-- `npm run test` is green.
-
 ### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it)
 
 **Goal.** `tumwater tick <role> [<n>] [--last]` prints one completed tick's full event trail — a
@@ -290,6 +215,85 @@ three surfaces cannot drift on the header or the event rendering.
 - `npm run test` is green.
 
 ## Done
+
+### Show a loop's pending change in the TUI transcript pane, matching `tumwater diff --role <id>` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater diff --role <id>` and the landed dashboard loop drawer's "Pending change" section (`gui-client-drawer.ts`'s `drawerChangeHtml`); the TUI's Pending pane (`collectFleetChanges`/`renderFleetChange`) says which loops hold work but never the per-loop patch, so an operator must drop to the CLI or the browser drawer to read one; independent of the waiting TUI Queued pane, dashboard queued-prompt edit, and dashboard defer plans in behavior — it extends the transcript pane's `Ctrl+N` inspect cycle and the `src/change` collectors, touching no `src/inbox` or `src/gui` file — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the Queued pane plan, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
+
+**Goal.** `tumwater diff --role <id>` prints one loop's unlanded work — the branch, the commits
+ahead of main, the ahead-of-main patch, the dirty files, and the uncommitted patch — and the
+dashboard's loop drawer shows the same collector's view. The TUI can reach neither: its Pending
+pane lists which loops hold work (`renderFleetChange`), and its `Ctrl+N` inspect mode on a
+transcript shows only the notebook and next tick prompt. Add the per-role change to that inspect
+mode, rendering the CLI's own `renderRoleChange` output from the same `collectRoleChange` view,
+so the terminal, the CLI, and the drawer cannot drift on the header, the commit lines, or the
+patch caps.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`:
+   - Extend the `src/change` imports beside the existing `collectFleetChanges`/`FleetChangeView`
+     and `renderFleetChange`: add `collectRoleChange, type RoleChangeView` from
+     `../../change/change-data.js` and `renderRoleChange` from `../../change/change-render.js`.
+   - Add `collectChange?(root: string, role: string): Promise<RoleChangeView>` to `TuiKeysDeps`
+     (doc: the transcript Change mode's async collector, production uses change-data's
+     `collectRoleChange`, injectable so tests resolve a fixed view without git plumbing), and in
+     the factory body `const collectChange = deps.collectChange ?? collectRoleChange;`.
+   - `TuiKeysState` gains `changeMode: boolean` and `changeCache: string | null`, with doc
+     comments paralleling `noteMode`/`noteCache`: `changeMode` is true only on a transcript view
+     whose pane shows the loop's unlanded change, and `changeCache` is `renderRoleChange`'s text,
+     null until the collector resolves. Add the matching locals `let changeMode = false; let changeCache: string | null = null;` beside `noteMode`/`noteCache`.
+   - Extend the `Ctrl+N` branch (same guards: a transcript view, out of budget/role-prompt modes)
+     from a toggle into a three-state cycle, transcript → notebook → change → transcript:
+     - `changeMode` → `changeMode = false; changeCache = null;` (back to the transcript);
+     - else `noteMode` → `noteMode = false; noteCache = null; changeMode = true; changeCache = null;`
+       then kick off the collector fire-and-forget, mirroring the Pending pane's async arm: capture
+       `const target = role;` and `void collectChange(root, target).then((change) => { if (!changeMode || roleIds[view - 1] !== target) return; changeCache = renderRoleChange(change); deps.requestRender(); }, (err: unknown) => { if (!changeMode || roleIds[view - 1] !== target) return; flashError(err); deps.requestRender(); });`;
+     - else the notebook arm as today (`noteCache = roleInspectMarkdown(root, role); noteMode = true;`).
+     `paneScroll = 0` on every transition, as today.
+   - In the `Ctrl+T` branch, reset `changeMode = false; changeCache = null;` beside the notebook
+     reset, so a cycle away drops the snapshot.
+   - The `page !== null && noteMode` scroll branch becomes `page !== null && (noteMode || changeMode)`,
+     windowing `noteMode ? (noteCache ?? "") : (changeCache ?? "")`.
+   - `state()` returns the new `changeMode` and `changeCache`.
+2. `src/ui/tui/tui-frame.ts`: `TuiView`'s transcript variant gains `change: boolean` beside
+   `note`; `tabStrip`'s transcript label becomes
+   `${view.note ? "Notebook" : view.change ? "Change" : "Transcript"}: ${view.role} (${view.index}/${view.count})`;
+   `hintLine`'s transcript `Ctrl+N` word becomes
+   `view.note ? "change" : view.change ? "transcript" : "notebook"`.
+3. `src/ui/tui/tui.tsx`: the transcript `pane` object gains `change: s.changeMode`.
+4. `src/ui/tui/tui-pane.ts`: `TuiPaneState` gains `changeCache: string | null` (its `noteCache`
+   doc retargeted to "the notebook or change view's rendered text"); the transcript branch gains,
+   after the `pane.note` case, an `if (pane.change)` case that windows `state.changeCache` through
+   `entryBodyWindow` exactly like notebook mode (`toneLine` with `l.startsWith("#")` bold) and
+   returns `emptyNote: "(loading pending change…)"` while the cache is null.
+5. `docs/how-it-works.md`: the TUI bullet naming the `Ctrl+N` notebook toggle adds the Change step
+   — the viewed loop's unlanded work (branch, commits, patch, dirty files), matching
+   `tumwater diff --role <id>` and the dashboard drawer's Pending change section.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
+`src/ui/tui/tui-pane.ts`, `docs/how-it-works.md`, `test/tui-frame.test.ts`,
+`test/tui-keys.test.ts`, `test/tui-notebook.test.ts`, `test/tui-history.test.ts`,
+`test/tui-backlog.test.ts`.
+
+**Acceptance criteria.**
+- `test/tui-frame.test.ts`: every existing transcript literal gains `change: false` (the field is
+  required); a `change: true` case tab-strips `[Change: qa (3/14)]` and hints `Ctrl+N transcript`,
+  the `note: false` case stays `notebook`, and the `note: true` case names `change` — the
+  notebook's next step in the cycle.
+- `test/tui-keys.test.ts`, new case with an injected `collectChange` resolving a fixed
+  `RoleChangeView` (e.g. `state: "ready"`, two commits, one dirty file): on a transcript view the
+  first `Ctrl+N` sets `noteMode` true, the second sets `changeMode` true with `changeCache` null
+  (the loading state), resolving the promise sets `changeCache` to `renderRoleChange(view)` and
+  repaints, and the third `Ctrl+N` returns to the transcript with both caches null. `Ctrl+T` while
+  in change mode clears it, and a collector resolution after a cycle away does not write the cache.
+- `test/tui-notebook.test.ts`: the toggle test now walks transcript → notebook → change →
+  transcript, asserting the `Change: clean` tab label on the middle press (with the real fixture's
+  collector degrading to its `no worktree`/`no pending change` line, so the label is what is
+  pinned), and that a `Ctrl+T` away and back lands on the live transcript.
+- `test/tui-history.test.ts`: a `paneBody` case for a transcript pane with `change: true`
+  windows `state.changeCache` and returns `(loading pending change…)` when it is null (the
+  paneBody cases' established home; its own and `test/tui-backlog.test.ts`'s state literals gain
+  the required `changeCache`).
+- `docs/how-it-works.md` names the Change step and `tumwater diff --role <id>`.
+- `npm run test` is green.
 
 ### Edit a queued prompt from the dashboard Queued tab (planned 2026-10-11 by plan; part 2/2 of "Edit a queued prompt from the dashboard Queued tab" — the browser affordance over part 1/2's `GET /api/prompt-text` and `POST /api/prompt-edit`, requires part 1/2 landed; independent of the waiting TUI Pending land-queue, TUI History grep, and dashboard Settings Clear plans — GUI client only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; done 2026-10-11 by feature)
 

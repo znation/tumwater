@@ -205,7 +205,7 @@ test("paneBody's backlog list and entry mode show the same eligibility mark besi
     },
     { heading: "## Done" },
   ]);
-  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, changeCache: null, paneScroll: 0 };
   const opts = { root: dir, width: 300, eventBudget: 20, entryBudget: 5 };
   const listText = paneBody({ kind: "backlog" }, { ...opts, state }).body.map((l) => l.map((s) => s.text).join(""));
   assert.ok(

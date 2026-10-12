@@ -11,6 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
+import { renderRoleChange } from "../src/change/change-render.js";
 import { enqueueLanding, readLandingQueue } from "../src/landing/landing-queue.js";
 import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
@@ -818,6 +819,93 @@ test("a Pending collector resolution after the roster size changed caches onto t
     queueText + "\n\nno pending changes",
     "the still-selected Pending pane caches the resolved roster",
   );
+});
+
+test("Ctrl+N cycles transcript → notebook → change and back, caching the collector's render", async () => {
+  const root = makeRoot();
+  const view = {
+    role: "clean",
+    branch: "tumwater/clean",
+    mainBranch: "main",
+    state: "ready" as const,
+    ahead: 2,
+    commits: [{ sha: "abc1234", subject: "add a thing" }],
+    diff: "",
+    dirtyFiles: ["a.ts"],
+    uncommittedDiff: "",
+  };
+  let resolveChange!: (v: typeof view) => void;
+  const pending = new Promise<typeof view>((resolve) => (resolveChange = resolve));
+  let renders = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => (renders += 1),
+    now: () => 0,
+    collectChange: () => pending,
+  });
+  keys.syncSnapshot(0, false, ["clean"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
+  assert.equal(keys.state().view, 1);
+
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // transcript → notebook
+  assert.equal(keys.state().noteMode, true);
+  assert.equal(keys.state().changeMode, false);
+
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // notebook → change
+  assert.equal(keys.state().noteMode, false, "the notebook mode and snapshot drop");
+  assert.equal(keys.state().noteCache, null);
+  assert.equal(keys.state().changeMode, true);
+  assert.equal(keys.state().changeCache, null, "the loading state until the collector resolves");
+
+  const before = renders;
+  resolveChange(view);
+  await pending;
+  assert.equal(keys.state().changeCache, renderRoleChange(view));
+  assert.ok(renders > before, "the resolution repaints the pane");
+
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // change → transcript
+  assert.equal(keys.state().changeMode, false);
+  assert.equal(keys.state().changeCache, null);
+  assert.equal(keys.state().noteMode, false);
+  assert.equal(keys.state().noteCache, null);
+});
+
+test("Ctrl+T leaves change mode, and a resolution after a cycle away does not cache", async () => {
+  const root = makeRoot();
+  const view = {
+    role: "clean",
+    branch: "tumwater/clean",
+    mainBranch: "main",
+    state: "ready" as const,
+    ahead: 0,
+    commits: [],
+    diff: "",
+    dirtyFiles: [],
+    uncommittedDiff: "",
+  };
+  let resolveLate!: (v: typeof view) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectChange: () => new Promise<typeof view>((resolve) => (resolveLate = resolve)),
+  });
+  keys.syncSnapshot(0, false, ["clean"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notebook
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → change
+  assert.equal(keys.state().changeMode, true);
+
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away, still in flight
+  assert.equal(keys.state().changeMode, false, "Ctrl+T drops the change mode");
+  assert.equal(keys.state().changeCache, null);
+
+  resolveLate(view);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().changeCache, null, "a late resolution does not write the dropped cache");
 });
 
 test("the Queued pane caches the CLI's rendered queue list on entry and drops it on a cycle away", () => {

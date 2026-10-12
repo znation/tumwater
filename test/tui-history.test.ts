@@ -44,7 +44,7 @@ test("rows render newest-first, one line each, and no rows is the empty string",
 });
 
 test("an empty history pane falls back to the no-ticks note, not entryBodyWindow's placeholder", () => {
-  const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, paneScroll: 0 };
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, changeCache: null, paneScroll: 0 };
   const empty = paneBody({ kind: "history", since: null, result: null, role: null, grep: null }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
   assert.equal(empty.emptyNote, "(no ticks yet)");
@@ -55,7 +55,7 @@ test("an empty history pane falls back to the no-ticks note, not entryBodyWindow
 });
 
 test("a null queued cache falls back to the no-queued-prompts note, and a cache windows its lines", () => {
-  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, changeCache: null, paneScroll: 0 };
   const empty = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
   assert.equal(empty.emptyNote, "(no queued prompts)");
@@ -67,7 +67,7 @@ test("a null queued cache falls back to the no-queued-prompts note, and a cache 
 });
 
 test("a null pending cache holds the loading note, and a resolved roster windows its text", () => {
-  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, paneScroll: 0 };
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, changeCache: null, paneScroll: 0 };
   const loading = paneBody({ kind: "pending" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(loading.body, []);
   assert.equal(loading.emptyNote, "(loading pending changes…)");
@@ -78,8 +78,21 @@ test("a null pending cache holds the loading note, and a resolved roster windows
   assert.equal(resolved.emptyNote, "(loading pending changes…)");
 });
 
+test("a null change cache holds the loading note, and a resolved change windows its text", () => {
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: null, noteCache: null, changeCache: null, paneScroll: 0 };
+  const pane = { kind: "transcript", role: "clean", index: 1, count: 1, note: false, change: true } as const;
+  const loading = paneBody(pane, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(loading.body, []);
+  assert.equal(loading.emptyNote, "(loading pending change…)");
+
+  const change = "clean: tumwater/clean, 2 commits ahead of main\nabc1234 add a thing";
+  const resolved = paneBody(pane, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, changeCache: change } });
+  assert.equal(resolved.body.map((l) => l.map((s) => s.text).join("")).join("\n"), change);
+  assert.equal(resolved.emptyNote, "(loading pending change…)");
+});
+
 test("an empty queued pane holds the no-prompts note, and a cached list windows its text", () => {
-  const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, paneScroll: 0 };
+  const state = { selectedEntry: null, entryScroll: 0, paneCache: "", noteCache: null, changeCache: null, paneScroll: 0 };
   const empty = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
   assert.equal(empty.emptyNote, "(no queued prompts)");

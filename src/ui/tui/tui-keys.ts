@@ -13,8 +13,8 @@ import {
   type HistoryResultClass,
 } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
-import { collectFleetChanges, type FleetChangeView } from "../../change/change-data.js";
-import { renderFleetChange } from "../../change/change-render.js";
+import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
+import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
@@ -220,6 +220,9 @@ interface TuiKeysDeps {
   /** The Pending pane's async collector; production uses change-data's collectFleetChanges.
    * Injectable so tests can resolve a fixed roster without git plumbing. */
   collectPending?(root: string): Promise<FleetChangeView>;
+  /** The transcript Change mode's async collector; production uses change-data's
+   * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
+  collectChange?(root: string, role: string): Promise<RoleChangeView>;
 }
 
 /** The state render reads back each frame: the prompt line, the modes it names in the hint
@@ -247,6 +250,12 @@ interface TuiKeysState {
   /** The notebook view's rendered Markdown, computed once on Ctrl+N entry and windowed by
    * paneBody; null when the live transcript is shown. */
   noteCache: string | null;
+  /** Whether the viewed loop's pane shows the collected unlanded change (the second Ctrl+N
+   * step) instead of the transcript — true only on a transcript view. */
+  changeMode: boolean;
+  /** The change view's rendered text (renderRoleChange), null until its async collector
+   * resolves; windowed by paneBody. */
+  changeCache: string | null;
   paneScroll: number;
   /** The History pane's active trailing window label (Ctrl+S), or null for the default
    * newest-N read; named in the hint line. */
@@ -300,6 +309,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
   const collectPending = deps.collectPending ?? collectFleetChanges;
+  const collectChange = deps.collectChange ?? collectRoleChange;
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // tui-backlog.ts's one definition, shared with the render so stale-selection clamping cannot
   // drift.
@@ -374,6 +384,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // view cycles.
   let noteMode = false;
   let noteCache: string | null = null;
+  // Ctrl+N's third step: the viewed loop's collected unlanded change (the CLI's
+  // `renderRoleChange` text). changeCache is null until the async collector resolves, and the
+  // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
+  let changeMode = false;
+  let changeCache: string | null = null;
   // The within-body scroll offset (line index of the window head) shared by the two Markdown
   // panes and the notebook view — PgDn/PgUp there. Reset to the head whenever the view is
   // entered, like entryScroll.
@@ -635,18 +650,45 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (key.ctrl && key.name === "n") {
-      // Ctrl+N toggles the viewed loop's pane between its live transcript and its notebook
-      // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI"). Guarded to a
-      // transcript view and out of budget-edit and role-prompt modes, the same way the
-      // per-loop controls below are; everywhere else the key falls through to applyKey.
+      // Ctrl+N cycles the viewed loop's pane live transcript → notebook → change → transcript
+      // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
+      // loop's pending change in the TUI transcript pane"). The change step renders the same
+      // collectRoleChange/renderRoleChange view the CLI's `tumwater diff --role <id>` and the
+      // dashboard drawer use. Guarded to a transcript view and out of budget-edit and
+      // role-prompt modes, the same way the per-loop controls below are; everywhere else the
+      // key falls through to applyKey.
       if (budgetMode || rolePromptFor || roleIds.length === 0 || view < 1 || view > roleIds.length) {
         deps.requestRender();
         return;
       }
       const role = roleIds[view - 1]!; // defined: view is clamped inside the transcript range
-      if (noteMode) {
+      if (changeMode) {
+        changeMode = false;
+        changeCache = null;
+      } else if (noteMode) {
+        // notebook → change: reset the notebook snapshot and kick off the collector
+        // fire-and-forget, caching the rendered text when it resolves (the Pending pane's
+        // pattern). Guard on the change pane still being current — changeMode on, same role
+        // at the same index — so a cycle away or a roster shift cannot overwrite the pane now
+        // shown. The default collector degrades rather than throws, so the rejection arm only
+        // covers an injected seam (or an unexpected throw).
         noteMode = false;
         noteCache = null;
+        changeMode = true;
+        changeCache = null;
+        const target = role;
+        void collectChange(root, target).then(
+          (change) => {
+            if (!changeMode || roleIds[view - 1] !== target) return;
+            changeCache = renderRoleChange(change);
+            deps.requestRender();
+          },
+          (err: unknown) => {
+            if (!changeMode || roleIds[view - 1] !== target) return;
+            flashError(err);
+            deps.requestRender();
+          },
+        );
       } else {
         // rolePayload reads the notebook and assembles the next tick's prompt off disk; a
         // throw leaves the transcript shown (the mode stays off) and flashes the reason
@@ -727,8 +769,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       exitBudgetMode();
       exitRolePromptMode();
       exitHistorySearch();
-      noteMode = false; // a cycle away leaves notebook mode and drops its snapshot
+      noteMode = false; // a cycle away leaves notebook and change modes and drops their snapshots
       noteCache = null;
+      changeMode = false;
+      changeCache = null;
       view = (view + 1) % (roleIds.length + 7); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → events
       selectedEntry = null; // leaving a view drops any entry selection…
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
@@ -804,11 +848,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (page !== null && noteMode) {
-      // Within-body scroll in the notebook view (a transcript view): PgDn/PgUp page the
-      // cached inspection Markdown, clamped at both ends, exactly like the usage/failures
+    if (page !== null && (noteMode || changeMode)) {
+      // Within-body scroll in the notebook and change views (a transcript view): PgDn/PgUp page
+      // the cached inspection Markdown, clamped at both ends, exactly like the usage/failures
       // panes below.
-      const total = (noteCache ?? "").split("\n").length;
+      const total = (noteMode ? (noteCache ?? "") : (changeCache ?? "")).split("\n").length;
       paneScroll = stepEntryScroll(paneScroll, total, eventBudget, page);
       deps.requestRender();
       return;
@@ -1012,6 +1056,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         paneCache,
         noteMode,
         noteCache,
+        changeMode,
+        changeCache,
         paneScroll,
         historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
         reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),

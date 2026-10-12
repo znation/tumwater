@@ -327,9 +327,14 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   hint line naming it (`window: default` or `window: <window>`).
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
   toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
-  its backoff, `Ctrl+N` switches the pane between the live transcript and a read-only view of
-  the loop's notebook and next tick's assembled prompt (the same two things the dashboard
-  drawer shows; the tab strip reads Notebook and PgUp/PgDn page it), and `Ctrl+R` opens the
+  its backoff, `Ctrl+N` cycles the pane live transcript → notebook → change and back: the
+  notebook step is a read-only view of the loop's notebook and next tick's assembled prompt
+  (the same two things the dashboard drawer shows; the tab strip reads Notebook and PgUp/PgDn
+  page it), and the change step is the loop's collected unlanded work — branch, commits ahead
+  of main, the ahead-of-main patch, and its dirty files and uncommitted patch — the same
+  `collectRoleChange`/`renderRoleChange` view `tumwater diff --role <id>` prints and the
+  dashboard drawer's Pending change section shows (the tab strip reads Change, and the pane
+  says `(loading pending change…)` until the collector resolves), and `Ctrl+R` opens the
   role-prompt editor that queues a prompt for that loop's
   next tick (Enter sends it; Esc or `Ctrl+R` again cancels and restores the draft). The prompt
   line names who Enter sends to, and Up/Down recall this session's submitted prompts — director

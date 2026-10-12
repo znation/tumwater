@@ -21,9 +21,12 @@ interface TuiPaneState {
   selectedEntry: number | null;
   entryScroll: number;
   paneCache: string | null;
-  /** The notebook view's rendered Markdown (roleInspectMarkdown), computed once on
-   * Ctrl+N entry like paneCache; null when the live transcript is shown. */
+  /** The notebook or change view's rendered text (roleInspectMarkdown or renderRoleChange),
+   * computed once on Ctrl+N entry like paneCache; null when the live transcript is shown. */
   noteCache: string | null;
+  /** The change view's rendered text (renderRoleChange), null until its async collector
+   * resolves; windowed by paneBody in change mode. */
+  changeCache: string | null;
   paneScroll: number;
 }
 
@@ -64,6 +67,17 @@ export function paneBody(
       return {
         body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
         emptyNote: "(nothing to inspect yet)",
+      };
+    }
+    // The change view (the second Ctrl+N step) windows the collected unlanded-change text the
+    // same way; its async collector leaves the cache null for the first frames, so the pane
+    // paints the loading note rather than entryBodyWindow's "no details" placeholder.
+    if (pane.change) {
+      if (state.changeCache === null) return { body: [], emptyNote: "(loading pending change…)" };
+      const win = entryBodyWindow(state.changeCache, state.paneScroll, eventBudget, width);
+      return {
+        body: win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined)),
+        emptyNote: "(loading pending change…)",
       };
     }
     return {

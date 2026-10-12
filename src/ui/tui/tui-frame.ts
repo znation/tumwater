@@ -54,7 +54,7 @@ export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3
  * queued prompts — the dashboard's views, in the order Ctrl+T cycles them. */
 export type TuiView =
   | { kind: "activity" }
-  | { kind: "transcript"; role: string; index: number; count: number; note: boolean }
+  | { kind: "transcript"; role: string; index: number; count: number; note: boolean; change: boolean }
   | { kind: "backlog" }
   | { kind: "usage"; scope: string | null; window: string | null }
   | { kind: "failures"; scope: string | null; window: string | null }
@@ -67,7 +67,7 @@ export type TuiView =
 export function tabStrip(view: TuiView, width: number): StatusLine {
   const tabs: Array<[TuiView["kind"], string]> = [
     ["activity", "Activity"],
-    ["transcript", view.kind === "transcript" ? `${view.note ? "Notebook" : "Transcript"}: ${view.role} (${view.index}/${view.count})` : "Transcript"],
+    ["transcript", view.kind === "transcript" ? `${view.note ? "Notebook" : view.change ? "Change" : "Transcript"}: ${view.role} (${view.index}/${view.count})` : "Transcript"],
     ["backlog", "Backlog"],
     ["usage", view.kind === "usage" && view.scope ? `Usage: ${view.scope}` : "Usage"],
     ["failures", view.kind === "failures" && view.scope ? `Failures: ${view.scope}` : "Failures"],
@@ -90,7 +90,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
-    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "transcript" : "notebook"], ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
+    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notebook"], ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
