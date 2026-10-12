@@ -38,7 +38,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
-### `tumwater questions answer <n> --file <path>`: record a multiline decision with its lines kept (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `normalizeEntryBody`, `bodyStructureProblem` in `src/backlog/backlog-write.ts`) and the landed `plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" plan: that one only calls `tryAnswerQuestion` with its existing four arguments from `src/ui/tui/tui-keys.ts`, and this plan keeps that signature working (it adds an optional trailing parameter). No `src/ui` or `src/gui` file is touched)
+## Done
+
+### `tumwater questions answer <n> --file <path>`: record a multiline decision with its lines kept (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `normalizeEntryBody`, `bodyStructureProblem` in `src/backlog/backlog-write.ts`) and the landed `plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" plan: that one only calls `tryAnswerQuestion` with its existing four arguments from `src/ui/tui/tui-keys.ts`, and this plan keeps that signature working (it adds an optional trailing parameter). No `src/ui` or `src/gui` file is touched); done 2026-10-12 by feature
 
 **Goal.** Loops post questions that often need a structured answer: a list of options kept, a short rationale, a code snippet. Today `tumwater questions answer <n> "<decision>"` folds the decision to one line (`collapseWhitespace` in `answerQuestionLocked`, `src/cli/question-commands.ts`), so a bullet list arrives as one run-on sentence. `plan` and `bug` already take `--file <path>` (`-` for stdin) with lines kept. Give `questions answer` the same form, with the same structural guard that keeps a stray `## ` line from adding a phantom section to QUESTIONS.md.
 
@@ -64,8 +66,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/cli-questions-strictness.test.ts` (spawned CLI): `questions answer 1 --file ans.md` and `questions answer --file ans.md 1` both record the multiline answer. `questions answer 1 --file ans.md extra` fails with `with --file the decision comes from the file`. A repeated `--file` and `--file=ans.md` are refused. `questions answer --json 1 --file ans.md` prints `{answered, question, decision}` with the kept lines. `questions answer 1 --file -` reads stdin.
 - `questions answer 1 "a   b"` still records `a b` (the positional fold is unchanged).
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater plan|bug --edit <n> --file <path>`: rewrite an entry from a markdown file, keeping its line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` and the dashboard's line-keeping entry edit (`tryEditEntry`)) — done 2026-10-12
 

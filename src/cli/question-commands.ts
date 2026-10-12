@@ -9,6 +9,7 @@ import path from "node:path";
 import { fail, say, sayJson } from "./cli-output.js";
 import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "../backlog/backlog-md.js";
 import { openQuestionEntries } from "../backlog/backlog.js";
+import { bodyStructureProblem, normalizeEntryBody } from "../backlog/backlog-write.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
@@ -131,11 +132,26 @@ export const UNCLOSED_FENCE_MESSAGE =
  * refusals mapped to `fail` (exit 1) with the CLI's wording. Returns the answered question's
  * title plus the collapsed decision that landed in the file. */
 export function answerQuestion(root: string, n: number, rawDecision: string): { title: string; decision: string } {
-  const outcome = tryAnswerQuestion(root, n, rawDecision);
+  return answeredOrFail(n, tryAnswerQuestion(root, n, rawDecision));
+}
+
+/** Map a non-answered outcome to the CLI's `fail` wording; shared by both CLI entry points. */
+function answeredOrFail(n: number, outcome: AnswerOutcome): { title: string; decision: string } {
   if (outcome.status === "missing") fail(`no question at position ${n} (${outcome.open} open)`);
   if (outcome.status === "fenced") fail(UNCLOSED_FENCE_MESSAGE);
   if (outcome.status !== "answered") fail(`no question at position ${n}`);
   return { title: outcome.title, decision: outcome.decision };
+}
+
+/** `tumwater questions answer <n> --file <path>`: the decision's lines kept (normalizeEntryBody),
+ * behind the same structural guard `plan --file` uses, so a stray `## ` line cannot grow a
+ * phantom section. Refusals exit 1 through `fail`. */
+export function answerQuestionFromText(root: string, n: number, text: string): { title: string; decision: string } {
+  const body = normalizeEntryBody(text);
+  if (body === "") fail("questions answer needs a decision: the file is blank");
+  const problem = bodyStructureProblem(body);
+  if (problem !== null) fail(`questions answer --file: ${problem}`);
+  return answeredOrFail(n, tryAnswerQuestion(root, n, body, undefined, true));
 }
 
 /** The non-exiting answer core, for callers (the dashboard server) that must not end the
@@ -144,22 +160,24 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
  * answer and a landed change to QUESTIONS.md cannot each overwrite the other's whole-file write.
  * With `expectedTitle`, a block at position `n` titled otherwise is `moved` and nothing is
  * written; the comparison runs inside the lock, after the scan. */
-export function tryAnswerQuestion(root: string, n: number, rawDecision: string, expectedTitle?: string): AnswerOutcome {
-  return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision, expectedTitle));
+export function tryAnswerQuestion(root: string, n: number, rawDecision: string, expectedTitle?: string, keepLines = false): AnswerOutcome {
+  return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision, expectedTitle, keepLines));
 }
 
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
  * heading plus body, verbatim — from `## Open` to the end of `## Answered`, followed by a
  * `**Answered <today> by operator:** <decision>` paragraph stamped with the local date — the
- * decision is free-form operator prose, so it folds to one line (collapseWhitespace, the pause
- * `--reason` precedent): verbatim multi-line text could carry a line that starts with `## ` or
- * `### ` and grow a phantom section no reader wrote. The Open section that is left empty regains
+ * positional decision is free-form operator prose, so it folds to one line (collapseWhitespace,
+ * the pause `--reason` precedent): verbatim multi-line text could carry a line that starts with
+ * `## ` or `### ` and grow a phantom section no reader wrote. The `--file` form (`keepLines`)
+ * keeps the lines, behind bodyStructureProblem — the guard `plan --file` uses — applied by its
+ * caller; a multi-line decision follows the stamp after a blank line. The Open section that is left empty regains
  * its `_None yet._` placeholder; a file with no
  * `## Answered` section gains one. Returns the outcome (see `AnswerOutcome`); on `answered`
  * the title for the confirmation line, plus the collapsed decision that actually landed in the file so callers
  * report what was written rather than the caller's raw whitespace. */
-function answerQuestionLocked(root: string, n: number, rawDecision: string, expectedTitle: string | undefined): AnswerOutcome {
-  const decision = collapseWhitespace(rawDecision);
+function answerQuestionLocked(root: string, n: number, rawDecision: string, expectedTitle: string | undefined, keepLines: boolean): AnswerOutcome {
+  const decision = keepLines ? normalizeEntryBody(rawDecision) : collapseWhitespace(rawDecision);
   const file = path.join(root, "QUESTIONS.md");
   const md = readTextOrNull(file);
   const lines = md === null ? null : md.split("\n");
@@ -209,7 +227,9 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string, expe
 
   // Append the block at the end of ## Answered: before the next `## ` heading when one
   // follows, at the file's end otherwise — the section is last in the documented skeleton.
-  const answerLines = moved.concat("", `**Answered ${formatDate(new Date())} by operator:** ${decision}`, "");
+  const stamp = `**Answered ${formatDate(new Date())} by operator:**`;
+  const stamped = decision.includes("\n") ? [stamp, "", ...decision.split("\n")] : [`${stamp} ${decision}`];
+  const answerLines = moved.concat("", ...stamped, "");
   if (scanned.answeredIdx === -1) {
     // No ## Answered section: grow the file's end with the skeleton section plus the block.
     let out = rebuilt.join("\n");

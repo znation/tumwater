@@ -428,3 +428,23 @@ test("tryAnswerQuestion writes the same bytes as answerQuestion, and refuses a t
   assert.equal(tryAnswerQuestion(b, 1, "x", "First: which renderer? (asked by director 2026-10-01)").status, "moved");
   assert.equal(fs.readFileSync(fb, "utf8"), after);
 });
+
+test("tryAnswerQuestion with keepLines writes the stamp, a blank line, then the decision lines verbatim", () => {
+  const root = tmpdir("tw-q-keep-");
+  const file = seed(root, twoQuestionFile());
+  const text = "- keep A\n- drop B\n\nbecause X";
+  const out = tryAnswerQuestion(root, 1, text, undefined, true);
+  assert.equal(out.status, "answered");
+  if (out.status === "answered") assert.equal(out.decision, text);
+  assert.match(fs.readFileSync(file, "utf8"), /\*\*Answered \d{4}-\d{2}-\d{2} by operator:\*\*\n\n- keep A\n- drop B\n\nbecause X\n/);
+});
+
+test("a single-line decision with keepLines matches the positional answer byte for byte", () => {
+  const a = tmpdir("tw-q-keep1-");
+  const b = tmpdir("tw-q-keep2-");
+  const fa = seed(a, twoQuestionFile());
+  const fb = seed(b, twoQuestionFile());
+  tryAnswerQuestion(a, 1, "just this", undefined, true);
+  answerQuestion(b, 1, "just this");
+  assert.equal(fs.readFileSync(fa, "utf8"), fs.readFileSync(fb, "utf8"));
+});

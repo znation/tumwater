@@ -191,6 +191,10 @@ Usage:
                                    --json prints the result as data and must precede <n>:
                                    a --json after the decision is recorded as part of it;
                                    loops read the answer at their next tick
+  tumwater questions answer [--json] <n> --file <path>
+                                   Read the decision from the file (- for stdin) with its
+                                   lines kept; a ## or ### heading line outside a code fence,
+                                   or an unclosed fence, is refused
   tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
                                    find text, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is

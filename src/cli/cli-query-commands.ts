@@ -22,7 +22,11 @@ import { readLandingQueue } from "../landing/landing-queue.js";
 import { renderLandingQueue } from "../landing/landing-queue-render.js";
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
-import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
+import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
+import { answerQuestion, answerQuestionFromText, sayAnswered, sayQuestionList } from "./question-commands.js";
+
+/** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
+const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
  * neither a flag nor the value of a --role flag. Returns the id (null when absent) and the
@@ -144,15 +148,22 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   const words: string[] = [];
   let jsonFlag = false;
   let numbered = false;
-  for (const arg of args) {
+  let file: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === "--file") {
+      rejectRepeatFlag(file !== undefined, "--file");
+      file = promptFileValue(args[++i]);
+      continue;
+    }
     if (!numbered && arg === "--json") {
       rejectRepeatFlag(jsonFlag, "--json");
       jsonFlag = true;
       continue;
     }
     if (arg.startsWith("--") && arg !== "--json") {
-      rejectEqualsForm(arg, [JSON_FLAG]);
-      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json)`);
+      rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC]);
+      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file)`);
     }
     if (!numbered) {
       // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
@@ -163,6 +174,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     }
     words.push(arg);
   }
+  if (words.length === 0 && file !== undefined) fail("--file only applies to questions answer <n>");
   if (words.length === 0) {
     sayQuestionList(root, jsonFlag);
     return;
@@ -179,6 +191,12 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     fail(
       `questions answer needs a positive question number: questions answer <n> "<decision>"${raw === undefined ? "" : gotSuffix(raw)}`,
     );
+  if (file !== undefined) {
+    if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
+    const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
+    sayAnswered(n, answered.title, jsonFlag, answered.decision);
+    return;
+  }
   const decision = words.slice(2).join(" ").trim();
   if (decision === "")
     fail('questions answer needs a decision: questions answer <n> "<decision>"');

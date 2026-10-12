@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
-import { cli } from "./helpers/cli-harness.js";
+import { spawnSync } from "node:child_process";
+import { CLI, cli } from "./helpers/cli-harness.js";
 
 // Spawned-CLI argument-strictness tests for `tumwater questions answer`: the free-form decision
 // boundary (single-dash words and a `--json` token past the number are prose, unknown flags
@@ -125,4 +126,72 @@ test("questions answer refuses a non-integer or non-positive question number", a
   const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
   assert.match(md, /### Cap the spend\?/, "the open entry stayed open");
   assert.doesNotMatch(md, /\*\*Answered/);
+});
+
+const MULTI = "- keep A\n- drop B\n\nbecause X\n";
+const OPEN_ONE = "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n";
+
+test("questions answer --file keeps the decision's lines, in either flag position", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions file");
+  const ans = path.join(repo, "ans.md");
+  fs.writeFileSync(ans, MULTI);
+  for (const args of [["1", "--file", ans], ["--file", ans, "1"]]) {
+    fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+    const r = await cli(repo, "questions", "answer", ...args);
+    assert.equal(r.code, 0, r.stderr);
+    const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+    assert.match(md, /\*\*Answered [^\n]* by operator:\*\*\n\n- keep A\n- drop B\n\nbecause X\n/);
+  }
+  const j = await cli(repo, "questions", "answer", "--json", "1", "--file", ans);
+  assert.equal(j.code, 1, "no question left to answer");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+  const json = await cli(repo, "questions", "answer", "--json", "1", "--file", ans);
+  assert.deepEqual(JSON.parse(json.stdout), { answered: 1, question: "Cap the spend?", decision: "- keep A\n- drop B\n\nbecause X" });
+});
+
+test("questions answer --file refuses extra words, repeats, and the equals form", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions file refusals");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+  const ans = path.join(repo, "ans.md");
+  fs.writeFileSync(ans, MULTI);
+  const extra = await cli(repo, "questions", "answer", "1", "--file", ans, "extra");
+  assert.equal(extra.code, 1);
+  assert.match(extra.stderr, /with --file the decision comes from the file/);
+  const twice = await cli(repo, "questions", "answer", "1", "--file", ans, "--file", ans);
+  assert.equal(twice.code, 1);
+  const eq = await cli(repo, "questions", "answer", "1", `--file=${ans}`);
+  assert.equal(eq.code, 1);
+  const bare = await cli(repo, "questions", "--file", ans);
+  assert.equal(bare.code, 1);
+  assert.match(bare.stderr, /--file only applies to questions answer/);
+  assert.equal(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), OPEN_ONE);
+});
+
+test("questions answer --file refuses a phantom heading or unclosed fence, accepts a fenced heading", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions file guard");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+  const ans = path.join(repo, "ans.md");
+  for (const bad of ["ok\n## Foo\n", "ok\n```\ncode\n"]) {
+    fs.writeFileSync(ans, bad);
+    const r = await cli(repo, "questions", "answer", "1", "--file", ans);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /questions answer --file:/);
+    assert.equal(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), OPEN_ONE);
+  }
+  fs.writeFileSync(ans, "ok\n```\n## Foo\n```\n");
+  const r = await cli(repo, "questions", "answer", "1", "--file", ans);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /```\n## Foo\n```/);
+});
+
+test("questions answer --file - reads stdin", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions file stdin");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
+  const r = spawnSync(process.execPath, [CLI, "questions", "answer", "1", "--file", "-"], { cwd: repo, input: MULTI, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /by operator:\*\*\n\n- keep A\n/);
 });
