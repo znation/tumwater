@@ -451,6 +451,15 @@ function preservingFileRoles<T extends TumwaterConfig>(root: string, candidate: 
   return candidate;
 }
 
+/** The config with top-level `key` set to `section`, or removed when `section` is empty — the
+ * unset shape for the per-role maps, `model` tiers and `agents`, which never leave an empty
+ * object in the file. A whole-config write, so the file's own roles section is kept. */
+function withSectionOrDropped(root: string, cfg: TumwaterConfig, key: string, section: object): TumwaterConfig {
+  const next =
+    Object.keys(section).length === 0 ? without(cfg as unknown as ConfigRecord, key) : { ...cfg, [key]: section };
+  return preservingFileRoles(root, next as unknown as TumwaterConfig);
+}
+
 /** Remove ONE value of tumwater.json from its raw CLI text (`tumwater config unset <key>`):
  * the inverse of setConfigKey. A bare top-level key is deleted (reverting to its default or
  * to absence); a dotted key (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`,
@@ -502,9 +511,7 @@ export function unsetConfigKey(
       oldValue = rawMap[parsed.role];
       const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
       const next = without(existing, parsed.role);
-      if (Object.keys(next).length === 0)
-        return preservingFileRoles(root, without(record, parsed.map) as unknown as TumwaterConfig);
-      return preservingFileRoles(root, { ...cfg, [parsed.map]: next } as unknown as TumwaterConfig);
+      return withSectionOrDropped(root, cfg, parsed.map, next);
     }
     if (parsed.kind === "tier") {
       // A string `model` resolves to { default } (modelTierMap); unsetting a tier the FILE
@@ -514,9 +521,7 @@ export function unsetConfigKey(
       oldValue = rawTiers[parsed.tier];
       const existing = modelTierMap(record.model);
       const next = without(existing, parsed.tier);
-      if (Object.keys(next).length === 0)
-        return preservingFileRoles(root, without(record, "model") as unknown as TumwaterConfig);
-      return preservingFileRoles(root, { ...cfg, model: next } as unknown as TumwaterConfig);
+      return withSectionOrDropped(root, cfg, "model", next);
     }
     if (parsed.kind === "agent") {
       // Presence is judged against the FILE, so unsetting a field only the default (or the
@@ -532,9 +537,7 @@ export function unsetConfigKey(
       delete entry[parsed.field];
       if (Object.keys(entry).length === 0) delete agents[parsed.id];
       else agents[parsed.id] = entry;
-      if (Object.keys(agents).length === 0)
-        return preservingFileRoles(root, without(record, "agents") as unknown as TumwaterConfig);
-      return preservingFileRoles(root, { ...cfg, agents } as unknown as TumwaterConfig);
+      return withSectionOrDropped(root, cfg, "agents", agents);
     }
     const rawRolesCandidate = raw.roles;
     const rawRoles = objectOrEmpty(rawRolesCandidate);
