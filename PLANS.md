@@ -6,7 +6,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The TUI runs `tumwater doctor`'s checks: a Health tab at the end of the Ctrl+T cycle (planned 2026-10-12 by plan; terminal sibling of the CLI `tumwater doctor` (`runDoctor` in `src/doctor/doctor.ts`, rendered by `renderDoctor` in `src/doctor/doctor-render.ts`) and the landed dashboard Health check card (`GET /api/doctor` in `src/gui/gui-endpoints.ts`, painted by `src/ui/gui/gui-client-settings.ts`). Today grep finds no `doctor` in `src/ui/tui`. So an operator watching a stuck fleet in the TUI must quit it or open a second terminal to learn that the fleet is paused, in quiet hours, over budget, maintenance-held, or short on disk. Stands alone: no `src/doctor`, `src/gui`, `src/ui/gui`, or CLI change)
+
+**Goal.** A ninth tab, "Health", after Queued in the TUI's Ctrl+T cycle. It shows the same text `tumwater doctor` prints (`renderDoctor(await runDoctor(root))`), recomputed on each entry to the tab.
+
+**Approach.** Model it on the Pending pane, the cycle's one existing async collector:
+- `src/ui/tui/tui-keys.ts`, `createTuiKeys`:
+  - Add an injectable seam to `TuiKeysDeps` beside `collectPending`: `runDoctor?(root: string): Promise<DoctorReport>`, defaulting to `runDoctor` from `src/doctor/doctor.ts`. Tests then resolve a fixed report without probing binaries or git.
+  - Widen the Ctrl+T wrap from `% (roleIds.length + 7)` to `% (roleIds.length + 8)`, and extend the trailing comment's view list with `→ health`.
+  - In the Ctrl+T handler's `if (!refreshPaneCache("all"))` chain, add a `view === roleIds.length + 7` branch. It sets `paneCache = null` (the loading note shows), then calls `void runDoctorSeam(root).then(...)`. On resolve it sets `paneCache = renderDoctor(report)` and calls `deps.requestRender()`. On reject it calls `flashError(err)` and `deps.requestRender()`. Both arms first return early unless `view === roleIds.length + 7` still holds. This is the same stale-resolution guard, with the same reason, that the Pending branch comments.
+  - Raise the clamp in `syncSnapshot` from `roleIds.length + 6` to `roleIds.length + 7`.
+  - The PgUp/PgDn branch guarded by `view >= roleIds.length + 2 && page !== null` already scrolls `paneCache` panes. Check that it covers the new index unchanged. Add no new key: leaving the tab and coming back re-runs the checks, just as Pending re-collects.
+- `src/ui/tui/tui-frame.ts`: add `| { kind: "health" }` to `TuiView`, add `["health", "Health"]` after `["queued", "Queued"]` in `tabStrip`, and add a `hintLine` branch for `view.kind === "health"` with the same keys as Pending (`Enter send`, `↑↓ history`, `PgUp/PgDn scroll`, `Ctrl+T next view`, `Ctrl+D quit`).
+- `src/ui/tui/tui-pane.ts`, `paneBody`: add a `pane.kind === "health"` branch shaped like the `pending` one: window `state.paneCache` through `entryBodyWindow` when it is non-null, else no lines, with `emptyNote: "(running health checks…)"`.
+- `src/ui/tui/tui.tsx`: in the view-index→`TuiView` chain, add `view === roleIds.length + 7 ? { kind: "health" }` before the activity fallback.
+- `src/ui` may import `src/doctor` (the GUI server already does). The reverse stays forbidden, and this plan adds no `src/doctor` import of `src/ui`.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui-pane.ts`, `src/ui/tui/tui.tsx`, `test/tui-keys.test.ts`, `test/tui-frame.test.ts`, `test/tui-history.test.ts` (it holds the `paneBody` pane tests), `docs/how-it-works.md` (the TUI paragraph that begins "The TUI shows the same alerts under its header" and lists the `Ctrl+T` cycle), and `README.md`'s Audit row (append "and the TUI's Health tab").
+
+**Acceptance criteria.**
+- With no roles, eight Ctrl+T presses from Activity land on index 7 (Health), and a ninth wraps to 0. When an injected `runDoctor` seam resolves a fixed `DoctorReport`, `state().paneCache` equals `renderDoctor` of that report after the promise settles, and `requestRender` was called.
+- A seam that resolves after the operator has cycled away from Health leaves `paneCache` untouched. A rejecting seam flashes the error and leaves the pane on its loading note.
+- `tabStrip({ kind: "health" }, 200)` reads `Activity  Transcript  Backlog  Usage  Failures  History  Pending  Queued  [Health]   Ctrl+T next`. The existing exact `tabStrip` assertions in `test/tui-frame.test.ts` gain `  Health` before `   Ctrl+T next`. `hintLine` for `{ kind: "health" }` includes `Ctrl+D quit` and `PgUp/PgDn scroll`, and is added to the all-views `Ctrl+D quit` loop.
+- `paneBody({ kind: "health" }, …)` shows the loading note while `paneCache` is null and the cached report lines once it is set.
+- These existing tests in `test/tui-keys.test.ts` change, and nothing else should need to: the "seven cycles with no roles wrap back to Activity" loop (becomes eight), the "cycling past Queued wraps to Activity" step (now lands on Health; one more press wraps), and the `// → pending → queued → activity` three-press loop (becomes four). Grep `name: "t" }` in `test/` to confirm that no other test counts the full cycle.
+- The project's check (`npm run test`) passes.
 
 
 ## Done
