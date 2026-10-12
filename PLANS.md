@@ -6,7 +6,61 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names the maintenance allowance: a "maintenance quota" check for the rolling-24 h landings against `maintenancePerWorkLanding` (planned 2026-10-12 by plan; the last scheduler hold doctor does not report, after the landed "pause", "quiet hours", and "budget" checks (`checkPause`/`checkQuietHours`/`checkBudget` in `src/doctor/doctor-holds.ts`) and the existing "bootstrap" and "disk space" checks. Today grep finds no `maintenanceQuota`/`maintenance quota` in `src/doctor`. So when the window is full, doctor prints "ready to run" over a fleet whose clean/tests/dry/organize/improve/readme loops start no tick until the window rolls under. An operator who runs `doctor` to learn why those loops are idle then has to read the status table's `held: maintenance quota <used>/<allowance>` label. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card renders `runDoctor`'s rows, so it shows the new row with no extra work)
+
+**Goal.** `tumwater doctor` (and `--json`, and the dashboard Health check card) gets a
+`maintenance quota` row that gives the rolling-24 h allowance verdict the scheduler enforces. The
+row names used/allowance and, when the allowance is held, the maintenance loops it holds.
+
+**Approach.**
+- Add `checkMaintenanceQuota(root, config, aliveFleet: boolean, now = Date.now()): CheckOutcome`
+  to `src/doctor/doctor-holds.ts`, beside `checkBudget`. Extend the module's header doc comment to
+  list it.
+  - `config === undefined` → `okOutcome("not checked — tumwater.json unreadable")`, the same
+    as `checkBudget`.
+  - Loops: `loopIds(config).map((id) => loadLoopState(root, id))`, the same as `checkBudget`.
+    Pass each as `{ role: s.role, running: aliveFleet && s.running === true }`. A dead fleet's
+    leftover `running` flag must not count as in flight.
+  - Queued roles: `new Set(readLandingQueue(root).entries.map((e) => e.role))` (from
+    `src/landing/landing-queue.ts`) when `aliveFleet`, else an empty set. A queued landing
+    waits for a live drain, so only a live fleet's queue counts as in flight.
+  - Verdict: `maintenanceQuotaForPoll(root, config.maintenancePerWorkLanding, loops, queued, now)`
+    from `src/status/status-polls.ts`. The status snapshot uses this same function, and it wraps
+    the pure `maintenanceQuota` verdict over `countMaintenanceWindow`. That way doctor, status,
+    and the gate share one definition. `src/status` does not import `src/ui`, so doctor's no-`src/ui`
+    rule holds.
+  - Outcomes:
+    - `held` non-empty → `warnOutcome("allowance reached — <used>/<allowance> maintenance landings in the last 24h; held until the window rolls under: <held sorted, comma-joined>")`.
+      This is a warn because it stops a whole tier, the same as the fleet-wide holds.
+    - Otherwise → `okOutcome("<used>/<allowance> maintenance landings in the last 24h (<maintenancePerWorkLanding> per work landing + <MAINTENANCE_DAILY_FLOOR> floor)")`.
+      Import `MAINTENANCE_DAILY_FLOOR` from `src/gates/maintenance-quota.ts`.
+    - `held` is empty when no maintenance loop is enabled, even if `used >= allowance`. In that
+      case append `; no maintenance loop enabled` to the ok detail.
+- In `runDoctor` (`src/doctor/doctor.ts`), add
+  `{ name: "maintenance quota", ...checkMaintenanceQuota(root, config, orchestratorAlive(root, info)) }`
+  right after the `budget` row. Read `info` the way the `budget` row does.
+- Update the expected name list in `test/doctor.test.ts`'s fresh-root test, which pins every
+  check name in order. Put `"maintenance quota"` after `"budget"`.
+
+**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`,
+`test/doctor-holds.test.ts`, `test/doctor.test.ts`, README.md (the `Audit` row's doctor
+sentence: add "and the maintenance allowance's rolling-24 h use").
+
+**Acceptance criteria.**
+- `test/doctor-holds.test.ts` gets new tests that write `merged` events to `eventsLogPath(root)`.
+  Copy the `writeEvents` pattern from `test/maintenance-quota.test.ts`, use a fixed `now`, and
+  give every fixture its own tmp root (`maintenanceQuotaForPoll` memoizes a counter per root).
+  The tests check:
+  - under the allowance → ok, and the detail contains `used/allowance`;
+  - 12 `clean` merges and no work merges, with `clean` enabled (the 12 floor reached) → warn,
+    and the detail names `clean`;
+  - the same window with `aliveFleet` false and a loop state saved with `running: true` → the
+    running loop is not counted (used equals the landed count);
+  - `config` undefined → ok, "not checked".
+- `test/doctor.test.ts`'s fresh-root name list includes `"maintenance quota"` after `"budget"`,
+  and the suite passes (`npm run test`).
+- `tumwater doctor --json` carries the new row with no change to `renderDoctor` or the report
+  shape, because the row goes through the existing `checks` array.
 
 
 ## Done
