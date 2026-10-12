@@ -317,7 +317,7 @@ export interface TumwaterConfig {
    * idle mode. Default 24. */
   worktreeIdleReclaimHours: number;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
-   * (budget_paused, role_streak_paused, land_failed, restart_blocked, question_posted — the
+   * (budget_paused, claude_window_limited, role_streak_paused, land_failed, restart_blocked, question_posted — the
    * states where the fleet or one of its changes is stopped and only a human can act, plus a
    * posted question; src/events/notify.ts owns the
    * allowlist and the per-type one-minute throttle). The command runs detached with

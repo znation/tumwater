@@ -87,7 +87,7 @@ pi model; at a fleet of today's size it can amount to tens of dollars a day, so 
 free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: its
 API-equivalent cost is tracked as notional spend, printed on its own line in `tumwater report`,
 and never counted in the spend totals. A rejected subscription usage window holds subscription
-claude seams until it resets (the first `allowed_warning` is logged too), so the fleet does not
+claude seams until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command), so the fleet does not
 burn a failed run per loop per poll; pi seams and API-key claude seams keep ticking. A
 subscription claude seam with no overage is free to the budget gate too: at the cap it stays
 put while priced seams move to their fallback, and a subscription claude pair is accepted as a
