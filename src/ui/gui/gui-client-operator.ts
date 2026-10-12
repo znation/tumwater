@@ -93,7 +93,14 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   }
   function windowLinesHtml(cw) {
     if (!cw) return "";
-    return cw.windows.map((w) => {
+    // Shortest window first (5h above 7d), whatever order the server ranks severity in; an
+    // unlabelled type sorts last, then by type name. A copy, so cw.windows keeps its order.
+    const hours = (w) => {
+      const m = /^(\d+)([hdw])$/.exec(windowLabel(w.type));
+      return m ? Number(m[1]) * (m[2] === "h" ? 1 : m[2] === "d" ? 24 : 168) : Infinity;
+    };
+    const shortestFirst = cw.windows.slice().sort((a, b) => (hours(a) === hours(b) ? (a.type < b.type ? -1 : a.type > b.type ? 1 : 0) : hours(a) < hours(b) ? -1 : 1));
+    return shortestFirst.map((w) => {
       const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw)) + "</span>";
       if (typeof w.utilization !== "number") return line;
       const pct = Math.min(100, Math.round(w.utilization * 100));

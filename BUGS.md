@@ -5,13 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The "Claude 5h" window shows below "Claude 7d" in the GUI budget card; the operator wants the shorter window first (found by operator session 2026-10-12)
-
-- **Symptom:** the GUI budget card lists the account's subscription windows with the 7d row above the 5h row. The operator expects 5h on top. The TUI header badge may show the same inversion, since it names only `primary` (`windows[0]`).
-- **Reproduce:** with a subscription account file whose `seven_day` window has a higher `utilization` (or a worse status) than `five_hour`, open the GUI. The 7d row renders first.
-- **Cause:** `claudeWindowEntries` (src/agent/claude/claude-account.ts) sorts most-constrained first (status severity, then utilization, then earlier reset, then type name). `claudeWindowBlock` (src/status/status-data.ts) passes that order as `claudeWindow.windows`, and the GUI card (src/ui/gui/gui-client-operator.ts, the `cw.windows.map`) renders it as-is. `primary` is `windows[0]`, which also feeds `claudeWindowBadge` (src/ui/badges.ts) and role-view.ts's `billingWindow`.
-- **Expected / fix sketch:** keep `primary` the most constrained window (the badge, tone and hold logic depend on it), but display `windows` in a fixed shortest-window-first order (five_hour before seven_day; derive duration from the `rateLimitType`, unknown types last, then by type name). Do the ordering for display only, e.g. sort a copy in the GUI card (and anywhere else a list is rendered), so `claudeWindowEntries`' severity contract and its tests stay valid. Add a test with a 7d window more utilized than the 5h one asserting 5h renders first while `primary` stays the 7d. Decide whether the TUI header, which shows only the primary window, should also name the 5h window; if that needs more than a line, record it as a follow-up rather than growing this fix.
-
 ### The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot: idle extra instances with nothing to claim, need-based deferrals and claim-group holds. With one of six slots busy it read as a scheduling bug (found by operator session 2026-10-12)
 
 **Needs review 2026-10-12 by feature: too large for one run** — the remaining finer phase labels need a new persisted skip-reason field written by the scheduling pass (orchestrator-scheduling.ts), a state schema/reader change, new `loopPhase` labels in status-model.ts and its browser twin, and updates to idleClaimText/gui-client-loops.ts plus pinned tests.
@@ -34,6 +27,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Partial progress 2026-10-12 (bugfix):** the leftover `queued` detail no longer claims a slot wait; it reads "due — not running: no work to claim, deferred, or starting on the next poll" (src/ui/gui/gui-client-model.ts phaseInfo), true for every state that falls through to `queued`. Still open: the finer phase labels (`idle: …`, `deferred (…)`) from the fix sketch, which need persisted deferral state.
 
 ## Fixed
+
+### The "Claude 5h" window shows below "Claude 7d" in the GUI budget card; the operator wants the shorter window first (found by operator session 2026-10-12) (fixed 2026-10-12 by bugfix loop)
+
+- **Symptom:** the GUI budget card lists the account's subscription windows with the 7d row above the 5h row. The operator expects 5h on top. The TUI header badge may show the same inversion, since it names only `primary` (`windows[0]`).
+- **Reproduce:** with a subscription account file whose `seven_day` window has a higher `utilization` (or a worse status) than `five_hour`, open the GUI. The 7d row renders first.
+- **Cause:** `claudeWindowEntries` (src/agent/claude/claude-account.ts) sorts most-constrained first (status severity, then utilization, then earlier reset, then type name). `claudeWindowBlock` (src/status/status-data.ts) passes that order as `claudeWindow.windows`, and the GUI card (src/ui/gui/gui-client-operator.ts, the `cw.windows.map`) renders it as-is. `primary` is `windows[0]`, which also feeds `claudeWindowBadge` (src/ui/badges.ts) and role-view.ts's `billingWindow`.
+- **Expected / fix sketch:** keep `primary` the most constrained window (the badge, tone and hold logic depend on it), but display `windows` in a fixed shortest-window-first order (five_hour before seven_day; derive duration from the `rateLimitType`, unknown types last, then by type name). Do the ordering for display only, e.g. sort a copy in the GUI card (and anywhere else a list is rendered), so `claudeWindowEntries`' severity contract and its tests stay valid. Add a test with a 7d window more utilized than the 5h one asserting 5h renders first while `primary` stays the 7d. Decide whether the TUI header, which shows only the primary window, should also name the 5h window; if that needs more than a line, record it as a follow-up rather than growing this fix.
+- **Fix:** `windowLinesHtml` (src/ui/gui/gui-client-operator.ts) renders a copy of `windows` sorted shortest-first; `primary` and `claudeWindowEntries` are untouched. The TUI header still names only the primary window (not changed).
+- **Validation gap:** none — the existing GUI client test harness reproduced it directly.
 
 ### A claim the poll releases is never saved, so an idle extra work instance keeps showing the entry it already landed: its status row names that entry as its work, `doctor` warns about it, and every orchestrator restart releases it again (found by operator session 2026-10-12 while answering why three loops read "Queued" with one of six slots busy) (fixed 2026-10-12 by bugfix loop)
 

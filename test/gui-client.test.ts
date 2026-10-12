@@ -494,6 +494,14 @@ test("the spend card renders the subscription window in place of or beside the d
   assert.doesNotMatch(unreported, /meter/, "no meter without a reported utilization");
 });
 
+test("the window card lists the shortest window first while primary stays the most constrained", () => {
+  const { scope } = operatorScope();
+  const week = { type: "seven_day", status: "allowed_warning", utilization: 0.9 };
+  const five = { type: "five_hour", status: "allowed", utilization: 0.2 };
+  const html = scope.windowLinesHtml({ windows: [week, five], primary: week, only: true, heldUntil: null });
+  assert.ok(html.includes("Claude 5h") && html.indexOf("Claude 5h") < html.indexOf("Claude 7d"), "5h renders above 7d");
+});
+
 test("the window card draws a meter from reported utilization and says when usage is unreported", () => {
   const { scope } = operatorScope();
   const win = (w: object) => ({ windows: [w], primary: w, only: true, heldUntil: null });
