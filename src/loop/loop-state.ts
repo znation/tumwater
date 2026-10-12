@@ -276,6 +276,17 @@ function healNumber(value: unknown, fallback: number): number {
   return nonNegativeNumber(value, fallback);
 }
 
+/** Heal one OPTIONAL numeric field of a persisted record in place, preserving the field's
+ * absent shape: an absent field stays absent (an older state file with no such field reads
+ * unchanged), while a present field heals by healNumber's rule. Every optional numeric field
+ * loadLoopState repairs — the eight top-level stamps/streaks and conflictHandback.round —
+ * goes through this one guard, so the "absent stays absent" repair cannot be dropped from
+ * one field while another keeps it. */
+function healOptionalNumber<T extends object, K extends keyof T>(rec: T, key: K): void {
+  const value = rec[key];
+  if (value !== undefined) rec[key] = healNumber(value, 0) as T[K];
+}
+
 /** Heal one persisted nested record: absent stays absent; a present non-object (a string,
  * number, NaN, null, or array) is dropped to undefined — every consumer of these records reads
  * them with property access or mutation (landing-core sets `lastReview.exhausted`, tick-apply
@@ -308,14 +319,14 @@ export function loadLoopState(root: string, role: string): LoopState {
   s.peakContextTokens = healNumber(s.peakContextTokens, 0);
   s.totalCostUsd = healNumber(s.totalCostUsd, 0);
   s.dayCostUsd = healNumber(s.dayCostUsd, 0);
-  if (s.lastTickStartedAt !== undefined) s.lastTickStartedAt = healNumber(s.lastTickStartedAt, 0);
-  if (s.lastTickEndedAt !== undefined) s.lastTickEndedAt = healNumber(s.lastTickEndedAt, 0);
-  if (s.wokenAt !== undefined) s.wokenAt = healNumber(s.wokenAt, 0);
-  if (s.cutOffStreak !== undefined) s.cutOffStreak = healNumber(s.cutOffStreak, 0);
-  if (s.quietKillStreak !== undefined) s.quietKillStreak = healNumber(s.quietKillStreak, 0);
-  if (s.consecutiveErrors !== undefined) s.consecutiveErrors = healNumber(s.consecutiveErrors, 0);
-  if (s.unreviewFailures !== undefined) s.unreviewFailures = healNumber(s.unreviewFailures, 0);
-  if (s.parkedSince !== undefined) s.parkedSince = healNumber(s.parkedSince, 0);
+  healOptionalNumber(s, "lastTickStartedAt");
+  healOptionalNumber(s, "lastTickEndedAt");
+  healOptionalNumber(s, "wokenAt");
+  healOptionalNumber(s, "cutOffStreak");
+  healOptionalNumber(s, "quietKillStreak");
+  healOptionalNumber(s, "consecutiveErrors");
+  healOptionalNumber(s, "unreviewFailures");
+  healOptionalNumber(s, "parkedSince");
   if (s.reviewResume !== undefined) {
     const r = healRecord(s.reviewResume, (v) => {
       v.attempts = healNumber(v.attempts, 0);
@@ -363,7 +374,7 @@ export function loadLoopState(root: string, role: string): LoopState {
   if (s.conflictHandback !== undefined)
     s.conflictHandback = healRecord(s.conflictHandback, (v) => {
       v.at = healNumber(v.at, 0);
-      if (v.round !== undefined) v.round = healNumber(v.round, 0);
+      healOptionalNumber(v, "round");
     });
   if (s.landingCheckFailures !== undefined)
     s.landingCheckFailures = healRecord(s.landingCheckFailures, (v) => {
