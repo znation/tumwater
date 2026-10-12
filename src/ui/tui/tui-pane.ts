@@ -10,6 +10,7 @@ import { readTranscript } from "../transcript.js";
 import { readEvents } from "../../events/event-read.js";
 import { formatEvent } from "../../events/event-format.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
+import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
 import { eventTone, toneLine, transcriptTone, type TuiView } from "./tui-frame.js";
@@ -20,6 +21,11 @@ import { eventTone, toneLine, transcriptTone, type TuiView } from "./tui-frame.j
 interface TuiPaneState {
   selectedEntry: number | null;
   entryScroll: number;
+  /** The Queued pane's row selection (null = list mode) and the rows it indexes (the same
+   * renderQueuedList traversal `tumwater prompt --list` prints). A set selection shows the
+   * row's full prompt under a cancel header instead of the numbered list. */
+  selectedQueued: number | null;
+  queuedRows: QueuedListRow[];
   paneCache: string | null;
   /** The notebook view's rendered Markdown (roleInspectMarkdown), computed once on Ctrl+N
    * entry like paneCache; null when the live transcript is shown. */
@@ -150,9 +156,25 @@ export function paneBody(
     };
   }
   if (pane.kind === "queued") {
-    // The queued-prompt list is computed synchronously on Ctrl+T entry (renderQueuedList over
-    // the same queue list `tumwater prompt --list` prints), so paneCache is already set this
-    // frame; an empty queue caches the empty string and falls to the pane's own note.
+    // A set selection shows the row's full prompt under a cancel header (the numbered list
+    // clips long prompts); list mode windows the cached renderQueuedList string, which is
+    // computed synchronously on Ctrl+T entry over the same queue `tumwater prompt --list`
+    // prints, so paneCache is already set this frame. An empty queue falls to the pane's
+    // own note either way.
+    const sel = state.selectedQueued === null || state.queuedRows.length === 0
+      ? null
+      : Math.min(state.selectedQueued, state.queuedRows.length - 1);
+    if (sel !== null) {
+      const row = state.queuedRows[sel]!;
+      const win = entryBodyWindow(row.text, state.paneScroll, entryBudget, width);
+      return {
+        body: [
+          toneLine(`queued for ${row.role} #${row.position} (Ctrl+X to cancel)`, width, "bold"),
+          ...win.lines.map((l) => toneLine(l, width)),
+        ],
+        emptyNote: "(no queued prompts)",
+      };
+    }
     const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
     return {
       body: win.lines.map((l) => toneLine(l, width)),

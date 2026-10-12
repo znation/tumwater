@@ -226,7 +226,7 @@ export function listWideScope(root: string): string[] {
  * suffix; `notBeforeMs` is the prompt's not-before time parsed from its queue file's marker
  * line (null when absent or malformed), which the prose turns into a `delivers in <duration>`
  * countdown instead of the age — and `--json` carries both as-is. */
-interface QueuedListRow {
+export interface QueuedListRow {
   role: string;
   position: number;
   text: string;

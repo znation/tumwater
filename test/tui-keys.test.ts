@@ -1010,6 +1010,67 @@ test("the Queued pane caches the CLI's rendered queue list on entry and drops it
   assert.equal(keys.state().paneCache, null, "leaving Queued drops the cache");
 });
 
+test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps the selection", () => {
+  const root = makeRoot();
+  enqueuePrompt(root, "director text");
+  enqueueRolePrompt(root, "clean", "clean one");
+  enqueueRolePrompt(root, "clean", "clean two");
+  const t = Date.now();
+  const { keys } = makeKeys(root, () => t);
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  assert.equal(keys.state().view, 6);
+  assert.equal(keys.state().selectedQueued, null, "the pane opens in list mode");
+  assert.equal(keys.state().queuedRows.length, 3, "the rows carry the whole queue");
+
+  // Ctrl+X with no selection leaves the queue untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(queuedListRows(root, null, listWideScope(root)).length, 3);
+
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueued, 0, "Down selects the first row");
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueued, 2, "Down wraps through the rows");
+
+  // Esc returns to list mode without touching the queue.
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().selectedQueued, null, "Esc returns to list mode");
+  assert.equal(queuedListRows(root, null, listWideScope(root)).length, 3);
+
+  // Cycling away and back starts in list mode with no selection.
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  assert.equal(keys.state().selectedQueued, null, "re-entering the pane drops the selection");
+
+  // Select the director row (index 0) and cancel its per-loop position 1.
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.match(keys.state().flash!, /cancelled queued prompt #1 for director/);
+  assert.equal(keys.state().queuedRows.length, 2);
+  assert.deepEqual(keys.state().queuedRows.map((r) => r.role), ["clean", "clean"]);
+  assert.equal(keys.state().selectedQueued, 0, "the selection clamps to the remaining rows");
+  assert.equal(
+    keys.state().paneCache,
+    renderQueuedList(queuedListRows(root, null, listWideScope(root)), t),
+    "the cached list refreshes to the CLI's remaining list",
+  );
+
+  // Move to the second clean prompt (now position 2) and cancel it.
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueued, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.match(keys.state().flash!, /cancelled queued prompt #2 for clean/);
+  assert.deepEqual(keys.state().queuedRows.map((r) => r.text), ["clean one"]);
+
+  // Cancelling the last prompt empties the queue and clears the selection.
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().queuedRows.length, 0);
+  assert.equal(keys.state().selectedQueued, null, "an emptied queue clears the selection");
+  assert.equal(keys.state().paneCache, "");
+});
+
 test("a roster-size change shifts the relative panes by the same delta, keeping the selected pane kind", () => {
   const root = makeRoot();
   enqueuePrompt(root, "director text");

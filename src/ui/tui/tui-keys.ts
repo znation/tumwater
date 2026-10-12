@@ -20,7 +20,8 @@ import { renderFleetChange, renderRoleChange } from "../../change/change-render.
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
-import { listWideScope, queuedListRows, renderQueuedList } from "../../inbox/inbox.js";
+import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
+import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import {
   isFleetPaused,
@@ -245,6 +246,12 @@ interface TuiKeysState {
   historyRole: string | null;
   selectedEntry: number | null;
   entryScroll: number;
+  /** The Queued pane's row selection (null = list mode): the index into queuedRows of the
+   * prompt shown in full, cleared on every Ctrl+T cycle like selectedEntry. */
+  selectedQueued: number | null;
+  /** The Queued pane's cached rows — the same list renderQueuedList printed — so a selection
+   * addresses a row's role/position without re-reading the queue each frame. */
+  queuedRows: QueuedListRow[];
   paneCache: string | null;
   /** Whether the viewed loop's pane shows its notebook (Ctrl+N) instead of the transcript —
    * true only on a transcript view. */
@@ -378,6 +385,14 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
   // so cycling back into the view always starts at today's heading list.
   let selectedEntry: number | null = null;
+  // The Queued pane's row selection (null = list mode): the index into queuedRows of the
+  // prompt shown in full. Cleared on every Ctrl+T, like selectedEntry, so cycling back into
+  // the pane starts at today's list.
+  let selectedQueued: number | null = null;
+  // The Queued pane's cached rows, the same queuedListRows traversal the cached
+  // renderQueuedList string was built from, so a selection addresses a row's role/position
+  // without re-reading the queue on every frame.
+  let queuedRows: QueuedListRow[] = [];
   // The within-body scroll offset (line index of the window head, 0 = head) for the selected
   // entry's body — PgDn/PgUp in project-status entry mode. Reset whenever the selection
   // changes or clears, so every newly opened entry starts at its head.
@@ -506,6 +521,19 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       trailCache = null;
       flashError(err);
     }
+  };
+
+  // Re-read the Queued pane's rows and cached list after the queue changed (entry or cancel)
+  // and clamp the row selection to the shortened queue — a selection past the new end lands
+  // on the last remaining prompt, never on a stale role/position. An emptied queue clears it
+  // back to list mode. The one home of the queuedRows/paneCache pairing the Ctrl+T entry and
+  // the Ctrl+X cancel share, so the pane's list and its selectable rows cannot drift.
+  const refreshQueued = (): void => {
+    queuedRows = queuedListRows(root, null, listWideScope(root));
+    paneCache = renderQueuedList(queuedRows, now());
+    selectedQueued = selectedQueued === null || queuedRows.length === 0
+      ? null
+      : Math.min(selectedQueued, queuedRows.length - 1);
   };
 
   // Leave History search mode (Enter applies, Esc cancels, Ctrl+T cycles): restore the saved
@@ -826,6 +854,36 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
+    if (
+      key.ctrl && key.name === "x" &&
+      !budgetMode && !rolePromptFor && !searchMode &&
+      view === roleIds.length + 6 && selectedQueued !== null
+    ) {
+      // Ctrl+X cancels the selected queued prompt through the CLI's own per-loop path
+      // (`tumwater prompt --cancel <n> --role <id>`): cancelRolePrompt removes that loop's
+      // Nth queue file and logs the prompt_cancelled event, so the pane, the CLI, and the
+      // dashboard cancel cannot drift. Then re-read the queue so the pane's list and rows
+      // reflect the removal and the selection clamps. A no-selection press (list mode), and
+      // every other view, leaves the queue untouched.
+      try {
+        const row = queuedRows[Math.min(selectedQueued, queuedRows.length - 1)];
+        if (row !== undefined) {
+          const outcome = cancelRolePrompt(root, row.role, row.position);
+          // A gone outcome is the concurrent-dequeue race (cancelRolePrompt's own contract),
+          // not a failure: flash it honestly and still refresh the listing.
+          flashMessage(
+            outcome.status === "cancelled"
+              ? `cancelled queued prompt #${row.position} for ${row.role}`
+              : `queued prompt #${row.position} for ${row.role} was already gone`,
+          );
+          refreshQueued();
+        }
+      } catch (err) {
+        flashError(err);
+      }
+      deps.requestRender();
+      return;
+    }
     if (key.ctrl && key.name === "t") {
       // Ctrl+T exits budget-edit mode too — view cycling is orthogonal to it, so a cycle
       // never strands the editor with its pre-filled cap in the prompt line. Role-prompt
@@ -841,6 +899,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       trailCache = null;
       view = (view + 1) % (roleIds.length + 7); // events → each loop's transcript → project status → usage report → failures → history → pending → queued → events
       selectedEntry = null; // leaving a view drops any entry selection…
+      selectedQueued = null; // …and any queued-row selection, so re-entering starts at the list
       entryScroll = 0; // …and its within-body scroll, so re-entering starts at the list/head
       paneScroll = 0; // the Markdown panes always re-enter at their head
       // Compute the pane's Markdown once per activation (this handler renders immediately), and
@@ -878,7 +937,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // Queued is a synchronous read of the same queue list `tumwater prompt --list`
           // prints (renderQueuedList over queuedListRows), so it paints on entry with no
           // async collector. The now() clock keeps the age/countdown suffix testable.
-          paneCache = renderQueuedList(queuedListRows(root, null, listWideScope(root)), now());
+          refreshQueued();
         } else {
           paneCache = null;
         }
@@ -911,6 +970,14 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       const count = flat().length;
       selectedEntry = moveEntrySelection(count, selectedEntry, arrow);
       entryScroll = 0; // a newly opened entry starts at its body's head
+      deps.requestRender();
+      return;
+    }
+    if (view === roleIds.length + 6 && arrow !== null) {
+      // In the Queued pane, up/down select a queued prompt row in full (wrapping, the backlog
+      // pane's rule) instead of editing the prompt; an empty queue has nothing to select, so
+      // moveEntrySelection clears the selection. Every other view keeps today's behavior.
+      selectedQueued = moveEntrySelection(queuedRows.length, selectedQueued, arrow);
       deps.requestRender();
       return;
     }
@@ -967,6 +1034,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         input = recalled.text;
         cursor = recalled.cursor;
       }
+    }
+    if (
+      key.name === "escape" && selectedQueued !== null && view === roleIds.length + 6 &&
+      !budgetMode && !rolePromptFor && !searchMode
+    ) {
+      // Esc on the Queued pane returns it to list mode; the cached list is untouched (nothing
+      // was cancelled), so the pane shows the same renderQueuedList it entered with.
+      selectedQueued = null;
+      deps.requestRender();
+      return;
     }
     if (key.name === "escape" && searchMode) {
       // Esc cancels the History search without applying it; the applied pattern is unchanged.
@@ -1122,6 +1199,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         historyRole,
         selectedEntry,
         entryScroll,
+        selectedQueued,
+        queuedRows,
         paneCache,
         noteMode,
         noteCache,

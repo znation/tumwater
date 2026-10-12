@@ -322,7 +322,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   prints, so the queue's order, age, skips, and wording match the CLI.
   The Queued pane lists every loop's queued prompts, reading through the same queue traversal
   and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
-  per-loop numbering, or the queued-age/deferred-countdown suffix.
+  per-loop numbering, or the queued-age/deferred-countdown suffix. Up/Down select a queued
+  prompt and show its full text under a header naming its loop and position, and `Ctrl+X`
+  cancels the selected one through the same per-role `cancelRolePrompt` path
+  `tumwater prompt --cancel` uses; Esc returns to the list.
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a

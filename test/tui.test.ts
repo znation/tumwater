@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { logEvent } from "../src/events/events.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
+import { enqueueRolePrompt, listWideScope, queuedListRows } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { runTui } from "../src/ui/tui/tui.js";
@@ -356,6 +357,37 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
 
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /\[Activity\]/); // wraps back to Activity
+  });
+});
+
+test("the Queued pane shows a selected row's full prompt under a cancel header and Ctrl+X removes it", async () => {
+  const repo = await makeTuiRepo();
+  // Two lines so the selected-row body proves it shows text the clipped list line cannot.
+  enqueueRolePrompt(repo, "clean", "first line of the queued prompt\nsecond line kept verbatim");
+  await withTui(repo, async (tui) => {
+    for (let i = 0; i < 7; i++) tui.key(undefined, "t", { ctrl: true }); // → Transcript → … → Queued
+    let frame = tui.lastFrame();
+    assert.match(frame, /\[Queued\]/);
+    assert.match(frame, /clean:/); // list mode shows the numbered section
+    assert.doesNotMatch(frame, /Ctrl\+X to cancel/);
+
+    tui.key(undefined, "down"); // select the clean prompt (its per-loop position 1)
+    frame = tui.lastFrame();
+    assert.match(frame, /queued for clean #1 \(Ctrl\+X to cancel\)/);
+    assert.match(frame, /first line of the queued prompt/);
+    assert.match(frame, /second line kept verbatim/);
+
+    tui.key(undefined, "escape"); // back to list mode, queue intact
+    frame = tui.lastFrame();
+    assert.doesNotMatch(frame, /Ctrl\+X to cancel/);
+    assert.equal(queuedListRows(repo, null, listWideScope(repo)).length, 1);
+
+    tui.key(undefined, "down");
+    tui.key(undefined, "x", { ctrl: true }); // cancel the selected prompt
+    frame = tui.lastFrame();
+    assert.match(frame, /cancelled queued prompt #1 for clean/);
+    assert.match(frame, /\(no queued prompts\)/);
+    assert.equal(queuedListRows(repo, null, listWideScope(repo)).length, 0);
   });
 });
 
