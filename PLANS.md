@@ -200,7 +200,9 @@ three surfaces cannot drift on the header or the event rendering.
 
 **Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`,
 `src/ui/tui/tui-pane.ts`, `docs/how-it-works.md`, `test/tui-frame.test.ts`,
-`test/tui-keys.test.ts`, `test/tui-history.test.ts`.
+`test/tui-keys.test.ts`, `test/tui-history.test.ts` (the `paneBody` tests' home, not
+`test/tui.test.ts` as planned), and `test/tui-backlog.test.ts` (its `TuiPaneState` literal gained
+`trailCache`).
 
 **Acceptance criteria.**
 - `test/tui-frame.test.ts`: every existing history literal gains `trail: false` (the field is
@@ -212,7 +214,8 @@ three surfaces cannot drift on the header or the event rendering.
   to the History view (`roleIds.length + 4`): the first `Ctrl+N` sets `trailMode` true and
   `trailCache` matching `renderTickDetail(readTickDetail(root, "clean", 1))`, the second clears
   both, and a `Ctrl+T` while in trail mode clears it. A separate empty-log case flashes `no
-  completed ticks to inspect` and leaves `trailMode` false.
+  completed ticks to inspect` and leaves `trailMode` false; a second completed loop covers the
+  `Ctrl+G` scope choosing the scoped loop's newest trail.
 - `test/tui-history.test.ts`: a `paneBody` case for a history pane with `trail: true` windows
   `state.trailCache` and returns `(no tick trail)` when it is null.
 - `docs/how-it-works.md` names the History `Ctrl+N` drill-down and `tumwater tick --last`.
