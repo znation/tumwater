@@ -301,6 +301,28 @@ test("prompt --edit --role rewrites the entry in place and keeps its list positi
   assert.equal(events[0]?.loop, "bugfix");
 });
 
+test("prompt --edit --file rewrites the entry from a file, keeping inner blank lines", async () => {
+  const root = makeRoot();
+  const first = enqueueRolePrompt(root, "bugfix", "typo text");
+  enqueueRolePrompt(root, "bugfix", "second");
+  const f = path.join(tmpdir(), "edit.md");
+  fs.writeFileSync(f, "first\n\nsecond paragraph\n");
+
+  await expectOk(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "--file", f]));
+  assert.equal(fs.existsSync(first), true);
+  assert.match(fs.readFileSync(first, "utf8"), /first\n\nsecond paragraph\s*$/);
+  const list = await expectOk(() => cmdPrompt(root, ["--list", "--role", "bugfix"]));
+  assert.match(list.stdout, /^1\. first/m);
+  assert.match(list.stdout, /^2\. second \(queued/m);
+  assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+
+  const dir = dirOf(root, "bugfix");
+  const snap = () => fs.readdirSync(dir).sort().map((n) => fs.readFileSync(path.join(dir, n), "utf8"));
+  const before = snap();
+  await expectFailAsync(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "--file", path.join(tmpdir(), "missing.md")]));
+  assert.deepEqual(snap(), before);
+});
+
 test("prompt --edit keeps a pending --at deferral: same countdown, not doubled or dropped", async (t) => {
   const root = makeRoot();
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
@@ -347,7 +369,7 @@ test("prompt --edit refuses the sibling modes and out-of-range positions exit no
   enqueueRolePrompt(root, "bugfix", "queued");
 
   assert.match((await expectFailAsync(() => cmdPrompt(root, ["--list", "--edit", "1", "x"]))), /--list and --edit are mutually exclusive/);
-  assert.match((await expectFailAsync(() => cmdPrompt(root, ["--edit", "1", "fix", "--file", "x.txt"]))), /--file only queues a prompt/);
+  assert.match((await expectFailAsync(() => cmdPrompt(root, ["--edit", "1", "fix", "--file", "x.txt"]))), /unexpected argument "fix" — with --file the replacement text comes from the file/);
   assert.match((await expectFailAsync(() => cmdPrompt(root, ["old", "--edit", "1", "new"]))), /unexpected argument "old"/);
 
   const outOfRange = await expectFailAsync(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));

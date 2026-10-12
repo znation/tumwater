@@ -507,11 +507,24 @@ test("parsePromptArgs --edit: position plus replacement text, --role optional", 
   });
 });
 
-test("parsePromptArgs --edit refuses --file: the replacement text is typed, never read", () => {
-  // --edit 1 fix --file x.txt would otherwise bake the file's tokens into the replacement
-  // text; the flag only queues a prompt, and an edit rewrites one.
-  const r = expectFail(() => parsePromptArgs(["--edit", "1", "fix", "--file", "x.txt"]));
-  assert.match(r.stderr, /--file only queues a prompt/);
+test("parsePromptArgs --edit --file takes the replacement from a file, line for line", () => {
+  const f = path.join(tmpdir(), "edit.md");
+  fs.writeFileSync(f, "line one\n\nline two\n");
+  const text = "line one\n\nline two\n";
+  assert.deepEqual(parsePromptArgs(["--edit", "2", "--file", f]), { mode: "edit", role: null, position: 2, text, attachPaths: [] });
+  assert.equal((parsePromptArgs(["--role", "bugfix", "--edit", "2", "--file", f]) as { role: string }).role, "bugfix");
+  assert.equal((parsePromptArgs(["--edit", "2", "--file", f, "--role", "bugfix"]) as { role: string }).role, "bugfix");
+  assert.deepEqual((parsePromptArgs(["--edit", "2", "--file", f, "--attach", "a.png"]) as { attachPaths: string[] }).attachPaths, ["a.png"]);
+
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "2", "--file", f, "extra"])).stderr, /unexpected argument "extra"/);
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "2", "extra", "--file", f])).stderr, /unexpected argument "extra"/);
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "2", "--file"])).stderr, /--file needs a path/);
+  const empty = path.join(tmpdir(), "empty.md");
+  fs.writeFileSync(empty, "");
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "2", "--file", empty])).stderr, /is empty/);
+  assert.match(expectFail(() => parsePromptArgs(["--list", "--file", f])).stderr, /--file only queues a prompt/);
+  assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--file", f])).stderr, /--file only queues a prompt/);
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "--file", f, "--at", "5m"])).stderr, /--at only queues a prompt/);
 });
 
 test("parsePromptArgs --edit refuses tokens preceding the position instead of dropping them", () => {

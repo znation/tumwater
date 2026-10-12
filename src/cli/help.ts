@@ -227,6 +227,11 @@ Usage:
                                    shown by --list); --attach (repeat up to 4) appends images
                                    after any the prompt already carries; when several loops
                                    show that N, name one with --role <id>
+  tumwater prompt --edit <n> --file <path> [--attach <path>]
+                                   Replace the Nth queued prompt's text with the file's
+                                   contents ("-" reads stdin), kept line for line; position,
+                                   age, and a pending --at deferral are kept, and --role <id>
+                                   disambiguates like --edit
   tumwater reset-counters [--role <id>]
                                    Zero lifetime ticks/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the

@@ -285,16 +285,16 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
 
   // The queue-only flags --file and --at have nothing to mean in the read-only and destructive
-  // modes (--list and --cancel): --file is the file-shaped twin of free-form text (an edit's
-  // replacement text is typed, never read from a file), and a delivery deferral has nothing to
-  // mean to a listing or a cancel. --attach is queue/edit-only: --list and --cancel refuse it
+  // modes (--list and --cancel): --file is the file-shaped twin of free-form text (--edit
+  // accepts it as its replacement text, so the editFlag test below exempts that one mode), and
+  // a delivery deferral has nothing to mean to a listing or a cancel. --attach is queue/edit-only: --list and --cancel refuse it
   // by name, while --edit accepts it to append images to the prompt it rewrites (the editFlag
   // test below exempts that one mode). One home for the mode predicate and the
   // `<flag> only queues a prompt` wording, so a new mode or queue-only flag is added here.
   const refuseQueueOnlyFlag = (flag: string, present: boolean): void => {
     if (present && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail(`${flag} only queues a prompt`);
   };
-  refuseQueueOnlyFlag("--file", fileFlag >= 0);
+  refuseQueueOnlyFlag("--file", fileFlag >= 0 && editFlag < 0);
   refuseQueueOnlyFlag("--at", atFlag >= 0);
   refuseQueueOnlyFlag("--attach", attachFlags.length > 0 && editFlag < 0);
   // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
@@ -337,9 +337,17 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // a mistyped command would edit prompt N with only the trailing fragment — so they are
     // refused here by the same stray-argument wording the sibling modes use; tokens after the
     // position are the replacement text, minus any claimed attach pair.
+    const fileClaim = fileFlag >= 0 ? [fileFlag, fileFlag + 1] : [];
     for (let i = 0; i < editFlag; i++) {
-      if (roleClaim.includes(i) || attachClaims.includes(i)) continue;
+      if (roleClaim.includes(i) || attachClaims.includes(i) || fileClaim.includes(i)) continue;
       fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
+    }
+    if (fileFlag >= 0) {
+      // The replacement comes from the file (`-` reads stdin), kept line for line; editPromptAtFile
+      // trims it. Typed text beside it would be ambiguous, so it is refused.
+      const file = promptFileValue(args[fileFlag + 1]);
+      failStrayArg(args, "with --file the replacement text comes from the file", editFlag, editFlag + 1, ...fileClaim, ...roleClaim, ...attachClaims);
+      return { mode: "edit", role, position: n, text: readPromptFileArg(file), attachPaths };
     }
     const textTokens: string[] = [];
     for (let i = editFlag + 2; i < args.length; i++) {

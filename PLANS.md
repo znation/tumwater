@@ -6,7 +6,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater prompt --edit <n> --file <path>`: rewrite a queued prompt from a file (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`readPromptFileArg` in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" and "`tumwater questions answer <n> --file <path>`" plans: it touches only `parsePromptArgs`, `src/cli/help.ts`'s prompt stanza, README.md's Steer row, and prompt tests — no `src/ui`, `src/gui`, `src/backlog`, or question file)
+## Done
+
+### `tumwater prompt --edit <n> --file <path>`: rewrite a queued prompt from a file (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`readPromptFileArg` in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" and "`tumwater questions answer <n> --file <path>`" plans: it touches only `parsePromptArgs`, `src/cli/help.ts`'s prompt stanza, README.md's Steer row, and prompt tests — no `src/ui`, `src/gui`, `src/backlog`, or question file; done 2026-10-12 by feature)
 
 **Goal.** `tumwater prompt --file <path>` queues a multi-line prompt read from a file (or stdin with `-`), but `prompt --edit <n>` only takes typed positional text, which the shell flattens and which is awkward for a long, structured request. `parsePromptArgs` refuses the pair outright (`refuseQueueOnlyFlag("--file", …)` fires for `--edit`; test "parsePromptArgs --edit refuses --file: the replacement text is typed, never read"). The edit storage already keeps lines: `editPromptAtFile` in `src/inbox/inbox-edit.ts` only trims the text, then length-checks and writes it. So the gap is in the parser alone. Add `--file <path>` to the `--edit` form so the operator can revise a queued prompt from a file. The prompt keeps its position, enqueue stamp, and pending `--at` deferral, as the typed edit does today.
 
@@ -38,7 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The help test that matches the prompt `--edit` stanza (find it with grep for `prompt --edit` under `test/`) also matches `tumwater prompt --edit <n> --file <path>`. If no such test exists, add an assertion to the help-stanza test file that covers `tumwater help prompt`.
 - `npm run test` passes.
 
-## Done
 
 ### Answer an open question from the TUI backlog pane, matching `tumwater questions answer <n>` and the dashboard's answer form (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater questions answer` (`answerQuestion` in `src/cli/question-commands.ts`) and the landed dashboard answer form (`POST /api/question-answer`, `handleQuestionAnswer` in `src/gui/gui-endpoint-commands.ts`). Independent of the waiting "Edit a planned feature or open bug from the dashboard's entry drawer" plan: it touches neither `backlog-write.ts` nor the GUI) (done 2026-10-12 by feature)
 
