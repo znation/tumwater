@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names a standing operator pause: a "pause" check for the fleet pause (deadline, reason) and the per-role paused set (planned 2026-10-12 by plan; today `runDoctor` in `src/doctor/doctor.ts` has no check that reads the pause markers — grep finds no `isFleetPaused`/`standingFleetPause`/`pausedRoles` in `src/doctor`. So doctor can print "ready to run" over a fleet that will start no tick until `tumwater resume`, and an operator who runs `doctor` to learn why the loops are idle has to also run `status` to get the answer. Independent of the dashboard Health check card plan above: that one touches no `src/doctor` file, and once both land the card shows this row with no extra work)
+_None yet._
+
+
+## Done
+
+### `tumwater doctor` names a standing operator pause: a "pause" check for the fleet pause (deadline, reason) and the per-role paused set (planned 2026-10-12 by plan; today `runDoctor` in `src/doctor/doctor.ts` has no check that reads the pause markers — grep finds no `isFleetPaused`/`standingFleetPause`/`pausedRoles` in `src/doctor`. So doctor can print "ready to run" over a fleet that will start no tick until `tumwater resume`, and an operator who runs `doctor` to learn why the loops are idle has to also run `status` to get the answer. Independent of the dashboard Health check card plan above: that one touches no `src/doctor` file, and once both land the card shows this row with no extra work, done 2026-10-12)
 
 **Goal.** `tumwater doctor` (and `--json`) gains one row named `pause`, placed right after `bootstrap` because both report deliberate holds on ticking. It reads the same markers the scheduler reads, so its verdict cannot disagree with what the fleet does. It is read-only, like every doctor check.
 
@@ -34,9 +39,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/doctor.test.ts`: the pinned `report.checks.map((c) => c.name)` list in the fresh-root test gains `"pause"` right after `"bootstrap"`. That test's "every check but node is ok" loop still passes, because a fresh root has no pause marker.
 - `grep -n '"pause"' src/doctor/doctor.ts` shows the entry right after `bootstrap`.
 - `npm run test` passes.
-
-
-## Done
 
 ### The dashboard's Settings view runs `tumwater doctor`'s checks: a Health check card over `GET /api/doctor` (planned 2026-10-12 by plan; sibling of the CLI `tumwater doctor [--json]` (`runDoctor` in `src/doctor/doctor.ts`, rendered by `renderDoctor` in `src/doctor/doctor-render.ts`, called from `src/cli.ts`). Today the dashboard has no doctor surface: grep finds no `doctor` in `src/gui` or `src/ui`. So an operator who sees a stuck fleet in the browser must switch to a terminal to learn that, say, the merge lock is stale, a work-instance claim names a gone entry, or disk is under the hold floor. Read-only: no new POST, no write path, and no `src/doctor` or `src/ui/tui` change) (done 2026-10-12)
 
