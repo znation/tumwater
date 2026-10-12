@@ -6,7 +6,43 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Schedule or cancel one loop's wake from the TUI: Ctrl+W on a transcript opens a wake editor, matching `tumwater wake <role> --in <duration>` / `--cancel` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --in`/`--cancel` (`requestWake`/`cancelWakes` in `src/operator/operator-intent.ts`), the dashboard drawer's "Wake later…" and cancel, and the TUI's per-loop Ctrl+P duration editor (`parseRolePauseInput` in `src/ui/tui/tui-input.ts`). Today the TUI's Ctrl+W can only wake the viewed loop at once (`flashMessage(requestWake(root, [role]))` in `createTuiKeys`, `src/ui/tui/tui-keys.ts`). It cannot schedule a wake or drop one, though every other surface can. Independent of the landed status-table wake marker: no `src/ui/status-render.ts` or `src/ui/badges.ts` change)
+
+**Goal.** On a loop's transcript view, Ctrl+W opens a one-line editor, the same way Ctrl+P does on an unpaused loop. Enter on an empty line wakes the loop now, as Ctrl+W does today. A duration (`45m`, `2h`) schedules the wake. `cancel` drops that loop's pending scheduled wakes. Esc cancels the editor.
+
+**Approach.** Reuse the per-loop pause editor's state, so the many `!pauseEditMode` guards in `createTuiKeys` already exclude the new editor and need no edit.
+1. `src/ui/tui/tui-input.ts`: add and export `parseRoleWakeInput(text): { ok: true; inMs?: number; cancel?: true } | { ok: false; error: string }`, next to `parseRolePauseInput`.
+   - Trimmed `""` gives `{ ok: true }`.
+   - `cancel` (case-insensitive) gives `{ ok: true, cancel: true }`.
+   - Otherwise it calls `parseDurationMs`. `null` gives the error `a loop wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now`. Over `PAUSE_FOR_MAX_MS` gives `wake is capped at 90d`, the same cap `WAKE_IN_FLAG` enforces.
+   - Write the doc comment in the style of `parseRolePauseInput`'s.
+2. `src/ui/tui/tui-keys.ts` (`createTuiKeys`):
+   - Add `let pauseEditWake = false`, and expose `pauseEditWake: boolean` on `TuiKeysState` with a doc comment ("the per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P)"). `exitPauseEditMode` resets it to `false`.
+   - The early "second Ctrl+P closes the per-loop pause editor" branch also fires on Ctrl+W, so a second press of either key closes the editor. Update its comment.
+   - In the per-loop controls branch, the `else` arm that calls `requestWake` now opens the editor instead. It refuses with the same flash as Ctrl+P while `rolePromptFor || searchMode`. Otherwise it settles the prompt recall and saves the draft exactly as the Ctrl+P arm does, then sets `pauseEditMode = true`, `pauseEditRole = role`, `pauseEditWake = true`, and flashes `wake ${role}: [duration], e.g. "2h", or "cancel" (empty wakes now) — Enter to apply, Esc to cancel`.
+   - In the Enter handler's `pauseEditMode` branch, when `pauseEditWake`, parse with `parseRoleWakeInput`. On error, flash and STAY in the editor. On success, call `cancelWakes(root, target)` when `cancel` is set, else `requestWake(root, [target], parsed.inMs)`. Then `exitPauseEditMode()` and flash the returned string verbatim (both cores already return the CLI's wording), inside the same try/`flashError` guard the pause arm uses. Import `cancelWakes` from `operator-intent.js`.
+   - Update the "Per-loop controls" comment: Ctrl+W opens the wake editor.
+   - Put `pauseEditWake` in the returned state object.
+3. `src/ui/tui/tui-frame.ts`: give `hintLine` and `promptPrefix` an optional `pauseEditWake?: boolean` on their `mode` param. When it is set with `pauseEditRole`, the label reads `wake ${role}` instead of `pause ${role}`. `src/ui/tui/tui.tsx` passes `pauseEditWake: s.pauseEditWake` into `mode`. The transcript hint keeps `["Ctrl+W", "wake"]`, so the existing `test/tui-frame.test.ts` hint strings stay valid.
+4. Docs: in the TUI bullet of `docs/how-it-works.md`, replace "`Ctrl+W` clears its backoff" with the editor's behaviour. In README.md's "Control the loops" row, beside "its Ctrl+P on a loop's transcript takes a duration", add that Ctrl+W takes a duration or `cancel`. Grep `docs/invariants.md` for a TUI-keys/Ctrl+W guarantee and update it if one exists.
+
+**Files.** `src/ui/tui/tui-input.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`, `test/tui-input.test.ts`, `test/tui-operator-keys.test.ts`, `test/tui-frame.test.ts`, `docs/how-it-works.md`, `README.md`.
+
+**Acceptance criteria.**
+- `test/tui-input.test.ts`: tests for `parseRoleWakeInput`, beside the existing `parseRolePauseInput` tests:
+  - `""` and `"  "` give `{ ok: true }`.
+  - `"cancel"` and `"CANCEL"` give `cancel: true`.
+  - `"2h"` gives `inMs: 7_200_000`.
+  - `"soon"` gives the error.
+  - `"91d"` gives `wake is capped at 90d`.
+- `test/tui-operator-keys.test.ts`: the existing "Ctrl+W flashes the wake confirmation and drops the wake marker for the viewed role" test breaks under this change. Rewrite it so Ctrl+W writes nothing (`wakeRequestPath(repo)` absent) until Enter on an empty line, which then flashes `/wake requested for clean/` and writes the marker. New tests:
+  - Ctrl+W, `2h`, Enter: `listWakes(repo, "clean", Date.now())` holds one wake about 2h out, and the frame matches `/wake scheduled for clean/`.
+  - With a wake scheduled first via `requestWake(repo, ["clean"], 3_600_000)`, Ctrl+W, `cancel`, Enter: the frame matches `/cancelled 1 scheduled wake for clean/` and `listWakes` is empty.
+  - Ctrl+W, `soon`, Enter flashes the error and stays in the editor (the prompt prefix still reads `wake clean`). Esc then restores the draft typed before Ctrl+W.
+  - A second Ctrl+W closes the editor without writing.
+- `test/tui-frame.test.ts`: `promptPrefix`/`hintLine` with `pauseEditMode: true, pauseEditRole: "qa", pauseEditWake: true` read `wake qa`. The existing `pause qa` expectations still pass.
+- Every existing Ctrl+P per-loop pause test in `test/tui-operator-keys.test.ts` still passes unchanged.
+- `npm run test` passes.
 
 ## Done
 
