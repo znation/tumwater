@@ -6,6 +6,52 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Edit a planned feature or open bug from the dashboard's entry drawer, matching `tumwater plan|bug --edit <n>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug --edit` (`editPlan`/`editBug` → `editEntry` in `src/backlog/backlog-write.ts`) and the landed drawer Cancel (`tryCancelEntry` + `POST /api/backlog-cancel` + the `entry-cancel` act). The drawer can file, cancel, or "ask the director about" an entry but not correct one, so fixing a typo'd title or a stale acceptance criterion means switching to the CLI, finding its position, and retyping the whole body on one line. Independent in behavior of the two waiting scheduled-wake plans: its own core, route, handler, and drawer form. It shares `src/gui/gui-server.ts`'s route table and `src/gui/gui-endpoint-commands.ts` with them, so a landing conflict is possible and the resolver handles it)
+
+**Goal.** The plan/bug entry drawer gets an "Edit" button. It opens a form prefilled with the entry's title and full Markdown body. Saving rewrites the entry in place under the same lock as `--edit`. The entry keeps its position and its original `(planned …)`/`(reported …)` stamp. It also keeps its body's line structure: the CLI's `editPlan` folds the body to one line with `collapseWhitespace`, which would flatten a structured plan, so the dashboard path does not reuse that fold. Like Cancel, the save is title-checked: if the list moved since the drawer loaded, the save writes nothing.
+
+**Approach.**
+1. `src/backlog/backlog-write.ts`:
+   - Export `bodyStructureProblem(body: string): string | null`. It walks `body.split("\n")` with a fresh `fenceTracker()` (from `backlog-md.ts`). It returns a message when any line yields a heading through `fencedHeadingTitle(line, tracker, "## ")` or `"### "`: "the body may not contain a `## `/`### ` heading line outside a code fence". It also returns a message when `tracker.open()` is still true at the end: "the body leaves a code fence open". Otherwise it returns null. Either problem would make `actionableEntryRanges` misread the following entries or sections.
+   - Export `type EditEntryOutcome = { status: "edited"; file: string; title: string } | { status: "gone" } | { status: "moved"; title: string }`, the `CancelEntryOutcome` shape.
+   - Export `tryEditEntry(root, kind: "bug" | "plan", n, expectedTitle, rawTitle, rawBody): EditEntryOutcome`. It mirrors `tryCancelEntry`: take the same `withStateLock(primaryWorktreeLockPath(root), …)`, use `findEntry` for `gone`, and compare `entry.title !== expectedTitle` for `moved`. On a match it performs the same splice `editEntryLocked` does. Refactor that splice out of `editEntryLocked` into a shared `spliceInEditedEntry(file, lines, entry, title, body)`, the way `spliceOutEntry` is shared by remove and cancel, so the two paths cannot drift. The title is `stripEntryStamp(collapseWhitespace(rawTitle))`, so a pasted stamp is never doubled. The body is `rawBody.replace(/\r\n?/g, "\n").trim()` with no whitespace collapse. A bug's body is written as given (`""` keeps the heading-only shape `editBug` writes).
+   - `tryEditEntry` trusts its caller to have validated. The handler does all validation before calling it, because `fail()` exits the process.
+2. `src/gui/gui-endpoint-commands.ts`: add `handleBacklogEdit` for `POST /api/backlog-edit`, modeled on `handleBacklogCancel`.
+   - The body is `{kind, position, title, newTitle, newBody}`. Validate `kind`, `position`, and `title` with the same 400s as cancel.
+   - `newTitle` must be a string that is non-empty after `collapseWhitespace`, else 400 "newTitle required".
+   - `newBody` must be a string (`""` is allowed), else 400. When `bodyStructureProblem(newBody)` returns a message, answer 400 with it.
+   - Wrap `tryEditEntry` in try/catch, sending 400 with `errorMessage` on a throw. Answer `{ok:true, status:"edited", file, title}` or `{ok:true, status:"gone"}`, folding `moved` into `gone` as cancel does.
+   - No wake and no inbox prompt: the waiting entry is refined by whichever feature/bugfix tick picks it up.
+   - Register the route in `src/gui/gui-server.ts` next to `"POST /api/backlog-cancel"`.
+3. `src/ui/gui/gui-client-drawer.ts`, in `refreshEntry` and the drawer's state:
+   - Add `let entryEditing = null; // { key, title }`. Add an "Edit this entry" button (`data-act='entry-edit' data-arg='<file>:<index>'`) beside "Cancel this entry" for plans and bugs.
+   - While `entryEditing.key === openEntryKey()`, `refreshEntry` paints `entrybody` with a form instead of the read view: `<input id='entryedittitle'>` prefilled with `esc(splitTitle(d.title).title)`, `<textarea id='entryeditbody' rows='14'>` prefilled with `esc(d.body)`, a primary "Save" (`data-act='entry-edit-save'`), and "Discard" (`data-act='entry-edit-discard'`).
+   - The form is painted once when editing starts. Later polls return after the head without repainting `entrybody`, so the operator's draft survives the poll even if the entry changes on disk; the title check catches that case at save time.
+   - `closeDrawer` and opening another entry clear `entryEditing`. Expose `entryEditing` setters (`startEntryEdit(key, title)` and `stopEntryEdit()`) the way `armEntryCancel`/`disarmEntryCancel` are.
+4. `src/ui/gui/gui-client-boot.ts` `runAct`:
+   - `entry-edit` looks up the title in `lastStatus[file]` and calls `startEntryEdit(arg, title)`.
+   - `entry-edit-discard` calls `stopEntryEdit()`.
+   - `entry-edit-save` reads `$("entryedittitle")`/`$("entryeditbody")`. When the trimmed title is empty it calls `showFlash("Write a title first")` and posts nothing. Otherwise it posts `/api/backlog-edit` with `{kind, position: index+1, title: <status title>, newTitle, newBody}`. Its callback calls `stopEntryEdit()` and `closeDrawer()` and returns "Edited “<title>” in PLANS.md|BUGS.md", or "That entry was removed or moved — refreshed" on `gone`.
+5. README: in the "Steer the project" row, extend the closing clause "the dashboard's plan/bug drawer cancels an entry the same way, after a confirming second click". It should also say the drawer edits an entry's title and body in place.
+
+**Files.** `src/backlog/backlog-write.ts`, `src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`, `src/ui/gui/gui-client-drawer.ts`, `src/ui/gui/gui-client-boot.ts`, `README.md`, and tests beside the `tryCancelEntry` tests in `test/backlog-write-cancel.test.ts`, `test/gui-endpoints.test.ts` (next to the `POST /api/backlog-cancel` block), and `test/gui-client-boot.test.ts` (next to the `entry-cancel` runAct test).
+
+**Acceptance criteria.**
+- `tryEditEntry` on the 2nd of three Planned entries replaces that entry's heading and body. It keeps the original stamp parenthetical and a multi-line body's newlines. The bytes of the other entries and of `## Done` are unchanged, and the result equals what `editPlan` writes for a single-line body.
+- A submitted title that already ends in a stamp is not doubled.
+- `tryEditEntry` answers `gone` for an out-of-range position and `moved` for a different heading, and leaves the file byte-identical in both cases.
+- `bodyStructureProblem` returns null for a body quoting `## X`/`### Y` inside a closed fence. It returns a message for a bare `### Y` line and for an unclosed fence.
+- `POST /api/backlog-edit`:
+  - answers 400 for a bad kind, position, title, empty newTitle, non-string newBody, or a structure problem, writing nothing;
+  - answers 200 `edited` and rewrites PLANS.md;
+  - answers 200 `gone` on a moved list;
+  - queues no inbox prompt and writes no wake marker.
+- The runAct test:
+  - `entry-edit` starts editing for `plans:1`;
+  - `entry-edit-save` with a blank title posts nothing;
+  - a filled save posts `["/api/backlog-edit", {kind:"plan", position:2, title:<status title>, newTitle, newBody}]`.
+- `npm run test` passes.
+
 ## Done
 
 ### Keep every pending scheduled wake: a later `wake` or dashboard prompt no longer silently drops a `wake --in` (planned 2026-10-12 by plan; fixes a latent overwrite in the landed `tumwater wake --in` / dashboard "Wake later". `.tumwater/wake.json` (`wakeRequestPath` in `src/paths.ts`) holds ONE request, and `requestWake` in `src/operator/operator-intent.ts` replaces it with `writeJsonAtomic`. So `wake feature --in 2h` followed by any immediate wake drops the scheduled one with no message. That includes `submitRolePromptAndWake`, which every dashboard/TUI prompt submit calls. A second `wake plan --in 1h` drops it the same way. Sibling of the waiting "Show a pending scheduled wake in `tumwater status`…" plan above: that plan's reader moves to this plan's directory if this lands first (see step 5). Independent of the entry-drawer cancel plan); done 2026-10-12 by feature
