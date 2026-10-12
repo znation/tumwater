@@ -6,7 +6,41 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names the daily budget: a "budget" check for today's spend against `maxDailyCostUsd` and the per-role caps already reached (planned 2026-10-12 by plan; the cost sibling of the landed "pause" and "quiet hours" checks (`checkPause`/`checkQuietHours` in `src/doctor/doctor-holds.ts`). Today grep finds no `budgetSpend`/`fleetDailyCost`/`roleCapVerdicts` in `src/doctor`. So once the fleet has spent its cap, doctor still prints "ready to run" over a fleet whose priced loops hold, or run on a fallback, until local midnight. A loop over its own `maxDailyCostUsdPerRole` entry is also invisible to doctor. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card renders `runDoctor`'s rows, so it shows the new row with no extra work)
+
+**Goal.** One read-only doctor row named `budget` that reports today's fleet spend against the cap, warns when the cap is reached, and names base roles over their own per-role cap. It uses the same definitions the scheduler and `status` use, so its verdict cannot disagree with the gate.
+
+**Approach.**
+- Add `checkBudget(root: string, config: TumwaterConfig | undefined, published: { spentUsd: number; capUsd: number } | null, now: number = Date.now()): CheckOutcome` to `src/doctor/doctor-holds.ts`, beside `checkQuietHours`. Extend the module's top doc comment to list the third check.
+  - `config === undefined` (broken tumwater.json; `checkInit` reports it) → `okOutcome("not checked — tumwater.json unreadable")`.
+  - States: `loopIds(config).map((id) => loadLoopState(root, id))` (`src/roles/loop-ids.ts`, `src/loop/loop-state.ts`; `doctor-checks.ts` already imports both).
+  - Spend: `published?.spentUsd ?? fleetDailyCost(states, now)`, the same precedence as `status-data.ts`'s `publishedSpend ?? fleetDailyCost(loops, now)`. The running scheduler's figure includes runs charged since the last tick-end save. Cap: `config.maxDailyCostUsd`, read live, as status-data does.
+  - Per-role: `[...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), config.maxDailyCostUsdPerRole, now)]` from `src/gates/role-cap-gates.ts`, filtered to `over`. This is the gate's own grouped verdict: instances share their base role's cap and summed spend, and the director is exempt. Render each entry as `<base> (<budgetPhrase(v.spentUsd, cap)>)`, sorted by base role, joined with `, `, and prefixed `capped loops: `. A non-empty list is appended to the fleet phrase after `; `.
+  - Fleet phrase and level, using `budgetReached`/`budgetWarning` from `src/budget/budget.ts` and `budgetPhrase` from `src/text/phrases.ts`:
+    - cap `<= 0` → `no daily cap; <usd(spent)> spent today` (`usd` from `src/text/format.ts`), ok.
+    - `budgetReached` → warn: `daily cap reached — <budgetPhrase> today; role loops run on their tier fallback or hold until local midnight (see the fallback row)`. Do not try to resolve fallback vs paused here: that needs pi's catalog and the breaker map, and the existing `fallback` row (`checkFallbackModel`) already reports it.
+    - `budgetWarning` → ok: `<budgetPhrase> today — past 80% of the cap`.
+    - otherwise ok: `<budgetPhrase> today`.
+  - Per-role caps reached alone stay ok, like paused roles in `checkPause`: the operator chose those caps by name, and every other loop keeps ticking.
+- In `runDoctor` (`src/doctor/doctor.ts`), add `{ name: "budget", ...checkBudget(root, config, (orchestratorAlive(root, info) && info?.budget) || null) }` directly after the `quiet hours` row. This is the same alive-guard idiom the `fallback` and `build` rows use.
+- README.md: in the Usage table's Audit row, add "today's spend against the daily cap" to the doctor phrase that already names the pause and quiet-hours windows.
+
+**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`, `test/doctor-holds.test.ts`, `test/doctor.test.ts`, README.md.
+
+**Acceptance criteria.**
+- New tests in `test/doctor-holds.test.ts` cover `checkBudget` with a temp root, loop state files written for enabled roles with today's `dayStamp` via `todayStamp(now)`, and an injected `now`:
+  - undefined config → ok, "not checked".
+  - cap 0 → ok, "no daily cap".
+  - under 80% → ok with `$a of $b today`.
+  - at or above 80% → ok, "past 80%".
+  - reached → warn, naming "daily cap reached" and "fallback row".
+  - a non-null `published` figure overrides the persisted sum, in both directions.
+  - a state stamped yesterday counts $0.
+  - a `maxDailyCostUsdPerRole` cap reached by `feature` → ok, `capped loops: feature (…)`.
+  - a director-only per-role spend is never named.
+- `test/doctor.test.ts`'s fresh-root name list (the only test pinning the row order, per grep for `"quiet hours"`) gains `"budget"` right after `"quiet hours"`.
+- `src/doctor` imports nothing from `src/ui`.
+- `npm run test` passes.
 
 ## Done
 
