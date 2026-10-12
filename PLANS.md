@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### The doctor refusals row says when a refused plan's prerequisites have left `## Planned`, so a refusal that may be stale stands out (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
+## Done
+
+### The doctor refusals row says when a refused plan's prerequisites have left `## Planned`, so a refusal that may be stale stands out (planned 2026-10-12 by plan; done 2026-10-12 by feature; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
 
 **Goal.** `checkRefusedEntries` in `src/doctor/doctor-backlog.ts` warns about every refused entry in the same words. A common refusal is "prerequisite not landed yet". That refusal outlives its reason: no loop clears a Refused note, so once the prerequisite lands, nothing tells the operator the objection may be gone. The live repo shows this today. "Operator backlog writes land on main, part 2/2" is refused because part 1/2 had not landed, and part 1/2 is now under `## Done`. After this change, the refusals row adds a clause to such an entry saying its prerequisites are no longer planned, so the refusal may be stale.
 
@@ -50,8 +52,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - A PLANS.md fixture with a refused `S, part 2/2: …; requires part 1/2 landed)` heading and no part 1/2 under `## Planned` makes `checkRefusedEntries` warn with `S 1/2 are no longer planned, so the refusal may be stale` in its detail. The same fixture plus a planned `S, part 1/2: …` entry warns without `may be stale`.
 - A second refused entry with landed prerequisites shows ` [prerequisites no longer planned]` in the `(and N more: …)` list.
 - The two existing `checkRefusedEntries` tests and the doctor row-order test in test/doctor.test.ts pass unchanged.
-
-## Done
 
 ### A wrapped heading's prerequisite clause holds its plan: `requiredParts` reads a heading parenthetical that stays open past the heading line (planned 2026-10-12 by plan; done 2026-10-12; independent of the refused part 2/2 above, and touches none of its files)
 

@@ -132,6 +132,15 @@ export function requiredParts(title: string): PartRef[] {
   return refs;
 }
 
+/** The prerequisite refs of `title`'s `requires … landed` clause when none of them is still in
+ * `plannedParts` (built by plannedPartKeys), else []. A heading with no parseable clause is never
+ * reported, so only a refusal whose named prerequisites have all left `## Planned` reads as
+ * possibly stale. */
+export function prerequisitesLanded(title: string, plannedParts: ReadonlySet<string>): PartRef[] {
+  const refs = requiredParts(title);
+  return refs.some((ref) => plannedParts.has(partKey(ref.series, ref.part))) ? [] : refs;
+}
+
 /** Why `entry` is held against the still-`planned` entries, or null when it may be taken: a
  * `**Refused …` line (refused), a Needs-review line (needs-review), a Needs-replan line
  * (needs-replan — the plan loop owns it), or a prerequisite `(series, part)` still among

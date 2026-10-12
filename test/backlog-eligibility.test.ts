@@ -8,6 +8,8 @@ import {
   entryHold,
   entryKey,
   holdMark,
+  plannedPartKeys,
+  prerequisitesLanded,
   refusalNote,
   requiredParts,
   seriesPart,
@@ -273,4 +275,14 @@ test("openParenthetical returns the outermost group still open", () => {
   assert.equal(openParenthetical("no parens"), "");
   assert.equal(openParenthetical("a (b (c) d"), "b (c) d");
   assert.equal(openParenthetical("a) b (c"), "c");
+});
+
+test("prerequisitesLanded returns the refs only when none is still planned", () => {
+  const title = "S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed)";
+  const refs = [{ series: "S", part: "1", of: 2 }];
+  assert.deepEqual(prerequisitesLanded(title, new Set()), refs);
+  const planned = plannedPartKeys([{ title: "S, part 1/2: y", body: "" }]);
+  assert.deepEqual(prerequisitesLanded(title, planned), []);
+  assert.deepEqual(prerequisitesLanded("S, part 2/2: x (planned 2026-10-12)", new Set()), []);
+  assert.deepEqual(prerequisitesLanded("S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed. More", new Set()), refs);
 });

@@ -222,3 +222,19 @@ test("checkRefusedEntries reads ok with no notes, with no files, and ignores Don
   fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n### A\nbody\n\n## Done\n\n### B\n**Refused 2026-10-12 by x: y**\n");
   assert.deepEqual(checkRefusedEntries(dir), ok);
 });
+
+test("checkRefusedEntries flags a refusal whose prerequisites have left Planned", () => {
+  const dir = tmpdir("doctor-refusals-stale-");
+  const note = "**Refused 2026-10-12 by feature: part 1 missing**";
+  const head = "### S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed)";
+  const write = (extra: string) => fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `## Planned\n\n${extra}${head}\n${note}\n\n### T, part 2/2: z (planned 2026-10-12; requires part 1/2 landed)\n${note}\n\n## Done\n`);
+  write("");
+  const stale = checkRefusedEntries(dir);
+  assert.match(stale.detail, /S 1\/2 are no longer planned, so the refusal may be stale/);
+  assert.ok(stale.detail.includes("[prerequisites no longer planned])"));
+  write("### S, part 1/2: y\n\n");
+  const live = checkRefusedEntries(dir);
+  assert.match(live.detail, /Refused note/);
+  assert.ok(!live.detail.includes("may be stale"));
+});

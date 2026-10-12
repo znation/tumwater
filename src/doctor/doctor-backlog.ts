@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
-import { refusalNote } from "../backlog/backlog-eligibility.js";
+import { plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -163,20 +163,29 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
  * Planned, then BUGS.md Open). A warn, never a fail: a refusal is operator signal, not a broken
  * environment. */
 export function checkRefusedEntries(root: string): CheckOutcome {
+  const planned = plannedPlanEntries(root);
+  const parts = plannedPartKeys(planned);
   const sources = [
-    { file: "PLANS.md", command: "plan", entries: plannedPlanEntries(root) },
+    { file: "PLANS.md", command: "plan", entries: planned },
     { file: "BUGS.md", command: "bug", entries: openBugEntries(root) },
   ];
   const held = sources.flatMap(({ file, command, entries }) =>
     entries.flatMap((entry, index) => {
       const note = refusalNote(entry.body);
-      return note === null ? [] : [{ file, command, position: index + 1, title: entry.title, note }];
+      if (note === null) return [];
+      const landed = prerequisitesLanded(entry.title, parts);
+      return [{ file, command, position: index + 1, title: entry.title, note, landed }];
     }));
   const [first, ...rest] = held;
   if (!first) return okOutcome("no planned plan or open bug is held by a Refused note");
-  const more = andMore(rest, (e) => `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
+  const more = andMore(rest, (e) =>
+    `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"` +
+    (e.landed.length > 0 ? " [prerequisites no longer planned]" : ""));
+  const stale = first.landed.length > 0
+    ? `; its prerequisite(s) ${first.landed.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
+    : "";
   return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
-      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — no loop takes a refused entry until it is edited: ` +
+      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${more} — no loop takes a refused entry until it is edited: ` +
       `answer the objection and delete the note, or retract the entry with ` +
       `\`tumwater ${first.command} --cancel ${first.position}\``);
 }
