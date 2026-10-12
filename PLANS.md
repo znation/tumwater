@@ -6,72 +6,77 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A deterministic-time, hermetic-host gating tier: flakes get reproduced, not re-budgeted (planned 2026-10-11 by steward; promoted from the `no-repro` validation gap, carried by 48 Fixed entries — the largest non-`none` tag with no retiring infrastructure plan now that `no-fake` (shared fake catalog, landed 2026-10-04), `unclear-invariant` (invariant register, landed 2026-10-10), and `no-observability` (remainder-and-cause trace, landed 2026-10-11) each have one; builds on the existing clock seams (`test/fakes/time.ts`, `test/helpers/sleep-clock.ts`, `test/helpers/wait.ts`'s `watchdogClock`) and the `*.e2e.test.js` tier, so no runtime change and at most one seam parameter in `src/`; independent of the TUI Queued pane, TUI History grep, dashboard queued-edit/composer-defer, and agent-backends work)
+### Retire the `no-repro` gap, part 1/5: state the deterministic-hermetic rule and add the gating-tier guard (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's "A deterministic-time, hermetic-host gating tier" plan, which feature judged too large for one run; siblings parts 2/5–5/5 convert the measured-time families; docs-and-tests only, no `src/` change; independent of the TUI Queued pane, TUI History, dashboard, and agent-backends work)
 
-**Goal.** Retire the `no-repro` gap. It is recorded when a failure could not be reproduced
-deterministically — almost always because a gating test's verdict is a property of the host's
-load and wall clock rather than the code: it measures a deadline/window with real elapsed time,
-probes a live host resource, or binds a real port. State and enforce two rules a landing can be
-checked against: **a test that asserts time takes its clock from an injected seam, and a
-gating-tier test is hermetic — no live-host probe and no real listener**; and **a flake's fix
-converts the failing case to a deterministic one instead of widening its budget**.
-
-**Evidence.** The validation-gap tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E
-'s/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows `no-repro` on 48 Fixed entries, the largest
-non-`none` tag with no retiring plan now that the other three have landed infrastructure. The
-recurring families, each visible in the cited entries:
-- **A test measures real time.** `test/orchestrator-probe.test.ts`'s fallback-breaker test shrinks
-the cooldown to 1.5 s and measures it with fixed sleeps, so a loaded host's overshoot reads as a
-pierced pause (fixed 2026-10-06); `spawnCli.waitFor` spent its readiness deadline on `Date.now()`,
-so a host sleep timed the cold-start GUI banner wait out (fixed 2026-10-07); `tick-timing.test.ts`'s
-drain test and `cli-logs.test.ts`'s follow test each blew a fixed wait under full-suite load, every
-retry green (fixed 2026-09-30).
-- **A test reads the live host.** `systemProcessProbe.cwds` read the live `lsof` output and latched
-main red on a loaded host (fixed 2026-10-08 — the runner is now injected and the real wiring moved
-to the e2e tier); `doctor --json` sampled host `top` (fixed 2026-10-07); the live GUI test binds two
-real HTTP servers and fetches over loopback (fixed 2026-10-06).
-- **A widening fix does not retire the flake.** The SIGKILL-grandchild supervisor test's budgets
-were widened 2026-10-04 after its Fixed entry declared the load flake closed, then flaked twice
-more on 2026-10-09 and the gate promoted the re-run's pass (fixed 2026-10-09).
+**Goal.** Retire the `no-repro` validation gap — the tally (`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c`) shows it on 48 Fixed entries, the largest non-`none` tag with no retiring infrastructure plan — by stating, once in the register, the rule parts 2/5–5/5 enforce: a gating-tier (`*.test.ts`, not `*.e2e.test.ts`) test probes no live host (`lsof`, `top`, `sysctl`, `/proc`) and binds no real listener; a test that asserts a deadline, window, backoff, or poll interval takes its clock from an injected seam (`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/sleep-clock.ts`'s `scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`); and a flake's fix converts the failing case to a deterministic regression instead of widening its budget.
 
 **Approach.**
-1. State the rule in `docs/invariants.md` as a new id beside the boundary families (`INV-D1`/
-`INV-D2`): a test that asserts a deadline, window, backoff, or poll interval takes `now`/`sleep`
-through an injected seam (`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/
-sleep-clock.ts`'s `scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`), never a real
-elapsed measurement; a gating-tier (`*.test.ts`, not `*.e2e.test.ts`) test probes no live host
-(`sysctl`, `lsof`, `top`, `/proc`) and binds no real listener; and a flake fix converts the case to
-a deterministic regression. The landed citation guard (`test/invariants-doc.test.ts`) then keeps
-the register pinned to the guard and regression cases below.
-2. Add a gating-tier hermeticity guard test (modeled on the landed `test/live-checkout-guard.test.ts`
-and `test/vitest-config-guard.test.ts`): it enumerates the compiled non-e2e test files and fails on
-a live-host probe spawn (`lsof`/`top`/`sysctl`/`/proc` reads) or a real `listen(`/`createServer`
-bind, unless the file is on a small explicit allowlist naming why (the e2e-tier files and the
-guard's own fixture). It prints each violating file so the first leak is caught in the gating tier
-that would otherwise flake live.
-3. Convert the measured-time families to the injected clock and pin each with a regression that
-fails on the pre-fix shape: the fallback-breaker cooldown test, `test/helpers/cli-harness.ts`'s
-`waitFor` deadline (a controllable monotonic seam so a test can expire it instantly),
-`tick-timing.test.ts`'s drain case, `cli-logs.test.ts`'s follow case, and the supervisor grandchild
-case. Where a gating path reads `Date.now()`/`performance.now()` with no injectable clock, add the
-parameter and update only that module's callers.
-4. No new runtime dependency (PRINCIPLES.md); test-only except the minimal seam parameter in step 3.
+1. Add an invariant entry to `docs/invariants.md` (new section "Hermetic, deterministic gating tests", id `INV-F1`) with the **Guarantee** / **Binds** / **Pinned by** fields, citing the guard below and the part 2/5–5/5 regression cases.
+2. Add a scanning test to `test/invariants-doc.test.ts` — the register's own guard — that enumerates the gating test sources under `test/` (skipping `*.e2e.test.ts`) and reports every live-host probe spawn (`lsof`/`top`/`sysctl`/`/proc`) or real listener bind (`listen(`/`createServer`), unless the file is on a small explicit allowlist naming why. Factor the scan into a pure helper like the file's existing `invariantProblems(md)`, so a test can feed it planted source strings instead of writing files.
 
-**Files touched.** `docs/invariants.md`; a new gating-tier hermeticity guard test file;
-`test/fakes/time.ts`, `test/helpers/cli-harness.ts`, `test/helpers/wait.ts`,
-`test/orchestrator-probe.test.ts`, `test/supervisor.test.ts`, `test/tick-timing.test.ts`,
-`test/cli-logs.test.ts`; the one `src/` module whose gating path needs the clock parameter (if any).
+**Files touched.** `docs/invariants.md`, `test/invariants-doc.test.ts`.
 
 **Acceptance criteria.**
-- The guard fails on a planted violation (a gating test that spawns `lsof`, and one that calls
-`listen(`) and passes on the converted tree; an `*.e2e.test.ts` file doing either stays green.
-- Each converted family runs green with the injected clock and goes red deterministically when its
-fix is removed (no loaded host), under one test per family.
-- `docs/invariants.md` carries the new id and cites the guard and the regression cases;
-`test/invariants-doc.test.ts` stays green.
+- The helper flags a planted `lsof` spawn and a planted `listen(` in a gating source string, and flags nothing in an `*.e2e.test.ts` string.
+- `docs/invariants.md` carries `INV-F1` with resolvable `test/...` citations; `test/invariants-doc.test.ts`'s existing register checks stay green.
 - `npm run test` is green.
 
-**Needs review 2026-10-11 by feature: too large for one run**
+### Retire the `no-repro` gap, part 2/5: an injected clock for the wait/deadline helpers and their callers (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 3/5, 4/5 and 5/5; test-only, no `src/` change; independent of the TUI, dashboard, and agent-backends work)
+
+**Goal.** Convert the poll-deadline family. `test/helpers/wait.ts`'s `waitFor` and `waitForFile` read `performance.now()` and poll with the real `sleep`, and `test/helpers/cli-harness.ts`'s `spawnCli.waitFor` does the same for a spawned CLI's output, so a loaded host can spend a readiness budget the test never intended and report the spent deadline as a product regression (the cold-start GUI banner wait, BUGS.md 2026-10-07).
+
+**Approach.**
+1. Give `test/helpers/wait.ts`'s deadline waits an optional injected monotonic clock and sleep, defaulting to today's `performance.now()`/`sleep`, so every existing caller is unchanged. `watchdogClock` already freezes `Date`/`setInterval`; the new seam is what lets a test cross a `performance.now()` deadline and answer the poll instantly.
+2. Route `spawnCli.waitFor` (`test/helpers/cli-harness.ts`) through the same seam.
+3. Convert `test/cli-logs.test.ts`'s "logs -f --json streams each newly landed event as a JSON line" test: the live event is observed by advancing the seam rather than by hoping the child's real 500ms poll lands inside a real budget. Pin it with a regression that expiring the deadline deterministically fails the wait.
+
+**Files touched.** `test/helpers/wait.ts`, `test/helpers/cli-harness.ts`, `test/cli-logs.test.ts`.
+
+**Acceptance criteria.**
+- `waitFor`/`spawnCli.waitFor` with a fake clock expire deterministically when the test advances the clock and never wait on a real deadline; with no seam passed, behavior is unchanged.
+- The `logs -f --json` follow test passes with no real-time wait and fails deterministically when the seam is not advanced.
+- `npm run test` is green.
+
+### Retire the `no-repro` gap, part 3/5: make `drainInFlightWork`'s restart windows injectable (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 4/5 and 5/5; independent of the TUI, dashboard, and agent-backends work)
+
+**Goal.** Convert the drain-window family. `src/tick/tick-timing.ts`'s `drainInFlightWork` bounds its restart hand-off with `handoffWindowMs` and real timers, and `test/tick-timing.test.ts`'s wedged-landing case asserts on `Date.now()` elapsed time (`assert.ok(elapsed >= 100 && elapsed < 5_000, …)`), so a loaded host can decide the verdict (BUGS.md 2026-09-30).
+
+**Approach.**
+1. Add a clock/sleep seam parameter to `drainInFlightWork` (defaulting to the real clock), covering the hand-off window and the post-abort wait, so a test can cross both windows deterministically. Update the module's production callers to pass nothing — the default preserves behavior.
+2. Convert `test/tick-timing.test.ts`'s three `drainInFlightWork` cases to advance that seam: the two settling cases assert the drain waited out the reserved tick and landing, and the wedged-landing case asserts the bound was reached on the injected clock rather than by elapsed wall time.
+
+**Files touched.** `src/tick/tick-timing.ts`, `test/tick-timing.test.ts`.
+
+**Acceptance criteria.**
+- The wedged-landing case fails deterministically when the injected clock is not advanced and passes instantly when it is; no assertion reads `Date.now()` elapsed wall time.
+- The two settling cases keep asserting the drain waited for tick and landing, driven by the seam.
+- `npm run test` is green.
+
+### Retire the `no-repro` gap, part 4/5: logical time for the fallback-breaker cool-down (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 3/5 and 5/5; test-only, independent of the TUI, dashboard, and agent-backends work)
+
+**Goal.** Convert the cooldown family. `test/orchestrator-probe.test.ts`'s "a demoted fallback admits exactly one probe tick per cool-down; other due roles wait" already injects `breakerNow` (via `RunOptions.breakerNow`) but still leans on real `sleep(300)` gaps to let a broken cooldown check probe or not, so a loaded host's overshoot reads as a pierced pause (BUGS.md 2026-10-07).
+
+**Approach.** Replace the `sleep(300)` "a full poll cycle or two" gaps with assertions on the injected breaker clock: the wake must not move `breakerNow` past the published `probeAt`, and a broken cooldown check is caught by advancing `breakerNow` by one poll without waking a tick. Keep the real `sleep` only if a real poll cycle is what establishes the absence of a tick, and if so pair it with an advance of `breakerNow` so the verdict no longer depends on host load.
+
+**Files touched.** `test/orchestrator-probe.test.ts`.
+
+**Acceptance criteria.**
+- The cooldown case goes red deterministically when the cooldown check is removed, with no verdict left to a real `sleep` overshoot.
+- The "exactly one probe per cool-down" and "other due roles wait" assertions still hold after the conversion.
+- `npm run test` is green.
+
+### Retire the `no-repro` gap, part 5/5: logical time for the supervisor's parent-death watch (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5–4/5; independent of the TUI, dashboard, and agent-backends work)
+
+**Goal.** Convert the process-death family. `test/supervisor.test.ts`'s "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" waits on real watch budgets (15s start / 40s gone) that were widened after the flake recurred (BUGS.md 2026-10-09), so a loaded host decides the verdict.
+
+**Approach.** Drive the grandchild watch's polls on logical time. The watch runs in the spawned grandchild process, so `test/helpers/wait.ts`'s `watchdogClock` (in-process `t.mock.timers`) cannot reach it; thread a clock/interval seam into `startParentDeathWatch` that the grandchild script selects through its environment (or an equivalent injected poll seam), and advance it from the test once the grandchild has started. Keep a bounded real-time guard only for the process plumbing (`SIGKILL`, reparenting, file creation), never for the watch's own verdict.
+
+**Files touched.** `test/supervisor.test.ts`, `src/process/supervisor.ts` (`startParentDeathWatch`, for the seam parameter only).
+
+**Acceptance criteria.**
+- The grandchild case reaches its verdict by advancing the injected watch clock, not by a real budget; a regression that drops the watch fails at that advance.
+- The real-process plumbing (`SIGKILL` of the supervisor, reparent of the grandchild, the watch's stop-path file) is still exercised by a real child, with its own bounded guard.
+- `npm run test` is green.
 
 ### Drill into one tick's event trail from the TUI History pane, matching `tumwater tick <role> --last` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater tick <role> [<n>] [--last]` and the landed dashboard History drill-down (`GET /api/tick` serving `readTickDetail` through `renderTickDetail`); the TUI History pane lists the completed-tick rows (`readTickRows`/`historyPaneText`) but has no drill-down, so an operator watching the terminal must drop to the CLI or the browser to see one tick's events; read-only and synchronous (no server, mutation, or async collector), so it needs no `src/inbox` or `src/gui` file; independent of the waiting dashboard queued-prompt edit, dashboard defer, and TUI pending-change plans in behavior — though it shares `tui-keys.ts`/`tui-frame.ts`/`tui.tsx`/`tui-pane.ts` with the TUI pending-change plan, its own History `Ctrl+N` branch rather than that plan's transcript `changeMode`, so a landing conflict is possible and the resolver handles it)
 
