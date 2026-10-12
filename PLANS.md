@@ -6,7 +6,75 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Clear or replace a loop's notebook from the CLI: `tumwater role <id> --clear-notes` and `tumwater role <id> --notes-file <path>` (planned 2026-10-12 by plan; sibling of the landed read-only notebook views — `tumwater role <id>` (`rolePayload` in `src/roles/role-view.ts`), the dashboard loop drawer, and the TUI's Ctrl+N notebook pane; independent of the TUI backlog title-edit plan above)
+
+**Goal.** A role's notebook (`.tumwater/state/notes/<role>.md`, `roleNotesPath` in `src/paths.ts`)
+rides into every fresh tick (`src/tick/tick-prompt.ts`), yet only the model can change it, through
+the `role_notes` tool. When a note goes stale or wrong (it names a moved file, or says a ruled-out
+path is the way), the operator can read it in three places but can fix it in none, short of
+editing a file under `.tumwater/`. Give the operator the same write the model has: clear the note,
+or replace it from a file. Dashboard and TUI writes are separate later siblings, not this plan.
+
+**Approach.**
+- `src/cli/cli-query-commands.ts` `cmdRole`: accept two new flags, defined beside `FILE_SPEC` as
+  `CLEAR_NOTES_SPEC = { names: ["--clear-notes"] }` and
+  `NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<path>" }`, and add both
+  to `cmdRole`'s `rejectUnknownArgs("role", …)` list.
+  - When either is present: `fail` if both are given (`give --clear-notes or --notes-file, not
+    both`), and if `--json` is also given (`--json does not apply to a notebook write`). After
+    the id checks `cmdRole` already does, `fail` when the id is `DIRECTOR_ROLE` (`the director
+    has no notebook`). Reject an unknown id with the same `unknownRoleMessage(id,
+    knownRoleIds(cfg))` throw `rolePayload` uses. Read `cfg` with `loadConfigSafe(root)`,
+    falling back to `defaultConfig()` as `rolePayload` does.
+  - `--clear-notes` writes `""`. `--notes-file <path>` reads the text through
+    `readPromptFileArg` (`src/cli/cli-command-args.ts`: `-` reads stdin, and a missing or empty
+    file fails with its existing wording; clearing is `--clear-notes`'s job). Both write
+    through `saveRoleNote(roleNotesPath(root, id), text)` (`src/agent/role-notes-write.ts`), so
+    the 4 KB cap and the atomic write are the model's own. Catch its throw and `fail` with the
+    message. On success print `<id>: <saveRoleNote's message>`, e.g. `feature: notebook cleared`
+    or `feature: notebook saved (123 bytes)`. Send no wake and log no event: the note is read
+    at the next tick start either way.
+  - Without either flag, `cmdRole` behaves exactly as now.
+- `peelRolePositional` (same file) currently skips only `--role`'s value when it looks for the
+  positional id, so `tumwater role --notes-file n.md feature` would take `n.md` as the id.
+  Generalize it to skip the value token after any of `--role` and `--notes-file`, and update its
+  doc comment.
+- A tick that is running when the operator writes can still replace the note through its own
+  `role_notes` call: the latest write wins. Say this in the help text and in the docs paragraph.
+  Do not add locking.
+- `src/cli/help.ts`: add `tumwater role <id> --clear-notes` and `tumwater role <id> --notes-file
+  <path>` entries under `tumwater role <id> [--json]`.
+- `README.md` "Check state" row: after the `tumwater role <id>` description, add one clause:
+  `--clear-notes` clears that loop's notebook and `--notes-file <path>` (`-` for stdin) replaces
+  it (4 KB cap).
+- `docs/how-it-works.md`: in the notebook paragraph (the one that starts "Each role also has a
+  notebook"), add one sentence saying the operator can clear or replace a note with those two
+  flags, and that a tick running at that moment may still overwrite it.
+
+**Files touched.** `src/cli/cli-query-commands.ts`, `src/cli/help.ts`, `README.md`,
+`docs/how-it-works.md`, `test/cli-operators.test.ts`. No change to `src/agent/role-notes-write.ts`,
+which already exports `saveRoleNote`.
+
+**Acceptance criteria.**
+- In `test/cli-operators.test.ts`, a new test (next to "role prints one loop's standing
+  prompt…") covers each of the following:
+  - `role feature --notes-file <tmp file "use fleet.ts">` exits 0 and prints `feature: notebook
+    saved`. `roleNotesPath(repo, "feature")` then holds the file's text, and `role feature`
+    shows it.
+  - `role --notes-file <file> feature` (flag before id) writes the same note, so the
+    positional peel skips the flag's value.
+  - `role feature --clear-notes` exits 0 and prints `feature: notebook cleared`. The file is
+    then empty, and `role feature --json` reports `note: null`, per `rolePayload`'s
+    empty-means-none rule.
+  - A file over 4096 bytes exits 1 with `shorten it to at most 4096 bytes` on stderr, and
+    the old note is left unchanged.
+  - Each of these exits 1 with its message: `--clear-notes --notes-file x` together,
+    `--clear-notes --json` together, `role director --clear-notes`, and `role bogus
+    --clear-notes` (which gets the `unknown role: bogus` wording).
+- The existing `role` tests ("role prints one loop's standing prompt…" and "role validates its
+  arguments like every other command") pass unchanged.
+- `tumwater help role` lists both new forms.
+- `npm run test` passes.
 
 ## Done
 
