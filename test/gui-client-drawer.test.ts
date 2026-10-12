@@ -96,6 +96,8 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     abortConfirming: () => false,
     rolePauseMenuOpen: () => false,
     ROLE_PAUSE_CHOICES: [[3600, "1h"]],
+    roleWakeMenuOpen: () => false,
+    ROLE_WAKE_CHOICES: [[1800, "30m"], [3600, "1h"]],
     phaseDetail: () => "phase detail",
     clickClosest: () => null,
     rowAction: () => {},
@@ -181,6 +183,27 @@ test("the loop drawer for a role the fleet no longer has says so, paints no acti
   assert.match(meta, /<pre class='mono diff'>diff --git a\/x b\/x/);
 });
 
+test("an idle loop's drawer offers Wake later…, and its open chooser lists one button per duration", () => {
+  const idle = () => {
+    const status = workingStatus();
+    status.loops[0]!.phase = "sleeping";
+    status.loops[0]!.inFlight = false;
+    return status;
+  };
+  const closed = openDrawer(["toggleLoop"], { status: idle() });
+  closed.scope.toggleLoop("clean");
+  const closedActions = closed.paintedFor("draweractions");
+  assert.match(closedActions, /data-action='wake-in'/);
+  assert.doesNotMatch(closedActions, /data-for=/);
+  const open = openDrawer(["toggleLoop"], { status: idle(), overrides: { roleWakeMenuOpen: () => true } });
+  open.scope.toggleLoop("clean");
+  const openActions = open.paintedFor("draweractions");
+  assert.match(openActions, /data-action='wake-in' data-for='1800'/);
+  assert.match(openActions, /data-action='wake-in' data-for='3600'/);
+  assert.doesNotMatch(openActions, /data-for='0'/);
+  assert.match(openActions, />in 1h</);
+});
+
 test("the loop drawer paints a working loop's actions, metrics, ticks, and transcript with the real formatters", async () => {
   const now = Date.now();
   const t = openDrawer(["toggleLoop", "loadLoopTicks"], {
@@ -205,6 +228,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(actions, /data-action='pause-for'/);
   assert.match(actions, /data-action='reset-counters'/);
   assert.doesNotMatch(actions, /data-action='resume'/);
+  assert.doesNotMatch(actions, /data-action='wake-in'/, "a live loop shows Abort, not a wake control");
   assert.match(actions, /<i:stop>/);
 
   const head = t.paintedFor("drawerhead");

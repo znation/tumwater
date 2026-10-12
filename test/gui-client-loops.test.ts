@@ -105,6 +105,7 @@ test("the pause-for control offers duration choices and a timed pause shows its 
   const closed = row(idle).actions;
   assert.ok(closed.includes("data-action='pause-for'") && !closed.includes("data-for="), "a clock control arms the chooser");
   assert.ok(closed.includes("data-action='pause'"), "the standing pause stays");
+  assert.ok(!closed.includes("data-action='wake-in'"), "the table row leaves the timed wake to the drawer");
   const open = row({ ...idle, role: "choosing" }).actions;
   for (const s of [1800, 3600, 7200, 28800, 0]) assert.ok(open.includes("data-for='" + s + "'"), String(s));
   const paused = row({ ...idle, phase: "paused" }, { pausedRoles: ["docs"], pausedRolesUntil: Date.now() + 3_600_000 });

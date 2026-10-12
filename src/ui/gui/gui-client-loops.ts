@@ -10,10 +10,12 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // row-actions:start
   let confirmAbort = null; // { role, until } while an abort waits for its confirming click
   const abortConfirming = (role) => Boolean(confirmAbort && confirmAbort.role === role && confirmAbort.until > Date.now());
-  let rolePauseMenuRole = null; // the role whose duration chooser is open, until rolePauseMenuUntil
-  let rolePauseMenuUntil = 0;
-  const rolePauseMenuOpen = (role) => rolePauseMenuRole === role && rolePauseMenuUntil > Date.now();
+  let roleChooser = null; // { role, action, until }: the one open duration chooser ("pause-for" or "wake-in")
+  const roleChooserOpen = (role, action) => Boolean(roleChooser && roleChooser.role === role && roleChooser.action === action && roleChooser.until > Date.now());
+  const rolePauseMenuOpen = (role) => roleChooserOpen(role, "pause-for");
+  const roleWakeMenuOpen = (role) => roleChooserOpen(role, "wake-in");
   const ROLE_PAUSE_CHOICES = [[1800, "30m"], [3600, "1h"], [7200, "2h"], [28800, "8h"], [0, "standing"]];
+  const ROLE_WAKE_CHOICES = ROLE_PAUSE_CHOICES.filter((c) => c[0] > 0); // a wake has no "standing" choice
   // A loop's controls, from its table row or its drawer: prompt (aims the composer at the loop),
   // wake, pause/resume (the target state is always explicit), and abort, which discards the
   // tick's work — the first click arms it, a second within 5 s fires it.
@@ -29,21 +31,22 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       setTimeout(() => { if (confirmAbort && confirmAbort.role === role && confirmAbort.until <= Date.now()) { confirmAbort = null; rerender(); } }, 5100);
       return;
     }
-    if (action === "pause-for" && forSeconds === undefined) {
-      rolePauseMenuRole = role;
-      rolePauseMenuUntil = Date.now() + 10000;
+    if ((action === "pause-for" || action === "wake-in") && forSeconds === undefined) {
+      roleChooser = { role, action, until: Date.now() + 10000 };
       rerender();
       return;
     }
     confirmAbort = null;
-    rolePauseMenuRole = null;
+    roleChooser = null;
     const pausing = action === "pause" || action === "pause-for";
     const timed = action === "pause-for" && forSeconds > 0;
     const path = action === "abort" ? "/api/abort" : action === "reset-counters" ? "/api/reset-counters" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
-    const body = pausing || action === "resume" ? { role, paused: pausing, ...(timed ? { forSeconds } : {}) } : { role };
+    const wakeIn = action === "wake-in";
+    const body = pausing || action === "resume" ? { role, paused: pausing, ...(timed ? { forSeconds } : {}) } : wakeIn ? { role, inSeconds: forSeconds } : { role };
     await postAction(path, body, (d) => {
       let msg = d && typeof d.message === "string" ? d.message : role + ": done";
-      if (timed) msg = role + " paused for " + humanSeconds(forSeconds);
+      if (wakeIn && !(d && typeof d.message === "string")) msg = role + " wakes in " + humanSeconds(forSeconds);
+      else if (timed) msg = role + " paused for " + humanSeconds(forSeconds);
       else if (pausing || action === "resume") {
         msg = role + (d && d.changed
           ? (pausing ? " paused — it starts no new ticks" : " resumed")

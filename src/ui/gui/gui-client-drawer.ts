@@ -1,5 +1,5 @@
 /** The dashboard's detail drawer, browser-side: a sheet on the right that opens over the page
- * without losing it. For a loop it shows the state, the loop's controls (prompt, wake,
+ * without losing it. For a loop it shows the state, the loop's controls (prompt, wake now or later,
  * pause/resume, abort), what it is working on, its last result, the metrics the fleet table
  * leaves out (tokens, context, cost, timings), its recent ticks (/api/history filtered to the
  * loop), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
@@ -105,7 +105,13 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // The running set (info.live), not the permit-holder inFlight: the exempt running director
     // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
     if (info.live) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to abort", "btn-danger confirming") : btn("abort", "stop", "Abort this tick", "btn-danger");
-    else actions += btn("wake", "bolt", "Wake now");
+    else {
+      actions += btn("wake", "bolt", "Wake now");
+      if (roleWakeMenuOpen(l.role)) {
+        actions += ROLE_WAKE_CHOICES.map((c) => "<button type='button' class='btn btn-sm rowaction' data-action='wake-in' data-for='" + c[0] +
+          "' data-role='" + esc(l.role) + "'>in " + esc(c[1]) + "</button>").join("");
+      } else actions += btn("wake-in", "clock", "Wake later…");
+    }
     if (paused) actions += btn("resume", "play", "Resume");
     else if (rolePauseMenuOpen(l.role)) {
       actions += ROLE_PAUSE_CHOICES.map((c) => "<button type='button' class='btn btn-sm rowaction' data-action='pause-for' data-for='" + c[0] +

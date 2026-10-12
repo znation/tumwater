@@ -276,8 +276,8 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
     "/api/pause-role": { ok: true, changed: true },
     "/api/abort": { ok: true, message: "abort requested for feature" },
   };
-  const scope = clientScope<{ rowAction(action: string, role: string, forSeconds?: number): Promise<void>; abortConfirming(role: string): boolean }>(
-    ["format", "post-action", "row-actions"], ["rowAction", "abortConfirming"], {
+  const scope = clientScope<{ rowAction(action: string, role: string, forSeconds?: number): Promise<void>; abortConfirming(role: string): boolean; rolePauseMenuOpen(role: string): boolean; roleWakeMenuOpen(role: string): boolean }>(
+    ["format", "post-action", "row-actions"], ["rowAction", "abortConfirming", "rolePauseMenuOpen", "roleWakeMenuOpen"], {
       closeMenus: () => {},
       postJson: async (path: string, body: unknown) => {
         posts.push({ path, body });
@@ -323,6 +323,26 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   await scope.rowAction("pause-for", "docs", 0);
   assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true } });
   assert.equal(flashes.shift(), "docs paused — it starts no new ticks");
+
+  // wake-in: the first click opens the chooser (no post); a choice posts inSeconds. Only one chooser is open at a time.
+  await scope.rowAction("pause-for", "docs");
+  assert.equal(scope.rolePauseMenuOpen("docs"), true);
+  await scope.rowAction("wake-in", "docs");
+  assert.equal(posts.length, 0);
+  assert.equal(scope.roleWakeMenuOpen("docs"), true);
+  assert.equal(scope.rolePauseMenuOpen("docs"), false, "opening the wake chooser closes the pause chooser");
+  await scope.rowAction("pause-for", "docs");
+  assert.equal(scope.roleWakeMenuOpen("docs"), false, "opening the pause chooser closes the wake chooser");
+  await scope.rowAction("wake-in", "docs");
+  answers["/api/wake"] = { ok: true, message: "wake scheduled for docs — wakes in 1h" };
+  await scope.rowAction("wake-in", "docs", 3600);
+  assert.deepEqual(posts.shift(), { path: "/api/wake", body: { role: "docs", inSeconds: 3600 } });
+  assert.equal(flashes.shift(), "wake scheduled for docs — wakes in 1h");
+  assert.equal(scope.roleWakeMenuOpen("docs"), false, "firing closes the chooser");
+  answers["/api/wake"] = { ok: true };
+  await scope.rowAction("wake-in", "docs", 1800);
+  posts.shift();
+  assert.equal(flashes.shift(), "docs wakes in 30m");
 
   // The first abort click only arms it; the second fires.
   await scope.rowAction("abort", "feature");
