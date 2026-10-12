@@ -8,7 +8,7 @@ import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-da
 import type { SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { dayKey, dayLabel, formatTime, formatTimestamp, monthDay, reportWindow } from "../text/datetime.js";
+import { dayKey, dayLabel, formatTime, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";
@@ -133,7 +133,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   // day-window line. The empty branch follows the same split so neither claims the other's unit.
   lines.push(
     data.sinceMs !== undefined
-      ? `window: last ${durationLabel(data.sinceMs)} (since ${formatTimestamp(new Date(data.fromIso!).getTime())}) · ${data.ticks} ticks`
+      ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.ticks} ticks`
       : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);

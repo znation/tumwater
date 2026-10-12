@@ -146,3 +146,13 @@ export function dayLabel(days: number): string {
 export function reportWindow(from: string, to: string, days: number, rotation: string): string {
   return `Window: ${from} → ${to} (${dayLabel(days)}) · source: ${EVENTS_LOG_BASENAME} (${rotation})`;
 }
+
+/** The trailing-window sibling of reportWindow above: the `window: last <duration>` header the
+ * two `--since` reports print (renderSinceReportMarkdown and the failure digest's since shape),
+ * with the window's start instant in local time. `duration` is the window length already phrased
+ * by cli-args.ts's durationLabel (`last 1h30m`) — taken as a string so this presentation-only
+ * module avoids importing the CLI layer; the failure digest appends its own tick count. One home
+ * so the two reports' window wording cannot drift. */
+export function sinceWindowLine(duration: string, fromIso: string): string {
+  return `window: last ${duration} (since ${formatTimestamp(new Date(fromIso).getTime())})`;
+}
