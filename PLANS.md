@@ -31,6 +31,25 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### A wrapped heading's prerequisite clause holds its plan: `requiredParts` reads a heading parenthetical that stays open past the heading line (planned 2026-10-12 by plan; independent of the refused part 2/2 above, and touches none of its files)
+
+**Goal.** `requiredParts` in `src/backlog/backlog-eligibility.ts` reads only `trailingParenthetical(title)`, which returns "" unless the heading line ends in `)`. A plan heading whose stamp parenthetical wraps onto the following lines has a `### ` line like `### X, part 2/2: y (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses …`. For that heading `requiredParts` returns [], so `entryHoldAgainst` sees no prerequisite. The plan then reads as eligible in the prompt's `<backlog-index>`, in `tumwater backlog`, and in `eligibleEntries`, even while its prerequisite is still under `## Planned`. This happened to the "Operator backlog writes land on main, part 2/2" entry above: feature picked it up before part 1/2 landed and refused it. After this change, such a heading is marked `[blocked: requires …]` until the prerequisite leaves `## Planned`.
+
+**Approach.**
+- In `src/backlog/backlog-md.ts`, add an exported `openParenthetical(line: string): string` next to `trailingParenthetical`. Scan left to right with a depth counter and remember the index of the `(` that took depth from 0 to 1. A `)` at depth 0 is ignored. If depth is still above 0 at the end of the line, return the text after that remembered `(` (it is the outermost group still open). Otherwise return "".
+- In `requiredParts`, use `trailingParenthetical(title)` and fall back to `openParenthetical(title)` when it returns "". The existing `/requires\s+(.+?)\s+landed\b/i` match and the `parseRef` loop stay as they are. Only the heading line (`entry.title`) is ever read, never the body. Continuation lines remain body, exactly as today.
+- Update the doc comments that state the rule to name the fallback: `requiredParts`, `entryHold`, the module header of `backlog-eligibility.ts` (it says "trailing parenthetical"), and `trailingParenthetical`'s comment, which names `requiredParts` as a caller.
+- No change to `seriesPart`, `stripEntryStamp`, `entryDates`/`headingMetadata`, or any renderer.
+
+**Files.** `src/backlog/backlog-md.ts`, `src/backlog/backlog-eligibility.ts`, `test/backlog-eligibility.test.ts`. Add the `openParenthetical` tests to `test/backlog-eligibility.test.ts`, since there is no backlog-md test file.
+
+**Acceptance criteria.**
+- `requiredParts("Op writes, part 2/2: x (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's module:")` returns `[{ series: "Op writes", part: "1", of: 2 }]`.
+- `entryHold` for an entry with that title, with `Op writes, part 1/2: y (planned 2026-10-12)` in `planned`, returns `{ blockedBy: ["Op writes 1/2"] }`. With an empty `planned`, it returns null.
+- `openParenthetical` returns "" for a balanced line (`"a (b) c"`, `"a (b (c))"`) and for a line with no `(`. It returns `"b (c) d"` for `"a (b (c) d"`. A stray leading `)` (`"a) b (c"`) yields `"c"`.
+- Every existing `requiredParts` and `entryHold` test in `test/backlog-eligibility.test.ts` passes unchanged. That includes `requiredParts("Foo, part 1/2: x")` returning [], since the line has no open parenthetical.
+- Against this repo's PLANS.md (`node -e` importing `dist/src/backlog/backlog-eligibility.js` after `npm run build`), `requiredParts` of the "Operator backlog writes land on main, part 2/2" heading returns the part 1/2 ref. That entry still reads `refused`, because the Refused note is checked first.
+
 ## Done
 
 ### `tumwater doctor` names refused backlog entries: a "refusals" check that warns on each planned plan or open bug held by a **Refused** note (done 2026-10-12; planned 2026-10-12 by plan; independent of both entries above, and touches none of their files except README.md's doctor row. A **Refused …** note holds its entry until a human or the director edits it, and no loop clears one. Today the only places that show the hold are the `[refused]` mark in `tumwater backlog`, `plan|bug --list`, and the prompt's backlog index. Nothing tells the operator that work is parked. This repo's part 2/2 above is such an entry right now: it was refused because part 1/2 had not landed, and `src/backlog/backlog-commit.ts` has since landed, but nothing says so. `grep -rn refused src/doctor` finds nothing)
