@@ -236,12 +236,28 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   let backlogStatus = null;
   let queuedEdit = null;
   let queuedEditPainted = false;
+  // The Plans/Bugs tabs' New form: { kind: "plan" | "bug" } or null, with the same painted
+  // guard so a poll does not repaint over the typed title.
+  let backlogNew = null;
+  let backlogNewPainted = false;
   function setBacklogTab(tab) {
     backlogTab = tab;
     store("backlog", tab);
     queuedEdit = null;
     queuedEditPainted = false;
+    backlogNew = null;
+    backlogNewPainted = false;
     if (lastStatus) renderBacklog(lastStatus);
+  }
+  function beginBacklogNew(kind) {
+    backlogNew = { kind };
+    backlogNewPainted = false;
+    renderBacklog(backlogStatus);
+  }
+  function endBacklogNew() {
+    backlogNew = null;
+    backlogNewPainted = false;
+    renderBacklog(backlogStatus);
   }
   function beginQueuedEdit(role, file, text) {
     backlogTab = "queued";
@@ -263,6 +279,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   function renderBacklog(d) {
     backlogStatus = d;
     if (queuedEdit && queuedEditPainted) return; // an open editor owns the panel until Save or Cancel
+    if (backlogNew && backlogNewPainted) return; // likewise the New form
     const items = { questions: d.questions || [], plans: d.plans || [], bugs: d.bugs || [], queued: queuedPrompts(d) };
     if (!items[backlogTab]) backlogTab = items.questions.length ? "questions" : "plans";
     paintPanel("backlogtabs", BACKLOG.map(([k, label]) => "<button type='button' role='tab' data-tab='" + k + "' aria-selected='" + (k === backlogTab) + "'" +
@@ -307,6 +324,18 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           (key === "questions" ? "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + i + "'>Answer</button>" : "") + "</div>";
       }).join("");
     }
+    if (key === "plans" || key === "bugs") {
+      const kind = key === "plans" ? "plan" : "bug";
+      if (backlogNew && backlogNew.kind === kind) {
+        backlogNewPainted = true;
+        html = "<div class='list-item'><input id='backlognew' type='text' placeholder='" + (kind === "plan" ? "Plan title" : "Bug symptom") + "'>" +
+          "<button type='button' class='btn btn-sm rowaction' data-action='backlognewsave' data-kind='" + kind + "'>Save</button>" +
+          "<button type='button' class='btn btn-sm rowaction' data-action='backlognewcancel'>Cancel</button></div>" + html;
+      } else {
+        html = "<div class='list-item'><button type='button' class='btn btn-sm' data-action='backlognew' data-kind='" + kind + "'>" +
+          (kind === "plan" ? "New plan" : "File a bug") + "</button></div>" + html;
+      }
+    }
     paintPanel("backlog", html);
   }
   // backlog:end
@@ -315,6 +344,18 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (b) setBacklogTab(b.dataset.tab);
   });
   $("backlog").addEventListener("click", async (ev) => {
+    const fresh = clickClosest(ev, "button[data-action='backlognew']");
+    if (fresh) { beginBacklogNew(fresh.dataset.kind); return; }
+    if (clickClosest(ev, "button[data-action='backlognewcancel']")) { endBacklogNew(); return; }
+    const freshSave = clickClosest(ev, "button[data-action='backlognewsave']");
+    if (freshSave) {
+      const input = $("backlognew");
+      const title = input ? input.value.trim() : "";
+      if (!title) return;
+      await postAction("/api/backlog-file", { kind: freshSave.dataset.kind, title }, (d) => "Filed: " + d.title);
+      endBacklogNew();
+      return;
+    }
     const cancel = clickClosest(ev, "button.rowaction[data-action='promptcancel']");
     if (cancel) {
       await postAction("/api/prompt-cancel", { role: cancel.dataset.role, file: cancel.dataset.file }, (d) =>

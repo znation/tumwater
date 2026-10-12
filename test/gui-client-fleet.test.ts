@@ -16,7 +16,8 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     beginQueuedEdit(role: string, file: string, text: string): void;
     endQueuedEdit(): void;
     setBacklogTab(tab: string): void;
-  }>(["format", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab"], {
+    beginBacklogNew(kind: string): void;
+  }>(["format", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "beginBacklogNew"], {
     backlogTab,
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
@@ -428,4 +429,27 @@ test("the Activity filter persists its choices and the page ships the controls i
   const head = card.slice(0, card.indexOf("</header>"));
   assert.match(head, /id="feedrole"/);
   assert.match(head, /id="feedgrep"/);
+});
+
+test("the Plans and Bugs tabs offer a New form that survives polls and drops on a tab switch", () => {
+  const status = { questions: ["Q (asked 2026-10-01)"], plans: [], bugs: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+  for (const [tab, kind, label] of [["plans", "plan", "New plan"], ["bugs", "bug", "File a bug"]] as const) {
+    const { scope, panels } = backlogScope(tab, { lastStatus: status });
+    scope.renderBacklog(status);
+    assert.match(panels["backlog"] ?? "", new RegExp(`data-action='backlognew' data-kind='${kind}'>${label}<`));
+    scope.beginBacklogNew(kind);
+    const html = panels["backlog"] ?? "";
+    assert.match(html, /<input id='backlognew'/);
+    assert.match(html, new RegExp(`data-action='backlognewsave' data-kind='${kind}'`));
+    assert.match(html, /data-action='backlognewcancel'/);
+    scope.renderBacklog(status);
+    assert.equal(panels["backlog"], html, "a poll keeps the open form");
+    scope.setBacklogTab(tab === "plans" ? "bugs" : "plans");
+    assert.doesNotMatch(panels["backlog"] ?? "", /<input id='backlognew'/);
+  }
+  for (const tab of ["questions", "queued"]) {
+    const { scope, panels } = backlogScope(tab, { lastStatus: status });
+    scope.renderBacklog(status);
+    assert.doesNotMatch(panels["backlog"] ?? "", /backlognew/);
+  }
 });

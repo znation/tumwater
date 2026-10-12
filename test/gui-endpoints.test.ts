@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handlePromptEdit, handleQuestionAnswer, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handlePromptEdit, handleQuestionAnswer, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -28,6 +28,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
+import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
@@ -778,4 +779,49 @@ test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bod
   assert.equal(f.captured.status, 409);
   assert.match((f.data as { error: string }).error, /unclosed code fence/);
   assert.equal(fs.readFileSync(file, "utf8"), fenced);
+});
+
+// ---- POST /api/backlog-file: the Plans/Bugs tabs' New control ----
+function serveBacklogFile(root: string, body: unknown) {
+  return captureJson((res) => handleBacklogFile(fakeReq(JSON.stringify(body)), res, root));
+}
+
+function queuedTexts(root: string, role: string): string[] {
+  const dir = roleInboxDir(root, role);
+  return fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f), "utf8")) : [];
+}
+
+test("handleBacklogFile files a bug or plan and wakes its loop, and 400s bad input untouched", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open" }, { heading: "## Fixed" }]);
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
+  const today = new Date().getFullYear().toString();
+
+  const bug = await serveBacklogFile(root, { kind: "bug", title: "  x  y " });
+  assert.equal(bug.captured.status, 200);
+  assert.deepEqual(bug.data, { ok: true, file: "BUGS.md", title: "x y" });
+  assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), new RegExp(`### x y \\(reported by the operator ${today}`));
+  assert.deepEqual(queuedTexts(root, "bugfix"), [bugWakeText("x y")]);
+
+  const plan = await serveBacklogFile(root, { kind: "plan", title: "add z" });
+  assert.equal(plan.captured.status, 200);
+  assert.deepEqual(plan.data, { ok: true, file: "PLANS.md", title: "add z" });
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the operator/);
+  assert.deepEqual(queuedTexts(root, "feature"), [planWakeText("add z")]);
+
+  const bugsBefore = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  const plansBefore = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  for (const body of [
+    { kind: "todo", title: "x" },
+    { kind: "bug", title: "   " },
+    { kind: "plan" },
+    { kind: "bug", title: "a".repeat(DIRECTOR_PROMPT_MAX_CHARS + 10) },
+  ]) {
+    const bad = await serveBacklogFile(root, body);
+    assert.equal(bad.captured.status, 400, JSON.stringify(body).slice(0, 40));
+  }
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), bugsBefore);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plansBefore);
+  assert.equal(queuedTexts(root, "bugfix").length, 1);
+  assert.equal(queuedTexts(root, "feature").length, 1);
 });

@@ -10,10 +10,11 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
+import { fileBug, filePlan, OPERATOR_FILE_KINDS } from "../backlog/backlog-write.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
-import { submitPrompt } from "../inbox/inbox-submit.js";
+import { promptLengthProblem, submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../cli/question-commands.js";
 import { parseDurationMs } from "../cli/cli-args.js";
@@ -23,7 +24,7 @@ import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRole
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
-import { errorMessage, gotSuffix } from "../text/text.js";
+import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
 import type http from "node:http";
 
 /** Every POST handler's shared opening: readJsonObject reads the body and — when it is
@@ -383,6 +384,35 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
     ok: true,
     message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
   });
+}
+
+/** Handle POST /api/backlog-file: the Plans/Bugs tabs' New control — the same entry and wake
+ * `tumwater bug`/`tumwater plan` produce (fileBug/filePlan, then the shared wake text to the
+ * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "..."}`. The empty-title and
+ * wake-length checks run here, before anything is written: fileBug/filePlan's own empty check
+ * exits the process through fail(), and an over-long wake would throw after the entry landed. */
+export async function handleBacklogFile(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"kind": "bug", "title": "the symptom"}');
+  if (!body) return;
+  const kind = body.kind;
+  if (kind !== "bug" && kind !== "plan") {
+    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
+    return;
+  }
+  const rawTitle = typeof body.title === "string" ? body.title : "";
+  if (collapseWhitespace(rawTitle) === "") {
+    sendJson(res, 400, { error: "title required" });
+    return;
+  }
+  const { role, wakeText } = OPERATOR_FILE_KINDS[kind];
+  const problem = promptLengthProblem(wakeText(collapseWhitespace(rawTitle)), role);
+  if (problem) {
+    sendJson(res, 400, { error: problem });
+    return;
+  }
+  const filed = kind === "bug" ? fileBug(root, rawTitle, "") : filePlan(root, rawTitle, "", "");
+  submitRolePromptAndWake(root, role, wakeText(filed.title));
+  sendJson(res, 200, { ok: true, file: filed.file, title: filed.title });
 }
 
 /** Reply for a boolean-claiming marker request (RequestResult): success maps to 200 with its

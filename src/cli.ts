@@ -218,7 +218,7 @@ async function main(): Promise<void> {
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
     case "bug": {
-      const { bugTitleOf, cancelAndAnnounce, cancelBug, editAndAnnounce, editBug, fileBug, fileAndAnnounce, listAndAnnounce } =
+      const { OPERATOR_FILE_KINDS, bugTitleOf, bugWakeText, cancelAndAnnounce, cancelBug, editAndAnnounce, editBug, fileBug, fileAndAnnounce, listAndAnnounce } =
         await import("./backlog/backlog-write.js");
       const usage = 'tumwater bug "<symptom>"';
       if (args.includes("--list")) {
@@ -238,15 +238,14 @@ async function main(): Promise<void> {
         args,
         "bug",
         (positionals) => fileBug(root, positionals.join(" "), usage),
-        "bugfix",
-        (title) =>
-          `Operator filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`,
+        OPERATOR_FILE_KINDS.bug.role,
+        bugWakeText,
         bugTitleOf,
       );
       break;
     }
     case "plan": {
-      const { cancelAndAnnounce, cancelPlan, editAndAnnounce, editPlan, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf } =
+      const { OPERATOR_FILE_KINDS, cancelAndAnnounce, cancelPlan, editAndAnnounce, editPlan, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf, planWakeText } =
         await import("./backlog/backlog-write.js");
       const usage = 'tumwater plan "<title>" [body...]';
       if (args.includes("--list")) {
@@ -268,9 +267,8 @@ async function main(): Promise<void> {
         args,
         "plan",
         (positionals) => filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
-        "feature",
-        (title) =>
-          `Operator requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`,
+        OPERATOR_FILE_KINDS.plan.role,
+        planWakeText,
         planTitleOf,
       );
       break;

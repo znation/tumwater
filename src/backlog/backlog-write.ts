@@ -350,6 +350,24 @@ export async function fileAndAnnounce(
   if (!json) say(wake);
 }
 
+/** The loop prompt a filed bug wakes the `bugfix` loop with — one wording for the CLI's
+ * `tumwater bug` and the dashboard's backlog-file endpoint. */
+export function bugWakeText(title: string): string {
+  return `Operator filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`;
+}
+
+/** The loop prompt a requested plan wakes the `feature` loop with, shared like bugWakeText. */
+export function planWakeText(title: string): string {
+  return `Operator requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`;
+}
+
+/** The loop each operator-filed kind wakes and the wording it wakes it with, keyed by the
+ * kind the dashboard posts. */
+export const OPERATOR_FILE_KINDS = {
+  bug: { role: "bugfix", wakeText: bugWakeText },
+  plan: { role: "feature", wakeText: planWakeText },
+} as const;
+
 /** The one home of an operator-filed entry's shape — the pairing fileBug and filePlan both
  * perform: stamp the entry, build the `### <title> (<stamp>)` heading, append it under the
  * section through appendEntry, and return the FiledEntry the confirmation prints. fileBug files
