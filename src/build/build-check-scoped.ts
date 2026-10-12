@@ -16,7 +16,7 @@ import {
   SCOPE_WORDS,
   buildCheckEvent,
   buildCheckSkipWarning,
-  DEADLINE_LATE_TOLERANCE_MS,
+  owesCleanRetry,
   installFailedPhrase,
   killedPhrase,
   timedOutPhrase,
@@ -97,24 +97,7 @@ export async function runScopedBuildCheck(
       // attempt; the second attempt's outcome stands. The verdict-less first attempt is priced
       // as its own event (the feed must answer how long a check took), then the final event
       // below records the retry's classified outcome.
-      const lateDeadlineTimeout =
-        first.status === "skipped" &&
-        first.skipReason === "timeout" &&
-        (first.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS;
-      // A FAILED run the host slept through is the same weather seen from the other side: the
-      // sleep expired a test's own wall-clock wait at the wake, the suite exited 1 inside the
-      // deadline, and until the measured sleptMs existed nothing marked the run — the failure
-      // read as a deterministic rejection of the change (BUGS.md 2026-09-30). It owes the same
-      // clean retry as the verdict-less attempts above, at every scope: a retry that passes
-      // verifies the tree exactly like a first-time pass, and one that fails again is
-      // classified below.
-      const sleepFailed =
-        first.status === "failed" && (first.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
-      if (
-        (first.status !== "skipped" || (first.skipReason !== "killed" && !lateDeadlineTimeout)) &&
-        !sleepFailed
-      )
-        return first;
+      if (!owesCleanRetry(first)) return first;
       logEventBestEffort(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
       const retry = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);

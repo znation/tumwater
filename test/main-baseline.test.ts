@@ -361,12 +361,17 @@ test("a baseline run the host slept through is unverified and never cached red",
     `echo run >> ${counter}; if [ -f ./SLEEP_RED_MARKER ]; then echo env-failure; exit 1; fi; echo ok`,
   );
   fs.writeFileSync(path.join(wt, "SLEEP_RED_MARKER"), "");
-  // The one attempt opens awake and closes after a 119 s sleep.
-  const slept = scriptedSampler([woke(1_000), woke(121_000, 2_000)]);
+  // Both attempts open awake and close after a 119 s sleep: the retry sleeps too.
+  const slept = scriptedSampler([
+    woke(1_000),
+    woke(121_000, 2_000),
+    woke(121_000),
+    woke(241_000, 122_000),
+  ]);
   const first = await checkMainBaseline(wt, CFG, undefined, false, false, slept);
   assert.equal(first.baseline, null, "a slept run caches nothing");
   assert.equal(first.unverified, true, "the caller is told the run was unverified, not skipped");
-  assert.equal(runsOf(counter), 1);
+  assert.equal(runsOf(counter), 2, "the slept failure owed one clean retry before it stood");
 
   // The next consult re-runs (nothing was cached) and the clean attempt's verdict settles the
   // SHA exactly as before — here green, which the cache then holds for everyone.
@@ -374,9 +379,29 @@ test("a baseline run the host slept through is unverified and never cached red",
   const clean = scriptedSampler([woke(1_000), woke(1_500)]);
   const second = await checkMainBaseline(wt, CFG, undefined, false, false, clean);
   assert.equal(second.baseline?.status, "green");
-  assert.equal(runsOf(counter), 2, "the slept failure did not latch the red into the cache");
+  assert.equal(runsOf(counter), 3, "the slept failure did not latch the red into the cache");
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "green");
-  assert.equal(runsOf(counter), 2, "the clean green is cached as always");
+  assert.equal(runsOf(counter), 3, "the clean green is cached as always");
+});
+
+// The baseline owes the same one clean retry runScopedBuildCheck gives every other scope: a
+// failure the host slept through is weather, and a clean second attempt settles the SHA.
+test("a slept baseline failure is retried once and the clean retry's verdict stands", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { wt } = baselineFixture(ROLE,
+    `echo run >> ${counter}; if [ "$(wc -l < ${counter})" -lt 2 ]; then echo flaky; exit 1; fi; echo ok`,
+  );
+  const sampler = scriptedSampler([
+    woke(1_000),
+    woke(121_000, 2_000),
+    woke(121_000),
+    woke(121_500),
+  ]);
+  const seen: number[] = [];
+  const res = await checkMainBaseline(wt, CFG, () => seen.push(1), false, false, sampler);
+  assert.equal(res.baseline?.status, "green", "the retry's pass verifies main");
+  assert.equal(runsOf(counter), 2);
+  assert.equal(seen.length, 2, "the verdict-less first attempt is priced as its own run");
 });
 
 // The verdict cache is keyed by every merged code SHA, so without a cap the orchestrator would

@@ -308,10 +308,17 @@ test("mainTipVerdict reports unavailable, without throwing, when main's ref dang
 // cached, so the next consult re-runs and a clean attempt settles the SHA.
 test("mainRedGate proceeds unverified when the baseline run spanned a host sleep", async () => {
   const { root, wt } = baselineFixture(ROLE, "echo baseline-failure; exit 1");
-  const slept = scriptedSampler([woke(1_000), woke(121_000, 2_000)]);
+  // The first attempt sleeps and owes one clean retry; the retry sleeps too, so it stands.
+  const slept = scriptedSampler([
+    woke(1_000),
+    woke(121_000, 2_000),
+    woke(121_000),
+    woke(241_000, 122_000),
+  ]);
   assert.equal(await mainRedGate(root, ROLE, wt, slept), null, "a slept baseline run never blocks authoring");
   const events = readEvents(root);
-  const check = events.find((e) => e.type === "build_check");
+  assert.equal(events.filter((e) => e.type === "build_check").length, 2, "both attempts are priced");
+  const check = events.filter((e) => e.type === "build_check").at(-1);
   assert.equal(check?.status, "failed");
   assert.equal(check?.sleptMs, 119_000, "the event carries the measured sleep");
   const warning = events.find((e) => e.type === "warning" && e.loop === ROLE);

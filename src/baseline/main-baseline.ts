@@ -3,7 +3,7 @@ import {
   type BuildSkipReason,
   runBuildCheck,
 } from "../build/build-check.js";
-import { SLEEP_SPAN_TOLERANCE_MS, type BaselineCheckRun } from "../build/build-check-events.js";
+import { SLEEP_SPAN_TOLERANCE_MS, owesCleanRetry, type BaselineCheckRun } from "../build/build-check-events.js";
 import { sampleSleepClock, type SleepSampler } from "../build/host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "../concurrency/check-permit.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -348,13 +348,20 @@ export async function checkMainBaseline(
       // none.
       const { outcome, durationMs } = await withCheckPermit(config, CHECK_TIER.other, async () => {
         const startedAt = Date.now();
-        const run = await runBuildCheck(wt, check, undefined, undefined, sampleSleep);
-        return { outcome: run, durationMs: Date.now() - startedAt };
+        const first = await runBuildCheck(wt, check, undefined, undefined, sampleSleep);
+        if (!owesCleanRetry(first)) return { outcome: first, durationMs: Date.now() - startedAt };
+        // Weather (a late deadline, a foreign kill, a host sleep) made no verdict about the tree:
+        // the first attempt is priced as its own run, and the retry's outcome stands — the same
+        // rule runScopedBuildCheck applies at every other scope.
+        onRun?.({ outcome: first, durationMs: Date.now() - startedAt });
+        const retryStart = Date.now();
+        const retry = await runBuildCheck(wt, check, undefined, undefined, sampleSleep);
+        return { outcome: retry, durationMs: Date.now() - retryStart };
       });
       onRun?.({ outcome, durationMs });
       if (outcome.status === "skipped") {
-        // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
-        // never cache red for a skip.
+        // Environmental (timeout/no-npm), after the clean retry above for weather shapes:
+        // warn-and-proceed semantics like the gate's pre-check; never cache red for a skip.
         return { baseline: null, skipReason: outcome.skipReason, run: outcome.run };
       }
       if (outcome.status === "failed" && (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS) {

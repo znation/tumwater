@@ -23,7 +23,7 @@ export type BuildCheckScope = "gate" | "landing" | "batch";
  * BuildCheckRun.deadlineLateMs), because "timed out after 300s" for a check that ran 712 s is
  * the false claim BUGS.md 2026-09-21 recorded. The exact lateness is on the build_check event
  * either way; this only keeps sub-second jitter out of the one-line warning. */
-export const DEADLINE_LATE_TOLERANCE_MS = 5_000;
+const DEADLINE_LATE_TOLERANCE_MS = 5_000;
 
 /** How much measured sleep (BuildCheckRun.sleptMs, host-sleep.ts) inside one check's run the
  * harness treats as none. Normal dark wakes are seconds; the sleep-caused failures BUGS.md
@@ -32,6 +32,19 @@ export const DEADLINE_LATE_TOLERANCE_MS = 5_000;
  * and a retry that also sleeps is recorded as unverified. Aligned with the deadline tolerance
  * above so neither measurement's noise floor crosses into policy on its own. */
 export const SLEEP_SPAN_TOLERANCE_MS = 5_000;
+
+/** Does a first attempt owe one clean retry before its outcome stands? True for weather that
+ * says nothing about the tree: a skip from a signal the harness did not send, a timeout whose
+ * deadline demonstrably fired late, and a failure the host slept through. The one rule for every
+ * scope — runScopedBuildCheck and the red-main baseline (checkMainBaseline) both ask it. */
+export function owesCleanRetry(first: BuildCheckOutcome): boolean {
+  if (first.status === "failed") return (first.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+  if (first.status !== "skipped") return false;
+  return (
+    first.skipReason === "killed" ||
+    (first.skipReason === "timeout" && (first.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS)
+  );
+}
 
 /** Per-scope wording for the environmental-skip warning. The call sites' current messages
  * are identical apart from these words, so keying them on the scope keeps each surface's feed
