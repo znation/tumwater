@@ -198,7 +198,7 @@ test("a deadline the host slept through is reported as when it really fired, on 
   const warning = events.find((e) => e.type === "warning");
   assert.equal(
     warning?.message,
-    "build check timed out after 412s (its 2s deadline fired 410s late: the host was asleep or " +
+    "build check timed out after 412s (its 2s deadline fired 410s late: no host sleep measured: the host was starved or " +
       "the harness stalled); proceeding to model review",
   );
 });
@@ -338,7 +338,7 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
   assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
   assert.match(
     result!.outcome.outputTail?.[0] ?? "",
-    /landing build check timed out after 10s \(its 2s deadline fired 8s late: the host was asleep or the harness stalled\); the tree is unverified/,
+    /landing build check timed out after 10s \(its 2s deadline fired 8s late: no host sleep measured: the host was starved or the harness stalled\); the tree is unverified/,
   );
   const reasons = checkFailureReasons(result!.check, result!.outcome);
   assert.equal(reasons[0], result!.outcome.outputTail?.[0], "the reason keeps its own wording verbatim");

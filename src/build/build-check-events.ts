@@ -90,10 +90,16 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
   const bound = run?.timeoutMs ?? timeoutMs;
   const late = run?.deadlineLateMs ?? 0;
   if (late <= DEADLINE_LATE_TOLERANCE_MS) return `timed out after ${bound / 1000}s`;
+  // Name only what was measured: a sampled sleep span supports "the host was asleep"; without
+  // one the lateness is a timer that ran late for an unmeasured reason (a starved or
+  // swap-thrashing host, a harness stall), so it is reported as such rather than as a sleep.
+  const cause =
+    (run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS
+      ? "the host was asleep"
+      : "no host sleep measured: the host was starved or the harness stalled";
   return (
     `timed out after ${oneDecimalSeconds(bound + late)}s (its ${bound / 1000}s deadline fired ` +
-    `${oneDecimalSeconds(late)}s ` +
-    "late: the host was asleep or the harness stalled)"
+    `${oneDecimalSeconds(late)}s late: ${cause})`
   );
 }
 
