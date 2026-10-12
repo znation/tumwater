@@ -24,7 +24,7 @@ import { collectFleetChanges, collectRoleChange } from "../change/change-data.js
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowsMatchingGrep } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
-import { eventRole, readEventsTailWithEnd } from "../events/event-read.js";
+import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
@@ -230,6 +230,9 @@ const LOGS_SEARCH_MAX_EVENTS = 5000;
  * filter, not a target: an id with no events legitimately yields an empty list, so it does not
  * validate through rejectBadRole (the handleHistory rule). The matched events answer
  * oldest-first as eventFeedItem objects — the same shape the status payload's eventItems carry.
+ * Reads the tail through readEvents' stat-keyed cache (no covered byte end, unlike the CLI's
+ * follow), so a dashboard search that repeats on an unchanged log — the debounced filter fires
+ * one per filter change — costs one stat instead of re-reading and re-parsing the scanned tail.
  * Reads files directly, so it works whether or not the fleet is running. */
 export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
@@ -238,7 +241,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
   const role = q.get("role") || null; // "" and absent both read all loops
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   const needle = grep === null ? null : grep.toLowerCase();
-  const { events } = readEventsTailWithEnd(root, n);
+  const events = readEvents(root, n);
   const matched = events.filter(
     (e) => (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle)),
   );
