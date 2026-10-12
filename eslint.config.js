@@ -1,6 +1,7 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries four rules on purpose: two for promise misuse tsc cannot see, and two for type
-// spellings whose meaning is not what the author read.
+// carries five rules on purpose: two for promise misuse tsc cannot see, two for type spellings
+// whose meaning is not what the author read, and one for a type-only import that silently
+// stays a runtime side effect under verbatimModuleSyntax.
 //
 // Promise misuse: no-floating-promises flags an un-awaited async call, which typechecks fine
 // and silently races (33521347 dropped the await on 25 e2e waits and CI broke);
@@ -17,6 +18,13 @@
 // yet says the author expected a promise that is not there; no-redundant-type-constituents
 // flags a union one member absorbs (`unknown | null`, `string | "a"`), where the author saw a
 // narrowing the type actually does not provide.
+//
+// Import hygiene: no-import-type-side-effects flags an import whose every specifier is an
+// inline `type` (`import { type A, type B } from "./x.js"`). With verbatimModuleSyntax,
+// tsc elides the inline specifiers but keeps the statement as `import "./x.js"`, so the
+// module stays a runtime dependency the author did not ask for; a top-level `import type`
+// removes the statement entirely. (The two adapter modules fixed for this landed as the rule
+// was enabled.)
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
@@ -42,6 +50,7 @@ export default tseslint.config(
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
+      "@typescript-eslint/no-import-type-side-effects": "error",
     },
   },
 );

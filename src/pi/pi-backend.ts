@@ -9,14 +9,14 @@ import { resolveAgentBin, type ResolvedAgentBin } from "./pi-bin.js";
 import { agentBaseEnv } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-stream.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
-import {
-  type AgentBackend,
-  type AgentBinConfig,
-  type AgentExitClassification,
-  type AgentExitInfo,
-  type AgentInvocation,
-  type AgentRunSpec,
-  type StreamTranslator,
+import type {
+  AgentBackend,
+  AgentBinConfig,
+  AgentExitClassification,
+  AgentExitInfo,
+  AgentInvocation,
+  AgentRunSpec,
+  StreamTranslator,
 } from "../agent/agent-backend.js";
 
 /** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in

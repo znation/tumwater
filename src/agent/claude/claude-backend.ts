@@ -28,14 +28,14 @@ import { claudeArgs } from "./claude-args.js";
 import { claudeEnv } from "./claude-env.js";
 import { claudeTranslator } from "./claude-stream.js";
 import { resumableSession, type SessionRecord } from "../session-ledger.js";
-import {
-  type AgentBackend,
-  type AgentBinConfig,
-  type AgentExitClassification,
-  type AgentExitInfo,
-  type AgentInvocation,
-  type AgentRunSpec,
-  type StreamTranslator,
+import type {
+  AgentBackend,
+  AgentBinConfig,
+  AgentExitClassification,
+  AgentExitInfo,
+  AgentInvocation,
+  AgentRunSpec,
+  StreamTranslator,
 } from "../agent-backend.js";
 
 /** claude's per-cwd project directory name under `~/.claude/projects/`: every character that
