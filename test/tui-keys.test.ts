@@ -1763,3 +1763,82 @@ test("the backlog pane answers the selected open question through tryAnswerQuest
   assert.match(keys.state().flash!, /answered question #2/);
   assert.equal(keys.state().input, draft);
 });
+
+function entryEditRig() {
+  const root = makeRoot();
+  fs.writeFileSync(path.join(root, "PLANS.md"), "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### Bug one (found by test 2026-10-02)\n\nline a\n\n  indented line b\n\nline c\n",
+  );
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  const down = (n: number): void => {
+    for (let i = 0; i < n; i++) keys.handleKey(undefined, { name: "down" });
+  };
+  const ctrlE = (): void => keys.handleKey(undefined, { ctrl: true, name: "e" });
+  const read = (f: string): string => fs.readFileSync(path.join(root, f), "utf8");
+  return { root, keys, down, ctrlE, read };
+}
+
+test("backlog Ctrl+E edits the selected bug's title, keeping its stamp and body", () => {
+  const { keys, down, ctrlE, read } = entryEditRig();
+  down(2); // plan 1, bug 1
+  const before = read("BUGS.md");
+  ctrlE();
+  assert.deepEqual(keys.state().entryEditFor, { kind: "bug", position: 1, title: "Bug one (found by test 2026-10-02)" });
+  assert.equal(keys.state().input, "Bug one");
+  for (const ch of " renamed") keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.equal(keys.state().input, "");
+  assert.match(keys.state().flash ?? "", /edited bug #1/);
+  assert.equal(read("BUGS.md"), before.replace("### Bug one (", "### Bug one renamed ("));
+});
+
+test("backlog Ctrl+E refuses a question, Esc restores the draft, and a blank title stays open", () => {
+  const { keys, down, ctrlE, read } = entryEditRig();
+  down(3); // plan 1, bug 1, question 1
+  const bugs = read("BUGS.md");
+  ctrlE();
+  assert.equal(keys.state().entryEditFor, null);
+  assert.equal(keys.state().flash, "only a plan or open bug can be edited here");
+  keys.handleKey(undefined, { name: "up" });
+  ctrlE();
+  assert.notEqual(keys.state().entryEditFor, null);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  assert.equal(keys.state().flash, "finish or cancel the entry edit first (Esc cancels)");
+  assert.equal(keys.state().budgetMode, false);
+  while (keys.state().input) keys.handleKey(undefined, { name: "backspace" });
+  keys.handleKey(" ", { name: "space" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().flash, "an entry needs a title");
+  assert.notEqual(keys.state().entryEditFor, null);
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.equal(keys.state().input, "");
+  assert.equal(keys.state().flash, "edit cancelled");
+  assert.equal(read("BUGS.md"), bugs);
+});
+
+test("backlog Ctrl+E on an entry rewritten since the editor opened edits nothing", () => {
+  const { root, keys, down, ctrlE, read } = entryEditRig();
+  down(2);
+  ctrlE();
+  const moved = read("BUGS.md").replace("Bug one", "Bug uno");
+  fs.writeFileSync(path.join(root, "BUGS.md"), moved);
+  keys.handleKey("x", { name: "x" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash ?? "", /already removed or moved — nothing edited/);
+  assert.equal(read("BUGS.md"), moved);
+});
+
+test("backlog Ctrl+E with no selection still advances the report window", () => {
+  const { keys, ctrlE } = entryEditRig();
+  ctrlE();
+  assert.equal(keys.state().entryEditFor, null);
+});

@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Edit a planned feature's or open bug's title from the TUI backlog pane, matching `tumwater plan|bug --edit <n>` and the dashboard drawer's Edit (planned 2026-10-12 by plan; sibling of the landed TUI backlog Ctrl+X cancel and Ctrl+A answer; independent of the dashboard multiline-answer plan above)
+_None yet._
+
+## Done
+
+### Edit a planned feature's or open bug's title from the TUI backlog pane, matching `tumwater plan|bug --edit <n>` and the dashboard drawer's Edit (planned 2026-10-12 by plan; sibling of the landed TUI backlog Ctrl+X cancel and Ctrl+A answer; independent of the dashboard multiline-answer plan above; done 2026-10-12 by feature)
 
 **Goal.** The TUI backlog pane can cancel a selected plan or bug (Ctrl+X twice) and answer a selected question (Ctrl+A), but it cannot edit an entry. The CLI (`plan|bug --edit <n>`) and the dashboard drawer (`POST /api/backlog-edit` → `tryEditEntry`) both can. Add Ctrl+E (mnemonic **E**dit) on a selected plan or bug. It opens a prompt-line editor pre-filled with the entry's title. Enter saves the new title through the same non-exiting `tryEditEntry` core the dashboard uses, keeping the entry's body line for line and its `(planned …)`/`(reported …)` stamp. The prompt line is single-line, so this edits the title only. Body editing stays with the dashboard drawer and the CLI `--file` forms.
 
@@ -49,8 +53,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - Ctrl+E on the backlog pane with no selection still advances the report window (existing behavior).
 - `test/tui-frame.test.ts`: `hintLine` with `entryEditFor` set shows `save title`. The backlog view's hint lists `Ctrl+E edit entry`. `promptPrefix` shows `edit plan #2`.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's question drawer records a multiline answer with its lines kept, matching `tumwater questions answer <n> --file` (planned 2026-10-12 by plan; sibling of the landed `questions answer --file` (`answerQuestionFromText` in `src/cli/question-commands.ts`); independent of the TUI-answer and `prompt --edit --file` plans) (done 2026-10-12)
 

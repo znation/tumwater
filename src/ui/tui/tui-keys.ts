@@ -21,7 +21,8 @@ import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
-import { tryCancelEntry } from "../../backlog/backlog-write.js";
+import { tryCancelEntry, tryEditEntry } from "../../backlog/backlog-write.js";
+import { stripEntryStamp } from "../../backlog/backlog-structure.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { durationLabel } from "../../cli/cli-args.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../cli/question-commands.js";
@@ -271,6 +272,11 @@ interface TuiKeysState {
    * answer is open. The title rides into tryAnswerQuestion so a question that moved under the
    * editor is refused rather than answered wrongly. */
   answerFor: { position: number; title: string } | null;
+  /** The backlog pane's title editor (Ctrl+E on a selected plan or bug): the entry's kind, its
+   * 1-based position within its section, and the heading title the operator saw, or null when
+   * no edit is open. The title rides into tryEditEntry so an entry that moved under the editor
+   * is refused rather than rewritten. */
+  entryEditFor: { kind: "plan" | "bug"; position: number; title: string } | null;
   /** The Queued pane's cached rows — the same list renderQueuedList printed — so a selection
    * addresses a row's role/position without re-reading the queue each frame. */
   queuedRows: QueuedListRow[];
@@ -447,6 +453,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let answerFor: { position: number; title: string } | null = null;
   let answerSavedInput = "";
   let answerSavedCursor = 0;
+  let entryEditFor: { kind: "plan" | "bug"; position: number; title: string } | null = null;
+  let entryEditSavedInput = "";
+  let entryEditSavedCursor = 0;
   // The within-body scroll offset (line index of the window head, 0 = head) for the selected
   // entry's body — PgDn/PgUp in project-status entry mode. Reset whenever the selection
   // changes or clears, so every newly opened entry starts at its head.
@@ -577,6 +586,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     promptHistory = resetPromptRecall(promptHistory);
   };
 
+  // Leave the backlog pane's title editor (Esc, a saved edit, or Ctrl+T): the same settle
+  // contract as exitAnswerMode.
+  const exitEntryEdit = (): void => {
+    if (!entryEditFor) return;
+    entryEditFor = null;
+    input = entryEditSavedInput;
+    cursor = entryEditSavedCursor;
+    promptHistory = resetPromptRecall(promptHistory);
+  };
+
   // Leave the Queued pane's in-place editor (Esc, a saved edit, or Ctrl+T): restore the saved
   // prompt text, and reset the recall state with it — the same settle contract the other
   // editors honor.
@@ -687,7 +706,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
       // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
       // saves the prompt text; leaving restores it. Esc cancels the same way.
-      if (rolePromptFor || searchMode || deferMode || queuedEditFor || answerFor) {
+      if (rolePromptFor || searchMode || deferMode || queuedEditFor || answerFor || entryEditFor) {
         // Mutually exclusive with the role-prompt, History-search, defer, and Queued-edit
         // editors: all five share one prompt line, so a mode may not enter while another
         // holds it. Flash the way out instead of silently dropping the held mode's saved
@@ -701,6 +720,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
                 ? "finish or cancel the queued edit first (Esc cancels)"
                 : answerFor
                   ? "finish or cancel the answer first (Esc cancels)"
+                  : entryEditFor
+                    ? "finish or cancel the entry edit first (Esc cancels)"
                   : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
         );
         deps.requestRender();
@@ -735,7 +756,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // marker `tumwater prompt --at` and the dashboard composer write. Entering pre-fills the
       // pending delay (empty when none) and saves the prompt text; leaving restores it. Empty
       // means "deliver now", so Esc cancels the edit without clearing an already-saved delay.
-      if (budgetMode || rolePromptFor || searchMode || queuedEditFor || answerFor) {
+      if (budgetMode || rolePromptFor || searchMode || queuedEditFor || answerFor || entryEditFor) {
         // Mutually exclusive with the budget, role-prompt, History-search, and Queued-edit
         // editors: all five share one prompt line, so a mode may not enter while another
         // holds it. Flash the way out instead of silently dropping the held mode's saved draft.
@@ -748,6 +769,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
                 ? "finish or cancel the queued edit first (Esc cancels)"
                 : answerFor
                   ? "finish or cancel the answer first (Esc cancels)"
+                  : entryEditFor
+                    ? "finish or cancel the entry edit first (Esc cancels)"
                   : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
         );
         deps.requestRender();
@@ -771,7 +794,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "f" && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && !answerFor) {
+    if (key.ctrl && key.name === "f" && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
       // Ctrl+F toggles the whole-fleet pause (mnemonic: **F**leet) through the same
       // pauseFleet/resumeFleet marker writers `tumwater pause`/`resume` and the dashboard's
       // /api/pause call use, so the surfaces cannot drift on marker format or idempotence.
@@ -813,7 +836,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     if (
       !budgetMode &&
       !deferMode &&
-      !queuedEditFor && !answerFor &&
+      !queuedEditFor && !answerFor && !entryEditFor &&
       roleIds.length > 0 &&
       view >= 1 && view <= roleIds.length &&
       key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "r")
@@ -876,7 +899,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // key falls through to applyKey. On the History pane the same key swaps the row list for
       // one tick's full event trail instead (the CLI's `tumwater tick --last` text), so it is
       // handled before the transcript guard below.
-      if (view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor) {
+      if (view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
         if (trailMode) {
           trailMode = false;
           trailCache = null;
@@ -904,7 +927,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         deps.requestRender();
         return;
       }
-      if (budgetMode || rolePromptFor || deferMode || queuedEditFor || answerFor || roleIds.length === 0 || view < 1 || view > roleIds.length) {
+      if (budgetMode || rolePromptFor || deferMode || queuedEditFor || answerFor || entryEditFor || roleIds.length === 0 || view < 1 || view > roleIds.length) {
         deps.requestRender();
         return;
       }
@@ -952,7 +975,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor) {
+    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
       // Ctrl+G cycles the active pane's loop scope (mnemonic: the **g**lobal scope / the
       // **g**roup). Guarded out of the budget and role-prompt editors, whose prompt line the
       // key must not disturb — the same inertness the per-loop keys honor. On the History
@@ -989,7 +1012,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "e" &&
-      !budgetMode && !rolePromptFor && !searchMode && !deferMode && queuedEditFor === null && !answerFor &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && queuedEditFor === null && !answerFor && !entryEditFor &&
       view === roleIds.length + 6 && selectedQueued !== null
     ) {
       // Ctrl+E opens the Queued pane's in-place editor on the selected row (mnemonic:
@@ -1032,7 +1055,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "a" &&
-      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor &&
       view === roleIds.length + 1 && selectedEntry !== null
     ) {
       // Ctrl+A opens the answer editor on the selected open question (mnemonic: **A**nswer);
@@ -1062,7 +1085,41 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "e" && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && !answerFor) {
+    if (
+      key.ctrl && key.name === "e" &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor &&
+      view === roleIds.length + 1 && selectedEntry !== null
+    ) {
+      // Ctrl+E opens the title editor on the selected plan or bug (mnemonic: **E**dit); Enter
+      // saves through tryEditEntry, the non-exiting core the dashboard drawer shares, keeping
+      // the body and stamp. The prompt line is single-line, so only the title is editable here.
+      try {
+        const entries = flat();
+        const sel = Math.min(selectedEntry, entries.length - 1);
+        const picked = entries[sel];
+        if (picked === undefined) {
+          // an emptied list has nothing to edit
+        } else if (picked.label === "question") {
+          flashMessage("only a plan or open bug can be edited here");
+        } else {
+          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
+          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
+          const settled = settlePromptRecall(promptHistory, input, cursor);
+          promptHistory = settled.history;
+          entryEditSavedInput = settled.text;
+          entryEditSavedCursor = settled.cursor;
+          entryEditFor = { kind, position, title: picked.title };
+          input = stripEntryStamp(picked.title);
+          cursor = input.length;
+          flashMessage(`editing ${kind} #${position} — Enter to save, Esc to cancel`);
+        }
+      } catch (err) {
+        flashError(err);
+      }
+      deps.requestRender();
+      return;
+    }
+    if (key.ctrl && key.name === "e" && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
       // Ctrl+E advances the Usage and Failures panes' trailing report window (mnemonic:
       // **E**lapsed). Guarded out of the budget and role-prompt editors like the other
       // mode-sensitive keys. The window is session state: advancing it off either report pane
@@ -1074,7 +1131,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor) {
+    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
       // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
       // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
       // session state: advancing it off the History view only changes the label, and the next
@@ -1085,7 +1142,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor) {
+    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
       // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
       // of budget-edit and role-prompt modes like Ctrl+S beside it. The class is session state:
       // advancing it off the History view only changes the label, and the next Ctrl+T into
@@ -1098,7 +1155,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "x" &&
-      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor &&
       view === roleIds.length + 6 && selectedQueued !== null
     ) {
       // Ctrl+X cancels the selected queued prompt through the CLI's own per-loop path
@@ -1128,7 +1185,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "x" &&
-      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor &&
       view === roleIds.length + 1
     ) {
       // Ctrl+X twice cancels the selected plan or bug through the non-exiting core the
@@ -1179,6 +1236,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       exitHistorySearch();
       exitQueuedEdit();
       exitAnswerMode();
+      exitEntryEdit();
       noteMode = false; // a cycle away leaves notebook and change modes and drops their snapshots
       noteCache = null;
       changeMode = false;
@@ -1235,7 +1293,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (
-      !key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && !answerFor &&
+      !key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && !deferMode && !queuedEditFor && !answerFor && !entryEditFor &&
       (view === 0 || view === roleIds.length + 4) && input === ""
     ) {
       // `/` opens a free-text search on the prompt line (the pager's search key; this project
@@ -1262,7 +1320,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // In the project-status pane, up/down browse entries in full instead of editing the
       // prompt; every other view keeps today's behavior (arrows are ignored by applyKey).
       // An open answer editor pins the selection (its position was taken from it).
-      if (!answerFor) {
+      if (!answerFor && !entryEditFor) {
         const count = flat().length;
         selectedEntry = moveEntrySelection(count, selectedEntry, arrow);
         entryScroll = 0; // a newly opened entry starts at its body's head
@@ -1319,7 +1377,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Within-body scroll in project-status ENTRY mode: PgDn/PgUp page the selected entry's
       // body, clamped at both ends. No-op in list mode and for bodies that fit — every other
       // view ignores these keys as today (applyKey drops them).
-      if (selectedEntry !== null && !answerFor) {
+      if (selectedEntry !== null && !answerFor && !entryEditFor) {
         const entries = flat();
         const sel = entries.length > 0 ? Math.min(selectedEntry, entries.length - 1) : null;
         const body = sel === null ? "" : entries[sel]!.body;
@@ -1353,7 +1411,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.name === "escape" && selectedQueued !== null && view === roleIds.length + 6 &&
-      !budgetMode && !deferMode && !rolePromptFor && !searchMode && !queuedEditFor && !answerFor
+      !budgetMode && !deferMode && !rolePromptFor && !searchMode && !queuedEditFor && !answerFor && !entryEditFor
     ) {
       // Esc on the Queued pane returns it to list mode; the cached list is untouched (nothing
       // was cancelled), so the pane shows the same renderQueuedList it entered with. The
@@ -1385,6 +1443,13 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Esc cancels the defer editor, restoring the previous prompt text and leaving any
       // already-saved pending delay untouched.
       exitDeferMode();
+      deps.requestRender();
+      return;
+    }
+    if (key.name === "escape" && entryEditFor) {
+      // Esc cancels the title editor, restoring the previous prompt text; nothing is written.
+      exitEntryEdit();
+      flashMessage("edit cancelled");
       deps.requestRender();
       return;
     }
@@ -1488,6 +1553,35 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
                 ? `queued for the ${role} loop`
                 : `queued for the ${role} loop — delivers in ${durationLabel(pending)}`,
             );
+          } catch (err) {
+            flashError(err);
+          }
+        }
+      } else if (entryEditFor) {
+        // Enter saves the new title through tryEditEntry with the body re-read now, so a
+        // concurrent body edit is not clobbered by a stale copy. The entry is matched by flat
+        // index and title; a mismatch is treated as moved without writing. A blank title and a
+        // throw flash and STAY in the editor so the text survives.
+        const target = entryEditFor;
+        if (!input.trim()) {
+          flashMessage("an entry needs a title");
+        } else {
+          try {
+            const entries = flat();
+            const plans = entries.filter((e) => e.label === "plan").length;
+            const entry = entries[target.kind === "plan" ? target.position - 1 : plans + target.position - 1];
+            const outcome =
+              entry?.label === target.kind && entry.title === target.title
+                ? tryEditEntry(root, target.kind, target.position, target.title, input, entry.body)
+                : ({ status: "moved", title: "" } as const);
+            exitEntryEdit();
+            if (outcome.status === "edited") {
+              flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
+            } else {
+              selectedEntry = null;
+              entryScroll = 0;
+              flashMessage(`that ${target.kind} was already removed or moved — nothing edited`);
+            }
           } catch (err) {
             flashError(err);
           }
@@ -1643,6 +1737,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         selectedQueued,
         queuedEditFor,
         answerFor,
+        entryEditFor,
         queuedRows,
         paneCache,
         noteMode,
