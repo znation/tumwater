@@ -4,6 +4,7 @@ import {
   applyKey,
   inputViewWindow,
   parseBudgetInput,
+  parseDeferInput,
   parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
@@ -171,6 +172,24 @@ test("applyKey ignores control and meta characters but clamps a stale cursor", (
   assert.deepEqual(applyKey("ab", 1, "é", key("e", { meta: true })), { text: "ab", cursor: 1 });
   // An out-of-range cursor (stale after a submit) is clamped instead of corrupting the edit.
   assert.deepEqual(applyKey("ab", 9, "x", key("x")), { text: "abx", cursor: 3 });
+});
+
+test("parseDeferInput maps empty to no delay and validates durations against the 90d cap", () => {
+  assert.deepEqual(parseDeferInput(""), { ok: true, ms: null }, "empty clears the pending delay");
+  assert.deepEqual(parseDeferInput("   "), { ok: true, ms: null }, "whitespace-only is empty too");
+  assert.deepEqual(parseDeferInput("45m"), { ok: true, ms: 45 * 60_000 });
+  assert.deepEqual(parseDeferInput("1h30m"), { ok: true, ms: (60 + 30) * 60_000 }, "composite durations parse");
+  assert.deepEqual(parseDeferInput("90s"), { ok: true, ms: 90_000 });
+  for (const bad of ["0h30m", "junk", "91d"]) assert.equal(parseDeferInput(bad).ok, false, bad);
+  // The malformed error names the duration vocabulary and echoes the offending input.
+  const shape = parseDeferInput("junk");
+  assert.equal(
+    shape.ok ? "" : shape.error,
+    'defer needs a duration like 45s, 90m, 1h30m, or 2d (got "junk")',
+  );
+  // The cap error is the same wording the dashboard composer's server check uses.
+  const cap = parseDeferInput("91d");
+  assert.equal(cap.ok ? "" : cap.error, "defer is capped at 90d");
 });
 
 test("parseBudgetInput maps empty to disabled and validates the rest", () => {

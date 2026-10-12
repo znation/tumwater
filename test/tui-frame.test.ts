@@ -103,19 +103,19 @@ test("the tab strip names every view and brackets the current one", () => {
 });
 
 test("the hint line says what the keys do in each view and mode", () => {
-  const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null) => plain(hintLine(view, { budget, rolePromptFor }, 300));
-  assert.equal(hint({ kind: "activity" }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+T next view · Ctrl+B daily cap · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit");
+  const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer }, 300));
+  assert.equal(hint({ kind: "activity" }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+T next view · Ctrl+B daily cap · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
   ); // the notebook's next step is the change view
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
   ); // the cycle's last step names the way back
   assert.match(hint({ kind: "backlog" }), /↑↓ open entries · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
@@ -132,6 +132,8 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "queued" }), /PgUp\/PgDn scroll/);
   assert.equal(hint({ kind: "activity" }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
+  assert.equal(hint({ kind: "activity" }, false, null, true), "Enter save the delay · Esc cancel · Ctrl+D quit");
+  assert.match(hint({ kind: "activity" }, false, null, false, "45m"), /Ctrl\+L defer: 45m/);
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
   assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: 1h/);
@@ -158,17 +160,21 @@ test("the hint line says what the keys do in each view and mode", () => {
     { kind: "history", since: null, result: null, role: null, grep: null, trail: false } as const,
     { kind: "pending" } as const,
     { kind: "queued" } as const,
-  ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null }, 300)), /Ctrl\+D quit/);
+  ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
-  const spans = hintLine({ kind: "activity" }, { budget: false, rolePromptFor: null }, 300);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+T", "Ctrl+B", "Ctrl+F", "Ctrl+C", "Ctrl+D"]);
+  const spans = hintLine({ kind: "activity" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null }, 300);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+T", "Ctrl+B", "Ctrl+F", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
 });
 
 test("the prompt line names who Enter sends to", () => {
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null })), "director › ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa" })), "qa › ");
-  assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null })), "daily cap $ ");
-  assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null })), 11);
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null })), "director › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: null })), "qa › ");
+  assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null, deferMode: false, defer: null })), "daily cap $ ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: true, defer: null })), "defer › ");
+  // A pending delay is named beside the target; the defer editor's own prefix never repeats it.
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: "45m" })), "director (defer 45m) › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: "1h" })), "qa (defer 1h) › ");
+  assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null })), 11);
 });
 
 test("activity and transcript lines take the tones of what they report", () => {

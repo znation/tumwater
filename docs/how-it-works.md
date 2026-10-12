@@ -355,6 +355,11 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   the editor also takes readline's kill keys — `Alt+Backspace` kills the word before the cursor,
   `Ctrl+U` from the line start, `Ctrl+K` to the line end. Each keypress flashes its outcome for
   a few seconds.
+  `Ctrl+L` opens a fourth prompt-line editor for the next prompt's defer delay: type a duration
+  (`45m`, `1h30m`, `2d`) and Enter stores it, an empty Enter clears it, and Esc cancels the edit;
+  a pending delay rides into the next director or role prompt as the same `tumwater:not-before`
+  marker `tumwater prompt --at` and the dashboard composer's defer field write, the prompt
+  target names it (`director (defer 45m) › `), and a successful submit clears it (one-shot).
 - Review runs show as `── review @ <timestamp> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.

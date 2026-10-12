@@ -23,6 +23,7 @@ import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
+import { durationLabel } from "../../cli/cli-args.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import {
   isFleetPaused,
@@ -47,6 +48,7 @@ import { baseRoleOf } from "../../roles/loop-ids.js";
 import {
   applyKey,
   parseBudgetInput,
+  parseDeferInput,
   parseRolePromptInput,
 } from "./tui-input.js";
 import {
@@ -236,6 +238,11 @@ interface TuiKeysState {
   cursor: number;
   budgetMode: boolean;
   rolePromptFor: string | null;
+  /** Whether the prompt line is editing the next prompt's defer delay (Ctrl+L). */
+  deferMode: boolean;
+  /** The pending defer delay as a human label (durationLabel), or null when the next prompt
+   * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
+  defer: string | null;
   view: number;
   /** The session-scoped role the Usage and Failures panes collect for (Ctrl+G), null for the
    * fleet; cleared when the incoming roster no longer names it. */
@@ -350,6 +357,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let rolePromptFor: string | null = null;
   let roleSavedInput = "";
   let roleSavedCursor = 0;
+  // Ctrl+L defer mode on the prompt line: while set, the line edits a duration that rides
+  // into the next delivered prompt as the same `tumwater:not-before` marker `tumwater prompt
+  // --at` and the dashboard composer write. deferMs is a DURATION, not an epoch: submit
+  // computes now() + deferMs, so a prompt queued later still defers by the full span. It is
+  // session-only and one-shot: a successful submit or an empty line clears it. Its own saved
+  // pair, mutually exclusive with the budget/role/search editors on the one prompt line.
+  let deferMs: number | null = null;
+  let deferMode = false;
+  let deferSavedInput = "";
+  let deferSavedCursor = 0;
   // The prompt line's session history (tui-prompt-history.ts's rules): every successfully submitted
   // prompt — director and per-role alike — joins it, and Up/Down walk it the way readline
   // does. Not persisted: a TUI session starts blank, like a fresh shell.
@@ -493,6 +510,16 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     promptHistory = resetPromptRecall(promptHistory);
   };
 
+  // Leave defer-edit mode (Esc, Ctrl+L again, or Ctrl+T): restore the saved prompt text. The
+  // pending deferMs itself is untouched — Esc cancels the edit, not a delay already saved.
+  const exitDeferMode = (): void => {
+    if (!deferMode) return;
+    deferMode = false;
+    input = deferSavedInput;
+    cursor = deferSavedCursor;
+    promptHistory = resetPromptRecall(promptHistory);
+  };
+
   /** Recompute the active pane's cached Markdown after `changed` state moved, re-entering the
    * body at its head, and return whether the current view holds such a pane. "report" covers
    * the Usage/Failures panes (fed by the report window and base-role scope); "history" the
@@ -589,15 +616,17 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
       // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
       // saves the prompt text; leaving restores it. Esc cancels the same way.
-      if (rolePromptFor || searchMode) {
-        // Mutually exclusive with the role-prompt and History-search editors: all three share
-        // one prompt line, so a mode may not enter while another holds it. Flash the way out
-        // instead of silently dropping the held mode's saved draft (or parsing its text as a
-        // cap on Enter).
+      if (rolePromptFor || searchMode || deferMode) {
+        // Mutually exclusive with the role-prompt, History-search, and defer editors: all
+        // four share one prompt line, so a mode may not enter while another holds it. Flash
+        // the way out instead of silently dropping the held mode's saved draft (or parsing
+        // its text as a cap on Enter).
         flashMessage(
           searchMode
             ? "finish or cancel the search first (Esc cancels)"
-            : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
+            : deferMode
+              ? "finish or cancel the defer edit first (Esc cancels)"
+              : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
         );
         deps.requestRender();
         return;
@@ -625,7 +654,45 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "f" && !budgetMode && !rolePromptFor) {
+    if (key.ctrl && key.name === "l") {
+      // Ctrl+L toggles defer-edit mode on the prompt line (mnemonic: **l**ater): the line edits
+      // a duration that rides into the next delivered prompt as the same `tumwater:not-before`
+      // marker `tumwater prompt --at` and the dashboard composer write. Entering pre-fills the
+      // pending delay (empty when none) and saves the prompt text; leaving restores it. Empty
+      // means "deliver now", so Esc cancels the edit without clearing an already-saved delay.
+      if (budgetMode || rolePromptFor || searchMode) {
+        // Mutually exclusive with the budget, role-prompt, and History-search editors: all
+        // four share one prompt line, so a mode may not enter while another holds it. Flash
+        // the way out instead of silently dropping the held mode's saved draft.
+        flashMessage(
+          budgetMode
+            ? "finish or cancel the budget edit first (Esc cancels)"
+            : searchMode
+              ? "finish or cancel the search first (Esc cancels)"
+              : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
+        );
+        deps.requestRender();
+        return;
+      }
+      if (deferMode) {
+        exitDeferMode();
+      } else {
+        // Mid-recall, hand the arrows' saved draft back before the defer editor takes the
+        // line — the same settle the budget and role editors do — so leaving restores the
+        // draft, not a history entry, with no stale recall state riding along.
+        const settled = settlePromptRecall(promptHistory, input, cursor);
+        promptHistory = settled.history;
+        deferSavedInput = settled.text;
+        deferSavedCursor = settled.cursor;
+        deferMode = true;
+        input = deferMs === null ? "" : durationLabel(deferMs);
+        cursor = input.length;
+        flashMessage("defer the next prompt: a duration like 45m (empty sends now) — Enter to save, Esc to cancel");
+      }
+      deps.requestRender();
+      return;
+    }
+    if (key.ctrl && key.name === "f" && !budgetMode && !rolePromptFor && !deferMode) {
       // Ctrl+F toggles the whole-fleet pause (mnemonic: **F**leet) through the same
       // pauseFleet/resumeFleet marker writers `tumwater pause`/`resume` and the dashboard's
       // /api/pause call use, so the surfaces cannot drift on marker format or idempotence.
@@ -666,6 +733,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     // reason instead, the same contract the prompt-submit path below honors.
     if (
       !budgetMode &&
+      !deferMode &&
       roleIds.length > 0 &&
       view >= 1 && view <= roleIds.length &&
       key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "r")
@@ -728,7 +796,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // key falls through to applyKey. On the History pane the same key swaps the row list for
       // one tick's full event trail instead (the CLI's `tumwater tick --last` text), so it is
       // handled before the transcript guard below.
-      if (view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode) {
+      if (view === roleIds.length + 4 && !budgetMode && !rolePromptFor && !searchMode && !deferMode) {
         if (trailMode) {
           trailMode = false;
           trailCache = null;
@@ -756,7 +824,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         deps.requestRender();
         return;
       }
-      if (budgetMode || rolePromptFor || roleIds.length === 0 || view < 1 || view > roleIds.length) {
+      if (budgetMode || rolePromptFor || deferMode || roleIds.length === 0 || view < 1 || view > roleIds.length) {
         deps.requestRender();
         return;
       }
@@ -804,7 +872,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor && !searchMode) {
+    if (key.ctrl && key.name === "g" && !budgetMode && !rolePromptFor && !searchMode && !deferMode) {
       // Ctrl+G cycles the active pane's loop scope (mnemonic: the **g**lobal scope / the
       // **g**roup). Guarded out of the budget and role-prompt editors, whose prompt line the
       // key must not disturb — the same inertness the per-loop keys honor. On the History
@@ -831,7 +899,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "e" && !budgetMode && !rolePromptFor) {
+    if (key.ctrl && key.name === "e" && !budgetMode && !rolePromptFor && !deferMode) {
       // Ctrl+E advances the Usage and Failures panes' trailing report window (mnemonic:
       // **E**lapsed). Guarded out of the budget and role-prompt editors like the other
       // mode-sensitive keys. The window is session state: advancing it off either report pane
@@ -843,7 +911,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor && !searchMode) {
+    if (key.ctrl && key.name === "s" && !budgetMode && !rolePromptFor && !searchMode && !deferMode) {
       // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
       // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
       // session state: advancing it off the History view only changes the label, and the next
@@ -854,7 +922,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor && !searchMode) {
+    if (key.ctrl && key.name === "o" && !budgetMode && !rolePromptFor && !searchMode && !deferMode) {
       // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
       // of budget-edit and role-prompt modes like Ctrl+S beside it. The class is session state:
       // advancing it off the History view only changes the label, and the next Ctrl+T into
@@ -867,7 +935,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "x" &&
-      !budgetMode && !rolePromptFor && !searchMode &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode &&
       view === roleIds.length + 6 && selectedQueued !== null
     ) {
       // Ctrl+X cancels the selected queued prompt through the CLI's own per-loop path
@@ -901,6 +969,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // mode composes the same way: cycling away restores the saved director draft.
       exitBudgetMode();
       exitRolePromptMode();
+      exitDeferMode();
       exitHistorySearch();
       noteMode = false; // a cycle away leaves notebook and change modes and drops their snapshots
       noteCache = null;
@@ -957,7 +1026,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (!key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && view === roleIds.length + 4 && input === "") {
+    if (!key.ctrl && str === "/" && !searchMode && !budgetMode && !rolePromptFor && !deferMode && view === roleIds.length + 4 && input === "") {
       // `/` opens the History pane's free-text search on the prompt line (the pager's search
       // key; this project already reserves `/` for a meta action). Guarded to the History view
       // and to an empty line, so off History it types into the prompt as today and on History a
@@ -1047,12 +1116,12 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (!budgetMode && !searchMode && arrow !== null) {
+    if (!budgetMode && !deferMode && !searchMode && arrow !== null) {
       // Up/Down walk the submitted-prompt history the way readline does (tui-prompt-history.ts's
       // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
-      // above already returned), and budget mode keeps them out — recalling a prompt into
-      // the cap field would be a paste, not a recall. No history in this direction: fall
-      // through to applyKey, which ignores arrows as before.
+      // above already returned), and budget and defer modes keep them out — recalling a
+      // prompt into the cap or delay field would be a paste, not a recall. No history in
+      // this direction: fall through to applyKey, which ignores arrows as before.
       const recalled = recallPromptHistory(
         promptHistory,
         input,
@@ -1067,7 +1136,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.name === "escape" && selectedQueued !== null && view === roleIds.length + 6 &&
-      !budgetMode && !rolePromptFor && !searchMode
+      !budgetMode && !deferMode && !rolePromptFor && !searchMode
     ) {
       // Esc on the Queued pane returns it to list mode; the cached list is untouched (nothing
       // was cancelled), so the pane shows the same renderQueuedList it entered with. The
@@ -1092,6 +1161,13 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     if (key.name === "escape" && rolePromptFor) {
       // Esc cancels role-prompt mode the same way, restoring the previous prompt text.
       exitRolePromptMode();
+      deps.requestRender();
+      return;
+    }
+    if (key.name === "escape" && deferMode) {
+      // Esc cancels the defer editor, restoring the previous prompt text and leaving any
+      // already-saved pending delay untouched.
+      exitDeferMode();
       deps.requestRender();
       return;
     }
@@ -1128,6 +1204,21 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
             flashMessage(result.error); // broken config or write failure — stay in edit mode
           }
         }
+      } else if (deferMode) {
+        // Enter in defer mode parses the duration: empty clears the pending delay (deliver
+        // now), a valid value stores the session duration (applied as now() + deferMs at
+        // submit), and an invalid spelling or an over-cap value flashes and STAYS in the
+        // editor so the operator can fix it. Either way the saved draft is restored.
+        const parsed = parseDeferInput(input);
+        if (!parsed.ok) {
+          flashMessage(parsed.error);
+        } else {
+          deferMs = parsed.ms;
+          exitDeferMode();
+          flashMessage(
+            deferMs === null ? "defer cleared" : `next prompt delivers in ${durationLabel(deferMs)}`,
+          );
+        }
       } else if (rolePromptFor) {
         // Enter in role-prompt mode submits for the viewed loop through the same path
         // `tumwater prompt --role` uses: the shared submitRolePromptAndWake enqueues into
@@ -1142,10 +1233,22 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         } else {
           const role = rolePromptFor;
           try {
-            submitRolePromptAndWake(root, role, parsed.value);
+            const pending = deferMs;
+            submitRolePromptAndWake(
+              root,
+              role,
+              parsed.value,
+              undefined,
+              pending === null ? undefined : now() + pending,
+            );
             promptHistory = pushPromptHistory(promptHistory, parsed.value);
+            deferMs = null;
             exitRolePromptMode();
-            flashMessage(`queued for the ${role} loop`);
+            flashMessage(
+              pending === null
+                ? `queued for the ${role} loop`
+                : `queued for the ${role} loop — delivers in ${durationLabel(pending)}`,
+            );
           } catch (err) {
             flashError(err);
           }
@@ -1158,11 +1261,17 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           cursor = 0;
         } else {
           try {
-            submitPrompt(root, prompt);
+            const pending = deferMs;
+            submitPrompt(root, prompt, undefined, pending === null ? undefined : now() + pending);
             promptHistory = pushPromptHistory(promptHistory, prompt);
+            deferMs = null;
             input = "";
             cursor = 0;
-            flashMessage("queued for the director loop");
+            flashMessage(
+              pending === null
+                ? "queued for the director loop"
+                : `queued for the director loop — delivers in ${durationLabel(pending)}`,
+            );
           } catch (err) {
             // The queue write failed (disk full, permissions): keep the operator's text so
             // it can be resubmitted, and flash the reason — the same contract the GUI's
@@ -1226,6 +1335,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         cursor,
         budgetMode,
         rolePromptFor,
+        deferMode,
+        defer: deferMs === null ? null : durationLabel(deferMs),
         view,
         scopeRole,
         historyRole,

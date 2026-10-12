@@ -85,9 +85,10 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; defer: string | null }, width: number): StatusLine {
   let keys: Array<[string, string]>;
-  if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  if (mode.deferMode) keys = [["Enter", "save the delay"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
     keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notebook"], ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
@@ -98,6 +99,12 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+B", "daily cap"], ["Ctrl+F", "pause fleet"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
+  // The defer editor is the prompt line's fourth meta-editor (after budget, role, and
+  // search), so every view whose hint is about sending names its state: the pending delay
+  // when one is set, otherwise the way to open it. The mode branches above already name
+  // their own keys and keep the line, so this only rides the view hints.
+  if (!mode.deferMode && !mode.budget && !mode.rolePromptFor)
+    keys.push(["Ctrl+L", mode.defer ? `defer: ${mode.defer}` : "defer"]);
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {
     if (i > 0) spans.push({ text: " · ", tone: "dim" });
@@ -107,9 +114,13 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; defer: string | null }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
-  return [{ text: mode.rolePromptFor ?? "director", tone: "brand" }, { text: " › " }];
+  if (mode.deferMode) return [{ text: "defer", tone: "brand" }, { text: " › " }];
+  // A pending delay is named beside the target (e.g. `director (defer 45m) › `), so the
+  // operator sees what the next Enter will schedule before pressing it.
+  const target = mode.defer ? `${mode.rolePromptFor ?? "director"} (defer ${mode.defer})` : (mode.rolePromptFor ?? "director");
+  return [{ text: target, tone: "brand" }, { text: " › " }];
 }
 
 /** The prefix's width in terminal columns, for sizing the input beside it. */

@@ -1,3 +1,5 @@
+import { parseDurationMs } from "../../cli/cli-args.js";
+import { PAUSE_FOR_MAX_MS } from "../../operator/operator-intent.js";
 import { cutSplitsSurrogatePair, gotSuffix } from "../../text/text.js";
 import { displayWidth } from "../../text/text-width.js";
 
@@ -155,6 +157,27 @@ export function parseBudgetInput(
       error: `budget must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}${gotSuffix(text)}`,
     };
   return { ok: true, value: n };
+}
+
+/** Parse the TUI's Ctrl+L defer line: empty → null (clear the pending delay; deliver now),
+ * otherwise a parseDurationMs duration at or under the 90d cap — the same grammar and cap
+ * `tumwater prompt --at` and the dashboard composer's defer field admit, so the three
+ * surfaces cannot disagree. Invalid spellings and over-cap values return an actionable error
+ * so the flash can show it and the editor stays open for a fix. Pure, like parseBudgetInput;
+ * the pending delay itself (a session-scoped duration applied at submit) lives in
+ * tui-keys.ts. */
+export function parseDeferInput(
+  text: string,
+): { ok: true; ms: number | null } | { ok: false; error: string } {
+  const t = text.trim();
+  if (t === "") return { ok: true, ms: null };
+  const ms = parseDurationMs(t);
+  if (ms === null)
+    return { ok: false, error: `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}` };
+  // The dashboard composer's server check caps the same duration at the same limit, so the
+  // TUI refuses it inline with the identical wording instead of queueing a marker past the cap.
+  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "defer is capped at 90d" };
+  return { ok: true, ms };
 }
 
 /** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
