@@ -127,6 +127,26 @@ export function formatEvent(e: HarnessEvent): string {
   return `${time} ${loop} ${eventMessage(e)}`;
 }
 
+/** One event as the dashboard's activity feed consumes it: `result` is a tick's outcome, a
+ * landing's result, or a build check's status — whichever string the event carries. The event
+ * layer owns the event shape's projection, so both the status poll (ui/status-payload.ts) and
+ * the slice endpoint (gui/gui-endpoints.ts's handleLogs) read the same fields, and a feed row's
+ * shape cannot drift between them. */
+export function eventFeedItem(e: HarnessEvent): { ts: number; loop: string; type: string; result?: string; message: string } {
+  const result = eventResult(e);
+  // eventRole renders a missing/empty loop as "?" like the reports, so a torn or hand-edited
+  // event never shows a literal "undefined" loop chip in the dashboard's activity feed.
+  return { ts: e.ts, loop: eventRole(e), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
+}
+
+/** The feed's `--grep`/Search match rule: case-insensitive substring over the raw event type
+ * prefixed to the rendered line — exactly the haystack the operator would otherwise read. One
+ * home shared by the CLI's `tumwater logs --grep` (cli/log-commands.ts) and the dashboard's
+ * /api/logs search, so the two surfaces cannot disagree about what a pattern matches. */
+export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean {
+  return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);
+}
+
 /** An event's message alone — formatEvent's line without the time and loop columns. The GUI's
  * activity feed renders the time and loop itself (relative ages, loop chips), so the payload
  * ships this beside the event's type and loop instead of making the page re-parse a line. */

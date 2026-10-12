@@ -55,6 +55,22 @@ warns even though it holds its bytes" and "a stalled piped-stdout call warns not
 redirect is found in the full command, not the truncated label"; `test/progress.test.ts` — "a
 piped call is flagged past the buffered wall-clock threshold, not the silence one".
 
+### INV-A3: one rule shapes the event feed and one decides its grep
+
+**Guarantee.** The dashboard's activity rows are computed once: `eventFeedItem` shapes each
+`HarnessEvent` for both the status payload's `eventItems` and `GET /api/logs`, and
+`eventMatchesGrep` decides both the CLI's `tumwater logs --grep` and the endpoint's `grep`, so
+the surfaces cannot disagree on a feed row's fields or on what a pattern matches.
+
+**Binds.** `src/events/event-format.ts` (`eventFeedItem`, `eventMatchesGrep`),
+`src/ui/status-payload.ts` (`eventItems`), `src/cli/log-commands.ts` (`cmdLogs`),
+`src/gui/gui-endpoints.ts` (`handleLogs`).
+
+**Pinned by.** `test/gui-endpoints.test.ts` — "handleLogs serves the matched tail oldest-first
+as feed items, composing grep and role" (the handler's answer equals
+`readEventsTailWithEnd(...).events.filter(eventMatchesGrep).map(eventFeedItem)`) and "the live
+server routes GET /api/logs to the slice handler".
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

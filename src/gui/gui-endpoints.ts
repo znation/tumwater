@@ -24,6 +24,8 @@ import { collectFleetChanges, collectRoleChange } from "../change/change-data.js
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowsMatchingGrep } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
+import { eventRole, readEventsTailWithEnd } from "../events/event-read.js";
+import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -209,6 +211,38 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   let rows = readTickRows(root, n, role);
   if (grep !== null) rows = tickRowsMatchingGrep(rows, grep);
   sendJson(res, 200, { rows });
+}
+
+/** How many of the log's newest events `GET /api/logs` scans by default, and the most it will
+ * scan however large `n` asks: the CLI's `-n` shape (n bounds the scanned tail, not the printed
+ * rows), sized so the dashboard's search can reach well past the RECENT_EVENTS window the
+ * status poll carries. */
+const LOGS_SEARCH_EVENTS = 500;
+const LOGS_SEARCH_MAX_EVENTS = 5000;
+
+/** Handle GET /api/logs?n=N[&grep=<text>][&role=<id>]: a slice of the raw event log scanned
+ * from its newest end, filtered with the CLI's own rules and shaped as the activity feed's
+ * items. `n` is optional (absent → LOGS_SEARCH_EVENTS) and clamps to [1, LOGS_SEARCH_MAX_EVENTS]
+ * after intQuery's non-negative parse (an explicit count that does not parse is a 400, the
+ * handleHistory discipline); it bounds the scanned tail, so a matching event older than the
+ * last n events is absent — the same scan-then-filter rule `tumwater logs -n N --grep` applies.
+ * grep (absent or empty filters nothing) matches through eventMatchesGrep, and role is a
+ * filter, not a target: an id with no events legitimately yields an empty list, so it does not
+ * validate through rejectBadRole (the handleHistory rule). The matched events answer
+ * oldest-first as eventFeedItem objects — the same shape the status payload's eventItems carry.
+ * Reads files directly, so it works whether or not the fleet is running. */
+export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
+  if (parsed === null) return;
+  const n = Math.min(LOGS_SEARCH_MAX_EVENTS, Math.max(1, parsed));
+  const role = q.get("role") || null; // "" and absent both read all loops
+  const grep = q.get("grep") || null; // "" and absent both filter nothing
+  const needle = grep === null ? null : grep.toLowerCase();
+  const { events } = readEventsTailWithEnd(root, n);
+  const matched = events.filter(
+    (e) => (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle)),
+  );
+  sendJson(res, 200, { events: matched.map(eventFeedItem) });
 }
 
 /** Handle GET /api/tick?role=<id>&tick=N: one tick's full event trail — readTickDetail's

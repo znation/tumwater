@@ -361,7 +361,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
 
   // activity:start
   // The Activity card's own narrowing, beside the Notable/All segmented choice: a Loop picker
-  // and a text box filter the last RECENT_EVENTS the card already carries (the same
+  // and a text box filter the events the card carries, and — once a filter is set — a debounced
+  // /api/logs search reaches past that carried window into the log's recent slice (the same
   // loop/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed). Both persist like
   // the Notable/All choice, so a reload keeps the operator's scope.
   let feedFilter = recall("feed") === "all" ? "all" : "notable";
@@ -369,6 +370,49 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   let feedText = recall("feed-grep") || "";
   let feedRolesKey = "";
   const KINDS = { landing: ["merge", "green"], problem: ["fail", "red"], attention: ["question", "indigo"], info: ["info", "blue"], routine: ["dot", "gray"] };
+  // Server-backed search state. feedResults is the /api/logs slice once it answers (newest
+  // first, the shape renderFeed consumes), null while the card paints its carried window; the
+  // debounce feedTimer keeps each keystroke from firing a request; feedSeq numbers requests
+  // so a stale answer (a later filter issued a newer one) never paints; feedError names a
+  // fetch failure so the empty state can explain it; and feedQueryKey tracks which filter the
+  // last search was for, so renderFeed re-arms exactly when the filter changes (never per poll).
+  let feedResults = null;
+  let feedSeq = 0;
+  let feedTimer = null;
+  let feedError = "";
+  let feedQueryKey = "";
+  // Only the non-empty filters ride the query: an absent grep/role means unfiltered server-side,
+  // exactly as handleLogs reads them.
+  function feedLogsQuery() {
+    const params = [];
+    if (feedText) params.push("grep=" + encodeURIComponent(feedText));
+    if (feedRole) params.push("role=" + encodeURIComponent(feedRole));
+    return "/api/logs?" + params.join("&");
+  }
+  // Re-arm the debounced search for the current filter. An empty filter drops any slice and
+  // invalidates an in-flight request; otherwise renderFeed has already repainted the locally
+  // narrowed window and this waits out the typing pause before asking the server to reach
+  // past it. The 250 ms pause is the point: a keystroke narrows at once, the request follows.
+  function searchFeed() {
+    if (feedTimer) clearTimeout(feedTimer);
+    feedResults = null;
+    feedError = "";
+    const seq = ++feedSeq;
+    if (!feedRole && !feedText) return;
+    feedTimer = setTimeout(() => { feedTimer = null; void fetchFeedSearch(seq); }, 250);
+  }
+  async function fetchFeedSearch(seq) {
+    try {
+      const d = await getJson(feedLogsQuery(), pollSignal());
+      if (seq !== feedSeq) return; // a later filter change issued a newer request
+      feedResults = (d && d.events ? d.events : []).slice().reverse(); // newest first
+    } catch (err) {
+      if (seq !== feedSeq) return;
+      feedResults = null;
+      feedError = err && err.message ? err.message : "Search unavailable";
+    }
+    if (lastStatus) renderFeed(lastStatus);
+  }
   // The Loop picker's options follow the fleet's role list (custom loops included), keyed so a
   // poll with no roster change repaints nothing. A role the fleet dropped falls back to All
   // loops and persists, exactly as the History picker's syncHistoryRoles does.
@@ -388,12 +432,26 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   }
   function renderFeed(d) {
     syncFeedRoles(d);
+    // Re-arm the debounced server search whenever the filter changed since the last paint (so a
+    // recalled filter searches once at load, and no poll refetches an unchanged one).
+    const key = feedRole + "\u0000" + feedText;
+    if (key !== feedQueryKey) {
+      feedQueryKey = key;
+      searchFeed();
+    }
     const items = (d.eventItems || []).slice().reverse(); // newest first
     const notable = feedFilter === "all" ? items : items.filter((it) => eventKind(it) !== "routine");
     const needle = feedText.toLowerCase();
-    const shown = notable.filter((it) =>
+    const local = notable.filter((it) =>
       (!feedRole || it.loop === feedRole) &&
       (!needle || (it.loop + " " + it.type + " " + it.message).toLowerCase().includes(needle)));
+    // The server's /api/logs slice replaces the carried window once it answers; the Notable/All
+    // choice still culls it. A failed fetch paints the search-empty state, never a misleading
+    // partial window.
+    const serverRows = feedResults !== null
+      ? (feedFilter === "all" ? feedResults : feedResults.filter((it) => eventKind(it) !== "routine"))
+      : null;
+    const shown = feedError ? [] : serverRows !== null ? serverRows : local;
     markActive($("feedfilter"), "filter", feedFilter);
     const roles = new Set((d.loops || []).map((l) => l.role));
     paintPanel("feed", shown.length
@@ -407,12 +465,20 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           "<div class='feed-msg clamp2' title='" + esc(it.message) + "'>" + who + esc(it.message) + "</div>" +
           "<time class='feed-time' title='" + esc(fmtClock(it.ts)) + "'>" + esc(fmtAgo(it.ts)) + "</time></li>";
       }).join("")
-      : notable.length
-        ? "<li class='empty'><strong>No recent events match this filter</strong>" +
-          "Clear the Loop or Search box to see the recent feed again. " +
+      : feedResults !== null
+        ? "<li class='empty'><strong>No events match this filter in the log's recent slice</strong>" +
+          "Widen the Search or Loop picker to look further back. " +
           "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
-        : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
-          (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
+        : feedError
+          ? "<li class='empty'><strong>Search unavailable</strong>" + esc(feedError) +
+            " — the running server may predate the /api/logs endpoint. " +
+            "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
+          : notable.length
+            ? "<li class='empty'><strong>No recent events match this filter</strong>" +
+              "Clear the Loop or Search box to see the recent feed again. " +
+              "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
+            : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
+              (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
   }
   function clearFeedFilter() {
     feedRole = "";

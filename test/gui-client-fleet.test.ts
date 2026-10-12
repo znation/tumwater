@@ -202,13 +202,17 @@ test("the Landed today tile shows the work/maintenance commit split", () => {
 // Loop picker and Search box narrow the event window the card already carries, exactly as the
 // History view's do. The scope runs the shared format/view-model/panel/role regions renderFeed
 // reaches, with the DOM, persistence, and panel paint stubbed.
-function feedScope(recalled: Record<string, string> = {}) {
+function feedScope(recalled: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
   const panels: Record<string, string> = {};
-  const els: Record<string, { value: string; innerHTML: string; children: unknown[]; addEventListener: () => void }> = {};
-  const $ = (id: string) => (els[id] ||= { value: "", innerHTML: "", children: [], addEventListener: () => {} });
-  const scope = clientScope<{ renderFeed(d: object): void }>(
+  const listeners: Record<string, ((ev: unknown) => void)[]> = {};
+  const els: Record<string, { value: string; innerHTML: string; children: unknown[]; addEventListener: (type: string, fn: (ev: unknown) => void) => void }> = {};
+  const $ = (id: string) => (els[id] ||= {
+    value: "", innerHTML: "", children: [],
+    addEventListener: (type: string, fn: (ev: unknown) => void) => { (listeners[id + ":" + type] ||= []).push(fn); },
+  });
+  const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void }>(
     ["format", "view-model", "click-delegate", "activity"],
-    ["renderFeed"],
+    ["renderFeed", "clearFeedFilter"],
     {
       recall: (key: string) => recalled[key] ?? null,
       store: () => {},
@@ -218,11 +222,25 @@ function feedScope(recalled: Record<string, string> = {}) {
       markActive: () => {},
       icon: iconStub,
       lastStatus: undefined,
+      // The debounced /api/logs fetch needs these free variables bound; the default answers an
+      // empty slice so the unfiltered tests never touch the network or throw a stray timer.
+      getJson: async () => ({ events: [] }),
+      pollSignal: () => ({}),
       $,
+      ...extra,
     },
   );
-  return { scope, panels, els };
+  return {
+    scope,
+    panels,
+    els,
+    fire: (id: string, type: string, ev: unknown) => (listeners[id + ":" + type] || []).forEach((f) => f(ev)),
+  };
 }
+
+// The 250 ms debounce plus a margin: enough for the searchFeed timer to fire and its fetch to
+// settle before the assertions run.
+const feedSettle = () => new Promise((r) => setTimeout(r, 320));
 
 test("the Activity feed narrows to one loop when its Loop picker is set", () => {
   const { scope, panels } = feedScope({ "feed-role": "feature" });
@@ -305,6 +323,104 @@ test("with neither filter set the Activity feed paints the unfiltered rows byte-
   assert.equal(empty.panels["feed"], plain.panels["feed"], "empty filters are a no-op, not a markup change");
   assert.match(plain.panels["feed"] ?? "", /landed one/);
   assert.match(plain.panels["feed"] ?? "", /needs you/);
+});
+
+test("an active Search fetches /api/logs and paints a slice beyond the carried window", async () => {
+  const payload = { loops: [], eventItems: [{ ts: Date.now(), loop: "qa", type: "merged", message: "carried row" }] };
+  const calls: string[] = [];
+  const getJson = async (path: string) => {
+    calls.push(path);
+    return { events: [{ ts: 1, loop: "feature", type: "land_failed", result: "rejected", message: "old failure" }] };
+  };
+  const { scope, panels } = feedScope({ "feed-grep": "failure" }, { getJson, lastStatus: payload });
+  scope.renderFeed(payload);
+  // The carried window narrows at once, before the debounce fires: the far event is not there yet.
+  assert.doesNotMatch(panels["feed"] ?? "", /old failure/);
+  await feedSettle();
+  assert.deepEqual(calls, ["/api/logs?grep=failure"]);
+  assert.match(panels["feed"] ?? "", /old failure/, "the server's slice replaces the carried window");
+  assert.doesNotMatch(panels["feed"] ?? "", /carried row/);
+});
+
+test("the search query carries only the non-empty Loop and Search filters", async () => {
+  const calls: string[] = [];
+  const payload = { loops: [{ role: "qa" }], eventItems: [] };
+  const { scope } = feedScope({ "feed-role": "qa", "feed-grep": "boom" }, {
+    getJson: async (path: string) => { calls.push(path); return { events: [] }; },
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  assert.deepEqual(calls, ["/api/logs?grep=boom&role=qa"]);
+});
+
+test("a server search with no matches names the searched slice, not the carried window", async () => {
+  const payload = { loops: [], eventItems: [{ ts: Date.now(), loop: "qa", type: "merged", message: "carried row" }] };
+  const { scope, panels } = feedScope({ "feed-grep": "carried" }, {
+    getJson: async () => ({ events: [] }),
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  const html = panels["feed"] ?? "";
+  assert.match(html, /No events match this filter in the log's recent slice/);
+  assert.doesNotMatch(html, /No recent events match this filter/);
+});
+
+test("a stale search response never paints over a newer filter", async () => {
+  const payload = { loops: [], eventItems: [] };
+  const calls: string[] = [];
+  const resolvers: ((v: unknown) => void)[] = [];
+  const getJson = (path: string) => new Promise((resolve) => { calls.push(path); resolvers.push(resolve); });
+  const { scope, panels, fire } = feedScope({ "feed-grep": "first" }, { getJson, lastStatus: payload });
+  scope.renderFeed(payload);
+  await feedSettle();
+  assert.deepEqual(calls, ["/api/logs?grep=first"]);
+  // A newer keystroke issues a newer request while the first is still in flight.
+  fire("feedgrep", "input", { target: { value: "second" } });
+  await feedSettle();
+  assert.deepEqual(calls, ["/api/logs?grep=first", "/api/logs?grep=second"]);
+  // The newer answer lands, then the stale one — which must not repaint.
+  resolvers[1]!({ events: [{ ts: 2, loop: "qa", type: "merged", message: "second match" }] });
+  await new Promise((r) => setTimeout(r, 10));
+  resolvers[0]!({ events: [{ ts: 1, loop: "qa", type: "land_failed", message: "first match" }] });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.match(panels["feed"] ?? "", /second match/);
+  assert.doesNotMatch(panels["feed"] ?? "", /first match/);
+});
+
+test("a failed search paints the endpoint-version note", async () => {
+  const payload = { loops: [], eventItems: [] };
+  const { scope, panels } = feedScope({ "feed-grep": "x" }, {
+    getJson: async () => { throw new Error("HTTP 404 — not found"); },
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  const html = panels["feed"] ?? "";
+  assert.match(html, /Search unavailable/);
+  assert.match(html, /may predate the \/api\/logs endpoint/);
+});
+
+test("clearing the filter restores the windowed feed byte-for-byte", async () => {
+  const payload = {
+    loops: [{ role: "qa" }],
+    eventItems: [
+      { ts: Date.now(), loop: "qa", type: "merged", message: "landed one" },
+      { ts: Date.now(), loop: "qa", type: "question_posted", message: "needs you" },
+    ],
+  };
+  const { scope, panels } = feedScope({ "feed-grep": "one" }, {
+    getJson: async () => ({ events: [{ ts: 1, loop: "qa", type: "land_failed", message: "server row" }] }),
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  assert.match(panels["feed"] ?? "", /server row/);
+  scope.clearFeedFilter();
+  const plain = feedScope();
+  plain.scope.renderFeed(payload);
+  assert.equal(panels["feed"], plain.panels["feed"], "no-filter markup is byte-identical after clearing");
 });
 
 test("the Activity filter persists its choices and the page ships the controls in the card head", () => {

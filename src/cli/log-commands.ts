@@ -7,7 +7,7 @@ import {
 } from "../events/event-window.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
-import { formatEvent } from "../events/event-format.js";
+import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
 import { followFile } from "../files/tail.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
@@ -124,7 +124,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);
-  const shown = grepLower ? tail.events.filter((e) => matchesGrep(e, grepLower)) : tail.events;
+  const shown = grepLower ? tail.events.filter((e) => eventMatchesGrep(e, grepLower)) : tail.events;
   for (const e of shown) sayEventLine(e, json);
   if (!follow) {
     // The empty-match line is prose: in JSON mode the empty output is the answer.
@@ -146,17 +146,11 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       const e = parseEventLine(line);
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
-      if (e && (grepLower === null || matchesGrep(e, grepLower)))
+      if (e && (grepLower === null || eventMatchesGrep(e, grepLower)))
         sayEventLine(e, json);
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
-}
-
-/** The --grep match rule: case-insensitive substring over the raw event type prefixed to the
- * rendered line — exactly the haystack the operator would otherwise read. */
-function matchesGrep(e: HarnessEvent, patternLower: string): boolean {
-  return `${e.type} ${formatEvent(e)}`.toLowerCase().includes(patternLower);
 }
 
 /** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —

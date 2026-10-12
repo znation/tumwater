@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleConfig, handleDiff, handleReport, handleFailures, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
+import { readEventsTailWithEnd } from "../src/events/event-read.js";
+import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
+import { statusPayload } from "../src/ui/status-payload.js";
+import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleConfigUnset, handlePromptEdit, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -251,6 +254,77 @@ test("the live server routes POST /api/restart to the handler and refuses other 
     const get = await fetch(base + "/api/restart");
     assert.equal(get.status, 404);
     assert.equal(fs.existsSync(restartRequestPath(root)), true, "the earlier POST's marker stands");
+  } finally {
+    server.close();
+  }
+});
+
+function serveLogs(root: string, query = "") {
+  return captureJson((res) => handleLogs(new URLSearchParams(query), res, root));
+}
+
+test("handleLogs serves the matched tail oldest-first as feed items, composing grep and role", async () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: 1000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "added a thing" },
+    { ts: 2000, loop: "bugfix", type: "land_failed", commit: "abc1234", status: "rejected" },
+    { ts: 3000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", summary: "nothing here" },
+  ]);
+  const { captured, data } = await serveLogs(root, "?grep=added");
+  const events = (data as { events: { ts: number; loop: string; type: string; result?: string; message: string }[] }).events;
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  assert.deepEqual(events.map((e) => e.ts), [1000]);
+  assert.deepEqual(events[0], {
+    ts: 1000, loop: "feature", type: "tick_end", result: "changed",
+    message: "tick #1 changed — added a thing",
+  });
+  // The answer is exactly the shared computation: the scanned tail through eventMatchesGrep and
+  // eventFeedItem — the one home each the CLI and the status payload also read (INV-A3).
+  const tail = readEventsTailWithEnd(root, 500).events;
+  assert.deepEqual(events, tail.filter((e) => eventMatchesGrep(e, "added")).map(eventFeedItem));
+  assert.deepEqual(
+    (statusPayload(root, 4000) as { eventItems: unknown[] }).eventItems,
+    tail.map(eventFeedItem),
+    "statusPayload's eventItems come from the same eventFeedItem projection",
+  );
+  // role is a filter and composes with grep: the landed failure is bugfix, so role=feature drops it.
+  const composed = await serveLogs(root, "?grep=land&role=feature");
+  assert.deepEqual((composed.data as { events: unknown[] }).events, []);
+  // An id with no events is a legitimate empty answer, not a 400 (the handleHistory rule).
+  const none = await serveLogs(root, "?role=ghost");
+  assert.equal(none.captured.status, 200);
+  assert.deepEqual((none.data as { events: unknown[] }).events, []);
+});
+
+test("handleLogs bounds the scanned tail by n, defaults it, and rejects a bad n", async () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: 1000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "match me" },
+    { ts: 2000, loop: "feature", type: "tick_end", tick: 2, result: "changed", summary: "later one" },
+    { ts: 3000, loop: "feature", type: "tick_end", tick: 3, result: "changed", summary: "latest one" },
+  ]);
+  const scan = await serveLogs(root, "?grep=match&n=2");
+  assert.deepEqual((scan.data as { events: unknown[] }).events, [], "the match is older than the last 2 events");
+  const zero = await serveLogs(root, "?grep=match&n=0");
+  assert.deepEqual((zero.data as { events: unknown[] }).events, [], "n=0 clamps to scanning one event");
+  const defaulted = await serveLogs(root, "?grep=match");
+  assert.equal((defaulted.data as { events: { ts: number }[] }).events.length, 1, "absent n scans the default 500");
+  const bad = await serveLogs(root, "?n=-1");
+  assert.equal(bad.captured.status, 400);
+});
+
+test("the live server routes GET /api/logs to the slice handler", async () => {
+  const root = tmpdir();
+  writeEvents(root, [{ ts: 1000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "routed" }]);
+  const { server, base } = await startLocalGui(root);
+  try {
+    const res = await fetch(base + "/api/logs?n=10&role=feature");
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { events: { loop: string; message: string }[] };
+    assert.equal(data.events.length, 1);
+    assert.equal(data.events[0]?.loop, "feature");
+    assert.match(data.events[0]?.message ?? "", /routed/);
   } finally {
     server.close();
   }
