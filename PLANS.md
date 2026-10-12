@@ -31,6 +31,35 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater doctor` names refused backlog entries: a "refusals" check that warns on each planned plan or open bug held by a **Refused** note (planned 2026-10-12 by plan; independent of both entries above, and touches none of their files except README.md's doctor row. A **Refused …** note holds its entry until a human or the director edits it, and no loop clears one. Today the only places that show the hold are the `[refused]` mark in `tumwater backlog`, `plan|bug --list`, and the prompt's backlog index. Nothing tells the operator that work is parked. This repo's part 2/2 above is such an entry right now: it was refused because part 1/2 had not landed, and `src/backlog/backlog-commit.ts` has since landed, but nothing says so. `grep -rn refused src/doctor` finds nothing)
+
+**Goal.** `tumwater doctor` gains a "refusals" row. It warns when PLANS.md `## Planned` or BUGS.md `## Open` holds an entry with a Refused note, names the first entry (its file, its `--list` position, its title, and the note) plus the others in short form, and says how to release it. The dashboard's Health check card and the TUI's Health tab show the row with no code of their own, because both render `runDoctor`'s checks (`src/gui/gui-endpoints.ts`, `createTuiKeys` in `src/ui/tui/tui-keys.ts`).
+
+**Approach.**
+- **Note reader.** In `src/backlog/backlog-eligibility.ts`, export `refusalNote(body: string): string | null`, placed beside `hasNoteLine`. It returns the first body line whose trimmed start begins with `REFUSED_PREFIX`, trimmed, with a leading `**` and the first closing `**` removed (so `**Refused 2026-10-12 by feature: x**` gives `Refused 2026-10-12 by feature: x`). It returns null when no line matches. `entryHoldAgainst` keeps using `hasNoteLine`. The two agree by construction: the same prefix, matched as a line prefix.
+- **Check.** In `src/doctor/doctor-backlog.ts`, add `export function checkRefusedEntries(root: string): CheckOutcome`:
+  - It reads `plannedPlanEntries(root)` and then `openBugEntries(root)` (`src/backlog/backlog.ts`), in file order, and keeps the entries whose `refusalNote(entry.body)` is non-null. Each kept entry records `{ file: "PLANS.md" | "BUGS.md", command: "plan" | "bug", position: index + 1, title, note }`. `position` is the entry's 1-based index in its section, which is the number `tumwater plan|bug --list` prints and `--cancel <n>` takes (`listAndAnnounce` in `src/backlog/backlog-write.ts` numbers the same `plannedPlanEntries`/`openBugEntries` order).
+  - Missing files give no entries, because those readers return [] for them.
+  - With no kept entries it returns `okOutcome("no planned plan or open bug is held by a Refused note")`.
+  - Otherwise it returns `warnOutcome` with this detail: `` `${file} ${command} #${position} "${title}" is held by a Refused note (${truncate(note, REFUSAL_NOTE_MAX)})` ``. That is followed by `andMore(rest, (e) => `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`)` and then `` ` — no loop takes a refused entry until it is edited: answer the objection and delete the note, or retract the entry with \`tumwater ${command} --cancel ${position}\`` ``, where `command` and `position` are the first entry's. The first title is quoted in full, as `checkFixClaims` quotes its first heading.
+  - Add the module constant `REFUSAL_NOTE_MAX = 120`, with a doc comment.
+  - Write a doc comment shaped like `checkStrandedPlans`'s. It says the check reads the tree at `root` and warns but never fails, because a refusal is operator signal.
+  - Update the module's top doc comment from "three checks" to four, and name refusals in it.
+- **Compose.** In `runDoctor` (`src/doctor/doctor.ts`), add `{ name: "refusals", ...checkRefusedEntries(root) }` directly after the `"backlog headings"` row.
+
+**Files.** `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, test/doctor-backlog.test.ts, test/doctor.test.ts (the check-name list asserted at its top gains `"refusals"` after `"backlog headings"`), test/backlog-eligibility.test.ts (the `refusalNote` cases), README.md (the "Audit" row's `tumwater doctor` list gains "planned plans and open bugs held by a Refused note").
+
+**Acceptance criteria.**
+- `refusalNote("intro\n  **Refused 2026-10-12 by feature: too big**\nmore")` returns `"Refused 2026-10-12 by feature: too big"`. A body that only mentions `**Refused ` mid-line returns null, matching `entryHold`'s rule.
+- In a tmpdir (`tmpdir` from test/fixtures/repo-fixtures.ts) with a PLANS.md whose `## Planned` holds an eligible entry followed by a refused one, and a BUGS.md whose `## Open` holds one refused bug:
+  - `checkRefusedEntries(dir).level === "warn"`;
+  - the detail matches `/PLANS\.md plan #2 "<the full refused title>" is held by a Refused note \(Refused 2026-10-12 by feature: /`;
+  - it contains `(and 1 more: BUGS.md bug #1 "…")`;
+  - it ends with `` `tumwater plan --cancel 2` ``.
+- With the notes removed, or with neither file present, the check returns exactly `{ level: "ok", detail: "no planned plan or open bug is held by a Refused note" }`.
+- A Refused note under `## Done` or `## Fixed` does not warn.
+- test/doctor.test.ts's ordered check-name list includes `"refusals"` right after `"backlog headings"`, and the rest of the suite passes unchanged.
+
 ## Done
 
 ### TUI: a read-only Brief tab shows the initial prompt, matching `tumwater brief` and the dashboard's Settings card (planned 2026-10-12 by plan; sibling of the landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) and the landed dashboard Settings "Initial prompt" card (`GET /api/brief`). The project prompt says the GUI and TUI both give the user a main prompt and that the user only writes the initial prompt, yet the TUI cannot show it: `grep -rn brief src/ui/tui/` finds nothing. It is read-only because the TUI's prompt line holds one line and a brief can be up to `INITIAL_PROMPT_MAX_CHARS` of multiline text. Replacing it stays a job for the CLI (`--file`) and the dashboard, the same split the TUI notebook view uses. Independent of the refused part 2/2 above: no `src/gui`, `src/ui/gui`, or `src/backlog` file changes) — done 2026-10-12
