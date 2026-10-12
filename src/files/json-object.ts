@@ -89,3 +89,10 @@ export function parseJsonObject(text: string): Record<string, unknown> | null {
     return null;
   }
 }
+
+/** `value` when it is a JSON object (isJsonObject), `{}` otherwise — the one home of the
+ * "this section is the object or it is nothing" read, so a torn, hand-edited, or foreign value
+ * at a nested position reads as an empty section instead of being indexed. */
+export function objectOrEmpty(value: unknown): Record<string, unknown> {
+  return isJsonObject(value) ? value : {};
+}

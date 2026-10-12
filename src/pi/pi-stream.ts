@@ -7,7 +7,7 @@ import {
   type OpenToolCall,
 } from "./pi-event-line.js";
 import { describeToolCall } from "../text/phrases.js";
-import { isJsonObject, nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
+import { objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
@@ -119,7 +119,7 @@ type ContentBlock = { type?: unknown; text?: unknown; name?: unknown };
  * workItemFromContent apply to the identical field. */
 function messageContent(msg: PiMessage): ContentBlock[] {
   if (!Array.isArray(msg.content)) return [];
-  return msg.content.map((raw) => (isJsonObject(raw) ? raw : {}));
+  return msg.content.map((raw) => (objectOrEmpty(raw)));
 }
 
 /** Extract the concatenated text blocks of a pi message. */

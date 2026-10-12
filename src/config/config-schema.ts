@@ -13,7 +13,7 @@
  * modules: config.ts (defaults + load), config-validation.ts (validation), config-write.ts
  * (writes). */
 
-import { isJsonObject } from "../files/json-object.js";
+import { objectOrEmpty } from "../files/json-object.js";
 
 /** The model tiers a selector map may name (plans/model-tiers.md). A tier left out of the
  * `model` map inherits `default`'s model; `fallback` map values may also be `"pause"`
@@ -42,7 +42,7 @@ export const TIER_MAP_KEYS: readonly string[] = MODEL_TIERS;
  * parsed under the legacy top-level provider.) */
 export function modelTierMap(model: unknown): Record<string, unknown> {
   if (typeof model === "string") return { default: model };
-  return isJsonObject(model) ? model : {};
+  return objectOrEmpty(model);
 }
 
 /** Per-role configuration in tumwater.json. */

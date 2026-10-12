@@ -15,7 +15,7 @@
  * `agent_unknown_event` warning after the run. `cost_unknown` is recorded the same way when a
  * run produced no authoritative `run_cost`. */
 
-import { isJsonObject, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
+import { isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind, TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
 
@@ -88,7 +88,7 @@ function canonicalBlock(block: Json): Json | undefined {
     case "thinking":
       return { type: "thinking", thinking: str(block.thinking) ?? str(block.text) ?? "" };
     case "tool_use": {
-      const input = isJsonObject(block.input) ? block.input : {};
+      const input = objectOrEmpty(block.input);
       const args: Json = { ...input };
       if (typeof input.file_path === "string") args.path = input.file_path;
       const name = str(block.name) ?? "";
@@ -237,7 +237,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       }
       case "assistant": {
         sawActivity = true;
-        const message = isJsonObject(event.message) ? event.message : {};
+        const message = objectOrEmpty(event.message);
         const id = str(message.id) ?? `anon-${anonymous++}`;
         // A new id flushes the open message; a continuing one flushes nothing. Either way the
         // fresh or open pending then folds this event's content, usage, and stop reason the
@@ -264,7 +264,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
       }
       case "user": {
         const out = flush();
-        const message = isJsonObject(event.message) ? event.message : {};
+        const message = objectOrEmpty(event.message);
         const blocks = Array.isArray(message.content) ? message.content : [];
         for (const raw of blocks) {
           if (!isJsonObject(raw) || raw.type !== "tool_result") continue;
@@ -279,7 +279,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         return out;
       }
       case "rate_limit_event": {
-        const info = isJsonObject(event.rate_limit_info) ? event.rate_limit_info : {};
+        const info = objectOrEmpty(event.rate_limit_info);
         const rateLimitType = str(info.rateLimitType);
         const status = str(info.status);
         const resetsAt = nonNegativeNumber(info.resetsAt, undefined);

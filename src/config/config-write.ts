@@ -18,7 +18,7 @@ import { configPath, configLockPath, configRequestPath, CONFIG_BASENAME } from "
 import { errorMessage } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { writeJsonAtomic } from "../files/json-files.js";
-import { isJsonObject } from "../files/json-object.js";
+import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
@@ -335,11 +335,9 @@ export function setConfigKey(
       // built-in (see preserveFileRoles). A role absent from the file gets a fresh entry with
       // just this field; the catalog still fills its other defaults at load.
       const rawRolesCandidate = rawConfigObject(root).roles;
-      const rawRoles = isJsonObject(rawRolesCandidate)
-        ? (rawRolesCandidate as Record<string, Record<string, unknown>>)
-        : {};
+      const rawRoles = objectOrEmpty(rawRolesCandidate) as Record<string, Record<string, unknown>>;
       const rawEntryCandidate = rawRoles[parsed.id];
-      const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
+      const rawEntry = objectOrEmpty(rawEntryCandidate);
       oldValue = record.roles?.[parsed.id]?.[parsed.field];
       const roles = {
         ...rawRoles,
@@ -431,7 +429,7 @@ function without<T extends Record<string, unknown>>(obj: T, key: string): T {
  * defaults — there is nothing to retract). */
 function rawConfigObject(root: string): Record<string, unknown> {
   const { raw } = parseJsonConfig(configPath(root), CONFIG_BASENAME);
-  return isJsonObject(raw) ? raw : {};
+  return objectOrEmpty(raw);
 }
 
 /** Reinstall the raw tumwater.json's `roles` section onto a whole-config write candidate (or
@@ -499,7 +497,7 @@ export function unsetConfigKey(
     }
     if (parsed.kind === "map") {
       const rawMapCandidate = raw[parsed.map];
-      const rawMap = isJsonObject(rawMapCandidate) ? rawMapCandidate : {};
+      const rawMap = objectOrEmpty(rawMapCandidate);
       if (!Object.hasOwn(rawMap, parsed.role)) return cfg; // absent file entry: a no-op success
       oldValue = rawMap[parsed.role];
       const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
@@ -524,9 +522,9 @@ export function unsetConfigKey(
       // Presence is judged against the FILE, so unsetting a field only the default (or the
       // legacy alias's resolved view) carries is a no-op success. The entry and the `agents`
       // section are dropped when they empty, so the file never keeps an empty object.
-      const rawAgents = isJsonObject(raw.agents) ? raw.agents : {};
+      const rawAgents = objectOrEmpty(raw.agents);
       const rawEntryCandidate = rawAgents[parsed.id];
-      const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
+      const rawEntry = objectOrEmpty(rawEntryCandidate);
       if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
       oldValue = rawEntry[parsed.field];
       const agents = { ...(record.agents as Record<string, Record<string, unknown>> | undefined) };
@@ -539,9 +537,9 @@ export function unsetConfigKey(
       return preservingFileRoles(root, { ...cfg, agents } as unknown as TumwaterConfig);
     }
     const rawRolesCandidate = raw.roles;
-    const rawRoles = isJsonObject(rawRolesCandidate) ? rawRolesCandidate : {};
+    const rawRoles = objectOrEmpty(rawRolesCandidate);
     const rawEntryCandidate = rawRoles[parsed.id];
-    const rawEntry = isJsonObject(rawEntryCandidate) ? rawEntryCandidate : {};
+    const rawEntry = objectOrEmpty(rawEntryCandidate);
     if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
     oldValue = rawEntry[parsed.field];
     // Base the removal on the FILE's own roles, not the loaded (catalog-merged) map: the
