@@ -273,6 +273,20 @@ function editEntryLocked(
   body: string,
 ): { file: string; title: string } {
   const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
+  spliceInEditedEntry(file, lines, entry, title, body);
+  return { file: fileName, title };
+}
+
+/** Write `lines` back to `file` with `entry`'s range replaced by `### <title><stamp>` plus
+ * `body`: the stamp is the trailing suffix of the entry's joined heading metadata (empty with no
+ * parenthetical). Shared by the CLI edit and tryEditEntry so the two cannot drift. */
+function spliceInEditedEntry(
+  file: string,
+  lines: string[],
+  entry: ActionableEntryRange,
+  title: string,
+  body: string,
+): void {
   const metaText = headingMetadata(lines, entry.start - 1).text;
   const stamp = metaText.slice(stripEntryStamp(metaText).length);
   // rest starts at the line after the range's last line: for a well-formed section that is the
@@ -285,7 +299,53 @@ function editEntryLocked(
   if (rest.some((line) => line.trim() !== "")) rebuilt.push("");
   lines.splice(entry.start - 1, entry.end - entry.start + 1, ...rebuilt);
   writeTextAtomic(file, lines.join("\n"));
-  return { file: fileName, title };
+}
+
+/** Why `body` cannot be written as an entry body, or null: a `## `/`### ` heading line outside a
+ * code fence, or a fence left open, would make actionableEntryRanges misread what follows. */
+export function bodyStructureProblem(body: string): string | null {
+  const tracker = fenceTracker();
+  for (const line of body.split("\n")) {
+    // inside() advances the fence state, so ask it once per line: "## " and "### " are
+    // distinct prefixes (a `### ` line never starts with `## `), so one level check covers both.
+    if (!tracker.inside(line) && (line.startsWith("## ") || line.startsWith("### "))) {
+      return "the body may not contain a `## `/`### ` heading line outside a code fence";
+    }
+  }
+  return tracker.open() ? "the body leaves a code fence open" : null;
+}
+
+/** What `tryEditEntry` did, the CancelEntryOutcome shape: `edited` wrote the file; `gone` and
+ * `moved` refuse as data, writing nothing. */
+export type EditEntryOutcome =
+  | { status: "edited"; file: string; title: string }
+  | { status: "gone" }
+  | { status: "moved"; title: string };
+
+/** The non-exiting, title-checked edit the dashboard calls: editEntry's lock and splice, with the
+ * body's line structure kept (no whitespace fold). The caller validates (bodyStructureProblem,
+ * non-empty title) first, since fail() exits the process. */
+export function tryEditEntry(
+  root: string,
+  kind: "bug" | "plan",
+  n: number,
+  expectedTitle: string,
+  rawTitle: string,
+  rawBody: string,
+): EditEntryOutcome {
+  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
+  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  const title = stripEntryStamp(collapseWhitespace(rawTitle));
+  const body = rawBody.replace(/\r\n?/g, "\n").trim();
+  return withStateLock(primaryWorktreeLockPath(root), () => {
+    const file = path.join(root, fileName);
+    const md = readTextIfExists(file) ?? "";
+    const entry = findEntry(md, sectionTitle, n);
+    if (entry === undefined) return { status: "gone" };
+    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    spliceInEditedEntry(file, md.split("\n"), entry, title, body);
+    return { status: "edited", file: fileName, title };
+  });
 }
 
 /** The result one file command returns: the file written, the entry's title (verbatim

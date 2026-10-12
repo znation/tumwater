@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { cancelBug, tryCancelEntry } from "../src/backlog/backlog-write.js";
+import { bodyStructureProblem, cancelBug, editPlan, tryCancelEntry, tryEditEntry } from "../src/backlog/backlog-write.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -196,4 +196,44 @@ test("tryCancelEntry answers gone and moved without writing", () => {
   const moved = tryCancelEntry(repo, "bug", 1, "not the title");
   assert.deepEqual(moved, { status: "moved", title: openBugs(repo)[0] });
   assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+const PLANS3 = "# Plans\n\n## Planned\n\n### one (planned 2026-10-01 by plan)\n\nbody one\n\n### two (planned 2026-10-02 by plan)\n\nold\n\n### three\n\nbody three\n\n## Done\n\n### d\n\nx\n";
+
+test("tryEditEntry rewrites the middle entry keeping its stamp and the body's lines", () => {
+  const repo = makeRepo();
+  const file = path.join(repo, "PLANS.md");
+  fs.writeFileSync(file, PLANS3);
+  const title = "two (planned 2026-10-02 by plan)";
+  const out = tryEditEntry(repo, "plan", 2, title, "New  two (planned 2020-01-01 by x)", "line a\r\n\r\n- b\n");
+  assert.deepEqual(out, { status: "edited", file: "PLANS.md", title: "New two" });
+  assert.equal(
+    fs.readFileSync(file, "utf8"),
+    PLANS3.replace("### two (planned 2026-10-02 by plan)\n\nold\n", "### New two (planned 2026-10-02 by plan)\n\nline a\n\n- b\n"),
+  );
+});
+
+test("tryEditEntry equals editPlan for a single-line body", () => {
+  const a = makeRepo();
+  const b = makeRepo();
+  fs.writeFileSync(path.join(a, "PLANS.md"), PLANS3);
+  fs.writeFileSync(path.join(b, "PLANS.md"), PLANS3);
+  editPlan(a, 2, "T", "one line body", "");
+  tryEditEntry(b, "plan", 2, "two (planned 2026-10-02 by plan)", "T", "one line body");
+  assert.equal(fs.readFileSync(path.join(b, "PLANS.md"), "utf8"), fs.readFileSync(path.join(a, "PLANS.md"), "utf8"));
+});
+
+test("tryEditEntry answers gone and moved without writing", () => {
+  const repo = makeRepo();
+  const file = path.join(repo, "PLANS.md");
+  fs.writeFileSync(file, PLANS3);
+  assert.deepEqual(tryEditEntry(repo, "plan", 9, "x", "t", "b"), { status: "gone" });
+  assert.deepEqual(tryEditEntry(repo, "plan", 1, "nope", "t", "b"), { status: "moved", title: "one (planned 2026-10-01 by plan)" });
+  assert.equal(fs.readFileSync(file, "utf8"), PLANS3);
+});
+
+test("bodyStructureProblem allows quoted headings in a closed fence and flags bare headings and open fences", () => {
+  assert.equal(bodyStructureProblem("a\n```\n## X\n### Y\n```\nb"), null);
+  assert.match(bodyStructureProblem("a\n### Y") ?? "", /heading/);
+  assert.match(bodyStructureProblem("a\n```\nb") ?? "", /fence open/);
 });

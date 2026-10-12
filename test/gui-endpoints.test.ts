@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -884,5 +884,36 @@ test("handleBacklogCancel removes the entry, answers gone for a stale title, 400
     assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
   }
   assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
+  for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
+});
+
+// ---- POST /api/backlog-edit: the entry drawer's edit ----
+test("handleBacklogEdit rewrites the entry, answers gone for a stale title, 400s bad input, wakes nobody", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### p1 (planned 2026-10-01 by plan)\n\nold" }, { heading: "## Done" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogEdit(fakeReq(JSON.stringify(body)), res, root));
+  const plansPath = path.join(root, "PLANS.md");
+
+  const stale = await serve({ kind: "plan", position: 1, title: "other", newTitle: "n", newBody: "b" });
+  assert.deepEqual(stale.data, { ok: true, status: "gone" });
+  assert.ok(fs.readFileSync(plansPath, "utf8").includes("old"));
+
+  const before = fs.readFileSync(plansPath, "utf8");
+  for (const body of [
+    { kind: "todo", position: 1, title: "x", newTitle: "n", newBody: "" },
+    { kind: "plan", position: 0, title: "x", newTitle: "n", newBody: "" },
+    { kind: "plan", position: 1, title: "", newTitle: "n", newBody: "" },
+    { kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "  ", newBody: "" },
+    { kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "n", newBody: 5 },
+    { kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "n", newBody: "a\n### H" },
+  ]) {
+    assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
+  }
+  assert.equal(fs.readFileSync(plansPath, "utf8"), before);
+
+  const done = await serve({ kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "p2", newBody: "l1\n\nl2" });
+  assert.equal(done.captured.status, 200);
+  assert.deepEqual(done.data, { ok: true, status: "edited", file: "PLANS.md", title: "p2" });
+  assert.ok(fs.readFileSync(plansPath, "utf8").includes("### p2 (planned 2026-10-01 by plan)\n\nl1\n\nl2"));
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
 });

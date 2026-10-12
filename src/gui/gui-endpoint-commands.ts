@@ -10,7 +10,7 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet/fleet-state.ts, operator/operator-intent.ts) — this module only adapts HTTP onto it.
  */
-import { fileBug, filePlan, OPERATOR_FILE_KINDS, tryCancelEntry, type CancelEntryOutcome } from "../backlog/backlog-write.js";
+import { fileBug, filePlan, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
@@ -497,6 +497,54 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   }
   if (outcome.status === "cancelled") {
     sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title });
+  } else {
+    sendJson(res, 200, { ok: true, status: "gone" });
+  }
+}
+
+/** Handle POST /api/backlog-edit: the entry drawer's edit — tryEditEntry's title-checked,
+ * in-place rewrite under the state lock. Body `{"kind", "position", "title", "newTitle",
+ * "newBody"}`; a missing position or a different heading there answers 200 { ok: true, status:
+ * "gone" }. The body keeps its line structure. No wake and no inbox prompt: whichever tick picks
+ * the entry up refines it. */
+export async function handleBacklogEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>", "newTitle": "...", "newBody": "..."}');
+  if (!body) return;
+  const { kind, position, title, newTitle, newBody } = body;
+  if (kind !== "bug" && kind !== "plan") {
+    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
+    return;
+  }
+  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
+    sendJson(res, 400, { error: "position must be a positive integer" });
+    return;
+  }
+  if (typeof title !== "string" || title === "") {
+    sendJson(res, 400, { error: "title must be a non-empty string" });
+    return;
+  }
+  if (typeof newTitle !== "string" || collapseWhitespace(newTitle) === "") {
+    sendJson(res, 400, { error: "newTitle required" });
+    return;
+  }
+  if (typeof newBody !== "string") {
+    sendJson(res, 400, { error: "newBody must be a string" });
+    return;
+  }
+  const problem = bodyStructureProblem(newBody.replace(/\r\n?/g, "\n"));
+  if (problem !== null) {
+    sendJson(res, 400, { error: problem });
+    return;
+  }
+  let outcome: EditEntryOutcome;
+  try {
+    outcome = tryEditEntry(root, kind, position, title, newTitle, newBody);
+  } catch (err) {
+    sendJson(res, 400, { error: errorMessage(err) });
+    return;
+  }
+  if (outcome.status === "edited") {
+    sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title });
   } else {
     sendJson(res, 200, { ok: true, status: "gone" });
   }

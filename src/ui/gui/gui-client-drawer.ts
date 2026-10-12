@@ -27,6 +27,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function closeDrawer() {
     const wasLoop = openLoopRole();
     drawer = null;
+    entryEditing = null;
     if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView);
     drawerTicks = null;
     drawerChange = null;
@@ -65,6 +66,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
   function openEntry(file, index) {
     drawer = { kind: "entry", file, index: Number(index) };
+    entryEditing = null;
     showDrawer("<div id='entrybody'><div class='empty'>Loading…</div></div>");
     if (lastStatus) renderFleet(lastStatus);
     refreshEntry();
@@ -298,6 +300,14 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     refreshEntry();
     setTimeout(() => { if (confirmEntryCancel && confirmEntryCancel.key === key && confirmEntryCancel.until <= Date.now()) { confirmEntryCancel = null; refreshEntry(); } }, 5100);
   }
+  // An open edit form: painted once, so a poll never overwrites the operator's draft; the
+  // server's title check catches an entry that changed underneath it at save time.
+  let entryEditing = null; // { key, title, painted }
+  function startEntryEdit(key, title) {
+    entryEditing = { key, title, painted: false };
+    refreshEntry();
+  }
+  function stopEntryEdit() { entryEditing = null; }
   const ENTRY_KINDS = { plans: "Planned feature", bugs: "Open bug", questions: "Open question" };
   async function refreshEntry() {
     if (!drawer || drawer.kind !== "entry") return;
@@ -315,11 +325,22 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const t = splitTitle(d.title || "");
     paintPanel("drawerhead", "<div class='kicker'>" + esc(ENTRY_KINDS[file] || "Entry") + (t.meta ? " · " + esc(t.meta) : "") + "</div>" +
       "<h2 id='drawertitle'>" + esc(t.title) + "</h2>");
+    if (entryEditing && entryEditing.key === file + ":" + index) {
+      if (entryEditing.painted) return;
+      entryEditing.painted = true;
+      paintPanel("entrybody", "<div class='drawer-actions'>" +
+        "<button type='button' class='btn btn-sm btn-primary' data-act='entry-edit-save' data-arg='" + esc(file + ":" + index) + "'>Save</button>" +
+        "<button type='button' class='btn btn-sm' data-act='entry-edit-discard'>Discard</button></div>" +
+        "<input id='entryedittitle' type='text' value='" + esc(t.title) + "'>" +
+        "<textarea id='entryeditbody' rows='14'>" + esc(d.body || "") + "</textarea>");
+      return;
+    }
     const action = file === "questions"
       ? "<textarea id='answertext' rows='3' placeholder='Your answer — recorded in QUESTIONS.md'></textarea>" +
         "<button type='button' class='btn btn-sm btn-primary' data-act='answer-record' data-arg='" + index + "'>" + icon("chat") + "Record answer</button>" +
         "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + index + "'>Ask the director instead</button>"
       : "<button type='button' class='btn btn-sm' data-act='mention' data-arg='" + esc(file + ":" + index) + "'>" + icon("chat") + "Ask the director about this</button>" +
+        "<button type='button' class='btn btn-sm' data-act='entry-edit' data-arg='" + esc(file + ":" + index) + "'>Edit this entry</button>" +
         "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>";
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
     paintPanel("entrybody", "<div class='drawer-actions'>" + action + "</div><div class='md'>" +

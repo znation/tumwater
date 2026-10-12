@@ -114,6 +114,30 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
           ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md")
           : "That entry was already removed or moved — refreshed";
       });
+    } else if (act === "entry-edit") {
+      const [file, index] = arg.split(":");
+      const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
+      if (title !== undefined) startEntryEdit(arg, title);
+    } else if (act === "entry-edit-discard") {
+      stopEntryEdit();
+      refreshEntry();
+    } else if (act === "entry-edit-save") {
+      const [file, index] = arg.split(":");
+      // The title captured when editing began, not the list's current one: a shifted list must
+      // reach the server's title check as a mismatch rather than silently retarget the save.
+      const title = entryEditing && entryEditing.key === arg ? entryEditing.title : undefined;
+      const titleBox = $("entryedittitle");
+      const bodyBox = $("entryeditbody");
+      const newTitle = titleBox ? titleBox.value.trim() : "";
+      if (title === undefined) return;
+      if (!newTitle) { showFlash("Write a title first"); return; }
+      postAction("/api/backlog-edit", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title, newTitle, newBody: bodyBox ? bodyBox.value : "" }, (d) => {
+        stopEntryEdit();
+        closeDrawer();
+        return d && d.status === "edited"
+          ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md")
+          : "That entry was removed or moved — refreshed";
+      });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];

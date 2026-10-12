@@ -228,3 +228,36 @@ test("entry-cancel re-arms instead of firing when the entry at that position cha
   scope.runAct("entry-cancel", "plans:1");
   assert.equal(posts.length, 1);
 });
+
+test("entry-edit starts the form; entry-edit-save posts the edit unless the title is blank", () => {
+  const posts: unknown[] = [];
+  const flashes: string[] = [];
+  const started: unknown[] = [];
+  const boxes: Record<string, { value: string }> = { entryedittitle: { value: "  " }, entryeditbody: { value: "l1\n\nl2" } };
+  const lastStatus: { plans: string[] } = { plans: ["A", "B (planned 2026-10-12 by plan)"] };
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus,
+      entryEditing: { key: "plans:1", title: "B (planned 2026-10-12 by plan)" },
+      $: (id: string) => boxes[id],
+      startEntryEdit: (k: string, t: string) => started.push([k, t]),
+      stopEntryEdit: () => {},
+      refreshEntry: () => {},
+      closeDrawer: () => {},
+      showFlash: (m: string) => flashes.push(m),
+      postAction: (path: string, body: unknown) => posts.push([path, body]),
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  scope.runAct("entry-edit", "plans:1");
+  assert.deepEqual(started, [["plans:1", "B (planned 2026-10-12 by plan)"]]);
+  scope.runAct("entry-edit-save", "plans:1");
+  assert.deepEqual(posts, []);
+  assert.deepEqual(flashes, ["Write a title first"]);
+  boxes.entryedittitle!.value = " New ";
+  // The list shifts while the form is open: the save still carries the captured title.
+  lastStatus.plans = ["X", "A", "B (planned 2026-10-12 by plan)"];
+  scope.runAct("entry-edit-save", "plans:1");
+  assert.deepEqual(posts, [["/api/backlog-edit", { kind: "plan", position: 2, title: "B (planned 2026-10-12 by plan)", newTitle: "New", newBody: "l1\n\nl2" }]]);
+});
