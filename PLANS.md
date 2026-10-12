@@ -38,6 +38,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
+### Give the dashboard's New plan / File a bug form an optional multiline body, matching `tumwater plan|bug --file` (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `filePlanFromText`, `fileBugFromText` in `src/backlog/backlog-write.ts`) and the landed drawer edit (`POST /api/backlog-edit`, `handleBacklogEdit`). Independent of the waiting "Answer an open question from the TUI backlog pane" plan: it touches neither `src/ui/tui/` nor `src/cli/`)
+
+**Goal.** The dashboard's Plans/Bugs tabs have a New control (`POST /api/backlog-file`, `handleBacklogFile` in `src/gui/gui-endpoint-commands.ts`). It takes a title only, so an operator filing from the dashboard can't add a goal, approach, or repro steps. They have to file the title and then reopen the entry in the drawer to edit the body. The CLI's `--file` form already files a title plus a body kept line for line, checked by `bodyStructureProblem`. This plan gives the dashboard form an optional **Details** textarea that goes through the same validation and write path.
+
+**Approach.**
+1. `src/backlog/backlog-write.ts`:
+   - Extract the body normalization out of `splitEntryFile` into an exported `normalizeEntryBody(body: string): string`. It converts CRLF to LF, trims trailing whitespace on each line, and drops leading and trailing blank lines (`trimLeadingBlankLines` / `trimTrailingBlankLines`). `splitEntryFile` then calls it on the lines after the title, and its existing tests must stay green unchanged.
+   - Add an exported non-exiting `fileEntryWithBody(root: string, kind: "bug" | "plan", title: string, body: string): FiledEntry`. It calls `appendOperatorEntry` with PLANS.md / `PLANS_TEMPLATE` / `"Planned"` for a plan and BUGS.md / `BUGS_TEMPLATE` / `"Open"` for a bug, writing `title` through `collapseWhitespace` and `body` as given. The caller has already validated the title (non-empty) and the body (`bodyStructureProblem`). Doc comment: shared by the `--file` forms and the dashboard file endpoint. `filePlanFromText` and `fileBugFromText` keep their `fail()` checks and then call `fileEntryWithBody` instead of `appendOperatorEntry` directly.
+2. `src/gui/gui-endpoint-commands.ts`, `handleBacklogFile`: accept an optional `body` field (the JSON request body's `body` key; read it as `const rawBody = body.body`). Update the doc comment and the `readPostBody` example to `{"kind": "plan", "title": "...", "body": "optional markdown"}`.
+   - If `rawBody` is neither `undefined` nor a string, return 400 `body must be a string`.
+   - Otherwise `const entryBody = normalizeEntryBody(rawBody ?? "")`. If `bodyStructureProblem(entryBody)` is non-null, return 400 with that message, after the existing title and wake-length checks and before anything is written.
+   - Replace the `fileBug`/`filePlan` call with `fileEntryWithBody(root, kind, rawTitle, entryBody)`. The wake text, the `submitRolePromptAndWake` call, and the 200 reply shape `{ ok, file, title }` stay as they are. Drop `fileBug`/`filePlan` from the import if nothing else in the file uses them (check with grep).
+3. `src/ui/gui/gui-client-fleet.ts`, `renderBacklog`'s New-form markup (the `backlogNew && backlogNew.kind === kind` branch): after the `<input id='backlognew'>`, add `<textarea id='backlognewbody' rows='6' placeholder='Details (optional, markdown)'></textarea>`. The Save handler (the `backlognewsave` click branch) posts `{ kind, title, body: bodyBox ? bodyBox.value : "" }` with `const bodyBox = $("backlognewbody")`. The existing `backlogNewPainted` guard already keeps a poll from repainting the open form, so typed details survive polls.
+4. README.md Usage "Steer the project" row: where the sentence says the dashboard's plan/bug drawer edits an entry, add a short clause saying the Plans/Bugs tabs' New form files one with an optional markdown body.
+
+**Files touched.** `src/backlog/backlog-write.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/gui/gui-client-fleet.ts`, `README.md`, `test/gui-endpoints.test.ts`, `test/gui-client-fleet.test.ts`, `test/backlog-write.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-endpoints.test.ts`: a new test beside "handleBacklogFile files a bug or plan and wakes its loop, and 400s bad input untouched", using `serveBacklogFile`:
+  - `{ kind: "plan", title: "add z", body: "Goal.\r\n\r\n- a  \n- b\n\n" }` answers 200, and PLANS.md holds `### add z (reported by the operator …)` followed by the body `Goal.\n\n- a\n- b` line for line (CRLF converted, trailing spaces and the trailing blank lines gone). The feature inbox gets `planWakeText("add z")`.
+  - A bug with a body lands its body under BUGS.md's `## Open` the same way.
+  - `{ kind: "bug", title: "x", body: "### phantom" }`, `{ kind: "plan", title: "x", body: "```\nunclosed" }`, and `{ kind: "plan", title: "x", body: 7 }` each answer 400, leave both files byte-identical, and queue no wake.
+  - The existing title-only cases still pass unchanged, so an omitted `body` files an empty-bodied entry as before.
+- `test/backlog-write.test.ts`: `normalizeEntryBody` converts CRLF, trims trailing whitespace on each line, and drops edge blank lines while keeping inner blank lines. The existing `splitEntryFile` and `filePlanFromText` tests pass unchanged.
+- `test/gui-client-fleet.test.ts`: "the Plans and Bugs tabs offer a New form…" also asserts the open form's HTML contains `<textarea id='backlognewbody'`, and that a poll still keeps the form byte-identical. `GUI_CLIENT_FLEET_JS` matches `/body: bodyBox \? bodyBox\.value : ""/` (or an equivalent check that the Save post carries the textarea's value).
+- `npm run test` passes.
+
 ## Done
 
 ### File a structured plan request or bug report from a markdown file: `tumwater plan --file <path>` and `tumwater bug --file <path>` (`-` reads stdin), keeping the body's line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`parsePromptArgs`' `--file` branch in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug` file forms (`fileAndAnnounce`, `filePlan`, `fileBug` in `src/backlog/backlog-write.ts`). Independent of both waiting TUI plans: it touches neither `src/ui/tui/` nor the GUI) — done 2026-10-12
