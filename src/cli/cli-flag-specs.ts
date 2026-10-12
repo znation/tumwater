@@ -243,6 +243,10 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
+ * summary. Value-less, like JSON_FLAG. */
+export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
+
 /** The `--force` flag spec, accepted by `retire` (the only override-the-rails command): one
  * definition of the flag's spelling beside ROLE_FLAG and JSON_FLAG, so the gate's accepted
  * vocabulary cannot drift from the command body's `args.includes("--force")`. */

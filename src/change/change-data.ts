@@ -38,14 +38,15 @@ export interface RoleChangeView {
   /** Commits on the loop branch not on mainBranch (0 unless state is "ready"). */
   ahead: number;
   commits: RoleChangeCommit[];
-  /** The ahead-of-main patch ("" unless state is "ready"). */
+  /** The ahead-of-main patch ("" unless state is "ready"); under `--stat` the `git diff --stat`
+   * summary instead. */
   diff: string;
   /** Worktree-relative paths of every uncommitted change (staged, modified, untracked,
    * deleted — changedFiles' porcelain list; empty unless state is "ready"). */
   dirtyFiles: string[];
   /** The uncommitted patch: `git diff HEAD`, so staged and unstaged tracked edits both
    * appear ("" unless state is "ready"). Untracked paths have no diff content — they show
-   * in dirtyFiles only. */
+   * in dirtyFiles only. Under `--stat` this holds the stat summary. */
   uncommittedDiff: string;
 }
 
@@ -95,7 +96,11 @@ const DIFF_MAX_BYTES = 200_000;
 /** Collect the change the role's loop holds: both halves of the view, or a degraded state
  * when the worktree or the base branch is missing. Never throws on a degraded fleet — a
  * query about a loop that has not run yet must answer, not fail (report's rationale). */
-export async function collectRoleChange(root: string, role: string): Promise<RoleChangeView> {
+export async function collectRoleChange(
+  root: string,
+  role: string,
+  opts: { stat?: boolean } = {},
+): Promise<RoleChangeView> {
   const branch = branchName(role);
   const { config } = loadConfigSafe(root);
   const mainBranch = targetBranch(config?.baseBranch, await currentBranch(root));
@@ -118,9 +123,20 @@ export async function collectRoleChange(root: string, role: string): Promise<Rol
   if (wt === null || !(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
   const ahead = await aheadOfMain(wt, mainBranch);
   const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`));
-  const diff = ahead === 0 ? "" : await aheadOfMainDiff(wt, mainBranch);
+  // Under opts.stat both halves hold the uncapped `git diff --stat` summary (one line per file).
+  const diff =
+    ahead === 0
+      ? ""
+      : opts.stat
+        ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`)) ?? "")
+        : await aheadOfMainDiff(wt, mainBranch);
   const dirtyFiles = await changedFiles(wt);
-  const uncommittedDiff = dirtyFiles.length === 0 ? "" : await cappedWorkingDiff(wt);
+  const uncommittedDiff =
+    dirtyFiles.length === 0
+      ? ""
+      : opts.stat
+        ? ((await gitTry(wt, "diff", "--stat", "HEAD")) ?? "")
+        : await cappedWorkingDiff(wt);
   return { ...empty, state: "ready", ahead, commits, diff, dirtyFiles, uncommittedDiff };
 }
 

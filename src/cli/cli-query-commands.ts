@@ -6,7 +6,7 @@
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
-import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
+import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
@@ -91,16 +91,17 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // command. Past the gate an absent worktree still degrades to a `no worktree for
   // <role>` line (exit 0), so the command answers in any initialized directory —
   // report's rationale.
-  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG]);
+  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG]);
   await requireReadyRepo(root);
   // Absent --role is the fleet-wide form: one line per loop holding pending work
   // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
   // already failed above). A named role keeps the full per-role view.
   const role = parseRoleFlag(args, knownRoleIdsCached(root));
   if (role === null) {
+    if (args.includes("--stat")) fail("diff --stat needs --role <id> (the fleet roster prints no patch)");
     sayJsonOrRender(args, await collectFleetChanges(root), renderFleetChange);
   } else {
-    const change = await collectRoleChange(root, role);
+    const change = await collectRoleChange(root, role, { stat: args.includes("--stat") });
     sayJsonOrRender(args, change, renderRoleChange);
   }
 }

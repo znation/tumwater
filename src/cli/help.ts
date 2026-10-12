@@ -115,12 +115,13 @@ Usage:
                                    with no worktree or nothing pending are skipped, and a
                                    missing baseline prints the per-role view's degradation
                                    line; --json prints the {mainBranch, roles} roster
-  tumwater diff --role <id> [--json]
+  tumwater diff --role <id> [--stat] [--json]
                                    Show the change that loop holds: its branch's unlanded
                                    commits (one line each, plus the ahead-of-main patch) and
                                    its worktree's uncommitted edits (the file list, plus the
                                    patch — staged and unstaged alike); a loop with no worktree
-                                   yet prints \`no worktree for <id>\`; --json prints the
+                                   yet prints \`no worktree for <id>\`; --stat prints each patch's per-file
+                                   \`git diff --stat\` summary instead; --json prints the
                                    collector's payload as machine-readable data
   tumwater queue [--json]          List the durable land queue in execution order (oldest
                                    first): one line per waiting landing — position, loop, tick

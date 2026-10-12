@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater diff --role <id> --stat` prints per-file change summaries in place of the patches (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
+## Done
+
+### `tumwater diff --role <id> --stat` prints per-file change summaries in place of the patches (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
 
 **Goal.** `tumwater diff --role <id>` prints a loop's full ahead-of-main patch and its full uncommitted patch. Each can run to 200 KB (`aheadOfMainDiff`'s default cap, and `DIFF_MAX_BYTES` in `src/change/change-data.ts`). The quick question an operator usually asks, "which files is this loop touching, and how much?", has no compact answer today. `git diff --stat` answers it. After this change, `--stat` prints the same header, commit lines, and uncommitted file list, with each patch replaced by its `git diff --stat` summary.
 
@@ -54,8 +56,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - `diff --role feature --stat --json` parses. Its `diff` and `uncommittedDiff` each include `widget.md |`, and neither includes `+# widget`.
 - `diff --stat` without `--role` exits nonzero, and its stderr includes `diff --stat needs --role`.
 - Existing tests in test/cli-diff.test.ts, test/change-data.test.ts, test/change-render.test.ts, and the TUI tests pass unchanged. `diff --role feature` without `--stat` still prints `+# widget`.
-
-## Done
 
 ### The doctor refusals row says when a refused plan's prerequisites have left `## Planned`, so a refusal that may be stale stands out (planned 2026-10-12 by plan; done 2026-10-12 by feature; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
 

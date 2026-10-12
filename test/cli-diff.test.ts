@@ -213,3 +213,30 @@ test("fleet diff --json prints the roster: one entry per known role, no patch fi
     assert.ok(!("uncommittedDiff" in entry));
   }
 });
+
+test("diff --stat prints per-file summaries in place of the patches", async () => {
+  const { repo, wt } = await seededFeatureRepo();
+  fs.appendFileSync(path.join(wt, "widget.md"), "more\n");
+  const r = await cli(repo, "diff", "--role", "feature", "--stat");
+  assert.equal(r.code, 0);
+  for (const s of ["1 commit ahead of main", "add widget.md", "uncommitted (1 file): widget.md", "widget.md |"]) {
+    assert.ok(r.stdout.includes(s), s);
+  }
+  assert.ok(!r.stdout.includes("+# widget"));
+  assert.ok(!r.stdout.includes("+more"));
+  const j = await cli(repo, "diff", "--role", "feature", "--stat", "--json");
+  const view = JSON.parse(j.stdout);
+  for (const half of [view.diff, view.uncommittedDiff]) {
+    assert.ok(half.includes("widget.md |"));
+    assert.ok(!half.includes("+# widget"));
+  }
+  const plain = await cli(repo, "diff", "--role", "feature");
+  assert.ok(plain.stdout.includes("+# widget"));
+});
+
+test("diff --stat without --role fails", async () => {
+  const { repo } = await seededFeatureRepo();
+  const r = await cli(repo, "diff", "--stat");
+  assert.notEqual(r.code, 0);
+  assert.ok(r.stderr.includes("diff --stat needs --role"));
+});
