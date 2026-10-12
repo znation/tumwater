@@ -21,6 +21,7 @@ import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
 import { submitPrompt } from "../../inbox/inbox-submit.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
+import { tryCancelEntry } from "../../backlog/backlog-write.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { durationLabel } from "../../cli/cli-args.js";
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";
@@ -252,6 +253,9 @@ interface TuiKeysState {
    * History filters by exact loop (`history --role`), where `feature-2` is its own slot. */
   historyRole: string | null;
   selectedEntry: number | null;
+  /** The armed backlog cancel (first Ctrl+X on a selected plan or bug): the entry a second
+   * Ctrl+X would cancel, null once any other key lands. */
+  cancelArmed: { kind: "plan" | "bug"; position: number; title: string } | null;
   entryScroll: number;
   /** The Queued pane's row selection (null = list mode): the index into queuedRows of the
    * prompt shown in full, cleared on every Ctrl+T cycle like selectedEntry. */
@@ -418,6 +422,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // entry shown in full — plans first, then bugs, then questions. Cleared on every Ctrl+T,
   // so cycling back into the view always starts at today's heading list.
   let selectedEntry: number | null = null;
+  let cancelArmed: { kind: "plan" | "bug"; position: number; title: string } | null = null;
   // The Queued pane's row selection (null = list mode): the index into queuedRows of the
   // prompt shown in full. Cleared on every Ctrl+T, like selectedEntry, so cycling back into
   // the pane starts at today's list.
@@ -631,6 +636,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   };
 
   const handleKey = (str: string | undefined, key: { ctrl?: boolean; name?: string }): void => {
+    // Every key starts disarmed; only the backlog Ctrl+X branch reads `armed`.
+    const armed = cancelArmed;
+    cancelArmed = null;
     if (key.ctrl && key.name === "d") {
       deps.quit();
       return;
@@ -1059,6 +1067,49 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         }
       } catch (err) {
         flashError(err);
+      }
+      deps.requestRender();
+      return;
+    }
+    if (
+      key.ctrl && key.name === "x" &&
+      !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor &&
+      view === roleIds.length + 1
+    ) {
+      // Ctrl+X twice cancels the selected plan or bug through the non-exiting core the
+      // dashboard drawer uses; the title check inside tryCancelEntry refuses a stale selection.
+      if (selectedEntry !== null) {
+        const entries = flat();
+        const sel = Math.min(selectedEntry, entries.length - 1);
+        const picked = entries[sel];
+        if (picked === undefined) {
+          // an emptied list has nothing to cancel
+        } else if (picked.label === "question") {
+          flashMessage("only a plan or open bug can be cancelled here");
+        } else {
+          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
+          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
+          const target = { kind, position, title: picked.title };
+          if (armed !== null && armed.kind === kind && armed.position === position) {
+            // The armed title (not the re-read one) goes to tryCancelEntry, so an entry that
+            // changed since the arm reports `moved` instead of being cancelled.
+            try {
+              const outcome = tryCancelEntry(root, kind, position, armed.title);
+              selectedEntry = null;
+              entryScroll = 0;
+              flashMessage(
+                outcome.status === "cancelled"
+                  ? `cancelled ${kind} #${position}: ${target.title}`
+                  : `that ${kind} was already removed or moved — nothing cancelled`,
+              );
+            } catch (err) {
+              flashError(err);
+            }
+          } else {
+            cancelArmed = target;
+            flashMessage(`press Ctrl+X again to cancel ${kind} #${position} — any other key keeps it`);
+          }
+        }
       }
       deps.requestRender();
       return;
@@ -1495,6 +1546,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         scopeRole,
         historyRole,
         selectedEntry,
+        cancelArmed,
         entryScroll,
         selectedQueued,
         queuedEditFor,

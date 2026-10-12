@@ -233,6 +233,79 @@ test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body
   assert.ok(renders() > 0);
 });
 
+/** A root with two planned entries, two open bugs, and one open question, the keys on the backlog view. */
+function backlogCancelRig() {
+  const root = makeRoot();
+  const plans = "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
+  const bugs = "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans);
+  fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  const down = (n: number): void => {
+    for (let i = 0; i < n; i++) keys.handleKey(undefined, { name: "down" });
+  };
+  const ctrlX = (): void => keys.handleKey(undefined, { ctrl: true, name: "x" });
+  const read = (f: string): string => fs.readFileSync(path.join(root, f), "utf8");
+  return { root, keys, down, ctrlX, read, plans, bugs };
+}
+
+test("backlog Ctrl+X arms, then a second Ctrl+X cancels the selected bug", () => {
+  const { keys, down, ctrlX, read, plans, bugs } = backlogCancelRig();
+  down(4); // plan 1, plan 2, bug 1, bug 2
+  ctrlX();
+  assert.deepEqual(keys.state().cancelArmed, {
+    kind: "bug",
+    position: 2,
+    title: "Bug two (found by test 2026-10-02)",
+  });
+  assert.equal(read("BUGS.md"), bugs);
+  assert.match(keys.state().flash ?? "", /press Ctrl\+X again/);
+  ctrlX();
+  assert.ok(!read("BUGS.md").includes("Bug two") && read("BUGS.md").includes("Bug one"));
+  assert.equal(read("PLANS.md"), plans);
+  assert.equal(keys.state().cancelArmed, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash ?? "", /cancelled bug #2/);
+});
+
+test("backlog Ctrl+X disarms on any other key, and refuses questions and list mode", () => {
+  const { keys, down, ctrlX, read, plans } = backlogCancelRig();
+  ctrlX(); // list mode
+  assert.equal(keys.state().cancelArmed, null);
+  down(1);
+  ctrlX();
+  assert.notEqual(keys.state().cancelArmed, null);
+  keys.handleKey("a", { name: "a" });
+  assert.equal(keys.state().cancelArmed, null);
+  ctrlX();
+  assert.equal(read("PLANS.md"), plans, "a re-arm writes nothing");
+  down(4); // → the question
+  ctrlX();
+  assert.equal(keys.state().cancelArmed, null);
+  assert.match(keys.state().flash ?? "", /only a plan or open bug can be cancelled here/);
+  assert.equal(read("PLANS.md"), plans);
+});
+
+test("backlog Ctrl+X on a moved entry cancels nothing, and the budget editor blocks it", () => {
+  const { root, keys, down, ctrlX, read } = backlogCancelRig();
+  down(1);
+  ctrlX();
+  const rewritten = "## Planned\n\n### Other (planned 2026-10-02 by test)\n\nbody\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), rewritten);
+  ctrlX();
+  assert.equal(read("PLANS.md"), rewritten);
+  assert.match(keys.state().flash ?? "", /already removed or moved/);
+  assert.equal(keys.state().selectedEntry, null);
+  down(1);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  ctrlX();
+  assert.equal(keys.state().cancelArmed, null);
+  assert.equal(read("PLANS.md"), rewritten);
+});
+
 test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   const root = makeRoot();
   // 20 events; the 5-line budget leaves a 15-event page window.
