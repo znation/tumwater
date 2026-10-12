@@ -6,7 +6,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names a red main: a "main red" check that warns on code loops held by the red-main gate (planned 2026-10-12 by plan; independent of the waiting "Idle loops say why they are idle, part 2/2")
+
+**Goal:** doctor's hold checks cover the pause, quiet hours, budget, claude window, maintenance quota, and error streaks, but not the hold that stops every code loop: `mainRedGate` (src/baseline/main-red.ts) ending each blocked tick `main_red` while main's suite is red. The table shows `main red` per loop, but doctor, its `--json`, the dashboard's Health card, and the TUI's Health tab say nothing. Add the check, computed from the same fact the status phase reads, so the two surfaces cannot disagree.
+
+**Approach:**
+- Move `mainCheckRecovered(mainCheck, s)` out of src/ui/status-model.ts into src/status/status-polls.ts, next to `MainCheckStatus` and `mainCheckForPoll`, and export it. Type its first parameter `MainCheckStatus | undefined`, which is what `StatusSnapshot["mainCheck"]` is. Keep its doc comment. status-model.ts imports it from there, and `loopPhase`'s `"main red"` rung is otherwise unchanged. The doctor module does not import from src/ui.
+- In the same file, add and export `heldByMainRed(s: LoopState, mainCheck: MainCheckStatus | undefined): boolean`, returning `s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s)`. `loopPhase`'s rung becomes `if (heldByMainRed(s, mainCheck)) return "main red";`, which gives one predicate to both surfaces.
+- In src/doctor/doctor-holds.ts, add `checkMainRed(root: string, config: TumwaterConfig | undefined): CheckOutcome`, shaped like `checkErrorStreaks`:
+  - An undefined config returns `okOutcome("not checked — tumwater.json unreadable")`.
+  - Otherwise, for `loopIds(config).map((id) => loadLoopState(root, id))`, keep the states for which `heldByMainRed(s, mainCheckForPoll(root, config))` holds, with the main check read once. Sort them by role.
+  - None held returns `okOutcome("no loop held by a red main")`.
+  - Otherwise return `warnOutcome(\`red main holds ${plural(n, "code loop")}: ${roles.join(", ")}${cause}${healer}\`)`:
+    - `cause` is ` — ${squash(first.lastError, 160)}` from the first held state that carries a `lastError` (mainRedGate's outcome error, "main <sha> is red (<script>: <headline>) — authoring skipped until main is green"), or empty.
+    - `healer` is `; the bugfix loop is exempt and repairs it` when `loopIds(config)` contains an id whose `baseRoleOf` is `"bugfix"`, else `; no bugfix loop is enabled to repair it — fix main by hand or enable bugfix`.
+  - It is a warn, not a fail: a red main does not stop the fleet from running.
+- src/doctor/doctor.ts `runDoctor`: add `{ name: "main red", ...checkMainRed(root, config) }` directly after `"error streaks"`. The TUI Health tab (`runDoctor` via src/ui/tui/tui-keys.ts) and the dashboard Health card (`GET /api/doctor` in src/gui/gui-endpoints.ts) render `runDoctor`'s list, so they pick the row up with no change of their own.
+- README.md: in the Audit row's `tumwater doctor` parenthetical, after "loops failing tick after tick (and whether they are paused)", add ", and code loops held by a red main".
+
+**Files:** src/status/status-polls.ts, src/ui/status-model.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, test/doctor-holds.test.ts, test/doctor.test.ts, README.md.
+
+**Acceptance criteria:**
+- test/doctor-holds.test.ts gains `checkMainRed` cases, with states written through `saveLoopState` the way `streakRoot` does:
+  - an undefined config is "not checked";
+  - no state at `main_red` is ok;
+  - a `feature` state with `lastResult: "main_red"` and a `lastError` warns naming `feature`, "1 code loop", and the squashed error;
+  - the same state carrying a `queuedSummary` is ok;
+  - with a `build_check` event appended to the event log carrying `scope: "landing"` and `status: "passed"` (one of the scopes `mainCheckForPoll`'s scan accepts) with a `ts` after the state's `lastTickEndedAt`, the state is ok;
+  - with `bugfix` among the enabled loops the detail names the bugfix loop as the repairer, and without it the detail says no bugfix loop is enabled.
+- test/doctor.test.ts's pinned check-name list gains `"main red"` right after `"error streaks"`.
+- The existing test/status-model.test.ts cases around the main-red label (the ones exercising `snap.mainCheck`) pass unchanged.
+- `grep -n "function mainCheckRecovered" src/ui/status-model.ts` finds nothing.
+- `npm run test` passes.
 
 ## Done
 
@@ -41,7 +72,6 @@ Second half of the split of the BUGS.md open entry "The dashboard says "Queued �
 - The page's queued detail no longer contains "slot" or "deferred": `grep -rn 'waiting for a free slot' src/ui` finds nothing (the phrase survives only in unrelated landing/worktree comments).
 - The BUGS.md entry has moved to `## Fixed` with today's Fixed date.
 - `npm run test` passes.
-
 
 
 ### Idle loops say why they are idle, part 1/2: the scheduling poll records why it skipped a due loop (planned 2026-10-12 by plan; done 2026-10-12 by feature)
