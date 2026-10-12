@@ -18,7 +18,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 5. `src/ui/gui/gui-client-loops.ts`, `phaseDetail(l, info, d)`: compute the detail as today. Then, when `d.scheduledWake` is set, its `atMs > Date.now()`, and its `roles` include `l.role` or `l.instanceOf` (the consumer matches base roles too, through `requested.includes(r.baseRole)` in `roleRequestTargets`), append `" · operator wake in " + humanSeconds(Math.max(0, Math.round((d.scheduledWake.atMs - Date.now()) / 1000)))`. A row with an empty detail gets the phrase without the leading ` · `. Rows that do not match return exactly what they return today.
 6. README: in the "Control the loops" row's `wake --in` sentence, add that `tumwater status` and the dashboard's loop rows show the pending wake until it fires.
 
-Out of scope: the marker holds one wake, so a later `wake` request overwrites a pending scheduled one. That happens in the CLI too, and it is a separate behavior question. This plan shows whichever wake the marker holds, which is the one that will actually fire.
+Out of scope: the marker holds one wake, so a later `wake` request overwrites a pending scheduled one. That happens in the CLI too, and it is a separate behavior question. This plan shows whichever wake the marker holds, which is the one that will actually fire. Sibling: "Keep every pending scheduled wake…" (planned 2026-10-12) moves scheduled wakes into per-request files under `scheduledWakeDir` and adds `pendingScheduledWakes`. If it lands first, build step 1 on that reader (earliest entry), keeping a future-deadline `wake.json` as a fallback.
 
 **Files touched.** `src/fleet/fleet-state.ts`, `src/status/status-data.ts`, `src/ui/status-payload.ts`, `src/ui/badges.ts`, `src/ui/status-render.ts`, `src/ui/gui/gui-client-loops.ts`, README.md. Tests go in `test/fleet-state.test.ts`, `test/badges.test.ts`, `test/status-payload.test.ts` (or `test/status-render.test.ts` for the header), and `test/gui-client-loops.test.ts`.
 
@@ -30,6 +30,39 @@ Out of scope: the marker holds one wake, so a later `wake` request overwrites a 
   - A sleeping row whose role is in `d.scheduledWake.roles` gets `"wakes in 2m · operator wake in 1h"` (the fixture pins `atMs` to `now + 3_600_000`).
   - A row whose `instanceOf` is listed also matches.
   - A row with an unlisted role, and any row when `d.scheduledWake` is absent, return exactly what the existing assertions expect.
+- `npm run test` passes.
+
+### Keep every pending scheduled wake: a later `wake` or dashboard prompt no longer silently drops a `wake --in` (planned 2026-10-12 by plan; fixes a latent overwrite in the landed `tumwater wake --in` / dashboard "Wake later". `.tumwater/wake.json` (`wakeRequestPath` in `src/paths.ts`) holds ONE request, and `requestWake` in `src/operator/operator-intent.ts` replaces it with `writeJsonAtomic`. So `wake feature --in 2h` followed by any immediate wake drops the scheduled one with no message. That includes `submitRolePromptAndWake`, which every dashboard/TUI prompt submit calls. A second `wake plan --in 1h` drops it the same way. Sibling of the waiting "Show a pending scheduled wake in `tumwater status`…" plan above: that plan's reader moves to this plan's directory if this lands first (see step 5). Independent of the entry-drawer cancel plan)
+
+**Goal.** Each scheduled wake is its own marker file, so it survives every later wake request, immediate or scheduled, until its deadline passes and a live fleet applies it. Immediate wakes keep today's `wake.json` path, contract, and wording unchanged.
+
+**Approach.**
+1. `src/paths.ts`: add `export function scheduledWakeDir(root: string): string`, which returns `path.join(tumwaterDir(root), "wakes")`. Its doc comment should say that each file in it is one scheduled wake (`{ at, roles, notBeforeMs }`), and that a file per request is what keeps a later request from overwriting a pending one.
+2. `src/operator/operator-intent.ts`, `requestWake`: on the `deferred` branch, write the marker to `path.join(scheduledWakeDir(root), `${now}-${process.pid}-${crypto.randomBytes(4).toString("hex")}.json`)` (mkdir `recursive` first) instead of `wakeRequestPath(root)`. The non-deferred branch is unchanged. Update the stale comment above the write: the "torn marker drops notBeforeMs" rationale still holds per file. The return wording is unchanged.
+3. `src/operator/operator-requests.ts`: extract the body of `consumeWakeRequest` after the deadline check (the `roleRequestTargets` → `r.wake()` → `runnerlessTargets` → `removeQuiet` sequence) into a private `applyWakeMarker(root, markerFile, runners)`. `consumeWakeRequest` then does three things:
+   - It keeps handling `wake.json` exactly as today. That includes its `notBeforeMs` check, because a marker written by the pre-upgrade build may still carry a deadline.
+   - It reads `scheduledWakeDir(root)` (a missing dir is a no-op), takes only names ending in `.json` (this skips `writeTextAtomic`'s `.tmp-<pid>` files), and sorts them.
+   - For each file, it applies the wake through `applyWakeMarker` when the marker is corrupt (the same wake-every-runner policy `wake.json` has) or when `notBeforeMs` is missing, non-finite, or `<= Date.now()`. A future deadline leaves the file in place.
+
+   No lock is needed: writers only create new files, and only the consumer deletes them.
+4. Add `export function pendingScheduledWakes(root: string, now: number): { roles: string[]; atMs: number }[]` to `src/operator/operator-requests.ts`. It is a pure reader: well-formed future entries only (roles a non-empty all-string array, the `requestedRoles` shape check), sorted by `atMs` ascending, and nothing deleted. This plan uses it only in its tests. It exists so the display plan has one reader of the format.
+5. Sibling hand-off: if the display plan's `scheduledWake` in `src/fleet/fleet-state.ts` has already landed, rewrite its body in this change to return the earliest entry of `pendingScheduledWakes(root, now)`, keeping a legacy future-deadline `wake.json` as a fallback. If it has not landed, edit that plan's step 1 in PLANS.md in this change so it builds on `pendingScheduledWakes` instead of reading `wake.json`. Its "Out of scope: the marker holds one wake" paragraph also goes, since this plan fixes that.
+6. README "Control the loops" row: add one clause after the `wake --in 45m` sentence saying that each scheduled wake stands on its own, so later wakes do not cancel it.
+
+Out of scope: two immediate wakes inside one poll (~2 s) still share `wake.json`, so the second one's role list replaces the first's. The window is one poll long and the dropped wake's loop still wakes on its own backoff.
+
+**Files touched.** `src/paths.ts`, `src/operator/operator-intent.ts`, `src/operator/operator-requests.ts`, README.md, and possibly `src/fleet/fleet-state.ts` (step 5). The tests that read a scheduled marker through `wakeRequestPath` move to the new directory: `test/cli-operators.test.ts` (`wake --in`), `test/gui-operator.test.ts` (`inSeconds`), `test/operator-commands.test.ts`, and `test/operator-intent.test.ts` (the `wake.json` read with `notBeforeMs`, and the corrupt-superset test that asserts `notBeforeMs` survives). Find them with `grep -rn 'notBeforeMs' test | grep -v -i prompt`. New consumer tests go in `test/operator-requests.test.ts`.
+
+**Acceptance criteria.**
+- `requestWake(root, ["feature"], 3_600_000)` followed by `requestWake(root, ["plan"])` leaves one file in `scheduledWakeDir(root)` carrying `notBeforeMs`, and `wake.json` without `notBeforeMs`. Two scheduled requests leave two files.
+- `consumeWakeRequest`:
+  - It wakes the `plan` runner and removes `wake.json`, but leaves the scheduled file and does not wake `feature`.
+  - With the scheduled file's `notBeforeMs` rewritten into the past, the next call wakes `feature`, logs its `wake` event with `reason: "operator"`, and removes the file.
+  - A corrupt `.json` file in the dir wakes every runner and is removed.
+  - A `*.json.tmp-123` file is ignored and left in place.
+  - A legacy `wake.json` with a future `notBeforeMs` is still left in place, as today.
+- `pendingScheduledWakes` returns future entries sorted by `atMs`. It skips past-deadline and corrupt entries without deleting them.
+- `submitRolePromptAndWake` after a `wake feature --in 1h` leaves the scheduled file in place (pinned in `test/operator-intent.test.ts`).
 - `npm run test` passes.
 
 ## Done
