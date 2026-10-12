@@ -184,6 +184,9 @@ test("pause-edit mode shows its own hint keys and prompt prefix", () => {
   const base = { budget: false, rolePromptFor: null, deferMode: false, pauseEditMode: true, defer: null, queuedEditFor: null, answerFor: null };
   assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
   assert.equal(plain(promptPrefix(base)), "pause › ");
+  const forRole = { ...base, pauseEditRole: "qa" };
+  assert.equal(plain(promptPrefix(forRole)), "pause qa › ");
+  assert.deepEqual(hintLine({ kind: "activity", role: null, grep: null }, forRole, 300).map((s) => s.text).join("").includes("Enter pause qa"), true);
 });
 
 test("the prompt line names who Enter sends to", () => {

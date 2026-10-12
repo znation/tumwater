@@ -198,6 +198,25 @@ export function parsePauseInput(
   return reason ? { ok: true, forMs: ms, reason } : { ok: true, forMs: ms };
 }
 
+/** Parse the TUI's Ctrl+P per-loop pause line: empty pauses until resumed, a duration pauses
+ * for it. Per-role pauses carry no reason (`pause --role` refuses `--reason`), so anything
+ * else is refused rather than dropped. Same 90d cap as parsePauseInput. */
+export function parseRolePauseInput(
+  text: string,
+): { ok: true; forMs?: number } | { ok: false; error: string } {
+  const t = text.trim();
+  if (t === "") return { ok: true };
+  const ms = parseDurationMs(t);
+  if (ms === null) {
+    return {
+      ok: false,
+      error: "a loop pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are fleet-wide, use Ctrl+F",
+    };
+  }
+  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "pause is capped at 90d" };
+  return { ok: true, forMs: ms };
+}
+
 /** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
  * error so the flash can show it and the editor stays open for a fix — whitespace-only input
  * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc

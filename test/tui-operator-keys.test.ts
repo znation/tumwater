@@ -1,4 +1,4 @@
-/** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P pause/resume and
+/** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor on an unpaused loop, an immediate resume on a paused one) and
  * its fleet-pause interplay note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's
  * wake marker, and the keys' inertness outside transcript views and in budget mode.
  * Like the other topic-named slices (loop-refusal,
@@ -26,7 +26,9 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     assert.match(tui.lastFrame(), /Ctrl\+N notebook · Ctrl\+P pause\/resume · Ctrl\+W wake/); // header hint (Ctrl+A clips at 100 cols)
 
-    tui.key(undefined, "p", { ctrl: true });
+    tui.key(undefined, "p", { ctrl: true }); // opens the duration editor
+    assert.deepEqual(pausedRoles(repo), [], "the editor writes nothing until Enter");
+    tui.key(undefined, "return");
     assert.deepEqual(pausedRoles(repo), ["clean"]);
     assert.match(tui.lastFrame(), /role clean paused — it stops starting new ticks/);
     // The status table's cell for the paused idle role reads `paused` while the marker stands
@@ -50,6 +52,7 @@ test("Ctrl+P's resume flash carries the fleet-pause interplay note while the fle
     (process.stdout as { columns?: number }).columns = 220;
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "p", { ctrl: true }); // pause the role under the fleet pause
+    tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /role clean paused/);
     tui.key(undefined, "p", { ctrl: true }); // resume it
     assert.deepEqual(pausedRoles(repo), []);
@@ -57,6 +60,54 @@ test("Ctrl+P's resume flash carries the fleet-pause interplay note while the fle
       tui.lastFrame(),
       /role clean resumed[^]*\(the fleet pause is still active — `tumwater resume` lifts it\)/,
     );
+  });
+});
+
+test("Ctrl+P, a duration, Enter pauses the viewed loop for that long", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    const before = Date.now();
+    tui.key(undefined, "p", { ctrl: true });
+    tui.key("2", "2");
+    tui.key("h", "h");
+    tui.key(undefined, "return");
+    assert.deepEqual(pausedRoles(repo), ["clean"]);
+    const marker = JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")) as { until?: number };
+    assert.ok(marker.until !== undefined && Math.abs(marker.until - (before + 7_200_000)) < 60_000);
+    assert.match(tui.lastFrame(), /role clean paused for 2h/);
+  });
+});
+
+test("Esc cancels the loop pause editor and restores the draft; an invalid entry stays in it", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key("x", "x"); // a draft on the prompt line
+    tui.key(undefined, "p", { ctrl: true });
+    tui.key("2", "2");
+    tui.key("h", "h");
+    tui.key(undefined, "escape");
+    assert.deepEqual(pausedRoles(repo), []);
+    assert.match(tui.lines().at(-1)!, /x$/);
+
+    tui.key(undefined, "p", { ctrl: true });
+    for (const c of "later") tui.key(c, c);
+    tui.key(undefined, "return");
+    assert.deepEqual(pausedRoles(repo), []);
+    assert.match(tui.lastFrame(), /a loop pause takes only a duration/);
+    assert.match(tui.lines().at(-1)!, /^pause clean ›/);
+  });
+});
+
+test("Ctrl+P in role-prompt mode pauses nothing and flashes the refusal", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "r", { ctrl: true });
+    tui.key(undefined, "p", { ctrl: true });
+    assert.deepEqual(pausedRoles(repo), []);
+    assert.match(tui.lastFrame(), /finish or cancel the role prompt first/);
   });
 });
 
@@ -245,6 +296,7 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     tui.key(undefined, "escape"); // leave budget mode
     fs.mkdirSync(pausedRolesPath(repo), { recursive: true });
     tui.key(undefined, "p", { ctrl: true });
+    tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /error: /);
   });
 });

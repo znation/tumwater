@@ -6,7 +6,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Give one loop a timed pause from the TUI: Ctrl+P on an unpaused loop takes a duration, matching `tumwater pause --role <id> --for <duration>` (planned 2026-10-12 by plan; sibling of the landed TUI Ctrl+F fleet pause editor (`pauseEditMode`, `exitPauseEditMode`, `parsePauseInput` in `src/ui/tui/tui-input.ts`) and the landed CLI per-role timed pause (`cmdPause`'s `--role` branch in `src/operator/operator-commands.ts` over `pauseRole(root, role, untilMs)` in `src/fleet/fleet-state.ts` and `rolePauseMessage(root, role, changed, timed, now)` in `src/operator/operator-intent.ts`) and the dashboard's per-loop `pause-for` chooser. Today the TUI's Ctrl+P on a loop's transcript only toggles a standing pause, so "hold feature for 2h" means a second terminal. Independent of the waiting "Cancel pending scheduled wakes from the dashboard" plan: this plan touches no `src/gui`, `src/ui/gui`, or `src/operator` file)
+
+## Done
+
+### Give one loop a timed pause from the TUI: Ctrl+P on an unpaused loop takes a duration, matching `tumwater pause --role <id> --for <duration>` (planned 2026-10-12 by plan; sibling of the landed TUI Ctrl+F fleet pause editor (`pauseEditMode`, `exitPauseEditMode`, `parsePauseInput` in `src/ui/tui/tui-input.ts`) and the landed CLI per-role timed pause (`cmdPause`'s `--role` branch in `src/operator/operator-commands.ts` over `pauseRole(root, role, untilMs)` in `src/fleet/fleet-state.ts` and `rolePauseMessage(root, role, changed, timed, now)` in `src/operator/operator-intent.ts`) and the dashboard's per-loop `pause-for` chooser. Today the TUI's Ctrl+P on a loop's transcript only toggles a standing pause, so "hold feature for 2h" means a second terminal. Independent of the waiting "Cancel pending scheduled wakes from the dashboard" plan: this plan touches no `src/gui`, `src/ui/gui`, or `src/operator` file); done 2026-10-12 by feature
 
 **Goal.** On a loop's transcript view, Ctrl+P on an unpaused loop opens the same one-line pause editor Ctrl+F opens, but for that loop and taking only a duration: Enter on an empty line pauses until resumed, Enter on `2h` pauses for two hours and auto-resumes, Esc cancels. Ctrl+P on a paused loop still resumes at once. The flash is the CLI's wording, so the surfaces cannot drift.
 
@@ -29,9 +32,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - "the per-loop keys are inert outside transcript views, in budget mode, and on failure flash an error" keeps its inertness assertions unchanged. Its failure step (the paused-roles path made a directory) now opens the editor first, so it presses Enter after Ctrl+P and still sees `error: ` in the frame, with the TUI alive. The Ctrl+F tests pass unchanged.
 - `test/tui-frame.test.ts`: `promptPrefix`/`hintLine` with `pauseEditMode: true, pauseEditRole: "qa"` render `pause qa › ` and `Enter pause qa`; without `pauseEditRole` they render as today.
 - `npm run test` passes.
-
-
-## Done
 
 ### Cancel pending scheduled wakes from the dashboard, matching `tumwater wake --cancel [--role <id>]` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater wake --cancel` (`cancelScheduledWakes` in `src/operator/operator-requests.ts`, called from `cmdWake`'s `--cancel` branch in `src/operator/operator-commands.ts`) and the landed dashboard scheduling controls: the Loops card's "Wake later" menu (`wake-later` region of `src/ui/gui/gui-client-loops.ts`) and the loop drawer's "Wake later…" chooser (`wake-in` in `rowAction`, `ROLE_WAKE_CHOICES`). Today the dashboard can schedule a wake and shows it ("operator wake in 1h" from `phaseDetail`) but cannot take it back, so an operator who scheduled the wrong one has to switch to the CLI. This plan touches no `src/ui/tui` file; done 2026-10-12)
 

@@ -361,7 +361,10 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   collectors `tumwater report --since` and `tumwater report --failures --since` use, with the
   hint line naming it (`window: default` or `window: <window>`).
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
-  toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
+  on an unpaused loop opens a duration editor (empty pauses until resumed, Esc cancels) that
+  writes the same `pauseRole` marker `tumwater pause --role --for` does — the deadline is the
+  paused-roles marker's one shared field, as with the CLI — and on a paused loop resumes it at
+  once, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
   its backoff, `Ctrl+N` cycles the pane live transcript → notebook → change and back: the
   notebook step is a read-only view of the loop's notebook and next tick's assembled prompt
   (the same two things the dashboard drawer shows; the tab strip reads Notebook and PgUp/PgDn

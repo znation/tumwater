@@ -53,6 +53,7 @@ import {
   parseBudgetInput,
   parseDeferInput,
   parsePauseInput,
+  parseRolePauseInput,
   parseRolePromptInput,
 } from "./tui-input.js";
 import {
@@ -246,6 +247,8 @@ interface TuiKeysState {
   deferMode: boolean;
   /** Whether the prompt line is editing the fleet pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
+  /** The loop the pause editor pauses, null for the fleet editor (Ctrl+F). */
+  pauseEditRole: string | null;
   /** The pending defer delay as a human label (durationLabel), or null when the next prompt
    * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
   defer: string | null;
@@ -400,6 +403,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let deferSavedInput = "";
   let deferSavedCursor = 0;
   let pauseEditMode = false;
+  let pauseEditRole: string | null = null;
   let pauseSavedInput = "";
   let pauseSavedCursor = 0;
   // The prompt line's session history (tui-prompt-history.ts's rules): every successfully submitted
@@ -586,6 +590,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const exitPauseEditMode = (): void => {
     if (!pauseEditMode) return;
     pauseEditMode = false;
+    pauseEditRole = null;
     input = pauseSavedInput;
     cursor = pauseSavedCursor;
     promptHistory = resetPromptRecall(promptHistory);
@@ -860,6 +865,12 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     // Every branch is a disk write that can fail (a lock timeout, a torn fs), and an
     // unguarded throw would escape this keypress handler and kill the TUI — flash the
     // reason instead, the same contract the prompt-submit path below honors.
+    if (key.ctrl && key.name === "p" && pauseEditRole !== null) {
+      // A second Ctrl+P closes the per-loop pause editor, mirroring Ctrl+F's second press.
+      exitPauseEditMode();
+      deps.requestRender();
+      return;
+    }
     if (
       !budgetMode &&
       !deferMode && !pauseEditMode &&
@@ -897,13 +908,27 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // Toggle by the marker's current state, read fresh: pauseRole/resumeRole's false
           // return means another window raced us to the same state, and the wording
           // helpers render that honestly — the changed-state contract the CLI prints.
-          const paused = pausedRoles(root).includes(role);
-          const changed = paused ? resumeRole(root, role) : pauseRole(root, role);
-          flashMessage(
-            paused
-              ? roleResumeMessage(root, role, changed)
-              : rolePauseMessage(root, role, changed),
-          );
+          if (pausedRoles(root).includes(role)) {
+            flashMessage(roleResumeMessage(root, role, resumeRole(root, role)));
+          } else if (rolePromptFor || searchMode) {
+            flashMessage(
+              rolePromptFor
+                ? "finish or cancel the role prompt first (Esc cancels)"
+                : "finish or cancel the search first (Esc cancels)",
+            );
+          } else {
+            // An unpaused loop opens the one-line duration editor; nothing is written until
+            // Enter. Empty pauses until resumed.
+            const settled = settlePromptRecall(promptHistory, input, cursor);
+            promptHistory = settled.history;
+            pauseSavedInput = settled.text;
+            pauseSavedCursor = settled.cursor;
+            pauseEditMode = true;
+            pauseEditRole = role;
+            input = "";
+            cursor = 0;
+            flashMessage(`pause ${role}: [duration], e.g. "2h" (empty pauses until resumed) — Enter to pause, Esc to cancel`);
+          }
         } else if (key.name === "a") {
           const result = requestAbort(root, role);
           flashMessage(result.ok ? result.message : `error: ${result.error}`);
@@ -1545,18 +1570,38 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       } else if (pauseEditMode) {
         // Enter in pause-edit mode parses "[duration] [reason]" and writes the same marker
         // `tumwater pause --for/--reason` does. An invalid entry flashes and STAYS in the editor.
-        const parsed = parsePauseInput(input);
+        const target = pauseEditRole;
+        const parsed = target !== null ? parseRolePauseInput(input) : parsePauseInput(input);
         if (!parsed.ok) {
           flashMessage(parsed.error);
-        } else {
+        } else if (target !== null) {
           try {
-            const until = parsed.forMs === undefined ? undefined : now() + parsed.forMs;
-            const changed = pauseFleet(root, until, parsed.reason);
+            const at = now();
+            const until = parsed.forMs === undefined ? undefined : at + parsed.forMs;
+            const changed = pauseRole(root, target, until);
             exitPauseEditMode();
-            const forSuffix = parsed.forMs === undefined ? "" : ` for ${durationLabel(parsed.forMs)}`;
+            flashMessage(
+              rolePauseMessage(
+                root,
+                target,
+                changed,
+                until === undefined ? undefined : { ms: parsed.forMs!, untilMs: until },
+                at,
+              ),
+            );
+          } catch (err) {
+            flashError(err);
+          }
+        } else {
+          const fleet = parsed as Extract<ReturnType<typeof parsePauseInput>, { ok: true }>;
+          try {
+            const until = fleet.forMs === undefined ? undefined : now() + fleet.forMs;
+            const changed = pauseFleet(root, until, fleet.reason);
+            exitPauseEditMode();
+            const forSuffix = fleet.forMs === undefined ? "" : ` for ${durationLabel(fleet.forMs)}`;
             flashMessage(
               changed || until !== undefined
-                ? `${fleetPausePhrase()}${forSuffix}${changed && parsed.reason ? `: ${parsed.reason}` : ""}`
+                ? `${fleetPausePhrase()}${forSuffix}${changed && fleet.reason ? `: ${fleet.reason}` : ""}`
                 : "fleet is already paused",
             );
           } catch (err) {
@@ -1783,6 +1828,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         rolePromptFor,
         deferMode,
         pauseEditMode,
+        pauseEditRole,
         defer: deferMs === null ? null : durationLabel(deferMs),
         view,
         scopeRole,

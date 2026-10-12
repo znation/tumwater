@@ -6,6 +6,7 @@ import {
   parseBudgetInput,
   parseDeferInput,
   parsePauseInput,
+  parseRolePauseInput,
   parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
@@ -351,4 +352,16 @@ test("parsePauseInput splits an optional leading duration from the reason and en
   assert.deepEqual(parsePauseInput("2h deploy freeze"), { ok: true, forMs: 7_200_000, reason: "deploy freeze" });
   assert.deepEqual(parsePauseInput("deploy freeze"), { ok: true, reason: "deploy freeze" });
   assert.deepEqual(parsePauseInput("91d"), { ok: false, error: "pause is capped at 90d" });
+});
+
+test("parseRolePauseInput takes only an optional duration and enforces the 90d cap", () => {
+  assert.deepEqual(parseRolePauseInput(""), { ok: true });
+  assert.deepEqual(parseRolePauseInput("  "), { ok: true });
+  assert.deepEqual(parseRolePauseInput("2h"), { ok: true, forMs: 7_200_000 });
+  assert.deepEqual(parseRolePauseInput("91d"), { ok: false, error: "pause is capped at 90d" });
+  for (const bad of ["later", "2h deploy"]) {
+    const r = parseRolePauseInput(bad);
+    assert.equal(r.ok, false);
+    assert.match(!r.ok ? r.error : "", /takes only a duration/);
+  }
 });
