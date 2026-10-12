@@ -24,6 +24,7 @@ import {
   DEADLINE_LATE_TOLERANCE_MS,
   SLEEP_SPAN_TOLERANCE_MS,
   sleptPhrase,
+  starvedDeadlineMs,
   UNVERIFIED_TREE,
   type BuildCheckScope,
 } from "./build-check-events.js";
@@ -80,7 +81,15 @@ export async function runScopedBuildCheck(
   // A configured check.timeoutSeconds bounds either kind; otherwise an npm check runs under the
   // caller's bound. Effective here so the reason text and the skip warning agree with what
   // runBuildCheck enforced.
-  const effectiveMs = checkTimeoutMs(check, timeoutMs);
+  // A merge scope under a starved host gets a longer deadline (starvedDeadlineMs): the check
+  // runs as long as the fleet's load stretches it, and a kill at the unstretched bound would
+  // only measure the load (BUGS.md 2026-10-12). The load sampled here is also what the
+  // unverified reason names.
+  const load = sampleLoad();
+  const effectiveMs = MERGE_SCOPES.has(scope)
+    ? starvedDeadlineMs(checkTimeoutMs(check, timeoutMs), load)
+    : checkTimeoutMs(check, timeoutMs);
+  const runCheck = { ...check, timeoutMs: effectiveMs };
   // One permit covers both attempts (the killed-check retry re-runs under the permit it
   // holds); durationMs prices the run itself, not the wait for a permit.
   let durationMs = 0;
@@ -89,7 +98,7 @@ export async function runScopedBuildCheck(
     MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
     async () => {
       const startedAt = Date.now();
-      const first = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);
+      const first = await runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install);
       durationMs = Date.now() - startedAt;
       // A check the harness did not stop itself says nothing about the tree — its death is
       // another run's doing. A timeout whose deadline demonstrably fired late is the same
@@ -103,7 +112,7 @@ export async function runScopedBuildCheck(
       if (!owesCleanRetry(first)) return first;
       logEventBestEffort(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
-      const retry = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);
+      const retry = await runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install);
       durationMs = Date.now() - retryStart;
       return retry;
     },
@@ -144,7 +153,7 @@ export async function runScopedBuildCheck(
         : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}${
             // An on-time kill (the late-deadline wording already names its own cause) names the
             // starved host when the load average says the fleet was the check's competition.
-            (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(sampleLoad())
+            (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(load)
           }`;
   const outcome: BuildCheckOutcome = unverifiedSkip
     ? {

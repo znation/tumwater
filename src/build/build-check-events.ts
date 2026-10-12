@@ -103,6 +103,20 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
   );
 }
 
+/** Most a merge-scope deadline stretches under a starved host: the load-to-cores ratio, capped
+ * so a runaway load average cannot turn a hung suite into an unbounded wait. */
+const STARVED_DEADLINE_MAX_FACTOR = 2;
+
+/** The deadline a merge-scope check runs under: `baseMs` stretched by the host's load-to-cores
+ * ratio (at most STARVED_DEADLINE_MAX_FACTOR) when the load average exceeds the core count,
+ * else `baseMs` itself. 46 of 50 merge-scope rejections in one window were the 300 s deadline
+ * firing on time under the fleet's own load, with a passing tail at 299.97 s — the check was
+ * measuring the load, not the tree (BUGS.md 2026-10-12). */
+export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: number }): number {
+  if (!(load.cpus > 0) || !(load.load1 > load.cpus)) return baseMs;
+  return Math.round(baseMs * Math.min(load.load1 / load.cpus, STARVED_DEADLINE_MAX_FACTOR));
+}
+
 /** The note an on-time deadline kill carries when the host was starved: the load average
  * beyond the core count means the check shared the machine with the rest of the fleet, so the
  * 300 s kill is a statement about the deadline under load, not a measured verdict on the

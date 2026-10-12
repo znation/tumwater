@@ -7,7 +7,7 @@ import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { asTestCounts, parseTestCounts } from "../src/build/build-check-counts.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { checkFailureReasons } from "../src/build/build-check-report.js";
-import { buildCheckEvent, buildCheckSkipWarning } from "../src/build/build-check-events.js";
+import { buildCheckEvent, buildCheckSkipWarning, starvedDeadlineMs } from "../src/build/build-check-events.js";
 import { detectBuildCheck } from "../src/build/build-check-detect.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -203,6 +203,14 @@ test("a deadline the host slept through is reported as when it really fired, on 
   );
 });
 
+const IDLE_HOST = () => ({ load1: 0, cpus: 18 });
+
+test("an idle host leaves the merge-scope deadline alone; load stretches it by the load ratio, capped", () => {
+  assert.equal(starvedDeadlineMs(300_000, { load1: 10, cpus: 18 }), 300_000);
+  assert.equal(starvedDeadlineMs(300_000, { load1: 27, cpus: 18 }), 450_000);
+  assert.equal(starvedDeadlineMs(300_000, { load1: 90, cpus: 18 }), 600_000);
+});
+
 test("an on-time merge-scope timeout names a starved host, and stays silent on an idle one", async () => {
   // BUGS.md 2026-10-12: 28 of 29 landing build-check failures in a window were the 300 s
   // deadline firing on time under the fleet's own load; the reason must carry that evidence.
@@ -215,7 +223,9 @@ test("an on-time merge-scope timeout names a starved host, and stays silent on a
     }));
   const starved = await run(61.4);
   assert.equal(starved!.outcome.status, "failed");
-  assert.match(starved!.outcome.outputTail?.[0] ?? "", /timed out after 0\.4s; the tree is unverified \(host load average 61 on 18 cores/);
+  // 61.4 / 18 exceeds the cap, so the 0.4 s bound runs stretched to twice that.
+  assert.match(starved!.outcome.outputTail?.[0] ?? "", /timed out after 0\.8s; the tree is unverified \(host load average 61 on 18 cores/);
+  assert.equal(starved!.outcome.run?.timeoutMs, 800, "a starved merge-scope check runs under the stretched deadline");
   const idle = await run(3);
   assert.doesNotMatch(idle!.outcome.outputTail?.[0] ?? "", /host load/);
 });
@@ -231,7 +241,7 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
   );
 
   for (const scope of ["landing", "batch"] as const) {
-    const result = await runScopedBuildCheck(root, ROLE, scope, wt, undefined, 400);
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, undefined, 400, undefined, undefined, undefined, IDLE_HOST);
     assert.equal(result!.outcome.status, "failed", `${scope}: a timeout rejects`);
     assert.match(
       result!.outcome.outputTail?.[0] ?? "",
@@ -346,7 +356,7 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
       command: "if [ -f retried ]; then touch retried2; sleep 30; else touch retried; sleep 30; fi",
       timeoutSeconds: 2,
     },
-  });
+  }, undefined, undefined, undefined, undefined, IDLE_HOST);
   await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
   t.mock.timers.tick(10_000); // the first deadline fires 8s late → one retry is owed
   await waitFor(() => fs.existsSync(path.join(wt, "retried2")), "the retry's retried2 marker", 10_000);
@@ -544,7 +554,7 @@ test("runScopedBuildCheck remaps a configured command's merge-scope timeout exac
   const { root, wt } = buildCheckFixture();
   const config = { check: { command: "sleep 5", timeoutSeconds: 0.4 } };
   for (const scope of ["landing", "batch"] as const) {
-    const result = await runScopedBuildCheck(root, ROLE, scope, wt, config, 30_000);
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, config, 30_000, undefined, undefined, undefined, IDLE_HOST);
     assert.equal(result!.outcome.status, "failed", `${scope}: a timeout rejects`);
     assert.match(result!.outcome.outputTail?.[0] ?? "", /timed out after 0\.4s; the tree is unverified/);
   }
