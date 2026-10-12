@@ -111,6 +111,21 @@ function withModelOverrides(
   };
 }
 
+/** The provider/model/thinking overrides a config section (a role entry or `review`) carries
+ * into withModelOverrides: a tier-name `model` already chose the seam's tier, so it is not a
+ * selector and drops out here. Shared by configForRole and reviewConfig. */
+function seamOverrides(s: { provider?: string; model?: string; thinking?: string }): {
+  provider?: string;
+  model?: string;
+  thinking?: string;
+} {
+  return {
+    provider: s.provider,
+    model: isTierName(s.model) ? undefined : s.model,
+    thinking: s.thinking,
+  };
+}
+
 /** The tier a role's model resolves at: a tier-name `roles.<id>.model` names it directly, and
  * every other role rides the model catalog's assignment. Exported for the per-tier budget gate's
  * pause set (src/gates/gate-polls.ts, part 5c/8) and the dashboards' per-role budget pause
@@ -132,13 +147,7 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
   const resolved = withModelOverrides(
     config,
     roleSeamTier(config, role),
-    rc
-      ? {
-          provider: rc.provider,
-          model: isTierName(rc.model) ? undefined : rc.model,
-          thinking: rc.thinking,
-        }
-      : {},
+    rc ? seamOverrides(rc) : {},
   );
   if (!rc) return resolved;
   return {
@@ -177,11 +186,7 @@ export function reviewConfig(config: TumwaterConfig): ResolvedModelConfig {
   return withModelOverrides(
     config,
     isTierName(rm) ? rm : "strong",
-    {
-      provider: config.review.provider,
-      model: isTierName(rm) ? undefined : rm,
-      thinking: config.review.thinking,
-    },
+    seamOverrides(config.review),
   );
 }
 
