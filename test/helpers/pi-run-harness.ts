@@ -29,8 +29,8 @@ export function runPiFixture(dir: string, over: Partial<PiRunOptions> = {}): PiR
 /** Run the fake pi through runPi with throwaway dirs and return the distilled result. */
 export async function runFakePi(script: string) {
   const dir = tmpdir();
-  return await withPi(script, async () => {
-    return await runPi(runPiFixture(dir));
+  return withPi(script, async () => {
+    return runPi(runPiFixture(dir));
   });
 }
 

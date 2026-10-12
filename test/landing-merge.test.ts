@@ -52,7 +52,7 @@ function makeCtx(
       tick: 7,
       runPi: async (wt, prompt, session, config) => {
         calls.push({ wt, prompt, session, config });
-        return resolve ? await resolve(wt, prompt, session) : piResult();
+        return resolve ? resolve(wt, prompt, session) : piResult();
       },
     },
     calls,

@@ -203,7 +203,7 @@ export function currentBranchFromHeadFile(dir: string): string | null | undefine
  * ~20ms subprocess spawn per poll just to learn what HEAD has said all along. */
 export async function currentBranch(root: string): Promise<string | null> {
   const fromFile = currentBranchFromHeadFile(root);
-  return fromFile !== undefined ? fromFile : await gitTry(root, "symbolic-ref", "--short", "HEAD");
+  return fromFile !== undefined ? fromFile : gitTry(root, "symbolic-ref", "--short", "HEAD");
 }
 
 /** The branch a read-only surface treats as the fleet's main: a configured `baseBranch` wins (`run

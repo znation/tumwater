@@ -32,7 +32,7 @@ export async function fetchLoopback(
   try {
     return await fetchFn(url, { signal: AbortSignal.timeout(5_000) });
   } catch {
-    return await fetchFn(url, { signal: AbortSignal.timeout(5_000) });
+    return fetchFn(url, { signal: AbortSignal.timeout(5_000) });
   }
 }
 

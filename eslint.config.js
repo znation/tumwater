@@ -1,5 +1,5 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries five rules on purpose: two for promise misuse tsc cannot see, two for type spellings
+// carries six rules on purpose: three for promise misuse tsc cannot see, two for type spellings
 // whose meaning is not what the author read, and one for a type-only import that silently
 // stays a runtime side effect under verbatimModuleSyntax.
 //
@@ -11,7 +11,10 @@
 // checksVoidReturn is off because the GUI's request listener is deliberately async —
 // `http.createServer(async (req, res) => …)` in gui/gui-server.ts — and its body wraps every
 // await in a try/catch, so the rule's void-return arm would only force a disable comment on
-// that one intended site.
+// that one intended site. return-await keeps both directions of the same class honest:
+// inside a try/catch it requires `return await promise`, because a bare `return promise`
+// lets a rejection skip the catch the author wrote to handle it, and outside one it
+// forbids the redundant `await`, which typechecks and runs either way.
 //
 // Type spellings: await-thenable flags `await` of a value no thenable can be (an unawaited
 // sync helper awaited by habit, or a call still missing its `()`), which typechecks and runs
@@ -48,6 +51,7 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
+      "@typescript-eslint/return-await": "error",
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
