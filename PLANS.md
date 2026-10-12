@@ -38,6 +38,49 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
+### `tumwater plan|bug --edit <n> --file <path>`: rewrite an entry from a markdown file, keeping its line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` and the dashboard's line-keeping entry edit (`tryEditEntry`))
+
+**Goal.** `tumwater plan --file` and `bug --file` file an entry whose body keeps its lines (`splitEntryFile`), and the dashboard drawer edits an entry keeping its lines (`tryEditEntry`). The CLI edit path doesn't keep lines. `editPlan` folds the title and the whole body to one line through `collapseWhitespace`, and `editBug` always writes an empty body. So a multi-line plan filed with `--file` can't be revised from the terminal without flattening it, and `bug --edit` erases the body of a bug filed with `--file`. This plan adds `--file <path>` (`-` reads stdin) to the `--edit` form. The file's first non-blank line becomes the new title and the rest becomes the new body, kept line for line. The entry keeps its position and its original stamp, which is how the existing edit already behaves.
+
+**Approach.**
+1. `src/backlog/backlog-write.ts`:
+   - Add `editPlanFromText(root, n, text, usage)` and `editBugFromText(root, n, text, usage)`, mirroring `filePlanFromText`/`fileBugFromText`. Each one:
+     - runs `splitEntryFile(text)`;
+     - fails on an empty title, using the same message the file twin uses (`plan needs a title: ${usage}` / `bug needs a symptom: ${usage}`);
+     - runs `bodyStructureProblem(body)` and fails with `the --file body cannot be written: ${problem}`;
+     - returns `editEntry(root, "PLANS.md", "Planned", n, title, body)` / `editEntry(root, "BUGS.md", "Open", n, title, body)`.
+
+     For a bug, the body is written as the file gives it. That's deliberate: a bug filed with `--file` can carry a body, and this form is how it gets revised.
+   - `editAndAnnounce` gains a trailing parameter `editText: (n: number, text: string) => { file: string; title: string }`. When `args.indexOf("--file") >= 0`, it handles `--file` the way `fileAndAnnounce`'s `--file` branch does:
+     - `promptFileValue(args[fileFlag + 1])`, then drop the two tokens into `rest`;
+     - `rejectRepeatFlag(rest.includes("--file"), "--file")`;
+     - `scanProseFlags(rest, command, { name: "--edit", example: "--edit 2" })`;
+     - fail on any positional with `unexpected argument "<tok>" — with --file the entry comes from the file` (the same wording `fileAndAnnounce` uses);
+     - fail on a missing position with the existing `--edit needs a position` message;
+     - `await requireReadyRepo(root)`, `readPromptFileArg(file)`, then `editText(position, text)`.
+
+     Print the result the same way as the positional form: `edited <command> in <file>: <title>` or the `--json` `{file, title}`. There's no wake.
+
+     The positional form is unchanged. Update the `editAndAnnounce` doc comment to name the `--file` form.
+2. `src/cli.ts`: in the `bug` and `plan` cases, the `--edit` branch passes `(n, text) => editBugFromText(root, n, text, usage)` / `(n, text) => editPlanFromText(root, n, text, usage)` as the new argument, and adds both names to the destructured dynamic import.
+3. `src/cli/help.ts`: add `tumwater bug --edit <n> --file <path> [--json]` and `tumwater plan --edit <n> --file <path> [--json]` entries after each command's existing `--edit` entry. Each says: replace the Nth entry from a markdown file (`"-"` reads stdin), the first non-blank line is the title (symptom for bugs) and the rest is the body kept line for line, the position and original stamp are kept, and there's no wake.
+
+**Files touched.** `src/backlog/backlog-write.ts`, `src/cli.ts`, `src/cli/help.ts`, `test/backlog-write-edit.test.ts`. No change to `tryEditEntry`, `handleBacklogEdit`/the dashboard, or the TUI. This plan is independent of the waiting TUI answer plan, which touches only `src/ui/tui/*`.
+
+**Acceptance criteria.** All tests go in `test/backlog-write-edit.test.ts`, using its `makeRepo`/`initProject`/`cli` helpers.
+- Seed PLANS.md `## Planned` with three entries. Then run `cli(repo, "plan", "--edit", "2", "--file", md)`, where the file holds `# New title\n\n- one\n\n- two\n`. The run exits 0 and prints `edited plan in PLANS.md: New title`. The second entry becomes `### New title (<its original stamp>)` followed by `- one\n\n- two`, with the inner blank line kept. Entries 1 and 3 are byte-identical, and `queuedRolePrompts(repo, "feature")` is empty.
+- `bug --edit 1 --file <md> --json` prints `{file: "BUGS.md", title}`, and the entry's body is written line for line. A later positional `bug --edit 1 "x"` still drops that body, which pins the unchanged positional behavior.
+- Each of these refusals exits 1 and leaves PLANS.md byte-identical:
+  - a body with a bare `## Heading` line (stderr matches `cannot be written`);
+  - a body that leaves a code fence open;
+  - a whitespace-only first line followed by nothing (the existing empty-file refusal);
+  - `--edit 9 --file md` (out of range);
+  - `--edit 2 --file md extra` (stray-argument message);
+  - `--file md --file md` (`--file may only be given once`);
+  - `--edit 2 --file` (`--file needs a path`).
+- The "help topics name the --edit forms" test also matches `tumwater plan --edit <n> --file <path> \[--json\]` and the bug twin.
+- `npm run test` passes.
+
 ## Done
 
 ### Give the dashboard's New plan / File a bug form an optional multiline body, matching `tumwater plan|bug --file` (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `filePlanFromText`, `fileBugFromText` in `src/backlog/backlog-write.ts`) and the landed drawer edit (`POST /api/backlog-edit`, `handleBacklogEdit`). Independent of the waiting "Answer an open question from the TUI backlog pane" plan: it touches neither `src/ui/tui/` nor `src/cli/`) — done 2026-10-12
