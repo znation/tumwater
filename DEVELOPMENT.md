@@ -82,12 +82,21 @@ build) with its exit code, for trying a change before `npm link`.
 
 ## Keeping the suite fast
 
-The suite is bound by process creation, not by its own code: a run starts ~12,000 git processes
-plus hundreds of npm, CLI and fake-pi children, and macOS tops out at a few thousand spawns a
-second. `test/test-runner.ts` sets the environment up for that: it puts the real git binary
+The suite is bound by process creation, not by its own code: a run starts ~16,000 git processes
+plus ~700 CLI children and hundreds of npm, `ps` and fake-pi children, and macOS tops out at a
+few thousand spawns a second. Roughly, a git spawn costs 8 ms of CPU, a CLI child 90 ms, and an
+`npm run` 150 ms. `test/test-runner.ts` sets the environment up for that: it puts the real git binary
 ahead of the xcode-select shim on macOS, turns off git's auto-maintenance and init templates,
 and starts files longest-first by the durations it records in `dist/test/.durations.json`.
 
+- Prefer `makeRepo()` to building a repo with git commands: it copies a per-process template
+  instead of spawning init, add and commit. Every repo it makes in one process shares a seed
+  SHA, so a test must not rely on two fresh repos having different commits.
+- Read refs through `src/git/git.ts` (`headOf`, `refSha`, `hasCommits`, `branchExists`,
+  `isGitRepo`, `repoToplevel`). They answer from the repository's files when the files settle
+  it and only spawn git otherwise. A new read-only probe should do the same.
+- Keep `src/cli.ts`'s command modules behind `await import()` inside their case. Every CLI child
+  a test starts loads only the dispatcher's shared core plus its own command.
 - Install a fake command with `writeScript` (test/fakes/fake-commands.ts), never by writing and
   `chmod`ing a new executable. macOS scans every newly created executable on its first exec
   (~150 ms, much more under load). `writeScript` symlinks the one committed

@@ -158,14 +158,49 @@ export function gitInit(dir: string): void {
   fs.appendFileSync(path.join(dir, ".git", "config"), "[user]\n\tname = test\n\temail = test@example.com\n");
 }
 
+/** The environment this worker started with, captured at import: makeRepo's template is built
+ * lazily, and a test may by then have put a fake or logging git first on PATH. The template must
+ * come from the real one either way. */
+const IMPORT_ENV = { ...process.env };
+
+/** This process's makeRepo template: a repo built once with exactly the init → seed.txt → commit
+ * sequence makeRepo documents, which every later makeRepo copies instead of re-running.
+ * makeRepo is the suite's most common fixture (~1,400 calls a run), and its three git spawns
+ * were about one in seven of the suite's git processes. Process creation, not test code, bounds
+ * the suite (DEVELOPMENT.md). The copy is a plain file copy of a loose-object repo whose config
+ * holds no absolute path. Every repo it makes in a process shares one seed commit SHA, as repos
+ * made within the same second always did. */
+let repoTemplate: string | undefined;
+
+function makeRepoTemplate(): string {
+  if (repoTemplate !== undefined) return repoTemplate;
+  const dir = path.join(testRunRoot(), "make-repo-template");
+  fs.mkdirSync(dir);
+  const run = (...args: string[]) => execFileSync("git", args, { cwd: dir, env: IMPORT_ENV, stdio: "ignore" });
+  run("init", "-b", "main");
+  fs.appendFileSync(path.join(dir, ".git", "config"), "[user]\n\tname = test\n\temail = test@example.com\n");
+  fs.writeFileSync(path.join(dir, "seed.txt"), "seed\n");
+  run("add", "-A");
+  run("commit", "-m", "seed");
+  repoTemplate = dir;
+  return dir;
+}
+
 /** Create a git repo on branch `main` with one commit — in a fresh temp dir by default, or at
- * `dir` when the test needs a particular location (e.g. nested under an installed root). */
+ * `dir` when the test needs a particular location (e.g. nested under an installed root). The
+ * repo is a copy of this process's template (makeRepoTemplate), byte for byte what the init →
+ * add → commit sequence produced there. A `dir` that already holds files gets the real
+ * sequence instead, because `add -A` would commit them into the seed. */
 export function makeRepo(dir = tmpdir()): string {
   fs.mkdirSync(dir, { recursive: true });
-  gitInit(dir);
-  fs.writeFileSync(path.join(dir, "seed.txt"), "seed\n");
-  sh(dir, "git", "add", "-A");
-  sh(dir, "git", "commit", "-m", "seed");
+  if (fs.readdirSync(dir).length > 0) {
+    gitInit(dir);
+    fs.writeFileSync(path.join(dir, "seed.txt"), "seed\n");
+    sh(dir, "git", "add", "-A");
+    sh(dir, "git", "commit", "-m", "seed");
+    return dir;
+  }
+  fs.cpSync(makeRepoTemplate(), dir, { recursive: true });
   return dir;
 }
 

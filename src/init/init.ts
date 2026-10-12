@@ -78,15 +78,13 @@ function isScaffoldingPath(rel: string): boolean {
 /** Whether `root` has a project of its own yet: not a git repo, a repo with no commits, or a
  * repo whose tracked and untracked-non-ignored files are all init's scaffolding. Drives the
  * bootstrap seed — a project created from nothing runs plan and feature before the maintenance
- * loops (plans/work-ratio.md, part 2/2). */
-async function isFreshProject(root: string): Promise<boolean> {
-  if (!(await isGitRepo(root))) return true;
-  if (!(await hasCommits(root))) return true;
-  const listed = [
-    (await gitTry(root, "ls-files")) ?? "",
-    (await gitTry(root, "ls-files", "--others", "--exclude-standard")) ?? "",
-  ]
-    .join("\n")
+ * loops (plans/work-ratio.md, part 2/2). `withCommits` is whether `root` is a repo with at least
+ * one commit, which initProject has already established. One `ls-files -co` lists the tracked
+ * files and the untracked non-ignored ones together (the exclude rules filter only the
+ * untracked side). */
+async function isFreshProject(root: string, withCommits: boolean): Promise<boolean> {
+  if (!withCommits) return true;
+  const listed = ((await gitTry(root, "ls-files", "--cached", "--others", "--exclude-standard")) ?? "")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line !== "");
@@ -184,7 +182,10 @@ export async function initProject(
   // fleet's business (`tumwater run --branch` or baseBranch chooses it at runtime), so a
   // --branch given here would otherwise be silently ignored — the exact failure mode
   // rejectUnknownArgs exists to prevent. Fail before any side effect, dry-run included.
-  if (branch !== undefined && (await isGitRepo(root))) {
+  // Whether `root` already is a repo is asked once here; nothing below until the `git init`
+  // can change it.
+  const wasRepo = await isGitRepo(root);
+  if (branch !== undefined && wasRepo) {
     throw new Error(
       `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the fleet at a branch with \`tumwater run --branch ${branch}\` (or baseBranch in tumwater.json)`,
     );
@@ -220,7 +221,7 @@ export async function initProject(
 
   let repoInitialized = false;
   let createdBranch: string | undefined;
-  if (!(await isGitRepo(root))) {
+  if (!wasRepo) {
     // Branch precedence: the caller's explicit --branch, else git's own init.defaultBranch
     // preference, else main. `git init -b` does not consult init.defaultBranch, so the
     // preference is read here: an operator who configured `init.defaultBranch=trunk`
@@ -247,9 +248,11 @@ export async function initProject(
     createdBranch = preferred;
   }
 
-  // Decided before any project file is written (init only seeds bootstrap on a fresh project):
-  // after the `git init` above so a freshly created repo reads as a repo with no commits.
-  const fresh = await isFreshProject(root);
+  // Decided before any project file is written (init only seeds bootstrap on a fresh project).
+  // A repo the `git init` above just created (or a dry run would) has no commits, and init
+  // itself commits nothing before the end, so this one answer also picks the commit message.
+  const withCommits = wasRepo && (await hasCommits(root));
+  const fresh = await isFreshProject(root, withCommits);
 
   const created: string[] = [];
   const leftAlone: string[] = [];
@@ -329,7 +332,7 @@ export async function initProject(
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
       // Non-zero exit = something is staged.
-      const message = (await hasCommits(root)) ? "tumwater: init harness files" : "tumwater: init";
+      const message = withCommits ? "tumwater: init harness files" : "tumwater: init";
       await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...committable);
       committed = true;
     }

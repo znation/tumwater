@@ -3,8 +3,12 @@
  * (dist/src/cli.js). main() runs the Node-floor gate from package.json's `engines.node`, answers a
  * `--help` topic before any command parses arguments or gates on a ready repo, resolves the repo
  * root from cwd (repoToplevel, falling back to cwd outside a repository), and dispatches the
- * command token. Cases that boot a fleet or render a TUI import their subgraph lazily, so
- * `tumwater report` never pays for the orchestrator or ink. The work itself lives in the command
+ * command token. Every command imports its own module lazily, inside its case: the dispatcher
+ * statically loads only the argument parsing, output, repo gate and help it shares, so
+ * `tumwater report` never pays for the orchestrator or ink, and `tumwater logs` never pays for
+ * the status collectors. A process that starts, runs one command and exits (the CLI as the
+ * fleet's agents and the test suite call it, ~700 spawns a suite run) otherwise compiled all
+ * 169 modules every time. The work itself lives in the command
  * modules; this file owns the shared sequence, including each case's flag rejection and its
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
  * the CLI's one error path. */
@@ -26,22 +30,9 @@ import {
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
-import { cmdConfig, CONFIG_USAGE } from "./cli/config-commands.js";
-import { cmdRetire, cmdStop } from "./operator/operator-commands.js";
-import { cmdPrompt } from "./inbox/prompt-commands.js";
-import { cmdBacklog, cmdDiff, cmdQuestions, cmdQueue, cmdRole, cmdStatus } from "./cli/cli-query-commands.js";
 import { requireReadyRepo } from "./cli/cli-repo-gate.js";
-import { cmdLogs, GREP_VALUE_ERROR } from "./cli/log-commands.js";
-import { cmdNotify } from "./cli/notify-command.js";
-import { bugTitleOf, cancelAndAnnounce, cancelBug, cancelPlan, editAndAnnounce, editBug, editPlan, fileBug, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
-
-import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
+import type { MarkerCommand } from "./cli/cli-marker-commands.js";
 import { repoToplevel } from "./git/git.js";
-import { runDoctor } from "./doctor/doctor.js";
-import { renderDoctor } from "./doctor/doctor-render.js";
-import { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR } from "./history/history.js";
-import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
-import { cmdReport } from "./report/report.js";
 
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
@@ -106,9 +97,10 @@ async function main(): Promise<void> {
       await (await import("./gui/gui-command.js")).cmdGui(root, args);
       break;
     case "status":
-      await cmdStatus(root, args);
+      await (await import("./cli/cli-query-commands.js")).cmdStatus(root, args);
       break;
     case "config": {
+      const { cmdConfig, CONFIG_USAGE } = await import("./cli/config-commands.js");
       // Subcommand arity before the ready-repo gate, so a malformed get/set fails with its
       // usage no matter the directory: bare config takes nothing, `get`/`unset` exactly one
       // key, `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped)
@@ -147,13 +139,15 @@ async function main(): Promise<void> {
       ]);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
       // trailing window vs a series over whole days), not a modifier of either.
-      await cmdReport(root, args);
+      await (await import("./report/report.js")).cmdReport(root, args);
       break;
     }
     case "doctor": {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
       rejectUnknownArgs("doctor", args, [JSON_FLAG]);
+      const { runDoctor } = await import("./doctor/doctor.js");
+      const { renderDoctor } = await import("./doctor/doctor-render.js");
       const report = await runDoctor(root);
       // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
       // the render — the `report --json` precedent. The exit-code contract below holds in both
@@ -162,7 +156,8 @@ async function main(): Promise<void> {
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }
-    case "logs":
+    case "logs": {
+      const { cmdLogs, GREP_VALUE_ERROR } = await import("./cli/log-commands.js");
       rejectUnknownArgs("logs", args, [
         { names: ["-f", "--follow"] },
         N_FLAG,
@@ -175,12 +170,14 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await cmdLogs(root, args);
       break;
+    }
     case "notify":
       rejectUnknownArgs("notify", args, [{ names: ["--test"] }]);
       await requireReadyRepo(root);
-      await cmdNotify(root, args);
+      await (await import("./cli/notify-command.js")).cmdNotify(root, args);
       break;
-    case "history":
+    case "history": {
+      const { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR } = await import("./history/history.js");
       rejectUnknownArgs("history", args, [
         N_FLAG,
         sinceFlagSpec("history --since"),
@@ -192,7 +189,9 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await cmdHistory(root, args);
       break;
+    }
     case "tick": {
+      const { cmdTick, TICK_USAGE } = await import("./tick/tick-detail.js");
       // Positional-first command (the role command's pattern): the <role> <n> tokens peel off,
       // the flags that remain go through rejectUnknownArgs (only --json is admitted), and
       // cmdTick owns the arity and value validation — a missing role, an unknown id, a
@@ -210,15 +209,17 @@ async function main(): Promise<void> {
       break;
     }
     case "diff":
-      await cmdDiff(root, args);
+      await (await import("./cli/cli-query-commands.js")).cmdDiff(root, args);
       break;
     case "queue":
-      await cmdQueue(root, args);
+      await (await import("./cli/cli-query-commands.js")).cmdQueue(root, args);
       break;
     case "backlog":
-      await cmdBacklog(root, args);
+      await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
     case "bug": {
+      const { bugTitleOf, cancelAndAnnounce, cancelBug, editAndAnnounce, editBug, fileBug, fileAndAnnounce, listAndAnnounce } =
+        await import("./backlog/backlog-write.js");
       const usage = 'tumwater bug "<symptom>"';
       if (args.includes("--list")) {
         listAndAnnounce(root, args, "bug", "BUGS.md", "Open");
@@ -245,6 +246,8 @@ async function main(): Promise<void> {
       break;
     }
     case "plan": {
+      const { cancelAndAnnounce, cancelPlan, editAndAnnounce, editPlan, filePlan, fileAndAnnounce, listAndAnnounce, planTitleOf } =
+        await import("./backlog/backlog-write.js");
       const usage = 'tumwater plan "<title>" [body...]';
       if (args.includes("--list")) {
         listAndAnnounce(root, args, "plan", "PLANS.md", "Planned");
@@ -273,10 +276,10 @@ async function main(): Promise<void> {
       break;
     }
     case "questions":
-      await cmdQuestions(root, args);
+      await (await import("./cli/cli-query-commands.js")).cmdQuestions(root, args);
       break;
     case "role":
-      await cmdRole(root, args);
+      await (await import("./cli/cli-query-commands.js")).cmdRole(root, args);
       break;
     case "prompt":
       // Parse before the gate: prompt's positionals are free-form, so rejectUnknownArgs
@@ -289,7 +292,7 @@ async function main(): Promise<void> {
       // as an empty prompt).
       parsePromptArgs(args);
       await requireReadyRepo(root);
-      await cmdPrompt(root, args);
+      await (await import("./inbox/prompt-commands.js")).cmdPrompt(root, args);
       break;
     case "reset-counters":
     // Fall through: the six marker commands share one guard+dispatch shape — unknown-args
@@ -302,7 +305,7 @@ async function main(): Promise<void> {
     case "pause":
     case "resume":
     case "reclaim": {
-      await runMarkerCommand(root, command as MarkerCommand, args);
+      await (await import("./cli/cli-marker-commands.js")).runMarkerCommand(root, command as MarkerCommand, args);
       break;
     }
     case "retire": {
@@ -310,7 +313,7 @@ async function main(): Promise<void> {
       // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
       rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, JSON_FLAG]);
       await requireReadyRepo(root);
-      await cmdRetire(root, args);
+      await (await import("./operator/operator-commands.js")).cmdRetire(root, args);
       break;
     }
     case "stop": {
@@ -318,7 +321,7 @@ async function main(): Promise<void> {
       // a mistake and fails before a signal is ever sent.
       rejectUnknownArgs("stop", args, []);
       await requireReadyRepo(root);
-      await cmdStop(root);
+      await (await import("./operator/operator-commands.js")).cmdStop(root);
       break;
     }
     case "version":

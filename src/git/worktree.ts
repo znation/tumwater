@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
-import { branchExists, resolveGitDir } from "./git.js";
+import { branchExists, hasWorktreeRegistrations, isGitRepo, resolveGitDir } from "./git.js";
 import { pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
@@ -19,7 +19,15 @@ import { branchName, worktreePath, worktreesDir } from "../paths.js";
  * rather than fail (change/change-data.ts's collectRoleChange), so the probe's exact
  * conditions live in one place. */
 export async function isUsableWorktree(dir: string): Promise<boolean> {
-  return fs.existsSync(dir) && (await gitTry(dir, "rev-parse", "--git-dir")) !== null;
+  return fs.existsSync(dir) && (await isGitRepo(dir));
+}
+
+/** `git worktree prune` in `root`, skipped when the files show no registration to prune
+ * (hasWorktreeRegistrations): the first worktree a repository gets, which is most of them in
+ * the test suite, then costs one spawn instead of two. */
+async function pruneWorktrees(root: string): Promise<void> {
+  if (hasWorktreeRegistrations(root) === false) return;
+  await gitTry(root, "worktree", "prune");
 }
 
 /** Clear the way for `worktree add` at `dir`: prune stale registrations first (a registration
@@ -29,10 +37,10 @@ export async function isUsableWorktree(dir: string): Promise<boolean> {
  * refs/heads either way. Call only inside serializeSetup: a prune deletes any registration
  * another `worktree add` is still creating. */
 async function clearStaleWorktree(root: string, dir: string): Promise<void> {
-  await gitTry(root, "worktree", "prune");
+  await pruneWorktrees(root);
   if (fs.existsSync(dir)) {
     removeTree(dir);
-    await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
+    await pruneWorktrees(root); // drop any registration left pointing at it
   }
 }
 

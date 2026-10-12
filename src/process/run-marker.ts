@@ -79,18 +79,24 @@ function psMarkerAssignments(command: string): string[] {
   return command.match(new RegExp(`${RUN_MARKER_VAR}=\\S*`, "g")) ?? [];
 }
 
-/** One `ps -wwE -A -o pid=,command=` pass: `-E` appends each process's launch environment
+/** One `ps -wwE -U <uid> -o pid=,command=` pass: `-E` appends each process's launch environment
  * to the command column (the marker readers parse it from there), `-ww` keeps argv
- * untruncated, `-A` covers every same-user process. */
+ * untruncated, `-U` lists this user's processes. Those are the only ones whose environment
+ * `-E` can read, and the only ones a sweep may signal. `-A` scanned every system daemon too
+ * (a third of the table on the fleet's host) for environments it could never read. That cost
+ * a quarter of each scan, and the end-of-run sweep runs one per pi run (~600 a test-suite
+ * run). Without a uid (not a POSIX host) it falls back to `-A`. */
 export async function psEnvironTable(): Promise<string> {
-  const { stdout } = await execFileAsync("ps", ["-wwE", "-A", "-o", "pid=,command="], {
+  const uid = process.getuid?.();
+  const who = uid === undefined ? ["-A"] : ["-U", String(uid)];
+  const { stdout } = await execFileAsync("ps", ["-wwE", ...who, "-o", "pid=,command="], {
     timeout: PS_ENVIRON_TIMEOUT_MS,
   });
   return stdout;
 }
 
-/** The `TUMWATER_RUN` markers per pid in `ps -wwE -A -o pid=,command=` output. The sweep's
- * reader (pidsMarkedInPs) is membership-only in one marker; the orphan check needs the
+/** The `TUMWATER_RUN` markers per pid in `ps -wwE -o pid=,command=` output (psEnvironTable).
+ * The sweep's reader (pidsMarkedInPs) is membership-only in one marker; the orphan check needs the
  * values themselves, to judge each mark's harness. The reader's own pid is never reported —
  * it holds the mark's birthplace in memory, not in its environment. */
 export function runMarkersInPs(stdout: string, ownPid = process.pid): Map<number, string[]> {
@@ -106,7 +112,7 @@ export function runMarkersInPs(stdout: string, ownPid = process.pid): Map<number
   return marks;
 }
 
-/** The pids in `ps -wwE -A -o pid=,command=` output whose environment names `marker`, via
+/** The pids in `ps -wwE -o pid=,command=` output whose environment names `marker`, via
  * runMarkersInPs's one-pass parse. The harness's own pid is never a victim — it holds the
  * marker's birthplace in memory, not in its environment. */
 export function pidsMarkedInPs(stdout: string, marker: string, ownPid = process.pid): number[] {

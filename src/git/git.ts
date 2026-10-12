@@ -56,19 +56,169 @@ export async function branchHead(root: string, branch: string): Promise<string |
   return readBranchHead(root, branch) ?? (await gitTry(root, "rev-parse", branch));
 }
 
-/** True when `dir` is inside a git repository — its `rev-parse --git-dir` probe succeeds. */
+// ── Ref reads from files ───────────────────────────────────────────────────────────────────
+// The read-only probes below (isGitRepo, hasCommits, headOf, refSha, branchExists) each used to
+// spawn a `git rev-parse`. The harness asks them constantly: a landing alone re-reads HEAD a
+// dozen times, and the test suite, which process creation bounds (DEVELOPMENT.md), spawned
+// ~8,000 of them a run. Each probe now answers from the repository's files when the files
+// settle it POSITIVELY: a resolvable git dir, or a ref whose loose file or packed-refs line
+// names a SHA. Everything else spawns git exactly as before: a miss, a symref other than HEAD,
+// a name git's DWIM rules could read another way, a reftable repo, an environment that
+// redirects git (GIT_DIR and friends), or a repository another user owns, which git itself
+// refuses (safe.directory). A hit is the SHA `rev-parse --verify` prints. It resolves the name
+// and does not check that the object exists, and neither does this. The one negative answered
+// from files is a plain full `refs/…` name with no loose file and no packed-refs line
+// (refAbsentFromFiles): in a files-backend repository that is everywhere git looks.
+
+/** Environment variables that make git look somewhere other than the files `dir` holds. While
+ * any is set, every probe spawns git. */
+const GIT_REDIRECT_ENV = ["GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_NAMESPACE"] as const;
+
+/** Refs git keeps per worktree (in the worktree's own git dir, not the common one). They are
+ * left to git. */
+const PER_WORKTREE_REF = /^refs\/(?:bisect|worktree|rewritten)\//;
+
+interface RepoFiles {
+  /** This checkout's git dir: `.git` itself, or a linked worktree's `.git/worktrees/<name>`. */
+  gitdir: string;
+  /** Where the shared refs and objects live: the gitdir itself, or its `commondir` target. */
+  commondir: string;
+}
+
+/** `dir`'s git dirs when its `.git` resolves from files to a files-backend repository this
+ * process's user owns, or undefined when git should decide. */
+function repoFiles(dir: string): RepoFiles | undefined {
+  if (GIT_REDIRECT_ENV.some((name) => process.env[name])) return undefined;
+  const uid = process.getuid?.();
+  if (uid === undefined) return undefined;
+  const gitdir = resolveGitDir(dir);
+  if (gitdir === undefined) return undefined;
+  let commondir = gitdir;
+  try {
+    const pointer = fs.readFileSync(path.join(gitdir, "commondir"), "utf8").trim();
+    if (pointer === "") return undefined;
+    commondir = path.resolve(gitdir, pointer);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return undefined; // A primary checkout has none.
+  }
+  try {
+    if (fs.statSync(dir).uid !== uid || fs.statSync(gitdir).uid !== uid) return undefined;
+    if (!fs.statSync(path.join(commondir, "objects")).isDirectory()) return undefined;
+    if (!fs.statSync(path.join(gitdir, "HEAD")).isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
+  if (fs.existsSync(path.join(commondir, "reftable"))) return undefined;
+  return { gitdir, commondir };
+}
+
+/** A full ref name in the plain shape the file layout stores one way only: path-safe
+ * characters, no empty, dot-led or `.lock` components. Anything fancier is git's to read. */
+function isPlainRefName(ref: string): boolean {
+  if (!/^refs\/[A-Za-z0-9._/-]+$/.test(ref)) return false;
+  return ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
+}
+
+/** The SHA a full ref name holds in `commondir`: its loose file (which wins in git too), else
+ * its packed-refs line. null when neither has it, and undefined when the files hold something
+ * git would read differently (a symref, unreadable content). */
+function storedRef(commondir: string, ref: string): string | null | undefined {
+  try {
+    const loose = fs.readFileSync(path.join(commondir, ref), "utf8").trim();
+    return isSha(loose) ? loose : undefined;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+  }
+  let packed: string;
+  try {
+    packed = fs.readFileSync(path.join(commondir, "packed-refs"), "utf8");
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : undefined;
+  }
+  const suffix = ` ${ref}`;
+  for (const line of packed.split("\n")) {
+    if (!line.endsWith(suffix)) continue; // Skips the header, peel lines and other refs.
+    const sha = line.slice(0, -suffix.length);
+    return isSha(sha) ? sha : undefined;
+  }
+  return null;
+}
+
+/** The SHA `git rev-parse --verify <ref>` would print in `dir`, read from files, or undefined
+ * when the files do not settle it (see the section comment): the caller then spawns git. `ref`
+ * is HEAD (followed when it is a branch symref or a detached SHA), a full `refs/…` name, or a
+ * short branch name, taken only when git's DWIM order could not resolve it to anything else
+ * first (`<gitdir>/<name>`, `refs/<name>`, `refs/tags/<name>` all absent). */
+export function refShaFromFiles(dir: string, ref: string): string | undefined {
+  const repo = repoFiles(dir);
+  if (repo === undefined) return undefined;
+  if (ref === "HEAD") {
+    let head: string;
+    try {
+      head = fs.readFileSync(path.join(repo.gitdir, "HEAD"), "utf8").trim();
+    } catch {
+      return undefined;
+    }
+    if (isSha(head)) return head;
+    const target = head.startsWith("ref: ") ? head.slice("ref: ".length).trim() : "";
+    if (!target.startsWith("refs/heads/") || !isPlainRefName(target)) return undefined;
+    return storedRef(repo.commondir, target) ?? undefined;
+  }
+  if (ref.startsWith("refs/")) {
+    if (!isPlainRefName(ref) || PER_WORKTREE_REF.test(ref)) return undefined;
+    return storedRef(repo.commondir, ref) ?? undefined;
+  }
+  // A full object name means the object to git, ahead of any same-named ref.
+  if (isSha(ref) || !isPlainRefName(`refs/heads/${ref}`)) return undefined;
+  for (const dirOfName of new Set([repo.gitdir, repo.commondir])) {
+    if (fs.existsSync(path.join(dirOfName, ref))) return undefined; // `<gitdir>/<name>` outranks every ref.
+  }
+  for (const outranking of [`refs/${ref}`, `refs/tags/${ref}`]) {
+    if (storedRef(repo.commondir, outranking) !== null) return undefined;
+  }
+  return storedRef(repo.commondir, `refs/heads/${ref}`) ?? undefined;
+}
+
+/** False when the files settle that `root`'s repository has no linked-worktree registrations
+ * (its `<commondir>/worktrees` admin dir is absent or empty), so `git worktree prune` has
+ * nothing to do. True when there are some, and undefined when git should decide. */
+export function hasWorktreeRegistrations(root: string): boolean | undefined {
+  const repo = repoFiles(root);
+  if (repo === undefined) return undefined;
+  try {
+    return fs.readdirSync(path.join(repo.commondir, "worktrees")).length > 0;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT" ? false : undefined;
+  }
+}
+
+/** True when the files settle that the full ref name `ref` does NOT exist in `dir`'s repository:
+ * a plain shared `refs/…` name with neither a loose file nor a packed-refs line. In a
+ * files-backend repository (repoFiles excludes reftable and redirected environments) that is
+ * where git itself looks, so the answer is git's. False means "ask git", not "present". */
+function refAbsentFromFiles(dir: string, ref: string): boolean {
+  if (!isPlainRefName(ref) || PER_WORKTREE_REF.test(ref)) return false;
+  const repo = repoFiles(dir);
+  return repo !== undefined && storedRef(repo.commondir, ref) === null;
+}
+
+/** True when `dir` is inside a git repository — its `rev-parse --git-dir` probe succeeds. A
+ * `dir` whose own `.git` resolves (refShaFromFiles's repository checks) answers without a
+ * spawn. A subdirectory, or any doubt, asks git. */
 export async function isGitRepo(dir: string): Promise<boolean> {
+  if (repoFiles(dir) !== undefined) return true;
   return (await gitTry(dir, "rev-parse", "--git-dir")) !== null;
 }
 
 /** True if the repo has at least one commit. */
 export async function hasCommits(root: string): Promise<boolean> {
+  if (refShaFromFiles(root, "HEAD") !== undefined) return true;
   return (await gitTry(root, "rev-parse", "--verify", "HEAD")) !== null;
 }
 
 /** The commit that `ref` points to in `cwd`. */
 export async function headOf(cwd: string, ref: string): Promise<string> {
-  return git(cwd, "rev-parse", "--verify", ref);
+  return refShaFromFiles(cwd, ref) ?? git(cwd, "rev-parse", "--verify", ref);
 }
 
 /** Point `ref` at `sha`, creating the ref if needed (git update-ref). The landing pin of
@@ -86,6 +236,9 @@ export async function deleteRef(root: string, ref: string): Promise<void> {
 
 /** The sha `ref` names, or null when the ref is absent. */
 export async function refSha(root: string, ref: string): Promise<string | null> {
+  const fromFiles = refShaFromFiles(root, ref);
+  if (fromFiles !== undefined) return fromFiles;
+  if (refAbsentFromFiles(root, ref)) return null;
   return gitTry(root, "rev-parse", "--verify", ref);
 }
 
@@ -102,12 +255,40 @@ export async function isMergedInto(root: string, sha: string, branch: string): P
  * repo it targets: .tumwater/ and tumwater.json live at the toplevel, and readBranchHead's
  * file fast path only works when the root actually holds `.git`. */
 export async function repoToplevel(dir: string): Promise<string | null> {
-  return gitTry(dir, "rev-parse", "--show-toplevel");
+  return toplevelFromFiles(dir) ?? gitTry(dir, "rev-parse", "--show-toplevel");
+}
+
+/** `dir` itself, canonicalized the way `--show-toplevel` prints it (the native realpath, which
+ * also takes the on-disk letter case), when `dir`'s own `.git` resolves (repoFiles) and no
+ * config moves the work tree elsewhere (`core.worktree`) or declares the repository bare.
+ * undefined otherwise: a subdirectory, or anything unusual, is git's to resolve. */
+function toplevelFromFiles(dir: string): string | undefined {
+  const repo = repoFiles(dir);
+  if (repo === undefined) return undefined;
+  for (const config of [path.join(repo.commondir, "config"), path.join(repo.gitdir, "config.worktree")]) {
+    let text: string;
+    try {
+      text = fs.readFileSync(config, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+      return undefined;
+    }
+    // core.worktree, a true core.bare, or an include that could carry either.
+    if (/^\s*(?:worktree\s*=|bare\s*=\s*true\b|\[\s*include)/im.test(text)) return undefined;
+  }
+  try {
+    return fs.realpathSync.native(dir);
+  } catch {
+    return undefined;
+  }
 }
 
 /** True when the local branch `<branch>` exists in the repo. */
 export async function branchExists(root: string, branch: string): Promise<boolean> {
-  return (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
+  const ref = `refs/heads/${branch}`;
+  if (refShaFromFiles(root, ref) !== undefined) return true;
+  if (refAbsentFromFiles(root, ref)) return false;
+  return (await gitTry(root, "rev-parse", "--verify", ref)) !== null;
 }
 
 /** The revision a worktree's change should be judged against: the merge-base of its HEAD
