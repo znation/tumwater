@@ -199,6 +199,75 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   );
 });
 
+/** A code change whose gate verified `head`, on a project whose declared check is red if it ever
+ * runs: what each doc-drift test below lands. */
+async function verifiedCodeChange(): Promise<{ root: string; wt: string; head: string }> {
+  const { root, wt } = await initializedWorktree();
+  declareBuildCheck(root, wt, "exit 1");
+  sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  return { root, wt, head: headSha(wt) };
+}
+
+test("main moving under the verified head by doc commits alone skips the re-check", async () => {
+  const { root, wt, head } = await verifiedCodeChange();
+  advanceMain(root, "NOTES.md", "plans moved on\n");
+  advanceMain(root, "GUIDE.md", "and the guide\n");
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "branch work", head);
+
+  assert.equal(result, "changed", "the red check never ran: the tree is the verified one plus docs");
+  assert.equal(eventsOfType(root, "build_check").length, 0);
+  assert.ok(fs.existsSync(path.join(root, "app.js")) && fs.existsSync(path.join(root, "NOTES.md")));
+  // The landed SHA carries a green inherited from the verified head: the red-main gate trusts it
+  // without a run, and attribution (observedOnly) would still run the suite itself.
+  const runs: unknown[] = [];
+  const baseline = await checkMainBaseline(root, defaultConfig(), (run) => runs.push(run));
+  assert.equal(runs.length, 0);
+  assert.equal(baseline.baseline?.inheritedFrom, head);
+});
+
+test("a rebase that only rewrote SHAs lands the verified bytes unchecked and seeds an observed green", async () => {
+  const { root, wt, head } = await verifiedCodeChange();
+  sh(root, "git", "commit", "-q", "--allow-empty", "-m", "main moves without changing a byte");
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "branch work", head);
+
+  assert.equal(result, "changed");
+  assert.notEqual(mainSha(root), head, "the rebase rewrote the commit");
+  assert.equal(eventsOfType(root, "build_check").length, 0, "the tree is byte-identical to the verified one");
+  const baseline = await checkMainBaseline(root, defaultConfig());
+  assert.equal(baseline.baseline?.status, "green");
+  assert.equal(baseline.baseline?.inheritedFrom, undefined, "the same bytes ran green: an observed verdict");
+});
+
+test("a code commit under the verified head still re-runs the check", async () => {
+  const { root, wt, head } = await verifiedCodeChange();
+  advanceMain(root, "NOTES.md", "docs\n");
+  advanceMain(root, "mainfile.txt", "code\n");
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "branch work", head);
+
+  assert.equal(result, "merge_blocked");
+  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["landing", "failed"]]);
+});
+
+test("with check.gateCommand set, doc-only drift still runs the full check", async () => {
+  const { root, wt, head } = await verifiedCodeChange();
+  advanceMain(root, "NOTES.md", "docs\n");
+  const { ctx } = makeCtx(root);
+  ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true" } };
+
+  const result = await mergeToMain(ctx, wt, "branch work", head);
+
+  assert.equal(result, "merge_blocked", "the gate ran only the gate command, so its green proves nothing here");
+  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["landing", "failed"]]);
+});
+
 test("a doc-only delta skips the re-check even when main moved under it", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "NOTES.md"), "notes\n");

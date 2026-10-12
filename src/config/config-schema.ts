@@ -175,6 +175,10 @@ export interface CheckConfigSlice {
   /** Max concurrent check runs (see TumwaterConfig.maxConcurrentChecks); the default cap
    * applies when absent. */
   maxConcurrentChecks?: number;
+  /** The review-exempt paths (see ReviewConfig.exemptPaths). checkMainBaseline carries a green
+   * verdict across main commits that touch only these paths. Absent means no carry-over: every
+   * new SHA runs its own check. */
+  review?: { exemptPaths?: string[] };
 }
 
 /** The tracked tumwater.json config. */

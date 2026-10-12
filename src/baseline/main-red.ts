@@ -147,7 +147,8 @@ export async function mainRedGate(
 }
 
 /** What the review gate learns about main's current tip when a change's check failed twice
- * (mainTipVerdict): `green` — main passes, so the change broke the check; `red` — main fails
+ * (mainTipVerdict): `green` — main passes (observed by a run on this tree, never inherited), so
+ * the change broke the check; `red` — main fails
  * too, so the failure is not the change's and this module's gate and bugfix handoff own the
  * repair; `unavailable` — no verdict could be had, with `why` for the rejection's reasons. */
 type MainTipVerdict =
@@ -166,8 +167,8 @@ let gateMainQueue: Promise<unknown> = Promise.resolve();
  * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked
  * through checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every
  * landing seeds green for the SHA it moved main to, so the common case is a cache hit. A miss
- * (or a provisional red from another worktree) runs the declared check once here, bounded by its
- * timeout. A red is warned fleet-wide once per SHA, exactly as mainRedGate warns it. Never
+ * (or a provisional red from another worktree, or a green that was only inherited across doc
+ * commits) runs the declared check once here, bounded by its timeout. A red is warned fleet-wide once per SHA, exactly as mainRedGate warns it. Never
  * throws: an unreadable main, a checkout that fails, no declared check on main, or a skipped
  * run all read as `unavailable`.
  *
@@ -212,7 +213,10 @@ async function verdictAtMainTipIn(
     const tip = await branchHead(root, mainBranch);
     if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
     const wt = await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip);
-    const check = await checkMainBaseline(wt, config, baselineCheckLogger(root, role), false, forceFresh);
+    // observedOnly: this verdict convicts or clears a change, so a green carried over doc commits
+    // does not count (main-baseline.ts's inheritedGreen). A doc edit can break a test that reads
+    // the docs, and then the change would be rejected for main's failure.
+    const check = await checkMainBaseline(wt, config, baselineCheckLogger(root, role), false, forceFresh, undefined, true);
     const baseline = check.baseline;
     if (baseline?.status === "green") return { status: "green", sha: baseline.sha };
     if (baseline?.status === "red") {

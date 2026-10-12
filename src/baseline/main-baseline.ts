@@ -7,7 +7,10 @@ import { SLEEP_SPAN_TOLERANCE_MS, type BaselineCheckRun } from "../build/build-c
 import { sampleSleepClock, type SleepSampler } from "../build/host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "../concurrency/check-permit.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { refSha } from "../git/git.js";
+import { gitLines, refSha } from "../git/git.js";
+import { gitTry } from "../git/git-run.js";
+import { treeDiffFiles } from "../git/git-diff.js";
+import { isExemptDiff } from "../review/exemptions.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
@@ -43,6 +46,15 @@ interface MainBaseline {
    * re-verified elsewhere before it blocks the fleet; two distinct worktrees agreeing makes it
    * authoritative. Never set on a green — a green is authoritative wherever it was observed. */
   redFrom?: string[];
+  /** Green only: set when no check ran on this tree. It is the commit whose green verdict this
+   * one was carried over from, because the two trees differ only in review-exempt paths:
+   * inheritedGreen across doc-only commits on main, or noteInheritedGreen for a landing whose
+   * tree drifted from the gate-verified one only in exempt paths. It is weaker than an observed
+   * green. A caller that attributes a red check to a change (`observedOnly`) treats it as no
+   * verdict and runs the suite itself, and a red observed on the SHA replaces it. A doc edit
+   * can still break a test that reads the docs, and an inherited green must not hide that
+   * from attribution. */
+  inheritedFrom?: string;
 }
 
 /** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no declared
@@ -73,6 +85,9 @@ interface MainBaselineCheck {
  * noteGreenBaseline seeding a green verdict for a SHA that just became main
  * (src/landing/landing-merge.ts: either its in-lock post-rebase re-check passed on exactly that
  * tree, or the rebase was a no-op so the review gate's pre-check had already run green on it).
+ * A third kind of entry is an inherited green (MainBaseline.inheritedFrom), which no check
+ * observed. It is carried over across doc-only differences (inheritedGreen, noteInheritedGreen)
+ * and ranks below both observed verdicts.
  *
  * The two verdicts are not equally trustworthy, and the cache is written accordingly. A GREEN
  * is authoritative wherever it was observed — the suite ran on this immutable tree and passed —
@@ -155,6 +170,57 @@ export function noteGreenBaseline(sha: string): void {
   rememberBaseline(sha, { status: "green", sha });
 }
 
+/** Record an INHERITED green for `sha` (MainBaseline.inheritedFrom): a tree no check ran on, whose
+ * only difference from the green-verified `from` is in review-exempt paths. The caller is
+ * landing-merge.ts's verifyLanding, after it skipped the in-lock check because main moved
+ * under the gate-verified head only by doc commits. It seeds the head about to become main, as
+ * verifyLanding's own noteGreenBaseline calls do. If the fast-forward then fails, the entry is
+ * still true of that tree and simply never consulted. It never displaces an observed verdict: a
+ * check that actually ran on this tree knows more than the carry-over. */
+export function noteInheritedGreen(sha: string, from: string): void {
+  const prior = baselineCache.get(sha);
+  if (prior && prior.inheritedFrom === undefined) return;
+  rememberBaseline(sha, { status: "green", sha, inheritedFrom: from });
+}
+
+/** How far down main's first-parent history inheritedGreen looks for a verdict to carry over.
+ * main gains about two dozen commits an hour under a full fleet, and the walk stops at the
+ * first cached verdict anyway (every code landing seeds one), so this bound only caps the
+ * rev-list on a cold cache. */
+const INHERIT_WALK_MAX = 64;
+
+/** A green for `sha` carried over from its nearest verdict-bearing first-parent ancestor, or
+ * null when there is none to carry. The nearest ancestor with a cached verdict must be GREEN, and
+ * the tree diff from it to `sha` must touch only `exemptPaths` (config.review.exemptPaths, the
+ * same patterns that let a doc-only change land with no build check at all). Under that policy
+ * a doc commit cannot change the suite's verdict, so re-running the suite on every doc-only
+ * move of main buys nothing. Before this, 82% of the baseline runs (260 of 319 over
+ * 2026-10-02..12) ran on a main whose tip was doc commits on top of a code landing that had
+ * already seeded green. The nearest RED stops the walk: a doc commit after a red may be the
+ * fix, so it is re-checked, never inherited past. An uncached ancestor is walked through, since
+ * the single diff from the green covers it. Never throws: any git failure means no inheritance,
+ * and the caller runs the suite as before. */
+async function inheritedGreen(wt: string, sha: string, exemptPaths: readonly string[]): Promise<MainBaseline | null> {
+  const ancestors = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, `${sha}^`));
+  for (const ancestor of ancestors) {
+    const verdict = baselineCache.get(ancestor);
+    if (verdict === undefined) continue;
+    if (verdict.status !== "green") return null;
+    const files = await treeDiffFiles(wt, ancestor, sha);
+    if (files === null || !isExemptDiff(files, [...exemptPaths])) return null;
+    return { status: "green", sha, inheritedFrom: ancestor };
+  }
+  return null;
+}
+
+/** The review-exempt patterns a config slice carries, or an empty list (no inheritance) when it
+ * carries none. Doctor and the tests can hand torn or partial slices, so the shape is re-checked
+ * here. */
+function exemptPathsOf(config: CheckConfigSlice): string[] {
+  const patterns = config.review?.exemptPaths;
+  return Array.isArray(patterns) ? patterns.filter((p): p is string => typeof p === "string" && p !== "") : [];
+}
+
 /** The cached verdict for `sha` WITHOUT running anything — "green", "red", or undefined when
  * this process holds none. The redeployer's urgency carve-out consults it first (BUGS.md
  * 2026-09-30): a verdict already in hand answers the RUNNING build's redness for free — the
@@ -192,17 +258,38 @@ export async function checkMainBaseline(
    * caller that cannot trust a green (BUGS.md 2026-10-06: the review gate re-attributing a
    * repeated gate failure): a clock- or load-sensitive test can pass on an immutable SHA early
    * and fail later, so main's cached green may no longer be true. The fresh verdict is returned
-   * but never overwrites a green (the write guard below), so the SHA's green keeps its authority
-   * for every other consumer. */
+   * but never overwrites an observed green (the write guard below), so the SHA's green keeps its
+   * authority for every other consumer. It does replace an inherited one. */
   forceFresh = false,
   /** The sleep clock the run measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep: SleepSampler = sampleSleepClock,
+  /** Accept only a verdict a check actually produced on this tree: an inherited green
+   * (MainBaseline.inheritedFrom) reads as a cache miss, and none is inherited. For attribution
+   * (main-red.ts's mainTipVerdict). A green there convicts the change of a red check, and a
+   * doc edit main gained since its last observed green can break a test that reads the docs,
+   * so only a real run may answer. A green from that run upgrades the SHA's verdict, and a red
+   * replaces the inherited green for every consumer. */
+  observedOnly = false,
 ): Promise<MainBaselineCheck> {
   const sha = await refSha(wt, "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
-  const cached = baselineCache.get(sha);
+  const stored = baselineCache.get(sha);
+  const cached = observedOnly && stored?.inheritedFrom !== undefined ? undefined : stored;
   if (cached && !forceFresh && !shouldRerunRed(cached, wt, reverifyRed)) return { baseline: cached };
+  if (!cached && !forceFresh && !observedOnly) {
+    // Outside the in-flight dedup below on purpose: a forceFresh or observedOnly caller joining
+    // a pending promise must get a run, never a carried-over verdict.
+    const exempt = exemptPathsOf(config);
+    const inherited = exempt.length > 0 ? await inheritedGreen(wt, sha, exempt) : null;
+    if (inherited) {
+      // Re-read after the await: a run that settled meanwhile knows more than the carry-over.
+      const settled = baselineCache.get(sha);
+      if (settled) return { baseline: settled };
+      rememberBaseline(sha, inherited);
+      return { baseline: inherited };
+    }
+  }
   // A re-run of a red keys the in-flight map by worktree: joining another worktree's run would
   // observe the environment this run exists to re-test.
   const key = cached?.status === "red" ? `${sha}\u0000${wt}` : sha;
@@ -246,9 +333,11 @@ export async function checkMainBaseline(
               outputTail: outcome.outputTail,
               redFrom: priorRedFrom.includes(wt) ? priorRedFrom : [...priorRedFrom, wt],
             };
-      // A green always lands (promoting a provisional red); a red never overwrites a green —
-      // a concurrent run may have promoted this SHA while this one was still going.
-      if (baselineCache.get(sha)?.status !== "green") rememberBaseline(sha, baseline);
+      // A green always lands (promoting a provisional red); a red never overwrites an observed
+      // green — a concurrent run may have promoted this SHA while this one was still going. An
+      // inherited green is no observation, so this run's verdict replaces it either way.
+      const current = baselineCache.get(sha);
+      if (current?.status !== "green" || current.inheritedFrom !== undefined) rememberBaseline(sha, baseline);
       return { baseline };
     })();
     baselineInFlight.set(key, pending);
@@ -262,7 +351,10 @@ export async function checkMainBaseline(
 
 /** Is main green at the mirror worktree's HEAD? The landing path seeds a green verdict for
  * every merged code SHA (noteGreenBaseline — its in-lock post-rebase re-check, or the gate's
- * pre-check when the rebase was a no-op), so the common case is a cache hit; otherwise the
+ * pre-check when the rebase was a no-op), so the common case is a cache hit. A head that only
+ * added doc commits on top of such a SHA inherits its green (checkMainBaseline's
+ * inheritedGreen). The redeployer's cooldown pre-warm asks this for every new head, and those doc
+ * heads were most of the harness's baseline runs (247 of 319 over 2026-10-02..12). Otherwise the
  * project's declared check runs once in the mirror. No declared check or an
  * environmental skip reads as green — the gates' warn-and-proceed policy.
  *

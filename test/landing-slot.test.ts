@@ -401,15 +401,19 @@ test("a queued landing's record names each phase while it runs: the gate's check
 
   // Every observation point appends the marker's stage as the observers would read it: the
   // project's declared check (the vet's gate pre-check, then the merge's in-lock re-check), and
-  // the reviewer run. The reviewer also moves main, so the in-lock re-check has a rebased
-  // tree to verify — the merge step's own long phase, which names itself a build check too.
+  // the reviewer run. The reviewer also moves main by a code file, so the in-lock re-check has a
+  // rebased tree to verify — the merge step's own long phase, which names itself a build check
+  // too. (An empty or doc-only move would leave the verified tree's bytes, plus at most exempt
+  // paths, and the re-check would rightly be skipped.)
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}' | head -n 1`;
   const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
   await withPi(
     [
       `echo "review:$(${stageOf})" >> '${rec}'`,
-      `git -C '${root}' commit -q --allow-empty -m 'main moves under the landing'`,
+      `echo moved > '${root}/main-moved.txt'`,
+      `git -C '${root}' add main-moved.txt`,
+      `git -C '${root}' commit -q -m 'main moves under the landing'`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
     ].join("\n"),
     async () => {

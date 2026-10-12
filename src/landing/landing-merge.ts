@@ -1,7 +1,7 @@
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
-import { aheadOfMainFiles } from "../git/git-diff.js";
+import { aheadOfMainFiles, treeDiffFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./landing-diff.js";
 import {
   conflictedFiles,
@@ -17,7 +17,7 @@ import { abortSync } from "../git/worktree.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
-import { noteGreenBaseline } from "../baseline/main-baseline.js";
+import { noteGreenBaseline, noteInheritedGreen } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
@@ -235,6 +235,9 @@ export async function exemptSkipBlockReason(
  *   through to its own arm below. Not taken when a `check.gateCommand` is configured: the gate
  *   then ran only that, not the full check.
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
+ * - a code change whose rebased tree differs from the gate-verified one only in exempt paths
+ *   (onlyExemptDriftFromVerified): main moved under the review by doc commits alone, so the
+ *   bytes about to land are the verified ones plus a delta that same rule exempts.
  * - no declared check at all: nothing to run, exactly like the gate skipping its pre-check.
  * An environmental skip (no npm / broken toolchain) warns and proceeds — deliberately NOT
  * fail-closed, so a broken toolchain that would fail every check regardless of the tree
@@ -282,6 +285,7 @@ async function verifyLanding(
     ctx.onLandingBlocked?.(structure);
     return false;
   }
+  if (await onlyExemptDriftFromVerified(ctx, wt, rebasedHead, verifiedHead)) return true;
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check. The landing cell names the
   // check (or its wait for a permit) while it runs, then the merge again for the ff.
@@ -307,6 +311,32 @@ async function verifyLanding(
   // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
   // check is a cache hit instead of one redundant full-suite run.
   noteGreenBaseline(rebasedHead);
+  return true;
+}
+
+/** True, after seeding the red-main baseline, when the tree about to land differs from the tree the
+ * gate's pre-check ran green on (`verifiedHead`) only in review-exempt paths. That is the usual
+ * shape of "main moved under the review" here: 43% of main's commits are doc-only (plan, readme
+ * and qa land them all day), and 165 of 750 in-lock checks over 2026-10-02..12 re-ran the full
+ * suite, holding the merge lock, for a tree that differed from its verified one by markdown
+ * alone. The exempt-diff rule above already lets such a delta land with no check at all, so the
+ * same rule covers drift on top of a verified tree. An identical tree (empty drift, a rebase
+ * that only rewrote SHAs) is the verified bytes themselves and seeds an observed green. Any
+ * other drift seeds an inherited one, which attribution re-checks before trusting
+ * (main-baseline.ts's observedOnly). Not taken without a verified head (the pre-check was skipped
+ * or never ran) or with a `check.gateCommand`, for the same reasons the no-op skip above is not.
+ * A git failure means "not proven" and the check runs. */
+async function onlyExemptDriftFromVerified(
+  ctx: MergeContext,
+  wt: string,
+  rebasedHead: string,
+  verifiedHead: string | undefined,
+): Promise<boolean> {
+  if (verifiedHead === undefined || gateCommandOf(ctx.config) !== undefined) return false;
+  const drift = await treeDiffFiles(wt, verifiedHead, rebasedHead);
+  if (drift === null || !isExemptDiff(drift, ctx.exemptPaths)) return false;
+  if (drift.length === 0) noteGreenBaseline(rebasedHead);
+  else noteInheritedGreen(rebasedHead, verifiedHead);
   return true;
 }
 

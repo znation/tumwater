@@ -58,7 +58,12 @@ merge step lands them, so other loops keep ticking while a change is under revie
   author's next tick. An approval is keyed by the
   diff's patch-id, so an approved change re-landed after a clean rebase is not reviewed again;
   its build check still runs.
-- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. The
+- **Merge.** Approved work fast-forwards main under a merge lock, so history stays linear. If
+  main moved since the vet's check, the rebased tree is checked again inside the lock, unless it
+  differs from the checked one only in review-exempt paths: doc commits on main don't trigger a
+  full re-run. Main's own verdict carries over doc-only commits the same way, so the red-main
+  check and the self-redeploy's green check run the suite once per code change, not once per
+  doc landing. Attributing a red check to a change still runs main's suite for real. The
   merge-side steps (a stack and its bisect, the conflict resolver, the post-resolve re-review)
   run in one dedicated `_merge` checkout, reserved outside the pool so a vet waiting for a slot
   can never deadlock behind the merge lock.

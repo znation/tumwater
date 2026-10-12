@@ -106,6 +106,16 @@ export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<
   return gitLines(out).map(unquotePorcelainPath);
 }
 
+/** Repo-relative paths whose content differs between the trees of two commits, decoded like
+ * aheadOfMainFiles. Rename detection is off, so a file moved between directories reports both
+ * its old and its new path. Otherwise a move from `src/` to `docs/` would read as a docs-only
+ * difference. Returns null when git fails (an unknown commit), so a caller can tell "no answer"
+ * from an empty difference (identical trees). */
+export async function treeDiffFiles(cwd: string, from: string, to: string): Promise<string[] | null> {
+  const out = await gitTry(cwd, "diff", "--name-only", "--no-renames", from, to);
+  return out === null ? null : gitLines(out).map(unquotePorcelainPath);
+}
+
 /** Split a unified diff into one section per file, each starting at its own
  * `diff --git ` header line. Only real headers match: added lines start with "+" and context
  * lines with a space, so file content can never fake a boundary at column 0. Each section is

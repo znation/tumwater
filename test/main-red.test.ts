@@ -9,7 +9,7 @@ import { shortSha } from "../src/text/format.js";
 import { eventsOfType, harnessWarnings, warningEvents } from "./fixtures/log-fixtures.js";
 import { baselineFixture, fakeNpm, runsOf } from "./fixtures/loop-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
-import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
+import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 
 // Unit coverage for the red-main baseline gate (src/baseline/main-red.ts): the policy layer on top
@@ -410,4 +410,29 @@ test("mainTipVerdict reports unavailable when the named branch does not exist", 
   const verdict = await mainTipVerdict(root, ROLE, "no-such-branch", defaultConfig());
   assert.deepEqual(verdict, { status: "unavailable", why: "no-such-branch is unreadable" });
   assert.deepEqual(readEvents(root), [], "nothing ran, nothing to say");
+});
+
+test("mainTipVerdict runs the suite over a green inherited across doc commits, and reports its red", async () => {
+  // A doc edit that breaks a test reading the docs (the shape test/backlog-structure.test.ts has
+  // with the real PLANS.md): the red-main gate may carry main's green over it, but attribution
+  // must not, or the change under judgment would be rejected for main's own failure.
+  const counter = path.join(tmpdir(), "runs");
+  const script = `echo run >> ${counter}; if [ -f BROKEN.md ]; then echo docs-broke-it; exit 1; fi`;
+  const { root, wt } = baselineFixture(ROLE, script);
+  const restore = fakeNpm(script);
+  try {
+    assert.equal(await mainRedGate(root, ROLE, wt), null, "the code commit is green");
+    fs.writeFileSync(path.join(root, "BROKEN.md"), "x\n");
+    sh(root, "git", "add", "BROKEN.md");
+    sh(root, "git", "commit", "-m", "doc that breaks a docs test");
+    sh(wt, "git", "reset", "--hard", "main");
+    assert.equal(await mainRedGate(root, ROLE, wt), null, "the gate carries the green over the doc commit");
+    assert.equal(runsOf(counter), 1, "without a run");
+    const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
+    assert.deepEqual(verdict, { status: "red", sha: mainSha(root) });
+    assert.equal(runsOf(counter), 2, "attribution ran the suite on the tip itself");
+    assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red", "the observed red now blocks authoring");
+  } finally {
+    restore();
+  }
 });
