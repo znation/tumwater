@@ -1988,7 +1988,7 @@ src/loop/loop-tick.ts, src/prompt/prompt-followup.ts, src/loop/loop-pi.ts.
 
 **Tests.** Cases in test/tick-resume.test.ts (the rejected-window verdict, the lease pin
 condition `slotPinnedForResume` evaluated on the post-verdict state, and the next tick's
-resume) and test/loop-pi.test.ts (no within-run retry), both using fake-claude.
+resume) and test/loop-pi-claude.test.ts (no within-run retry), both using fake-claude.
 
 **Acceptance criteria.**
 - An interrupted fake-claude author tick, a hold, then a reset produces one resume with the same
@@ -3417,7 +3417,7 @@ native shapes the translator could not map are visible in the event feed.
 
 **Files touched:** `src/paths.ts`, `src/agent/run-agent.ts`, `src/agent/agent-backend.ts`,
 `src/loop/loop-pi.ts`, `src/review/review.ts`, `src/review/review-followup.ts`,
-`test/claude-run.test.ts`, `test/loop-pi.test.ts`, `test/pi.test.ts` (its stalled-stream raw-log
+`test/claude-run.test.ts`, `test/loop-pi-claude.test.ts`, `test/pi.test.ts` (its stalled-stream raw-log
 flush test now keys the injected stream by path, since a run opens two logs),
 `src/agent/claude/claude-stream.ts` (warning comment), plus the test fixtures that construct
 `PiRunOptions`.
