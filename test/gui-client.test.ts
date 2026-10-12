@@ -339,11 +339,12 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   const els: Record<string, unknown> = {};
   const scope = clientScope<{
     budgetCardHtml(b: object, cw?: object): string;
+    windowLinesHtml(cw: object): string;
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setFleetPause(paused: boolean, forSeconds?: number): Promise<void>;
-  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause"], {
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause", "windowLinesHtml"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
@@ -414,6 +415,18 @@ test("the spend card renders the subscription window in place of or beside the d
     heldUntil: resetsAt,
   });
   assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · held until 14:30/);
+});
+
+test("the window card draws a meter from reported utilization and says when usage is unreported", () => {
+  const { scope } = operatorScope();
+  const win = (w: object) => ({ windows: [w], primary: w, only: true, heldUntil: null });
+  const reported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed", utilization: 0.64 }));
+  assert.match(reported, /Claude 5h · 64%/);
+  assert.match(reported, /class='meter'><span style='width:64%'>/);
+  assert.match(scope.windowLinesHtml(win({ type: "five_hour", status: "allowed_warning", utilization: 1.2 })), /class='meter t-amber'><span style='width:100%'>/);
+  const unreported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed" }));
+  assert.match(unreported, /Claude 5h · ok · usage not reported/);
+  assert.doesNotMatch(unreported, /meter/);
 });
 
 test("the cap editor refuses text the browser rejected instead of silently removing the cap", async () => {

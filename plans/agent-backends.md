@@ -442,7 +442,7 @@ model's minimum CLI version (`minVersion`), which matters doubly because fleet r
 
 | Fleet's paying seams | TUI/GUI budget badge and tile, `tumwater status` |
 | --- | --- |
-| all on subscription claude | **window only**: "Claude 5h · 64% · resets 14:30". The percentage is shown when `utilization` is reported; otherwise the status word (ok / near limit / limited). Amber at `allowed_warning`, red with "claude seams held until 14:30" at `rejected`, and an "overage" marker while `isUsingOverage` |
+| all on subscription claude | **window only**: "Claude 5h · 64% · resets 14:30". The percentage and a progress meter are shown when `utilization` is reported; otherwise the status word (near limit / limited, or "ok · usage not reported"). Amber at `allowed_warning`, red with "claude seams held until 14:30" at `rejected`, and an "overage" marker while `isUsingOverage` |
 | some subscription claude, some priced (pi or API claude) | both: the daily spend line, covering priced seams only, and the window line |
 | none on subscription | today's display, unchanged |
 

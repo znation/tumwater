@@ -77,7 +77,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   }
   function windowLine(w, cw) {
     const parts = ["Claude " + windowLabel(w.type)];
-    parts.push(typeof w.utilization === "number" ? Math.round(w.utilization * 100) + "%" : windowWord(w.status));
+    const word = windowWord(w.status);
+    parts.push(typeof w.utilization === "number" ? Math.round(w.utilization * 100) + "%" : word === "ok" ? "ok · usage not reported" : word);
     if (w.isUsingOverage) parts.push("overage");
     if (w.status === "rejected" && cw.heldUntil != null) parts.push("held until " + windowClock(cw.heldUntil));
     else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push("resets " + windowClock(w.resetsAt));
@@ -90,7 +91,12 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   }
   function windowLinesHtml(cw) {
     if (!cw) return "";
-    return cw.windows.map((w) => "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw)) + "</span>").join("");
+    return cw.windows.map((w) => {
+      const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw)) + "</span>";
+      if (typeof w.utilization !== "number") return line;
+      const pct = Math.min(100, Math.round(w.utilization * 100));
+      return line + "<span class='meter" + windowLineTone(w) + "'><span style='width:" + pct + "%'></span></span>";
+    }).join("");
   }
   // The sidebar's spend card for a payload's budget block: a plain card for an all-free fleet
   // (no spend a cap could bind, so no editor), otherwise the button that opens the cap editor,
