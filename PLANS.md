@@ -6,7 +6,63 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Idle loops say why they are idle, part 1/2: the scheduling poll records why it skipped a due loop (planned 2026-10-12 by plan)
+
+Split from the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot…", which needs review as too large for one run. Part 2/2 ("…part 2/2: the status phase names the skip") reads what this part records. This part changes no rendered output.
+
+**Goal:** `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts) skips a due loop silently in three long-lived ways: an idle extra instance with no free entry, the claim-group hold, and a need-based deferral. The deferral verdict lives only in the in-memory `deferredDue` map, so the status readers (which load state files) cannot tell these apart, and every one falls through to `loopPhase`'s catch-all `"queued"`. Persist the skip reason on the loop's state so part 2 can label it.
+
+**Approach:**
+- src/loop/loop-state.ts: add `export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work"` and an optional `LoopState.skipReason?: SkipReason`, with a doc comment in the style of `heldElsewhere`: set by the scheduling poll when a due loop is skipped for one of these reasons, and cleared when the poll admits the loop or finds it not due. In `loadLoopState`, drop a saved value that is not one of the four strings (`delete s.skipReason`), so a hand-edited or future value reads as absent.
+- src/orchestrator/orchestrator-scheduling.ts: add a module-private `noteSkip(root, runner, reason: SkipReason | undefined)`. It assigns `runner.state.skipReason` and calls `saveLoopState(root, runner.state)` **only when the value changes**, so a loop that stays skipped writes its state file once per episode, not once per poll. This follows the persisted claim release in the same function: a skipped loop gets no tick to save its own state. Call it:
+  - with `"deferred-backlog"` / `"deferred-no-work"` in the `if (deferredNow)` branch, mapping `DeferReason` `"backlog"` / `"no-work"`;
+  - with `"claim-hold"` before the `if (claimGroup.hold) continue;`;
+  - with `"no-free-entry"` before the idle-extra `continue` (`instanceIndex(runner.role) >= 2`);
+  - with `undefined` in the `if (!run)` branch, before the merge-queue interlock `continue` (`queuedRoles.has`), before the maintenance-headroom `continue`, and immediately before `reasons.set(runner, reason)` (admitted).
+  The earlier gate `continue`s (pauses, holds, disk/restart) leave the value alone. Those states have their own `loopPhase` labels, which rank ahead of the catch-all, and the next poll that reaches the sites above rewrites the value.
+- No event, config knob, or schema version change: the field is optional, and an older state file simply lacks it.
+
+**Files:** src/loop/loop-state.ts, src/orchestrator/orchestrator-scheduling.ts, test/orchestrator-scheduling.test.ts, test/orchestrator-defer.test.ts, docs/invariants.md (only if a new guarantee entry fits an existing section; otherwise none).
+
+**Acceptance criteria:**
+- test/orchestrator-scheduling.test.ts "an extra instance with no free entry is skipped and keeps its schedule" also asserts `feature2.state.skipReason === "no-free-entry"` and the same value from `loadLoopState(root, "feature-2")`. The test's existing assertions (unchanged `nextRunAt`/`backoffSeconds`, no claim) still hold.
+- A new test in the same file: a group held by an unclaimed mid-entry runner (reuse the fixture behind "a base with an outstanding revision and no claim also holds the group") leaves the sibling with `skipReason === "claim-hold"`. Once the hold clears and the sibling is admitted, `skipReason` is undefined in memory and on disk.
+- A new test in test/orchestrator-defer.test.ts, next to "once: a due maintenance role with an open backlog settles as deferred, runs no tick, and logs the episode": the deferred role's state reads `"deferred-backlog"` on disk. A second poll with the same verdict does not rewrite the file (assert that its mtime, or a spy on the save, stays unchanged).
+- `loadLoopState` drops an unknown `skipReason` string (a unit test in test/loop-state.test.ts).
+- No rendered output changes: test/status-model.test.ts and test/gui-client.test.ts pass untouched.
+- `npm run test` passes.
+
+### Idle loops say why they are idle, part 2/2: the status phase names the skip (planned 2026-10-12 by plan; requires part 1/2 landed)
+
+Second half of the split of the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot"…". It reads `LoopState.skipReason`, which part 1/2 ("…part 1/2: the scheduling poll records why it skipped a due loop") adds. When this part lands, move that BUGS.md entry to `## Fixed` with a Fixed line that names this plan and the tests below.
+
+**Goal:** a due loop the poll skipped reads as what it is, in the CLI/TUI table and on the GUI page, instead of the catch-all `queued`.
+
+**Approach:**
+- src/ui/status-model.ts `loopPhase`: in the final fallthrough (after the `nextRunAt > Date.now()` sleeping branch, where it now returns `"queued"`), map `s.skipReason` as follows:
+  - `"no-free-entry"` → `idle: no unclaimed plans`, or `idle: no unclaimed bugs` when `baseRoleOf(s.role) === "bugfix"`;
+  - `"claim-hold"` → `idle: sibling mid-entry`;
+  - `"deferred-backlog"` → `deferred (backlog open)`;
+  - `"deferred-no-work"` → `deferred (no new work)`;
+  - absent → `"queued"`, as today.
+  Every earlier rung keeps precedence (stopped, running, landing, holds, main red, failing, sleeping). Update the ladder's doc comment.
+- `idleClaimText` (same file): drop the `phase === "queued" && instanceIndex(s.role) >= 2` inference. A claim's title is still returned when one is held. Otherwise return null, because the phase label now carries the idle reason itself. Remove the then-unused `instanceIndex` import if nothing else in the file uses it.
+- src/ui/gui/gui-client-model.ts `phaseInfo` (the browser twin):
+  - `p.startsWith("idle: ")` → `{ key: "idle", label: "Idle", tone: "gray", live: false, detail: p.slice(6) }`;
+  - `p.startsWith("deferred (")` → `{ key: "deferred", label: "Deferred", tone: "gray", live: false }`, with the detail being the parenthesized clause: "backlog open" or "no new work";
+  - the `queued` detail becomes "due — starts on the next poll", which is true once the named skips have their own labels.
+  `loopRank` needs no change: unlisted labels already rank 4 (idle) in both twins. Confirm by test, not by assumption.
+- src/ui/gui/gui-client-loops.ts: drop the `(l.instanceOf && info.key === "queued")` arm of the activity branch, so it reads `else if (l.claim)`, and drop the "idle — no unclaimed …" text there. The pill detail now carries it. Update the comment.
+
+**Files:** src/ui/status-model.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-loops.ts, test/status-model.test.ts, test/gui-client.test.ts, BUGS.md.
+
+**Acceptance criteria:**
+- test/status-model.test.ts: new cases show `loopPhase` returning each of the five labels for a due, idle state carrying the matching `skipReason`. A sleeping state with a stale `skipReason` still reads `sleeping (…)`, and a running one still reads as running.
+- The existing test "idleClaimText names the claimed entry, or why an extra instance is idle" is rewritten (it pins the dropped inference): claim titles are still returned, and `idleClaimText({ role: "feature-2" }, "queued")` is now null.
+- test/gui-client.test.ts "every phase label loopPhase renders maps to a known status on the page" gains the new labels. Each maps to a non-`other` key (`idle` / `deferred`), and `loopRank` agrees between the server model and the browser twin.
+- The page's queued detail no longer contains "slot" or "deferred": `grep -rn 'waiting for a free slot' src/ui` finds nothing (the phrase survives only in unrelated landing/worktree comments).
+- The BUGS.md entry has moved to `## Fixed` with today's Fixed date.
+- `npm run test` passes.
 
 
 ## Done
