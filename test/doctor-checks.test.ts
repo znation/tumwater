@@ -9,6 +9,7 @@ import {
   checkBuildCheck,
   checkClaudeTranscripts,
   checkDiskSpace,
+  checkEventLog,
   checkGitBinary,
   checkInit,
   checkMergeLock,
@@ -31,6 +32,7 @@ import { slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 
 // Unit coverage for the pre-flight environment and repo checks
 // (src/doctor/doctor-checks.ts): every check's ok/fail/warn branches. The binary checks take an
@@ -335,6 +337,39 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
   } finally {
     fs.chmodSync(stateDir, 0o755);
   }
+});
+
+test("checkEventLog passes an absent log, fails an unreadable one, and passes a readable one", () => {
+  const absent = makeRepo();
+  assert.deepEqual(checkEventLog(absent), { level: "ok", detail: "no events yet" });
+
+  const blank = makeRepo();
+  writeEvents(blank, []);
+  assert.equal(checkEventLog(blank).level, "ok", "a newline-only log is a young project, not damage");
+
+  const empty = makeRepo();
+  writeEvents(empty, []);
+  fs.truncateSync(path.join(empty, ".tumwater", "log", "events.jsonl"), 0); // a genuinely zero-byte file
+  assert.equal(checkEventLog(empty).level, "ok", "a zero-byte log is a young project, not damage");
+
+  const corrupt = makeRepo();
+  writeEvents(corrupt, ["{not json"]);
+  const bad = checkEventLog(corrupt);
+  assert.equal(bad.level, "fail");
+  assert.match(bad.detail, /unreadable/);
+
+  // The class of filesystem damage a crash can leave: a directory at the log path. A readable
+  // rotated archive must not mask it — rotation is the steady state.
+  const damaged = makeRepo();
+  fs.mkdirSync(path.join(damaged, ".tumwater", "log", "events.jsonl"), { recursive: true });
+  writeLogLines(path.join(damaged, ".tumwater", "log", "events.jsonl.1"), [
+    { ts: Date.now(), loop: "feature", type: "tick_end" },
+  ]);
+  assert.equal(checkEventLog(damaged).level, "fail");
+
+  const good = makeRepo();
+  writeEvents(good, [{ ts: Date.now(), loop: "feature", type: "tick_end" }]);
+  assert.equal(checkEventLog(good).level, "ok");
 });
 
 test("checkDiskSpace fails below the floor, warns in the reclaim band, passes above it, and warns when unmeasurable", () => {

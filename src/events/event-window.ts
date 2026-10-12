@@ -1,7 +1,9 @@
+import type { Stats } from "node:fs";
 import { dayKey, humanSeconds } from "../text/datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
+import { statOrNull } from "../files/files.js";
 import { readTailTextWithEnd } from "../files/tail.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
@@ -52,6 +54,16 @@ export function assertReportSinceMs(sinceMs: number): void {
 export const SPARSE_WINDOW_NOTE =
   "note: the log's oldest retained event lies inside this window; older events may have rotated out";
 
+/** How a read found the event feed — the read OUTCOME, distinct from what the window holds.
+ * "ok": at least one parseable event line was read from the live log or its archive.
+ * "empty": neither file exists or both are zero bytes (a fleet that has not written yet).
+ * "unreadable": a file exists with bytes but none of them parse as an event — a directory at
+ * the path, a permission failure, or a run whose every complete line is corrupt. The failure
+ * digest branches on this so an observer role can tell "the fleet was idle" from "I could not
+ * read the log"; the never-fail-the-tick policy still holds — a read reports the state, it
+ * never throws to do so. */
+export type EventLogState = "ok" | "empty" | "unreadable";
+
 /** What one windowed read of events.jsonl yielded. */
 interface EventWindow {
   /** Events whose local day is on or after the `fromKey` the read was asked for, oldest first. */
@@ -70,6 +82,8 @@ interface EventWindow {
    * size would fold it again on the next append. A fragment that did not parse was not consumed
    * and stays past this offset for the next read. */
   liveEnd: number;
+  /** The live log's and archive's combined read outcome (EventLogState). */
+  logState: EventLogState;
 }
 
 /** One file's scanned window plus the byte offset the scan consumed through: its own end, past
@@ -78,6 +92,48 @@ interface ScannedFile {
   events: HarnessEvent[];
   coversFullWindow: boolean;
   end: number;
+  logState: EventLogState;
+}
+
+/** Classify a decoded event-log read by whether any line parses: "ok" once one line is an
+ * event, "unreadable" when complete lines exist but none parse, and "empty" when the read held
+ * no non-empty complete line. A newline-less trailing fragment is a write in flight, not
+ * corruption, so it never makes a file unreadable — but a fragment that parses still proves
+ * the feed readable. */
+function classifyLogText(text: string): EventLogState {
+  const endsWithNewline = text.endsWith("\n");
+  const lines = text.split("\n");
+  let parsedAny = false;
+  let corruptLine = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line) continue;
+    if (parseEventLine(line)) parsedAny = true;
+    else if (endsWithNewline || i !== lines.length - 1) corruptLine = true;
+  }
+  if (parsedAny) return "ok";
+  return corruptLine ? "unreadable" : "empty";
+}
+
+/** Classify one event-log file from its stat and the text a read decoded. A missing file and a
+ * zero-byte one are both "empty"; a directory, a stat that found bytes the read could not
+ * return (`text === ""`), and a file whose complete lines all fail to parse are "unreadable". */
+function classifyLogFile(text: string, st: Stats | null): EventLogState {
+  if (!st) return "empty";
+  if (st.isDirectory()) return "unreadable";
+  if (st.size === 0) return "empty";
+  if (text === "") return "unreadable";
+  return classifyLogText(text);
+}
+
+/** Combine the live log's and the archive's read outcomes: an unreadable file outranks a
+ * readable sibling, so an archive — the normal steady state once the log has rotated at 16 MB
+ * — cannot mask an unreadable live log; otherwise a parseable event proves the feed readable,
+ * and an empty pair is empty. */
+function combineLogState(a: EventLogState, b: EventLogState): EventLogState {
+  if (a === "unreadable" || b === "unreadable") return "unreadable";
+  if (a === "ok" || b === "ok") return "ok";
+  return "empty";
 }
 
 /** The oldest COMPLETE line in a backwards chunk buffer, or null when none is complete yet.
@@ -131,6 +187,7 @@ export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
  * fleet was idle": both leave the oldest returned event later than the window start, but only
  * the former means data was lost. */
 function scanEventsFile(file: string, fromKey: string): ScannedFile {
+  const st = statOrNull(file);
   let coversFullWindow = false;
   const { text, coveredEnd } = readTailTextWithEnd(file, (_chunk, parts) => {
     // The oldest chunk's leading line may be torn by the chunk boundary, so oldestCompleteLine
@@ -175,7 +232,7 @@ function scanEventsFile(file: string, fromKey: string): ScannedFile {
   const trailing = lines[lines.length - 1] ?? "";
   const end =
     trailing !== "" && parseEventLine(trailing) !== null ? coveredEnd + Buffer.byteLength(trailing) : coveredEnd;
-  return { events, coversFullWindow, end };
+  return { events, coversFullWindow, end, logState: classifyLogFile(text, st) };
 }
 
 /** Events whose local day is on or after `fromKey`, read from the live log and — when the live
@@ -191,13 +248,33 @@ function scanEventsFile(file: string, fromKey: string): ScannedFile {
  * behavior is unchanged. */
 export function readWindowEvents(root: string, fromKey: string): EventWindow {
   const live = scanEventsFile(eventsLogPath(root), fromKey);
-  if (live.coversFullWindow) return { events: live.events, coversFullWindow: true, liveEnd: live.end };
+  if (live.coversFullWindow)
+    return { events: live.events, coversFullWindow: true, liveEnd: live.end, logState: live.logState };
   const archive = scanEventsFile(eventsArchivePath(root), fromKey);
   return {
     events: [...archive.events, ...live.events],
     coversFullWindow: archive.coversFullWindow || live.coversFullWindow,
     liveEnd: live.end,
+    logState: combineLogState(live.logState, archive.logState),
   };
+}
+
+/** The event feed's read outcome for a one-shot caller that needs no window — `doctor`'s
+ * event-log pre-flight. Reads the live log and its archive whole and classifies each; the
+ * combine rule matches readWindowEvents, so the doctor check and the telemetry digest agree on
+ * what "unreadable" means. */
+export function eventLogState(root: string): EventLogState {
+  return combineLogState(scanFileReadState(eventsLogPath(root)), scanFileReadState(eventsArchivePath(root)));
+}
+
+/** Read one event-log file whole and classify it, without building a window. Reading whole is
+ * deliberate: a one-shot pre-flight can afford it, and only a full read proves a file has no
+ * parseable line rather than just a corrupt tail. */
+function scanFileReadState(file: string): EventLogState {
+  const st = statOrNull(file);
+  if (!st || st.isDirectory() || st.size === 0) return classifyLogFile("", st);
+  const { text } = readTailTextWithEnd(file, () => false);
+  return classifyLogFile(text, st);
 }
 
 /** The duration-shaped windowed read whose consumer needs a SECOND view of the same window

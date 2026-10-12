@@ -16,6 +16,7 @@ import {
   checkGitBinary,
   checkInit,
   checkDiskSpace,
+  checkEventLog,
   checkMergeLock,
   checkNodeVersion,
   checkRepo,
@@ -74,6 +75,7 @@ export async function runDoctor(
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", ...checkClaudeTranscripts(config) },
     { name: "state dir", ...checkStateDir(root) },
+    { name: "event log", ...checkEventLog(root) },
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "worktree pool", ...checkWorktreePool(root) },
     { name: "work instances", ...checkWorkInstances(root, config) },

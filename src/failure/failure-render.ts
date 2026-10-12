@@ -137,7 +137,8 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
-  if (data.emptyLog) lines.push("no events retained");
+  if (data.logState === "unreadable") lines.push("log unreadable — evidence missing");
+  else if (data.emptyLog) lines.push("no events retained");
   else if (!data.hasEvents) {
     lines.push(
       data.sinceMs !== undefined

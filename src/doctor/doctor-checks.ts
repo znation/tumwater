@@ -32,11 +32,12 @@ import {
 } from "../gates/readiness.js";
 import { agentBinSourceLabelFor, agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir, worktreesDir } from "../paths.js";
+import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
+import { eventLogState, type EventLogState } from "../events/event-window.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse } from "../gates/startup-gate.js";
@@ -312,6 +313,25 @@ export function checkStateDir(root: string): CheckOutcome {
   } catch (err) {
     return failOutcome(`not writable: ${errorMessage(err)}`);
   }
+}
+
+/** Event log readable — open and parse events.jsonl (and its rotated archive) so the one
+ * failure the telemetry role is chartered to catch — a feed that hid itself — is named by the
+ * pre-flight too. An absent or empty log is fine: a young project writes its first event on the
+ * first tick. A present-but-unparseable log (a directory at the path, a permission failure, or
+ * every complete line corrupt) fails, because every observer — telemetry, the TUI/GUI feeds,
+ * `logs`, `report` — reads that one feed. Read-only. */
+export function checkEventLog(root: string): CheckOutcome {
+  let state: EventLogState;
+  try {
+    state = eventLogState(root);
+  } catch (err) {
+    return failOutcome(`could not read ${eventsLogPath(root)}: ${errorMessage(err)}`);
+  }
+  if (state === "unreadable")
+    return failOutcome(`unreadable: ${eventsLogPath(root)} — the fleet's event feed cannot be read`);
+  if (state === "empty") return okOutcome("no events yet");
+  return okOutcome(`readable: ${eventsLogPath(root)}`);
 }
 
 /** Disk floor (plans/disk-floor.md, parts 1/4 and 2/4) — is there room on the volume the

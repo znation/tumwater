@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { collectFailureReport, collectFailureReportSince } from "../src/failure/failure-data.js";
 import { atLocalTs as at, ago, dayKey, HOUR } from "./helpers/oracles.js";
-import { writeEvents } from "./fixtures/log-fixtures.js";
+import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 
@@ -227,7 +229,49 @@ test("a log retaining only events outside the read span says so, not 'no events 
 test("an empty log reads 'no events retained'", () => {
   const data = collectFailureReport(tmpdir(), 5);
   assert.equal(data.emptyLog, true);
+  assert.equal(data.logState, "empty");
   assert.match(renderFailureMarkdown(data), /^no events retained$/m);
+});
+
+test("a present-but-unreadable feed is named unreadable, not 'no events retained'", () => {
+  // The bug: a corrupt feed and a never-written one rendered the same empty-window line, so
+  // the observer role could not tell "the fleet was idle" from "I could not read the log".
+  const root = tmpdir();
+  writeEvents(root, ["{not json"]); // bytes exist, no line parses
+  const data = collectFailureReport(root, 5);
+  assert.equal(data.logState, "unreadable");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^log unreadable — evidence missing$/m);
+  assert.ok(!md.includes("no events retained"));
+});
+
+test("a log whose only lines are torn in flight still reads as empty, not unreadable", () => {
+  // A newline-less trailing fragment is a write in flight, not corruption: a lone partial
+  // line must not raise the alarm until its newline lands and it can be judged.
+  const root = tmpdir();
+  writeEvents(root, ["{not json"]);
+  const file = path.join(root, ".tumwater", "log", "events.jsonl");
+  fs.writeFileSync(file, fs.readFileSync(file, "utf8").trimEnd());
+  assert.equal(collectFailureReport(root, 5).logState, "empty");
+});
+
+test("a readable archive does not mask an unreadable live log", () => {
+  // The bug: combineLogState let the archive's "ok" win, so once the log had rotated at 16 MB
+  // a damaged live feed rendered as a quiet window — exactly the self-hiding failure this
+  // change exists to name.
+  const root = tmpdir();
+  writeEvents(root, []); // creates .tumwater/log/
+  const live = path.join(root, ".tumwater", "log", "events.jsonl");
+  fs.rmSync(live, { recursive: true, force: true });
+  fs.mkdirSync(live, { recursive: true }); // a directory at the live log path
+  writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+  ]);
+  const data = collectFailureReport(root, 5);
+  assert.equal(data.logState, "unreadable");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^log unreadable — evidence missing$/m);
+  assert.ok(!md.includes("no events retained"));
 });
 
 /** Every Markdown table in a rendered digest, as the cells of its header, separator, and body

@@ -137,6 +137,29 @@ roles section", "a whole-config write does not add a roles section the file neve
 "dotted writes preserve the file's own roles section" — and `test/config-request.test.ts` —
 "applyConfigRequest preserves the file's own roles section".
 
+### INV-B4: an unreadable event feed is named, not rendered as idle
+
+**Guarantee.** A windowed or one-shot read of `events.jsonl` reports its outcome as
+`ok`/`empty`/`unreadable`: a present file whose bytes yield no parseable event line (a directory
+at the path, a permission failure, or every complete line corrupt) reads `unreadable` and is
+distinct from a missing or zero-byte feed's `empty`; an unreadable file outranks a readable
+sibling, so a readable rotated archive cannot mask an unreadable live log. The failure digest renders
+`log unreadable — evidence missing` for the unreadable case instead of `no events retained`, so
+the telemetry role can tell "the fleet was idle" from "I could not read the log"; a
+newline-less trailing fragment remains a write in flight and never by itself makes a feed
+unreadable.
+
+**Binds.** `src/events/event-window.ts` (`readWindowEvents`, `scanEventsFile`, `eventLogState`,
+`EventLogState`), `src/failure/failure-data.ts` (`FailureReportData.logState`),
+`src/failure/failure-render.ts` (`renderFailureMarkdown`), `src/doctor/doctor-checks.ts`
+(`checkEventLog`).
+
+**Pinned by.** `test/failure-render.test.ts` — "a present-but-unreadable feed is named
+unreadable, not 'no events retained'" and "a log whose only lines are torn in flight still reads
+as empty, not unreadable" and "a readable archive does not mask an unreadable live log";
+`test/doctor-checks.test.ts` — "checkEventLog passes an absent log, fails an unreadable one, and
+passes a readable one".
+
 ## Sibling result shapes a classifier treats alike
 
 When a classifier groups outcomes into classes, every result shape that belongs to a class must

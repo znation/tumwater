@@ -9,7 +9,7 @@
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
 import type { TickResult } from "../tick/tick-outcome.js";
-import { assertReportSinceMs, eventWindowCovers, readWindowEvents } from "../events/event-window.js";
+import { assertReportSinceMs, eventWindowCovers, readWindowEvents, type EventLogState } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";
@@ -103,6 +103,7 @@ export interface FailureReportData {
   ticks: number; // tick_end events in the current window
   hasEvents: boolean; // any event in either window (a day-key read can reach past them)
   emptyLog: boolean; // the retained log holds no parseable events reaching the window
+  logState: EventLogState; // the read outcome: "ok" (parseable events), "empty", or "unreadable"
   partial: boolean; // the read window (both halves) starts before the retained log does
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
   outcomes: OutcomeRow[];
@@ -263,7 +264,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
     return cached.data;
   }
 
-  const { events, coversFullWindow } = readWindowEvents(root, priorFrom);
+  const { events, coversFullWindow, logState } = readWindowEvents(root, priorFrom);
   const current: HarnessEvent[] = [];
   const prior: HarnessEvent[] = [];
   for (const ev of events) {
@@ -273,7 +274,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
     else if (day >= priorFrom) prior.push(ev);
   }
 
-  const data = assembleFailureReport(current, prior, events, coversFullWindow, { days, from, to }, role);
+  const data = assembleFailureReport(current, prior, events, coversFullWindow, logState, { days, from, to }, role);
   failureDigestCache.set(key, { from, to, priorFrom, stat, data });
   if (failureDigestCache.size > FAILURE_DIGEST_CACHE_MAX) {
     const oldest = failureDigestCache.keys().next().value;
@@ -300,7 +301,7 @@ export function collectFailureReportSince(root: string, sinceMs: number, role?: 
     if (ev.ts >= cutoff && ev.ts <= now) current.push(ev);
     else if (ev.ts >= priorFrom && ev.ts < cutoff) prior.push(ev);
   }
-  return assembleFailureReport(current, prior, raw.events, eventWindowCovers(raw, priorFrom), {
+  return assembleFailureReport(current, prior, raw.events, eventWindowCovers(raw, priorFrom), raw.logState, {
     days: Math.ceil(sinceMs / 86_400_000),
     from: dayKey(cutoff),
     to: dayKey(now),
@@ -318,6 +319,7 @@ function assembleFailureReport(
   priorRaw: HarnessEvent[],
   allEventsRaw: HarnessEvent[],
   coversFullWindow: boolean,
+  logState: EventLogState,
   window: { days: number; from: string; to: string; sinceMs?: number; fromIso?: string },
   role?: string,
 ): FailureReportData {
@@ -482,6 +484,7 @@ function assembleFailureReport(
     ticks: tickEvents.length,
     hasEvents,
     emptyLog: !hasEvents && !coversFullWindow,
+    logState,
     partial: hasEvents && !windowComplete,
     oldestEventDate,
     outcomes,

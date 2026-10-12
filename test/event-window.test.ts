@@ -40,6 +40,7 @@ test("a missing or empty log reads as an empty window that does not cover", () =
     events: [],
     coversFullWindow: false,
     liveEnd: 0,
+    logState: "empty",
   });
 
   const empty = tmpdir();
@@ -48,6 +49,7 @@ test("a missing or empty log reads as an empty window that does not cover", () =
     events: [],
     coversFullWindow: false,
     liveEnd: liveEndOf(empty),
+    logState: "empty",
   });
 });
 
@@ -112,6 +114,7 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
     events: [{ ts: recent, loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
     liveEnd: liveEndOf(within),
+    logState: "ok",
   });
 
   const before = tmpdir();
@@ -265,6 +268,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
     ],
     coversFullWindow: false,
     liveEnd: liveEndOf(missingArchive),
+    logState: "ok",
   });
 
   const emptyArchive = tmpdir();
@@ -274,6 +278,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
     events: [{ ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
     liveEnd: liveEndOf(emptyArchive),
+    logState: "ok",
   });
 });
 
