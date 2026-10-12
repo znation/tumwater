@@ -1,8 +1,10 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries nine rules on purpose: four for promise misuse tsc cannot see, three for type
+// carries ten rules on purpose: four for promise misuse tsc cannot see, three for type
 // spellings whose meaning is not what the author read, one for a type-only import that silently
-// stays a runtime side effect under verbatimModuleSyntax, and one for a private member that is
-// never reassigned but is not marked `readonly`.
+// stays a runtime side effect under verbatimModuleSyntax, one for a private member that is
+// never reassigned but is not marked `readonly`, and one for a comparator-less `sort` on a
+// non-string array, which orders by the elements' string forms (`[10, 2].sort()` stays
+// `[10, 2]`).
 //
 // Promise misuse: no-floating-promises flags an un-awaited async call, which typechecks fine
 // and silently races (33521347 dropped the await on 25 e2e waits and CI broke);
@@ -71,5 +73,14 @@ export default tseslint.config(
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/prefer-readonly": "error",
     },
+  },
+  {
+    // Production code only: the rule cannot prove that a test fixture's array elements are
+    // all strings (they are arrays of tuples, `any[]`, or `unknown[]`), yet the fixtures sort
+    // values whose order is intentionally lexicographic. Scoping here keeps the rule's signal
+    // on the code that ships without demanding a comparator on every fixture sort. The rule's
+    // default ignoreStringArrays already exempts arrays whose elements are all strings.
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    rules: { "@typescript-eslint/require-array-sort-compare": "error" },
   },
 );

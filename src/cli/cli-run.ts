@@ -296,7 +296,13 @@ export function onceSummary(
       skipped.push(reason);
     }
   }
-  const counts = [...outcomes.entries()].sort().map(([k, n]) => `${n} ${k}`).join(", ");
+  // Sort by result key only. The comparator makes that explicit: a comparator-less sort
+  // would order `[key, count]` tuples by their "key,count" string form, which happens to
+  // agree only while each key is unique.
+  const counts = [...outcomes.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, n]) => `${n} ${k}`)
+    .join(", ");
   const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
   return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
 }
