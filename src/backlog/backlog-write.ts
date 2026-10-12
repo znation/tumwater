@@ -602,6 +602,27 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
   return removeEntry(root, "PLANS.md", "Planned", n);
 }
 
+/** `tumwater plan --edit <n> --file`: rewrite the nth `## Planned` entry from a markdown file,
+ * title and body kept line for line (splitEntryFile), position and original stamp kept. A body
+ * that would grow a phantom section writes nothing. */
+export function editPlanFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
+  const { title, body } = splitEntryFile(text);
+  if (title === "") fail(`plan needs a title: ${usage}`);
+  const problem = bodyStructureProblem(body);
+  if (problem) fail(`the --file body cannot be written: ${problem}`);
+  return editEntry(root, "PLANS.md", "Planned", n, title, body);
+}
+
+/** `tumwater bug --edit <n> --file`: the bug twin of editPlanFromText over `## Open`. The body is
+ * written as the file gives it, so a bug filed with `--file` can be revised with its body. */
+export function editBugFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
+  const { title, body } = splitEntryFile(text);
+  if (title === "") fail(`bug needs a symptom: ${usage}`);
+  const problem = bodyStructureProblem(body);
+  if (problem) fail(`the --file body cannot be written: ${problem}`);
+  return editEntry(root, "BUGS.md", "Open", n, title, body);
+}
+
 /** `tumwater bug --edit <n> "<symptom>"`: replace the nth BUGS.md `## Open` entry's heading
  * text with the new symptom, keeping its position and its original `(reported by …)` stamp.
  * The symptom folds to one line (collapseWhitespace, the fileBug rule), so it can never grow
@@ -741,20 +762,31 @@ export function listAndAnnounce(
  * what remains after the flags is the new text the callback folds to one line (so a `## `/`### `
  * line quoted in it can never grow a phantom section). After requireReadyRepo it prints
  * `edited <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
- * fileAndAnnounce there is no wake: an edit adds no work for a loop to pick up. */
+ * fileAndAnnounce there is no wake: an edit adds no work for a loop to pick up. With
+ * `--file <path>` (`-` reads stdin) the new entry comes from a markdown file instead of
+ * positionals: `editText` receives its text, and any positional alongside --file is refused. */
 export async function editAndAnnounce(
   root: string,
   args: string[],
   command: string,
   edit: (n: number, positionals: string[]) => { file: string; title: string },
+  editText: (n: number, text: string) => { file: string; title: string },
 ): Promise<void> {
-  const { json, positionals, position } = scanProseFlags(args, command, {
+  const fileFlag = args.indexOf("--file");
+  const path = fileFlag >= 0 ? promptFileValue(args[fileFlag + 1]) : null;
+  const rest = path === null ? args : args.filter((_, i) => i !== fileFlag && i !== fileFlag + 1);
+  if (path !== null) rejectRepeatFlag(rest.includes("--file"), "--file");
+  const { json, positionals, position } = scanProseFlags(rest, command, {
     name: "--edit",
     example: "--edit 2",
   });
+  if (path !== null) {
+    const stray = positionals[0];
+    if (stray !== undefined) fail(`unexpected argument ${JSON.stringify(stray)} — with --file the entry comes from the file`);
+  }
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
   await requireReadyRepo(root);
-  const edited = edit(position, positionals);
+  const edited = path === null ? edit(position, positionals) : editText(position, readPromptFileArg(path));
   if (json) sayJson({ file: edited.file, title: edited.title });
   else say(`edited ${command} in ${edited.file}: ${edited.title}`);
 }

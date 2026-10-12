@@ -218,7 +218,7 @@ async function main(): Promise<void> {
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
     case "bug": {
-      const { OPERATOR_FILE_KINDS, bugTitleOf, bugWakeText, cancelAndAnnounce, cancelBug, editAndAnnounce, editBug, fileBug, fileBugFromText, fileAndAnnounce, listAndAnnounce } =
+      const { OPERATOR_FILE_KINDS, bugTitleOf, bugWakeText, cancelAndAnnounce, cancelBug, editAndAnnounce, editBug, editBugFromText, fileBug, fileBugFromText, fileAndAnnounce, listAndAnnounce } =
         await import("./backlog/backlog-write.js");
       const usage = 'tumwater bug "<symptom>"';
       if (args.includes("--list")) {
@@ -226,7 +226,9 @@ async function main(): Promise<void> {
         break;
       }
       if (args.includes("--edit")) {
-        await editAndAnnounce(root, args, "bug", (n, positionals) => editBug(root, n, positionals.join(" "), usage));
+        await editAndAnnounce(root, args, "bug", (n, positionals) => editBug(root, n, positionals.join(" "), usage), (n, text) =>
+          editBugFromText(root, n, text, usage),
+        );
         break;
       }
       if (args.includes("--cancel")) {
@@ -246,7 +248,7 @@ async function main(): Promise<void> {
       break;
     }
     case "plan": {
-      const { OPERATOR_FILE_KINDS, cancelAndAnnounce, cancelPlan, editAndAnnounce, editPlan, filePlan, filePlanFromText, fileAndAnnounce, listAndAnnounce, planTitleOf, planWakeText } =
+      const { OPERATOR_FILE_KINDS, cancelAndAnnounce, cancelPlan, editAndAnnounce, editPlan, editPlanFromText, filePlan, filePlanFromText, fileAndAnnounce, listAndAnnounce, planTitleOf, planWakeText } =
         await import("./backlog/backlog-write.js");
       const usage = 'tumwater plan "<title>" [body...]';
       if (args.includes("--list")) {
@@ -256,6 +258,7 @@ async function main(): Promise<void> {
       if (args.includes("--edit")) {
         await editAndAnnounce(root, args, "plan", (n, positionals) =>
           editPlan(root, n, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
+        (n, text) => editPlanFromText(root, n, text, usage),
         );
         break;
       }

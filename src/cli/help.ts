@@ -148,6 +148,11 @@ Usage:
                                    Replace the Nth entry's text in BUGS.md ## Open in place,
                                    keeping its position and original filing stamp; no wake;
                                    --json prints {file, title}
+  tumwater bug --edit <n> --file <path> [--json]
+                                   Replace the Nth entry from a markdown file ("-" reads
+                                   stdin): the first non-blank line is the title (symptom), the rest
+                                   the body kept line for line; position and original stamp
+                                   kept; no wake; --json prints {file, title}
   tumwater bug --list [--json]     List the entries in BUGS.md ## Open, numbered (the read
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
@@ -168,6 +173,11 @@ Usage:
                                    Replace the Nth entry's heading and body in PLANS.md ##
                                    Planned in place, keeping its position and original stamp;
                                    no wake; --json prints {file, title}
+  tumwater plan --edit <n> --file <path> [--json]
+                                   Replace the Nth entry from a markdown file ("-" reads
+                                   stdin): the first non-blank line is the title, the rest
+                                   the body kept line for line; position and original stamp
+                                   kept; no wake; --json prints {file, title}
   tumwater plan --list [--json]    List the entries in PLANS.md ## Planned, numbered (the
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,

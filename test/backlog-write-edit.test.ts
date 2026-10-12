@@ -281,5 +281,87 @@ test("help topics name the --edit forms", async () => {
   r = await cli(repo, "help", "plan");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /tumwater plan --edit <n> "<title>" \[body\.\.\.\] \[--json\]/);
+  assert.match(r.stdout, /tumwater plan --edit <n> --file <path> \[--json\]/);
+  r = await cli(repo, "help", "bug");
+  assert.match(r.stdout, /tumwater bug --edit <n> --file <path> \[--json\]/);
+});
+
+const planSeed = [
+  "# Plans",
+  "",
+  "## Planned",
+  "",
+  "### one (planned 2026-10-01)",
+  "",
+  "### two (planned 2026-10-02)",
+  "",
+  "old body",
+  "",
+  "### three (planned 2026-10-03)",
+  "",
+  "## Done",
+  "",
+  "_None yet._",
+  "",
+].join("\n");
+
+test("plan --edit --file keeps lines, stamp and neighbours; no wake", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli plan edit file");
+  const plans = path.join(repo, "PLANS.md");
+  fs.writeFileSync(plans, planSeed);
+  const md = path.join(repo, "e.md");
+  fs.writeFileSync(md, "# New title\n\n- one\n\n- two\n");
+  const r = await cli(repo, "plan", "--edit", "2", "--file", md);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /edited plan in PLANS\.md: New title/);
+  const want = planSeed.replace("### two (planned 2026-10-02)\n\nold body", "### New title (planned 2026-10-02)\n\n- one\n\n- two");
+  assert.equal(fs.readFileSync(plans, "utf8"), want);
+  assert.deepEqual(queuedRolePrompts(repo, "feature"), []);
+});
+
+test("bug --edit --file writes the body; positional edit drops it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli bug edit file");
+  const bugs = path.join(repo, "BUGS.md");
+  fs.writeFileSync(bugs, "# Bugs\n\n## Open\n\n### a (reported by the operator 2026-10-01)\n\n## Fixed\n\n_None yet._\n");
+  const md = path.join(repo, "e.md");
+  fs.writeFileSync(md, "sym\nline1\nline2\n");
+  const r = await cli(repo, "bug", "--edit", "1", "--file", md, "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { file: "BUGS.md", title: "sym" });
+  assert.match(fs.readFileSync(bugs, "utf8"), /### sym \(reported by the operator 2026-10-01\)\n\nline1\nline2\n/);
+  assert.equal((await cli(repo, "bug", "--edit", "1", "x")).code, 0);
+  const after = fs.readFileSync(bugs, "utf8");
+  assert.match(after, /### x \(/);
+  assert.doesNotMatch(after, /line1/);
+});
+
+test("plan --edit --file refusals leave PLANS.md untouched", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli plan edit file refuse");
+  const plans = path.join(repo, "PLANS.md");
+  fs.writeFileSync(plans, planSeed);
+  const w = (name: string, text: string): string => {
+    const f = path.join(repo, name);
+    fs.writeFileSync(f, text);
+    return f;
+  };
+  const good = w("good.md", "T\nbody\n");
+  const cases: [string[], RegExp][] = [
+    [["--edit", "2", "--file", w("h.md", "T\n\n## Heading\n")], /cannot be written/],
+    [["--edit", "2", "--file", w("f.md", "T\n\n```\ncode\n")], /cannot be written/],
+    [["--edit", "2", "--file", w("e.md", "   \n")], /./],
+    [["--edit", "9", "--file", good], /./],
+    [["--edit", "2", "--file", good, "extra"], /unexpected argument "extra"/],
+    [["--edit", "2", "--file", good, "--file", good], /--file may only be given once/],
+    [["--edit", "2", "--file"], /--file needs a path/],
+  ];
+  for (const [args, re] of cases) {
+    const r = await cli(repo, "plan", ...args);
+    assert.equal(r.code, 1, args.join(" "));
+    assert.match(r.stderr, re);
+    assert.equal(fs.readFileSync(plans, "utf8"), planSeed, args.join(" "));
+  }
 });
 

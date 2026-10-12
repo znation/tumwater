@@ -38,7 +38,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
-### `tumwater plan|bug --edit <n> --file <path>`: rewrite an entry from a markdown file, keeping its line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` and the dashboard's line-keeping entry edit (`tryEditEntry`))
+## Done
+
+### `tumwater plan|bug --edit <n> --file <path>`: rewrite an entry from a markdown file, keeping its line structure (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` and the dashboard's line-keeping entry edit (`tryEditEntry`)) — done 2026-10-12
 
 **Goal.** `tumwater plan --file` and `bug --file` file an entry whose body keeps its lines (`splitEntryFile`), and the dashboard drawer edits an entry keeping its lines (`tryEditEntry`). The CLI edit path doesn't keep lines. `editPlan` folds the title and the whole body to one line through `collapseWhitespace`, and `editBug` always writes an empty body. So a multi-line plan filed with `--file` can't be revised from the terminal without flattening it, and `bug --edit` erases the body of a bug filed with `--file`. This plan adds `--file <path>` (`-` reads stdin) to the `--edit` form. The file's first non-blank line becomes the new title and the rest becomes the new body, kept line for line. The entry keeps its position and its original stamp, which is how the existing edit already behaves.
 
@@ -80,8 +82,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `--edit 2 --file` (`--file needs a path`).
 - The "help topics name the --edit forms" test also matches `tumwater plan --edit <n> --file <path> \[--json\]` and the bug twin.
 - `npm run test` passes.
-
-## Done
 
 ### Give the dashboard's New plan / File a bug form an optional multiline body, matching `tumwater plan|bug --file` (planned 2026-10-12 by plan; sibling of the landed `tumwater plan|bug --file` (`splitEntryFile`, `filePlanFromText`, `fileBugFromText` in `src/backlog/backlog-write.ts`) and the landed drawer edit (`POST /api/backlog-edit`, `handleBacklogEdit`). Independent of the waiting "Answer an open question from the TUI backlog pane" plan: it touches neither `src/ui/tui/` nor `src/cli/`) — done 2026-10-12
 
