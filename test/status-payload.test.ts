@@ -11,6 +11,9 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
+import { requestWake } from "../src/operator/operator-intent.js";
+import { renderStatus } from "../src/ui/status-render.js";
+import { snapshot } from "../src/status/status-data.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -540,4 +543,16 @@ test("status payload's paused alert countdown honors the pinned clock", async ()
   const paused = payload.alerts.find((a) => a.key === "paused");
   assert.ok(paused, "the fleet pause raises its alert");
   assert.match(paused.title, /resumes in 20m/, "the countdown reads the payload's pinned now");
+});
+
+test("status payload and header show a pending scheduled wake only while one stands", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "scheduled wake test");
+  let payload = statusPayload(repo) as { scheduledWake?: { roles: string[]; atMs: number } };
+  assert.equal(payload.scheduledWake, undefined, "no marker, no scheduledWake");
+  assert.doesNotMatch(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
+  requestWake(repo, ["feature"], 3_600_000);
+  payload = statusPayload(repo) as typeof payload;
+  assert.deepEqual(payload.scheduledWake?.roles, ["feature"]);
+  assert.match(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
 });

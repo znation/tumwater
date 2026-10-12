@@ -12,11 +12,13 @@ import {
   pausedReason,
   pausedRoles,
   pausedUntil,
+  scheduledWake,
   resumeRole,
   pauseFleet,
   resumeFleet,
 } from "../src/fleet/fleet-state.js";
-import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
+import { pausedPath, pausedRolesLockPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { requestWake } from "../src/operator/operator-intent.js";
 import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -414,4 +416,22 @@ test("a non-finite per-role deadline is dropped on a rewrite instead of becoming
   // past deadline and resumes every role the operator believed stopped.
   assert.equal(marker.until, undefined, "the unusable deadline is dropped, not persisted");
   assert.deepEqual(pausedRoles(root), ["docs", "dry"], "the set stays paused after the rewrite");
+});
+
+test("scheduledWake reads a pending timed wake and nothing else, leaving the marker", () => {
+  const root = tmpdir();
+  assert.equal(scheduledWake(root, Date.now()), undefined, "no marker");
+  const before = Date.now();
+  requestWake(root, ["feature"], 3_600_000);
+  const wake = scheduledWake(root, Date.now());
+  assert.deepEqual(wake?.roles, ["feature"]);
+  assert.ok(wake && wake.atMs >= before + 3_600_000 && wake.atMs <= Date.now() + 3_600_000, "atMs within the call's clock window");
+  assert.ok(fs.existsSync(wakeRequestPath(root)), "a pure reader leaves the marker");
+  assert.equal(scheduledWake(root, wake!.atMs), undefined, "an expired deadline reads undefined");
+  requestWake(root, ["feature"]);
+  assert.equal(scheduledWake(root, Date.now()), undefined, "an immediate wake has no deadline");
+  fs.writeFileSync(wakeRequestPath(root), "{not json");
+  assert.equal(scheduledWake(root, Date.now()), undefined, "corrupt marker");
+  fs.writeFileSync(wakeRequestPath(root), JSON.stringify({ roles: ["a", 3], notBeforeMs: Date.now() + 60_000 }));
+  assert.equal(scheduledWake(root, Date.now()), undefined, "a non-string role rejects the marker");
 });

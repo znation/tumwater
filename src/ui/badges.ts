@@ -210,6 +210,14 @@ export function landingBadge(landQueue: { depth: number }): string {
   return landQueue.depth > 0 ? ` · land queue: ${landQueue.depth}` : "";
 }
 
+/** The header's scheduled-wake fragment: `· wake scheduled in <duration> (<roles>)` while a
+ * `wake --in` marker stands, empty otherwise. It exists because a scheduled wake is otherwise
+ * invisible between the CLI writing it and the consumer applying it. */
+export function wakeBadge(wake: { roles: string[]; atMs: number } | undefined, now: number): string {
+  if (!wake || wake.atMs <= now) return "";
+  return ` · wake scheduled in ${humanSeconds(secondsUntil(wake.atMs, now))} (${wake.roles.join(", ")})`;
+}
+
 /** The header's fleet timed-pause fragment: `· paused — auto-resumes in <duration>` while a
  * timed pause stands, empty otherwise — so an operator can tell at a glance whether a paused
  * fleet will come back on its own or needs a manual `resume` (the Timed pause plan left the

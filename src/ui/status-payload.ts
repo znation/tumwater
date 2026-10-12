@@ -203,6 +203,8 @@ export function statusPayload(root: string, now = Date.now()): object {
     pausedUntil: snap.pausedUntil,
     // The paused-roles marker's shared `until` while a timed per-role pause stands (omitted otherwise).
     pausedRolesUntil: snap.pausedRolesUntil,
+    // A pending scheduled wake ({ roles, atMs }); omitted when none stands.
+    scheduledWake: snap.scheduledWake,
     // The standing pause's operator reason (`pause --reason <text>`), absent when none
     // stands — same omit-undefined idiom as pausedUntil beside which it ships.
     pauseReason: snap.pauseReason,

@@ -6,7 +6,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -216,6 +216,7 @@ export function renderStatusSpans(
       ? mainCheckVerdict(snap.mainCheck.status, "yellow").tone as Tone
       : undefined),
     ...badgeSpans(pauseBadge(snap.pausedUntil, now, snap.pauseReason), "yellow"),
+    ...badgeSpans(wakeBadge(snap.scheduledWake, now), "blue"),
     // Quiet hours 2/2 rides the header last: the window as standing information whenever it
     // is configured, the yellow `quiet until <end>` reading while the hold is on — the same
     // ask-me-nothing informality the pause badge's countdown uses, without stealing its

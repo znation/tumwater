@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown } from "../src/ui/badges.js";
+import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, wakeBadge } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -269,4 +269,11 @@ test("budgetBadge's backend-default fallback label follows the fleet agent", () 
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {} }),
     " · budget: $50.00/$50 today · fallback: pi default (cost n/a)",
   );
+});
+
+test("wakeBadge names a pending scheduled wake and is empty otherwise", () => {
+  const now = 1_000_000;
+  assert.equal(wakeBadge({ roles: ["feature", "plan"], atMs: now + 45 * 60_000 }, now), " · wake scheduled in 45m (feature, plan)");
+  assert.equal(wakeBadge(undefined, now), "");
+  assert.equal(wakeBadge({ roles: ["feature"], atMs: now }, now), "");
 });

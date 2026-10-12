@@ -59,6 +59,12 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // loops-table:start
   // The status pill's second line: what the phase label carried, or when an idle loop runs next.
   function phaseDetail(l, info, d) {
+    const detail = phaseDetailBase(l, info, d);
+    const w = d.scheduledWake;
+    if (!w || !(w.atMs > Date.now()) || !(w.roles.includes(l.role) || (l.instanceOf && w.roles.includes(l.instanceOf)))) return detail;
+    return (detail ? detail + " · " : "") + "operator wake in " + humanSeconds(Math.max(0, Math.round((w.atMs - Date.now()) / 1000)));
+  }
+  function phaseDetailBase(l, info, d) {
     const raw = fmtNextRun(l, d.running);
     const slowed = / ×(\d+)$/.exec(raw);
     const next = slowed ? raw.slice(0, slowed.index) : raw;

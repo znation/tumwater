@@ -30,6 +30,17 @@ const row = (l: object, d: object = {}): { status: string; activity: string; spe
   return { status: c[1] ?? "", activity: c[2] ?? "", spend: c[3] ?? "", actions: c[4] ?? "" };
 };
 
+test("a scheduled operator wake adds a second-line phrase to the rows it targets", () => {
+  const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
+  const d = { running: true, scheduledWake: { roles: ["feature"], atMs: Date.now() + 3_600_000 } };
+  const l = (patch: object) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, ...patch });
+  assert.equal(phaseDetail(l({ role: "feature" }), info, d), "wakes in 2m · operator wake in 1h");
+  assert.equal(phaseDetail(l({ role: "feature-2", instanceOf: "feature" }), info, d), "wakes in 2m · operator wake in 1h");
+  assert.equal(phaseDetail(l({ role: "plan" }), info, d), "wakes in 2m");
+  assert.equal(phaseDetail(l({ role: "feature" }), info, { running: true }), "wakes in 2m");
+  assert.equal(phaseDetail({ phase: "sleeping", role: "feature" }, info, { running: false, scheduledWake: d.scheduledWake }), "operator wake in 1h");
+});
+
 test("a sleeping loop's second line says when it wakes, and names a backoff", () => {
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const l = (patch: object) => ({ phase: "sleeping", ...patch });
