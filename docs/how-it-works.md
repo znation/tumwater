@@ -278,9 +278,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   main, a spent budget, an old build, open questions, a pause), the prompt box, today's progress,
   the loops grouped by what they are doing, the backlog, and the notable activity. A new
   needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
-  across reloads; the Queued tab lists each queued prompt and how long it has waited, and edits
-  one in place (Edit loads its body, Save replaces it through the same path `tumwater prompt
-  --edit` uses).
+  across reloads; the Queued tab lists each queued prompt and how long it has waited, and each
+  row can be edited in place — Edit loads the prompt's body, Save replaces it through the same
+  path `tumwater prompt --edit` uses.
   Clicking a loop
   opens its details — its notebook and next tick's prompt included — and its live transcript
   (`#loop/<name>` links straight to it). Its History, Usage,
