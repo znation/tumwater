@@ -123,7 +123,7 @@ export interface AgentBackend {
    * below a configured model's floor. Optional — a backend with no version gate omits it. */
   minVersion?(model: string): string | undefined;
   /** Resolve which binary this backend spawns and where the value came from, reading its own
-   * `agents.<id>.bin` entry through pi/pi-bin.ts's resolveAgentBin. */
+   * `agents.<id>.bin` entry through pi/pi-bin.ts's resolveBackendBin. */
   resolveBin(config: AgentBinConfig): ResolvedAgentBin;
   /** Build the argv, stdin and environment for one run. */
   invocation(run: AgentRunSpec): AgentInvocation;

@@ -164,3 +164,15 @@ export function resolveAgentBin(
   const defaultBin = defaults.defaultBin ?? agent;
   return resolveBinFrom(binEnv, defaultBin, resolvedAgentConfig(config, agent).bin);
 }
+
+/** The shared body of a backend's `resolveBin` adapter: resolve this backend's binary through
+ * resolveAgentBin above using the backend's own id, binEnv and defaultBin — never pi's, so a
+ * claude failure names TUMWATER_CLAUDE_BIN/the claude default. The two registered backends
+ * (pi-backend.ts, claude-backend.ts) each expose a one-line `resolveBin` delegating here, so
+ * the call convention lives in one place and cannot drift between them. */
+export function resolveBackendBin(
+  config: Parameters<typeof resolvedAgentConfig>[0],
+  backend: { id: string; binEnv: string; defaultBin: string },
+): ResolvedAgentBin {
+  return resolveAgentBin(config, backend.id, { binEnv: backend.binEnv, defaultBin: backend.defaultBin });
+}

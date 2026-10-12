@@ -23,7 +23,7 @@ import { resolvedAgentConfig } from "../../config/config-views.js";
 import { MODEL_TIERS } from "../../config/config-schema.js";
 import { routeModel } from "../../config/model-selector.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
-import { resolveAgentBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
+import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
 import { claudeArgs } from "./claude-args.js";
 import { claudeEnv } from "./claude-env.js";
 import { claudeTranslator } from "./claude-stream.js";
@@ -135,7 +135,7 @@ export const claudeBackend: AgentBackend = {
   minVersion: claudeMinVersion,
 
   resolveBin(config: AgentBinConfig): ResolvedAgentBin {
-    return resolveAgentBin(config, this.id, { binEnv: this.binEnv, defaultBin: this.defaultBin });
+    return resolveBackendBin(config, this);
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
