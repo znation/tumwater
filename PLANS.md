@@ -38,6 +38,40 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tui-frame.test.ts`: `hintLine` with `answerFor` set names `record answer` and omits the defer hint. `promptPrefix` renders `answer #2 › `. The backlog-view hint names `Ctrl+A`. Existing `hintLine`/`promptPrefix` callers in tests compile with the widened mode type (pass `answerFor: null`).
 - `npm run test` passes.
 
+### Cancel a planned feature or open bug from the TUI backlog pane, matching `tumwater plan|bug --cancel <n>` and the dashboard drawer's Cancel (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug --cancel` (`cancelPlan`/`cancelBug` in `src/backlog/backlog-write.ts`) and the landed drawer Cancel (`POST /api/backlog-cancel`, `handleBacklogCancel` in `src/gui/gui-endpoint-commands.ts`, both calling `tryCancelEntry`). Independent in behavior of the waiting "Answer an open question from the TUI backlog pane" plan (that one handles questions with Ctrl+A, this one handles plans/bugs with Ctrl+X). Both add branches and guards to `createTuiKeys` in `src/ui/tui/tui-keys.ts` and a hint to `hintLine`, so a landing conflict is possible and the resolver handles it. Independent of the waiting dashboard-drawer edit plan: this plan calls `tryCancelEntry` as it stands and does not change `backlog-write.ts`)
+
+**Goal.** In the TUI's project-status (backlog) pane, the operator can open a plan or bug in full (Up/Down set `selectedEntry`) but cannot retract it. Today that means switching to the CLI or the dashboard. With a plan or bug selected, **Ctrl+X** arms a cancel and a second **Ctrl+X** confirms it. That is the TUI version of the drawer's confirming second click. Any other key disarms. The write goes through the same non-exiting core the dashboard uses, so a stale selection can never remove the wrong entry.
+
+**Approach.**
+1. `src/ui/tui/tui-keys.ts`, `createTuiKeys`:
+   - state `let cancelArmed: { kind: "plan" | "bug"; position: number; title: string } | null = null`.
+   - At the very top of `handleKey`, before the Ctrl+D branch: `const armed = cancelArmed; cancelArmed = null;`. Every key, including the second Ctrl+X, starts out disarmed. Only the confirming branch below reads `armed`. So "any other key disarms" holds by construction and no other branch has to clear the arm.
+   - A new branch `key.ctrl && key.name === "x" && view === roleIds.length + 1` placed right after the existing Queued-pane Ctrl+X branch (that branch is guarded to `view === roleIds.length + 6`, so the two never overlap). Guard it with none of `budgetMode`, `rolePromptFor`, `searchMode`, `deferMode`, `queuedEditFor` set. If the answer plan has landed, add `answerFor` to that list too; grep `queuedEditFor` to find the editor list as it stands. In list mode (`selectedEntry === null`), do nothing and render. Otherwise resolve the selection the way the PgUp/PgDn entry branch does: `const entries = flat(); const sel = Math.min(selectedEntry, entries.length - 1)`. Then:
+     - `entries[sel].label === "question"`: flash `only a plan or open bug can be cancelled here` and stay disarmed.
+     - otherwise `kind = label` (`"plan"` or `"bug"`). Compute `position`, the 1-based index within its own section: for a plan, `sel + 1`; for a bug, `sel - entries.filter((e) => e.label === "plan").length + 1`. This works because `labeledBacklogEntries` (`tui-backlog.ts`) lists plans, then bugs, then questions. Set `target = { kind, position, title: entries[sel].title }`. `BacklogEntry.title` and `tryCancelEntry`'s `entry.title` both come from `headingTitle(line, "### ")`, so they are the same string.
+     - If `armed` deep-equals `target` (same kind, position, and title), this is the confirm. Call `tryCancelEntry(root, kind, position, title)` (import it from `../../backlog/backlog-write.js`):
+       - `cancelled`: `selectedEntry = null`, `entryScroll = 0`, flash `cancelled <kind> #<position>: <title>`.
+       - `gone` / `moved`: `selectedEntry = null`, `entryScroll = 0`, flash `that <kind> was already removed or moved — nothing cancelled`.
+       - a throw: `flashError(err)`.
+     - Otherwise, arm: `cancelArmed = target`, then flash `press Ctrl+X again to cancel <kind> #<position> — any other key keeps it`.
+     - `deps.requestRender(); return;`
+   - Expose `cancelArmed` on the `TuiKeys` state interface (doc comment beside `selectedEntry`) and in the returned `state()` object, so tests can observe the arm.
+   - No wake, the same as the CLI's `--cancel` and the dashboard.
+2. `src/ui/tui/tui-frame.ts`, `hintLine`: in the `view.kind === "backlog"` hint, add `["Ctrl+X", "cancel entry"]` after `["↑↓", "open entries"]`. If the answer plan landed first, put it after that plan's `["Ctrl+A", "answer question"]`.
+3. README.md: the "Steer the project" row's closing clause, "the dashboard's plan/bug drawer cancels an entry the same way, after a confirming second click", gains "and the TUI's backlog pane does too, with Ctrl+X pressed twice on the selected entry". Keep it short.
+
+**Files touched.** `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `README.md`, `test/tui-keys.test.ts`, `test/tui-frame.test.ts`. No change to `src/backlog/backlog-write.ts` (`tryCancelEntry` already holds the primary-worktree lock and refuses `gone`/`moved` as data) and none to `tui.tsx` (no new prompt-line mode).
+
+**Acceptance criteria.**
+- In `test/tui-keys.test.ts`, using the file's `makeRoot`/`makeKeys` helpers and a temp root whose PLANS.md has two planned entries and BUGS.md has two open bugs: Ctrl+T to the backlog view, then Down until the second bug is selected. Press Ctrl+X once. `state().cancelArmed` deep-equals `{ kind: "bug", position: 2, title: <second bug's heading> }`, BUGS.md is byte-identical, and the flash matches `/press Ctrl\+X again/`. Press Ctrl+X again. BUGS.md loses exactly that entry (the first bug and PLANS.md are unchanged), `cancelArmed` and `selectedEntry` are null, and the flash matches `/cancelled bug #2/`.
+- Arm on the first plan, then press any other key (for example a typed letter, or Up). `cancelArmed` is null, and a following single Ctrl+X only re-arms: PLANS.md stays byte-identical.
+- Ctrl+X with a question selected flashes `only a plan or open bug can be cancelled here` and writes nothing. Ctrl+X in list mode (`selectedEntry` null) writes nothing and leaves `cancelArmed` null.
+- Arm on plan #1, then rewrite PLANS.md so a different heading sits at position 1, then press Ctrl+X. PLANS.md is byte-identical to the rewritten content, the flash matches `/already removed or moved/`, and `selectedEntry` is null.
+- While the budget editor (Ctrl+B) is open on the backlog view, Ctrl+X neither arms nor writes.
+- The existing Queued-pane Ctrl+X test still passes unchanged.
+- `test/tui-frame.test.ts`: the backlog-view `hintLine` names `Ctrl+X` with `cancel entry`.
+- `npm run test` passes.
+
 ## Done
 
 ### Edit a planned feature or open bug from the dashboard's entry drawer, matching `tumwater plan|bug --edit <n>` (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater plan|bug --edit` (`editPlan`/`editBug` → `editEntry` in `src/backlog/backlog-write.ts`) and the landed drawer Cancel (`tryCancelEntry` + `POST /api/backlog-cancel` + the `entry-cancel` act). The drawer can file, cancel, or "ask the director about" an entry but not correct one, so fixing a typo'd title or a stale acceptance criterion means switching to the CLI, finding its position, and retyping the whole body on one line. Independent in behavior of the two waiting scheduled-wake plans: its own core, route, handler, and drawer form. It shares `src/gui/gui-server.ts`'s route table and `src/gui/gui-endpoint-commands.ts` with them, so a landing conflict is possible and the resolver handles it); done 2026-10-12 by feature
