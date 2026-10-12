@@ -11,6 +11,7 @@ import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
@@ -33,6 +34,7 @@ function fakeRunner(role: string, config: TumwaterConfig): LoopRunner {
     role,
     config,
     state: {
+      role,
       running: false,
       ticks: 0,
       nextRunAt: 0,
@@ -208,6 +210,24 @@ test("a claimed entry that lands releases the claim on the next poll", async () 
     schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]])),
   );
   assert.equal(feature.state.claim, undefined);
+});
+
+test("a released claim is saved to disk before the runner ticks again", async () => {
+  const root = tmpdir("tumwater-scheduling-release-saved-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const roles = () => new Map([["feature", undefined], ["feature-2", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  assert.equal(feature2.state.claim?.key, "beta");
+  saveLoopState(root, feature2.state);
+  assert.equal(loadLoopState(root, "feature-2").claim?.key, "beta");
+  // Both entries leave Planned: no free entry, so feature-2 is an idle extra and gets no tick.
+  fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n");
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  assert.equal(feature2.state.claim, undefined);
+  assert.equal(loadLoopState(root, "feature-2").claim, undefined, "the release reached the state file");
 });
 
 test("lowering feature.instances releases a surplus instance's claim instead of holding it", async () => {

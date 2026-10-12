@@ -12,7 +12,7 @@ import { deferTickReason, isEligible, type DeferReason } from "../scheduling/sch
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
-import { hasOutstandingWork } from "../loop/loop-state.js";
+import { hasOutstandingWork, saveLoopState } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -174,6 +174,9 @@ export async function pollRunnerReasons(
       if (released === null) continue;
       const title = r.state.claim?.title ?? "";
       r.state.claim = undefined;
+      // Persist the release: an idle extra instance gets no tick to save its state, so the dead
+      // claim would stay on disk for status/doctor to show and for a restart to release again.
+      saveLoopState(root, r.state);
       const reason: ClaimReleaseReason = released;
       logEventBestEffort(root, { loop: r.role, type: "claim", action: "released", title, reason });
       if (reason === "stale") {
