@@ -8,6 +8,7 @@ import {
   entryHold,
   entryKey,
   holdMark,
+  refusalNote,
   requiredParts,
   seriesPart,
   type EligibleEntry,
@@ -242,4 +243,13 @@ test("eligibleEntries caches an unchanged PLANS.md and re-reads a changed one", 
   // clocks, so the stat-keyed cache must miss and the fresh walk must yield the new entry.
   fs.writeFileSync(plans, "# Plans\n## Planned\n### Beta (planned 2026-10-02)\nA longer body line.\n## Done\n_None._\n");
   assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["beta"]);
+});
+
+test("refusalNote returns the note line without its bold markers, and null for a mid-line mention", () => {
+  assert.equal(
+    refusalNote("intro\n  **Refused 2026-10-12 by feature: too big**\nmore"),
+    "Refused 2026-10-12 by feature: too big",
+  );
+  assert.equal(refusalNote("prose quoting **Refused 2026-10-12 by x: y** inline"), null);
+  assert.equal(refusalNote(""), null);
 });

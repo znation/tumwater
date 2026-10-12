@@ -48,6 +48,14 @@ function hasNoteLine(body: string, prefix: string): boolean {
   return body.split("\n").some((line) => line.trimStart().startsWith(prefix));
 }
 
+/** The text of `body`'s Refused note: the first line (ignoring leading indentation) that begins
+ * with REFUSED_PREFIX, trimmed, with the leading `**` and the first closing `**` removed. Null
+ * when no line matches — the same line-prefix rule entryHold's "refused" hold uses. */
+export function refusalNote(body: string): string | null {
+  const line = body.split("\n").map((l) => l.trim()).find((l) => l.startsWith(REFUSED_PREFIX));
+  return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
+}
+
 /** One prerequisite ref, resolved against the entry's own series when it names none. */
 function parseRef(chunk: string, ownSeries: string | null): PartRef[] {
   const text = chunk.trim().replace(/^parts?\s+/i, "");

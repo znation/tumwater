@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStrandedPlans } from "../src/doctor/doctor-backlog.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -200,4 +200,25 @@ test("checkBacklogHeadings names an unreadable backlog file and still scans the 
   assert.equal(r.level, "warn");
   assert.match(r.detail, /PLANS\.md \(unreadable\)/);
   assert.match(r.detail, /BUGS\.md "## Open"/);
+});
+
+test("checkRefusedEntries warns naming the first refused entry, the rest, and how to release it", () => {
+  const dir = tmpdir("doctor-refusals-");
+  const note = "**Refused 2026-10-12 by feature: too big**";
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n### Eligible plan\n\nbody\n\n### Parked plan (planned 2026-10-12)\n${note}\n\n## Done\n\n### Old plan\n${note}\n`);
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `# Bugs\n\n## Open\n\n### Parked bug\n${note}\n\n## Fixed\n\n### Old bug\n${note}\n`);
+  const out = checkRefusedEntries(dir);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /PLANS\.md plan #2 "Parked plan \(planned 2026-10-12\)" is held by a Refused note \(Refused 2026-10-12 by feature: /);
+  assert.ok(out.detail.includes('(and 1 more: BUGS.md bug #1 "Parked bug")'));
+  assert.ok(out.detail.endsWith("`tumwater plan --cancel 2`"));
+});
+
+test("checkRefusedEntries reads ok with no notes, with no files, and ignores Done and Fixed", () => {
+  const ok = { level: "ok", detail: "no planned plan or open bug is held by a Refused note" };
+  assert.deepEqual(checkRefusedEntries(tmpdir("doctor-refusals-none-")), ok);
+  const dir = tmpdir("doctor-refusals-closed-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n### A\nbody\n\n## Done\n\n### B\n**Refused 2026-10-12 by x: y**\n");
+  assert.deepEqual(checkRefusedEntries(dir), ok);
 });

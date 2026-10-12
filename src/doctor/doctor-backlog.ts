@@ -1,16 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
+import { openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
-/** The doctor's backlog-document checks, split out of doctor-checks.ts: the three checks that
+/** The doctor's backlog-document checks, split out of doctor-checks.ts: the four checks that
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
- * environment doctor-checks.ts inspects — fix claims, stranded plans, and duplicated `## `
- * headings. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
- * andMore) and the heading-trim constant, and all three warn instead of failing: damaged
+ * environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated `## `
+ * headings, and refused entries. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
+ * andMore) and the heading-trim constant, and all four warn instead of failing: damaged
  * documentation is operator signal, not a broken environment. doctor.ts composes them beside
  * the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */
 
@@ -23,6 +25,9 @@ const FIX_CLAIMS_CHECKED = 10;
 /** A second or later suspect record's heading is trimmed to this many characters in the warn —
  * the first is named in full, the rest only enough to find them in BUGS.md. */
 const FIX_CLAIM_HEADING_MAX = 60;
+
+/** A refused entry's note is trimmed to this many characters in the refusals warn. */
+const REFUSAL_NOTE_MAX = 120;
 
 /** The `(and N more …)` suffix three one-line doctor details append after naming their first
  * suspect (fix claims, stranded plans, duplicated headings): the rest stay visible but
@@ -149,4 +154,29 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
   return warnOutcome(`${first}${more} appears more than once — readers take the first section of a name, so ` +
       `later entries are invisible; keep one heading per name (the gate blocks only a landing ` +
       `that adds another copy — remove the duplicate in a deliberate edit)`);
+}
+
+/** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears
+ * a Refused note, so the entry stays parked until a human or the director edits it, and the
+ * only other signs are the `[refused]` marks in the backlog listings. Reads the tree at `root`
+ * — the primary checkout IS main's tree — like checkFixClaims, in `--list` order (PLANS.md
+ * Planned, then BUGS.md Open). A warn, never a fail: a refusal is operator signal, not a broken
+ * environment. */
+export function checkRefusedEntries(root: string): CheckOutcome {
+  const sources = [
+    { file: "PLANS.md", command: "plan", entries: plannedPlanEntries(root) },
+    { file: "BUGS.md", command: "bug", entries: openBugEntries(root) },
+  ];
+  const held = sources.flatMap(({ file, command, entries }) =>
+    entries.flatMap((entry, index) => {
+      const note = refusalNote(entry.body);
+      return note === null ? [] : [{ file, command, position: index + 1, title: entry.title, note }];
+    }));
+  const [first, ...rest] = held;
+  if (!first) return okOutcome("no planned plan or open bug is held by a Refused note");
+  const more = andMore(rest, (e) => `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
+  return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
+      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — no loop takes a refused entry until it is edited: ` +
+      `answer the objection and delete the note, or retract the entry with ` +
+      `\`tumwater ${first.command} --cancel ${first.position}\``);
 }

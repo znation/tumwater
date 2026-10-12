@@ -28,7 +28,7 @@ import {
   type DoctorReport,
 } from "./doctor-checks.js";
 import { checkClaudeAuth, checkClaudeVersion, checkFallbackModel, checkTierModels } from "./doctor-model-checks.js";
-import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStrandedPlans } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -96,6 +96,7 @@ export async function runDoctor(
     { name: "fix claims", ...checkFixClaims(root) },
     { name: "stranded plans", ...checkStrandedPlans(root) },
     { name: "backlog headings", ...checkBacklogHeadings(root) },
+    { name: "refusals", ...checkRefusedEntries(root) },
     // The running fleet's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
     { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },
