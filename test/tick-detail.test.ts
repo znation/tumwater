@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -221,7 +222,7 @@ test("cmdTick fails with the usage on a missing, unknown, or extra positional an
   await initProject(repo, "tick arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater tick <role> \[<n>\] \[--last\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater tick <role> \[<n>\] \[--last\] \[--stat\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdTick(repo, ["nosuch", "3"], false));
@@ -256,7 +257,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater tick <role> \[<n>\] \[--last\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater tick <role> \[<n>\] \[--last\] \[--stat\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
@@ -302,4 +303,37 @@ test("cmdTick --last with a numeric n is refused with the usage, and an unknown 
   const unknown = await expectFailAsync(() => cmdTick(repo, ["nosuch"], false, true));
   assert.match(unknown, /unknown role: nosuch/);
   assert.match(unknown, /usage: tumwater tick <role>/);
+});
+
+test("tick --stat appends the pinned commit's per-file summary, text and JSON", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick stat");
+  const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  writeEvents(repo, [
+    start({ ts: 1000 }),
+    { ts: 1500, loop: "bugfix", type: "land_queued", commit: sha, summary: "x" } as HarnessEvent,
+    end({ ts: 2000 }),
+  ]);
+  const plain = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false))).stdout;
+  const text = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout;
+  assert.ok(text.startsWith(plain.trimEnd()), "header and trail unchanged");
+  assert.match(text, new RegExp(` · commit ${sha.slice(0, 8)}`));
+  assert.match(text, /README\.md +\| /);
+  const json = JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], true, false, true))).stdout);
+  assert.match(json.stat, /README\.md +\| /);
+  assert.equal("stat" in JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], true))).stdout), false);
+  assert.equal((await cli(repo, "tick", "bugfix", "3", "--stat")).code, 0);
+});
+
+test("tick --stat names a missing or foreign commit instead of failing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick stat");
+  writeEvents(repo, [start({ ts: 1000 }), end({ ts: 2000 })]);
+  assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(no commit: this tick queued no landing\)/);
+  writeEvents(repo, [
+    start({ ts: 1000 }),
+    { ts: 1500, loop: "bugfix", type: "land_queued", commit: "0".repeat(40), summary: "x" } as HarnessEvent,
+    end({ ts: 2000 }),
+  ]);
+  assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(commit 00000000 is not in this repository\)/);
 });

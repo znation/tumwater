@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater tick <role> [<n>] --stat` appends the tick's commit's per-file `git show --stat` summary to its event trail (planned 2026-10-12 by plan; sibling of the landed `tumwater diff --role <id> --stat`; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
+## Done
+
+### `tumwater tick <role> [<n>] --stat` appends the tick's commit's per-file `git show --stat` summary to its event trail (planned 2026-10-12 by plan; sibling of the landed `tumwater diff --role <id> --stat`; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files) (done 2026-10-12)
 
 **Goal.** `tumwater tick <role> <n>` prints a tick's event trail and names its pinned commit (`· commit <short sha>` in the header), but it can't say what that commit changed. Today an operator reviewing a past tick copies the sha into `git show --stat` by hand. `tumwater diff --role <id> --stat` answers the same question for a loop's *pending* work, but nothing answers it for a *finished* tick. After this change, `--stat` appends the commit's per-file summary below the trail.
 
@@ -62,8 +64,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The binary smoke test path: `cli(repo, "tick", "bugfix", "3", "--stat")` exits 0.
 - `tick bugfix 3` without `--stat` prints byte-for-byte what it printed before, and its `--json` payload has no `stat` key.
 - The existing usage-regex assertion in test/tick-detail.test.ts ("cmdTick fails with the usage on a missing, unknown, or extra positional and a bad n") is updated to the new `TICK_USAGE`. Every other existing test in test/tick-detail.test.ts, test/help.test.ts, and test/cli-arg-strictness.test.ts passes.
-
-## Done
 
 ### `tumwater diff --role <id> --stat` prints per-file change summaries in place of the patches (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above, and touches none of its files)
 

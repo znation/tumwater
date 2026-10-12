@@ -13,11 +13,12 @@ import { formatEvent } from "../events/event-format.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
+import { gitTry } from "../git/git-run.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const TICK_USAGE = "tumwater tick <role> [<n>] [--last] [--json]";
+export const TICK_USAGE = "tumwater tick <role> [<n>] [--last] [--stat] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the loop,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -44,6 +45,25 @@ function tickNotFoundLastMessage(role: string): string {
   return tickNotFoundPhrase(role, "completed tick");
 }
 
+/** The commit a tick pinned: the `commit` of the first `land_queued`/`landed` event in its
+ * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
+function tickCommitSha(d: TickDetail): string | null {
+  const queued = d.events.find(
+    (e) => (e.type === "land_queued" || e.type === "landed") && typeof e.commit === "string" && e.commit !== "",
+  );
+  return queued === undefined ? null : (queued.commit as string);
+}
+
+/** The per-file `git show --stat` summary of a tick's pinned commit. The sha is the authored
+ * commit the tick pinned: a landing that rebased gives main a different sha with the same
+ * changes, so this describes what the tick changed. */
+async function tickCommitStat(root: string, sha: string | null): Promise<string> {
+  if (sha === null) return "(no commit: this tick queued no landing)";
+  const out = await gitTry(root, "show", "--stat", "--format=", sha);
+  if (out === null) return `(commit ${shortSha(sha)} is not in this repository)`;
+  return out.trimEnd();
+}
+
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
  * marker), duration, usage, and the pinned commit sha when the block's `land_queued`/`landed`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
@@ -54,15 +74,13 @@ export function renderTickDetail(d: TickDetail): string {
   else summary.push(d.result || "?");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
-  const queued = d.events.find(
-    (e) => (e.type === "land_queued" || e.type === "landed") && typeof e.commit === "string" && e.commit !== "",
-  );
+  const sha = tickCommitSha(d);
   let header = `${d.role} tick #${d.tick} — ${summary.join(" · ")}`;
-  if (queued !== undefined) header += ` · commit ${shortSha(queued.commit)}`;
+  if (sha !== null) header += ` · commit ${shortSha(sha)}`;
   return [header, ...d.events.map(formatEvent)].join("\n");
 }
 
-/** `tumwater tick <role> [<n>] [--last] [--json]`: print one completed tick's full event
+/** `tumwater tick <role> [<n>] [--last] [--stat] [--json]`: print one completed tick's full event
  * trail. Read-only: stdout only, no state file created — a tick the scan cannot find prints a
  * not-found line and exits 0 (history's empty-output convention: an absent record is an
  * answer, not a failure), and under --json it prints the JSON document `null` instead — the
@@ -77,6 +95,7 @@ export async function cmdTick(
   positionals: string[],
   json: boolean,
   last = false,
+  stat = false,
 ): Promise<void> {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
   // --json and --last are admitted), so anything left over that does not fit the chosen form
@@ -117,6 +136,7 @@ export async function cmdTick(
   }
   // --json swaps the renderer for the collector's own payload, exactly as history --json: a
   // JSON document in every exit-0 case, never prose.
-  if (json) sayJson(detail);
-  else say(renderTickDetail(detail));
+  const statText = stat ? await tickCommitStat(root, tickCommitSha(detail)) : null;
+  if (json) sayJson(statText === null ? detail : { ...detail, stat: statText });
+  else say(statText === null ? renderTickDetail(detail) : `${renderTickDetail(detail)}\n\n${statText}`);
 }

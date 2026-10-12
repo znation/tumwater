@@ -26,6 +26,7 @@ import {
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   sinceFlagSpec,
+  STAT_FLAG,
   FORCE_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
@@ -197,7 +198,7 @@ async function main(): Promise<void> {
       // cmdTick owns the arity and value validation — a missing role, an unknown id, a
       // non-positive or non-numeric n, or a stray extra positional fails there with the usage.
       const { positionals, rest } = peelPositionals(args);
-      rejectUnknownArgs("tick", rest, [JSON_FLAG, LAST_FLAG]);
+      rejectUnknownArgs("tick", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG]);
       // Arity before the ready-repo gate (the config subcommands' precedent): a malformed
       // invocation fails with its usage no matter the directory. cmdTick keeps the guard too —
       // in-process callers reach it without this dispatcher. One positional is the --last
@@ -205,7 +206,7 @@ async function main(): Promise<void> {
       // flag, so the gate stays loose here and the rivals check lives there.
       if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
       await requireReadyRepo(root);
-      await cmdTick(root, positionals, rest.includes("--json"), rest.includes("--last"));
+      await cmdTick(root, positionals, rest.includes("--json"), rest.includes("--last"), rest.includes("--stat"));
       break;
     }
     case "diff":
