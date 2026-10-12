@@ -124,13 +124,13 @@ function rewriteMarker(root: string, marker: LandingInFlight & { changes: Landin
  * and setLandingStage share: read the marker off disk, hand `apply` the change named by `role`,
  * and write the marker back through rewriteMarker. A read-modify-write of the file, not a
  * rewrite from memory, so the stage a gate last set (the same process) survives. A no-op when
- * there is no marker or it has no record for `role`; `apply` returns false to skip the write
- * (setLandingStage's guard against re-staging an unchanged stage). Never throws
- * (rewriteMarker). */
+ * there is no marker or it has no record for `role`; `apply` returns whether to write the
+ * marker — true when it changed anything, false to skip the write (setLandingStage's guard
+ * against re-staging an unchanged stage). Never throws (rewriteMarker). */
 function updateLandingChange(
   root: string,
   role: string,
-  apply: (change: LandingChange) => boolean | void,
+  apply: (change: LandingChange) => boolean,
 ): void {
   const marker = readLandingMarker(root);
   // A `changes` field that is not an array is as unusable as an absent one — treat it as no
@@ -139,7 +139,7 @@ function updateLandingChange(
   if (!marker || !Array.isArray(marker.changes)) return;
   const change = marker.changes.find((c) => isLandingChange(c) && c.role === role);
   if (!change) return;
-  if (apply(change) === false) return;
+  if (!apply(change)) return;
   rewriteMarker(root, { ...marker, changes: marker.changes });
 }
 
@@ -156,6 +156,7 @@ export function setLandingChangeStatus(root: string, role: string, status: Landi
       change.startedAt ??= Date.now();
       change.stage = "merging";
     }
+    return true;
   });
 }
 

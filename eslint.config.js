@@ -1,5 +1,5 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries seven rules on purpose: three for promise misuse tsc cannot see, two for type
+// carries eight rules on purpose: three for promise misuse tsc cannot see, three for type
 // spellings whose meaning is not what the author read, one for a type-only import that silently
 // stays a runtime side effect under verbatimModuleSyntax, and one for a private member that is
 // never reassigned but is not marked `readonly`.
@@ -21,7 +21,10 @@
 // sync helper awaited by habit, or a call still missing its `()`), which typechecks and runs
 // yet says the author expected a promise that is not there; no-redundant-type-constituents
 // flags a union one member absorbs (`unknown | null`, `string | "a"`), where the author saw a
-// narrowing the type actually does not provide.
+// narrowing the type actually does not provide; no-invalid-void-type flags `void` as a union
+// constituent (`boolean | void`), where the author meant a callback's return is ignored rather
+// than a value the union carries — write the caller's decision as a plain boolean instead
+// (landing-slot.ts's `apply` became true = write, the fix that landed with the rule).
 //
 // Import hygiene: no-import-type-side-effects flags an import whose every specifier is an
 // inline `type` (`import { type A, type B } from "./x.js"`). With verbatimModuleSyntax,
@@ -59,6 +62,7 @@ export default tseslint.config(
       "@typescript-eslint/return-await": "error",
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-redundant-type-constituents": "error",
+      "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/prefer-readonly": "error",
     },
