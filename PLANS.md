@@ -6,7 +6,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` sizes the worktree pool: the "worktree pool" row sums the last 24 h of `slot_wait` events and warns when leases waited 10 minutes or more in total (planned 2026-10-12 by plan; independent of every other entry. `logSlotWait` in `src/git/worktree-pool.ts` logs a `slot_wait` event (`role`, `purpose`, `waitedMs`, `slots`, `pinned`) whenever a pooled lease waited `SLOT_WAIT_EVENT_MS` (30 s) or more. Both `plans/worktree-pool.md` ("Observability (part 5/5)") and docs/how-it-works.md's "Worktree pool" bullet call it "the signal to raise `worktreeSlots`". But nothing adds those events up. `grep -rn slot_wait src` finds only the logger, the event union in `src/events/events.ts`, `formatEvent`'s case in `src/events/event-format.ts`, and a doc comment in `src/files/json-object.ts`. Today an operator who wants to size the pool has to scroll `tumwater logs --grep slot_wait` and add the waits by hand. `checkWorktreePool` in `src/doctor/doctor-checks.ts` reports only slots, leases, pins, and leftover checkouts. Stands alone: no pool, scheduler, event, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new text with no extra work)
+
+**Goal.** `tumwater doctor`'s existing "worktree pool" row says how much slot contention the last day saw, and warns when it adds up to enough to justify raising `worktreeSlots`.
+
+**Approach.**
+- `src/doctor/doctor-checks.ts`: add two module constants next to `checkWorktreePool`: `SLOT_WAIT_CHECK_WINDOW_MS = 24 * 3600_000` and `SLOT_WAIT_WARN_TOTAL_MS = 10 * 60_000`. In `checkWorktreePool(root, now = Date.now())`, after the existing parts are built, read `readEventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS).events` (from `src/events/event-window.ts`, as `checkNotify` in `src/doctor/doctor-notify.ts` does). Keep `ev.type === "slot_wait" && ev.ts >= now - SLOT_WAIT_CHECK_WINDOW_MS`. Fold them into a count, a total of `finiteNumber(ev.waitedMs, 0)` (`src/files/json-object.ts`), and the longest wait together with its `role` and `purpose` (`"vet"` when `purpose === "vet"`, else `"tick"`, matching `formatEvent`).
+  - No waits: add no part. The row text and level are unchanged from today.
+  - One or more waits: push the part `` `${plural(count, "slot wait")} in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longest)} (${role} ${purpose})` ``. Get `plural` and `shortSpanPhrase` from `src/text/phrases.ts`.
+  - When `total >= SLOT_WAIT_WARN_TOTAL_MS`, append `` ` — raise worktreeSlots above ${slots.length}` `` to that part, and the row's level becomes warn. The existing leftover and stale-pin conditions still warn as before. Under the threshold the waits are information only: the level stays as the other conditions decide.
+  - A throw from the read (an unreadable log) pushes `could not read the event log for slot waits: ${errorMessage(err)}` and leaves the level unchanged. The "event log" row already reports an unreadable log, so this row does not double-warn.
+- Update `checkWorktreePool`'s doc comment to name the third warn condition.
+- `docs/how-it-works.md` "Worktree pool" bullet: after the `slot_wait` sentence, add that `tumwater doctor`'s "worktree pool" row sums the last 24 h of those waits and warns once they total 10 minutes, naming the number to raise `worktreeSlots` above.
+- `README.md`'s Audit row `tumwater doctor` sentence: add "slot waits that call for a larger `worktreeSlots`" to the list of what doctor names. Leave the tumwater:prompt block untouched.
+
+**Files touched.** `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, `docs/how-it-works.md`, `README.md`.
+
+**Acceptance criteria.**
+- The existing test "checkWorktreePool reports the pool, warns on a 25 h pin and on leftover legacy checkouts" in `test/doctor-checks.test.ts` passes unchanged. Its fresh repo logs no `slot_wait`, so the first `deepEqual` still reads `"0 slots, 0 leased, 0 pinned"`.
+- A new test in `test/doctor-checks.test.ts` seeds real event lines with `logEvent` from `src/events/events.ts` (as `test/doctor-notify.test.ts` does) and covers:
+  1. Two `slot_wait` events (`waitedMs` 45_000 on `feature` tick, 90_000 on `clean` vet) give level ok, and the detail matches `/2 slot waits in the last 24h, 2m total, longest 90s \(clean vet\)/`.
+  2. Adding a `slot_wait` with `waitedMs: 600_000` on `feature` tick turns the level to warn, and the detail matches `/raise worktreeSlots above 0/` (the fresh repo has no slots file).
+  3. A `slot_wait` whose `ts` falls before `now - 24h` is not counted. Pass a `now` far enough ahead of the logged events that they fall out of the window, and the detail no longer matches `/slot wait/`.
+- `grep -n slot_wait src/doctor/doctor-checks.ts` finds the new filter.
+- `npm run test` passes.
 
 ## Done
 
