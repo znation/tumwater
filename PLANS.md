@@ -6,6 +6,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The dashboard's question drawer records a multiline answer with its lines kept, matching `tumwater questions answer <n> --file` (planned 2026-10-12 by plan; sibling of the landed `questions answer --file` (`answerQuestionFromText` in `src/cli/question-commands.ts`); independent of the TUI-answer and `prompt --edit --file` plans)
+
+**Goal.** The question drawer already gives the operator a multi-line `<textarea id='answertext'>` (`src/ui/gui/gui-client-drawer.ts`). But `handleQuestionAnswer` (`src/gui/gui-endpoint-commands.ts`) calls `tryAnswerQuestion(root, position, decision, title)` without `keepLines`, so `collapseWhitespace` folds a typed list or paragraph break into one line. The CLI's `--file` form now keeps lines behind `bodyStructureProblem`. The dashboard should record what the operator typed the same way.
+
+**Approach.**
+1. `src/gui/gui-endpoint-commands.ts`, `handleQuestionAnswer`. After the existing blank-decision check:
+   - Normalize with `normalizeEntryBody(decision)`. It is already imported there.
+   - Run `bodyStructureProblem` on the normalized text. A non-null problem answers `400 { error: problem }` and writes nothing. That is the same shape `handleBacklogEdit` uses.
+   - Then call `tryAnswerQuestion(root, position, body, title, true)`.
+   - Update the doc comment: the decision keeps its lines (the `--file` form's rule), and a `## `/`### ` heading line or an unclosed fence in the decision answers 400.
+   - The response's `decision` stays `outcome.decision` (what landed).
+2. `src/ui/gui/gui-client-boot.ts`, the `answer-record` branch: no change. It already sends `area.value.trim()`, which keeps inner newlines. Confirm the flash text doesn't echo the decision. It doesn't: it echoes only the title.
+3. README.md, "Answer open questions" row: change "the dashboard's question drawer records an answer the same way" to say the drawer records it with its lines kept, as `--file` does.
+4. `answerQuestionLocked` and `tryAnswerQuestion` need no change. The CLI positional form keeps folding.
+
+**Files touched.** `src/gui/gui-endpoint-commands.ts`, `test/gui-endpoints.test.ts`, README.md.
+
+**Acceptance criteria.**
+- In `test/gui-endpoints.test.ts`, the test "handleQuestionAnswer answers, goes gone on stale input, and guards bad bodies and fences" changes as follows:
+  - Its first answer, `"use\nink"`, now lands with its lines kept. The response `decision` is `"use\nink"`. QUESTIONS.md holds the `**Answered <date> by operator:**` stamp followed by `use\nink` on their own lines, in the layout `answerQuestionFromText` produces. Copy the expected shape from the test "questions answer --file keeps the decision's lines, in either flag position" in `test/cli-questions-strictness.test.ts`.
+  - New cases each answer 400 and leave the file byte-identical:
+    - a decision containing a line `## Phantom`;
+    - a decision containing an unclosed ```` ``` ```` fence.
+    - The 400 error text comes from `bodyStructureProblem`.
+  - A decision with `\r\n` line endings lands with `\n` only.
+  - The existing stale, out-of-range, blank, non-integer, missing-title, and 409-fence assertions still pass unchanged.
+- The CLI positional `tumwater questions answer <n> "a\nb"` still folds to `a b`. Its existing test "a multi-line decision folds to one line, so no line of it can start a new section" in `test/question-commands.test.ts` passes untouched.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater prompt --edit <n> --file <path>`: rewrite a queued prompt from a file (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`readPromptFileArg` in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" and "`tumwater questions answer <n> --file <path>`" plans: it touches only `parsePromptArgs`, `src/cli/help.ts`'s prompt stanza, README.md's Steer row, and prompt tests — no `src/ui`, `src/gui`, `src/backlog`, or question file; done 2026-10-12 by feature)
