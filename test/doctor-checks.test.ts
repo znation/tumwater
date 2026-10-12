@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   checkAgentBinary,
+  checkBootstrap,
   checkBrief,
   checkBuild,
   checkBuildCheck,
@@ -28,7 +29,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
-import { slotWorktreePath, worktreesDir } from "../src/paths.js";
+import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
@@ -687,4 +688,23 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () 
     checkClaudeTranscripts(claudeConfig, tmpdir("doctor-empty-home-")).detail,
     /no transcript dir/,
   );
+});
+
+// checkBootstrap is informational: it reports the gate's state without writing the latch.
+test("checkBootstrap reports an active bootstrap, and stands down without config, entry, or with the latch", () => {
+  const root = readyRepo();
+  assert.deepEqual(checkBootstrap(root, undefined), { level: "ok", detail: "not bootstrapping" });
+
+  writeConfig(root, {});
+  assert.equal(checkBootstrap(root, loadConfig(root)).detail, "not bootstrapping");
+
+  writeConfig(root, { bootstrap: { untilPlansDone: 3 } });
+  const config = loadConfig(root);
+  const active = checkBootstrap(root, config);
+  assert.equal(active.level, "ok");
+  assert.match(active.detail, /^bootstrapping: \d+\/3 plans done — plan, feature and director tick$/);
+
+  fs.mkdirSync(path.dirname(bootstrapLatchPath(root)), { recursive: true });
+  fs.writeFileSync(bootstrapLatchPath(root), "");
+  assert.equal(checkBootstrap(root, config).detail, "not bootstrapping");
 });
