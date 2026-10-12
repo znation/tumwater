@@ -1619,10 +1619,10 @@ so one command corrects the text and the images without moving the entry.
 3. The empty state names the active window (`No ticks in the last day`) instead of `No ticks yet`; this joins the sibling search plan's `No ticks match this search` rule, with a set search pattern winning over an empty window, so the note distinguishes "no rows exist in this window" from "rows exist but the search filtered them out".
 4. No new runtime dependency.
 
-**Files touched.** `src/gui/gui-endpoints.ts`, `src/ui/gui/gui-client-history.ts`, `test/gui-server.test.ts`, `test/gui-client-history.test.ts`.
+**Files touched.** `src/gui/gui-endpoints.ts`, `src/ui/gui/gui-client-history.ts`, `test/gui-server-api.test.ts`, `test/gui-client-history.test.ts`.
 
 **Acceptance criteria.**
-- `test/gui-server.test.ts` extends the `/api/history` test: `?sinceMs=<wide>` returns the rows `readTickRowsSince(root, sinceMs, null)` yields with `covered: true` and `note: ""`; `?sinceMs=<tiny>` returns `{ rows: [], covered: true, note: "" }`; `?sinceMs=604800001` (above the cap) and `?sinceMs=3600000&n=20` each 400; `?sinceMs=<wide>&role=clean` returns only that loop's rows.
+- `test/gui-server-api.test.ts` extends the `/api/history` test: `?sinceMs=<wide>` returns the rows `readTickRowsSince(root, sinceMs, null)` yields with `covered: true` and `note: ""`; `?sinceMs=<tiny>` returns `{ rows: [], covered: true, note: "" }`; `?sinceMs=604800001` (above the cap) and `?sinceMs=3600000&n=20` each 400; `?sinceMs=<wide>&role=clean` returns only that loop's rows.
 - `test/gui-client-history.test.ts` runs `historyQuery` through `clientScope` and asserts `sinceMs=` with no `n` in window mode, `n=` with no `sinceMs` otherwise, and `role=` only when set; and asserts the `#histcount` toolbar markup carries the four window options.
 - The History view's empty state names the selected window, and the server's sparse note renders when `covered` is false.
 - `npm run test` is green.
@@ -1667,7 +1667,7 @@ runtime dependency.
   it is the widest in each column (a null-duration row included, its em dash kept), and
   `test/cli-history-filtering.test.ts` still passes unchanged, proving the CLI's `--grep` output is
   untouched.
-- `test/gui-server.test.ts` covers `/api/history?grep=<text>`: a pattern matching one seeded row
+- `test/gui-server-api.test.ts` covers `/api/history?grep=<text>`: a pattern matching one seeded row
   returns only it; a pattern matching none returns `{ rows: [] }`; `role` and `grep` compose; `n`
   still bounds the scanned window before grep.
 - `test/gui-client-history.test.ts` asserts the search input is in the toolbar, that `fetchHistory`

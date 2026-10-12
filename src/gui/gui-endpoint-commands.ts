@@ -64,7 +64,7 @@ async function readRoleBody(
 /** Handle POST /api/prompt: queue a director prompt. An over-long prompt
  * (DIRECTOR_PROMPT_MAX_CHARS) is a user-input error, not a server fault: the shared length
  * rule answers 400 — an unexpected submit failure (EACCES) still reaches the server's outer
- * catch as the 500 its gui-server test pins. An optional images array (the composer's
+ * catch as the 500 its gui-server-transport test pins. An optional images array (the composer's
  * dropped/pasted attachments) is validated before anything is queued: a bad image — wrong
  * extension, too many, undecodable, oversized — answers 400 naming the rule, with no queue
  * file and no image written. */

@@ -11,7 +11,7 @@ import {
 
 // http-body.ts is the dashboard's shared request/response plumbing: every /api endpoint
 // answers through sendJson and every /api POST handler reads its body through
-// readJsonObject. The server-level tests (gui-server.test.ts, gui-operator.test.ts)
+// readJsonObject. The server-level tests (gui-server-transport.test.ts, gui-operator.test.ts)
 // exercise these through a real socket, which cannot control chunk framing — so the
 // wire-level edge cases the module's comments promise (multi-byte UTF-8 split across
 // chunks, buffering that stops at the cap, the shared byte counter releasing at settle)

@@ -1,0 +1,466 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import net from "node:net";
+import path from "node:path";
+import { initProject } from "../src/init/init.js";
+import { dequeuePrompt, inboxSize } from "../src/inbox/inbox.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
+import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/gui/http-body.js";
+import { loopbackHostAllowed } from "../src/gui/gui-server.js";
+import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
+import { makeRepo, runningAsRoot } from "./fixtures/repo-fixtures.js";
+import { sleep } from "./helpers/wait.js";
+
+// The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
+// raw-socket framing edge cases, and dropped clients. Each test pins a survivability
+// guarantee — a bad request costs the client its own response, never the server.
+// Sliced out of gui.test.ts, which covers the API and dashboard-page behavior instead.
+
+test("gui rejects oversized prompt bodies with 413 instead of buffering them unboundedly", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui body limit test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // Just over the 32 MiB cap: a client error (413 Payload Too Large), not a server failure.
+    const huge = JSON.stringify({ text: "x".repeat(MAX_BODY_BYTES) });
+    const res = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: huge,
+    });
+    assert.equal(res.status, 413);
+    assert.match(await res.text(), /body too large/);
+
+    // The server stays healthy afterwards and still accepts normal prompts.
+    const ok = await postJson(base, "/api/prompt", { text: "still alive" });
+    assert.equal(ok.status, 200);
+    assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui rejects a cross-origin POST with 403 while same-origin and Origin-less POSTs pass", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui csrf test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // A hostile webpage's silent POST: the browser attaches the hostile page's origin,
+    // no preflight is needed (text/plain is CORS-safelisted), and the attacker never
+    // reads a response — the side effect alone is the payload.
+    const evil = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "http://evil.example" },
+      body: JSON.stringify({ text: "forged from another site" }),
+    });
+    assert.equal(evil.status, 403);
+    assert.match(await evil.text(), /cross-origin/);
+    assert.equal(inboxSize(repo), 0);
+
+    // `Origin: null` (sandboxed frames, data: redirects) is the hostile shape too.
+    const nulled = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "null" },
+      body: JSON.stringify({ text: "nulled origin" }),
+    });
+    assert.equal(nulled.status, 403);
+    assert.equal(inboxSize(repo), 0);
+
+    // The dashboard's own POSTs carry this server's host as their Origin — allowed.
+    const same = await postJson(base, "/api/prompt", { text: "from the dashboard" }, { origin: base });
+    assert.equal(same.status, 200);
+    assert.equal(inboxSize(repo), 1);
+
+    // Non-browser clients (curl, scripts, the tests above) send no Origin — allowed.
+    const bare = await postJson(base, "/api/prompt", { text: "from a script" });
+    assert.equal(bare.status, 200);
+    assert.equal(inboxSize(repo), 2);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui refuses a POST whose Origin header does not parse as a URL", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui malformed origin test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // An Origin the URL parser rejects (`http://[` — a malformed authority) cannot be
+    // compared against the request's Host, so it must be refused like every other origin
+    // the server cannot verify, never waved through and never a 500.
+    const malformed = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "http://[" },
+      body: JSON.stringify({ text: "unparseable origin" }),
+    });
+    assert.equal(malformed.status, 403);
+    assert.match(await malformed.text(), /cross-origin/);
+    assert.equal(inboxSize(repo), 0);
+
+    // The server stays healthy and still accepts a normal prompt afterwards.
+    const ok = await postJson(base, "/api/prompt", { text: "still alive" });
+    assert.equal(ok.status, 200);
+    assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui refuses a DNS-rebinding Host on a loopback-bound server, on reads and writes alike", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui rebinding test");
+  const { server, base, port } = await startLocalGui(repo);
+  try {
+    // A rebinding page's domain resolves to 127.0.0.1, so its requests reach the loopback
+    // socket with Origin and Host BOTH naming the attacker's domain — the two agree, so the
+    // cross-origin gate cannot tell the forged request from the dashboard's own. A raw socket
+    // is required: fetch always sets Host to the address it connects to, never a forged name.
+    // Before loopbackHostAllowed this POST queued the prompt (200); the gate refuses it.
+    const send = (headers: string): Promise<string> =>
+      new Promise<string>((resolve, reject) => {
+        const socket = net.connect(port, "127.0.0.1");
+        let response = "";
+        socket.on("data", (d: Buffer) => {
+          response += d.toString("ascii");
+        });
+        socket.on("end", () => {
+          socket.destroy();
+          resolve(response);
+        });
+        socket.once("error", reject);
+        socket.write(headers, () => {});
+      });
+    const body = JSON.stringify({ text: "forged by a rebinding page" });
+    const rebound = await send(
+      "POST /api/prompt HTTP/1.1\r\nHost: evil.example\r\nOrigin: http://evil.example\r\n" +
+        `Content-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n` +
+        body,
+    );
+    assert.match(rebound, /^HTTP\/1\.1 403/, `expected 403, got: ${rebound.split("\r\n")[0]}`);
+    assert.equal(inboxSize(repo), 0, "the rebound prompt queued nothing");
+
+    // A rebound GET reads the same data the state-changing POST could write, so the gate
+    // covers every method, not just POST.
+    const read = await send("GET /api/status HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n");
+    assert.match(read, /^HTTP\/1\.1 403/, `expected 403, got: ${read.split("\r\n")[0]}`);
+
+    // The loopback names the dashboard is actually reached by still pass — no legitimate
+    // access is locked out.
+    const ok = await postJson(base, "/api/prompt", { text: "from the dashboard" });
+    assert.equal(ok.status, 200);
+    assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+test("loopbackHostAllowed accepts the loopback Host spellings and refuses foreign names", () => {
+  for (const allowed of ["127.0.0.1", "127.0.0.1:7180", "localhost", "localhost:7180", "[::1]", "[::1]:7180", "LOCALHOST:7180"])
+    assert.equal(loopbackHostAllowed(allowed), true, `${allowed} is the dashboard's own Host`);
+  for (const refused of ["evil.example", "evil.example:7180", "127.0.0.1.evil.example", "dns-rebind.test:7180", "", "[::1", "[2001:db8::1]:7180"])
+    assert.equal(loopbackHostAllowed(refused), false, `${JSON.stringify(refused)} is not the dashboard's own Host`);
+});
+
+test("gui answers 400 for an over-long prompt and queues nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui long prompt test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // An over-long prompt is a user-input error: the shared length rule (inbox-submit.ts's
+    // promptLengthProblem) answers 400 naming the length and the ceiling — not the outer
+    // catch's 500, which is reserved for unexpected submit failures (see the EACCES test).
+    const res = await postJson(base, "/api/prompt", { text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, new RegExp(`${DIRECTOR_PROMPT_MAX_CHARS + 1} chars`));
+    assert.equal(inboxSize(repo), 0, "the rejected prompt queued nothing");
+  } finally {
+    server.close();
+  }
+});
+
+test("gui answers JSON 500 when a handler throws unexpectedly and keeps serving", async () => {
+  // Skip under root, where chmod cannot stop the write and submitPrompt would succeed.
+  if (runningAsRoot()) return;
+
+  const repo = makeRepo();
+  await initProject(repo, "gui handler error test");
+  const { server, base } = await startLocalGui(repo);
+  const inbox = path.join(repo, ".tumwater", "inbox");
+  fs.mkdirSync(inbox, { recursive: true });
+  try {
+    // An unwritable inbox makes submitPrompt throw (EACCES) — an unexpected error inside a
+    // request handler. Without the catch-all it would surface as an unhandled rejection and
+    // kill the dashboard process over one bad request; with it, the client gets a JSON 500
+    // naming the failure and every later request still works.
+    fs.chmodSync(inbox, 0o555);
+
+    const res = await postJson(base, "/api/prompt", { text: "this write will fail" });
+    assert.equal(res.status, 500);
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, /EACCES|permission denied/);
+    assert.equal(inboxSize(repo), 0, "the failed prompt queued nothing");
+
+    // The server survived the bad request and still serves.
+    const status = await fetch(base + "/api/status");
+    assert.equal(status.status, 200);
+  } finally {
+    fs.chmodSync(inbox, 0o755);
+    server.close();
+  }
+});
+
+test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui utf8 test");
+  const { server, port } = await startLocalGui(repo);
+  try {
+    // A prompt containing a CJK character (3 bytes in UTF-8). The chunked upload is framed
+    // so that character straddles two chunks — socket/chunk boundaries are arbitrary TCP
+    // framing, and decoding each chunk independently would replace the split character with
+    // U+FFFD, silently corrupting what the director receives.
+    const text = "fix the 数据库 bug";
+    const body = Buffer.from(JSON.stringify({ text }), "utf8");
+    const charStart = body.indexOf(Buffer.from("数", "utf8"));
+    assert.ok(charStart > 0 && charStart + 3 <= body.length, "test body contains the CJK character");
+    const splitAt = charStart + 1; // inside the 3-byte sequence
+
+    const socket = net.connect(port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(
+        "POST /api/prompt HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n",
+        () => resolve(),
+      );
+    });
+    const frame = (b: Buffer): Buffer =>
+      Buffer.concat([Buffer.from(`${b.length.toString(16)}\r\n`, "ascii"), b, Buffer.from("\r\n", "ascii")]);
+    // Send the two halves as separate frames with a pause between them so the server reads
+    // (and decodes) each chunk on its own — the condition that corrupts per-chunk decoding.
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(frame(body.subarray(0, splitAt)), () => setTimeout(resolve, 50));
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(Buffer.concat([frame(body.subarray(splitAt)), Buffer.from("0\r\n\r\n", "ascii")]), () => resolve());
+    });
+    // Wait for the response to land.
+    await sleep(200);
+
+    assert.match(response, /^HTTP\/1\.1 200/, `expected 200, got: ${response.split("\r\n")[0]}`);
+    const queued = dequeuePrompt(repo);
+    assert.equal(queued, text, "the prompt arrives byte-for-byte intact");
+    socket.destroy();
+  } finally {
+    server.close();
+  }
+});
+
+test("gui answers 404, not 500, for a request target the URL parser rejects", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui malformed target test");
+  const { server, base, port } = await startLocalGui(repo);
+  try {
+    // An absolute-form target whose host is malformed (`http://[`) is accepted by Node's HTTP
+    // parser and handed to the handler as req.url, but `new URL(req.url, base)` throws on it.
+    // requestPathname must swallow that and read as "no route" — a 404 — instead of letting
+    // the throw reach the handler's 500 catch, which would report a server fault for what is
+    // plainly a bad request. A raw socket is required: fetch/undici reject the malformed URL
+    // client-side before it ever reaches the server.
+    const socket = net.connect(port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    const ended = new Promise<void>((resolve) => socket.on("end", () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write("GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", () => resolve());
+    });
+    await ended;
+
+    assert.match(response, /^HTTP\/1\.1 404/, `expected 404, got: ${response.split("\r\n")[0]}`);
+    assert.match(response, /not found/);
+    socket.destroy();
+
+    // The rejection is confined to the bad request: the server keeps routing well-formed ones.
+    assert.equal((await fetch(base + "/nope")).status, 404);
+    const status = await fetch(base + "/api/status");
+    assert.equal(status.status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui answers 401, not 500, for a malformed target on a token-gated server", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui malformed target token test");
+  const { server, port } = await startLocalGui(repo, "s3cret");
+  try {
+    // The token gate reads the same parsed request target as the router, so a target the
+    // URL parser rejects must answer the gate's 401 (the token check simply finds nothing
+    // to match), never the 500 a gate-side re-parse throw would produce — the same bad
+    // request that earns 404 on the token-less server in the test above.
+    const socket = net.connect(port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    const ended = new Promise<void>((resolve) => socket.on("end", () => resolve()));
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write("GET http://[ HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", () => resolve());
+    });
+    await ended;
+
+    assert.match(response, /^HTTP\/1\.1 401/, `expected 401, got: ${response.split("\r\n")[0]}`);
+    assert.match(response, /token required/);
+    socket.destroy();
+
+    // The gate still admits a well-formed request carrying the token.
+    const ok = await fetch(`http://127.0.0.1:${port}/api/status?token=s3cret`);
+    assert.equal(ok.status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui body bound test");
+  const { server, port } = await startLocalGui(repo);
+  try {
+    // A raw chunked upload of ~33MB in 16KB frames. The 413 lands after the first ~32 MiB, but
+    // this client keeps sending every frame to completion (a well-behaved HTTP client would
+    // stop). The server must reject at the cap, release what it kept, and DRAIN without
+    // buffering — before the fix each late chunk was still appended to the body string,
+    // growing it to the full upload size. Keep-alive (no Connection: close) keeps the
+    // server-side request alive so a buggy buffer would still be held while we measure.
+    //
+    // The measurement is readBody's own buffered-byte counter, not a whole-process heap
+    // delta: heap counts garbage and unrelated allocations too, so on a loaded host the old
+    // heap assertion flipped between pass and fail with no code change — and the gate then
+    // waved a failed-then-passed tree through as flake weather.
+    const socket = net.connect(port, "127.0.0.1");
+    let response = "";
+    socket.on("data", (d: Buffer) => {
+      response += d.toString("ascii");
+    });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(
+        "POST /api/prompt HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+        () => resolve(),
+      );
+    });
+    const frame = Buffer.alloc(16 * 1024, 0x78); // 'x'
+    const framed = Buffer.concat([Buffer.from(`${frame.length.toString(16)}\r\n`, "ascii"), frame, Buffer.from("\r\n", "ascii")]);
+    // The counter rises by at most one chunk per data event and is zeroed the moment the cap
+    // rejects, so it can never exceed this bound between samples either — sampling at every
+    // write callback covers the whole upload deterministically. Track the max and assert
+    // AFTER the upload: throwing inside the write-callback chain would stall the upload and
+    // hang the test instead of failing it.
+    const maxBuffered = MAX_BODY_BYTES + frame.length;
+    let maxSeen = 0;
+    await new Promise<void>((resolve, reject) => {
+      let i = 0;
+      socket.once("error", reject);
+      const next = (): void => {
+        maxSeen = Math.max(maxSeen, bufferedBodyBytes());
+        if (i >= 2100) return resolve(); // 2100 × 16KB > the 32 MiB cap
+        i++;
+        socket.write(framed, next);
+      };
+      next();
+    });
+    assert.ok(
+      maxSeen <= maxBuffered,
+      `server kept up to ${maxSeen} bytes buffered of a rejected body (bound ${maxBuffered})`,
+    );
+    // Give the server a moment to finish draining what is still in flight.
+    for (let waited = 0; waited < 2000 && !/^HTTP\/1\.1 413/.test(response); waited += 50) {
+      await sleep(50);
+    }
+    assert.match(response, /^HTTP\/1\.1 413/, "the oversized upload still gets the 413");
+    // Once the upload is in and the server has drained it, readBody holds nothing: the cap
+    // rejection must have RELEASED what it kept, not merely stopped growing it.
+    for (let waited = 0; waited < 2000 && bufferedBodyBytes() > 0; waited += 50) {
+      await sleep(50);
+    }
+    assert.equal(bufferedBodyBytes(), 0, "a rejected body's buffer is released, not retained");
+    socket.destroy();
+  } finally {
+    server.close();
+  }
+});
+
+test("gui survives a client that disconnects mid-upload and keeps serving", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui aborted upload test");
+  const { server, base, port } = await startLocalGui(repo);
+  try {
+    // A client that vanishes mid-upload (browser closed, flaky LAN): the body is cut off
+    // short of Content-Length, so Node fires 'error' (ECONNRESET) on the request stream.
+    // readBody must settle via that error — a handler left awaiting a never-settling promise
+    // would leak one per aborted upload, and an uncaught error from the dead connection could
+    // kill the dashboard over one dropped client. The partial body is not valid JSON, so even
+    // a regression that resolved it early could only 400 — nothing may be queued.
+    const socket = net.connect(port, "127.0.0.1");
+    await new Promise<void>((resolve, reject) => {
+      socket.once("error", reject);
+      socket.write(
+        "POST /api/prompt HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 4096\r\nConnection: close\r\n\r\n" +
+          '{"text": "cut off mid', // partial body — far short of Content-Length
+        () => resolve(),
+      );
+    });
+    await sleep(50); // let the server start reading the body
+    socket.destroy(); // client gone before the body completes
+
+    // Give the error path a moment to settle (req 'error' → readBody reject → handler catch).
+    await sleep(200);
+
+    // The aborted upload queued nothing — a partial body must never become a prompt.
+    assert.equal(inboxSize(repo), 0, "the aborted upload queued no prompt");
+
+    // The dashboard survived the dropped connection and still serves: status answers and a
+    // fresh, complete prompt is accepted end to end.
+    assert.equal((await fetch(base + "/api/status")).status, 200);
+    const res = await postJson(base, "/api/prompt", { text: "sent after the abort" });
+    assert.equal(res.status, 200);
+    assert.equal(dequeuePrompt(repo), "sent after the abort");
+  } finally {
+    server.close();
+  }
+});
+
+test("gui rejects oversized wake and abort bodies with 413 and keeps serving", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui operator body limit test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // Same shared readJsonObject guard as /api/prompt: just over the 32 MiB cap is a client
+    // error, not a server failure, and no marker file is left behind by either endpoint.
+    const huge = JSON.stringify({ role: "feature", pad: "x".repeat(MAX_BODY_BYTES) });
+    for (const endpoint of ["/api/wake", "/api/abort"]) {
+      const res = await fetch(base + endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: huge,
+      });
+      assert.equal(res.status, 413, endpoint);
+      assert.match(await res.text(), /body too large/);
+    }
+    // The server stays healthy and still serves its status payload.
+    assert.equal((await fetch(base + "/api/status")).status, 200);
+  } finally {
+    server.close();
+  }
+});
+

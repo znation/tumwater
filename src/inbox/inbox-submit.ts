@@ -29,7 +29,7 @@ export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
  * the director's prefill. submitPrompt/submitRolePrompt throw it before anything is queued
  * or logged; the GUI asks it first so an over-long prompt answers 400 (a user-input error)
  * while an unexpected submit failure (a broken inbox's EACCES) stays the 500 its
- * gui-server test pins. */
+ * gui-server-transport test pins. */
 export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE): string | null {
   const prompt = text.trim();
   if (prompt.length <= DIRECTOR_PROMPT_MAX_CHARS) return null;
