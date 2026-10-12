@@ -31,6 +31,24 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### The TUI's History tick trail (Ctrl+N) ends with the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` and the dashboard drill-down (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. TUI sibling of the Done "dashboard's History drill-down shows the tick commit's per-file stat" plan)
+
+**Goal.** `tumwater tick … --stat` and the dashboard's History drill-down (`GET /api/tick`'s `stat`) both show which files a tick's pinned commit changed. The TUI's History-pane trail (Ctrl+N in `createTuiKeys`, `src/ui/tui/tui-keys.ts`) shows only `renderTickDetail` text. Append the same stat text so all three surfaces agree.
+
+**Approach.**
+- **Seam.** Add `tickStat?(root: string, detail: TickDetail): Promise<string>` to `createTuiKeys`'s deps, next to `collectChange`; default `tickDetailStat` from `src/tick/tick-detail.ts` (already exported and async, it owns the "(no commit: …)" / "(commit … is not in this repository)" texts). `TickDetail` imports from `src/tick/tick-detail-data.ts`.
+- **Load.** The trail stays sync-first: Ctrl+N entry and `refreshTrail` keep setting `trailCache = renderTickDetail(detail)` at once, then fire `void tickStat(root, detail).then(…)`. On resolve, set ``trailCache = `${text}\n\n${stat}` `` — the exact join `cmdTick` uses for `--stat` — and call `deps.requestRender()`. A rejection flashes via `flashError` and leaves the trail text as is.
+- **Staleness.** Add a module-local `trailGen` counter in `createTuiKeys`, bumped at every trail read or reset (Ctrl+N entry, Ctrl+N exit, `refreshTrail`, the Ctrl+T cycle-away reset) but not by the stat's own resolution. A resolution applies only when `trailMode` is still on and its captured gen equals `trailGen`, so leaving the trail, cycling away, or a Ctrl+G/roster re-read cannot be overwritten by an older tick's stat (the `collectChange` guard's pattern).
+- **Unchanged.** `renderTickDetail`, `tickDetailStat`, `cmdTick`, `/api/tick`, and `src/ui/tui/tui-pane.ts` (it already windows whatever `trailCache` holds). Scroll stays where it is when the stat arrives.
+
+**Files.** `src/ui/tui/tui-keys.ts`, `test/tui-keys.test.ts`, `docs/how-it-works.md` (the History pane's `Ctrl+N` sentence names the stat footer and `tumwater tick --stat`).
+
+**Acceptance criteria.**
+- New test in test/tui-keys.test.ts: with a `tickStat` seam returning a controlled promise, Ctrl+N on History sets `trailCache` to `renderTickDetail(...)` immediately; after the promise resolves to `" a.ts | 1 +"`, `trailCache` equals `renderTickDetail(...) + "\n\n a.ts | 1 +"` and a render was requested.
+- New test: Ctrl+N twice (exit) before the stat resolves leaves `trailCache` null after resolution; and a Ctrl+G re-read before resolution is not overwritten by the first tick's stat.
+- New test: a rejecting `tickStat` leaves `trailMode` on with the plain trail text and sets the flash.
+- The existing "Ctrl+N on the History pane swaps the rows for the newest completed tick's trail", Ctrl+G, and roster-change trail tests pass unchanged.
+
 ## Done
 
 ### The dashboard's History drill-down shows the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. Dashboard sibling of the landed `tick --stat` plan (in Done). A TUI sibling is not planned yet: the TUI trail is computed synchronously in `createTuiKeys`, and `tickCommitStat` is async; done 2026-10-12)
