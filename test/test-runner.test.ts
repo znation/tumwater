@@ -229,14 +229,27 @@ test("buildNodeTestArgs adds the coverage flags only under coverage, and keeps t
 
 test("timedOutFailure reads a real spawnSync timeout kill as the ceiling message and every other outcome as null", () => {
   assert.ok(SUITE_TIMEOUT_MS >= 20 * 60_000, "the ceiling must stay far above any healthy full-suite run");
-  // A genuinely hung child, killed by spawnSync's own timeout — the exact shape main() gets back.
-  const hung = spawnSync(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { timeout: 100, env: exitWithOwnerEnv() });
-  const message = timedOutFailure(hung);
-  assert.match(message ?? "", /exceeded its 30-minute ceiling and was killed/);
-  assert.match(message ?? "", /bisect with npm test '<file filter>'/);
-  // A clean exit and a failing exit are node --test's own outcomes, not timeouts.
+  const ceiling = (r: { error?: unknown }): void => {
+    const message = timedOutFailure(r);
+    assert.match(message ?? "", /exceeded its 30-minute ceiling and was killed/);
+    assert.match(message ?? "", /bisect with npm test '<file filter>'/);
+  };
+  // A genuinely hung node --test run, killed by spawnSync's own timeout — the exact shape main()
+  // gets back. Once armed (100–200 ms after spawn) node --test traps the SIGTERM and exits 1, so
+  // the timeout reads status 1, not null; the 1 s timeout leaves it time to arm.
+  const dir = tmpdir();
+  const hangFile = path.join(dir, "hang.test.mjs");
+  fs.writeFileSync(hangFile, `import { test } from "node:test";\ntest("hangs", () => new Promise(() => setInterval(() => {}, 60_000)));\n`);
+  ceiling(spawnSync(process.execPath, ["--test", hangFile], { timeout: 1_000, env: exitWithOwnerEnv(runnerEnv()) }));
+  // The same shape, pinned without the race against node --test's arming.
+  ceiling({ error: Object.assign(new Error("spawnSync node ETIMEDOUT"), { code: "ETIMEDOUT" }) });
+  // A child that dies of the timeout's SIGTERM (status null) reads the same.
+  ceiling(spawnSync(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { timeout: 100, env: exitWithOwnerEnv() }));
+  // A clean exit and a failing exit are node --test's own outcomes, not timeouts, and a child
+  // signalled from elsewhere was not killed by the ceiling.
   assert.equal(timedOutFailure(spawnSync(process.execPath, ["-e", "process.exit(0)"])), null);
   assert.equal(timedOutFailure(spawnSync(process.execPath, ["-e", "process.exit(3)"])), null);
+  assert.equal(timedOutFailure(spawnSync(process.execPath, ["-e", "process.kill(process.pid, 'SIGTERM')"])), null);
 });
 
 test("suiteGitEnv appends maintenance.auto=false after any env-injected git config it inherits", () => {

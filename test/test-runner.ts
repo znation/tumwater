@@ -53,11 +53,13 @@ export const SUITE_TIMEOUT_MS = 30 * 60_000;
  * timed-out child itself and reports ETIMEDOUT — semantics a decade old, unlike node --test's
  * own --test-timeout and --test-force-exit flags, which postdate package.json's engines floor
  * (>= 20.3) and would need version gates that mis-gate: a supported node must never refuse to
- * start the suite over a guard flag. Returns null for every outcome spawnSync reports without
- * a timeout kill (a green run, node --test's own failures, an externally signalled child).
- * Exported for test/test-runner.test.ts to pin against a real spawnSync kill. */
-export function timedOutFailure(r: { status: number | null; signal: NodeJS.Signals | null; error?: unknown }): string | null {
-  if (!(r.status === null && (r.error as { code?: unknown } | undefined)?.code === "ETIMEDOUT")) return null;
+ * start the suite over a guard flag. ETIMEDOUT alone decides: node --test traps the SIGTERM,
+ * prints "Interrupted while running", and exits 1, so a timed-out suite comes back with status
+ * 1 rather than the null of a signal death. Returns null for every outcome spawnSync reports
+ * without a timeout kill (a green run, node --test's own failures, an externally signalled
+ * child). Exported for test/test-runner.test.ts to pin against a real spawnSync kill. */
+export function timedOutFailure(r: { error?: unknown }): string | null {
+  if ((r.error as { code?: unknown } | undefined)?.code !== "ETIMEDOUT") return null;
   return `the test suite exceeded its ${SUITE_TIMEOUT_MS / 60_000}-minute ceiling and was killed — a test hangs or ` +
     `leaves the event loop alive; bisect with npm test '<file filter>' or a "#name" filter (npm test 'loop#resume')`;
 }
