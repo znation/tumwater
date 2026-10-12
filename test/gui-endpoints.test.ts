@@ -781,9 +781,9 @@ test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bod
 
   const ok = await serve({ position: 1, title: T1, decision: "use\nink" });
   assert.equal(ok.captured.status, 200);
-  assert.deepEqual(ok.data, { ok: true, status: "answered", question: T1, decision: "use ink" });
+  assert.deepEqual(ok.data, { ok: true, status: "answered", question: T1, decision: "use\nink" });
   const md = fs.readFileSync(file, "utf8");
-  assert.match(md, new RegExp(`## Answered[\\s\\S]*### ${T1}[\\s\\S]*\\*\\*Answered \\d{4}-\\d{2}-\\d{2} by operator:\\*\\* use ink`));
+  assert.match(md, new RegExp(`## Answered[\\s\\S]*### ${T1}[\\s\\S]*\\*\\*Answered \\d{4}-\\d{2}-\\d{2} by operator:\\*\\*\\n\\nuse\\nink\\n`));
 
   // The first title is stale now (the second entry is position 1), and position 5 is out of range.
   const stale = await serve({ position: 1, title: T1, decision: "x" });
@@ -791,6 +791,13 @@ test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bod
   const range = await serve({ position: 5, title: T2, decision: "x" });
   assert.deepEqual([range.captured.status, range.data], [200, { ok: true, status: "gone" }]);
   assert.equal(fs.readFileSync(file, "utf8"), md);
+
+  for (const bad of ["fine\n## Phantom\nmore", "x\n```\nunclosed"]) {
+    const r = await serve({ position: 1, title: T2, decision: bad });
+    assert.equal(r.captured.status, 400, bad);
+    assert.ok((r.data as { error: string }).error.length > 0);
+    assert.equal(fs.readFileSync(file, "utf8"), md);
+  }
 
   assert.equal((await serve({ position: 1, title: T2, decision: "  " })).captured.status, 400);
   assert.equal((await serve({ position: 1.5, title: T2, decision: "x" })).captured.status, 400);

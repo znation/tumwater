@@ -217,7 +217,9 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
  * exactly as `tumwater questions answer` does, through the non-exiting tryAnswerQuestion core.
  * The body carries the `title` the operator saw at `position`; a different title there, or no
  * such position, answers 200 { ok: true, status: "gone" } (the outbox moved on — data for the
- * flash line, like /api/prompt-cancel). An unclosed fence in `## Open` answers 409; a blank
+ * flash line, like /api/prompt-cancel). The decision keeps its lines (`questions answer --file`'s
+ * rule): a `## `/`### ` heading line or an unclosed fence in it answers 400 (bodyStructureProblem)
+ * with nothing written. An unclosed fence in `## Open` answers 409; a blank
  * decision, a non-positive-integer position, or a missing title answers 400, and so does a
  * filesystem failure (handleConfigSet's precedent). */
 export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -236,9 +238,15 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
     sendJson(res, 400, { error: 'questions answer needs a decision: questions answer <n> "<decision>"' });
     return;
   }
+  const keptDecision = normalizeEntryBody(decision);
+  const problem = bodyStructureProblem(keptDecision);
+  if (problem !== null) {
+    sendJson(res, 400, { error: problem });
+    return;
+  }
   let outcome: AnswerOutcome;
   try {
-    outcome = tryAnswerQuestion(root, position, decision, title);
+    outcome = tryAnswerQuestion(root, position, keptDecision, title, true);
   } catch (err) {
     sendJson(res, 400, { error: errorMessage(err) });
     return;

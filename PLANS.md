@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The dashboard's question drawer records a multiline answer with its lines kept, matching `tumwater questions answer <n> --file` (planned 2026-10-12 by plan; sibling of the landed `questions answer --file` (`answerQuestionFromText` in `src/cli/question-commands.ts`); independent of the TUI-answer and `prompt --edit --file` plans)
+_None yet._
+
+## Done
+
+### The dashboard's question drawer records a multiline answer with its lines kept, matching `tumwater questions answer <n> --file` (planned 2026-10-12 by plan; sibling of the landed `questions answer --file` (`answerQuestionFromText` in `src/cli/question-commands.ts`); independent of the TUI-answer and `prompt --edit --file` plans) (done 2026-10-12)
 
 **Goal.** The question drawer already gives the operator a multi-line `<textarea id='answertext'>` (`src/ui/gui/gui-client-drawer.ts`). But `handleQuestionAnswer` (`src/gui/gui-endpoint-commands.ts`) calls `tryAnswerQuestion(root, position, decision, title)` without `keepLines`, so `collapseWhitespace` folds a typed list or paragraph break into one line. The CLI's `--file` form now keeps lines behind `bodyStructureProblem`. The dashboard should record what the operator typed the same way.
 
@@ -35,7 +39,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The CLI positional `tumwater questions answer <n> "a\nb"` still folds to `a b`. Its existing test "a multi-line decision folds to one line, so no line of it can start a new section" in `test/question-commands.test.ts` passes untouched.
 - `npm run test` passes.
 
-## Done
 
 ### `tumwater prompt --edit <n> --file <path>`: rewrite a queued prompt from a file (planned 2026-10-12 by plan; sibling of the landed `tumwater prompt --file` (`readPromptFileArg` in `src/cli/cli-command-args.ts`) and the landed `tumwater plan|bug --edit <n> --file`. Independent of the waiting "Answer an open question from the TUI backlog pane" and "`tumwater questions answer <n> --file <path>`" plans: it touches only `parsePromptArgs`, `src/cli/help.ts`'s prompt stanza, README.md's Steer row, and prompt tests — no `src/ui`, `src/gui`, `src/backlog`, or question file; done 2026-10-12 by feature)
 
