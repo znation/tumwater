@@ -2,7 +2,6 @@ import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
-import { formatGB } from "../text/format.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "./retire.js";
 import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
@@ -18,17 +17,17 @@ import {
 } from "../fleet/fleet-state.js";
 import { readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { pidAlive } from "../process/process.js";
-import { inspectReclaimCandidates, reclaimPass } from "../fleet/reclaim.js";
+import { inspectReclaimCandidates } from "../fleet/reclaim.js";
 import {
   markerApplyNote,
   NO_HARNESS_ERROR,
   PAUSE_FOR_MAX_MS,
   requestAbort,
-  requestReclaim,
   requestResetCounters,
   requestWake,
   rolePauseMessage,
   roleResumeMessage,
+  runManualReclaim,
   timedPauseBits,
 } from "./operator-intent.js";
 
@@ -133,17 +132,7 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
     }
     return;
   }
-  const { live } = markerApplyNote(root);
-  if (live) {
-    say(requestReclaim(root));
-    return;
-  }
-  const result = await reclaimPass(root, "manual", { reclaimGB: 0 });
-  if (!result) {
-    say("nothing to reclaim");
-    return;
-  }
-  say(`reclaimed ${result.worktrees.join(", ")} — freed ${formatGB(result.freedGB)}`);
+  say(await runManualReclaim(root));
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot

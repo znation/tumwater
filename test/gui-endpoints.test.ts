@@ -9,13 +9,13 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleConfig, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handlePromptEdit, handleQuestionAnswer, handleRestart } from "../src/gui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir, roleNotesPath } from "../src/paths.js";
-import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
+import { orchestratorStatePath, reclaimRequestPath, restartRequestPath } from "../src/paths.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
@@ -205,6 +205,30 @@ test("handleRestart writes the marker and replies ok while the running build is 
   assert.match((data as { message: string }).message, /cooldown is waived/);
   assert.match((data as { message: string }).message, /blocked restart still blocks/);
   assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker a live fleet consumes is on disk");
+});
+
+test("handleReclaim with no worktrees answers nothing to reclaim", async () => {
+  const root = makeRepo();
+  const { captured, data } = await captureJson((res) => handleReclaim(fakeReq("{}"), res, root));
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, message: "nothing to reclaim" });
+});
+
+test("handleReclaim with a live fleet drops the reclaim marker", async () => {
+  const root = makeRepo();
+  seedFleet(root, null);
+  const { captured, data } = await captureJson((res) => handleReclaim(fakeReq("{}"), res, root));
+  assert.equal(captured.status, 200);
+  assert.match((data as { message: string }).message, /reclaim requested/);
+  assert.equal(fs.existsSync(reclaimRequestPath(root)), true);
+});
+
+test("handleReclaim rejects a malformed body with 400 and writes no marker", async () => {
+  const root = makeRepo();
+  seedFleet(root, null);
+  const { captured } = await captureJson((res) => handleReclaim(fakeReq("{nope"), res, root));
+  assert.equal(captured.status, 400);
+  assert.equal(fs.existsSync(reclaimRequestPath(root)), false);
 });
 
 test("handleRestart refuses with nothing written when the running build is not stale", async () => {

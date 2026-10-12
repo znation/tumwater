@@ -8,6 +8,8 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
+import { reclaimPass } from "../fleet/reclaim.js";
+import { formatGB } from "../text/format.js";
 import { abortRequestPath, reclaimRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that writes
@@ -146,7 +148,7 @@ export function requestRestart(root: string): RequestResult {
  * candidate, in-use worktrees respected. Returns the confirmation the CLI prints. A caller
  * with no live fleet must run the pass in-process instead (cmdReclaim), because nothing would
  * consume the marker. */
-export function requestReclaim(root: string): string {
+function requestReclaim(root: string): string {
   writeJsonAtomic(reclaimRequestPath(root), { at: Date.now() });
   const { live, when } = markerApplyNote(root);
   return `reclaim requested — ${applyClause(live, when, "reclaims idle worktrees")}`;
@@ -264,3 +266,14 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
  * "resumes automatically at NaN:NaN:NaN"). Lives beside the marker contract it caps, which
  * every surface shares, so no new `--for` consumer can outgrow it unnoticed. */
 export const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** One manual reclaim, shared by `tumwater reclaim` and the dashboard's POST /api/reclaim: with
+ * a live fleet the pass is requested through the marker the orchestrator consumes (so in-use
+ * worktrees are respected); with none running it runs in-process, since nothing is in use.
+ * Returns the confirmation its caller prints verbatim and never fails, so a server can call it. */
+export async function runManualReclaim(root: string): Promise<string> {
+  if (markerApplyNote(root).live) return requestReclaim(root);
+  const result = await reclaimPass(root, "manual", { reclaimGB: 0 });
+  if (!result) return "nothing to reclaim";
+  return `reclaimed ${result.worktrees.join(", ")} — freed ${formatGB(result.freedGB)}`;
+}

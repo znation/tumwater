@@ -43,6 +43,7 @@ import {
   handlePromptEdit,
   handlePromptRole,
   handleQuestionAnswer,
+  handleReclaim,
   handleRestart,
   handleWake,
 } from "./gui-endpoint-commands.js";
@@ -214,6 +215,7 @@ export function startGui(
     "POST /api/pause": (req, res) => handlePause(req, res, root),
     "POST /api/wake": (req, res) => handleWake(req, res, root),
     "POST /api/restart": (req, res) => handleRestart(req, res, root),
+    "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),
     "POST /api/abort": (req, res) => handleAbort(req, res, root),
     "POST /api/pause-role": (req, res) => handlePauseRole(req, res, root),
   };

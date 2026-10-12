@@ -120,6 +120,7 @@ test("the sidebar's disk row mirrors the header badge, hold and last reclaim nam
   });
   assert.match(panels.statuschips!, /Disk 8\.2 GB free — holding new work · last reclaim freed 3\.2 GB 5m ago/,
     "the hold and the reclaim ride the row");
+  assert.match(panels.statuschips!, /data-act='reclaim'/, "a held disk's icon is the reclaim button");
 
   renderSidebar({
     running: true,
@@ -128,6 +129,15 @@ test("the sidebar's disk row mirrors the header badge, hold and last reclaim nam
     diskBadge: " · disk 30.0 GB free",
   });
   assert.match(panels.statuschips!, /Disk 30\.0 GB free/, "below the reclaim threshold still informs");
+  assert.match(panels.statuschips!, /data-act='reclaim'/, "the reclaim band offers the button");
+
+  renderSidebar({
+    running: true,
+    pid: 123,
+    disk: { freeGB: 50, holdGB: 10, reclaimGB: 40, held: false, lastReclaim: { at: Date.now() - 300_000, mode: "pressure", freedGB: 3.24 } },
+    diskBadge: " · disk 50.0 GB free · last reclaim freed 3.2 GB 5m ago",
+  });
+  assert.doesNotMatch(panels.statuschips!, /data-act='reclaim'/, "a recovered disk has no reclaim button");
 
   renderSidebar({ running: true, pid: 123, diskBadge: "" });
   assert.doesNotMatch(panels.statuschips!, /Disk /, "an empty badge leaves the sidebar unchanged");

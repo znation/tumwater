@@ -16,6 +16,11 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   function restartButton(glyph) {
     return "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + glyph + "</button>";
   }
+  // The disk row's reclaim affordance: its icon IS the button when the row is held or in the
+  // reclaim band; the global [data-act='reclaim'] handler posts /api/reclaim.
+  function reclaimButton(glyph) {
+    return "<button type='button' class='alert-icon' data-act='reclaim' title='Reclaim idle build outputs now'>" + glyph + "</button>";
+  }
   // restart-button:end
   // sidebar:start
   // A server-rendered badge (badges.ts) leads with its " · " separator; the sidebar strips
@@ -69,7 +74,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       if (d.diskBadge) {
         const held = Boolean(d.disk && d.disk.held);
         const low = Boolean(d.disk && !held && d.disk.reclaimGB > 0 && d.disk.freeGB < d.disk.reclaimGB);
-        rows += row(held ? "amber" : "blue", icon("info"),
+        rows += row(held ? "amber" : "blue", held || low ? reclaimButton(icon("info")) : icon("info"),
           esc(badgeLabel(d.diskBadge)),
           held
             ? "Free space is below the " + esc(String(d.disk.holdGB)) + " GB floor, so the fleet starts no new work until it recovers. Build outputs are reclaimed first."

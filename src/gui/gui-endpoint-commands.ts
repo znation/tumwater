@@ -20,7 +20,7 @@ import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from ".
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
@@ -436,6 +436,15 @@ export async function handleRestart(req: http.IncomingMessage, res: http.ServerR
   const body = await readPostBody(req, res, "{}");
   if (!body) return;
   sendRequestResult(res, requestRestart(root));
+}
+
+/** Handle POST /api/reclaim: the dashboard disk row's reclaim button — the same manual pass
+ * `tumwater reclaim` runs (runManualReclaim), answering its confirmation verbatim. Same body
+ * discipline as /api/restart (the body is ignored); a throw reaches the server's outer 500. */
+export async function handleReclaim(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  sendJson(res, 200, { ok: true, message: await runManualReclaim(root) });
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing

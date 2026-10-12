@@ -79,6 +79,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
         d && typeof d.message === "string"
           ? d.message
           : "Restart requested — the fleet applies it within one poll");
+    else if (act === "reclaim")
+      postAction("/api/reclaim", {}, (d) =>
+        d && typeof d.message === "string" ? d.message : "Reclaim requested");
     else if (act === "questions" || act === "queued" || act === "backlog") {
       if (activeView !== "fleet") location.hash = "fleet";
       if (act !== "backlog") setBacklogTab(act);
