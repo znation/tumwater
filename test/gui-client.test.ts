@@ -415,6 +415,16 @@ test("the spend card renders the subscription window in place of or beside the d
     heldUntil: resetsAt,
   });
   assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · held until 14:30/);
+
+  const meterOf = (utilization?: number) => {
+    const w = { type: "five_hour", status: "allowed", resetsAt, ...(utilization === undefined ? {} : { utilization }) };
+    return scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false }, { windows: [w], primary: w, only: true, heldUntil: null });
+  };
+  assert.match(meterOf(0.64), /Claude 5h · 64% · resets 14:30[\s\S]*class='meter'><span style='width:64%'>/);
+  assert.match(meterOf(1.2), /style='width:100%'/, "over-full clamps the bar");
+  const unreported = meterOf();
+  assert.match(unreported, /Claude 5h · ok · usage not reported · resets 14:30/);
+  assert.doesNotMatch(unreported, /meter/, "no meter without a reported utilization");
 });
 
 test("the window card draws a meter from reported utilization and says when usage is unreported", () => {
