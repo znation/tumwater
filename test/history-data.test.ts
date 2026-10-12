@@ -83,6 +83,32 @@ test("a corrupt tick_end outcome renders as ?, never undefined", () => {
   }
 });
 
+test("a queued tick's torn landing outcome reads as its type default, never [object Object]", () => {
+  // resolveQueuedResult read the landing outcome's result through String(), so a torn or
+  // hand-edited `landed` event whose result parsed to an object rendered the literal
+  // "[object Object]" in the history table and /api/history. The shared textOr read falls
+  // back to the landed type's own default instead.
+  const events = [
+    { ts: 40, loop: "feature", type: "land_queued", commit: "sha1", summary: "work" },
+    { ts: 42, loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "work" },
+    { ts: 50, loop: "feature", type: "landed", commit: "sha1", result: { torn: true } },
+  ] as never;
+  const rows = tickRows(events, 10, null);
+  assert.equal(rows[0]!.result, "changed");
+});
+
+test("a torn summary falls back to the tick's error, never [object Object]", () => {
+  // The detail cell read String(e.summary ?? e.error): a summary that parsed to an object is
+  // not nullish, so the real error was hidden behind "[object Object]". textOr reads the
+  // summary as no text and falls through to the error.
+  const rows = tickRows(
+    [endEvent({ summary: { torn: true }, error: "disk full" } as never)],
+    10,
+    null,
+  );
+  assert.equal(rows[0]!.detail, "disk full");
+});
+
 test("tickRows pairs each tick_end with its tick_start for the duration", () => {
   const rows = tickRows(
     [

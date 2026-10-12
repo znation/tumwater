@@ -11,7 +11,7 @@ import { eventRole, eventTick, eventUsage, readEvents, tickSpanMs, tickStartMap 
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
-import { squash } from "../text/text.js";
+import { squash, textOr } from "../text/text.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { groupBy } from "../collections.js";
@@ -202,15 +202,15 @@ export function resolveQueuedResult(
   for (;;) {
     const pin = queuedList[idx]!;
     const outcome = outcomes.findLast(
-      (o) => o.ts >= pin.ts && String(o.commit ?? "") === String(pin.commit ?? ""),
+      (o) => o.ts >= pin.ts && textOr(o.commit, "") === textOr(pin.commit, ""),
     );
     // No outcome on the tick's own pin: nothing visible yet, so keep the raw label. No outcome
     // on a recovery pin the walk reached: the previous attempt's non-terminal verdict is still
     // the last one visible, so return it rather than the raw label.
     if (!outcome) return resolved;
-    const result = String(outcome.result ?? (outcome.type === "landed" ? "changed" : ""));
+    const result = textOr(outcome.result, outcome.type === "landed" ? "changed" : "");
     if (!result) return resolved;
-    const verdict = { result, sha: String(pin.commit ?? ""), pin, outcome };
+    const verdict = { result, sha: textOr(pin.commit, ""), pin, outcome };
     // A landing or a rejection ends the change (the pin is discarded, so no recovery pin can
     // follow); any other verdict kept the pin, and the walk continues only if the next pin is
     // the recovery re-enqueue that kept it. Otherwise this attempt's verdict is the final one
@@ -227,7 +227,7 @@ export function resolveQueuedResult(
  * summary starts with this label, so a fresh change's pin after a conflict-cap discard ends
  * `resolveQueuedResult`'s walk. */
 function isRecoveryPin(pin: HarnessEvent | undefined): boolean {
-  return pin !== undefined && String(pin.summary ?? "").startsWith("recovered leftover work from ");
+  return pin !== undefined && textOr(pin.summary, "").startsWith("recovered leftover work from ");
 }
 
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as
@@ -279,7 +279,7 @@ export function tickRows(
       result,
       durationMs: tickSpanMs(e, starts),
       usage: usageText(e),
-      detail: squash(String(e.summary ?? e.error ?? ""), DETAIL_MAX),
+      detail: squash(textOr(e.summary, textOr(e.error, "")), DETAIL_MAX),
     });
   }
   return rows;
