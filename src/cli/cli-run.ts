@@ -24,6 +24,7 @@ import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";
 import { repairInterruptedSwap } from "../build/build-stage.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
+import { notifyFleetDown } from "../events/notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
@@ -375,7 +376,8 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
       // tumwater.json gone). A crash loop's generations all asked for restarts, so the gate
       // has nothing to say about it.
       onFleetDown: async (down) => {
-        logEvent(root, fleetDownEvent(down, down.crashLoop ? null : await runStartupProblem(root, branchArg)));
+        const event = logEvent(root, fleetDownEvent(down, down.crashLoop ? null : await runStartupProblem(root, branchArg)));
+        notifyFleetDown(root, event);
       },
       // The end-of-supervision build repair (see build-stage.repairInterruptedSwap): a swap
       // killed between its two renames leaves dist/ missing, and this process is the only one

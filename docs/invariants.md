@@ -262,6 +262,18 @@ the CLI alive.
 and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
 injected timeout".
 
+### INV-E2: a fleet that goes down unasked runs the configured notify hook once
+
+**Guarantee.** When the supervisor logs `supervisor_exit` (a generation died unasked or the
+crash-loop guard tripped), it runs the `notify` command from tumwater.json once, with no
+throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing and never throws.
+
+**Binds.** `src/events/notify.ts` (`notifyFleetDown`) and `src/cli/cli-run.ts`
+(`superviseRunCommand`'s `onFleetDown`).
+
+**Pinned by.** `test/cli-run-shutdown.test.ts` — "a fleet that goes down unasked runs the notify
+hook once"; `test/notify.test.ts` — the `notifyFleetDown` tests.
+
 ## Hermetic, deterministic gating tests
 
 The gating tier (`npm test`'s `*.test.ts` files, which run on every landing) reads the host's

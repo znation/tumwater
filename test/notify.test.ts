@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv } from "../src/events/notify.js";
+import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, notifyFleetDown } from "../src/events/notify.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -54,6 +54,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "land_failed",
       "restart_blocked",
       "question_posted",
+      "supervisor_exit",
     ],
   );
   assert.ok(
@@ -294,5 +295,33 @@ test("setting notify live takes effect on the next update(liveConfig) poll, no r
     await waitFor(() => recordedLines(out).length === 1, "the post-update spawn");
   } finally {
     notifier.dispose();
+  }
+});
+
+test("notifyFleetDown runs the configured hook once with the supervisor_exit line", async () => {
+  const root = tmpdir("notify-fleet-down-");
+  const out = path.join(root, "out.txt");
+  writeConfig(root, { ...defaultConfig(), notify: recorderCommand(out) });
+  const event = { loop: "harness", type: "supervisor_exit" as const, generation: 2, code: 1, ts: Date.now() };
+  notifyFleetDown(root, event);
+  await waitFor(() => recordedLines(out).length === 1, "one recorded line");
+  const rec = parseLine(recordedLines(out)[0]!);
+  assert.equal(rec.type, "supervisor_exit");
+  assert.equal(rec.loop, "harness");
+  assert.equal(rec.message, formatEvent(event));
+});
+
+test("notifyFleetDown returns silently without a usable notify command", async () => {
+  const event = { loop: "harness", type: "supervisor_exit" as const, generation: 1, code: 1, ts: Date.now() };
+  const missing = tmpdir("notify-fleet-down-missing-");
+  const invalid = tmpdir("notify-fleet-down-invalid-");
+  fs.writeFileSync(path.join(invalid, "tumwater.json"), "{ not json");
+  const absent = tmpdir("notify-fleet-down-absent-");
+  writeConfig(absent, defaultConfig());
+  for (const root of [missing, invalid, absent]) {
+    const out = path.join(root, "out.txt");
+    assert.doesNotThrow(() => notifyFleetDown(root, event));
+    await sleep(150);
+    assert.deepEqual(recordedLines(out), []);
   }
 });

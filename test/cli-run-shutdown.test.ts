@@ -8,7 +8,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
-import { gitOnlyBinDir, makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, withPi } from "./fakes/fake-pi.js";
 import { cli, exitCode } from "./helpers/cli-harness.js";
 import { onlyCleanRole, withRunningFleet } from "./helpers/run-live-harness.js";
@@ -39,6 +39,25 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
     assert.equal(down[0]!.generation, 1);
     assert.equal(down[0]!.code, 1);
     assert.equal(down[0]!.reason, undefined, "the gate passes: no reason is invented");
+  });
+});
+
+test("a fleet that goes down unasked runs the notify hook once", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run fleet down notify");
+  const out = path.join(tmpdir("notify-fleet-down-"), "out.txt");
+  const cfg = defaultConfig();
+  for (const role of Object.values(cfg.roles)) role.enabled = false;
+  cfg.notify = `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_LOOP" >> ${out}`;
+  writeConfig(repo, cfg);
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run");
+    assert.equal(r.code, 1);
+    const lines = () => (fs.existsSync(out) ? fs.readFileSync(out, "utf8").split("\n").filter((l) => l !== "") : []);
+    const deadline = Date.now() + 10_000;
+    while (lines().length < 1 && Date.now() < deadline) await new Promise((res) => setTimeout(res, 50));
+    await new Promise((res) => setTimeout(res, 200));
+    assert.deepEqual(lines(), ["supervisor_exit|harness"]);
   });
 });
 

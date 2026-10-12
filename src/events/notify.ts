@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import { loadConfigSafe } from "../config/config.js";
 import { subscribeEvents, warnEventBestEffort, type HarnessEvent } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
@@ -10,11 +11,11 @@ import { childEnv } from "../process/process.js";
  * push channel beside the pull-based dashboards and `tumwater logs`.
  *
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
- * only sees events THIS process logs. All eleven allowlisted types are logged by the
- * orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
+ * only sees events THIS process logs. Every allowlisted type but `supervisor_exit` is logged by
+ * the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
  * role-cap-gates.ts and disk-gate.ts, src/fleet/fleet-polls.ts, landing-slot.ts, landing-questions.ts,
- * src/redeploy/redeployer.ts), so nothing
- * notable is missed; events appended by
+ * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
+ * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyFleetDown; events appended by
  * operator CLI commands go straight to the file and are out of scope by design.
  *
  * One knob, an opinionated fixed allowlist, no per-event selection — a command that can post
@@ -33,6 +34,7 @@ export const NOTIFY_EVENT_TYPES = [
   "land_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
   "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it
+  "supervisor_exit", // the supervisor gave up — the fleet is down; paged from the supervisor process by notifyFleetDown, since no orchestrator is left to hear it
 ] as const;
 
 type NotifyEventType = (typeof NOTIFY_EVENT_TYPES)[number];
@@ -62,6 +64,40 @@ export function notifyCommandEnv(type: string, loop: string, message: string): N
   });
 }
 
+/** Spawn the notify command for one event: detached with stdio ignored, so it outlives the
+ * caller, and never awaited. A failed spawn is one warning, never a throw. */
+function spawnNotifyCommand(root: string, command: string, event: HarnessEvent): void {
+  try {
+    const child = spawn(command, [], {
+      shell: true,
+      env: notifyCommandEnv(event.type, event.loop, stripTerminalControls(formatEvent(event))),
+      stdio: "ignore",
+      detached: true,
+    });
+    child.unref();
+    // The shell itself could not start (spawn failed asynchronously — e.g. the command line
+    // exceeds the OS arg limit): one warning names it and the listener keeps working. A
+    // command that starts but exits nonzero is not a harness concern and is ignored.
+    child.on("error", (err) => {
+      warnEventBestEffort(root, "harness", `notify command could not start: ${err.message}`);
+    });
+  } catch (err) {
+    warnEventBestEffort(root, "harness", `notify command could not start: ${errorMessage(err)}`);
+  }
+}
+
+/** Page the configured notify command for the fleet going down. The supervisor process calls
+ * this directly, because the orchestrator generation that runs newNotifier is already gone.
+ * Reads the command fresh from tumwater.json; a missing or invalid file or an absent `notify`
+ * returns silently (the fleet-down cause may be that very file), and there is no throttle —
+ * the supervisor exits right after this one event. */
+export function notifyFleetDown(root: string, event: HarnessEvent): void {
+  const { config } = loadConfigSafe(root);
+  const command = config?.notify;
+  if (typeof command !== "string" || command === "") return;
+  spawnNotifyCommand(root, command, event);
+}
+
 /** Subscribe to this process's event feed and spawn the configured command for allowlisted
  * events. Fire-and-forget: the spawn is never awaited from the poll loop — the command runs
  * detached with stdio ignored, so it outlives whatever the orchestrator does next, and a
@@ -83,23 +119,7 @@ export function newNotifier(
     const last = lastSpawnAt.get(type);
     if (last !== undefined && at - last < minGapMs) return;
     lastSpawnAt.set(type, at);
-    try {
-      const child = spawn(command, [], {
-        shell: true,
-        env: notifyCommandEnv(event.type, event.loop, stripTerminalControls(formatEvent(event))),
-        stdio: "ignore",
-        detached: true,
-      });
-      child.unref();
-      // The shell itself could not start (spawn failed asynchronously — e.g. the command line
-      // exceeds the OS arg limit): one warning names it and the listener keeps working. A
-      // command that starts but exits nonzero is not a harness concern and is ignored.
-      child.on("error", (err) => {
-        warnEventBestEffort(root, "harness", `notify command could not start: ${err.message}`);
-      });
-    } catch (err) {
-      warnEventBestEffort(root, "harness", `notify command could not start: ${errorMessage(err)}`);
-    }
+    spawnNotifyCommand(root, command, event);
   });
   return {
     update(config) {
