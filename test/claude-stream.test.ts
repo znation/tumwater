@@ -347,3 +347,13 @@ test("a killed run's unclosed assistant message flushes at stream end", () => {
   assert.ok(closed.translate(claudeResult({ totalCostUsd: 0.01 })).length > 0);
   assert.deepEqual(finalize(closed), [], "a completed run's finalize is empty");
 });
+
+test("thinking_tokens estimates and tool_progress heartbeats are known events and raise no warning", () => {
+  const translator = claudeTranslator();
+  const lines = [
+    JSON.stringify({ type: "system", subtype: "thinking_tokens", estimated_tokens: 275, estimated_tokens_delta: 225 }),
+    JSON.stringify({ type: "tool_progress", tool_use_id: "toolu_1-heartbeat-1", tool_name: "Bash", parent_tool_use_id: "toolu_1", elapsed_time_seconds: 60, heartbeat: true }),
+  ];
+  for (const line of lines) assert.deepEqual(translator.translate(line), []);
+  assert.ok(!translator.warnings().some((w) => w.startsWith("agent_unknown_event") || w.includes("thinking_tokens") || w.includes("tool_progress")), "no unknown-event warning");
+});

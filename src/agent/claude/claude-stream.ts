@@ -232,6 +232,8 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
           ];
         }
         if (subtype === "compact_boundary") return [JSON.stringify({ type: "compaction_start" })];
+        // A thinking-token estimate during extended thinking: known, carries nothing canonical.
+        if (subtype === "thinking_tokens") return [];
         record(`system:${subtype ?? "unknown"}`);
         return [];
       }
@@ -343,6 +345,9 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         }
         return out;
       }
+      case "tool_progress":
+        // A 30 s heartbeat of a running tool call: known, and the open call already tracks liveness.
+        return [];
       default:
         record(type ?? "unknown");
         return [];

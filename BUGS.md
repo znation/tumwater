@@ -15,16 +15,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Validation gap:** none. The 71 recorded runs give both figures side by side.
 
-### claude 2.1.295 emits two native event types the translator does not map, `system/thinking_tokens` and `tool_progress`, so nearly every claude run logs one or two `agent_unknown_event` warnings: 65 of the 68 warning events in the fleet's first 48 minutes, all of them noise (found by operator session 2026-10-12 auditing the fleet's first hour on the claude backend)
-
-- **Symptom:** `.tumwater/log/events.jsonl` from 02:55 to 03:43 PDT holds 68 `warning` events. 65 are `agent_unknown_event: system:thinking_tokens` or `agent_unknown_event: tool_progress`; the other three are one restart-cooldown deferral, one stage self-check and one missing-SUMMARY recovery.
-- **Reproduce:** tally the native types: `cat .tumwater/log/*.claude.native.jsonl | jq -r '.type + ":" + (.subtype // "")' | sort | uniq -c` shows `system:thinking_tokens` 651 and `tool_progress` 270 across 71 runs. Example lines: `{"type":"system","subtype":"thinking_tokens","estimated_tokens":275,"estimated_tokens_delta":225,…}` and `{"type":"tool_progress","tool_use_id":"toolu_…-heartbeat-1","tool_name":"Bash","parent_tool_use_id":"toolu_…","elapsed_time_seconds":60,"heartbeat":true,…}`.
-- **Cause:** `claudeTranslator` records any unmapped `system` subtype (src/agent/claude/claude-stream.ts:235) and any unmapped top-level type (line 334) for a once-per-run warning. plans/agent-backends.md:45 says `tool_progress` "is emitted only under `CLAUDE_CODE_CONTAINER_ID`, and is throttled". That no longer holds: 2.1.295 sends a heartbeat every 30 s of a running tool call, and a `thinking_tokens` estimate during extended thinking.
-- **Impact:** the warning feed, the activity panes and the failure digest's warning clusters fill with a recurring non-event, which buries real warnings. Every claude run adds up to two.
-- **Expected / fix sketch:** map both explicitly. `tool_progress` heartbeats can become a canonical liveness/elapsed update for the open call keyed by `parent_tool_use_id`, or be dropped silently. `system/thinking_tokens` can be dropped, or folded into progress as an estimate. Update the plan's vocabulary table, and pin both with fixture lines in the translator's tests so a run made only of known types yields no warnings.
-
-**Validation gap:** none. The counts and example lines come from the recorded native logs.
-
 ### Concurrent agents write scratch output to fixed `/tmp` paths, so two ticks' suite logs share one file (`npm run test > /tmp/check.log`, `/tmp/c.log`) and an agent can read another tick's results as its own (found by operator session 2026-10-12 reading the fleet's claude transcripts)
 
 - **Symptom:** in today's claude transcripts under `~/.claude/projects/-Users-zach-tumwater--tumwater-worktrees-*/`, `/tmp/check.log` was written by 5 sessions and `/tmp/c.log` by 6, mostly as `npm run test > <path> 2>&1; tail -N <path>`. Two pairs overlapped in time. `feature` (slot-2, session 9f01b250) ran 09:57:38–10:00:02 UTC and `dry` (slot-6, c5bb81d4) ran 09:58:12–10:02:50 UTC, both into `/tmp/check.log`. `improve` (slot-9, c3ae61a6) and `feature` (slot-3, b2153e22) started full suites into `/tmp/c.log` 4 s apart at 10:34:20 and 10:34:24 UTC. Plan ticks reuse `/tmp/plan-chk/check.log` and `/tmp/PLANS.new`; qa used `/tmp/qa_s`.
@@ -36,6 +26,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 **Validation gap:** no false read observed yet. In both overlaps each agent's `tail` appears to have shown its own totals (4474 vs 4470 tests in the `/tmp/check.log` pair, different `duration_ms` in the `/tmp/c.log` pair), so the hazard is shown by the timing, not by a wrong verdict.
 
 ## Fixed
+
+### claude 2.1.295 emits two native event types the translator does not map, `system/thinking_tokens` and `tool_progress`, so nearly every claude run logs one or two `agent_unknown_event` warnings: 65 of the 68 warning events in the fleet's first 48 minutes, all of them noise (found by operator session 2026-10-12 auditing the fleet's first hour on the claude backend) (fixed 2026-10-12 by bugfix loop)
+
+- **Symptom:** `.tumwater/log/events.jsonl` from 02:55 to 03:43 PDT holds 68 `warning` events. 65 are `agent_unknown_event: system:thinking_tokens` or `agent_unknown_event: tool_progress`; the other three are one restart-cooldown deferral, one stage self-check and one missing-SUMMARY recovery.
+- **Reproduce:** tally the native types: `cat .tumwater/log/*.claude.native.jsonl | jq -r '.type + ":" + (.subtype // "")' | sort | uniq -c` shows `system:thinking_tokens` 651 and `tool_progress` 270 across 71 runs. Example lines: `{"type":"system","subtype":"thinking_tokens","estimated_tokens":275,"estimated_tokens_delta":225,…}` and `{"type":"tool_progress","tool_use_id":"toolu_…-heartbeat-1","tool_name":"Bash","parent_tool_use_id":"toolu_…","elapsed_time_seconds":60,"heartbeat":true,…}`.
+- **Cause:** `claudeTranslator` records any unmapped `system` subtype (src/agent/claude/claude-stream.ts:235) and any unmapped top-level type (line 334) for a once-per-run warning. plans/agent-backends.md:45 says `tool_progress` "is emitted only under `CLAUDE_CODE_CONTAINER_ID`, and is throttled". That no longer holds: 2.1.295 sends a heartbeat every 30 s of a running tool call, and a `thinking_tokens` estimate during extended thinking.
+- **Impact:** the warning feed, the activity panes and the failure digest's warning clusters fill with a recurring non-event, which buries real warnings. Every claude run adds up to two.
+- **Expected / fix sketch:** map both explicitly. `tool_progress` heartbeats can become a canonical liveness/elapsed update for the open call keyed by `parent_tool_use_id`, or be dropped silently. `system/thinking_tokens` can be dropped, or folded into progress as an estimate. Update the plan's vocabulary table, and pin both with fixture lines in the translator's tests so a run made only of known types yields no warnings.
+
+**Validation gap:** none — the recorded native logs gave exact lines and the translator test reproduced the warning directly.
+
+- **Fix:** the translator returns no events for `system/thinking_tokens` and `tool_progress` instead of recording them as unknown; pinned in test/claude-stream.test.ts; plans/agent-backends.md vocabulary row updated.
 
 ### The claude adapter reads `utilization` from the top level of `rate_limit_info`, but claude 2.1.295 reports it only under `rate_limit_info.unifiedWindows.<window>.utilization`, so no usage percentage ever reaches the account file, the TUI badge, or the dashboard, and the `seven_day` window is never recorded at all (found by operator session 2026-10-12 auditing the fleet's first hour on the claude backend) (fixed 2026-10-12 by bugfix loop)
 
