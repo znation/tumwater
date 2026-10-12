@@ -1,7 +1,7 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowCells, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowCells, tickRowLine, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
 
@@ -49,20 +49,11 @@ function widestWidths(rows: TickRow[]): RowWidths {
 /** One aligned table line: fixed-width columns over the row set, then the free-text detail.
  * Every cell is padded to its column's width even when empty — usage is the one cell that can
  * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
- * misaligning that row against its neighbors; trimEnd strips only the trailing pad. */
+ * misaligning that row against its neighbors; tickRowLine strips only the trailing pad. The
+ * row's column order rides history-data.ts's tickRowLine, shared with the grep haystack so the
+ * two cannot disagree about which field sits where. */
 function renderRow(row: TickRow, widths: RowWidths): string {
-  const c = tickRowCells(row);
-  return [
-    row.time,
-    padToWidth(c.loop, widths.loop),
-    `#${padToWidth(c.tick, widths.tick)}`,
-    padToWidth(c.result, widths.result),
-    padToWidth(c.duration, widths.duration),
-    padToWidth(c.usage, widths.usage),
-    row.detail,
-  ]
-    .join("  ")
-    .trimEnd();
+  return tickRowLine(row, (column, value) => padToWidth(value, widths[column]));
 }
 
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so

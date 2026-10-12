@@ -125,26 +125,37 @@ export function tickRowCells(row: TickRow): TickRowCells {
   };
 }
 
-/** The `--grep` haystack for one rendered history row: the canonical unpadded row line — what
- * renderRow (history.ts) produces when the row is the widest in each column, so padToWidth is
- * the identity — prefixed with the raw event type so stable ids (`tick_end`) are greppable the
- * way logs --grep's haystack carries `e.type`. Built per row because the filter runs before the
- * widths of the rows actually shown are known, and shared by `tumwater history --grep` and the
- * dashboard's /api/history?grep so the two cannot disagree on the rule. The row's cells come
- * from tickRowCells, the one home for their values. */
-export function tickRowGrepHaystack(row: TickRow): string {
+/** One tick row's line: its timestamp, the five tickRowCells values, then the free-text detail,
+ * joined by two spaces and stripped of trailing padding. This is the one home for the row's
+ * column order and separator; renderRow (history.ts) passes a per-column padding function to
+ * align the CLI table, while tickRowGrepHaystack below passes none. The tick cell's "#" prefix
+ * rides outside the padding, so its column width measures the number alone. */
+export function tickRowLine(
+  row: TickRow,
+  pad: (column: keyof TickRowCells, value: string) => string = (_c, v) => v,
+): string {
   const c = tickRowCells(row);
-  return `tick_end ${[
+  return [
     row.time,
-    c.loop,
-    `#${c.tick}`,
-    c.result,
-    c.duration,
-    c.usage,
+    pad("loop", c.loop),
+    `#${pad("tick", c.tick)}`,
+    pad("result", c.result),
+    pad("duration", c.duration),
+    pad("usage", c.usage),
     row.detail,
   ]
     .join("  ")
-    .trimEnd()}`;
+    .trimEnd();
+}
+
+/** The `--grep` haystack for one rendered history row: tickRowLine's canonical unpadded row
+ * line prefixed with the raw event type so stable ids (`tick_end`) are greppable the way logs
+ * --grep's haystack carries `e.type`. Built per row because the filter runs before the widths of
+ * the rows actually shown are known, and shared by `tumwater history --grep` and the dashboard's
+ * /api/history?grep so the two cannot disagree on the rule. The row's cells and column order
+ * come from tickRowCells and tickRowLine, the one home for each. */
+export function tickRowGrepHaystack(row: TickRow): string {
+  return `tick_end ${tickRowLine(row)}`;
 }
 
 /** The shared tick-grep rule: a case-insensitive substring match over tickRowGrepHaystack.
