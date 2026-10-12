@@ -22,7 +22,7 @@ import { REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowGrepHaystack } from "../history/history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, tickRowsMatchingGrep } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
@@ -175,7 +175,7 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * not parse is a client error, unlike the report's degrade-to-default typo rule); then clamped
  * to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails fast, its established
  * convention. grep is optional: absent or empty filters nothing; present → the rows are
- * filtered through tickRowGrepHaystack, the same case-insensitive haystack rule
+ * filtered through history-data.ts's shared tickRowsMatchingGrep rule, the same case-insensitive haystack rule
  * `tumwater history --grep` uses (shared, not re-implemented), after the n/role scan so n
  * bounds the scanned window and not the printed rows — the CLI's rule. The window shape
  * ({ rows, covered, note }) rides readTickRowsSince, the collector behind `history --since`,
@@ -199,7 +199,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
       `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
     if (sinceMs === null) return;
     const { rows, covered } = readTickRowsSince(root, sinceMs, role);
-    const matched = grep === null ? rows : rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(grep.toLowerCase()));
+    const matched = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
     sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE });
     return;
   }
@@ -207,10 +207,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   if (parsed === null) return;
   const n = Math.min(HISTORY_MAX_TICKS, Math.max(1, parsed));
   let rows = readTickRows(root, n, role);
-  if (grep !== null) {
-    const needle = grep.toLowerCase();
-    rows = rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
-  }
+  if (grep !== null) rows = tickRowsMatchingGrep(rows, grep);
   sendJson(res, 200, { rows });
 }
 

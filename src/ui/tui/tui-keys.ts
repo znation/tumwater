@@ -9,7 +9,7 @@ import {
   historyClass,
   readTickRows,
   readTickRowsSince,
-  tickRowGrepHaystack,
+  tickRowsMatchingGrep,
   type HistoryResultClass,
 } from "../../history/history-data.js";
 import { historyPaneText } from "./tui-history.js";
@@ -144,10 +144,9 @@ function historyPaneCache(
   // The search runs first, exactly as `tumwater history` orders --grep ahead of --result, and
   // its admitted count is saved so the empty-body wording blames the filter that actually
   // emptied the set (`afterGrep > 0` means rows matched the pattern and the class then removed
-  // them). The needle is the same case-insensitive substring rule over tickRowGrepHaystack the
-  // CLI and the dashboard search use, so the three surfaces cannot disagree.
-  const needle = grep === null ? null : grep.toLowerCase();
-  const grepped = needle === null ? rows : rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
+  // them). The search applies history-data.ts's shared tick-grep rule (tickRowsMatchingGrep),
+  // the same one the CLI and the dashboard search use, so the three surfaces cannot disagree.
+  const grepped = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
   const afterGrep = grepped.length;
   const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
   const body = historyPaneText(filtered);

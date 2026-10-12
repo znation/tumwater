@@ -2,7 +2,7 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { shortSpanPhrase } from "../text/phrases.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowGrepHaystack, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
 
@@ -139,10 +139,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // The filter runs on the collected rows, before rendering and before --json serialization:
   // the same rows the table would print, filtered the same way in both forms (the logs --grep
   // rule: -n bounds the scanned window, not the printed rows).
-  if (grepPattern !== null) {
-    const needle = grepPattern.toLowerCase();
-    rows = rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
-  }
+  if (grepPattern !== null) rows = tickRowsMatchingGrep(rows, grepPattern);
   // The set --grep admitted, saved so the empty-state wording blames the filter that actually
   // emptied it: if the result filter below removes rows grep matched, naming the pattern would
   // be false (`no ticks matching "widget"` when feature #7 does match). The GUI draws the same

@@ -122,6 +122,15 @@ export function tickRowGrepHaystack(row: TickRow): string {
     .trimEnd()}`;
 }
 
+/** The shared tick-grep rule: a case-insensitive substring match over tickRowGrepHaystack.
+ * Four call sites apply it — `tumwater history --grep`, /api/history's window and count
+ * shapes, and the TUI History search — so the three surfaces cannot disagree on what a match
+ * means. The pattern is lowercased once here, not per row. */
+export function tickRowsMatchingGrep(rows: TickRow[], pattern: string): TickRow[] {
+  const needle = pattern.toLowerCase();
+  return rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
+}
+
 /** The landing bookkeeping resolveQueuedResult joins over: per loop, the `land_queued` pins
  * and the `landed`/`land_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly two call sites — readTickRows' history-row join and the failure
