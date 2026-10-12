@@ -105,18 +105,35 @@ export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<voi
   });
 }
 
+/** A one-shot deadline scheduler: run `fn` once after `ms`, returning a cancel that clears it if
+ * it has not fired yet. The hand-off's window timers go through this seam, so a test can fire a
+ * window by hand and reach the deadline without living through it; the production default is the
+ * real `setTimeout`. (`armDeadlineTimer` in src/cli/cli-run.ts is the chunked sibling for the
+ * multi-day `run --for` window; a hand-off window is always sub-32-bit.) */
+export type AfterDelay = (ms: number, fn: () => void) => () => void;
+
+const realAfterDelay: AfterDelay = (ms, fn) => {
+  const timer = setTimeout(fn, ms);
+  return () => clearTimeout(timer);
+};
+
 /** Wait for `promise` to settle, for at most `ms`: true when it settled in time (fulfilled or
  * rejected alike — the caller only needs to know it is over), false when the deadline lapsed
- * first. The timer is cleared on settle, so a prompt settle leaves nothing behind to hold the
- * process open. Never rejects. */
-function settlesWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+ * first. The deadline is cleared on settle, so a prompt settle leaves nothing behind to hold the
+ * process open. Never rejects. `after` is the deadline seam (real `setTimeout` by default): a
+ * test hands one it fires itself, so the verdict is the injected deadline, not host load. */
+function settlesWithin(promise: Promise<unknown>, ms: number, after: AfterDelay): Promise<boolean> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms);
-    const done = () => {
-      clearTimeout(timer);
-      resolve(true);
+    let settled = false;
+    let cancel = () => {};
+    const done = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      cancel();
+      resolve(value);
     };
-    promise.then(done, done);
+    cancel = after(ms, () => done(false));
+    promise.then(() => done(true), () => done(true));
   });
 }
 
@@ -146,6 +163,7 @@ export async function awaitLandingForHandoff(
   landing: Pick<InFlightLanding, "promise" | "roles">,
   windowMs: number,
   abort: () => void,
+  after: AfterDelay = realAfterDelay,
 ): Promise<HandoffLandingOutcome> {
   const roles = landing.roles.join(", ");
   const deadline = `${windowMs / 1000}s`;
@@ -154,14 +172,14 @@ export async function awaitLandingForHandoff(
     "harness",
     `restart hand-off waiting on the in-flight landing of ${roles} (deadline ${deadline})`,
   );
-  if (await settlesWithin(landing.promise, windowMs)) return "finished";
+  if (await settlesWithin(landing.promise, windowMs, after)) return "finished";
   abort();
   warnEvent(
     root,
     "harness",
     `restart hand-off: the landing of ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next generation`,
   );
-  if (await settlesWithin(landing.promise, windowMs)) return "aborted";
+  if (await settlesWithin(landing.promise, windowMs, after)) return "aborted";
   removeQuiet(landingStatePath(root));
   warnEvent(
     root,
@@ -196,6 +214,7 @@ export async function drainInFlightWork(
   restart: boolean,
   handoffWindowMs: number,
   abort: () => void,
+  after: AfterDelay = realAfterDelay,
 ): Promise<void> {
   const ticks = Promise.allSettled([...roleInFlight, ...directorInFlight]);
   const landing =
@@ -211,7 +230,7 @@ export async function drainInFlightWork(
     // harness signal alone (runLandingPi). Nothing else it reaches can start work here — the
     // director has finished, permit holders were aborted at the restart, and a parked waiter
     // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
-    const outcome = await awaitLandingForHandoff(root, landing, handoffWindowMs, abort);
+    const outcome = await awaitLandingForHandoff(root, landing, handoffWindowMs, abort, after);
     // An abandoned landing still holds its permit, so a waiter parked behind it would never be
     // granted one and never settle. The ticks have had both windows beside the hand-off, so
     // whatever is still reserved then started nothing (or is wedged like the landing): the

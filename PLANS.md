@@ -22,21 +22,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The `logs -f --json` follow test passes with no real-time wait and fails deterministically when the seam is not advanced.
 - `npm run test` is green.
 
-### Retire the `no-repro` gap, part 3/5: make `drainInFlightWork`'s restart windows injectable (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 4/5 and 5/5; independent of the TUI, dashboard, and agent-backends work)
-
-**Goal.** Convert the drain-window family. `src/tick/tick-timing.ts`'s `drainInFlightWork` bounds its restart hand-off with `handoffWindowMs` and real timers, and `test/tick-timing.test.ts`'s wedged-landing case asserts on `Date.now()` elapsed time (`assert.ok(elapsed >= 100 && elapsed < 5_000, …)`), so a loaded host can decide the verdict (BUGS.md 2026-09-30).
-
-**Approach.**
-1. Add a clock/sleep seam parameter to `drainInFlightWork` (defaulting to the real clock), covering the hand-off window and the post-abort wait, so a test can cross both windows deterministically. Update the module's production callers to pass nothing — the default preserves behavior.
-2. Convert `test/tick-timing.test.ts`'s three `drainInFlightWork` cases to advance that seam: the two settling cases assert the drain waited out the reserved tick and landing, and the wedged-landing case asserts the bound was reached on the injected clock rather than by elapsed wall time.
-
-**Files touched.** `src/tick/tick-timing.ts`, `test/tick-timing.test.ts`.
-
-**Acceptance criteria.**
-- The wedged-landing case fails deterministically when the injected clock is not advanced and passes instantly when it is; no assertion reads `Date.now()` elapsed wall time.
-- The two settling cases keep asserting the drain waited for tick and landing, driven by the seam.
-- `npm run test` is green.
-
 ### Retire the `no-repro` gap, part 4/5: logical time for the fallback-breaker cool-down (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 3/5 and 5/5; test-only, independent of the TUI, dashboard, and agent-backends work)
 
 **Goal.** Convert the cooldown family. `test/orchestrator-probe.test.ts`'s "a demoted fallback admits exactly one probe tick per cool-down; other due roles wait" already injects `breakerNow` (via `RunOptions.breakerNow`) but still leans on real `sleep(300)` gaps to let a broken cooldown check probe or not, so a loaded host's overshoot reads as a pierced pause (BUGS.md 2026-10-07).
@@ -64,6 +49,21 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` is green.
 
 ## Done
+
+### Retire the `no-repro` gap, part 3/5: make `drainInFlightWork`'s restart windows injectable (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 4/5 and 5/5; independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
+
+**Goal.** Convert the drain-window family. `src/tick/tick-timing.ts`'s `drainInFlightWork` bounds its restart hand-off with `handoffWindowMs` and real timers, and `test/tick-timing.test.ts`'s wedged-landing case asserts on `Date.now()` elapsed time (`assert.ok(elapsed >= 100 && elapsed < 5_000, …)`), so a loaded host can decide the verdict (BUGS.md 2026-09-30).
+
+**Approach.**
+1. Add an injected `AfterDelay` one-shot deadline-scheduler seam to `settlesWithin` and thread it through `awaitLandingForHandoff` and `drainInFlightWork` (defaulting to the real `setTimeout`), covering the hand-off window and the post-abort wait, so a test can cross both windows deterministically. Update the module's production caller to pass nothing — the default preserves behavior.
+2. Convert `test/tick-timing.test.ts`'s three `drainInFlightWork` cases to drive the seam with hand-fired timers: the two settling cases assert the drain waited out the reserved tick and landing before returning, and the wedged-landing case arms and fires both windows on the injected scheduler rather than measuring elapsed wall time.
+
+**Files touched.** `src/tick/tick-timing.ts`, `test/tick-timing.test.ts`.
+
+**Acceptance criteria.**
+- The wedged-landing case fails deterministically when the injected clock is not advanced and passes instantly when it is; no assertion reads `Date.now()` elapsed wall time.
+- The two settling cases keep asserting the drain waited for tick and landing, driven by the seam.
+- `npm run test` is green.
 
 ### Filter the dashboard Activity feed by loop and text over the events the card already carries, matching `tumwater logs --grep`/`logs --role` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater logs --grep <text>`/`--role <id>` and the landed dashboard History search plus Loop picker (`gui-client-history.ts`'s `#histgrep`/`#histrole`); the Activity card's only narrowing is the Notable/All segmented filter (`gui-page.ts`'s `#feedfilter`, `gui-client-fleet.ts`'s `renderFeed`), so an operator watching one loop's events or hunting a specific failure must drop to `tumwater logs` or scan the whole recent feed; independent of the waiting hermetic-host gating tier, dashboard composer defer, and TUI History tick-trail plans in code — `src/ui/gui` only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; it reads the event window the card already receives (`status-payload.ts`'s `RECENT_EVENTS` `eventItems`) and adds no endpoint, so its filter cannot disagree with what the card shows, only narrow it; done 2026-10-11 by feature)
 
