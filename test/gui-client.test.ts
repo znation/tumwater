@@ -268,6 +268,11 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   assert.deepEqual(posts.shift(), { path: "/api/wake", body: { role: "feature" } });
   assert.match(flashes.shift() ?? "", /wake requested for feature/, "the server's own confirmation is shown");
 
+  answers["/api/reset-counters"] = { ok: true, message: "counters reset for feature — x" };
+  await scope.rowAction("reset-counters", "feature");
+  assert.deepEqual(posts.shift(), { path: "/api/reset-counters", body: { role: "feature" } });
+  assert.equal(flashes.shift(), "counters reset for feature — x");
+
   // Pause and resume always name the state they want — the endpoint rejects a body without it.
   await scope.rowAction("pause", "docs");
   assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true } });

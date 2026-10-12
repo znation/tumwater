@@ -51,9 +51,8 @@ function applyClause(live: boolean, when: string, verb: string): string {
 
 /** The marker-writing core of `reset-counters`: zero each target's state file directly when no
  * fleet is running, and drop the fleet marker a running fleet consumes within one poll cycle.
- * Returns the confirmation the CLI prints verbatim. Unlike the wake/abort request* cores the
- * GUI's POST endpoints share, no dashboard route exposes reset-counters, so only the CLI
- * consumes this core. */
+ * Returns the confirmation the CLI prints verbatim. The CLI and the GUI's
+ * POST /api/reset-counters share this core. */
 export function requestResetCounters(root: string, roles: string[]): string {
   // A live fleet's orchestrator is the state files' single writer: consumeResetRequest zeroes
   // the affected runners' in-memory copies and the runners save them, and writes the file for a

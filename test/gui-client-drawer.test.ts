@@ -203,6 +203,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(actions, /btn-danger/);
   assert.match(actions, /data-action='pause'/);
   assert.match(actions, /data-action='pause-for'/);
+  assert.match(actions, /data-action='reset-counters'/);
   assert.doesNotMatch(actions, /data-action='resume'/);
   assert.match(actions, /<i:stop>/);
 

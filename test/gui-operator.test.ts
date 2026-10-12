@@ -13,6 +13,7 @@ import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
+import { requestResetCounters } from "../src/operator/operator-intent.js";
 import { postJson, withGui } from "./fixtures/gui-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -411,6 +412,36 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
     assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
   }
   assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "rejected bodies leave the marker untouched");
+  });
+});
+
+test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` and rejects bad bodies", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui reset test");
+  const seed = () => {
+    const s = freshLoopState("feature");
+    s.ticks = 7;
+    saveLoopState(repo, s);
+  };
+  seed();
+  await withGui(repo, async ({ base }) => {
+    let res = await postJson(base, "/api/reset-counters", { role: "feature" });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, message: requestResetCounters(repo, ["feature"]) });
+    assert.equal(loadLoopState(repo, "feature").ticks, 0);
+
+    seed();
+    res = await fetch(base + "/api/reset-counters", { method: "POST", body: "{}" });
+    assert.equal(res.status, 200);
+    assert.equal(loadLoopState(repo, "feature").ticks, 0, "{} targets every configured role");
+
+    seed();
+    const bad = await fetch(base + "/api/reset-counters", { method: "POST", body: '{"role": "bogus"}' });
+    assert.equal(bad.status, 400);
+    assert.match(((await bad.json()) as { error: string }).error, /valid ids:/);
+    const malformed = await fetch(base + "/api/reset-counters", { method: "POST", body: "not json" });
+    assert.equal(malformed.status, 400);
+    assert.equal(loadLoopState(repo, "feature").ticks, 7, "rejected bodies leave the counters untouched");
   });
 });
 

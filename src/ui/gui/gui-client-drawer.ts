@@ -111,6 +111,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       actions += ROLE_PAUSE_CHOICES.map((c) => "<button type='button' class='btn btn-sm rowaction' data-action='pause-for' data-for='" + c[0] +
         "' data-role='" + esc(l.role) + "'>" + esc(c[1]) + "</button>").join("");
     } else actions += btn("pause", "pause", "Pause") + btn("pause-for", "clock", "Pause for…");
+    actions += btn("reset-counters", "refresh", "Reset counters");
 
     const working = info.live || info.key === "vetted";
     const now = working

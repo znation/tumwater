@@ -20,7 +20,7 @@ import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from ".
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestResetCounters, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
@@ -48,8 +48,8 @@ async function readPostBody(
  * wake/abort/prompt-role/pause-role family states the body-discipline-and-role-check pairing
  * once instead of two guard lines per handler. Its null return means the response is already
  * written and the handler must stop; callers keep their own `if (!body) return` bail. Exactly
- * four call sites — handlePromptRole, handleWake (allowMissing, the {} → all-roles default),
- * handleAbort, and handlePauseRole; handlePromptCancel deliberately does not ride it, since
+ * five call sites — handlePromptRole, handleWake and handleResetCounters (allowMissing, the
+ * {} → all-roles default), handleAbort, and handlePauseRole; handlePromptCancel deliberately does not ride it, since
  * its role is optional and validates only when present. */
 async function readRoleBody(
   req: http.IncomingMessage,
@@ -383,6 +383,18 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
   sendJson(res, 200, {
     ok: true,
     message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
+  });
+}
+
+/** Handle POST /api/reset-counters: the dashboard's counter reset — the same marker-writing
+ * core `tumwater reset-counters` calls (requestResetCounters). Same body discipline and
+ * `{}` → every configured role default as /api/wake. */
+export async function handleResetCounters(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
+  if (!body) return;
+  sendJson(res, 200, {
+    ok: true,
+    message: requestResetCounters(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
   });
 }
 

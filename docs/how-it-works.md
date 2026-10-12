@@ -279,7 +279,7 @@ validation, and atomic write, so an operator never has to hand-edit the file.
 
 ## Operator notes
 
-- `reset-counters` zeroes ticks, commits, tokens, and cost without touching the schedule. `wake`
+- `reset-counters` zeroes ticks, commits, tokens, and cost without touching the schedule (the dashboard's Loops card and loop drawer reach the same reset). `wake`
   does the opposite: it clears backoff so loops tick within one poll.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.

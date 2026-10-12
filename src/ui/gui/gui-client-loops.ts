@@ -39,7 +39,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     rolePauseMenuRole = null;
     const pausing = action === "pause" || action === "pause-for";
     const timed = action === "pause-for" && forSeconds > 0;
-    const path = action === "abort" ? "/api/abort" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
+    const path = action === "abort" ? "/api/abort" : action === "reset-counters" ? "/api/reset-counters" : pausing || action === "resume" ? "/api/pause-role" : "/api/wake";
     const body = pausing || action === "resume" ? { role, paused: pausing, ...(timed ? { forSeconds } : {}) } : { role };
     await postAction(path, body, (d) => {
       let msg = d && typeof d.message === "string" ? d.message : role + ": done";
@@ -167,6 +167,8 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const tr = clickClosest(ev, "tr[data-role]");
     if (tr) toggleLoop(tr.dataset.role);
   });
+  $("resetall").addEventListener("click", () =>
+    postAction("/api/reset-counters", {}, (d) => (d && typeof d.message === "string" ? d.message : "counters reset")));
   $("wakeall").addEventListener("click", () =>
     postAction("/api/wake", {}, (d) => (d && typeof d.message === "string" ? d.message : "every loop woken")));
 `;

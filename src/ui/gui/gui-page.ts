@@ -79,6 +79,7 @@ export const GUI_PAGE = `<!doctype html>
       <header class="card-head">
         <h2 id="loops-title">Loops</h2>
         <div class="spacer"></div>
+        <button type="button" class="btn btn-sm" id="resetall" title="Zero every loop's ticks, commits, tokens, and cost — scheduling is untouched">${iconSvg("refresh")}<span>Reset counters</span></button>
         <button type="button" class="btn btn-sm" id="wakeall" title="Wake every loop now, skipping any sleep or backoff">${iconSvg("bolt")}<span>Wake all</span></button>
       </header>
       <div class="table-wrap">
