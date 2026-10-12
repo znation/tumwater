@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### Dashboard: view and replace the initial prompt from the Settings view (planned 2026-10-12 by plan; independent of the refused part 2/2 above and touches none of its files except docs/invariants.md. The landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) is the only way to read or replace the initial prompt. The project prompt says the GUI gives the user a main prompt and that the user only writes the initial prompt, yet the dashboard has no route that names the brief: `grep -n brief src/gui/*.ts src/ui/gui/*.ts` finds nothing. `cmdBrief` also keeps its checks (empty, `INITIAL_PROMPT_MAX_CHARS`, marker), its locked write, and its commit inline, so a second caller would have to copy them)
+## Done
+
+### Dashboard: view and replace the initial prompt from the Settings view (planned 2026-10-12 by plan; done 2026-10-12 by feature; independent of the refused part 2/2 above and touches none of its files except docs/invariants.md. The landed `tumwater brief` (`cmdBrief`, `src/cli/brief-command.ts`) is the only way to read or replace the initial prompt. The project prompt says the GUI gives the user a main prompt and that the user only writes the initial prompt, yet the dashboard has no route that names the brief: `grep -n brief src/gui/*.ts src/ui/gui/*.ts` finds nothing. `cmdBrief` also keeps its checks (empty, `INITIAL_PROMPT_MAX_CHARS`, marker), its locked write, and its commit inline, so a second caller would have to copy them)
 
 **Goal.** The Settings view gains an "Initial prompt" card. It shows the brief file's name and the current prompt in a textarea, and its Save button replaces the prompt under exactly the checks and commit `tumwater brief --file` applies.
 
@@ -50,8 +52,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - `POST /api/brief` with an empty prompt, a prompt over 4096 characters, a prompt containing `<!-- tumwater:prompt:start -->`, or a non-string `prompt` returns 400, leaves the brief file byte-for-byte unchanged, and adds no commit.
 - The settings client test checks four things: `buildSettingsView` emits `briefcard`; `fetchBrief` fills the textarea esc'd and paints the error panel on rejection; `saveBrief` posts the textarea's text and flashes each of the three success messages; and a submit on `form.brief-form` does not call `saveSetting`.
 - The existing `test/brief-command.test.ts` cases pass unchanged.
-
-## Done
 
 ### `tumwater brief`: show the initial prompt, and `--file <path>` replaces it and commits on main (planned 2026-10-12 by plan; independent of the refused part 2/2 above. It reuses the landed `commitOperatorBacklogEdit` (`src/backlog/backlog-commit.ts`) as it stands and does not touch any file part 2/2 names except README.md and docs/invariants.md. The initial prompt is the one input the project prompt says the user writes ("You only write the markdown/initial prompt"), yet no command reads or replaces it. `tumwater init` refuses to rewrite an existing brief and tells the user to hand-edit the marker block (`initProject` in `src/init/init.ts`). A hand edit skips init's `INITIAL_PROMPT_MAX_CHARS` check: `extractPrompt` in `src/brief.ts` then truncates the prompt silently on every tick. The edit also stays uncommitted in the primary checkout, where it blocks `ffMainTo`'s `merge --ff-only` the same way part 1/2's filings did. No CLI command names the brief today (`grep -n 'case "' src/cli.ts`)) (done 2026-10-12)
 

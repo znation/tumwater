@@ -25,7 +25,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
     if (v === "pending") fetchPending();
-    if (v === "settings") { fetchSettings(); fetchDoctor(); }
+    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchBrief(); }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
   // tab refetches its data. #loop/<role> opens that loop's drawer (over Fleet on a fresh load),
@@ -57,6 +57,12 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   document.addEventListener("submit", (ev) => {
     const form = ev.target instanceof Element ? ev.target.closest("form.settings-row") : null;
     if (form) { ev.preventDefault(); saveSetting(form); }
+  });
+  // The Initial prompt card's Save: its own form class, so the settings listener above never
+  // routes it to saveSetting.
+  document.addEventListener("submit", (ev) => {
+    const form = ev.target instanceof Element ? ev.target.closest("form.brief-form") : null;
+    if (form) { ev.preventDefault(); saveBrief(form); }
   });
   // The Settings view's Clear buttons: one delegated click listener resolves the row's Clear
   // through clickClosest and calls clearSetting (gui-client-settings). No per-row wiring, so

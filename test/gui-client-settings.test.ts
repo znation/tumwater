@@ -20,12 +20,14 @@ type SettingsFns = {
   clearSetting(form: { dataset: Record<string, string> }): Promise<void>;
   renderDoctorReport(d: unknown): string;
   fetchDoctor(): Promise<void>;
+  fetchBrief(): Promise<void>;
+  saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
 };
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "fetchBrief", "saveBrief"],
     inject,
   );
 }
@@ -178,7 +180,7 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
   // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
-  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); \}/);
+  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchBrief\(\); \}/);
   assert.match(GUI_CLIENT_BOOT_JS, /data-action='doctor-rerun'/);
   // …and the boot carries the Clear click selector beside the Save submit wiring.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
@@ -221,4 +223,57 @@ test("fetchDoctor paints the error panel into doctorbody when the fetch rejects"
   await fetchDoctor();
   assert.match(els.doctorbody!.innerHTML, /Health check could not run/);
   assert.match(els.doctorbody!.innerHTML, /boom/);
+});
+
+test("the Initial prompt card: built by the view, filled esc'd, saved with the textarea's text", async () => {
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {
+    "settings-view": { innerHTML: "", dataset: {} },
+    briefcard: { innerHTML: "", dataset: {} },
+  };
+  const errorPanel = (title: string, err: { message: string }) => "<div>" + title + " " + err.message + "</div>";
+  const { fetchBrief } = settingsScope({
+    errorPanel,
+    $: (id: string) => els[id],
+    getJson: async () => ({ file: "README.md", prompt: "a <b> & c" }),
+  });
+  await fetchBrief();
+  assert.match(els["settings-view"]!.innerHTML, /id='briefcard'/);
+  assert.match(els.briefcard!.innerHTML, /<form class='brief-form'>/);
+  assert.match(els.briefcard!.innerHTML, /id='brief-text'[^>]*>a &lt;b&gt; &amp; c<\/textarea>/);
+  assert.match(els.briefcard!.innerHTML, /README\.md/);
+  const { fetchBrief: fetchFail } = settingsScope({
+    errorPanel,
+    $: (id: string) => els[id],
+    getJson: async () => {
+      throw new Error("no brief");
+    },
+  });
+  els["settings-view"]!.dataset.built = "1";
+  await fetchFail();
+  assert.match(els.briefcard!.innerHTML, /Initial prompt could not load no brief/);
+
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let reply: unknown = { changed: false, committed: false };
+  const { saveBrief } = settingsScope({
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      if (reply instanceof Error) throw reply;
+      return reply;
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  const form = { querySelector: () => ({ value: "new text" }) };
+  for (const r of [{ changed: false, committed: false }, { changed: true, committed: true }, { changed: true, committed: false }, new Error("empty")]) {
+    reply = r;
+    await saveBrief(form);
+  }
+  assert.deepEqual(posts[0], { path: "/api/brief", body: { prompt: "new text" } });
+  assert.deepEqual(flashes, ["Initial prompt unchanged", "Initial prompt saved (committed to main)", "Initial prompt saved", "error: empty"]);
+});
+
+test("a submit on form.brief-form routes to saveBrief, and the settings listener is scoped to form.settings-row", () => {
+  assert.match(GUI_CLIENT_BOOT_JS, /closest\("form\.brief-form"\)[\s\S]*?saveBrief\(form\)/);
+  assert.match(GUI_CLIENT_BOOT_JS, /closest\("form\.settings-row"\)[\s\S]*?saveSetting\(form\)/);
+  assert.doesNotMatch(clientRegion("settings-view").slice(clientRegion("settings-view").indexOf("async function fetchBrief")), /settings-row/);
 });

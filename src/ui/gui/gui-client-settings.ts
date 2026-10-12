@@ -50,7 +50,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<div class='card' id='doctorcard'><div class='settings-row'><strong>Health check</strong>" +
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button></div>" +
-      "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>");
+      "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
+      "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
   }
   // The Health check card's body: header, one row per check (level badge, name, detail), the
   // verdict — everything esc'd. The pill is built inline (gui-client.ts's pill sits outside
@@ -114,6 +115,31 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       const d = await postJson("/api/config-unset", { key: key });
       showFlash(d && d.oldValue !== undefined ? "Unset " + key + " (was " + JSON.stringify(d.oldValue) + ")" : "Nothing to unset for " + key + " — it was already the default");
       await fetchSettings();
+    } catch (err) {
+      showFlash("error: " + (err && err.message ? err.message : String(err)));
+    }
+  }
+  // The Initial prompt card: the brief file's name and the prompt in a textarea, filled from
+  // GET /api/brief on each open. The form is deliberately not a settings-row, so the boot's
+  // delegated settings submit listener never routes it to saveSetting.
+  async function fetchBrief() {
+    buildSettingsView();
+    const card = $("briefcard");
+    try {
+      const d = await getJson("/api/brief");
+      card.innerHTML = "<form class='brief-form'><strong>Initial prompt</strong> <span class='settings-key'>" + esc(d.file) + "</span>" +
+        "<textarea class='field' id='brief-text' rows='12'>" + esc(d.prompt) + "</textarea>" +
+        "<button type='submit' class='btn btn-sm'>Save</button></form>";
+    } catch (err) {
+      card.innerHTML = errorPanel("Initial prompt could not load", err, "empty");
+    }
+  }
+  // Save posts the textarea's text to POST /api/brief — the same checks and commit as
+  // tumwater brief --file — and flashes the outcome.
+  async function saveBrief(form) {
+    try {
+      const d = await postJson("/api/brief", { prompt: form.querySelector("textarea").value });
+      showFlash(!d.changed ? "Initial prompt unchanged" : d.committed ? "Initial prompt saved (committed to main)" : "Initial prompt saved");
     } catch (err) {
       showFlash("error: " + (err && err.message ? err.message : String(err)));
     }

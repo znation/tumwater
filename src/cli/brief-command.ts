@@ -1,13 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, readBrief, replaceInitialPrompt } from "../brief.js";
-import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
-import { withStateLock } from "../concurrency/lock.js";
-import { writeTextAtomic } from "../files/files.js";
-import { stampedSubject } from "../git/commit-message.js";
-import { primaryWorktreeLockPath } from "../paths.js";
-import { PREFILL_REASON } from "../text/phrases.js";
-import { tooLongMessage } from "../text/text.js";
+import { readBrief } from "../brief.js";
+import { editInitialPrompt } from "../brief-edit.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { fail, say, sayJson } from "./cli-output.js";
@@ -30,24 +22,9 @@ export async function cmdBrief(root: string, args: string[]): Promise<void> {
     else say(`${brief.file}\n${brief.prompt}`);
     return;
   }
-  const prompt = readPromptFileArg(args[fileIdx + 1]!).trim();
-  if (prompt === "") fail("the new initial prompt is empty");
-  if (prompt.length > INITIAL_PROMPT_MAX_CHARS)
-    fail(tooLongMessage("the new initial prompt", prompt.length, INITIAL_PROMPT_MAX_CHARS, PREFILL_REASON));
-  if (prompt.includes(PROMPT_START) || prompt.includes(PROMPT_END))
-    fail("the new initial prompt contains a tumwater:prompt marker, which would break the block for every reader");
-  const file = briefPath(root) ?? fail("no project brief with a prompt block found — run `tumwater init` first");
-  const changed = withStateLock(primaryWorktreeLockPath(root), () => {
-    const current = fs.readFileSync(file, "utf8");
-    const next = replaceInitialPrompt(current, prompt);
-    if (next === null) fail(`${path.basename(file)} no longer carries a prompt block`);
-    if (next === current) return false;
-    writeTextAtomic(file, next);
-    return true;
-  });
-  const name = path.basename(file);
-  const committed =
-    changed && (await commitOperatorBacklogEdit(root, name, stampedSubject("operator", "Edit initial prompt")));
+  const outcome = await editInitialPrompt(root, readPromptFileArg(args[fileIdx + 1]!));
+  if (!outcome.ok) fail(outcome.error);
+  const { file: name, changed, committed } = outcome;
   if (json) sayJson({ file: name, changed, committed });
   else if (!changed) say("initial prompt unchanged");
   else say(`initial prompt updated in ${name}${committed ? " (committed to main)" : ""}`);

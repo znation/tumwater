@@ -27,6 +27,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
+import { editInitialPrompt } from "../brief-edit.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
 import type http from "node:http";
@@ -662,4 +663,15 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
   } catch (err) {
     sendJson(res, 400, { error: errorMessage(err) });
   }
+}
+/** Handle POST /api/brief: replace the initial prompt through editInitialPrompt — the same
+ * checks, locked write, and commit as `tumwater brief --file`. A non-string prompt or any
+ * refusal is a 400 and writes nothing. */
+export async function handleBriefEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"prompt": "…"}');
+  if (!body) return;
+  if (typeof body.prompt !== "string") return sendJson(res, 400, { error: `"prompt" must be a string — the full replacement initial prompt${gotSuffix(body.prompt)}` });
+  const outcome = await editInitialPrompt(root, body.prompt);
+  if (!outcome.ok) return sendJson(res, 400, { error: outcome.error });
+  sendJson(res, 200, { file: outcome.file, changed: outcome.changed, committed: outcome.committed });
 }

@@ -7,9 +7,9 @@ import type http from "node:http";
 import { readEventsTailWithEnd } from "../src/events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
+import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -20,7 +20,8 @@ import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief.js";
+import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { initProject } from "../src/init/init.js";
@@ -1008,4 +1009,38 @@ test("handleRoleNotes writes, clears, and rejects bad input without touching the
   const cleared = await post({ role: "feature", text: "" });
   assert.deepEqual(cleared.data, { ok: true, message: "notebook cleared" });
   assert.equal(fs.readFileSync(notes, "utf8"), "");
+});
+
+test("GET /api/brief serves the brief file and prompt; a repo without a prompt block is a 404", async () => {
+  const repo = await initializedRepo();
+  const ok = await captureJson((res) => handleBrief(res, repo));
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { file: "README.md", prompt: "A test project." });
+  const bare = await captureJson((res) => handleBrief(res, makeRepo()));
+  assert.equal(bare.captured.status, 404);
+  assert.match((bare.data as { error: string }).error, /tumwater init/);
+});
+
+test("POST /api/brief replaces the prompt and commits on main; refusals leave the file and history alone", async () => {
+  const repo = await initializedRepo();
+  const post = (body: unknown) => captureJson((res) => handleBriefEdit(fakeReq(JSON.stringify(body)), res, repo));
+  const head = () => sh(repo, "git", "rev-parse", "HEAD");
+  const ok = await post({ prompt: "new idea" });
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { file: "README.md", changed: true, committed: true });
+  assert.equal(readBrief(repo)?.prompt, "new idea");
+  assertClean(repo);
+  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), "tumwater(operator): Edit initial prompt");
+  const after = head();
+  const again = await post({ prompt: "new idea" });
+  assert.deepEqual(again.data, { file: "README.md", changed: false, committed: false });
+  assert.equal(head(), after);
+  const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
+  for (const prompt of ["  ", "x".repeat(INITIAL_PROMPT_MAX_CHARS + 1), PROMPT_START, 5]) {
+    const bad = await post({ prompt });
+    assert.equal(bad.captured.status, 400);
+    assert.match((bad.data as { error: string }).error, /\S/);
+  }
+  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before);
+  assert.equal(head(), after);
 });

@@ -34,6 +34,7 @@ import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
 import { intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
+import { readBrief } from "../brief.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
@@ -335,4 +336,11 @@ export function handleConfig(res: http.ServerResponse, root: string): void {
   const out: Record<string, unknown> = {};
   for (const key of EDITABLE_CONFIG_KEYS) out[key] = record[key] ?? null;
   sendJson(res, 200, out);
+}
+/** Handle GET /api/brief: the brief file's name and the current initial prompt (what
+ * `tumwater brief --json` prints), or 404 when no brief carries a prompt block. */
+export function handleBrief(res: http.ServerResponse, root: string): void {
+  const brief = readBrief(root);
+  if (brief === null) return sendJson(res, 404, { error: "no project brief with a prompt block found — run `tumwater init` first" });
+  sendJson(res, 200, { file: brief.file, prompt: brief.prompt });
 }
