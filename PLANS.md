@@ -6,7 +6,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The TUI and `tumwater status` table show each loop's own pending scheduled wake (planned 2026-10-12 by plan; sibling of the landed dashboard per-loop wake display (`scheduledWakesFor`/`phaseDetail` in `src/ui/gui/gui-client-loops.ts`) and the landed `scheduledWakes` snapshot field (`src/status/status-data.ts`, filled from `scheduledWakes(root, now)` in `src/fleet/fleet-state.ts`). Today the terminal shows only the header's `wakeBadge(snap.scheduledWake, now)`, which names the EARLIEST wake. So after `wake feature --in 1h` and `wake plan --in 2h`, nothing in the TUI says plan has a wake coming, though the dashboard row and `tumwater wake --list` both do. Render-only: no snapshot, payload, `src/ui/gui`, or `src/operator` change)
+
+**Goal.** In the status table shared by `tumwater status` and the TUI (`renderStatusSpans` in `src/ui/status-render.ts`), each loop that a future scheduled wake names gets a short marker on its state cell, the way a loop with queued prompts gets `p:N`.
+
+**Approach.**
+1. `src/ui/badges.ts`: beside `wakeBadge`, add and export `loopWakeMarker(wakes: { roles: string[]; atMs: number }[] | undefined, role: string, instanceOf: string | undefined, now: number): string`. It takes the earliest wake with `atMs > now` whose `roles` include `role`, or `instanceOf` when that is set. This is the same match rule as the GUI's `scheduledWakesFor`; say so in the doc comment, since the GUI keeps its own JS copy. It returns ` · wake in ${humanSeconds(secondsUntil(atMs, now))}` for that wake, and `""` when no wake matches. Do not assume `wakes` is sorted: pick the minimum `atMs`.
+2. `src/ui/status-render.ts`, in the `rows` map of `renderStatusSpans`: append `{ text: loopWakeMarker(snap.scheduledWakes, s.role, s.instanceOf, now), tone: "blue" }` to the state cell, after the `roleQueued(s.role)` span, using the render's single `now`. Skip the span when the text is empty, so a row without a wake keeps its current spans exactly. Extend the comment above `roleQueued` to mention the wake marker. It goes last so the work item and phase survive clipping ahead of it. The header's `wakeBadge` stays as is, and the totals row gets no marker.
+3. `docs/invariants.md`: no wake section exists (checked with grep), so no register change.
+
+**Files.** `src/ui/badges.ts`, `src/ui/status-render.ts`, `test/badges.test.ts`, `test/status-render.test.ts`.
+
+**Acceptance criteria.**
+- `test/badges.test.ts`: a new test beside "wakeBadge names a pending scheduled wake and is empty otherwise" covers `loopWakeMarker` with `now` fixed:
+  - `[{roles:["feature"], atMs: now+1h}, {roles:["plan"], atMs: now+2h}]` gives `" · wake in 1h"` for `feature` and `" · wake in 2h"` for `plan`, and `""` for `qa`.
+  - An instance (`role "feature-2"`, `instanceOf "feature"`) matches the `feature` wake.
+  - A list given latest-first still yields the earliest match.
+  - A wake with `atMs <= now` and an `undefined` list both give `""`.
+- `test/status-render.test.ts`: a new test next to "a loop with queued prompts carries a p:N marker on its state cell". It builds the snapshot with `snapshotWith` for loops `clean` and `dry`, then sets `snap.scheduledWakes = [{ roles: ["dry"], atMs: Date.now() + 2 * 3_600_000 }]`.
+  - The `dry` row matches `/wake in 2h/`, and the `clean` row and the totals row do not match `/wake in/`.
+  - Leave `snap.scheduledWake` undefined, so the header badge does not supply the text.
+- The existing "a loop with queued prompts carries a p:N marker on its state cell" test and every other `test/status-render*.test.ts`, `test/status-header.test.ts` and `test/tui-frame.test.ts` test still pass. Rows without a wake render the same spans as before.
+- `npm run test` passes.
 
 ## Done
 
