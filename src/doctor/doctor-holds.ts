@@ -1,8 +1,11 @@
 import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../fleet/fleet-state.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, fleetDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
+import { readLandingQueue } from "../landing/landing-queue.js";
+import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
+import { maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { loopIds } from "../roles/loop-ids.js";
 import { usd } from "../text/format.js";
@@ -12,7 +15,7 @@ import { budgetPhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
- * (checkBudget), all read-only reports of holds on ticking.
+ * (checkBudget), and `maintenance quota` (checkMaintenanceQuota), all read-only reports of holds on ticking.
  *
  * The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause
@@ -103,4 +106,32 @@ export function checkBudget(
   }
   if (budgetWarning(view)) return okOutcome(`${phrase} today — past 80% of the cap${cappedPhrase}`);
   return okOutcome(`${phrase} today${cappedPhrase}`);
+}
+
+/** The `maintenance quota` check: rolling-24 h maintenance landings against the allowance
+ * (`maintenancePerWorkLanding` per work landing + the daily floor), naming the maintenance loops
+ * held when it is full. Read-only and built on the same verdict the scheduler and status use
+ * (maintenanceQuotaForPoll). Only a live fleet's running loops and landing queue count as in
+ * flight, since a dead fleet's leftover `running` flag and queue drain nothing. A held allowance
+ * is a warn because it stops a whole tier. */
+export function checkMaintenanceQuota(
+  root: string,
+  config: TumwaterConfig | undefined,
+  aliveFleet: boolean,
+  now: number = Date.now(),
+): CheckOutcome {
+  if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
+  const loops = loopIds(config)
+    .map((id) => loadLoopState(root, id))
+    .map((s) => ({ role: s.role, running: aliveFleet && s.running === true }));
+  const queued = aliveFleet ? new Set(readLandingQueue(root).entries.map((e) => e.role)) : new Set<string>();
+  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkLanding, loops, queued, now);
+  if (held.length > 0) {
+    return warnOutcome(
+      `allowance reached — ${used}/${allowance} maintenance landings in the last 24h; held until the window rolls under: ${[...held].sort().join(", ")}`,
+    );
+  }
+  const base = `${used}/${allowance} maintenance landings in the last 24h (${config.maintenancePerWorkLanding} per work landing + ${MAINTENANCE_DAILY_FLOOR} floor)`;
+  const anyMaintenance = loops.some((l) => commitTier(l.role) === "maintenance");
+  return okOutcome(anyMaintenance ? base : `${base}; no maintenance loop enabled`);
 }

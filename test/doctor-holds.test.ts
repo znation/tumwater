@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkBudget, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("checkPause: no markers is ok", () => {
@@ -160,4 +161,47 @@ test("checkBudget: director spend is never named under a per-role cap", () => {
   const cfg = bcfg({ maxDailyCostUsd: 100, maxDailyCostUsdPerRole: { director: 1 } });
   const r = checkBudget(budgetRoot({ director: 5 }), cfg, null, BNOW);
   assert.doesNotMatch(r.detail, /capped loops/);
+});
+
+const MNOW = new Date(2026, 9, 12, 12, 0).getTime();
+const mcfg = (c: object = {}): TumwaterConfig =>
+  qcfg({ maintenancePerWorkLanding: 2, roles: { feature: { enabled: true }, clean: { enabled: true } }, ...c });
+function mergedRoot(role: string, n: number): string {
+  const root = tmpdir("tw-mq-");
+  writeEvents(root, Array.from({ length: n }, (_, i) => ({ ts: MNOW - 3_600_000, loop: role, type: "merged", commit: `m${i}` })));
+  return root;
+}
+
+test("checkMaintenanceQuota: under the allowance is ok and shows used/allowance", () => {
+  const r = checkMaintenanceQuota(mergedRoot("clean", 3), mcfg(), true, MNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /3\/12 maintenance landings/);
+});
+
+test("checkMaintenanceQuota: a full window warns and names the held loops", () => {
+  const r = checkMaintenanceQuota(mergedRoot("clean", 12), mcfg(), true, MNOW);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /12\/12/);
+  assert.match(r.detail, /: clean$/);
+});
+
+test("checkMaintenanceQuota: a dead fleet's running flag is not in flight", () => {
+  const root = mergedRoot("clean", 11);
+  saveLoopState(root, { ...freshLoopState("clean"), running: true });
+  assert.match(checkMaintenanceQuota(root, mcfg(), false, MNOW).detail, /^11\/12 /);
+  const live = mergedRoot("clean", 11);
+  saveLoopState(live, { ...freshLoopState("clean"), running: true });
+  assert.equal(checkMaintenanceQuota(live, mcfg(), true, MNOW).level, "warn");
+});
+
+test("checkMaintenanceQuota: no maintenance loop enabled is ok and says so", () => {
+  const r = checkMaintenanceQuota(mergedRoot("clean", 12), mcfg({ roles: { feature: { enabled: true } } }), true, MNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /no maintenance loop enabled$/);
+});
+
+test("checkMaintenanceQuota: unreadable config is not checked", () => {
+  const r = checkMaintenanceQuota(tmpdir("tw-mq-"), undefined, true, MNOW);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /not checked/);
 });
