@@ -22,19 +22,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The `logs -f --json` follow test passes with no real-time wait and fails deterministically when the seam is not advanced.
 - `npm run test` is green.
 
-### Retire the `no-repro` gap, part 4/5: logical time for the fallback-breaker cool-down (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 3/5 and 5/5; test-only, independent of the TUI, dashboard, and agent-backends work)
-
-**Goal.** Convert the cooldown family. `test/orchestrator-probe.test.ts`'s "a demoted fallback admits exactly one probe tick per cool-down; other due roles wait" already injects `breakerNow` (via `RunOptions.breakerNow`) but still leans on real `sleep(300)` gaps to let a broken cooldown check probe or not, so a loaded host's overshoot reads as a pierced pause (BUGS.md 2026-10-07).
-
-**Approach.** Replace the `sleep(300)` "a full poll cycle or two" gaps with assertions on the injected breaker clock: the wake must not move `breakerNow` past the published `probeAt`, and a broken cooldown check is caught by advancing `breakerNow` by one poll without waking a tick. Keep the real `sleep` only if a real poll cycle is what establishes the absence of a tick, and if so pair it with an advance of `breakerNow` so the verdict no longer depends on host load.
-
-**Files touched.** `test/orchestrator-probe.test.ts`.
-
-**Acceptance criteria.**
-- The cooldown case goes red deterministically when the cooldown check is removed, with no verdict left to a real `sleep` overshoot.
-- The "exactly one probe per cool-down" and "other due roles wait" assertions still hold after the conversion.
-- `npm run test` is green.
-
 ### Retire the `no-repro` gap, part 5/5: logical time for the supervisor's parent-death watch (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5–4/5; independent of the TUI, dashboard, and agent-backends work)
 
 **Goal.** Convert the process-death family. `test/supervisor.test.ts`'s "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" waits on real watch budgets (15s start / 40s gone) that were widened after the flake recurred (BUGS.md 2026-10-09), so a loaded host decides the verdict.
@@ -63,6 +50,19 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.**
 - The wedged-landing case fails deterministically when the injected clock is not advanced and passes instantly when it is; no assertion reads `Date.now()` elapsed wall time.
 - The two settling cases keep asserting the drain waited for tick and landing, driven by the seam.
+- `npm run test` is green.
+
+### Retire the `no-repro` gap, part 4/5: logical time for the fallback-breaker cool-down (planned 2026-10-11 by plan; split 2026-10-11 by plan from the steward's gating-tier plan; sibling of parts 1/5, 2/5, 3/5 and 5/5; test-only, independent of the TUI, dashboard, and agent-backends work; done 2026-10-11 by feature)
+
+**Goal.** Convert the cooldown family. `test/orchestrator-probe.test.ts`'s "a demoted fallback admits exactly one probe tick per cool-down; other due roles wait" already injects `breakerNow` (via `RunOptions.breakerNow`) but still leans on real `sleep(300)` gaps to let a broken cooldown check probe or not, so a loaded host's overshoot reads as a pierced pause (BUGS.md 2026-10-07).
+
+**Approach.** Replace the `sleep(300)` "a full poll cycle or two" gaps with assertions on the injected breaker clock: the wake must not move `breakerNow` past the published `probeAt`, and a broken cooldown check is caught by advancing `breakerNow` by one poll without waking a tick. Keep the real `sleep` only if a real poll cycle is what establishes the absence of a tick, and if so pair it with an advance of `breakerNow` so the verdict no longer depends on host load. Landed as: the injected `breakerNow` is also a poll-read counter, and both hold assertions wait until the loop has weighed the cool-down twice under a still-future `probeAt` before checking no tick ran — no real sleep remains, and dropping `fallbackProbeDue`'s `now >= b.probeAt` guard fails the first assertion.
+
+**Files touched.** `test/orchestrator-probe.test.ts` (and the INV-F1 register entry that cites its regression).
+
+**Acceptance criteria.**
+- The cooldown case goes red deterministically when the cooldown check is removed, with no verdict left to a real `sleep` overshoot.
+- The "exactly one probe per cool-down" and "other due roles wait" assertions still hold after the conversion.
 - `npm run test` is green.
 
 ### Filter the dashboard Activity feed by loop and text over the events the card already carries, matching `tumwater logs --grep`/`logs --role` (planned 2026-10-11 by plan; sibling of the landed CLI `tumwater logs --grep <text>`/`--role <id>` and the landed dashboard History search plus Loop picker (`gui-client-history.ts`'s `#histgrep`/`#histrole`); the Activity card's only narrowing is the Notable/All segmented filter (`gui-page.ts`'s `#feedfilter`, `gui-client-fleet.ts`'s `renderFeed`), so an operator watching one loop's events or hunting a specific failure must drop to `tumwater logs` or scan the whole recent feed; independent of the waiting hermetic-host gating tier, dashboard composer defer, and TUI History tick-trail plans in code — `src/ui/gui` only, no `src/ui/tui`, `src/inbox`, or `src/gui` file; it reads the event window the card already receives (`status-payload.ts`'s `RECENT_EVENTS` `eventItems`) and adds no endpoint, so its filter cannot disagree with what the card shows, only narrow it; done 2026-10-11 by feature)

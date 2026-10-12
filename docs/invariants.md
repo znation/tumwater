@@ -234,5 +234,8 @@ its budget.
 
 **Pinned by.** `test/invariants-doc.test.ts` — "a planted live-host probe and a planted listener
 bind are reported; an e2e source is not" and "this repo's gating test sources probe no live host
-and bind no real listener". The deadline-clock and flake-regression halves are pinned by the
-regression cases the plan's parts 2/5–5/5 add.
+and bind no real listener". The flake-regression half is pinned by `test/orchestrator-probe.test.ts`
+— "a demoted fallback admits exactly one probe tick per cool-down; other due roles wait", whose
+hold assertions wait on the injected breaker clock's own reads instead of a wall-clock sleep. The
+deadline-clock half and the remaining flake regressions are pinned by the cases the plan's parts
+2/5–5/5 add.
