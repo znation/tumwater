@@ -6,7 +6,39 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The notify hook pages when main goes red: the once-per-SHA red-main warning becomes a typed `main_red_hold` event on the allowlist (planned 2026-10-12 by plan; independent of every other entry. When main's declared check fails, `mainRedGate` in `src/baseline/main-red.ts` holds every code loop (each tick ends `main_red`), and no change merges until a bugfix lands. This is the fleet's widest stop after `supervisor_exit`. Today `warnMainRedOnce` logs it as a generic `warning` on loop `harness` through `warnEventBestEffort`. `NOTIFY_EVENT_TYPES` in `src/events/notify.ts` matches on event type and deliberately leaves `"warning"` off, so a red main pages nobody. The operator finds out from the dashboard's "main is red" alert or from `tumwater doctor`'s "main red" row, and only if they happen to look. Stands alone: no scheduler, gate, snapshot, GUI, or TUI change)
+
+**Goal.** The first time this process sees a verified-red main SHA, it logs one typed `main_red_hold` event, and the configured `notify` command pages it. The feed line keeps today's wording. It still fires once per red SHA, and never for an unverified or skipped baseline.
+
+**Approach.**
+- `src/events/events.ts`: add `| "main_red_hold"` to the `HarnessEvent["type"]` union, next to `maintenance_quota_hold`. Its trailing comment states that `warnMainRedOnce` (src/baseline/main-red.ts) logs it once per process per newly verified red main SHA, that every code loop skips authoring until main is green, and that it carries `sha`, `script`, and `message`.
+- `src/baseline/main-red.ts`, `warnMainRedOnce`: keep the `lastMainRedSha` guard. Replace the `warnEventBestEffort(...)` call with `logEventBestEffort(root, { loop: "harness", type: "main_red_hold", sha: red.sha, script: red.script, message: redMainMessage(red, "code merges blocked until main is green") })`. Also update `warnMainRedOnce`'s doc comment and the "one harness-level warning per newly-discovered red SHA" wording in the `lastMainRedSha` comment. `warnEventBestEffort` stays imported, because `mainRedGate`'s skip and unverified paths still use it.
+- `src/events/event-format.ts`, `formatEvent`: add `case "main_red_hold": return textOr(e.message);`. The message already reads `main <sha> is red (<script>: <headline>) — code merges blocked until main is green`, so the feed line is today's line minus the `warning: ` prefix. Add a one-line comment saying the tone comes from `PROBLEM_EVENTS`.
+- `src/ui/tone.ts`: append `"main_red_hold"` to `PROBLEM_EVENTS` so the dashboards still tone the line as a problem, as they did when it was a `warning`.
+- `src/events/notify.ts`: append `"main_red_hold"` to `NOTIFY_EVENT_TYPES` after `"disk_low"`, with a trailing comment in the same style as its neighbours ("main's own check is red — every code loop is held until a fix lands"). Add `src/baseline/main-red.ts` to the module doc's list of files that log allowlisted types in the orchestrator's process. `mainRedGate` and `mainTipVerdict` both run in-process: in the loop runner and the landing slot.
+- `test/fixtures/log-fixtures.ts`: add `mainRedHolds(root)`, which returns `eventsOfType(root, "main_red_hold")`.
+- README.md: in the `notify` sentence's list of when it runs ("… an error-streak breaker trip, a failed landing, …"), add "main's own check going red".
+
+**Tests that this change breaks and must be updated** (they count the red-main notice through `harnessWarnings`/`warningEvents`). Switch each to `mainRedHolds`, keeping its count and message assertions:
+- `test/main-red.test.ts`: "mainRedGate blocks a red main with the terminal outcome and a harness-level warning". Assert one `main_red_hold` on loop `harness` whose `message` contains the short SHA, `test`, and `baseline-failure`, and whose `sha` equals `mainSha(root)`. Also update the "warns once per red SHA" test, the healer-shares-the-guard assertion ("the healer's check did not add a second warning"), and the `mainTipVerdict` once-per-SHA test.
+- `test/loop-red-main.test.ts`: the end-to-end red-main test (`harnessWarnings(repo)` with `/is red \(test: baseline-failure-line\)/`) and the bugfix-healer test (`harnessWarnings(repo).length === 1`). The unverified/skip test asserts `harnessWarnings(repo).length === 0`, which would now pass vacuously. Change it to assert that `mainRedHolds(repo)` is empty, and keep its skip-warning assertion.
+- `test/notify.test.ts`: in "NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap", add `"main_red_hold"` after `"disk_low"`.
+- Grep `test/` for any other `PROBLEM_EVENTS` literal pin, and update it if one exists.
+
+**New tests.**
+- `test/notify.test.ts`: a `newNotifier` test in the style of the existing allowlisted-type tests. A `main_red_hold` event spawns the hook with `TUMWATER_EVENT_TYPE=main_red_hold`, `TUMWATER_EVENT_LOOP=harness`, and a `TUMWATER_EVENT_MESSAGE` that starts `main ` and contains `is red`.
+- `test/event-format-fleet.test.ts` (beside the `disk_low` cases): add a case: formatting `{ type: "main_red_hold", loop: "harness", message: "main abc1234 is red (test: x) — code merges blocked until main is green" }` returns that message with no `warning:` prefix.
+
+**Files touched.** `src/events/events.ts`, `src/baseline/main-red.ts`, `src/events/event-format.ts`, `src/ui/tone.ts`, `src/events/notify.ts`, `test/fixtures/log-fixtures.ts`, `test/main-red.test.ts`, `test/loop-red-main.test.ts`, `test/notify.test.ts`, the formatEvent test file named above, README.md.
+
+**Acceptance criteria.**
+- `grep -n 'main_red_hold' src/events/notify.ts src/events/events.ts src/events/event-format.ts src/ui/tone.ts src/baseline/main-red.ts` finds a hit in each file.
+- `grep -n 'warnEventBestEffort' src/baseline/main-red.ts` no longer matches inside `warnMainRedOnce`.
+- A verified red SHA logs exactly one `main_red_hold` (with `loop: "harness"`, `sha`, `script`, `message`) per process, and no harness `warning` for that SHA. A second blocked tick, the bugfix handoff, or a `mainTipVerdict` on the same SHA logs nothing more. An unverified or skipped baseline logs no `main_red_hold`.
+- With `notify` configured, the first `main_red_hold` spawns the hook once. `NOTIFY_MIN_GAP_MS` throttles a burst the same way it throttles every other type.
+- The failure digest's warning section (`messageSection(current, "warning", …)` in `src/failure/failure-data.ts`) no longer lists red-main notices. This is intended: those ticks are already itemized in the error section via `main_red` outcomes (INV-C1). Make no change there.
+- README's notify sentence names main going red.
+- `npm run test` passes.
 
 ## Done
 
