@@ -221,7 +221,7 @@ test("prompt --at 90m queues a prompt whose marker decodes to now+90m", async (t
   const { stdout } = await expectOk(() => cmdPrompt(root, ["--at", "90m", "re-check coverage"]));
   // The confirmation names the delivery delay in the same duration vocabulary --at parsed.
   assert.match(stdout, /queued for the director loop — delivers in 90m/);
-  const file = fs.readdirSync(dirOf(root, DIRECTOR_ROLE)).filter((f) => f.endsWith(".md"))[0];
+  const file = fs.readdirSync(dirOf(root, DIRECTOR_ROLE)).find((f) => f.endsWith(".md"));
   const text = fs.readFileSync(path.join(dirOf(root, DIRECTOR_ROLE), file ?? ""), "utf8");
   assert.equal(notBeforeMs(text), Date.now() + 90 * 60_000);
   // The store's deliverability filter sees it as not yet deliverable.
@@ -232,7 +232,7 @@ test("prompt --at composes with --role and defers that loop's queue", async (t) 
   const root = makeRoot();
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   await expectOk(() => cmdPrompt(root, ["--at", "2h", "--role", "clean", "look again"]));
-  const file = fs.readdirSync(dirOf(root, "clean")).filter((f) => f.endsWith(".md"))[0];
+  const file = fs.readdirSync(dirOf(root, "clean")).find((f) => f.endsWith(".md"));
   const text = fs.readFileSync(path.join(dirOf(root, "clean"), file ?? ""), "utf8");
   assert.equal(notBeforeMs(text), Date.now() + 2 * 3_600_000);
   assert.equal(inboxSize(root, "clean"), 0);

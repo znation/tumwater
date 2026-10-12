@@ -34,7 +34,8 @@
 // no-inferrable-types flags an annotation the initializer already implies (`x: string = "a"`),
 // which adds a second place to edit when the default changes;
 // consistent-indexed-object-style flags `{ [k: string]: V }` where `Record<string, V>` says
-// the same thing in one spelling.
+// the same thing in one spelling;
+// prefer-find flags `.filter(pred)[0]`, which builds a whole array to read one element.
 //
 // Import hygiene: no-import-type-side-effects flags an import whose every specifier is an
 // inline `type` (`import { type A, type B } from "./x.js"`). With verbatimModuleSyntax,
@@ -78,6 +79,7 @@ export default tseslint.config(
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/no-inferrable-types": "error",
       "@typescript-eslint/consistent-indexed-object-style": "error",
+      "@typescript-eslint/prefer-find": "error",
     },
   },
   {

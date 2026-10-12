@@ -105,7 +105,7 @@ test("defer mode sets a one-shot delay applied to the next director or role prom
   const directorQueue = path.join(root, ".tumwater", "inbox"); // the director keeps its queue at the inbox root
   const roleQueue = path.join(root, ".tumwater", "inbox", "clean");
   const firstLine = (dir: string): string => {
-    const file = fs.readdirSync(dir).filter((f) => f.endsWith(".md"))[0]!;
+    const file = fs.readdirSync(dir).find((f) => f.endsWith(".md"))!;
     return fs.readFileSync(path.join(dir, file), "utf8").split("\n")[0]!;
   };
 
