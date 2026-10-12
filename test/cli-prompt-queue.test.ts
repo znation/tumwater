@@ -380,19 +380,22 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   // queues omitted — with per-loop positions, full verbatim text, and the enqueue stamp
   // parsed from each queue filename (the age `prompt --list` shows). The expected stamps
   // come from the queue directories themselves, so the payload cannot drift from the names.
-  const fileStamps = (dir: string) =>
-    fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort().map(queueFileStamp);
-  const [dirStamp] = fileStamps(inboxDir(repo));
-  const qaStamps = fileStamps(roleInboxDir(repo, "qa"));
+  const fileNames = (dir: string) =>
+    fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort();
+  const dirFiles = fileNames(inboxDir(repo));
+  const [dirStamp] = dirFiles.map(queueFileStamp);
+  const qaFiles = fileNames(roleInboxDir(repo, "qa"));
+  const qaStamps = qaFiles.map(queueFileStamp);
+  const readmeFiles = fileNames(roleInboxDir(repo, "readme"));
   let r = await cli(repo, "prompt", "--list", "--json");
   assert.equal(r.code, 0, r.stderr);
   const payload = JSON.parse(r.stdout);
   assert.deepEqual(payload, {
     prompts: [
-      { role: "director", position: 1, text: "director task", queuedAtMs: dirStamp, notBeforeMs: null },
-      { role: "readme", position: 1, text: "docs task", queuedAtMs: fileStamps(roleInboxDir(repo, "readme"))[0], notBeforeMs: null },
-      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0], notBeforeMs: null },
-      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1], notBeforeMs: null },
+      { role: "director", position: 1, file: dirFiles[0], text: "director task", queuedAtMs: dirStamp, notBeforeMs: null },
+      { role: "readme", position: 1, file: readmeFiles[0], text: "docs task", queuedAtMs: readmeFiles.map(queueFileStamp)[0], notBeforeMs: null },
+      { role: "qa", position: 1, file: qaFiles[0], text: "qa task one", queuedAtMs: qaStamps[0], notBeforeMs: null },
+      { role: "qa", position: 2, file: qaFiles[1], text: "qa task two", queuedAtMs: qaStamps[1], notBeforeMs: null },
     ],
   });
 
@@ -410,8 +413,8 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), {
     prompts: [
-      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0], notBeforeMs: null },
-      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1], notBeforeMs: null },
+      { role: "qa", position: 1, file: qaFiles[0], text: "qa task one", queuedAtMs: qaStamps[0], notBeforeMs: null },
+      { role: "qa", position: 2, file: qaFiles[1], text: "qa task two", queuedAtMs: qaStamps[1], notBeforeMs: null },
     ],
   });
 
@@ -475,8 +478,8 @@ test("prompt --list shows each prompt's age; a hand-placed file shows none", asy
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), {
     prompts: [
-      { role: "director", position: 1, text: "patient task", queuedAtMs: stamped, notBeforeMs: null },
-      { role: "director", position: 2, text: "by hand", queuedAtMs: null, notBeforeMs: null },
+      { role: "director", position: 1, file: files[0], text: "patient task", queuedAtMs: stamped, notBeforeMs: null },
+      { role: "director", position: 2, file: "hand-placed.md", text: "by hand", queuedAtMs: null, notBeforeMs: null },
     ],
   });
 

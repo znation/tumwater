@@ -40,7 +40,7 @@ test("prompt --list --json reports every loop's queue with per-loop positions an
   enqueueRolePrompt(root, "clean", "first for clean");
   enqueueRolePrompt(root, "clean", "second for clean");
   const { stdout } = await expectOk(() => cmdPrompt(root, ["--list", "--json"]));
-  const payload = JSON.parse(stdout) as { prompts: { role: string; position: number; text: string; queuedAtMs: number | null }[] };
+  const payload = JSON.parse(stdout) as { prompts: { role: string; position: number; file: string; text: string; queuedAtMs: number | null }[] };
   assert.deepEqual(
     payload.prompts.map((p) => [p.role, p.position, p.text]),
     [
@@ -53,6 +53,9 @@ test("prompt --list --json reports every loop's queue with per-loop positions an
   const now = Date.now();
   for (const p of payload.prompts) {
     assert.ok(p.queuedAtMs !== null && p.queuedAtMs <= now && now - p.queuedAtMs < 60_000);
+    // The row also carries the queue-file basename that addresses it, the address the
+    // dashboard's Edit and the TUI Queued pane's Ctrl+E write through.
+    assert.match(p.file, /^[^/\\]+\.md$/, "the row carries its queue-file basename");
   }
 });
 

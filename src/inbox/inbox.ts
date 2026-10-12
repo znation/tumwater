@@ -229,6 +229,11 @@ export function listWideScope(root: string): string[] {
 export interface QueuedListRow {
   role: string;
   position: number;
+  /** The queue-file basename that addresses this entry, so a list-shaped surface (the TUI
+   * Queued pane's Ctrl+E edit) can read and rewrite the exact file the row names instead of
+   * a position a concurrent dequeue could invalidate — the same file-addressed policy the
+   * dashboard's Edit uses. `renderQueuedList` ignores it; `--json` carries it additively. */
+  file: string;
   text: string;
   queuedAtMs: number | null;
   notBeforeMs: number | null;
@@ -240,11 +245,11 @@ export interface QueuedListRow {
  * prints. */
 export function queuedListRows(root: string, role: string | null, validIds: string[]): QueuedListRow[] {
   const prompts: QueuedListRow[] = [];
-  const record = (r: string, position: number, e: { text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
+  const record = (r: string, position: number, e: { file: string; text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
     // The marker is stripped from the text both shapes print (stripNotBeforeMarker): the
     // prose and --json are the operator's view of what a loop will tick, and the marker is
     // plumbing, not content. Full verbatim prompt text minus plumbing, still not a preview.
-    prompts.push({ role: r, position, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
+    prompts.push({ role: r, position, file: e.file, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
   if (role !== null) {
     queuedRolePromptRecords(root, role).forEach((e, i) => record(role, i + 1, e));
     return prompts;

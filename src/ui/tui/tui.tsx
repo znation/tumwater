@@ -168,7 +168,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // The frame as the ink tree draws it (tui-app.tsx): the same composed lines the
     // hand-painted string frame joined, as clipped StatusLines — one column row per line,
     // one styled Text per span, colors through tui-app.tsx's toneColor.
-    const mode = { budget: s.budgetMode, rolePromptFor: s.rolePromptFor, deferMode: s.deferMode, defer: s.defer };
+    const mode = { budget: s.budgetMode, rolePromptFor: s.rolePromptFor, deferMode: s.deferMode, defer: s.defer, queuedEditFor: s.queuedEditFor };
     const lines: StatusLine[] = [...statusLines, []]; // a blank row below the header
     for (const [i, preview] of queued.entries()) lines.push(toneLine(`${i + 1}. ${preview}`, width));
     lines.push(tabStrip(pane, width));

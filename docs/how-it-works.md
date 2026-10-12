@@ -325,9 +325,12 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   The Queued pane lists every loop's queued prompts, reading through the same queue traversal
   and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
   per-loop numbering, or the queued-age/deferred-countdown suffix. Up/Down select a queued
-  prompt and show its full text under a header naming its loop and position, and `Ctrl+X`
+  prompt and show its full text under a header naming its loop and position, `Ctrl+X`
   cancels the selected one through the same per-role `cancelRolePrompt` path
-  `tumwater prompt --cancel` uses; Esc returns to the list.
+  `tumwater prompt --cancel` uses, and `Ctrl+E` rewrites the selected one in place through the
+  same `readQueuedPromptBody`/`editQueuedFile` pair the dashboard's Queued tab Edit uses
+  (`tumwater prompt --edit` at the CLI), carrying the entry's position, enqueue stamp,
+  deferral marker, and attached images over the rewrite; Esc returns to the list.
   `Ctrl+F` toggles the whole fleet's pause through the same marker `tumwater pause`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a

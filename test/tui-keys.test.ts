@@ -15,7 +15,8 @@ import { renderRoleChange } from "../src/change/change-render.js";
 import { enqueueLanding, readLandingQueue } from "../src/landing/landing-queue.js";
 import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
-import { notBeforeMarker } from "../src/inbox/prompt-not-before.js";
+import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
+import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
@@ -1223,6 +1224,83 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   assert.equal(keys.state().queuedRows.length, 0);
   assert.equal(keys.state().selectedQueued, null, "an emptied queue clears the selection");
   assert.equal(keys.state().paneCache, "");
+});
+
+test("the Queued pane edits the selected prompt in place through editQueuedFile", () => {
+  const root = makeRoot();
+  const deferral = Date.now() + 3_600_000;
+  enqueuePrompt(root, "director text");
+  const file = enqueueRolePrompt(root, "clean", "clean first", deferral);
+  const base = path.basename(file);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, [], false);
+  for (const ch of "draft") keys.handleKey(ch, { name: ch });
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { name: "down" }); // the director row
+  keys.handleKey(undefined, { name: "down" }); // the deferred clean row
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base });
+  assert.equal(keys.state().input, "clean first", "the line is prefilled with the body minus the marker");
+  assert.equal(keys.state().cursor, "clean first".length);
+  assert.match(keys.state().flash!, /editing queued prompt #1 for clean/);
+
+  // Whitespace-only input flashes and stays in the editor.
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(" ", { name: " " });
+  keys.handleKey(undefined, { name: "return" });
+  assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base }, "an empty body stays in the editor");
+  assert.match(keys.state().flash!, /prompt text is empty/);
+
+  // Enter writes the new body back to the same file; the deferral marker survives.
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  for (const ch of "clean edited") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().queuedEditFor, null, "a saved edit leaves the editor");
+  assert.match(keys.state().flash!, /edited queued prompt for clean/);
+  const row = keys.state().queuedRows.find((r) => r.role === "clean")!;
+  assert.equal(row.file, base, "the same queue file was rewritten in place");
+  assert.equal(row.position, 1, "the entry keeps its position");
+  assert.equal(row.text, "clean edited");
+  const raw = fs.readFileSync(path.join(root, ".tumwater", "inbox", "clean", base), "utf8");
+  assert.equal(notBeforeMs(raw), deferral, "the deferral marker survives the rewrite");
+
+  // Re-enter and Esc restores the saved director draft without writing.
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().input, "clean edited");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().queuedEditFor, null);
+  assert.equal(keys.state().input, "draft", "Esc restores the saved director draft");
+  assert.equal(readQueuedPromptBody(root, "clean", base), "clean edited", "Esc writes nothing");
+});
+
+test("the Queued edit editor is inert to Ctrl+T and a gone file flashes on save", () => {
+  const root = makeRoot();
+  const file = enqueueRolePrompt(root, "clean", "keep me");
+  const base = path.basename(file);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  assert.equal(keys.state().reportSince, null);
+  keys.handleKey(undefined, { ctrl: true, name: "e" }); // list mode: the report window advances
+  assert.equal(keys.state().reportSince, "1h", "Ctrl+E with no selection advances the report window");
+
+  keys.handleKey(undefined, { name: "down" }); // select the clean row
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base });
+
+  // Ctrl+T leaves the editor without writing; the queued body is untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().queuedEditFor, null, "Ctrl+T leaves the queued editor");
+  assert.equal(readQueuedPromptBody(root, "clean", base), "keep me", "Ctrl+T writes nothing");
+
+  // Re-enter, remove the file from disk, and Enter flashes the gone notice.
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  fs.unlinkSync(path.join(root, ".tumwater", "inbox", "clean", base));
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().queuedEditFor, null, "a gone file leaves the editor");
+  assert.match(keys.state().flash!, /queued prompt was already gone/);
 });
 
 test("the Queued pane resets the selected row's within-body scroll when the selection moves", () => {
