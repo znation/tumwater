@@ -131,13 +131,17 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
  * its base role so `feature-2` joins `feature`), commits from commitsByRole (already base-role
  * keyed). `landed` is [role, cost per commit, commits] for roles with both, ranked by cost per
  * commit desc then name asc; `idle` is roles that spent and landed nothing, ranked by spend.
- * Landing spend (the reviewer's) and notional subscription spend stay out, matching
- * `**Cost by role:**`; a role with commits but no priced spend appears in neither list. */
-function costPerCommitPairs(series: ReportDay[]): { landed: [string, number, number][]; idle: [string, number][] } {
+ * Landing spend (the reviewer's) and notional subscription spend stay out by default, matching
+ * `**Cost by role:**` (`pick` selects another per-loop-id spend map, e.g. notionalByRole); a
+ * role with commits but no spend in the picked map appears in neither list. */
+function costPerCommitPairs(
+  series: ReportDay[],
+  pick: (d: ReportDay) => Record<string, number> = (d) => d.costByRole,
+): { landed: [string, number, number][]; idle: [string, number][] } {
   const cost: Record<string, number> = {};
   const commits: Record<string, number> = {};
   for (const d of series) {
-    for (const [id, c] of Object.entries(d.costByRole)) addTo(cost, baseRoleOf(id), c);
+    for (const [id, c] of Object.entries(pick(d))) addTo(cost, baseRoleOf(id), c);
     for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(commits, role, n);
   }
   const landed: [string, number, number][] = [];
@@ -150,6 +154,15 @@ function costPerCommitPairs(series: ReportDay[]): { landed: [string, number, num
   }
   landed.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   return { landed, idle: rankCountEntries(idleCost) };
+}
+
+/** One `**<label>:** …` line from costPerCommitPairs output; `-` when there is nothing. */
+function costPerCommitLine(label: string, pairs: ReturnType<typeof costPerCommitPairs>): string {
+  const parts = [
+    ...pairs.landed.map(([r, per, n]) => `${r} — ${usd(per)} (${n})`),
+    ...pairs.idle.map(([r, c]) => `${r} — ${usd(c)}, no commits`),
+  ];
+  return `**${label}:** ${parts.length === 0 ? "-" : parts.join(" · ")}`;
 }
 
 /** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
@@ -192,12 +205,13 @@ export function renderReportMarkdown(data: ReportData): string {
   // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
-  const cpc = costPerCommitPairs(data.series);
-  const cpcParts = [
-    ...cpc.landed.map(([r, per, n]) => `${r} — ${usd(per)} (${n})`),
-    ...cpc.idle.map(([r, c]) => `${r} — ${usd(c)}, no commits`),
-  ];
-  lines.push(`**Cost per commit:** ${cpcParts.length === 0 ? "-" : cpcParts.join(" · ")}`);
+  lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
+  // Subscription spend is notional: its own two lines, only when the window has any.
+  if ((t.notionalCostUsd ?? 0) > 0) {
+    const notionalOf = (d: ReportDay): Record<string, number> => d.notionalByRole ?? {};
+    lines.push(rankedRoleLine("Notional by role", rankedRoleTotals(data.series, notionalOf).filter(([, c]) => c > 0), usd));
+    lines.push(costPerCommitLine("Notional per commit", costPerCommitPairs(data.series, notionalOf)));
+  }
   // Commits per backlog item is day-granular backlog data (features done + bugs fixed), so it
   // belongs only to the day report; zero items means the denominator is absent, not NaN.
   const items = t.featuresDone + t.bugsFixed;

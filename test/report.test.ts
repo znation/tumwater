@@ -527,3 +527,24 @@ test("renderReportMarkdown prints each role's cost per landed commit, folding in
   const free = render([day("2026-09-10", {}, { docs: 4 })]);
   assert.ok(free.split("\n").includes("**Cost per commit:** -"), free);
 });
+
+test("renderReportMarkdown prints notional spend by role and per commit only when the window has any", () => {
+  const day = (date: string, extra: object) => ({
+    date, tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const render = (series: ReportData["series"], notionalCostUsd?: number) =>
+    renderReportMarkdown({
+      days: series.length, from: "2026-09-10", to: "2026-09-11", series,
+      totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0, ...(notionalCostUsd ? { notionalCostUsd } : {}) },
+      coversFullWindow: true,
+    });
+  const out = render([
+    day("2026-09-10", { notionalByRole: { feature: 0.4, plan: 0.5 }, commitsByRole: { feature: 2 } }),
+    day("2026-09-11", { notionalByRole: { "feature-2": 0.2 }, commitsByRole: { feature: 1 } }),
+  ], 1.1).split("\n");
+  assert.ok(out.includes("**Notional by role:** plan — $0.50 · feature — $0.40 · feature-2 — $0.20"), out.join("\n"));
+  assert.ok(out.includes("**Notional per commit:** feature — $0.20 (3) · plan — $0.50, no commits"), out.join("\n"));
+  assert.ok(out.includes("**Cost per commit:** -"));
+  const none = render([day("2026-09-10", {})]).split("\n");
+  assert.ok(!none.some((l) => l.startsWith("**Notional")));
+});

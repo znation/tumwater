@@ -322,6 +322,8 @@ export interface ReportDay {
   landingTokens?: number; // their output tokens, also included in tokensOut above
   landingCostUsd?: number; // their cost, also included in costUsd above
   notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
+  /** Subscription spend by loop id, never in costByRole; absent when the day has none. */
+  notionalByRole?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the landing share included), the
@@ -504,6 +506,7 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.costUsd = fold.costUsd;
       // Only set when nonzero, so zero-notional days keep their exact pre-feature shape.
       if (fold.notionalCostUsd > 0) day.notionalCostUsd = fold.notionalCostUsd;
+      if (Object.keys(fold.notionalByRole).length > 0) day.notionalByRole = fold.notionalByRole;
       day.landingRuns = fold.landingRuns;
       day.landingTokens = fold.landingTokens;
       day.landingCostUsd = fold.landingCostUsd;
@@ -526,7 +529,10 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.maintenanceCommits = tier === "maintenance" ? commits : 0;
       day.costUsd = roleSum(fold.costByRole, base);
       const notional = roleSum(fold.notionalByRole, base);
-      if (notional > 0) day.notionalCostUsd = notional;
+      if (notional > 0) {
+        day.notionalCostUsd = notional;
+        day.notionalByRole = narrowToRole(fold.notionalByRole, base);
+      }
     }
   }
 

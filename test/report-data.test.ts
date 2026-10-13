@@ -749,6 +749,19 @@ test("subscription runs total as notional spend, never in the cost totals", () =
   assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$30\.00 notional/);
 });
 
+test("collectReport carries notionalByRole per loop id and narrows it for a role scope", () => {
+  const root = tmpdir();
+  const tick = (loop: string, n: number) =>
+    JSON.stringify({ ts: at(0), loop, type: "tick_end", tick: n, result: "changed", notionalCostUsd: 2, billing: "subscription" });
+  writeEvents(root, [tick("feature", 1), tick("feature-2", 2), tick("plan", 3)]);
+  const day = collectReport(root, 1).series[0];
+  assert.deepEqual(day?.notionalByRole, { feature: 2, "feature-2": 2, plan: 2 });
+  assert.deepEqual(collectReport(root, 1, "feature").series[0]?.notionalByRole, { feature: 4 });
+  const empty = tmpdir();
+  writeEvents(empty, [JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed" })]);
+  assert.equal("notionalByRole" in (collectReport(empty, 1).series[0] ?? {}), false);
+});
+
 // A subscription landing's API-equivalent spend joins the notional line, while only the real
 // share reaches the budgeted cost totals (plans/agent-backends.md part 6a).
 test("a subscription landing's spend is notional, never in the cost totals", () => {

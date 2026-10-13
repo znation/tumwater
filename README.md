@@ -126,7 +126,7 @@ friends) and per-backend `agents.claude.bin`/`agents.claude.args` overrides; a s
 provider names a backend id (`claude/claude-opus-5-5`) always routes there. A claude run's
 cost comes from the CLI's own price table. A run paid by a claude.ai subscription is exempt
 from the daily dollar cap: its API-equivalent cost is tracked as notional spend and shown on
-its own line in `tumwater report`, never in the cap; a run billed to an API key — or one that
+its own line in `tumwater report` (the day report also breaks it down by role and per landed commit), never in the cap; a run billed to an API key — or one that
 saw `isUsingOverage` — counts against the cap like a priced pi model. A subscription claude
 model with no overage also counts as free for the budget badge and fallback decisions, so at
 the cap it stays put while priced pi seams move to their fallback. A rejected claude.ai
