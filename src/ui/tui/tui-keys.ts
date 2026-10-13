@@ -43,9 +43,12 @@ import {
   pauseRole,
   resumeFleet,
   resumeRole,
+  scheduledStopAt,
 } from "../../fleet/fleet-state.js";
 import {
+  cancelScheduledStopMessage,
   requestAbort,
+  requestScheduledStop,
   requestWake,
   cancelWakes,
   rolePauseMessage,
@@ -66,6 +69,7 @@ import {
   parsePauseInput,
   parseRolePauseInput,
   parseRoleWakeInput,
+  parseStopInInput,
   parseRolePromptInput,
 } from "./tui-input.js";
 import {
@@ -268,6 +272,8 @@ interface TuiKeysState {
   pauseEditRole: string | null;
   /** the per-loop editor schedules a wake (Ctrl+W) rather than a pause (Ctrl+P) */
   pauseEditWake: boolean;
+  /** the fleet editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F) */
+  pauseEditStop: boolean;
   /** The pending defer delay as a human label (durationLabel), or null when the next prompt
    * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
   defer: string | null;
@@ -427,6 +433,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let pauseEditMode = false;
   let pauseEditRole: string | null = null;
   let pauseEditWake = false;
+  let pauseEditStop = false;
   let pauseSavedInput = "";
   let pauseSavedCursor = 0;
   // The prompt line's session history (tui-prompt-history.ts's rules): every successfully submitted
@@ -618,6 +625,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     pauseEditMode = false;
     pauseEditRole = null;
     pauseEditWake = false;
+    pauseEditStop = false;
     input = pauseSavedInput;
     cursor = pauseSavedCursor;
     promptHistory = resetPromptRecall(promptHistory);
@@ -899,6 +907,37 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           input = "";
           cursor = 0;
           flashMessage('pause the fleet: [duration] [reason], e.g. "2h deploy freeze" (empty pauses until resumed) — Enter to pause, Esc to cancel');
+        }
+      } catch (err) {
+        flashError(err);
+      }
+      deps.requestRender();
+      return;
+    }
+    if (key.ctrl && key.name === "q" && !budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor) {
+      // Ctrl+Q (mnemonic: **q**uit later) schedules or cancels a graceful fleet stop through
+      // the same requestScheduledStop/cancelScheduledStopMessage cores `tumwater stop --in` /
+      // `--cancel` and the dashboard use. A pending stop cancels at once; otherwise it opens
+      // the duration editor. A second press closes any open pause/wake/stop editor unwritten.
+      if (pauseEditMode) {
+        exitPauseEditMode();
+        deps.requestRender();
+        return;
+      }
+      try {
+        if (scheduledStopAt(root) !== undefined) {
+          flashMessage(cancelScheduledStopMessage(root));
+        } else {
+          const settled = settlePromptRecall(promptHistory, input, cursor);
+          promptHistory = settled.history;
+          pauseSavedInput = settled.text;
+          pauseSavedCursor = settled.cursor;
+          pauseEditMode = true;
+          pauseEditRole = null;
+          pauseEditStop = true;
+          input = "";
+          cursor = 0;
+          flashMessage('stop the fleet later: a duration, e.g. "2h" — in-flight ticks finish, then the fleet exits — Enter to schedule, Esc to cancel');
         }
       } catch (err) {
         flashError(err);
@@ -1711,9 +1750,22 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         // Enter in pause-edit mode parses "[duration] [reason]" and writes the same marker
         // `tumwater pause --for/--reason` does. An invalid entry flashes and STAYS in the editor.
         const target = pauseEditRole;
+        const stopParsed = pauseEditStop ? parseStopInInput(input) : null;
         const wakeParsed = pauseEditWake && target !== null ? parseRoleWakeInput(input) : null;
         const parsed = target !== null ? parseRolePauseInput(input) : parsePauseInput(input);
-        if (wakeParsed) {
+        if (stopParsed) {
+          if (!stopParsed.ok) {
+            flashMessage(stopParsed.error);
+          } else {
+            try {
+              const result = requestScheduledStop(root, stopParsed.inMs);
+              exitPauseEditMode();
+              flashMessage(result.ok ? result.message : `error: ${result.error}`);
+            } catch (err) {
+              flashError(err);
+            }
+          }
+        } else if (wakeParsed) {
           if (!wakeParsed.ok) {
             flashMessage(wakeParsed.error);
           } else {
@@ -2001,6 +2053,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         pauseEditMode,
         pauseEditRole,
         pauseEditWake,
+        pauseEditStop,
         defer: deferMs === null ? null : durationLabel(deferMs),
         view,
         scopeRole,

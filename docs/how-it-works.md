@@ -358,7 +358,9 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   fleet resumes at once, through the same marker `tumwater pause --for/--reason`/`resume`
   write: loops start no new ticks, in-flight ticks finish, and the director still runs your
   prompts — so an operator watching the terminal can hold or release the fleet without a
-  second terminal. On the Usage and Failures panes, `Ctrl+G` cycles the base-role report scope
+  second terminal. `Ctrl+Q` (quit later) opens a duration editor (`2h`; empty is refused, so the
+  key never means "stop now") that schedules a graceful fleet stop through the marker
+  `tumwater stop --in` writes, and cancels the pending stop at once when one is scheduled. On the Usage and Failures panes, `Ctrl+G` cycles the base-role report scope
   through the fleet and each base role, the same scope `tumwater report --role` and the
   dashboard's Usage/Failures views take; the tab strip names it (`Usage: <role>`) and the hint
   line shows the current scope (`scope: fleet` or `scope: <role>`). `Ctrl+E` cycles a session-only

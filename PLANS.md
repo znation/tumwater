@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### The TUI schedules and cancels a graceful fleet stop with Ctrl+Q (`tumwater stop --in` / `--cancel` parity) (planned 2026-10-12 by plan; independent of every other entry; follows the landed "The dashboard schedules and cancels a graceful fleet stop" entry in Done)
+## Done
+
+### The TUI schedules and cancels a graceful fleet stop with Ctrl+Q (`tumwater stop --in` / `--cancel` parity) (planned 2026-10-12 by plan; independent of every other entry; follows the landed "The dashboard schedules and cancels a graceful fleet stop" entry in Done) — done 2026-10-12
 
 **Goal.** `tumwater stop --in 2h` / `stop --cancel` and the dashboard's "Stop the fleet later" control can set and drop a scheduled stop. The TUI shows the resulting `stops in …` badge (through `runWindowBadge` in `src/ui/status-render.ts`) but cannot set or drop it. An operator watching the terminal should be able to say "wind down in 2 hours", or take that back, without a second terminal. This is the same reasoning that gave the TUI Ctrl+F for the fleet pause.
 
@@ -75,8 +77,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
   - Ctrl+Q during a `/` search, or while the budget editor (Ctrl+B) is open, opens no `stop in ›` editor and writes no marker.
 - `test/tui-frame.test.ts`: `hintLine` on the activity view names `Ctrl+Q`. With `pauseEditMode: true, pauseEditStop: true`, `promptPrefix` renders `stop in` and `hintLine` renders `schedule stop`.
 - The existing Ctrl+F and Ctrl+W tests in `test/tui-operator-keys.test.ts` pass unchanged.
-
-## Done
 
 ### The dashboard schedules and cancels a graceful fleet stop (`tumwater stop --in` / `--cancel` parity) (done 2026-10-12; planned 2026-10-12 by plan; independent of every other entry; follows the landed "`tumwater stop --in <duration>`" entry in Done)
 

@@ -8,6 +8,7 @@ import {
   parsePauseInput,
   parseRolePauseInput,
   parseRoleWakeInput,
+  parseStopInInput,
   parseRolePromptInput,
   renderInputView,
   tuiTerminalError,
@@ -377,4 +378,11 @@ test("parseRoleWakeInput wakes now when empty, schedules a duration, cancels on 
   const bad = parseRoleWakeInput("soon");
   assert.equal(bad.ok, false);
   assert.match(!bad.ok ? bad.error : "", /a loop wake takes a duration/);
+});
+
+test("parseStopInInput takes a duration, refuses empty and junk, and caps at 90d", () => {
+  assert.deepEqual(parseStopInInput("2h"), { ok: true, inMs: 7_200_000 });
+  for (const bad of ["", "soon"]) assert.equal(parseStopInInput(bad).ok, false);
+  const over = parseStopInInput("91d");
+  assert.ok(!over.ok && over.error.includes("capped at 90d"));
 });

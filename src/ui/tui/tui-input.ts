@@ -237,6 +237,16 @@ export function parseRoleWakeInput(
   return { ok: true, inMs: ms };
 }
 
+/** Parse the TUI's Ctrl+Q scheduled-stop line: a duration, same 90d cap `tumwater stop --in`
+ * enforces. Empty is refused on purpose — an immediate stop has its own command, and this key
+ * must never mean "stop now". */
+export function parseStopInInput(text: string): { ok: true; inMs: number } | { ok: false; error: string } {
+  const ms = parseDurationMs(text.trim());
+  if (ms === null) return { ok: false, error: "a scheduled stop takes a duration like 45m or 2h — Esc to cancel" };
+  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "stop is capped at 90d" };
+  return { ok: true, inMs: ms };
+}
+
 /** Parse the TUI's Ctrl+R role-prompt line: the trimmed text when non-empty, otherwise an
  * error so the flash can show it and the editor stays open for a fix — whitespace-only input
  * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc

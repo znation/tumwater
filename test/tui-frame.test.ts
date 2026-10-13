@@ -107,7 +107,7 @@ test("the tab strip names every view and brackets the current one", () => {
 
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor, answerFor }, 300));
-  assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: fleet · / search · Ctrl+T next view · Ctrl+F pause fleet · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
+  assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: fleet · / search · Ctrl+T next view · Ctrl+F pause fleet · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
   // The Activity pane names its exact-loop scope and its text search, the raw id or the fleet
   // and "search" or the active pattern, matching the History pane's conventions.
   assert.match(hint({ kind: "activity", role: "feature", grep: null }), /Ctrl\+G scope: feature · \/ search/);
@@ -183,7 +183,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   ]) assert.match(plain(hintLine(v, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+D quit/);
   // Keys stand out from what they do.
   const spans = hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300);
-  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
+  assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+D", "Ctrl+L"]);
 });
 
 test("pause-edit mode shows its own hint keys and prompt prefix", () => {
@@ -274,4 +274,12 @@ test("the answer editor names Enter record answer, drops the defer hint, and pre
   assert.doesNotMatch(hint, /defer/);
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: { position: 2, title: "q" } })), "answer #2 › ");
   assert.match(plain(hintLine({ kind: "backlog" }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300)), /Ctrl\+A answer question/);
+});
+
+test("the activity hint names Ctrl+Q and the stop editor reads `stop in ›` with a schedule-stop hint", () => {
+  const base = { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null };
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, base, 300)), /Ctrl\+Q stop later/);
+  const edit = { ...base, pauseEditMode: true, pauseEditStop: true };
+  assert.match(plain(promptPrefix(edit)), /stop in/);
+  assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, edit, 300)), /schedule stop/);
 });

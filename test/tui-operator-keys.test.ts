@@ -1,6 +1,6 @@
 /** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor on an unpaused loop, an immediate resume on a paused one) and
  * its fleet-pause interplay note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's
- * wake editor, and the keys' inertness outside transcript views and in budget mode.
+ * wake editor, Ctrl+Q's scheduled fleet stop, and the keys' inertness outside transcript views and in budget mode.
  * Like the other topic-named slices (loop-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
  * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the
@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isFleetPaused, pauseFleet, pausedRoles, standingFleetPause } from "../src/fleet/fleet-state.js";
+import { isFleetPaused, scheduledStopAt, pauseFleet, pausedRoles, standingFleetPause } from "../src/fleet/fleet-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
@@ -359,5 +359,75 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     tui.key(undefined, "p", { ctrl: true });
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /error: /);
+  });
+});
+
+test("Ctrl+Q opens the stop editor, schedules a stop on Enter, and cancels a pending one at once", async () => {
+  const repo = await makeTuiRepo();
+  writeOrchestratorMarker(repo, ["clean"]);
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "q", { ctrl: true });
+    assert.match(tui.lines().at(-1) ?? "", /^stop in ›/);
+    assert.equal(scheduledStopAt(repo), undefined);
+    for (const ch of "2h") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    const at = scheduledStopAt(repo);
+    assert.ok(at !== undefined && Math.abs(at - (Date.now() + 7_200_000)) < 60_000);
+    assert.match(tui.lastFrame(), /stop scheduled in 2h/);
+
+    tui.key(undefined, "q", { ctrl: true });
+    assert.equal(scheduledStopAt(repo), undefined);
+    assert.match(tui.lastFrame(), /scheduled stop cancelled/);
+    assert.doesNotMatch(tui.lines().at(-1) ?? "", /^stop in ›/);
+  });
+});
+
+test("Ctrl+Q, '2h', Enter without a harness flashes the refusal and writes no marker", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "q", { ctrl: true });
+    for (const ch of "2h") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /error: no harness is running/);
+    assert.equal(scheduledStopAt(repo), undefined);
+  });
+});
+
+test("an empty or 91d stop entry flashes the parser error and keeps the editor; Esc restores the draft; a second Ctrl+Q closes it", async () => {
+  const repo = await makeTuiRepo();
+  writeOrchestratorMarker(repo, ["clean"]);
+  await withTui(repo, async (tui) => {
+    for (const ch of "draft") tui.key(ch, ch);
+    tui.key(undefined, "q", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /a scheduled stop takes a duration/);
+    for (const ch of "91d") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /stop is capped at 90d/);
+    assert.match(tui.lines().at(-1) ?? "", /^stop in ›/);
+    assert.equal(scheduledStopAt(repo), undefined);
+    tui.key(undefined, "escape");
+    assert.match(tui.lines().at(-1) ?? "", /^director › draft/);
+    tui.key(undefined, "q", { ctrl: true });
+    tui.key(undefined, "q", { ctrl: true });
+    assert.doesNotMatch(tui.lines().at(-1) ?? "", /^stop in ›/);
+    assert.equal(scheduledStopAt(repo), undefined);
+  });
+});
+
+test("Ctrl+Q is inert during a / search and while the budget editor is open", async () => {
+  const repo = await makeTuiRepo();
+  writeOrchestratorMarker(repo, ["clean"]);
+  await withTui(repo, async (tui) => {
+    tui.key("/", "/");
+    tui.key(undefined, "q", { ctrl: true });
+    assert.doesNotMatch(tui.lines().at(-1) ?? "", /^stop in ›/);
+    tui.key(undefined, "escape");
+    tui.key(undefined, "t", { ctrl: true });
+    tui.key(undefined, "b", { ctrl: true });
+    tui.key(undefined, "q", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.doesNotMatch(tui.lines().at(-1) ?? "", /^stop in ›/);
+    assert.equal(scheduledStopAt(repo), undefined);
   });
 });
