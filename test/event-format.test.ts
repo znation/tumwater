@@ -763,6 +763,12 @@ test("formatEvent renders prompt_edited plainly with the preview", () => {
   assert.ok(!bare.includes("undefined"), `corrupt preview must not render undefined: ${bare}`);
 });
 
+test("formatEvent renders prompt_taken plainly with the tick and preview", () => {
+  const line = formatEvent({ ts: 0, loop: "perf", type: "prompt_taken", tick: 7, preview: "fix x" });
+  assert.match(line, /user prompt taken by tick #7: fix x/);
+  assert.ok(!line.includes("warning"), `a taken prompt is routine: ${line}`);
+});
+
 // The root install's dep_install event (build/dep-install.ts syncRootInstall): the operator's
 // line for the checkout catching up with main's lockfile — routine when it passed, with the
 // failed packages and reason carried when it did not. Both shapes belong in the feed's tests

@@ -202,6 +202,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "prompt_edited":
       // Routine operation (the user corrected a queued prompt), not a warning.
       return `user prompt edited: ${textOr(e.preview)}`;
+    case "prompt_taken":
+      // Routine: a tick dequeued the operator's request to run it.
+      return `user prompt taken by tick #${eventTick(e)}: ${textOr(e.preview)}`;
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.

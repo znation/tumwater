@@ -5,7 +5,8 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { promptPreview } from "../inbox/inbox.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { LoopPi } from "./loop-pi.js";
 import {
@@ -223,6 +224,9 @@ export class LoopRunner {
   private tickPrompt(agent?: string): string | null {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
     if (assembled === null) return null;
+    if (assembled.userPrompt !== null) {
+      logEventBestEffort(this.root, { loop: this.role, type: "prompt_taken", tick: this.state.ticks, preview: promptPreview(assembled.userPrompt) });
+    }
     this.pending.record(assembled.userPrompt, assembled.userPromptFile);
     return assembled.prompt;
   }

@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### A queued prompt's delivery is logged: a `prompt_taken` event names the tick that took it (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/gui`, or `src/ui/tui` file. Today a queued prompt logs `prompt_enqueued` (`src/inbox/inbox-submit.ts`), `prompt_cancelled`, and `prompt_edited`, but nothing when a tick dequeues it. `assembleTickPrompt` in `src/tick/tick-prompt.ts` pops it with `dequeuePromptEntry`/`dequeueRolePromptEntry`, and `Loop.tickPrompt` in `src/loop/loop.ts` hands it to `PendingPrompt.record` without logging anything. So `tumwater logs`, the TUI/dashboard feeds, and `tumwater tick <role> <n>` cannot say which tick ran the operator's request. The prompt just drops off `tumwater prompt --list`. A grep for `"prompt_` in `src/events/events.ts` finds only `prompt_enqueued`, `prompt_cancelled`, and `prompt_edited`)
+## Done
+
+### A queued prompt's delivery is logged: a `prompt_taken` event names the tick that took it (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/gui`, or `src/ui/tui` file. Today a queued prompt logs `prompt_enqueued` (`src/inbox/inbox-submit.ts`), `prompt_cancelled`, and `prompt_edited`, but nothing when a tick dequeues it. `assembleTickPrompt` in `src/tick/tick-prompt.ts` pops it with `dequeuePromptEntry`/`dequeueRolePromptEntry`, and `Loop.tickPrompt` in `src/loop/loop.ts` hands it to `PendingPrompt.record` without logging anything. So `tumwater logs`, the TUI/dashboard feeds, and `tumwater tick <role> <n>` cannot say which tick ran the operator's request. The prompt just drops off `tumwater prompt --list`. A grep for `"prompt_` in `src/events/events.ts` finds only `prompt_enqueued`, `prompt_cancelled`, and `prompt_edited`) (done 2026-10-12)
 
 **Goal.** When a real tick dequeues a queued prompt (the director's or a per-role one), the event log records it under that loop, with the tick number and the prompt's preview. The tick's trail then shows which request it ran.
 
@@ -51,7 +53,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - `formatEvent({ ts: 0, loop: "perf", type: "prompt_taken", tick: 7, preview: "fix x" })` returns a line containing `user prompt taken by tick #7: fix x`. If `test/event-format.test.ts` has a list that renders every type, it includes `prompt_taken`.
 - The project's check (`npm run test`) passes.
 
-## Done
 
 ### A landed refusal note pages the operator: a new `entry_refused` event joins the notify allowlist (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above; done 2026-10-12)
 

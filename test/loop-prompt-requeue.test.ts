@@ -12,6 +12,9 @@ import { makeLoopRunner, pinWorktreeAsSlot } from "./fixtures/loop-fixtures.js";
 import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
+import { defaultConfig } from "../src/config/config.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
 // criterion (b), red-gate arm: a per-role prompt is dequeued
@@ -184,4 +187,30 @@ test("a tick that throws after dequeuing the prompt re-queues it instead of losi
       "the dequeued prompt is back in the queue, not lost",
     );
   });
+});
+
+test("a tick that dequeues a role prompt logs one prompt_taken naming the tick", async () => {
+  const repo = await initializedRepo();
+  await withPi(`printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
+    enqueueRolePrompt(repo, "perf", "fix the flubbernator");
+    const runner = makeLoopRunner(repo, "perf");
+    await runner.tick();
+    const taken = eventsOfType(repo, "prompt_taken");
+    assert.equal(taken.length, 1);
+    assert.equal(taken[0]!.loop, "perf");
+    assert.match(String(taken[0]!.preview), /flubbernator/);
+    const start = eventsOfType(repo, "tick_start");
+    assert.equal(taken[0]!.tick, start[start.length - 1]!.tick);
+    await runner.tick();
+    assert.equal(eventsOfType(repo, "prompt_taken").length, 1, "an empty queue logs nothing");
+  });
+});
+
+test("assembling the preview leaves the prompt queued and logs no prompt_taken", async () => {
+  const repo = await initializedRepo();
+  enqueueRolePrompt(repo, "perf", "fix the flubbernator");
+  const runner = makeLoopRunner(repo, "perf");
+  assembleTickPrompt({ root: repo, config: defaultConfig(), role: "perf", state: runner.state, preview: true });
+  assert.equal(eventsOfType(repo, "prompt_taken").length, 0);
+  assert.deepEqual(queuedRolePrompts(repo, "perf"), ["fix the flubbernator"]);
 });

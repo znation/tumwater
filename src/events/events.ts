@@ -47,6 +47,7 @@ export interface HarnessEvent {
     | "prompt_enqueued"
     | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
     | "prompt_edited" // a queued prompt's text was rewritten in place (tumwater prompt --edit)
+    | "prompt_taken" // a tick dequeued a queued user prompt to run it (carries `tick` and `preview`)
     | "counters_reset"
     | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume" // the interrupted tick's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff)
