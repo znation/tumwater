@@ -6,7 +6,52 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `plan|bug --edit <n>` with no text opens the entry in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12)
+
+**Goal.** Revising a multi-line plan from the CLI today takes three steps: `tumwater plan --show 2 > f.md`,
+edit `f.md`, then `tumwater plan --edit 2 --file f.md`. `git commit` and `crontab -e` do this in one
+step. When `--edit <n>` gets neither prose nor `--file`, open the entry (rendered the way `--show`
+prints it) in the operator's editor, then write the saved buffer back through the existing
+`--file` path. Today that form only fails with `plan needs a title` / `bug needs a symptom`, so
+no working invocation changes meaning.
+
+**Approach.**
+1. New module `cli-editor.ts` under `src/cli/` exporting `editInEditor(initial: string, fileName: string): string`.
+   - Editor choice: `process.env.VISUAL || process.env.EDITOR`, trimmed. If neither is set, `fail("no editor: set $VISUAL or $EDITOR, or pass the new text or --file <path>")`. No `vi` fallback, so a script without a TTY can never hang.
+   - Write `initial` (plus a trailing `\n`) to `fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-edit-"))/<fileName>`.
+   - Run `spawnSync("sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" })`. This is git's convention, so an editor value with arguments such as `code -w` works.
+   - On spawn error, a non-zero status, or a signal: `fail("editor exited with status <n|signal>; nothing changed")`.
+   - Return the file's text, and remove the temp dir in a `finally`.
+2. `src/backlog/backlog-write.ts`:
+   - Pull the prose rendering out of `showAndAnnounce` (title, blank line, body; the title alone when the body is empty) into a private `renderShownEntry(shown)`, and have `showAndAnnounce` call it.
+   - Narrow `editAndAnnounce`'s `command` parameter to `"bug" | "plan"`. Both call sites in `src/cli.ts` already pass those literals.
+   - In `editAndAnnounce`, when `path === null && positionals.length === 0`, after the position check and `requireReadyRepo`:
+     - Set `before = renderShownEntry(showEntry(root, command, position))`. An out-of-range position fails here, before any editor launches.
+     - Set `after = editInEditor(before, `${command}-${position}.md`)`.
+     - If `after.trim() === before.trim()`: write and commit nothing, then print `unchanged <command> <n>: <title>` (with `--json`, `{file, title, changed: false}`) and exit 0. This matches the invariants register's "a refused or no-op write commits nothing".
+     - Otherwise call `editText(position, after)` and carry on down the existing commit/confirm path unchanged.
+   - An emptied buffer therefore fails through `editPlanFromText`/`editBugFromText`'s title check and writes nothing, as git aborts on an empty message.
+   - Update `editAndAnnounce`'s doc comment.
+3. `test/helpers/cli-harness.ts` `cliWithEnv`: after `childEnv`, delete `VISUAL` and `EDITOR` from `merged` unless the `env` override supplies them, for the same hermeticity reason as `SUPERVISED_ENV`. Otherwise a developer's own editor would open inside the suite.
+4. Docs:
+   - `src/cli/help.ts`: add `tumwater plan --edit <n> [--json]` and `tumwater bug --edit <n> [--json]` lines ("with neither text nor --file, open the Nth entry as --show prints it in $VISUAL or $EDITOR and write it back on save; an unchanged buffer writes nothing").
+   - `docs/cli.md`: one clause in the "Steer the project" row next to `--edit <n> --file`.
+   - Completion derives from the help text, so it needs no edit. Check `test/backlog-write-edit.test.ts` "help topics name the --edit forms" still passes.
+
+**Files touched.** a new `cli-editor.ts` under `src/cli/`, `src/backlog/backlog-write.ts`, `src/cli/help.ts`, `docs/cli.md`,
+`test/helpers/cli-harness.ts`, `test/backlog-write-edit.test.ts` (or a new `backlog-write-edit-editor.test.ts` beside it).
+
+**Acceptance criteria.**
+- Tests use an editor stub: a node script written under a `mkdtemp` dir, run with `EDITOR="<process.execPath>" "<script>"` via `cliWithEnv`. They cover each case below:
+  - `plan --edit 1` with a stub that rewrites the title and a body line updates PLANS.md in place. The original stamp and the neighbouring entries are kept, and the confirmation reads `edited plan in PLANS.md: <new title>`. The stub also asserts that the file it received equals `plan --show 1`'s stdout.
+  - `bug --edit 1` round-trips a bug's title and body the same way.
+  - A stub that leaves the file alone prints `unchanged plan 1: …`, exits 0, and leaves PLANS.md byte-identical.
+  - A stub that exits 1, and a stub that empties the file, each exit non-zero and leave the file byte-identical.
+  - With neither `VISUAL` nor `EDITOR`, the command exits 1 with the `no editor` message. This replaces the `plan --edit 1` (no positional) assertion in "an out-of-range or empty edit fails non-zero and leaves the file byte-identical".
+  - When both are set, `VISUAL` wins over `EDITOR`.
+  - An out-of-range `--edit 9` fails with the existing `no planned feature at position 9` message, and the stub never runs (it would write a marker file; assert the marker is absent).
+- The existing `--edit <n> "<text>"` and `--edit <n> --file` tests pass unchanged.
+- `npm run test` is green.
 
 
 ## Done
