@@ -4,6 +4,8 @@
 import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { AGENT_IDS, AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS } from "../config/config-write.js";
+import { HISTORY_RESULT_CLASSES } from "../history/history-data.js";
+import { templateIds } from "../init/init-templates.js";
 import { allRoleIds } from "../roles/roles.js";
 import { HELP, helpStanzas } from "./help.js";
 
@@ -86,6 +88,9 @@ export function completionConfigKeys(root: string): string[] {
   return [...new Set(keys)];
 }
 
+/** Flags whose value is a file path: completion offers file names after them. */
+const PATH_FLAGS = ["--file", "--attach", "--notes-file"];
+
 function bashScript(help: string): string {
   const spec = completionSpec(help);
   const arms = spec.commands.map((command) => {
@@ -113,6 +118,19 @@ function bashScript(help: string): string {
     `  COMPREPLY=()`,
     `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == tick ]] && [[ "$cur" != -* ]]; }; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
+    `  case "$prev" in ${PATH_FLAGS.join("|")})`,
+    `    COMPREPLY=( $(compgen -f -- "$cur") )`,
+    `    return 0`,
+    `    ;;`,
+    `  esac`,
+    `  if [ "$prev" = "--template" ]; then`,
+    `    COMPREPLY=( $(compgen -W "${templateIds().join(" ")}" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
+    `  if [ "$prev" = "--result" ]; then`,
+    `    COMPREPLY=( $(compgen -W "${HISTORY_RESULT_CLASSES.join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,

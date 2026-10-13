@@ -6,7 +6,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Shell completion completes flag values: paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, result classes after `--result` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entries "Shell completion completes loop ids after `--role`…" and "Shell completion completes config keys…", and touches only `src/cli/completion.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `bashScript` in `src/cli/completion.ts` registers `complete -F _tumwater tumwater` with no `-o default`, and its per-command arms complete only flags (when `$cur` starts with `-`) and `usageWords` subcommands at word 2. So `tumwater plan --file <TAB>`, `tumwater prompt --attach <TAB>`, and `tumwater role qa --notes-file <TAB>` complete no file name at all — worse than having no completion installed, where bash falls back to paths. `tumwater init --template <TAB>` and `tumwater history --result <TAB>` complete nothing either, though both value sets are closed and compiled in. A grep for `compgen -f` under `src/` and `test/` finds nothing)
+_None yet._
+
+
+
+## Done
+
+### Shell completion completes flag values: paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, result classes after `--result` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entries "Shell completion completes loop ids after `--role`…" and "Shell completion completes config keys…", and touches only `src/cli/completion.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `bashScript` in `src/cli/completion.ts` registers `complete -F _tumwater tumwater` with no `-o default`, and its per-command arms complete only flags (when `$cur` starts with `-`) and `usageWords` subcommands at word 2. So `tumwater plan --file <TAB>`, `tumwater prompt --attach <TAB>`, and `tumwater role qa --notes-file <TAB>` complete no file name at all — worse than having no completion installed, where bash falls back to paths. `tumwater init --template <TAB>` and `tumwater history --result <TAB>` complete nothing either, though both value sets are closed and compiled in. A grep for `compgen -f` under `src/` and `test/` finds nothing) (done 2026-10-12)
 
 **Goal.** After a flag whose value is a path, completion offers file names; after `--template` it offers the init template ids; after `--result` it offers the history result classes.
 
@@ -24,10 +30,6 @@ Keep the three path flags in one exported-or-local constant (e.g. `PATH_FLAGS`) 
 - The existing completion tests pass unchanged (`--role`, config-key, command, subcommand, and flag completion unaffected).
 - `bash -n` over the generated script still passes (the existing test covers this).
 - `npm run test` passes.
-
-
-
-## Done
 
 ### Shell completion completes config keys for `config get|set|unset <key>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>`", reuses that entry's runtime-list pattern (`tumwater completion --roles`), and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, one export in `src/config/config-write.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `tumwater config set <TAB>` completes nothing, so the operator types `maxDailyCostUsdPerRole.feature` or `roles.qa.model` by hand, and a typo surfaces only as an `unknown config key` error after the command runs. A grep for `config-keys` under `src/`, `test/`, and PLANS.md finds nothing) (done 2026-10-12)
 

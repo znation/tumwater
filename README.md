@@ -59,7 +59,7 @@ file backlog entries, and `tumwater pause`, `resume`, `wake`, and `stop` control
 so pair it with `--token <secret>`.
 
 Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
-same list, and `tumwater completion bash|zsh` prints shell completion (including loop ids after `--role` and keys after `config get|set|unset`). Settings live in
+same list, and `tumwater completion bash|zsh` prints shell completion (including loop ids after `--role` and keys after `config get|set|unset`, file paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, and result classes after `--result`). Settings live in
 `tumwater.json` and edits apply live while the fleet runs; see [docs/config.md](docs/config.md).
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to

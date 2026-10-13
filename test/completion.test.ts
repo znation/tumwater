@@ -9,6 +9,7 @@ import { completionConfigKeys, completionScript, completionSpec } from "../src/c
 import { HELP, helpStanzas } from "../src/cli/help.js";
 import { cli } from "./helpers/cli-harness.js";
 import { parseConfigKey } from "../src/config/config-write.js";
+import { templateIds } from "../src/init/init-templates.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const run = promisify(execFile);
@@ -43,12 +44,12 @@ test("completionSpec over the real help", () => {
   for (const c of spec.commands) assert.ok(spec.flags[c]?.includes("--help"), c);
 });
 
-async function complete(script: string, words: string[], cword: number): Promise<string[]> {
+async function complete(script: string, words: string[], cword: number, cwd?: string): Promise<string[]> {
   const quoted = words.map((w) => `'${w}'`).join(" ");
   const { stdout } = await run("bash", [
     "-c",
     `tumwater() { if [ "$2" = --config-keys ]; then printf 'maxDailyCostUsd\\nmaxDailyCostUsdPerRole.qa\\nroles.qa.model\\nroles.qa.enabled\\nmodel.strong\\n'; else printf 'feature\\nfeature-2\\nqa\\n'; fi; }\n${script}\nCOMP_WORDS=(${quoted}); COMP_CWORD=${cword}; _tumwater; printf '%s\\n' "\${COMPREPLY[@]}"`,
-  ]);
+  ], { cwd });
   return stdout.split("\n").filter(Boolean);
 }
 
@@ -138,4 +139,16 @@ test("completion --config-keys prints parseable keys for this repo's roles, or t
   assert.notEqual(bad.code, 0);
   assert.match(bad.stderr, /bash or zsh/);
   assert.ok(completionSpec().flags.completion?.includes("--config-keys"));
+});
+
+test("the bash script completes file names, template ids, and result classes after their flags", async () => {
+  const script = completionScript("bash");
+  const dir = tmpdir();
+  writeFileSync(join(dir, "brief.md"), "");
+  writeFileSync(join(dir, "notes.txt"), "");
+  assert.deepEqual(await complete(script, ["tumwater", "plan", "--file", "br"], 3, dir), ["brief.md"]);
+  assert.deepEqual(await complete(script, ["tumwater", "prompt", "--attach", "no"], 3, dir), ["notes.txt"]);
+  assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--notes-file", "b"], 4, dir), ["brief.md"]);
+  assert.deepEqual((await complete(script, ["tumwater", "init", "--template", ""], 3)).sort(), templateIds().sort());
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "p"], 3), ["problems"]);
 });
