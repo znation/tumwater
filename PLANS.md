@@ -6,7 +6,76 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Bare `tumwater questions answer <n>` opens the question in `$VISUAL`/`$EDITOR` and records the saved decision (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** The operator types every answer as one argv string or prepares a file for `--file`. Today
+`questions answer 1` with no decision fails with `questions answer needs a decision` (the
+`decision === ""` branch of `cmdQuestions` in `src/cli/cli-query-commands.ts`). Most decisions
+need the question's context: its options and the asking loop's recommendation. With no decision
+and no `--file`, open the editor on a buffer that shows the question, the way `plan|bug --edit <n>`,
+`brief --edit`, and `prompt --edit <n>` already do. This is the last operator text-entry command
+without an editor mode. A grep for `editInEditor` in `src/cli/cli-query-commands.ts` and
+`src/cli/question-commands.ts` finds nothing.
+
+**Approach.**
+- `src/cli/question-commands.ts`: export `ANSWER_EDITOR_CUT`, a fixed line:
+  `<!-- tumwater: write your decision above this line; this line and everything below it are dropped -->`.
+  Add `answerEditorBuffer(n, title, body): string`. It returns an empty first line, a blank line,
+  `ANSWER_EDITOR_CUT`, then `### <title>` and the question's body, for reference. Add
+  `decisionFromEditorBuffer(text): string`. It returns the text before the first line that equals
+  `ANSWER_EDITOR_CUT` after trimming (the whole text when the line is gone).
+- `answerQuestionFromText` gains an optional `expectedTitle` parameter and passes it to
+  `tryAnswerQuestion`. `answeredOrFail` maps `moved` to
+  `question <n> is now "<title>" — the list changed while you edited; nothing changed`
+  instead of the generic `no question at position <n>`. Only the editor path passes a title, so
+  the existing `answer` and `--file` outputs do not change.
+- `cmdQuestions` in `src/cli/cli-query-commands.ts`: when `file === undefined` and
+  `words.length === 2` (only `answer <n>`), read the Nth entry from `questionListPayload(root)`.
+  Fail before any editor runs when it is missing, with the same
+  `no question at position <n> (<open> open)` text `answeredOrFail` uses. Otherwise call
+  `editInEditor(answerEditorBuffer(...), "answer-<n>.md", 'pass a decision or --file <path>')`
+  (`src/cli/cli-editor.ts`), cut the result with `decisionFromEditorBuffer`, and fail with
+  `questions answer needs a decision: the editor left it blank; nothing changed` when it trims
+  to empty. Otherwise run `answerQuestionFromText(root, n, decision, title)`. This keeps lines like
+  `--file` does, and the structure guard applies. Then commit through the existing
+  `commitOperatorBacklogEdit(... "Answer question: <title>")` and print `sayAnswered` output.
+  `--json` works the same as on the other forms. The `answer` form with a decision, and `--file`,
+  are untouched.
+- `src/cli/help.ts`: add a `tumwater questions answer [--json] <n>` usage line next to the
+  `--file` form, saying it opens the question in `$VISUAL`/`$EDITOR` and only the text above the
+  marker line is recorded. Completion derives from help; `test/completion.test.ts`'s
+  `subcommands.questions` assertion must stay `["answer"]`.
+- `docs/cli.md`'s "Answer open questions" row: one clause for the bare form.
+  `docs/invariants.md` needs no change, because the commit guarantee already names
+  `questions answer`.
+
+**Files touched.** `src/cli/question-commands.ts`, `src/cli/cli-query-commands.ts`,
+`src/cli/help.ts`, `docs/cli.md`, plus a new test file under `test/` (named `questions-answer-editor.test.ts`). It copies
+the editor `stub` pattern from `test/backlog-write-edit-editor.test.ts` and seeds QUESTIONS.md
+with two `## Open` entries after `initProject`.
+
+**Acceptance criteria.**
+- With an `EDITOR` stub that writes `Go with option B.\nKeep the cap.\n` above the cut line,
+  `questions answer 1` exits 0. The stub's received buffer contains `ANSWER_EDITOR_CUT` and the
+  first question's title and body. The entry moves to `## Answered` with both decision lines kept,
+  and the question's quoted body is not repeated as decision text. `git log -1 --format=%s` on main
+  reads `tumwater(operator): Answer question: <title>`.
+- A stub that leaves the buffer unchanged (decision area blank) exits non-zero with
+  `editor left it blank`, and QUESTIONS.md stays byte-identical. A stub that exits 1 also leaves
+  it byte-identical.
+- `questions answer 9` with two open questions fails with `no question at position 9 (2 open)`
+  and never runs the editor (the stub writes a marker file that must not exist).
+- With no `VISUAL`/`EDITOR` (`cliWithEnv` strips them), bare `questions answer 1` fails with
+  `no editor: set $VISUAL or $EDITOR, or pass a decision or --file <path>`.
+- Decision text holding a `## ` heading line above the cut is refused by the existing structure
+  guard, and the file stays unchanged.
+- An editor stub that also rewrites QUESTIONS.md so a new `### ` entry heads `## Open` (the
+  list shifting while the operator edits) makes `questions answer 1` exit non-zero with the
+  `is now "<new title>"` message. The stub's rewritten QUESTIONS.md stays byte-identical, so
+  nothing is answered. `fail` exits the process, so this case goes through the CLI, not
+  in-process.
+- The existing `test/question-commands.test.ts`, `test/cli-questions-strictness.test.ts`, and
+  `test/completion.test.ts` pass unchanged. `npm run test` is green.
 
 ## Done
 
