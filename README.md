@@ -38,82 +38,29 @@ Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 ## Usage
 
 ```bash
-cd your-project             # a new or existing directory
+cd your-project                 # a new or existing directory
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
-                            # add --template <id> to seed from a bundled starting point
-                            # (blank, python-cli, node-cli, static-site); --list-templates
-                            # prints the catalog
-                            # add --file <path> to read the brief from a file
-                            # add --adopt to adopt an existing repo as-is
-                            # a fresh/empty project is seeded with
-                            # "bootstrap": {"untilPlansDone": 5}, holding the maintenance
-                            # loops until 5 plans are done; remove "bootstrap" from
-                            # tumwater.json to end that early
-tumwater run                # start the loops (Ctrl+C to stop)
-tumwater run --gui          # ... and serve the browser dashboard at http://127.0.0.1:7180 from the same process
-tumwater run --for 2h       # run for a bounded window (capped at 90d), then drain, print a per-loop summary of the window, and exit (one window across self-redeploys); shown as `stops in …` on status, the TUI, and the dashboard
-tumwater run --once         # one full round of ticks, drains its landings, and exits (for cron/CI); exits 3 if a loop's tick failed;
-                            # add --role <id> to scope the round to one loop
+                                # --template, --file, and --adopt pick a starting point (see docs/cli.md)
+tumwater run                    # start the loops (Ctrl+C to stop)
+tumwater run --gui              # ... and serve the browser dashboard at http://127.0.0.1:7180
+tumwater run --for 2h           # run for a bounded window, then drain, summarize, and exit
+tumwater run --once             # one round of ticks for cron/CI; exits 3 if a loop's tick failed
 ```
 
-Then, from another terminal:
+A fresh or empty project is seeded with `"bootstrap": {"untilPlansDone": 5}`, which holds the
+maintenance loops until 5 plans are done; remove it from `tumwater.json` to end that early.
 
-| To | Run |
-| --- | --- |
-| Watch the fleet | `tumwater tui`, or the browser dashboard at http://127.0.0.1:7180 — `tumwater gui` on its own, or `tumwater run --gui` to boot the fleet and the dashboard together |
-| Watch per-tick history | `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--result <changes|none|problems>] [--summary]`, where `--summary` prints one line per loop counting its ticks by outcome class and naming its newest change (plus a total) instead of the rows, or `tumwater history --json` for the rows as JSON; `tumwater tick <role> <n>` for one tick's full event trail (a summary header — when it ran, how long, result, usage — followed by the tick's events, oldest first; a queued tick shows its landing's verdict and outcome line once the landing finishes; `--last` shows the newest completed tick's trail instead of numbering one; `--stat` appends the tick's commit's per-file `git show --stat` summary; `--json` prints the payload as JSON, `null` when the log holds no such tick) |
-| Check state | `tumwater status`, `tumwater brief [--json]` (the initial prompt and the file that holds it; the TUI's Brief tab and the dashboard's Settings card show it too), `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --grep <text>`, `tumwater logs --json` (the event feed as NDJSON, for scripts), `tumwater logs --role <id>`, `tumwater queue [--json]` (the durable land queue in execution order — one line per waiting landing with its position, loop, tick, pinned sha, age, and summary, plus a `[landing 2m · reviewing]` or `[vetted, awaiting merge]` label on an entry the running fleet is landing; `--json` for scripts, with an `inFlight` key then), `tumwater backlog` (planned features, open bugs, open questions as Markdown, each held entry's heading marked `[refused]`, `[needs review]`, `[needs replan]`, or `[blocked: requires …]`), `tumwater backlog --json` (the backlog as JSON, for scripts, with a `holds.plans`/`holds.bugs` array parallel to `plans`/`bugs`), `tumwater role <id>` (one loop's standing prompt — find text, `instructions` override, resolved model and interval, enabled/paused state, its notebook — plus its next tick's assembled prompt, which shows the oldest queued prompt without consuming it (one is dequeued per tick; `--json` for scripts); `--clear-notes` clears that loop's notebook and `--notes-file <path>` (`-` for stdin) replaces it (4 KB cap); the dashboard's loop drawer edits or clears the notebook the same way, and the TUI's notebook view (Ctrl+N) clears it with Ctrl+X pressed twice) |
-| See a loop's pending change | `tumwater diff --role <id>` (`--stat` swaps each patch for its per-file `git diff --stat` summary) — that loop's branch's unlanded commits (with the patch) and its worktree's uncommitted edits (staged and unstaged); without `--role`, one line per loop holding pending work; `--json` prints the payload as data |
-| Steer the project | `tumwater brief --file <path>` (`-` for stdin) replaces the initial prompt — refused when empty, over 4096 characters, or containing a prompt marker — and commits the brief file to main as `tumwater(operator): Edit initial prompt` (the dashboard's Settings view edits it the same way, in its Initial prompt card); `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick, `--file <path>` (`-` for stdin) to read the text from a file, or `--at <duration>` to defer it until the duration passes (45s, 90m, 1h30m, 1d; capped at 90d), `tumwater prompt --list` shows the queued prompts numbered and grouped by loop, with how long each has waited (`--json` for scripts), and `tumwater prompt --cancel <n>` removes the Nth entry as `--list` shows them, and `tumwater prompt --edit <n> "new text" [--attach <path>]` rewrites the Nth entry in place (or `--edit <n> --file <path>` takes the replacement from a file), keeping its position and wait time, and appends any `--attach` images after the ones it already carries (both take `--role <id>` when several loops share that number), and `--attach <path>` (repeatable, up to 4 images — png, jpg, jpeg, gif, webp, bmp, each at most 5 MiB) attaches an image the receiving loop reads at its next tick, whether it is queued or edited; `tumwater bug "<symptom>"` files a bug into BUGS.md's Open section and wakes the bugfix loop, `tumwater plan "<title>" [body...]` — or `--file <path>` (`-` for stdin) to file one from a markdown file, its first line the title and the rest the body, kept line for line — files a plan request into PLANS.md's Planned section and wakes the feature loop — both stamped as operator-reported (the other half of `tumwater backlog`) and committed to main as `tumwater(operator): File <kind>: <title>` when the primary checkout is on the base branch, `--list` shows a command's own entries numbered with their eligibility marks (`--json` for scripts), and `--release <n>` lifts a Refused note and commits it on main, waking the loop, `--cancel <n>` retracts one or `--edit <n> "<text>"` rewrites one in place (or `--edit <n> --file <path>` takes the replacement from a file, keeping its lines), neither with a wake, and both committed to main like a filing; the dashboard's plan/bug drawer cancels an entry the same way, after a confirming second click, and the TUI's backlog pane does too, with Ctrl+X pressed twice on the selected entry (Ctrl+E edits its title; Ctrl+N files a new plan or bug by title and wakes its loop), the drawer edits an entry's title and body in place, and the Plans/Bugs tabs' New form files one with an optional markdown body |
-| Answer open questions | `tumwater questions` lists QUESTIONS.md's open questions numbered (as the loops wrote them); `tumwater questions answer <n> "decision text"` moves the Nth entry to ## Answered with your dated answer (committed to main as `tumwater(operator): Answer question: <title>`; `--file <path>`, `-` for stdin, records a multiline decision with its lines kept; loops read the file back on their next tick); `--json` prints the list as data; the dashboard's question drawer records an answer with its lines kept, as `--file` does, and the TUI's backlog pane answers the selected question with Ctrl+A |
-| Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes, capped at 90d; add `--reason <text>` on a fleet pause to state why — it shows on `status`, the TUI, and the dashboard; the TUI's Ctrl+F takes a duration and reason too, and its Ctrl+P on a loop's transcript takes a duration, and its Ctrl+W takes a duration or `cancel`), `tumwater wake` (skip backoff; `wake --in 45m` schedules the wake for 45 minutes from now — the marker is written immediately but consumed no earlier than the deadline, like `pause --for`'s auto-resume, and each scheduled wake stands on its own, so later wakes do not cancel it, while `tumwater wake --cancel [--role <id>]` drops the pending scheduled wakes (or that loop's share of them), `tumwater wake --list [--role <id>] [--json]` lists them, and the dashboard's Wake later menu and loop drawer cancel pending wakes the same way; the dashboard's loop drawer schedules one loop's wake the same way ("Wake later…"); `tumwater status` and the dashboard's loop rows show the pending wake until it fires), `tumwater reclaim [--dry-run]` (drop gitignored build outputs from every harness worktree; `--dry-run` lists the candidates and cleans nothing), `tumwater retire --role <id> [--dry-run]` (remove a disabled loop's worktree, branch, and per-role state — use after setting `enabled: false` for that role; `--force` overrides the safety rails; `--dry-run` previews what would be removed and which rails would object, changing nothing), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C; `stop --in 2h` schedules that drain for later and shows `stops in …` like `run --for`, `stop --cancel` drops it; the dashboard's "Stop the fleet later" control sets and cancels it too, and so does the TUI's Ctrl+Q: a duration sets it, and when one is already scheduled it cancels), `tumwater reset-counters [--role <id>]` (zero the per-loop counters the dashboards show, starting a fresh observation window — scheduling is untouched; the dashboard's Loops card and loop drawer reach the same reset) |
-| Audit | `tumwater doctor` (pre-flight, naming a standing fleet or per-role pause or quiet-hours window holding now, today's spend against the daily cap, a claude subscription window holding the claude seams, the maintenance allowance's rolling-24 h use, loops failing tick after tick (and whether they are paused), code loops held by a red main, a notify command that failed to page within the last 24 h, slot waits that call for a larger `worktreeSlots`, and planned plans and open bugs held by a Refused note (released with `tumwater plan|bug --release <n>`), flagging one whose prerequisites are no longer planned; `--json` prints the report as JSON, for scripts; the dashboard's Settings view runs the same checks in its Health check card and the TUI's Health tab), `tumwater report` (usage and cost, with landed commits by role, each role's cost per landed commit, and the work/maintenance split; totals include landing runs — reviewer + conflict resolution), `tumwater report --role <id>` (scopes the day or `--since` report to one loop's ticks, tokens, cost, and commits; landing runs and backlog tallies are fleet-wide and omitted; with `--failures`, scopes the failure digest to that loop too), `tumwater report --since <duration>` (totals over a trailing window, capped at 7d; with `--failures`, the failure digest over that window instead), `tumwater report --json` (the `--days`/`--since`/`--failures` reports as JSON, for scripts), `tumwater report --failures` (the failure digest: per-role outcomes, each role's time and spend by outcome, and the top five loss causes ranked by agent-hours, with a marker naming how many were cut; `--since <duration>` windows the digest over a trailing span, capped at 7d, compared against the equal-length window before it) |
+From another terminal, `tumwater tui` or the browser dashboard watches the fleet, `tumwater status`
+and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the initial prompt,
+`tumwater prompt "<text>"` queues a request for the director, `tumwater plan` and `tumwater bug`
+file backlog entries, and `tumwater pause`, `resume`, `wake`, and `stop` control the loops.
+`tumwater doctor` audits the fleet and `tumwater report` shows usage and cost. `gui
+--all-interfaces` exposes the dashboard, and with it the director prompt, to your whole network,
+so pair it with `--token <secret>`.
 
-`tumwater help` lists every command and flag; `tumwater help <command>` shows one command's
-usage. `tumwater completion bash|zsh` prints a shell completion script derived from that
-help; install it with `eval "$(tumwater completion zsh)"` in your shell rc. `gui --all-interfaces` exposes the dashboard, and with it the director prompt, to your
-whole network, so pair it with `--token <secret>`.
-
-Settings live in `tumwater.json`: enabled roles, model (either one selector or a map of tiers
-`small`/`default`/`strong` — omitted tiers inherit `default`; per-tier `fallback` overrides may
-name a model or `"pause"`, and a role's `model` may name a tier; see
-[plans/model-tiers.md](plans/model-tiers.md)),
-intervals, per-role `instances` (`feature` and `bugfix` may each run 1–8 parallel runners, every one
-with its own branch and state; default 1), the daily spend cap
-(`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
-cap starts no new ticks until the next local day or a live edit), a
-`maintenancePerWorkLanding` ratio (default 2; a rolling 24 h allowance of that many
-code-maintenance landings per feature/bugfix/director landing, plus a floor of 12 — when the
-window reaches it the scheduler holds the enabled maintenance loops until it rolls under, and a
-fresh `tumwater wake <role>` or a queued prompt for one admits a single tick anyway), a nightly
-`quietHours` window (e.g. `"23:00-07:00"` local time) during
-which role loops start no new ticks (the director is exempt), with optional per-role windows
-`quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the
-fleet-wide window covers now — a `diskHoldGB` free-space floor (default 10; when the volume
-holding the worktrees drops below it, no new work starts until free space recovers 5 GB above it;
-0 disables), a `diskReclaimGB` pressure-reclaim threshold (default 40; below it idle worktrees
-drop their gitignored build outputs before the hold engages; 0 disables), and a
-`worktreeIdleReclaimHours` window (default 24; an hourly pass drops a worktree's gitignored build
-outputs once it has sat unused that long, whatever the free space; 0 disables), a
-`worktreeSlots` count of pooled checkouts shared by role ticks and landing vets (default
-`maxConcurrent` + 1; the director's worktree sits outside the pool) — user-defined
-`customLoops`, and an
-optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
-at 80% of the cap while the gate is still open, a role's own cap warning or cap pause, low disk
-space holding new work, a claude subscription window nearing its limit or holding the claude
-seams, an error-streak breaker trip, main's own check going red, a failed landing, a blocked restart, a posted question, a refused backlog entry, the
-fleet going down — the command gets
-`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment;
-verify it with `tumwater notify --test`; a hook that exits nonzero logs a warning).
-Edits apply live while the fleet runs.
-From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
-<key>` reads one resolved value, `tumwater config set <key> <value>` writes one top-level
-key, and `tumwater config unset <key>` removes one — the inverse of `set`, so a value reverts
-to its default or disappears from its map or section; dotted keys
-(`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry into the existing
-map or role entry, while bare keys replace the whole value. `roles` always merges the built-in
-catalog per entry at load, so a bare `config set roles` replaces the file's section but cannot
-disable a role by omission — disable one with `tumwater config set roles.<id>.enabled false`.
+Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
+same list, and `tumwater completion bash|zsh` prints shell completion. Settings live in
+`tumwater.json` and edits apply live while the fleet runs; see [docs/config.md](docs/config.md).
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to
 one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a map of tiers
