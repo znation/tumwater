@@ -2,11 +2,11 @@ import path from "node:path";
 import { promptBlockOf } from "../brief.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
+import { briefCandidates } from "../paths.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 
-/** The brief files that may carry the initial prompt block (the basenames `briefCandidates`
- * in paths.ts names). */
-const BRIEF_FILES = ["TUMWATER.md", "README.md"];
+/** The brief files that may carry the initial prompt block: the basenames of `briefCandidates`. */
+const BRIEF_FILES = briefCandidates("").map((p) => path.basename(p));
 /** The roles that may edit PRINCIPLES.md. */
 const PRINCIPLES_ROLES = new Set(["director", "steward"]);
 
