@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { handleRefusal, refusalContradiction, type RefusalContext } from "../src/verdict/refusal.js";
+import { handleRefusal, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { assertClean, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
+import { assertClean, commitIn, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
@@ -181,4 +181,80 @@ test("a landed refusal note clears a superseded rejection unless a revision is o
   const { ctx: failedCtx } = makeCtx(failedRoot, "merge_conflict");
   await handleRefusal(failedCtx, failed, failedWt, refusedPi({ refusedReason: "no" }));
   assert.equal(failed.lastReview?.verdict, "reject", "a failed merge clears nothing");
+});
+
+const BLOCKED_BASE = (part1Section: "Planned" | "Done"): string => {
+  const one = "### S, part 1/2: a (planned 2026-10-12 by plan)\n\nbody\n";
+  const two = "### S, part 2/2: b (planned 2026-10-12 by plan; requires part 1/2 landed)\n\nbody\n";
+  return part1Section === "Planned"
+    ? `# Plans\n\n## Planned\n\n${one}\n${two}\n## Done\n\n_None yet._\n`
+    : `# Plans\n\n## Planned\n\n${two}\n## Done\n\n${one}`;
+};
+
+const REFUSED_LINE = "**Refused 2026-10-12 by feature: x**";
+
+/** A worktree whose main holds `md` as PLANS.md. */
+async function worktreeWithPlans(md: string): Promise<{ root: string; wt: string }> {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "PLANS.md"), md);
+  commitIn(root, "plans");
+  sh(wt, "git", "reset", "--hard", "main");
+  return { root, wt };
+}
+
+/** `md` with the Refused line appended under the heading that starts with `heading`. */
+function refuseUnder(md: string, heading: string): string {
+  return md.replace(new RegExp(`^(${heading}.*)$`, "m"), `$1\n\n${REFUSED_LINE}`);
+}
+
+test("a refusal note on a plan still blocked by a planned prerequisite is dropped", async () => {
+  const base = BLOCKED_BASE("Planned");
+  const { root, wt } = await worktreeWithPlans(base);
+  fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
+  const { ctx, merges } = makeCtx(root);
+  const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  assert.equal(outcome.result, "refused");
+  assert.equal(outcome.commit, undefined);
+  assert.equal(merges.length, 0);
+  assertClean(wt);
+  const events = readEvents(root);
+  assert.ok(events.some((e) => e.type === "warning" && String(e.message).includes("part 2/2: b")));
+  assert.equal(events.filter((e) => e.type === "entry_refused").length, 0);
+});
+
+test("a refusal note on a plan whose prerequisite is Done lands as usual", async () => {
+  const base = BLOCKED_BASE("Done");
+  const { root, wt } = await worktreeWithPlans(base);
+  fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
+  const { ctx, merges } = makeCtx(root);
+  const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  assert.ok(outcome.commit);
+  assert.equal(merges.length, 1);
+  assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 1);
+});
+
+test("only the blocked plan's note is dropped when an eligible entry is refused too", async () => {
+  const base = BLOCKED_BASE("Planned").replace("## Done", "### E: eligible (planned 2026-10-12 by plan)\n\nbody\n\n## Done");
+  const { root, wt } = await worktreeWithPlans(base);
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    refuseUnder(refuseUnder(base, "### S, part 2/2"), "### E: eligible"),
+  );
+  const { ctx, merges } = makeCtx(root);
+  const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  assert.ok(outcome.commit);
+  assert.equal(merges.length, 1);
+  const plans = fs.readFileSync(path.join(wt, "PLANS.md"), "utf8");
+  assert.equal(plans.split(REFUSED_LINE).length - 1, 1);
+  assert.ok(plans.indexOf(REFUSED_LINE) > plans.indexOf("### E: eligible"));
+});
+
+test("withoutBlockedPlanRefusals leaves unchanged, already-noted, and tidy cases right", () => {
+  const base = BLOCKED_BASE("Planned");
+  assert.deepEqual(withoutBlockedPlanRefusals(base, base), { md: base, dropped: [] });
+  const noted = refuseUnder(base, "### S, part 2/2");
+  assert.deepEqual(withoutBlockedPlanRefusals(noted, noted), { md: noted, dropped: [] });
+  const res = withoutBlockedPlanRefusals(base, noted);
+  assert.deepEqual(res.dropped, ["S, part 2/2: b (planned 2026-10-12 by plan; requires part 1/2 landed)"]);
+  assert.equal(res.md, base);
 });

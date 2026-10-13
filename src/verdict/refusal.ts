@@ -1,4 +1,15 @@
-import { commitPathsAndDiscardRest } from "../git/git.js";
+import fs from "node:fs";
+import path from "node:path";
+import { commitPathsAndDiscardRest, fileContentAt } from "../git/git.js";
+import { parseEntryDetails } from "../backlog/backlog-md.js";
+import { actionableEntryRanges } from "../backlog/backlog-structure.js";
+import {
+  entryHoldAgainst,
+  entryKey,
+  plannedPartKeys,
+  refusalNote,
+  withoutRefusalNotes,
+} from "../backlog/backlog-eligibility.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
@@ -39,6 +50,35 @@ export async function refusalContradiction(
   return labeledLine(finalText ?? "", "SUMMARY") ? workFiles : [];
 }
 
+/** `headMd` with the Refused notes this run newly added to `## Planned` entries that `baseMd`
+ * still holds as blocked by a prerequisite dropped: the block already holds such a plan and lifts
+ * by itself when the prerequisite lands, whereas a Refused note would hold it until a human
+ * releases it. An entry qualifies when head carries a Refused note, base has the same entry
+ * (entryKey) with none, and entryHoldAgainst reads it as blocked on base. Returns the rewritten
+ * text and the dropped entries' titles; `headMd` itself and [] when nothing qualifies. */
+export function withoutBlockedPlanRefusals(
+  baseMd: string,
+  headMd: string,
+): { md: string; dropped: string[] } {
+  const basePlanned = parseEntryDetails(baseMd, "Planned");
+  const baseByKey = new Map(basePlanned.map((e) => [entryKey(e.title), e]));
+  const baseParts = plannedPartKeys(basePlanned);
+  const lines = headMd.split("\n");
+  const dropped: string[] = [];
+  const ranges = actionableEntryRanges(headMd, "Planned");
+  for (const range of ranges.reverse()) {
+    const slice = lines.slice(range.start - 1, range.end);
+    if (refusalNote(slice.join("\n")) === null) continue;
+    const baseEntry = baseByKey.get(entryKey(range.title));
+    if (baseEntry === undefined || refusalNote(baseEntry.body) !== null) continue;
+    const hold = entryHoldAgainst(baseEntry, baseParts);
+    if (hold === null || typeof hold === "string") continue;
+    lines.splice(range.start - 1, slice.length, ...withoutRefusalNotes(slice));
+    dropped.unshift(range.title);
+  }
+  return dropped.length === 0 ? { md: headMd, dropped } : { md: lines.join("\n"), dropped };
+}
+
 /** What handleRefusal needs from its owning loop: identity, this tick's assistant-turn count
  * (deliberately not on LoopState — see TickUsage.turns, src/tick/tick-usage.ts), and the
  * loop's shared merge landing so a conflict-resolution run folds into the same tick counters as
@@ -63,6 +103,23 @@ export async function handleRefusal(
   pi: PiRunResult,
 ): Promise<TickOutcome> {
   const reason = (pi.refusedReason ?? "").trim() || "no reason given";
+  const plansFile = path.join(wt, "PLANS.md");
+  if (fs.existsSync(plansFile)) {
+    const { md, dropped } = withoutBlockedPlanRefusals(
+      await fileContentAt(wt, ctx.mainBranch, "PLANS.md"),
+      fs.readFileSync(plansFile, "utf8"),
+    );
+    if (dropped.length > 0) {
+      fs.writeFileSync(plansFile, md);
+      for (const title of dropped) {
+        logEventBestEffort(ctx.root, {
+          loop: ctx.role,
+          type: "warning",
+          message: `dropped refusal note on blocked plan "${title}": its prerequisite is still planned, so the block already holds it`,
+        });
+      }
+    }
+  }
   const notes = (await changedFiles(wt)).filter((f) => f.toLowerCase().endsWith(".md"));
   let commit: string | undefined;
   if (notes.length > 0) {
