@@ -31,6 +31,45 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater history --summary` tallies each loop's tick outcomes (ticks, changes, none, problems) over the same rows the table would print (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above)
+
+**Goal.** Make it easy to see which loops are producing work, idling, or failing. Today an operator has to count rows by eye in `tumwater history --since 24h`. `tumwater report` counts ticks and commits per role, and `report --failures` lists failures, but nothing tallies outcome classes per loop. `history --summary` swaps the row table for one line per loop: its tick count split into the three `HISTORY_RESULT_CLASSES` buckets (`historyClass` in `src/history/history-data.ts`). It reads the same rows the table would print, so it composes with `--role`, `-n`, `--since`, `--grep`, `--result`, and `--json` with no new rival-shape rule.
+
+**Approach.**
+- **Collector.** In `src/history/history-data.ts`, add an exported `HistorySummaryRow` (`{ loop: string; ticks: number; changes: number; none: number; problems: number }`) and a pure `summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]; total: HistorySummaryRow }`:
+  - It counts each row once under `historyClass(row.result)`.
+  - `loops` is sorted by loop name with plain string comparison (`a < b`), not `localeCompare`, so the order is deterministic.
+  - `total` has `loop: "total"` and sums every loop.
+  - An empty input gives `loops: []` and an all-zero total.
+- **Flag spec.** In `src/cli/cli-flag-specs.ts`, add `SUMMARY_FLAG: FlagSpec = { names: ["--summary"] }`, value-less like `STAT_FLAG`. Add it to the `history` case's `rejectUnknownArgs` list in `src/cli.ts`.
+- **Command.** In `cmdHistory` (`src/history/history.ts`), read `rest.includes("--summary")` after the `--result` filter. Every filter has already run at that point, and the empty-state prose branch is unchanged: an empty row set prints the same `no ticks yet` / `no ticks in …` / `no ticks matching …` / `no ticks with result …` line, and with `--json` the same `{"rows":[]}`. With rows present:
+  - **`--json`.** Print `sayJson(summarizeTickRows(rows))`, i.e. `{ loops, total }`, in place of `{ rows }`.
+  - **Text.** Print a new local `renderSummary`:
+    - A header line `loop  ticks  changes  none  problems`, one line per loop, then the `total` line, which is always printed.
+    - Columns are joined by two spaces, and each line is `trimEnd`ed.
+    - The loop column is padded with `padToWidth` to the widest `displayWidth` among `"loop"`, `"total"`, and the loop names.
+    - Each numeric column is `padStart`ed to the larger of its header's length and its widest value, so numbers right-align under their header.
+  - **Sparse note.** The `!covered` `SPARSE_WINDOW_NOTE` line still follows the text form, and never the JSON form, as it does today.
+- **Docs.** `src/cli/help.ts`'s history stanza gains `[--summary]` on its usage line plus one sentence: "--summary prints one line per loop counting its ticks by outcome class (and a total line) instead of the rows; with --json, `{ loops, total }`". README.md's "Watch per-tick history" row gets the same mention.
+
+**Files.** `src/history/history-data.ts`, `src/history/history.ts`, `src/cli/cli-flag-specs.ts`, `src/cli.ts`, `src/cli/help.ts`, README.md, test/history-data.test.ts, test/cli-history.test.ts.
+
+**Acceptance criteria.**
+- **Unit tests** in test/history-data.test.ts:
+  - `summarizeTickRows` over rows with results `changed`, `queued`, `no_change`, `skipped`, `error`, and `rejected`, spread across two loops, gives each loop's `changes`/`none`/`problems` per `historyClass`.
+  - Loops come back in name order, and the total sums them.
+  - An empty input gives `{ loops: [], total: { loop: "total", ticks: 0, changes: 0, none: 0, problems: 0 } }`.
+- **CLI text form.** On `seededHistoryRepo()` (bugfix #9 error, clean #3 no_change, feature #7 changed), `tumwater history --summary` exits 0 and prints exactly these lines, after trimming each line's end:
+  `loop     ticks  changes  none  problems` / `bugfix       1        0     0         1` / `clean        1        0     1         0` / `feature      1        1     0         0` / `total        3        1     1         1`.
+  The implementer derives the exact padding from the rule above (loop column width 7 = `feature`) and asserts it.
+- **CLI JSON and filters.**
+  - `tumwater history --summary --json` parses to `{ loops: [...three entries...], total: { loop: "total", ticks: 3, changes: 1, none: 1, problems: 1 } }`.
+  - `history --summary --role feature` prints only the header, the `feature` line, and the total line.
+  - `history --summary --result problems` counts only bugfix's tick.
+- **Edges.** On an empty log, `history --summary` prints `no ticks yet`, and `history --summary --json` prints `{"rows":[]}`.
+- **Unchanged output.** Without `--summary`, `history`'s output is unchanged: the existing tests in test/cli-history.test.ts and test/cli-history-filtering.test.ts pass unmodified, apart from the help-stanza regex in "history rejects unknown flags…", which is updated for the new `[--summary]` usage token.
+- **Check.** `npm run test` passes.
+
 ## Done
 
 ### The TUI's History tick trail (Ctrl+N) ends with the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` and the dashboard drill-down (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. TUI sibling of the Done "dashboard's History drill-down shows the tick commit's per-file stat" plan, done 2026-10-12)
