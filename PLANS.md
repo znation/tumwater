@@ -6,6 +6,54 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater stop --in <duration>` schedules a graceful stop of the running fleet, shown as `stops in …` everywhere `run --for` is (planned 2026-10-12 by plan; independent of every other entry; follows the landed "`run --for` shows a `stops in` countdown" plan, whose `StatusSnapshot.runStopsAt` and `runWindowBadge` it reuses)
+
+**Goal.** A deadline can only be set when a fleet starts (`run --for`). An operator who started an unbounded `tumwater run` and later wants it to end tonight can either kill it now (`tumwater stop`) or restart it under `--for`, and a restart loses in-flight ticks. `tumwater stop --in 2h` should set that deadline from any terminal, and `tumwater stop --cancel` should drop it. `wake --in` and `pause --for` already schedule their own actions this way.
+
+**Approach.**
+- **Marker.** Add `scheduledStopPath(root)` in `src/paths.ts` beside `pausedPath`, pointing at `.tumwater/stop-at.json` with body `{ at, until }` in epoch ms. Add three functions to `src/fleet/fleet-state.ts` beside `pauseFleet`/`resumeFleet`, using the same `readJsonFile`/`writeJsonAtomic`/`removeQuiet` helpers:
+  - `scheduleStop(root, untilMs)` overwrites the marker, so the last write wins.
+  - `scheduledStopAt(root): number | undefined` never throws. A missing, unreadable, or non-finite `until` reads `undefined`.
+  - `cancelScheduledStop(root): boolean` reports whether a marker was there, the same changed-state contract as `resumeFleet`.
+- **Flags.** In `src/cli/cli-flag-specs.ts`, turn `WAKE_IN_FLAG`'s body into a factory, `inFlagSpec(command)`. The factory builds the `missingValue` text and the `validate` label from `command`, so wake's wording stays byte-identical. Then:
+  - `WAKE_IN_FLAG = inFlagSpec("wake")`
+  - add `STOP_IN_FLAG = inFlagSpec("stop")` and `STOP_CANCEL_FLAG = { names: ["--cancel"] }`.
+  - In `src/cli.ts`'s `case "stop"`, change `rejectUnknownArgs("stop", args, [])` to accept those two specs, and pass `args` to `cmdStop`.
+- **Command.** `cmdStop(root, args = [])` in `src/operator/operator-commands.ts`:
+  - `--in` together with `--cancel` fails with `stop --cancel and --in cannot be combined`.
+  - `--cancel` needs no live harness. It calls `cancelScheduledStop` and says either `scheduled stop cancelled` or `no stop scheduled`.
+  - `--in <d>` keeps today's liveness gate: `readOrchestratorInfo` plus `pidAlive`, otherwise `fail(NO_HARNESS_ERROR)`. It re-parses with `parseDurationFlag("stop --in", …)`, applies the `PAUSE_FOR_MAX_MS` cap, calls `scheduleStop(root, Date.now() + ms)`, and says `stop scheduled in <durationLabel(ms)> — the fleet drains its in-flight ticks and exits then; \`tumwater stop --cancel\` drops it`. It sends no signal.
+  - With neither flag, behaviour is unchanged.
+- **Firing.** Add `armScheduledStopWatch(root, onStop)` in `src/cli/cli-run.ts` beside `armDeadlineTimer`, returning `{ clear }`:
+  - It runs an unref'd `setInterval` every `SCHEDULED_STOP_POLL_MS = 5000` ms.
+  - When `scheduledStopAt(root)` is defined and at or before `Date.now()`, it removes the marker (`cancelScheduledStop`), clears itself, prints `scheduled stop reached — stopping`, and calls `onStop`.
+  - `cmdRun` arms it in the supervised generation next to `deadlineTimer`, passing the same `stop` closure, so the drain runs the same code path as Ctrl+C. It is cleared in the same `finally`.
+  - A self-redeploy leaves the marker in place, so the next generation's watch picks it up.
+- **Stale markers.** In `cmdRun`'s unsupervised branch (`!process.env[SUPERVISED_ENV]`), call `cancelScheduledStop(root)` right after the "already running" gate and before `superviseRunCommand`. A marker left by a fleet that died before its deadline then cannot stop the next `tumwater run`.
+- **Countdown.** In `src/status/status-data.ts`, the `runStopsAt` field becomes the earlier of `info.stopsAt` and `scheduledStopAt(root)`, still only while `running`. `runWindowBadge`, `statusPayload`, the TUI header, and the dashboard sidebar then show `stops in …` without edits of their own. Update the `runStopsAt` doc comment to name both sources.
+- **`run --for` summary.** A `run --for` fleet that a scheduled stop ends early still prints its window summary. The existing `forMs !== null && !exit.restart` branch handles that unchanged.
+
+**Files.**
+- `src/paths.ts`
+- `src/fleet/fleet-state.ts`
+- `src/cli/cli-flag-specs.ts`
+- `src/cli.ts`
+- `src/operator/operator-commands.ts`
+- `src/cli/cli-run.ts`
+- `src/status/status-data.ts`
+- `src/cli/help.ts`: the `tumwater stop` line gains `[--in <duration> | --cancel]`
+- README.md: the "Control the loops" row's `tumwater stop` text
+- `docs/invariants.md`: a new INV-B entry under "Reader and writer over a persisted or appended file". The guarantee: a scheduled stop fires once, is consumed when it fires, and is cleared at a fresh `run`. Pin it to the new tests.
+- Tests: `test/operator-commands.test.ts` (beside the existing `cmdStop` tests) and a status-data test.
+
+**Acceptance criteria.**
+- `cmdStop(root, ["--in", "2h"])` with a live recorded pid writes `stop-at.json` with `until` about 2h ahead, sends no signal, and prints `stop scheduled in 2h …`. With no info file it fails with `NO_HARNESS_ERROR` and writes nothing.
+- `cmdStop(root, ["--cancel"])` removes the marker and prints `scheduled stop cancelled`. A second call prints `no stop scheduled`. `--in` together with `--cancel` fails before writing anything.
+- `tumwater stop --in xyz` and `tumwater stop --in 91d` fail at the flag gate, with the same wording shape as `wake --in`. `wake --in`'s existing tests pass unchanged.
+- `armScheduledStopWatch`, run against a marker whose `until` has passed, calls `onStop` exactly once and removes the marker. Against a future `until` it does not call `onStop`.
+- With a running fleet whose info has no `stopsAt` and a stop marker 30 minutes ahead, the status snapshot's `runStopsAt` equals the marker's `until`. When both are present, `runStopsAt` is the earlier one. With no running fleet, `runStopsAt` is absent.
+- Existing `cmdStop` tests and `test/cli-run-window.test.ts` pass unchanged.
+
 ### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
 - `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
 - `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
