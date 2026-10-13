@@ -17,7 +17,7 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
 import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
 import { plannedPlanEntries, openBugEntries } from "./backlog.js";
-import { backlogHolds, holdMark, withoutRefusalNotes } from "./backlog-eligibility.js";
+import { backlogHolds, holdMark, type EntryHold, withoutRefusalNotes } from "./backlog-eligibility.js";
 import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
@@ -609,7 +609,9 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
  * title and body kept line for line (splitEntryFile), position and original stamp kept. A body
  * that would grow a phantom section writes nothing. */
 export function editPlanFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
-  const { title, body } = splitEntryFile(text);
+  const { title: rawTitle, body } = splitEntryFile(text);
+  // A first line pasted back as the full heading carries the entry's stamp; the splice re-adds it.
+  const title = stripEntryStamp(rawTitle);
   if (title === "") fail(`plan needs a title: ${usage}`);
   const problem = bodyStructureProblem(body);
   if (problem) fail(`the --file body cannot be written: ${problem}`);
@@ -619,7 +621,8 @@ export function editPlanFromText(root: string, n: number, text: string, usage: s
 /** `tumwater bug --edit <n> --file`: the bug twin of editPlanFromText over `## Open`. The body is
  * written as the file gives it, so a bug filed with `--file` can be revised with its body. */
 export function editBugFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
-  const { title, body } = splitEntryFile(text);
+  const { title: rawTitle, body } = splitEntryFile(text);
+  const title = stripEntryStamp(rawTitle);
   if (title === "") fail(`bug needs a symptom: ${usage}`);
   const problem = bodyStructureProblem(body);
   if (problem) fail(`the --file body cannot be written: ${problem}`);
@@ -819,6 +822,56 @@ export function listAndAnnounce(
   }
   const numbered = entries.map((entry, i) => `${entry.title}${holdMark(entryHolds[i] ?? null)}`);
   say(`${noun}s in ${fileName}:\n${numberedList(numbered)}`);
+}
+
+/** The nth entry as the markdown file `--edit <n> --file` reads back: the stamp-stripped title
+ * and the body with its indentation kept (read from the raw lines, not the trimmed
+ * BacklogEntry.body), plus the entry's eligibility hold. Read-only. */
+function showEntry(
+  root: string,
+  kind: "bug" | "plan",
+  n: number,
+): { position: number; title: string; body: string; hold: EntryHold } {
+  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
+  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  const { lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
+  const meta = headingMetadata(lines, entry.start - 1);
+  const title = collapseWhitespace(stripEntryStamp(meta.text.replace(/^### /, "")));
+  const body = normalizeEntryBody(lines.slice(meta.next, entry.end).join("\n"));
+  const holds = backlogHolds(root);
+  const hold = (kind === "bug" ? holds.bugs : holds.plans)[n - 1] ?? null;
+  return { position: n, title, body, hold };
+}
+
+/** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`
+ * (once), `--help`/`-h` tolerated, anything else refused through rejectUnknownArgs. Read-only
+ * like `--list`: no repo gate, commit, or wake. Prose is the title, a blank line, then the body,
+ * so stdout is the file `--edit <n> --file` takes back. */
+export function showAndAnnounce(root: string, args: string[], command: "bug" | "plan"): void {
+  let position: number | null = null;
+  let json = false;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (arg === "--show") {
+      rejectRepeatFlag(position !== null, "--show");
+      position = parsePositionFlag("--show", args[i + 1], "--show 2");
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg as string);
+  }
+  rejectUnknownArgs(command, rest, []);
+  if (position === null) fail(`--show needs a position (usage: tumwater ${command} --show <n>)`);
+  const shown = showEntry(root, command, position);
+  if (json) sayJson(shown);
+  else say(shown.body === "" ? shown.title : `${shown.title}\n\n${shown.body}`);
 }
 
 /** The shared shell of the `bug --edit` and `plan --edit` CLI cases, mirroring

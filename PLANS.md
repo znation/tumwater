@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater plan|bug --show <n>` prints one entry as an editable markdown file that `--edit <n> --file` takes back unchanged (planned 2026-10-12 by plan; independent of every other entry)
+_None yet._
+
+
+## Done
+
+### `tumwater plan|bug --show <n>` prints one entry as an editable markdown file that `--edit <n> --file` takes back unchanged (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** Close the operator's edit loop. `plan|bug --edit <n> --file <path>` rewrites an entry
 from a markdown file, but nothing prints an entry in that file's shape. `--list` prints titles.
@@ -72,9 +77,6 @@ hand. After this plan, `tumwater plan --show 2 > p.md && $EDITOR p.md && tumwate
   `--json` are each refused. The command makes no commit and queues no wake: `git log` on main
   and `tumwater prompt --list` are unchanged.
 - `tumwater help plan` and `tumwater help bug` name `--show <n> [--json]`. `npm run test` passes.
-
-
-## Done
 
 ### Shell completion completes flag values: paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, result classes after `--result` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entries "Shell completion completes loop ids after `--role`…" and "Shell completion completes config keys…", and touches only `src/cli/completion.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `bashScript` in `src/cli/completion.ts` registers `complete -F _tumwater tumwater` with no `-o default`, and its per-command arms complete only flags (when `$cur` starts with `-`) and `usageWords` subcommands at word 2. So `tumwater plan --file <TAB>`, `tumwater prompt --attach <TAB>`, and `tumwater role qa --notes-file <TAB>` complete no file name at all — worse than having no completion installed, where bash falls back to paths. `tumwater init --template <TAB>` and `tumwater history --result <TAB>` complete nothing either, though both value sets are closed and compiled in. A grep for `compgen -f` under `src/` and `test/` finds nothing) (done 2026-10-12)
 

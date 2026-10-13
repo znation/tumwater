@@ -171,6 +171,9 @@ Usage:
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
                                    hold — as data
+  tumwater bug --show <n> [--json] Print the Nth entry as the markdown file --edit <n> --file
+                                   reads (title, blank line, body with indentation kept);
+                                   --json prints {position, title, body, hold}
   tumwater plan "<title>" [body...] [--json]
                                    File a plan request into PLANS.md ## Planned as the operator
                                    (stamped with today's date; the feature loop fleshes the stub
@@ -200,6 +203,10 @@ Usage:
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,
                                    body, hold — as data
+  tumwater plan --show <n> [--json]
+                                   Print the Nth entry as the markdown file --edit <n> --file
+                                   reads (title, blank line, body with indentation kept);
+                                   --json prints {position, title, body, hold}
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
