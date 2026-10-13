@@ -6,7 +6,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The clean loop flattens deeply nested branching: "a function too branchy to follow" becomes one of its sweep kinds, with an indentation grep as its detector (planned 2026-10-13 by plan; independent of every other entry. It touches only the `clean` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`, none of the open BUGS.md entry's call sites)
+
+**Goal.** docs/code-metrics.md's summary item 7 says "Nothing optimizes function complexity": the coverage, dry and organize loops each have a measurable target, but no loop is ever told to reduce branching. Item 3 puts tumwater's production code at 212 branch points per 1,000 lines against an OSS median of 113, with 5.3% of functions over McCabe 10 and a worst function scoring 78. The clean role ("Make the code cleaner" in the initial prompt) is the natural owner. Its `find` text lists the kinds it sweeps (dead code, misleading names, commented-out blocks, overly clever constructs, doc comments, style) and gives a grep detector for some of them. Deep nesting has neither a kind nor a detector, so the clean loop never chooses it. On 2026-10-13, `grep -rE '^ {10,}(if|for|while|switch) \(' src` matched 76 lines, 20 of them in `src/ui/tui/tui-keys.ts`.
+
+**Approach.** This is a prompt-only change to the `clean` entry's `find` template string in `ROLES` (`src/roles/role-catalog.ts`). It adds no code path, config knob or runtime dependency.
+1. Add one kind to the "pick ONE kind of uncleanliness — …" list: deeply nested branching, meaning a function whose `if`/loop/`switch` nesting runs four or more levels deep, or an else-if chain a reader cannot hold. The fix flattens it with early returns or guard clauses, or extracts named helpers. Behavior does not change, matching the existing "Do not change behavior" rule.
+2. Add one bullet to the "Grep is your detector:" list. It stays language-agnostic because target projects need not be TypeScript. Nesting shows as indentation, so the bullet tells the loop to grep for branch keywords at deep indentation for the file's indent width (for 2-space code, `^ {10,}(if|for|while|switch) \(` and `^ {16,}(if|for|while) ` for 4-space Python). The bullet says hits are candidates: an object literal or class body also adds indentation, so the loop confirms the nesting by reading the function before it counts a hit.
+3. Leave the existing "Keep the diff under about 300 changed lines … sweep one directory or subsystem completely instead" rule unchanged. It already bounds a nesting sweep: when the kind has too many instances, the loop flattens one file or subsystem completely and names the remaining instances in its WHY.
+
+Do not edit docs/code-metrics.md. It is a dated measurement, and the next metrics run will report whether nesting fell.
+
+**Files touched.** `src/roles/role-catalog.ts` (the `clean` entry's `find` only) and `test/prompt-roles.test.ts`.
+
+**Acceptance criteria.**
+- `oneLine(roleById("clean")!.find)` names deep nesting as a sweep kind, with flattening via early returns or extracted helpers as the fix.
+- The "Grep is your detector:" list carries the indentation-based branch-keyword detector. It says hits are candidates to confirm by reading, not proof.
+- A new test in `test/prompt-roles.test.ts`, beside "clean sweeps one kind of drift across the tree, not one site", asserts both points against `oneLine(roleById("clean")!.find)`. The existing clean tests ("the clean role names the suite's unused-export check…", "organize, dry, and clean each end with a whole-tree sweep…", "clean sweeps one kind of drift…") pass unchanged.
+- The `<backlog-structure>` repair paragraph that opens the clean `find` is unchanged and still comes first.
+- `npm run test` passes.
 
 ## Done
 
