@@ -468,6 +468,11 @@ test("clean sweeps one kind of drift across the tree, not one site", () => {
   assert.match(find, /One theme applied everywhere it holds is one focused change, not one site per tick/);
   assert.match(find, /Keep the diff under about 300 changed lines/);
 });
+test("clean sweeps deeply nested branching, found by an indentation grep", () => {
+  const find = oneLine(roleById("clean")!.find);
+  assert.match(find, /deeply nested branching .* flatten it with early returns, guard clauses, or extracted named helpers/);
+  assert.match(find, /Grep is your detector:.*\^ \{10,\}\(if\|for\|while\|switch\) .*Hits are candidates, not proof/);
+});
 test("the coverage role checks every importing test before calling anything untested", () => {
   const find = oneLine(roleById("coverage")!.find);
   assert.match(find, /every test that imports it, not just the one named after it: `grep -rln '<module name>' test\/`/);

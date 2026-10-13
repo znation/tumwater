@@ -247,15 +247,21 @@ belongs in (cut and paste, under the existing \`## \` heading — never add, rem
 \`## \` heading), leave its text verbatim, and change nothing else.
 
 Otherwise, pick ONE kind of uncleanliness — dead code, misleading names, commented-out blocks,
-overly clever constructs, missing or wrong doc comments on public surfaces, or inconsistent
-style — and sweep every instance of that kind across the tree: grep for it over the source, the
+overly clever constructs, missing or wrong doc comments on public surfaces, inconsistent
+style, or deeply nested branching (a function whose if/loop/switch nesting runs four or more
+levels deep, or an else-if chain a reader cannot hold; flatten it with early returns, guard
+clauses, or extracted named helpers) — and sweep every instance of that kind across the tree: grep for it over the source, the
 tests, and the markdown docs, and fix them all in this tick. One theme applied everywhere it
 holds is one focused change, not one site per tick. Do not change behavior.
 ${searchGuidance("clean")}
 Grep is your detector:
    - an exported name with a single hit across the tree is dead;
    - commented-out code matches \`^\\s*//\\s*(const|let|if|return|import) \`;
-   - TODO/FIXME markers show where someone stopped.
+   - TODO/FIXME markers show where someone stopped;
+   - deep nesting shows as indentation: grep for branch keywords at deep indentation for the
+     file's indent width (for 2-space code \`^ {10,}(if|for|while|switch) \\(\`, for 4-space
+     Python \`^ {16,}(if|for|while) \`). Hits are candidates, not proof: an object literal or class
+     body also adds indentation, so read the function and confirm the nesting before you count it.
 Examples of a kind: comments that still name a removed mechanism; doc lines over 100 columns in
 one directory; doc comments citing a renamed helper.
 Keep the diff under about 300 changed lines. When the kind has more instances than that, sweep

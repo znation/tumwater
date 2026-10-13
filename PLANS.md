@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The clean loop flattens deeply nested branching: "a function too branchy to follow" becomes one of its sweep kinds, with an indentation grep as its detector (planned 2026-10-13 by plan; independent of every other entry. It touches only the `clean` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`, none of the open BUGS.md entry's call sites)
+_None yet._
+
+
+## Done
+
+### The clean loop flattens deeply nested branching: "a function too branchy to follow" becomes one of its sweep kinds, with an indentation grep as its detector (planned 2026-10-13 by plan; independent of every other entry. It touches only the `clean` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`, none of the open BUGS.md entry's call sites; done 2026-10-13)
 
 **Goal.** docs/code-metrics.md's summary item 7 says "Nothing optimizes function complexity": the coverage, dry and organize loops each have a measurable target, but no loop is ever told to reduce branching. Item 3 puts tumwater's production code at 212 branch points per 1,000 lines against an OSS median of 113, with 5.3% of functions over McCabe 10 and a worst function scoring 78. The clean role ("Make the code cleaner" in the initial prompt) is the natural owner. Its `find` text lists the kinds it sweeps (dead code, misleading names, commented-out blocks, overly clever constructs, doc comments, style) and gives a grep detector for some of them. Deep nesting has neither a kind nor a detector, so the clean loop never chooses it. On 2026-10-13, `grep -rE '^ {10,}(if|for|while|switch) \(' src` matched 76 lines, 20 of them in `src/ui/tui/tui-keys.ts`.
 
@@ -25,8 +30,6 @@ Do not edit docs/code-metrics.md. It is a dated measurement, and the next metric
 - A new test in `test/prompt-roles.test.ts`, beside "clean sweeps one kind of drift across the tree, not one site", asserts both points against `oneLine(roleById("clean")!.find)`. The existing clean tests ("the clean role names the suite's unused-export check…", "organize, dry, and clean each end with a whole-tree sweep…", "clean sweeps one kind of drift…") pass unchanged.
 - The `<backlog-structure>` repair paragraph that opens the clean `find` is unchanged and still comes first.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` names uncommitted backlog edits in the primary checkout: an "uncommitted backlog" check (planned 2026-10-13 by plan; independent of every other entry. It is split out of the open BUGS.md entry "An operator write through the running dashboard generation is committed best-effort and reports success regardless…", whose fix sketch asks for this doctor row; that bug keeps the caller-side checks of `commitOperatorBacklogEdit`'s result, and this plan touches none of those call sites) (done 2026-10-13)
 
