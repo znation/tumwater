@@ -31,6 +31,26 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### A queued prompt's delivery is logged: a `prompt_taken` event names the tick that took it (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/gui`, or `src/ui/tui` file. Today a queued prompt logs `prompt_enqueued` (`src/inbox/inbox-submit.ts`), `prompt_cancelled`, and `prompt_edited`, but nothing when a tick dequeues it. `assembleTickPrompt` in `src/tick/tick-prompt.ts` pops it with `dequeuePromptEntry`/`dequeueRolePromptEntry`, and `Loop.tickPrompt` in `src/loop/loop.ts` hands it to `PendingPrompt.record` without logging anything. So `tumwater logs`, the TUI/dashboard feeds, and `tumwater tick <role> <n>` cannot say which tick ran the operator's request. The prompt just drops off `tumwater prompt --list`. A grep for `"prompt_` in `src/events/events.ts` finds only `prompt_enqueued`, `prompt_cancelled`, and `prompt_edited`)
+
+**Goal.** When a real tick dequeues a queued prompt (the director's or a per-role one), the event log records it under that loop, with the tick number and the prompt's preview. The tick's trail then shows which request it ran.
+
+**Approach.**
+- **Event type.** Add `"prompt_taken"` to the `HarnessEvent["type"]` union in `src/events/events.ts`, next to `prompt_edited`. Its trailing comment says that a tick dequeued a queued user prompt and that the event carries `tick` and `preview`.
+- **Emit.** In `Loop.tickPrompt` (`src/loop/loop.ts`), after `assembleTickPrompt` returns non-null and `assembled.userPrompt !== null`, call `logEventBestEffort(this.root, { loop: this.role, type: "prompt_taken", tick: this.state.ticks, preview: promptPreview(assembled.userPrompt) })`. `promptPreview` comes from `src/inbox/inbox.ts` and `logEventBestEffort` from `src/events/events.ts`. `runTick` calls `tickPrompt` after `loop-tick.ts` has bumped `s.ticks` and logged `tick_start`, so `this.state.ticks` is the tick being run, and the event lands inside that tick's `tick_start`/`tick_end` block, which is what `tick-detail-data.ts` collects. `assembled.userPrompt` already has the not-before marker stripped.
+- **Where not to emit.** Emit only in `Loop.tickPrompt`, never in `assembleTickPrompt`. The preview path (`preview: true`, used by `tumwater role <id>`) calls `assembleTickPrompt` directly and must stay silent. A resume that reclaims its re-queued copy (`reclaimForResume` in `src/tick/tick-resume.ts`) does not go through `tickPrompt` and logs nothing new. A prompt that is re-queued after an unfulfilled tick and taken again by a later fresh tick logs a second `prompt_taken`, which is accurate.
+- **Render.** Add a `case "prompt_taken"` to `formatEvent` in `src/events/event-format.ts`, next to the other `prompt_*` cases: `` `user prompt taken by tick #${eventTick(e)}: ${textOr(e.preview)}` ``, using the `eventTick` helper from `src/events/event-read.ts`, as the `tick_start` case does. This is a plain routine line with no warning prefix. `eventKind` (`src/ui/tone.ts`) and its browser twin in `src/ui/gui/gui-client-model.ts` need no change: an unlisted type is `"info"`, as its `prompt_enqueued` sibling is.
+- **Not in scope.** No notify-allowlist entry (`NOTIFY_EVENT_TYPES` stays as is), no history or report column, and no change to the queue files or the `PendingPrompt` re-queue policy.
+
+**Files.** `src/events/events.ts`, `src/loop/loop.ts`, `src/events/event-format.ts`, `test/event-format.test.ts`, `test/loop-prompt-requeue.test.ts` (or a sibling loop test using `makeLoopRunner` and `withPi`).
+
+**Acceptance criteria.**
+- New loop test: `enqueueRolePrompt(repo, "perf", "fix the flubbernator")`, then one `runner.tick()` under a fake pi that answers `TUMWATER_NOTHING_TO_DO`. The event log then holds exactly one `prompt_taken` event with `loop: "perf"`, `tick` equal to that tick's `tick_start` tick, and a `preview` containing `flubbernator`. A second tick with an empty queue adds no `prompt_taken`.
+- A tick that runs with no queued prompt logs no `prompt_taken`.
+- Assembling the preview (`assembleTickPrompt({ …, preview: true })`) with a prompt queued logs no `prompt_taken`, and the prompt stays queued.
+- `formatEvent({ ts: 0, loop: "perf", type: "prompt_taken", tick: 7, preview: "fix x" })` returns a line containing `user prompt taken by tick #7: fix x`. If `test/event-format.test.ts` has a list that renders every type, it includes `prompt_taken`.
+- The project's check (`npm run test`) passes.
+
 ## Done
 
 ### A landed refusal note pages the operator: a new `entry_refused` event joins the notify allowlist (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above; done 2026-10-12)
