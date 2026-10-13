@@ -28,6 +28,7 @@ import {
   sinceFlagSpec,
   STAT_FLAG,
   SUMMARY_FLAG,
+  DRY_RUN_FLAG,
   FORCE_FLAG,
   STOP_CANCEL_FLAG,
   STOP_IN_FLAG,
@@ -322,7 +323,7 @@ async function main(): Promise<void> {
     case "retire": {
       // Not a marker command (it acts immediately, not via a request file), but it shares the
       // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
-      rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, JSON_FLAG]);
+      rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, DRY_RUN_FLAG, JSON_FLAG]);
       await requireReadyRepo(root);
       await (await import("./operator/operator-commands.js")).cmdRetire(root, args);
       break;

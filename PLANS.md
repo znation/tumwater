@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater retire --role <id> --dry-run` previews what retire would remove and whether its safety rails would refuse (planned 2026-10-12 by plan; independent of every other entry)
+## Done
+
+### `tumwater retire --role <id> --dry-run` previews what retire would remove and whether its safety rails would refuse (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** `retire` deletes a loop's branch and worktree, or resets a pooled slot with `reset --hard` and `clean -fd`. Today the only way to learn what it will touch is to run it. It refuses when a safety rail objects, and then the operator has to choose blind between fixing each objection and `--force`. `reclaim` and `init` already offer `--dry-run`. `retire --dry-run` should give the same preview: which artifacts exist to remove, which are already gone, and which rails object. It changes nothing.
 
@@ -58,8 +60,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - On a pinned slot, `--dry-run` leaves `readSlotsState(root)`'s `pinnedFor` for that slot unchanged.
 - `cli(root, "retire", "--role", "improve", "--dry-runn")` fails with `unknown argument: --dry-runn`. `helpTopic("retire")` matches `/--dry-run/`.
 - The existing retire tests pass unchanged.
-
-## Done
 
 ### `tumwater stop --in <duration>` schedules a graceful stop of the running fleet, shown as `stops in …` everywhere `run --for` is (done 2026-10-12; planned 2026-10-12 by plan; independent of every other entry; follows the landed "`run --for` shows a `stops in` countdown" plan, whose `StatusSnapshot.runStopsAt` and `runWindowBadge` it reuses)
 

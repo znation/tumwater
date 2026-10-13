@@ -266,7 +266,7 @@ export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
  * vocabulary cannot drift from the command body's `args.includes("--force")`. */
 export const FORCE_FLAG: FlagSpec = { names: ["--force"] };
 
-/** The `--dry-run` flag spec: preview a reclaim pass without deleting anything. Beside
+/** The `--dry-run` flag spec: preview a reclaim pass or a retire without changing anything. Beside
  * FORCE_FLAG so its spelling lives with the other boolean flags the gate admits. */
 export const DRY_RUN_FLAG: FlagSpec = { names: ["--dry-run"] };
 

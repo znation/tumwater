@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { branchName, landingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
-import { collectRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
+import { collectRetire, previewRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
 import { landingRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
@@ -295,3 +295,65 @@ function disableRole(root: string, role: string): void {
   cfg.roles[role] = { ...cfg.roles[role], enabled: false };
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
 }
+
+test("retire --dry-run previews the removal and changes nothing", async () => {
+  const { root } = await initializedWorktree();
+  disableRole(root, "improve");
+  await setRef(root, landingRefName("improve"), mainSha(root));
+
+  const r = await cli(root, "retire", "--role", "improve", "--dry-run", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  const payload = JSON.parse(r.stdout) as {
+    dryRun: boolean;
+    wouldRemove: string[];
+    skipped: string[];
+    objections: string[];
+  };
+  assert.equal(payload.dryRun, true);
+  assert.deepEqual(payload.wouldRemove, ["worktree", "branch", "landingRef"]);
+  assert.deepEqual(payload.skipped, ["pausedMarker"]);
+  assert.deepEqual(payload.objections, []);
+  assert.ok(fs.existsSync(worktreePath(root, "improve")), "worktree directory kept");
+  const head = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
+  assert.notEqual(head, null, "branch kept");
+  assert.equal(landingRefExists(root, "improve"), true, "landing ref kept");
+});
+
+test("retire --dry-run reports rail objections without failing; --force reframes them", async () => {
+  const { root } = await initializedWorktree();
+  const plain = await cli(root, "retire", "--role", "feature", "--dry-run");
+  assert.equal(plain.code, 0, plain.stderr);
+  assert.match(plain.stdout, /would refuse: .*still enabled in tumwater\.json/);
+  assert.ok(plain.stdout.trimEnd().endsWith("dry run — nothing removed"));
+  const forced = await cli(root, "retire", "--role", "feature", "--dry-run", "--force");
+  assert.equal(forced.code, 0, forced.stderr);
+  assert.match(forced.stdout, /--force overrides: .*still enabled in tumwater\.json/);
+  assert.doesNotMatch(forced.stdout, /would refuse/);
+});
+
+test("previewRetire lists a paused marker and leaves it in place", async () => {
+  const { root } = await initializedWorktree();
+  disableRole(root, "improve");
+  writeJsonAtomic(pausedRolesPath(root), { roles: ["improve", "clean"], at: Date.now() });
+  const preview = await previewRetire(root, "improve");
+  assert.ok(preview.wouldRemove.includes("pausedMarker"));
+  assert.deepEqual((readJson(pausedRolesPath(root)) as { roles: string[] }).roles, ["improve", "clean"]);
+});
+
+test("retire --dry-run leaves a pinned slot's pin alone and rejects a misspelled flag", async () => {
+  const root = await initializedRepo();
+  disableRole(root, "improve");
+  sh(root, "git", "branch", branchName("improve"), "main");
+  const slot = slotWorktreePath(root, 1);
+  await ensureDetachedWorktree(root, slot, branchName("improve"));
+  writeSlotsState(root, {
+    slots: [{ dir: slot, lease: null, pinnedFor: "improve", lastRole: null, lastReleasedAt: null }],
+  });
+  const r = await cli(root, "retire", "--role", "improve", "--dry-run");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(readSlotsState(root).slots.find((s) => s.dir === slot)?.pinnedFor, "improve");
+  const bad = await cli(root, "retire", "--role", "improve", "--dry-runn");
+  assert.notEqual(bad.code, 0);
+  assert.match(bad.stderr, /unknown argument: --dry-runn/);
+  assert.match(helpTopic("retire") ?? "", /--dry-run/);
+});

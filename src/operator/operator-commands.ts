@@ -3,7 +3,7 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
-import { artifactPhrase, retireRole } from "./retire.js";
+import { artifactPhrase, previewRetire, retireRole } from "./retire.js";
 import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { allRoleIds } from "../roles/roles.js";
@@ -342,7 +342,27 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
   // As in cmdAbort: the config exists only to validate the id against built-ins plus
   // user-defined loops; a missing --role fails before it is ever needed.
   const role = requiredNamedRole(root, args, "retire");
-  const result = await retireRole(root, role, { force: args.includes("--force") });
+  const force = args.includes("--force");
+  if (args.includes("--dry-run")) {
+    const preview = await previewRetire(root, role);
+    if (args.includes("--json")) {
+      sayJson({
+        role,
+        dryRun: true,
+        wouldRemove: preview.wouldRemove,
+        skipped: preview.skipped,
+        objections: preview.objections,
+      });
+      return;
+    }
+    for (const name of preview.wouldRemove) say(`would remove ${artifactPhrase(name, role)}`);
+    for (const name of preview.skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
+    for (const reason of preview.objections)
+      say(force ? `--force overrides: ${reason}` : `would refuse: ${reason}`);
+    say("dry run — nothing removed");
+    return;
+  }
+  const result = await retireRole(root, role, { force });
   if (args.includes("--json")) {
     sayJson({ role, removed: result.removed, skipped: result.skipped });
     return;

@@ -15,7 +15,7 @@ import { loadLoopState } from "../loop/loop-state.js";
 import { branchName, landingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
 import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";
-import { resumeRole } from "../fleet/fleet-state.js";
+import { pausedRoles, resumeRole } from "../fleet/fleet-state.js";
 import { git } from "../git/git-run.js";
 
 /** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus the
@@ -168,6 +168,32 @@ export async function retireRole(root: string, role: string, { force }: { force?
   } else mark("landingRef", false);
   mark("pausedMarker", resumeRole(root, status.role));
   return { status, removed, skipped };
+}
+
+/** What `retire --dry-run` reports: the artifacts a real run would remove or find already gone,
+ * and the rails that would object. Changes nothing. */
+interface RetirePreview {
+  status: RetireStatus;
+  wouldRemove: string[];
+  skipped: string[];
+  objections: string[];
+}
+
+/** Preview `retireRole` without touching the worktree, refs, slot state, or paused marker. */
+export async function previewRetire(root: string, role: string): Promise<RetirePreview> {
+  const status = await collectRetire(root, role);
+  const there: Record<(typeof ARTIFACTS)[number], boolean> = {
+    worktree: status.worktreePresent,
+    branch: status.branchPresent,
+    landingRef: status.landingRefPresent,
+    pausedMarker: pausedRoles(root).includes(role),
+  };
+  return {
+    status,
+    wouldRemove: ARTIFACTS.filter((a) => there[a]),
+    skipped: ARTIFACTS.filter((a) => !there[a]),
+    objections: objections(status),
+  };
 }
 
 /** The one-line human description of an artifact name, for the CLI renderer. */
