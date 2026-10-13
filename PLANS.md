@@ -31,6 +31,40 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### A refusal note on a still-blocked plan is dropped, not landed (planned 2026-10-12 by plan; independent of every other entry)
+
+A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` tick #99 refused "Operator backlog writes land on main, part 2/2" because part 1/2 had not landed (commit bd5019db). The heading's `requires part 1/2 landed` clause already held that plan as `[blocked: …]`, and that hold lifts by itself once part 1/2 leaves `## Planned`. The Refused note does not lift. It still holds part 2/2, two minutes after part 1/2 landed (11ddb628), until a human runs `tumwater plan --release`. It also paged the operator through `entry_refused`.
+
+**Goal.** `handleRefusal` in `src/verdict/refusal.ts` drops a newly added Refused note from a PLANS.md `## Planned` entry that main still holds as blocked. Every other refusal note lands exactly as today.
+
+**Approach.**
+- **Pure helper in `src/verdict/refusal.ts`.** Add an exported `withoutBlockedPlanRefusals(baseMd: string, headMd: string): { md: string; dropped: string[] }`. It lives here, not in `backlog-eligibility.ts`, because `backlog-structure.ts` already imports `backlog-eligibility.ts`.
+  - Base entries are `parseEntryDetails(baseMd, "Planned")` (`src/backlog/backlog-md.ts`), keyed by `entryKey(title)`, with `plannedPartKeys(basePlanned)` built once.
+  - Walk head's `actionableEntryRanges(headMd, "Planned")` (`src/backlog/backlog-structure.ts`). Act on an entry only when all three hold:
+    1. `refusalNote(slice.join("\n"))` (`src/backlog/backlog-eligibility.ts`) is non-null;
+    2. the same key exists among the base entries, and `refusalNote(baseEntry.body)` is null;
+    3. `entryHoldAgainst(baseEntry, baseParts)` returns an object with `blockedBy`.
+  - Replace each such slice with `withoutRefusalNotes(slice)`, the same helper `releaseEntry` uses. Work from the last entry to the first so the earlier ranges stay valid.
+  - Return the rewritten text and the dropped entries' titles. When nothing qualifies, return `headMd` unchanged and `dropped: []`.
+- **Wiring in `handleRefusal`.** Before the `notes` list is computed, when `PLANS.md` exists in `wt`:
+  - Read the base with `fileContentAt(wt, ctx.mainBranch, "PLANS.md")` (`src/git/git.ts`) and the head from disk, then run the helper.
+  - When `dropped` is non-empty, write the result back to `path.join(wt, "PLANS.md")`. Log one event per title with `logEventBestEffort(ctx.root, { loop: ctx.role, type: "warning", message: \`dropped refusal note on blocked plan "<title>": its prerequisite is still planned, so the block already holds it\` })`.
+  - Then compute `notes` from `changedFiles(wt)` as today. If PLANS.md is now clean and no other .md changed, the existing "no note" branch runs: reset to main, return `refused` with no commit, and emit no `entry_refused`. Any other markdown note, such as a BUGS.md refusal or a needs-review note, still commits and merges.
+- **Unchanged.** `refusalContradiction`, `src/tick/tick-verdict.ts`, every role prompt, and refusal notes on entries that are eligible, not on main, or held another way (`refused`, `needs-review`, `needs-replan`).
+
+**Files.** `src/verdict/refusal.ts` and `test/refusal.test.ts`. No README or docs/invariants.md change: no user-facing surface changes, and the guarantee is pinned by the new tests.
+
+**Acceptance criteria.**
+- New tests in `test/refusal.test.ts` use the existing `initializedWorktree` / `makeCtx` / `refusedPi` fixtures. Main's PLANS.md must hold both `### S, part 1/2: a (planned 2026-10-12 by plan)` and `### S, part 2/2: b (planned 2026-10-12 by plan; requires part 1/2 landed)` under `## Planned`.
+- When the worktree adds `**Refused 2026-10-12 by feature: x**` under part 2/2, `handleRefusal` returns `result: "refused"` with no `commit`, makes no merge call, and leaves the worktree clean at main. The event log then holds a `warning` naming part 2/2 and no `entry_refused`.
+- The same note on part 2/2 when main's PLANS.md lists part 1/2 under `## Done` instead commits and merges as today, and `entry_refused` is logged.
+- When the blocked plan's note is added alongside a Refused note on an eligible entry, only the blocked plan's note is dropped. The commit carries the other note, and HEAD's PLANS.md lacks the dropped line.
+- Unit tests of `withoutBlockedPlanRefusals` on in-memory strings:
+  - head equal to base returns `dropped: []` and the same text;
+  - a note already present on base is kept;
+  - a dropped note that sat between blank lines leaves one blank line.
+- The existing tests in `test/refusal.test.ts` and `test/loop-refusal.test.ts` pass unchanged.
+
 ## Done
 
 ### A queued prompt's delivery is logged: a `prompt_taken` event names the tick that took it (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/gui`, or `src/ui/tui` file. Today a queued prompt logs `prompt_enqueued` (`src/inbox/inbox-submit.ts`), `prompt_cancelled`, and `prompt_edited`, but nothing when a tick dequeues it. `assembleTickPrompt` in `src/tick/tick-prompt.ts` pops it with `dequeuePromptEntry`/`dequeueRolePromptEntry`, and `Loop.tickPrompt` in `src/loop/loop.ts` hands it to `PendingPrompt.record` without logging anything. So `tumwater logs`, the TUI/dashboard feeds, and `tumwater tick <role> <n>` cannot say which tick ran the operator's request. The prompt just drops off `tumwater prompt --list`. A grep for `"prompt_` in `src/events/events.ts` finds only `prompt_enqueued`, `prompt_cancelled`, and `prompt_edited`) (done 2026-10-12)
