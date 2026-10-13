@@ -6,7 +6,79 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** PRINCIPLES.md says every git operation belongs to the harness, and loop prompts forbid
+state-changing git commands. The only backstop is the prompt itself, though. When pi runs
+`git commit` in its worktree anyway, the commit reaches main unchanged:
+- **Dirty tree after the run.** `commitAll` (`src/git/git.ts`) commits the rest on top, so two
+  commits land, one of them with pi's subject, no trailer, and no `tumwater(<role>):` stamp.
+- **Clean tree after the run.** `isDirty` in `resolveTickVerdict` (`src/tick/tick-verdict.ts`)
+  reads false, so the tick ends `no_change`. Then the next tick's `recoverLeftover`
+  (`src/loop/leftover.ts`) adopts the unpinned ahead-of-main tip and queues it under pi's own
+  message.
+
+A grep under `src/` for `reset --soft`, or for any other check that HEAD moved during an
+authoring run, finds nothing. (The only mention is a `continueRebase` comment in
+`src/landing/landing-git.ts` that expects "an extra commit pi authored during the tick".)
+After this change, each tick lands as exactly one harness-stamped commit, whatever the agent
+did to HEAD.
+
+**Approach.**
+1. In `src/git/git.ts`, beside `commitAll`, add and export
+   `foldCommitsSince(wt: string, base: string): Promise<number>`:
+   - Return 0 without touching anything when `headOf(wt, "HEAD") === base`.
+   - Otherwise count `git rev-list --count <base>..HEAD`, run `git reset --soft <base>`, and
+     return the count, or 1 when the count is 0. A count of 0 means pi amended or reset so
+     HEAD is no longer a descendant of base. HEAD still moved, and the soft reset still puts
+     its tree back as staged edits.
+   - The work stays in the index and worktree, so the normal `isDirty` → stage → `commitAll`
+     flow commits it.
+2. In `tickWithWorktreePhase` (`src/loop/loop-tick.ts`):
+   - Record `const tickBase = await headOf(wt, "HEAD")` immediately before
+     `ctx.pi.runAuthoringPi(...)`. Every setup step before it, including the conflict
+     hand-back and revision apply, leaves uncommitted edits, so this is the tick's base.
+   - Right after the run returns, before `ctx.foldModelFallback`, call
+     `foldCommitsSince(wt, tickBase)`.
+   - When the result is above zero, call
+     `ctx.warn` with "agent made <n> commit(s) during the tick; folded into the harness commit",
+     counted with `plural(n, "commit")` from `src/text/phrases.ts`.
+   - This runs before `handlePiResultPhase`, so every verdict path (abort, resume, refusal,
+     no-change, staging) sees the folded tree.
+3. In `stageTickLanding` (`src/tick/tick-stage.ts`), apply the same fold around
+   `ctx.requestStageFix`:
+   - Read `headOf(ctx.wt, "HEAD")` before the call and fold after it, before the
+     `changedFiles` emptiness check.
+   - Warn the same way.
+4. Add **INV-H1** to `docs/invariants.md` as a new section, "## The harness owns every commit".
+   Guarantee: a tick's authoring and stage-fix runs cannot add a commit of their own to the
+   landed history; whatever they committed lands inside the tick's single harness-stamped
+   commit. Binds: `src/git/git.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`.
+   Pinned by: the tests below.
+
+**Out of scope** (separate entries if evidence appears): pi switching branches, committing in
+the primary checkout via `git -C`, and commits made by review or conflict-resolution runs in a
+vet slot.
+
+**Files touched.** `src/git/git.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`,
+`docs/invariants.md`, and a test file (the `test/loop-3.test.ts` pattern: `withPi` script,
+`makeLoopRunner`, `landHead`).
+
+**Acceptance criteria.**
+- "an agent commit beside uncommitted edits lands as one harness commit": the fake pi writes
+  `a.txt`, runs `git add a.txt && git -c user.name=t -c user.email=t@t commit -m "pi commit"`
+  in its cwd, writes `b.txt`, and replies with a SUMMARY. The tick ends `queued`. After
+  `landHead`, main is exactly one commit past its pre-tick head, that commit's subject starts
+  `tumwater(organize):`, and both files exist on main.
+- "an agent commit with a clean tree is not dropped as no_change": the fake pi commits its
+  only file and leaves the tree clean. The tick ends `queued`, not `no_change`, and lands as
+  one `tumwater(organize):` commit.
+- Both cases record the "folded into the harness commit" warning. A tick whose agent made no
+  commit records no such warning, which the existing loop tests already cover by never
+  committing.
+- Unit tests for `foldCommitsSince`: 0 and an untouched index when HEAD equals base; N for N
+  commits on top, with their content staged afterwards.
+- `npm run test` passes, and INV-H1 cites the new test names.
 
 
 ## Done
