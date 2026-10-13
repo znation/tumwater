@@ -41,7 +41,7 @@ import { repoToplevel } from "./git/git.js";
 
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
-import { completionRoleIds, completionScript, SUPPORTED_SHELLS, type CompletionShell } from "./cli/completion.js";
+import { completionConfigKeys, completionRoleIds, completionScript, SUPPORTED_SHELLS, type CompletionShell } from "./cli/completion.js";
 import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
@@ -349,6 +349,10 @@ async function main(): Promise<void> {
       // Works outside a repo: no requireReadyRepo.
       if (args.length === 1 && args[0] === "--roles") {
         for (const id of completionRoleIds(root)) say(id);
+        break;
+      }
+      if (args.length === 1 && args[0] === "--config-keys") {
+        for (const key of completionConfigKeys(root)) say(key);
         break;
       }
       const shell = args[0];

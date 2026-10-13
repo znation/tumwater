@@ -146,7 +146,7 @@ export function setDailyBudgetUsd(
  * (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`) that merges into the
  * existing map, so raising one role's cap never requires re-typing another's. The per-key
  * value validator runs before the write, the same screening a bare top-level key gets. */
-const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const;
+export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const;
 
 /** The valid first segments of a dotted config key — the per-role maps plus the `roles.` and
  * `model.` sections. The generic dotted-shape error suggests against these so a typo'd head

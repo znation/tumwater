@@ -291,6 +291,7 @@ Usage:
                                    --in schedules the stop, --cancel drops it
   tumwater completion <bash|zsh>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc)
   tumwater completion --roles      Print the loop ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
+  tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
 

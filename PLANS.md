@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Shell completion completes config keys for `config get|set|unset <key>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>`", reuses that entry's runtime-list pattern (`tumwater completion --roles`), and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, one export in `src/config/config-write.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `tumwater config set <TAB>` completes nothing, so the operator types `maxDailyCostUsdPerRole.feature` or `roles.qa.model` by hand, and a typo surfaces only as an `unknown config key` error after the command runs. A grep for `config-keys` under `src/`, `test/`, and PLANS.md finds nothing)
+_None yet._
+
+
+## Done
+
+### Shell completion completes config keys for `config get|set|unset <key>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>`", reuses that entry's runtime-list pattern (`tumwater completion --roles`), and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, one export in `src/config/config-write.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `tumwater config set <TAB>` completes nothing, so the operator types `maxDailyCostUsdPerRole.feature` or `roles.qa.model` by hand, and a typo surfaces only as an `unknown config key` error after the command runs. A grep for `config-keys` under `src/`, `test/`, and PLANS.md finds nothing) (done 2026-10-12)
 
 **Goal.** In bash and zsh, the word after `tumwater config get`, `config set`, or `config unset` completes against every key form `parseConfigKey` and `screenOperableKey` (`src/cli/config-commands.ts`) accept, including the role-scoped dotted keys of this repo's roles and custom loops.
 
@@ -30,9 +35,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater completion --config-keys` in a git repo whose tumwater.json declares a custom loop `docs-bot` prints `maxDailyCostUsd`, `model.strong`, `agents.claude.bin`, `quietHoursPerRole.feature`, `roles.qa.model`, and `roles.docs-bot.enabled`, and prints no `roles.feature-2.` key even with `roles.feature.instances: 2`. With a malformed tumwater.json (`{`), it exits 0 with empty stderr and still prints `roles.feature.enabled`.
 - Every line `completionConfigKeys` prints is accepted by `parseConfigKey` (none has `kind: "error"`): a test loops over the output and asserts it.
 - `completionSpec().flags.completion` includes `--config-keys`, and `tumwater completion --config-keys bash` fails with the `bash or zsh` message.
-
-
-## Done
 
 ### Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "`tumwater completion <bash|zsh>` prints a shell completion script derived from the help text", and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, `test/completion.test.ts`, and one README sentence. Today `bashScript` in `src/cli/completion.ts` completes only command names, `usageWords` subcommands, and flags. The value after `--role`, which 26 help lines take, and the `<id>`/`<role>` positional of `role` and `tick` complete nothing, so the operator types `feature-2` or a custom loop name by hand. A grep for `--roles` or `COMP_CWORD-1` under `src/` finds nothing) (done 2026-10-12)
 

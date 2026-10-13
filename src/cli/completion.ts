@@ -1,7 +1,9 @@
 /** Shell completion derived from the help text. The spec is parsed from the same HELP stanzas
  * `tumwater help <command>` and the unknown-command suggestion use, so a new command or flag
  * completes the moment it gains a help stanza and can never drift from the listing. */
-import { knownRoleIds, loadConfig } from "../config/config.js";
+import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
+import { AGENT_IDS, AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
+import { DOTTED_MAP_KEYS } from "../config/config-write.js";
 import { allRoleIds } from "../roles/roles.js";
 import { HELP, helpStanzas } from "./help.js";
 
@@ -64,6 +66,26 @@ export function completionRoleIds(root: string): string[] {
   }
 }
 
+/** The keys `config get|set|unset` complete: every form parseConfigKey accepts, with the role-scoped
+ * keys of this repo's base roles and custom loops (not instance ids like `feature-2`). A broken
+ * tumwater.json falls back to the built-in catalog rather than writing errors into the prompt. */
+export function completionConfigKeys(root: string): string[] {
+  let roleIds: string[];
+  try {
+    roleIds = [...allRoleIds(), ...customLoopNames(loadConfig(root))];
+  } catch {
+    roleIds = allRoleIds();
+  }
+  const keys: string[] = [
+    ...TOP_LEVEL_KEYS,
+    ...MODEL_TIERS.map((tier) => `model.${tier}`),
+    ...AGENT_IDS.flatMap((id) => AGENT_KEYS.map((field) => `agents.${id}.${field}`)),
+    ...DOTTED_MAP_KEYS.flatMap((map) => roleIds.map((id) => `${map}.${id}`)),
+    ...roleIds.flatMap((id) => ROLE_ENTRY_KEYS.map((field) => `roles.${id}.${field}`)),
+  ];
+  return [...new Set(keys)];
+}
+
 function bashScript(help: string): string {
   const spec = completionSpec(help);
   const arms = spec.commands.map((command) => {
@@ -91,6 +113,10 @@ function bashScript(help: string): string {
     `  COMPREPLY=()`,
     `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == tick ]] && [[ "$cur" != -* ]]; }; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
+    `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,
+    `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
     `  fi`,
     `  if [ "$COMP_CWORD" -eq 1 ]; then`,
