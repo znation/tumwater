@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit (planned 2026-10-12 by plan; independent of every other entry)
+_None yet._
+
+
+## Done
+
+### The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** PRINCIPLES.md says every git operation belongs to the harness, and loop prompts forbid
 state-changing git commands. The only backstop is the prompt itself, though. When pi runs
@@ -79,9 +84,6 @@ vet slot.
 - Unit tests for `foldCommitsSince`: 0 and an untouched index when HEAD equals base; N for N
   commits on top, with their content staged afterwards.
 - `npm run test` passes, and INV-H1 cites the new test names.
-
-
-## Done
 
 ### The landing gate rejects a loop's edit to the initial prompt block, or to PRINCIPLES.md from a role other than director or steward (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 

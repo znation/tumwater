@@ -156,8 +156,7 @@ export function conflictMarkerReason(wt: string, files: string[]): string | unde
  * GIT_EDITOR=true so `rebase --continue` can never block on a commit-message prompt. A
  * resolution that leaves no unique content (the branch's change was fully superseded by
  * main) is skipped automatically by git, finishing the rebase cleanly. Throws when the
- * rebase stops again — e.g. on a second conflict from an extra commit pi authored during
- * the tick; the caller aborts and reports merge_conflict. */
+ * rebase stops again — e.g. on a second conflict from a later commit the resolution run added; the caller aborts and reports merge_conflict. */
 export async function continueRebase(wt: string): Promise<string> {
   await git(wt, "add", "-A");
   await runGit(wt, [...COMMIT_IDENT, "rebase", "--continue"], { GIT_EDITOR: "true" });

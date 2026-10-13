@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop/loop-state.js";
-import { commitAll } from "../git/git.js";
+import { commitAll, foldCommitsSince, headOf } from "../git/git.js";
 import { changedFiles } from "../git/git-diff.js";
 import {
   buildCommitMessage,
@@ -169,7 +169,10 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   if (heldMoved) findings.push(heldMoved);
   if (findings.length > 0) {
     const before = findings.length;
+    const fixBase = await headOf(ctx.wt, "HEAD");
     const fixUp = await ctx.requestStageFix(ctx.wt, findings);
+    const folded = await foldCommitsSince(ctx.wt, fixBase);
+    if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
     if (fixUp?.aborted) return ctx.finishAbortedTick();
     if (fixUp) {
       summary = extractSummary(fixUp.finalText) ?? summary;

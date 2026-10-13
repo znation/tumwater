@@ -3,7 +3,8 @@ import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { branchExists, deleteRef, commitMessage, changeBaseRev } from "../git/git.js";
+import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf, foldCommitsSince } from "../git/git.js";
+import { plural } from "../text/phrases.js";
 import { git, gitTry } from "../git/git-run.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { leaseSlot } from "../git/worktree-pool.js";
@@ -541,7 +542,11 @@ async function tickWithWorktreePhase(
     prompt += `\n\n${buildConflictHandbackNote(hb.reason, conflicted, intent)}`;
   }
 
+  const tickBase = await headOf(wt, "HEAD");
   const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.ticks}`, resuming, cfg);
+  // The harness owns every commit (INV-H1): fold any the agent made into the tick's one commit.
+  const folded = await foldCommitsSince(wt, tickBase);
+  if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
   // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
   // post-run handlers spend any more pi runs: only this run is evidence about the primary.
   ctx.foldModelFallback(fallbackCtx, pi);

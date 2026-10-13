@@ -487,6 +487,17 @@ export async function patchId(wt: string, base: string, head: string): Promise<s
   }
 }
 
+/** Undo commits the agent made on top of `base` (INV-H1): a soft reset keeps their content as
+ * staged edits, so the harness's own commitAll lands it as one commit. Returns how many commits
+ * were folded — 0 when HEAD never moved. A count of 0 from rev-list with HEAD moved means the
+ * agent amended or reset away from `base`; that still folds, and counts as 1. */
+export async function foldCommitsSince(wt: string, base: string): Promise<number> {
+  if ((await headOf(wt, "HEAD")) === base) return 0;
+  const count = Number(await git(wt, "rev-list", "--count", `${base}..HEAD`));
+  await git(wt, "reset", "--soft", base);
+  return count > 0 ? count : 1;
+}
+
 /** Stage and commit everything in the worktree. Returns the new commit hash. */
 export async function commitAll(wt: string, message: string): Promise<string> {
   await git(wt, "add", "-A");

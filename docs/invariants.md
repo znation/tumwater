@@ -363,3 +363,17 @@ review — md-only diffs included — and flagged at staging for one fix-up turn
 rejects an md-only edit to the initial prompt block with no pi run" and "gate rejects an md-only
 PRINCIPLES.md edit except from the steward" — and `test/stage-check.test.ts` — "an uncommitted
 PRINCIPLES.md edit is a finding for a non-steward role only".
+
+## The harness owns every commit
+
+### INV-H1: a tick's authoring and stage-fix runs cannot add a commit of their own to the landed history
+
+**Guarantee.** Whatever commits an authoring or stage-fix run makes in its worktree are folded
+(`git reset --soft` to the pre-run HEAD) before the verdict is read, so they land inside the
+tick's single harness-stamped commit, and a clean tree after such a run is not `no_change`.
+
+**Binds.** `src/git/git.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`.
+
+**Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits lands
+as one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
+two `foldCommitsSince` unit tests.
