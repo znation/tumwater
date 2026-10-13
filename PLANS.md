@@ -31,6 +31,51 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### The TUI schedules and cancels a graceful fleet stop with Ctrl+Q (`tumwater stop --in` / `--cancel` parity) (planned 2026-10-12 by plan; independent of every other entry; follows the landed "The dashboard schedules and cancels a graceful fleet stop" entry in Done)
+
+**Goal.** `tumwater stop --in 2h` / `stop --cancel` and the dashboard's "Stop the fleet later" control can set and drop a scheduled stop. The TUI shows the resulting `stops in …` badge (through `runWindowBadge` in `src/ui/status-render.ts`) but cannot set or drop it. An operator watching the terminal should be able to say "wind down in 2 hours", or take that back, without a second terminal. This is the same reasoning that gave the TUI Ctrl+F for the fleet pause.
+
+**Approach.** Model the key on Ctrl+F: it toggles by marker state, and it reuses the pause editor's machinery with one more flag, as Ctrl+W did with `pauseEditWake`. The key is **Ctrl+Q** (mnemonic: **q**uit later). It is unbound today: a grep for `"q"` under `src/ui/tui` finds nothing, and node's raw TTY mode clears IXON, so the terminal delivers it.
+- **Parser (`src/ui/tui/tui-input.ts`).** Add `parseStopInInput(text): { ok: true; inMs: number } | { ok: false; error: string }` beside `parseRoleWakeInput`.
+  - It trims the text. Empty → `{ ok: false, error: "a scheduled stop takes a duration like 45m or 2h — Esc to cancel" }`.
+  - A string `parseDurationMs` rejects → the same error.
+  - A duration over `PAUSE_FOR_MAX_MS` → `"stop is capped at 90d"`.
+  - Otherwise → `{ ok: true, inMs }`.
+  - Empty is refused on purpose: an immediate stop has its own command, and this key must never mean "stop now".
+- **Keys (`src/ui/tui/tui-keys.ts`, `createTuiKeys`).**
+  - Add `let pauseEditStop = false`. Expose it on `TuiKeysState` as `pauseEditStop: boolean`, with a doc comment ("the fleet editor schedules a stop (Ctrl+Q) rather than a pause (Ctrl+F)"), and return it from `state()`. `exitPauseEditMode` resets it, as it does `pauseEditWake`.
+  - Add a `key.ctrl && key.name === "q"` branch right after the Ctrl+F branch, with the same guard: `!budgetMode && !rolePromptFor && !searchMode && !deferMode && !queuedEditFor && !answerFor && !entryEditFor`. Inside a `try`/`catch` that calls `flashError`, as Ctrl+F does:
+    - If `pauseEditMode` is open (any pause, wake, or stop editor), `exitPauseEditMode()` and return. A second Ctrl+Q closes the editor without writing.
+    - Else, if `scheduledStopAt(root) !== undefined` (from `src/fleet/fleet-state.ts`), `flashMessage(cancelScheduledStopMessage(root))`. This is an immediate cancel, like Ctrl+F's immediate resume.
+    - Else, settle the prompt recall and save the draft into `pauseSavedInput`/`pauseSavedCursor`, exactly as Ctrl+F does. Set `pauseEditMode = true`, `pauseEditRole = null`, and `pauseEditStop = true`, blank the line, and flash `'stop the fleet later: a duration, e.g. "2h" — in-flight ticks finish, then the fleet exits — Enter to schedule, Esc to cancel'`.
+  - In the Enter handler's `pauseEditMode` branch, before `wakeParsed`/`parsed` are used, handle `pauseEditStop`. Run `parseStopInInput(input)`:
+    - Not ok → `flashMessage(error)` and stay in the editor.
+    - Ok → `const result = requestScheduledStop(root, inMs)`, then `exitPauseEditMode()`. Flash `result.ok ? result.message : \`error: ${result.error}\``, the abort key's error idiom.
+    - Both functions come from `src/operator/operator-intent.ts`, already imported for `requestWake`/`requestAbort`, so the TUI writes the same marker with the same wording as `cmdStop` and `/api/stop-schedule`.
+- **Frame (`src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`).**
+  - Add `pauseEditStop?: boolean` to the `mode` parameter types of `hintLine` and `promptPrefix`.
+  - With `pauseEditMode && pauseEditStop`, the prompt prefix reads `stop in › ` and the hint's Enter label reads `schedule stop`. Today's fleet-pause branch keeps `pause`.
+  - The default (activity) view's hint keys gain `["Ctrl+Q", "stop later"]` right after `["Ctrl+F", "pause fleet"]`.
+  - In `tui.tsx`, the `mode` object passes `pauseEditStop: s.pauseEditStop`.
+- **Docs.**
+  - README.md's "Control the loops" row: at the `stop --in` sentence, add that the TUI's Ctrl+Q sets it (a duration) and, when one is already scheduled, cancels it.
+  - docs/how-it-works.md: add one sentence after the `Ctrl+F` paragraph describing Ctrl+Q the same way.
+  - Update the TUI's module doc comment in `test/tui-operator-keys.test.ts` to name Ctrl+Q.
+  - docs/invariants.md: no new guarantee; the marker semantics are unchanged.
+
+**Files touched.** `src/ui/tui/tui-input.ts`, `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-frame.ts`, `src/ui/tui/tui.tsx`, `README.md`, `docs/how-it-works.md`, `test/tui-input.test.ts`, `test/tui-operator-keys.test.ts`, `test/tui-frame.test.ts`.
+
+**Acceptance criteria.**
+- `test/tui-input.test.ts`: `parseStopInInput("2h")` → `{ ok: true, inMs: 7_200_000 }`. `""`, `"soon"`, and `"91d"` each → `ok: false`; the last one's error matches `/capped at 90d/`.
+- `test/tui-operator-keys.test.ts`, using `makeTuiRepo`/`withTui`, `writeOrchestratorMarker` from `test/fixtures/log-fixtures.ts` (a live harness), and `scheduledStopAt` from `src/fleet/fleet-state.ts`:
+  - Ctrl+Q opens the editor: the last line matches `/^stop in ›/`, and no marker is written yet. Typing `2h` and Enter (with a live harness) sets `scheduledStopAt(repo)` within 60 s of `Date.now() + 7_200_000`, and the frame matches `/stop scheduled in 2h/`.
+  - With a marker already present, Ctrl+Q removes it at once and the frame matches `/scheduled stop cancelled/`. No editor opens.
+  - With no harness running, Ctrl+Q, `2h`, Enter flashes `/error: no harness is running/` and writes no marker.
+  - An empty Enter or `91d` flashes the parser's error, writes nothing, and keeps the editor open. Esc then restores a typed draft on the `director ›` line. A second Ctrl+Q closes the editor without writing.
+  - Ctrl+Q during a `/` search, or while the budget editor (Ctrl+B) is open, opens no `stop in ›` editor and writes no marker.
+- `test/tui-frame.test.ts`: `hintLine` on the activity view names `Ctrl+Q`. With `pauseEditMode: true, pauseEditStop: true`, `promptPrefix` renders `stop in` and `hintLine` renders `schedule stop`.
+- The existing Ctrl+F and Ctrl+W tests in `test/tui-operator-keys.test.ts` pass unchanged.
+
 ## Done
 
 ### The dashboard schedules and cancels a graceful fleet stop (`tumwater stop --in` / `--cancel` parity) (done 2026-10-12; planned 2026-10-12 by plan; independent of every other entry; follows the landed "`tumwater stop --in <duration>`" entry in Done)
