@@ -6,8 +6,72 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater plan|bug --show <n>` prints one entry as an editable markdown file that `--edit <n> --file` takes back unchanged (planned 2026-10-12 by plan; independent of every other entry)
 
+**Goal.** Close the operator's edit loop. `plan|bug --edit <n> --file <path>` rewrites an entry
+from a markdown file, but nothing prints an entry in that file's shape. `--list` prints titles.
+`--list --json` and `tumwater backlog --json` carry `BacklogEntry.body`, which `parseEntryDetails`
+(`src/backlog/backlog-md.ts`) builds from *trimmed* lines, so nested bullets and code-fence
+indentation are lost. Today the operator retypes the whole entry or copies it out of PLANS.md by
+hand. After this plan, `tumwater plan --show 2 > p.md && $EDITOR p.md && tumwater plan --edit 2
+--file p.md` works. A grep for `--show` under `src/` finds only git's `--show-toplevel`.
+
+**Approach.**
+- `src/backlog/backlog-write.ts`: add an exported `showEntry(root, kind: "bug" | "plan", n)`.
+  It returns `{ position, title, body, hold }`. It reads the file with `readEntryLines` (the
+  private helper that `removeEntry` and `editEntryLocked` use, which fails through
+  `locateEntry`'s `no <noun> at position N (M in FILE)` wording). From the range it derives:
+  - `title`: `stripEntryStamp(headingMetadata(lines, entry.start - 1).text)` with the leading
+    `### ` removed, folded through `collapseWhitespace`. A wrapped heading's continuation lines
+    are joined first, which is how `spliceInEditedEntry` reads the stamp.
+  - `body`: `normalizeEntryBody` over `lines.slice(next, entry.end)`, where `next` is
+    `headingMetadata`'s first line after the heading. Lines keep their indentation; **Refused** /
+    **Needs …** notes are body lines and are included.
+  - `hold`: `backlogHolds(root).plans|bugs[n - 1] ?? null`, the value `listAndAnnounce` pairs
+    with each entry.
+- Add an exported `showAndAnnounce(root, args, command: "bug" | "plan")` shell, parsed the way
+  `releaseAndAnnounce` parses its flags: `--show <n>` through `parsePositionFlag("--show", …,
+  "--show 2")`, an optional `--json`, and `--help`/`-h` tolerated. Repeats are refused with
+  `rejectRepeatFlag`, and anything else is refused with `rejectUnknownArgs(command, rest, [])`.
+  If no position is given, fail with `--show needs a position (usage: tumwater <command> --show
+  <n>)`. The command is read-only like `--list`: no `requireReadyRepo`, no commit, and no wake.
+  Prose output is `title`, a blank line, then `body` (just the title when the body is empty),
+  with no other decoration, so stdout is the file `--edit --file` reads. `--json` prints
+  `{position, title, body, hold}` through `sayJson`.
+- `editPlanFromText` and `editBugFromText`: pass `splitEntryFile`'s title through
+  `stripEntryStamp`, as `tryEditEntry` already does. Then a file whose first line was pasted back
+  as the full heading keeps one stamp instead of two. Leave `splitEntryFile` alone, because the
+  `--file` filing paths also call it.
+- `src/cli.ts` `case "bug"` and `case "plan"`: add `if (args.includes("--show")) {
+  showAndAnnounce(root, args, "<kind>"); break; }` before the `--list` arm, and import it in
+  each arm's destructured `await import("./backlog/backlog-write.js")`.
+- `src/cli/help.ts`: add `tumwater plan --show <n> [--json]` and `tumwater bug --show <n>
+  [--json]` stanzas next to each `--list` stanza. Each stanza says the output is the file
+  `--edit <n> --file` reads. Shell completion takes flags from the help text
+  (`completionSpec` in `src/cli/completion.ts`), so `--show` completes without a change there.
+- `docs/cli.md`: in the "Steer the project" row, after the `--list` clause, add that `--show <n>`
+  prints the Nth entry as the markdown file `--edit <n> --file` takes back (`--json` for
+  scripts).
+
+**Files touched.** `src/backlog/backlog-write.ts`, `src/cli.ts`, `src/cli/help.ts`,
+`docs/cli.md`, and a new `--show` test file beside (and modelled on)
+`test/backlog-write-list.test.ts` (its `makeRepo`/`cli` helpers).
+
+**Acceptance criteria.**
+- A plan filed with `plan --file` whose body has an indented sub-bullet and a fenced code block
+  with indented lines: `plan --show 1` prints the title without its `(reported …)` stamp, one
+  blank line, then the body with that indentation kept.
+- Round trip: writing `plan --show 1` stdout to a file and running `plan --edit 1 --file <it>`
+  leaves PLANS.md byte-identical for that entry. The same holds for a bug filed with `bug --file`.
+- `plan --edit 1 --file` with a first line that ends in the entry's own `(reported …)` stamp
+  writes a heading with exactly one stamp.
+- `plan --show 1 --json` prints `{position, title, body, hold}`. The body keeps indentation and
+  `hold` matches the entry's value in `plan --list --json`.
+- An out-of-range position fails non-zero with the `no plan at position N (M in PLANS.md)`
+  wording. A missing position, a stray positional, an unknown flag, and a repeated `--show` or
+  `--json` are each refused. The command makes no commit and queues no wake: `git log` on main
+  and `tumwater prompt --list` are unchanged.
+- `tumwater help plan` and `tumwater help bug` name `--show <n> [--json]`. `npm run test` passes.
 
 
 ## Done
