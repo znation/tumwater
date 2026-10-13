@@ -27,7 +27,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The new `completion.test.ts` runs `bash -n` on the bash script and exits 0. It then sources the script in `bash` (via `execFile`, offline, no TTY), sets `COMP_WORDS=(tumwater con)` with `COMP_CWORD=1`, calls `_tumwater`, and sees `config` in `COMPREPLY`. It does the same for `(tumwater config u)` → `unset` and `(tumwater report --fa)` → `--failures`.
 - The zsh script starts with the `bashcompinit` line and contains the bash script's `complete -F _tumwater tumwater`.
 - `tumwater completion bash` exits 0 outside a git repo and prints the script. `tumwater completion fish` and bare `tumwater completion` exit nonzero, naming bash and zsh. `tumwater help completion` prints the new stanza.
-### `tumwater report` prints each role's cost per landed commit, naming roles that spent and landed nothing (planned 2026-10-12 by plan; independent of every other entry. It touches only `src/report/report-render.ts` and its tests)
+
+## Done
+
+### `tumwater report` prints each role's cost per landed commit, naming roles that spent and landed nothing (planned 2026-10-12 by plan; independent of every other entry. It touches only `src/report/report-render.ts` and its tests; done 2026-10-12 by feature)
 
 **Goal.** The day report already prints `**Cost by role:**` (ticks' priced spend, keyed by loop id) and `**Commits by role:**` (landed commits, keyed by base role). The operator tuning intervals and per-role caps wants the ratio: which loop spends the most per landing, and which spent and landed nothing. A new `**Cost per commit:**` line states it.
 
@@ -48,8 +51,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The same test's cost spread over two days (same roles, split) prints the same line, so the fold covers the whole window.
 - A role with commits and no cost (`commitsByRole: { docs: 4 }`, no `docs` cost) is absent from the line. A window with no cost at all prints `**Cost per commit:** -`.
 - The existing `test/report.test.ts` assertions, including the indexed `lines[12]`/`lines[13]` ones, pass unchanged. `--since` renders carry no `Cost per commit` line.
-
-## Done
 
 ### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes: (done 2026-10-12)
 - `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);

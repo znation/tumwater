@@ -13,6 +13,7 @@ import { monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { markdownTable } from "../text/markdown.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -126,6 +127,31 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   return lines.join("\n");
 }
 
+/** Cost per landed commit by base role. Spend comes from costByRole (keyed by loop id, folded to
+ * its base role so `feature-2` joins `feature`), commits from commitsByRole (already base-role
+ * keyed). `landed` is [role, cost per commit, commits] for roles with both, ranked by cost per
+ * commit desc then name asc; `idle` is roles that spent and landed nothing, ranked by spend.
+ * Landing spend (the reviewer's) and notional subscription spend stay out, matching
+ * `**Cost by role:**`; a role with commits but no priced spend appears in neither list. */
+function costPerCommitPairs(series: ReportDay[]): { landed: [string, number, number][]; idle: [string, number][] } {
+  const cost: Record<string, number> = {};
+  const commits: Record<string, number> = {};
+  for (const d of series) {
+    for (const [id, c] of Object.entries(d.costByRole)) addTo(cost, baseRoleOf(id), c);
+    for (const [role, n] of Object.entries(d.commitsByRole ?? {})) addTo(commits, role, n);
+  }
+  const landed: [string, number, number][] = [];
+  const idleCost: [string, number][] = [];
+  for (const [role, c] of Object.entries(cost)) {
+    if (c <= 0) continue;
+    const n = commits[role] ?? 0;
+    if (n > 0) landed.push([role, c / n, n]);
+    else idleCost.push([role, c]);
+  }
+  landed.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  return { landed, idle: rankCountEntries(idleCost) };
+}
+
 /** Render a report as Markdown — the pinned shape the CLI prints and the TUI usage pane
  * (report 3/3) reuses; the GUI tab (report 2/3) renders its own SVG charts from the same
  * ReportData instead. Pure function of ReportData: no I/O, no clock reads. */
@@ -166,6 +192,12 @@ export function renderReportMarkdown(data: ReportData): string {
   // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
+  const cpc = costPerCommitPairs(data.series);
+  const cpcParts = [
+    ...cpc.landed.map(([r, per, n]) => `${r} — ${usd(per)} (${n})`),
+    ...cpc.idle.map(([r, c]) => `${r} — ${usd(c)}, no commits`),
+  ];
+  lines.push(`**Cost per commit:** ${cpcParts.length === 0 ? "-" : cpcParts.join(" · ")}`);
   // Commits per backlog item is day-granular backlog data (features done + bugs fixed), so it
   // belongs only to the day report; zero items means the denominator is absent, not NaN.
   const items = t.featuresDone + t.bugsFixed;

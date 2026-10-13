@@ -505,3 +505,25 @@ test("tumwater report --role scopes the report, scopes --since/--json, and valid
   assert.notEqual(trailing.code, 0);
   assert.match(trailing.out, /--role needs a role id/);
 });
+
+test("renderReportMarkdown prints each role's cost per landed commit, folding instances and days", () => {
+  const day = (date: string, costByRole: Record<string, number>, commitsByRole: Record<string, number>) => ({
+    date, tokensOut: 0, ticksByRole: {}, costByRole, commits: 0, commitsByRole, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+  });
+  const render = (series: ReportData["series"]) =>
+    renderReportMarkdown({
+      days: series.length, from: "2026-09-10", to: "2026-09-11", series,
+      totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+      coversFullWindow: true,
+    });
+  const want = "**Cost per commit:** clean — $0.30 (3) · feature — $0.15 (2) · plan — $0.90, no commits";
+  const one = render([day("2026-09-10", { feature: 0.2, "feature-2": 0.1, clean: 0.9, plan: 0.9 }, { feature: 2, clean: 3 })]);
+  assert.ok(one.split("\n").includes(want), one);
+  const two = render([
+    day("2026-09-10", { feature: 0.2, clean: 0.4, plan: 0.5 }, { feature: 1, clean: 1 }),
+    day("2026-09-11", { "feature-2": 0.1, clean: 0.5, plan: 0.4 }, { feature: 1, clean: 2 }),
+  ]);
+  assert.ok(two.split("\n").includes(want), two);
+  const free = render([day("2026-09-10", {}, { docs: 4 })]);
+  assert.ok(free.split("\n").includes("**Cost per commit:** -"), free);
+});
