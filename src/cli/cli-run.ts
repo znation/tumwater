@@ -90,8 +90,9 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
  * `--for <duration>` keeps the daemon shape (redeployer, LaunchServicesWatch, supervisor hand-off
  * all stay) but arms a deadline: at the deadline the same graceful stop a Ctrl+C runs fires, and
  * the process exits after printing the summary. A mid-run self-redeploy hands the same args
- * (including `--for`) to the supervisor's next child, so the deadline restarts in the new
- * generation — the window is per-generation, stated here rather than coded around. */
+ * (including `--for`) to the supervisor's next child, and the supervisor hands every generation
+ * the same window start (RUN_WINDOW_START_ENV), so the deadline and the summary span the whole
+ * window; only the final exit prints the summary. */
 export async function cmdRun(root: string, args: string[]): Promise<void> {
   // The one function the self-redeploy asks before swapping onto a successor and the supervisor
   // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
@@ -131,11 +132,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
   // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
   // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
-  const { SUPERVISED_ENV, ONCE_FAILED_EXIT_CODE, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
+  const { SUPERVISED_ENV, RUN_WINDOW_START_ENV, ONCE_FAILED_EXIT_CODE, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
-    await superviseRunCommand(root, args, branchArg);
+    await superviseRunCommand(root, args, branchArg, forMs);
     return;
   }
   const controller = new AbortController();
@@ -151,7 +152,8 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // A windowed run's deadline arms the same graceful stop a Ctrl+C runs — the identical `stop`
   // closure, so the drain path is one code path either way. clearTimeout in the finally below
   // retracts it when the run ends first (an early Ctrl+C), so no stray timer outlives the run.
-  const deadlineTimer = forMs !== null ? armDeadlineTimer(forMs, () => {
+  const windowStart = inheritedWindowStart(process.env[RUN_WINDOW_START_ENV], Date.now());
+  const deadlineTimer = forMs !== null ? armDeadlineTimer(Math.max(0, windowStart + forMs - Date.now()), () => {
     say("deadline reached — stopping");
     stop();
   }) : null;
@@ -195,7 +197,6 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
-  const windowStart = Date.now();
   let exit;
   try {
     exit = await (await import("../orchestrator/orchestrator.js")).runOrchestrator({
@@ -213,7 +214,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     unsubscribe();
   }
   if (once) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
-  else if (forMs !== null) {
+  else if (forMs !== null && !exit.restart) {
     const { rows, covered } = readTickRowsSince(root, Date.now() - windowStart, null);
     say(windowSummary(durationLabel(forMs), summarizeTickRows(rows), covered));
   }
@@ -229,10 +230,17 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
 }
 
+/** The window start a generation adopts: the supervisor's RUN_WINDOW_START_ENV mark when it is a
+ * positive integer no later than `now`, else `now` (absent, malformed, or in the future). */
+export function inheritedWindowStart(raw: string | undefined, now: number): number {
+  const n = Number(raw);
+  return raw !== undefined && Number.isInteger(n) && n > 0 && n <= now ? n : now;
+}
+
 /** The `run --for` exit summary: a window line, then the `history --summary` table for the ticks
- * that ended since this generation booted — every tick counted once by its outcome class. A
- * mid-window self-redeploy prints this before handing off, covering that generation's ticks; the
- * next generation restarts its deadline and window start. */
+ * that ended since the window opened — every tick counted once by its outcome class. Only the
+ * final exit prints it; a mid-window self-redeploy hands off silently and the next generation
+ * inherits the window start, so the table spans every generation. */
 export function windowSummary(label: string, summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): string {
   const { total } = summary;
   const lines = [
@@ -414,11 +422,12 @@ async function superviseDashboard(signal: AbortSignal): Promise<void> {
  * supervisor's own exit code is whatever the last generation's was. A fleet that goes down without
  * the operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
  * generation's stderr reached only this terminal, which nobody may be watching. */
-async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null): Promise<void> {
+async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null, forMs: number | null): Promise<void> {
   // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
   // that never boots the fleet never compiles it.
-  const { fleetDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
+  const { RUN_WINDOW_START_ENV, fleetDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
   const plan = guiChildPlan(runArgs);
+  const windowEnv = forMs !== null ? { [RUN_WINDOW_START_ENV]: String(Date.now()) } : {};
   const controller = new AbortController();
   // The dashboard lives beside the orchestrator generations rather than inside one: it must
   // outlive every generation a redeploy swaps out. Its own abort stops the current dashboard
@@ -436,7 +445,7 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   const gui = plan.spawnGui ? superviseDashboard(guiController.signal) : Promise.resolve();
   const code = await superviseRun(
     {
-      spawnChild: (signal) => spawnRunChild(signal, plan.orchestratorArgs),
+      spawnChild: (signal) => spawnRunChild(signal, plan.orchestratorArgs, windowEnv),
       stopping: () => stopping,
       onRespawn: (generation) =>
         say(`\nrestarting on the new build (generation ${generation})\n`),

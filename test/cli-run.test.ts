@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-run.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-run.js";
 import { summarizeTickRows, type TickRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
@@ -318,4 +318,12 @@ test("windowSummary says nothing ran for an empty window and notes a sparse one"
   assert.equal(windowSummary("2h", summarizeTickRows([]), true), "for 2h: 0 ticks — nothing ran");
   assert.equal(windowSummary("2h", summarizeTickRows([]), false), `for 2h: 0 ticks — nothing ran\n${SPARSE_WINDOW_NOTE}`);
   assert.ok(windowSummary("2h", summarizeTickRows([tickRow("a", "changed", 1)]), false).endsWith(SPARSE_WINDOW_NOTE));
+});
+
+test("inheritedWindowStart adopts only a positive past integer, else now", () => {
+  assert.equal(inheritedWindowStart(undefined, 1000), 1000);
+  assert.equal(inheritedWindowStart("abc", 1000), 1000);
+  assert.equal(inheritedWindowStart("0", 1000), 1000);
+  assert.equal(inheritedWindowStart("2000", 1000), 1000);
+  assert.equal(inheritedWindowStart("500", 1000), 500);
 });

@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater run --for` keeps one window across self-redeploys: the deadline and the summary span every generation (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator code. It builds on the landed "`run --for` ends with a per-loop summary" plan)
+## Done
+
+### `tumwater run --for` keeps one window across self-redeploys: the deadline and the summary span every generation (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator code. It builds on the landed "`run --for` ends with a per-loop summary" plan)
 
 **Goal.** Today each orchestrator generation re-parses `--for` and arms a fresh deadline. `cmdRun`'s doc comment in `src/cli/cli-run.ts` calls this "the window is per-generation". So `tumwater run --for 2h` on a fleet that self-redeploys every hour never stops. Each generation's `windowSummary` also covers only its own ticks. After this change, the window opens once, when the supervisor starts. Every generation stops at that one deadline, and only the final exit prints the summary, covering the whole window.
 
@@ -51,8 +53,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - test/cli-run-window.test.ts's `run --for boots, stops itself at the deadline, and prints the summary` passes unchanged. Its pre-window `ghost` tick is still excluded.
 - `grep -n "per-generation" src/cli/cli-run.ts` finds nothing.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater run --for` ends with a per-loop summary of every tick in its window, not the once round's last-result line (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator file. Today `cmdRun` in `src/cli/cli-run.ts` prints `onceSummary(...)` under `once || forMs !== null`. That line counts ticks from each role's `ticks` delta, but it buckets each role by its *last* result only. A two-hour window where `feature` ran 12 ticks prints `once: 12 ticks — 1 changed`, so the outcome counts do not add up to the tick count. The window's work is invisible, and the line is labelled `once:` for a run that was not one round. `test/cli-run.test.ts` already pins the mismatch for the once path: `"once: 5 ticks — 1 changed, 1 error, 1 no_change"`)
 

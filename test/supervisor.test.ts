@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import {
+  RUN_WINDOW_START_ENV,
   type ChildExit,
   type FleetDown,
   fleetDownEvent,
@@ -234,7 +235,7 @@ function probeScript(dir: string, outFile: string | null, body: string): string 
     p,
     'import fs from "node:fs";\n' +
       (outFile
-        ? `fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ argv2: process.argv[2], ${JSON.stringify(SUPERVISED_ENV)}: process.env[${JSON.stringify(SUPERVISED_ENV)}], ${JSON.stringify(SUPERVISOR_PID_ENV)}: process.env[${JSON.stringify(SUPERVISOR_PID_ENV)}] }));\n`
+        ? `fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ argv2: process.argv[2], ${JSON.stringify(SUPERVISED_ENV)}: process.env[${JSON.stringify(SUPERVISED_ENV)}], ${JSON.stringify(SUPERVISOR_PID_ENV)}: process.env[${JSON.stringify(SUPERVISOR_PID_ENV)}], ${JSON.stringify(RUN_WINDOW_START_ENV)}: process.env[${JSON.stringify(RUN_WINDOW_START_ENV)}] }));\n`
         : "") + body,
   );
   return p;
@@ -284,6 +285,21 @@ test("spawnRunChild runs the same script with `run`, SUPERVISED_ENV set, and rep
         "the child is handed the supervisor's pid, so its watch fires even if this process dies first",
       );
     }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("spawnRunChild hands the child the extra env marks beside SUPERVISED_ENV", async () => {
+  const dir = tmpdir();
+  try {
+    const outFile = path.join(dir, "evidence.json");
+    await withArgv1(probeScript(dir, outFile, "process.exit(0);\n"), async () => {
+      await within(spawnRunChild(new AbortController().signal, [], { [RUN_WINDOW_START_ENV]: "123" }), 15_000);
+    });
+    const seen = readJson<Record<string, unknown>>(outFile);
+    assert.equal(seen[RUN_WINDOW_START_ENV], "123");
+    assert.equal(seen[SUPERVISED_ENV], "1");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

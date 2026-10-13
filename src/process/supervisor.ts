@@ -23,6 +23,10 @@ export const SUPERVISED_ENV = "TUMWATER_SUPERVISED";
  * reload watch). */
 export const SUPERVISOR_PID_ENV = "TUMWATER_SUPERVISOR_PID";
 
+/** Marks a `run --for` window's start (epoch ms), set once by the supervisor and handed to every
+ * orchestrator generation, so a self-redeploy continues the window instead of opening a new one. */
+export const RUN_WINDOW_START_ENV = "TUMWATER_RUN_WINDOW_START";
+
 /** The exit code of a `run --once` round that finished and found failed ticks (cli-run.ts's
  * onceFailures): an asked-for ending, so the supervisor passes it through without paging the
  * fleet-down hook. */
@@ -235,11 +239,13 @@ export function fleetDownEvent(down: FleetDown, diagnosis: string | null): Harne
  * same branch) — stdio shared (the child's event stream is what the operator sees), and
  * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again, plus
  * SUPERVISOR_PID_ENV naming this supervisor so the child's own parent-death watch fires even if
- * this process is killed before the child reads its first ppid. */
-export function spawnRunChild(signal: AbortSignal, extraArgs: string[] = []): Promise<ChildExit> {
+ * this process is killed before the child reads its first ppid. `env` carries extra marks, e.g.
+ * RUN_WINDOW_START_ENV for a `--for` window. */
+export function spawnRunChild(signal: AbortSignal, extraArgs: string[] = [], env: NodeJS.ProcessEnv = {}): Promise<ChildExit> {
   return spawnSupervised(["run", ...extraArgs], signal, {
     [SUPERVISED_ENV]: "1",
     [SUPERVISOR_PID_ENV]: String(process.pid),
+    ...env,
   });
 }
 
