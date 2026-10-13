@@ -179,8 +179,14 @@ edit the initial prompt between the tumwater:prompt markers.`,
     // directory per tick (45 of 86 landings in four hours) with no target structure ever
     // stated. Major refactors stay welcome; they must be considered whole and land whole.
     find: `Find ONE way the code could be better organized, and restructure it.
-   1. First look for a minor improvement to the existing structure: a file that has grown too
-      many responsibilities, a module in the wrong directory, a missing separation between
+   1. First rank the production source files (not the tests) by \`wc -l\`. A production module
+      several times the project's median file size almost always holds more than one
+      responsibility, so the largest such module is your first candidate, ahead of any test
+      file of similar size: a test file's shape follows the module it covers. An outlier that is
+      mostly one large function or closure cannot be split in one run: do not start the split,
+      write it as a plan in PLANS.md under ## Planned that states the target structure (which
+      state and handlers move into which module). Then look for other minor improvements to
+      the existing structure: a module in the wrong directory, a missing separation between
       layers, or inconsistent file naming.
    2. When the minor improvements are exhausted, a major refactor — new directories, a
       regrouping across many modules, a changed layering — is welcome, but only a

@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The organize loop starts from production size outliers: a module several times the project's median file size is its first candidate, ahead of test-file splits (planned 2026-10-13 by plan; independent of every other entry. It touches only the `organize` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`)
+_None yet._
+
+## Done
+
+### The organize loop starts from production size outliers: a module several times the project's median file size is its first candidate, ahead of test-file splits (planned 2026-10-13 by plan; independent of every other entry. It touches only the `organize` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`) (done 2026-10-13)
 
 **Goal.** docs/code-metrics.md (as of 2026-09-30) credits organize with keeping file size down: "no file tops 500 lines". On 2026-10-13, `wc -l` over the 293 `.ts`/`.tsx` files under `src/` puts the median at 192 lines. 23 files top 500. `src/ui/tui/tui-keys.ts` is 2099 lines (about 11× the median), and `src/backlog/backlog-write.ts` is 945. Meanwhile organize's landings since 2026-10-11 have all been test-file splits (`git log --since=2026-10-11 --grep='tumwater(organize)'`), plus one move of gate-prompts. Today the `organize` `find` text names "a file that has grown too many responsibilities" with no signal for finding one. Its only size cue is `searchGuidance`'s generic "`wc -l` over the source files (size outliers)", which says nothing about production versus test files. So the loop takes the easy test splits and leaves the production outliers alone. The fix is to name a size signal. It must be ecosystem-neutral (no fixed line count): init dropped the seeded "under ~500 lines" principle on purpose, because the prompt runs in other people's repos (`test/init.test.ts` asserts the seed has no `500 lines`).
 
@@ -26,8 +30,6 @@ Do not edit docs/code-metrics.md (a dated measurement) or PRINCIPLES.md (directo
 - A new test in `test/prompt-roles.test.ts`, beside "organize, dry, and clean each end with a whole-tree sweep for what they changed", asserts the first two points against `oneLine(roleById("organize")!.find)`. That existing test passes unchanged.
 - `npm run test` passes.
 
-
-## Done
 
 ### The clean loop flattens deeply nested branching: "a function too branchy to follow" becomes one of its sweep kinds, with an indentation grep as its detector (planned 2026-10-13 by plan; independent of every other entry. It touches only the `clean` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`, none of the open BUGS.md entry's call sites; done 2026-10-13)
 

@@ -461,6 +461,13 @@ test("organize, dry, and clean each end with a whole-tree sweep for what they ch
   assert.match(oneLine(roleById("dry")!.find), /grep for the original expression once more across the source and the tests: every remaining copy is either converted or named in your WHY/);
   assert.match(oneLine(roleById("clean")!.find), /A rename or deletion is complete only when a grep for the old name over the source, the tests, and the markdown docs finds nothing stale/);
 });
+test("organize starts from production size outliers, with no fixed line threshold", () => {
+  const find = oneLine(roleById("organize")!.find);
+  assert.match(find, /rank the production source files \(not the tests\) by `wc -l`/);
+  assert.match(find, /several times the project's median file size .* first candidate, ahead of any test file/);
+  assert.match(find, /cannot be split in one run: do not start the split, write it as a plan in PLANS\.md under ## Planned that states the target structure/);
+  assert.doesNotMatch(roleById("organize")!.find, /\b500\b/);
+});
 test("clean sweeps one kind of drift across the tree, not one site", () => {
   const find = oneLine(roleById("clean")!.find);
   assert.ok(!find.includes("clean that one thing"), "the one-site rule is gone");
