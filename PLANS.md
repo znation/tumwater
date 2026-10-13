@@ -6,7 +6,85 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The landing gate rejects a loop's edit to the initial prompt block, or to PRINCIPLES.md from a role other than director or steward (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** Every loop prompt carries two boundaries: "Never edit the initial prompt block in
+<brief> (between the tumwater:prompt markers)" and "PRINCIPLES.md ... only the director and
+steward roles may edit it" (the shared rules in `src/prompt/prompt.ts`). Nothing checks either
+one. Both files are markdown, and the default `review.exemptPaths` is `["*.md", "docs/**"]`
+(`defaultConfig` in `src/config/config.ts`). So a readme, docs, or plan tick that rewrites the
+project's reason to exist, or amends a principle, takes `reviewAheadOfMain`'s exempt early
+return in `src/review/review.ts` and lands with no reviewer at all. The only checks on that
+path are `conflictMarkerReason`, `falseFixReason`, and `backlogStructureReason`. The fleet then
+runs every later tick on the changed prompt and principles. A grep for `PROMPT_START` and
+`PRINCIPLES` under `src/review/`, `src/landing/`, and `src/tick/` finds nothing.
+`git log -- PRINCIPLES.md` shows the feature commit that created the file (abd2963b), then
+only director and human edits, so this is a backstop and not a fix for a seen landing. It makes the two boundaries hold the way
+`backlogStructureReason` makes the backlog headings hold. Operator writes to the brief
+(`src/brief-edit.ts`, which commits through `commitOperatorBacklogEdit`) and `tumwater init`
+commit directly and never pass the gate, so they are unaffected.
+
+**Approach.**
+1. `src/brief.ts`: split the raw block read out of `extractPrompt` into an exported
+   `promptBlockOf(text: string): string | null`. It returns the trimmed text between the
+   first `PROMPT_START` and the first `PROMPT_END` after it, untruncated, or null when there is
+   no well-formed block. `extractPrompt` calls it and keeps its `truncateWithNote` cap, so
+   `readBrief` and `readInitialPrompt` behave as before.
+2. A new module `protected-edits.ts` under `src/review/`, exporting
+   `protectedEditReason(wt, mainBranch, files, role): Promise<string | undefined>`, built on the
+   same base-side read as `backlogStructureReason`: `changeBaseRev` plus `fileContentAt` from
+   `src/git/git.ts`, and `readTextOrNull` from `src/files/files.ts` for the worktree side.
+   - For each of `TUMWATER.md` and `README.md` in `files` (the basenames `briefCandidates` in
+     `src/paths.ts` names): when the base text has a block (`promptBlockOf(base) !== null`) and
+     the head's `promptBlockOf` differs from it (changed, or removed, or the file deleted, which
+     reads as ""), return
+     `` `${file} changes the initial prompt between the tumwater:prompt markers — only the operator edits it (tumwater brief); restore the block` ``.
+     A block that only moves within the file, or a file whose base had no block, passes.
+   - When `files` includes `PRINCIPLES.md` and `baseRoleOf(role)` (`src/roles/loop-ids.ts`) is
+     neither `"director"` nor `"steward"`, return
+     `` `PRINCIPLES.md is edited by the ${role} loop — only the director and steward roles may edit it; record an objection in PLANS.md instead and revert the edit` ``.
+   - Otherwise undefined. Like its siblings it must not throw on a missing file.
+3. `src/review/review.ts` `reviewAheadOfMain`: call `protectedEditReason(wt, mainBranch, files,
+   role)` right after the `conflictMarkerReason` check, before the `isExemptDiff` branch, so
+   md-only and code diffs both get it. A reason goes through the existing `reject([reason])`.
+   That runs no pi and logs `review_rejected`, the same as the marker rejection. The
+   `review.enabled: false` early return stays first and untouched.
+4. `src/tick/stage-check.ts` `stageCheckFindings`: add a `role: string` parameter (after
+   `exemptPaths`) and push `protectedEditReason(wt, mainBranch, files, role)` with the same
+   `.catch(() => undefined)` guard as `backlogStructureReason`, so the author gets one fix-up turn
+   before the gate. Update the one production caller in `src/loop/loop-tick.ts` (the
+   `stageCheck:` field passes `ctx.role`) and the test callers in `test/stage-check.test.ts`
+   and `test/tick-stage.test.ts`.
+5. `docs/invariants.md`: add a section `## The landing gate's deterministic rejections` with
+   `INV-G1: a loop cannot land a change to the initial prompt block, or to PRINCIPLES.md unless
+   it is the director or steward`. Binds the new `protected-edits.ts` module,
+   `src/review/review.ts`, and `src/tick/stage-check.ts`, and is pinned by the gate tests below.
+   Add one sentence to the "Review." bullet of `docs/how-it-works.md`'s landing-gate section
+   saying the gate rejects these edits before review, md-only diffs included.
+
+**Files touched.** `src/brief.ts`, a new `protected-edits.ts` under `src/review/`, `src/review/review.ts`,
+`src/tick/stage-check.ts`, `src/loop/loop-tick.ts`, a new `protected-edits.test.ts` under `test/`,
+`test/review.test.ts`, `test/stage-check.test.ts`, `test/tick-stage.test.ts`,
+`docs/invariants.md`, `docs/how-it-works.md`.
+
+**Acceptance criteria.**
+- The new `protected-edits.test.ts` under `test/` builds a repo whose base README.md has a prompt block and covers
+  these cases: a change to the block's text is rejected and the reason names README.md; deleting
+  the block or the file is rejected; an edit outside the markers (the status block) passes; moving
+  the unchanged block to another place in the file passes; the same block rules apply to
+  TUMWATER.md; a PRINCIPLES.md edit with role `improve` or `feature-2` is rejected and the reason
+  names the role; with role `director` or `steward` it passes; a change touching neither file
+  returns undefined.
+- `test/review.test.ts`, through the existing `assertRejectedWithoutReview` shape (or
+  `reviewGate` with a `role` override): an md-only README.md prompt-block edit from `ROLE` is
+  rejected with no pi run, where today it is `exempt`. An md-only PRINCIPLES.md edit is rejected
+  for `ROLE` and comes back `exempt` with `{ role: "steward" }`.
+- `test/stage-check.test.ts`: an uncommitted PRINCIPLES.md edit gives the PRINCIPLES finding
+  for a non-steward role and no finding for `steward`.
+- `readInitialPrompt` and `readBrief` return what they did before. Their existing tests pass
+  unchanged.
+- `npm run test` passes.
+
 
 
 ## Done
