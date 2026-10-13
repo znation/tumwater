@@ -461,10 +461,10 @@ export class LoopPi {
    * bounded turn, folded into the tick's usage like every other run. Null when there is no
    * session to continue (pi never wrote one) — the caller then derives a subject itself. The
    * run is returned even when it failed so the caller can honor a shutdown abort. */
-  async requestSummary(wt: string, config?: ResolvedModelConfig): Promise<PiRunResult | null> {
+  async requestSummary(wt: string, config?: ResolvedModelConfig, overLength?: number): Promise<PiRunResult | null> {
     return this.requestFollowUp(
       wt,
-      buildSummaryRequestPrompt(),
+      buildSummaryRequestPrompt(overLength),
       "summary",
       LoopPi.SUMMARY_REQUEST_TIMEOUT_S,
       config,

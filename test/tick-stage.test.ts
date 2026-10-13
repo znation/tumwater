@@ -16,6 +16,7 @@ import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
+import { truncate } from "../src/text/text.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A fresh initialized repo plus the improve role's worktree with one changed file — the
@@ -59,6 +60,7 @@ interface CtxOverrides {
 interface CtxCalls {
   warnings: string[];
   summaryRequests: string[];
+  summaryOverLengths: (number | undefined)[];
   stageChecks: string[];
   stageFixRequests: { wt: string; findings: string[] }[];
   pins: { wt: string; sha: string }[];
@@ -76,6 +78,7 @@ function makeCtx(
   const calls: CtxCalls = {
     warnings: [],
     summaryRequests: [],
+    summaryOverLengths: [],
     stageChecks: [],
     stageFixRequests: [],
     pins: [],
@@ -111,8 +114,9 @@ function buildCtx(
     piStartedAt: over.piStartedAt ?? Date.now(),
     flow: over.flow ?? null,
     warn: (message: string) => calls.warnings.push(message),
-    requestSummary: async (requestWt: string) => {
+    requestSummary: async (requestWt: string, overLength?: number) => {
       calls.summaryRequests.push(requestWt);
+      calls.summaryOverLengths.push(overLength);
       return over.followUp ?? null;
     },
     stageCheck: async (checkWt: string) => {
@@ -456,6 +460,48 @@ test("a missing SUMMARY is recovered with one follow-up turn", async () => {
   assert.equal(calls.summaryRequests[0], wt, "the follow-up runs in the tick's worktree");
   assert.match(calls.warnings[0]!, /recovered it with a follow-up turn/);
   assert.equal(queuedLandings(root)[0]!.summary, "recovered summary");
+});
+
+test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
+  const { root, wt } = await setup();
+  const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+    finalText: `SUMMARY: ${"x".repeat(140)}\nWHY: because\n`,
+    followUp: okPi({ finalText: "SUMMARY: short form\n" }),
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(outcome.summary, "short form");
+  assert.deepEqual(calls.summaryOverLengths, [140]);
+  assert.equal(queuedLandings(root)[0]!.summary, "short form");
+  assert.ok(calls.warnings.some((w) => w.includes("shortened with a follow-up turn")));
+});
+
+test("a follow-up that stays over the cap keeps the truncated subject", async () => {
+  for (const followUp of [okPi({ finalText: `SUMMARY: ${"y".repeat(150)}\n` }), null]) {
+    const { root, wt } = await setup();
+    const original = "x".repeat(140);
+    const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+      finalText: `SUMMARY: ${original}\n`,
+      followUp,
+    });
+
+    const outcome = await stageTickLanding(ctx);
+
+    assert.equal(outcome.summary, truncate(original, 100));
+    assert.ok(outcome.summary!.endsWith("…"));
+    assert.ok(calls.warnings.some((w) => w.includes("subject truncated")));
+  }
+});
+
+test("a SUMMARY within the cap asks no follow-up", async () => {
+  const { root, wt } = await setup();
+  const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+    finalText: `SUMMARY: ${"z".repeat(80)}\n`,
+  });
+  await stageTickLanding(ctx);
+  assert.equal(calls.summaryRequests.length, 0);
 });
 
 test("a follow-up that yields no SUMMARY falls back to the changed files", async () => {

@@ -26,6 +26,14 @@ test("buildSummaryRequestPrompt asks for exactly the closing block and nothing e
   assert.doesNotMatch(p, /VERDICT/, "must never read as a reviewer run");
 });
 
+test("buildSummaryRequestPrompt(n) names the length and asks for at most 72 characters", () => {
+  const p = buildSummaryRequestPrompt(140);
+  assert.match(p, /SUMMARY line is 140 characters/);
+  assert.match(p, /at most 72 characters/);
+  for (const label of ["SUMMARY:", "WHY:", "RISK:", "VERIFIED:"]) assert.ok(p.includes(label), label);
+  assert.doesNotMatch(p, /VERDICT/);
+});
+
 // The harness attests the suite counts (PLANS.md 2026-09-29), so the VERIFIED line asks for
 // what was run and observed beyond the total and no longer models a count ("182 pass") —
 // authors restating counts was the top record-claim rejection at the review gate.

@@ -644,7 +644,7 @@ export async function handlePiResultPhase(
     flow,
     piStartedAt,
     warn: (message) => ctx.warn(message),
-    requestSummary: (w) => ctx.pi.requestSummary(w, cfg),
+    requestSummary: (w, n) => ctx.pi.requestSummary(w, cfg, n),
     stageCheck: (w) => stageCheckFindings(w, ctx.mainBranch, ctx.config.review.exemptPaths, ctx.role),
     requestStageFix: (w, findings) => ctx.pi.requestStageFix(w, findings, cfg),
     pinAndReset: (w, sha) => ctx.pinAndReset(w, sha),

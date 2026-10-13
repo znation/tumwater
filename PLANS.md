@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### An over-long SUMMARY gets one shortening follow-up turn instead of a mid-word "…" subject (planned 2026-10-12 by plan; independent of every other entry)
+_None yet._
+
+
+## Done
+
+### An over-long SUMMARY gets one shortening follow-up turn instead of a mid-word "…" subject (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** The reply contract (`SUMMARY_BLOCK` in `src/verdict/reply-contract.ts`) asks for a
 SUMMARY of at most 72 characters. `extractSummary` in `src/git/commit-message.ts` caps it at
@@ -82,8 +87,6 @@ truncation; the summary of a review follow-up (`src/review/review-followup.ts`).
   `test/loop.test.ts` ones) pass unchanged.
 - `npm run test` passes.
 
-
-## Done
 
 ### A reviewer run that moves HEAD cannot change what lands: the gate restores the head it reviewed (planned 2026-10-12 by plan; independent of every other entry, including the done "harness folds commits the agent made during a tick" plan, which covers authoring and stage-fix runs and names vet-slot review runs out of scope) (done 2026-10-12)
 

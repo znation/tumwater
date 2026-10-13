@@ -5,6 +5,7 @@ import {
   commitTrailer,
   extractCommitBody,
   extractSummary,
+  summaryOverCap,
   fallbackSummary,
   commitSubject,
   formatCommitBody,
@@ -12,6 +13,12 @@ import {
   mergeCommitBody,
   parseCommitMetadata,
 } from "../src/git/commit-message.js";
+
+test("summaryOverCap reports the untruncated length only past the 100-character cap", () => {
+  assert.equal(summaryOverCap("no summary here"), null);
+  assert.equal(summaryOverCap(`SUMMARY: ${"a".repeat(100)}`), null);
+  assert.equal(summaryOverCap(`SUMMARY: ${"a".repeat(101)}`), 101);
+});
 
 test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
   assert.equal(extractSummary("did stuff\nSUMMARY: add foo helper\n"), "add foo helper");

@@ -112,7 +112,13 @@ uncommitted edits are in your worktree — review \`git diff\`, then finish or d
  * because of that, most of them the largest diffs in the repo. The session still holds everything
  * the run did, so one short reply recovers the subject and body the commit deserves; the caller
  * bounds the run tightly and falls back to a diff-derived subject if this too yields nothing. */
-export function buildSummaryRequestPrompt(): string {
+export function buildSummaryRequestPrompt(overLength?: number): string {
+  if (overLength !== undefined) {
+    return `Your final reply's SUMMARY line is ${overLength} characters; the commit subject holds at most 72,
+so the harness would cut it mid-word. Reply now with ONLY the closing block, with the SUMMARY
+restated in at most 72 characters — no tool calls, no other text, one line each:
+${SUMMARY_BLOCK}`;
+  }
   return `Your run changed files in the worktree, but your final reply
 did not include the required closing block, so the harness cannot describe the commit it is about
 to make. Reply now with ONLY that block — no tool calls, no other text, one line each:

@@ -9,6 +9,7 @@ import {
   commitTrailer,
   extractCommitBody,
   extractSummary,
+  summaryOverCap,
   fallbackSummary,
   formatCommitBody,
   mergeCommitBody,
@@ -64,7 +65,7 @@ interface TickStageContext {
   flow: TickFlow | null;
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
-  requestSummary(wt: string): Promise<PiRunResult | null>;
+  requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;
   /** The landing gate's deterministic backlog checks over the uncommitted change. */
   stageCheck(wt: string): Promise<string[]>;
   /** One bounded follow-up turn in the still-open session, to fix the self-check's findings. */
@@ -123,6 +124,23 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
               ? `follow-up gave none; subject derived from the changed files: "${summary}"`
               : `no follow-up session was available; subject derived from the changed files: "${summary}"`),
     );
+  } else {
+    // A SUMMARY the cap would cut mid-word gets one follow-up turn asking for it restated short.
+    const over = summaryOverCap(ctx.finalText);
+    if (over !== null) {
+      const followUp = await ctx.requestSummary(ctx.wt, over);
+      if (followUp?.aborted) return ctx.finishAbortedTick();
+      const short = followUp && summaryOverCap(followUp.finalText) === null ? extractSummary(followUp.finalText) : null;
+      if (short !== null) {
+        summary = short;
+        body = body ?? extractCommitBody(followUp!.finalText);
+      }
+      ctx.warn(
+        short !== null
+          ? `SUMMARY was ${over} characters — shortened with a follow-up turn`
+          : `SUMMARY was ${over} characters — follow-up gave no shorter one; subject truncated`,
+      );
+    }
   }
 
   // The gate's deterministic backlog checks run here, before the commit, while the authoring

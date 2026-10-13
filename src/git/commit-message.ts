@@ -15,6 +15,13 @@ import { labeledLine } from "../verdict/reply-contract.js";
  * than silently cut mid-word, which would read as if the subject were complete. */
 const COMMIT_SUMMARY_MAX = 100;
 
+/** The untruncated SUMMARY length when it exceeds COMMIT_SUMMARY_MAX (extractSummary would cut
+ * it); null when it fits or the reply has no SUMMARY line. */
+export function summaryOverCap(finalText: string): number | null {
+  const summary = labeledLine(finalText, "SUMMARY");
+  return summary !== null && summary.length > COMMIT_SUMMARY_MAX ? summary.length : null;
+}
+
 /** Pull the SUMMARY: line out of a pi final reply; null when absent. Capped at
  * COMMIT_SUMMARY_MAX chars with an ellipsis (consistent with extractCommitBody's field cap). */
 export function extractSummary(finalText: string): string | null {
