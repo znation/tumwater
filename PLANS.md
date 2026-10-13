@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A commit the agent makes in a SUMMARY follow-up turn folds into the tick's harness commit too (planned 2026-10-12 by plan; independent of every other entry. It extends the Done entry "The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit" (INV-H1), which covered the authoring run and the stage-fix turn)
+_None yet._
+
+
+## Done
+
+### A commit the agent makes in a SUMMARY follow-up turn folds into the tick's harness commit too (planned 2026-10-12 by plan; independent of every other entry. It extends the Done entry "The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit" (INV-H1), which covered the authoring run and the stage-fix turn) — done 2026-10-13
 
 **Goal.** INV-H1 says the harness owns every commit, but `stageTickLanding` in `src/tick/tick-stage.ts` calls
 `foldCommitsSince` (`src/git/git.ts`) only around `ctx.requestStageFix`. The two `ctx.requestSummary`
@@ -51,9 +56,6 @@ Close the hole with the pattern the stage-fix site already uses.
   unchanged.
 - `grep -n "foldCommitsSince" src/tick/tick-stage.ts` shows the one call inside the helper.
 - `npm run test` passes.
-
-
-## Done
 
 ### An over-long SUMMARY gets one shortening follow-up turn instead of a mid-word "…" subject (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 

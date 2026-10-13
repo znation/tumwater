@@ -44,6 +44,8 @@ interface CtxOverrides {
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
   followUp?: PiRunResult | null;
+  /** When true, requestSummary commits every change in the worktree before it replies. */
+  followUpCommits?: boolean;
   /** Successive stageCheck results; the last one repeats. Defaults to a clean check. */
   stageChecks?: string[][];
   stageFix?: PiRunResult | null;
@@ -117,6 +119,10 @@ function buildCtx(
     requestSummary: async (requestWt: string, overLength?: number) => {
       calls.summaryRequests.push(requestWt);
       calls.summaryOverLengths.push(overLength);
+      if (over.followUpCommits) {
+        sh(requestWt, "git", "add", "-A");
+        sh(requestWt, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "pi commit");
+      }
       return over.followUp ?? null;
     },
     stageCheck: async (checkWt: string) => {
@@ -831,3 +837,25 @@ test("the real staging self-check leaves the index clean, so a full revert still
     "stage self-check: the follow-up turn left no change; nothing to land",
   ]);
 });
+
+for (const [label, finalText] of [
+  ["missing-SUMMARY", "changed some files but the message was cut off"],
+  ["over-long-SUMMARY", `SUMMARY: ${"x".repeat(140)}\nWHY: because\n`],
+] as const) {
+  test(`a commit made in the ${label} follow-up folds into the harness commit`, async () => {
+    const { root, wt } = await setup();
+    const base = sh(wt, "git", "rev-parse", "HEAD");
+    const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+      finalText,
+      followUp: okPi({ finalText: "SUMMARY: short form\n" }),
+      followUpCommits: true,
+    });
+
+    const outcome = await stageTickLanding(ctx);
+
+    assert.equal(outcome.result, "queued");
+    assert.equal(sh(wt, "git", "rev-list", "--count", `${base}..${calls.pins[0]!.sha}`), "1");
+    assert.match(sh(wt, "git", "log", "-1", "--format=%s", calls.pins[0]!.sha), /^tumwater\(improve\): /);
+    assert.ok(calls.warnings.some((w) => w.includes("folded into the harness commit")));
+  });
+}

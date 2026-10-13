@@ -76,6 +76,13 @@ interface TickStageContext {
   finishAbortedTick(): Promise<TickOutcome>;
 }
 
+/** Folds commits an agent follow-up turn made since `base` into the tick's tree, keeping the
+ * harness commit the tick's only one (INV-H1); warns when any were folded. */
+async function foldFollowUpCommits(ctx: TickStageContext, base: string): Promise<void> {
+  const folded = await foldCommitsSince(ctx.wt, base);
+  if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
+}
+
 /** Stage a changed worktree for the land queue: derive the commit message from the reply's
  * SUMMARY block (one bounded follow-up turn when the run left none), flag high-friction ticks,
  * commit, pin the commit by the role's landing ref, and enqueue the landing. Extracted from
@@ -106,7 +113,9 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   let summary = extractSummary(ctx.finalText);
   let body = extractCommitBody(ctx.finalText);
   if (summary === null) {
+    const base = await headOf(ctx.wt, "HEAD");
     const followUp = await ctx.requestSummary(ctx.wt);
+    await foldFollowUpCommits(ctx, base);
     if (followUp?.aborted) return ctx.finishAbortedTick();
     if (followUp) {
       summary = extractSummary(followUp.finalText);
@@ -128,7 +137,9 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     // A SUMMARY the cap would cut mid-word gets one follow-up turn asking for it restated short.
     const over = summaryOverCap(ctx.finalText);
     if (over !== null) {
+      const base = await headOf(ctx.wt, "HEAD");
       const followUp = await ctx.requestSummary(ctx.wt, over);
+      await foldFollowUpCommits(ctx, base);
       if (followUp?.aborted) return ctx.finishAbortedTick();
       const short = followUp && summaryOverCap(followUp.finalText) === null ? extractSummary(followUp.finalText) : null;
       if (short !== null) {
@@ -189,8 +200,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     const before = findings.length;
     const fixBase = await headOf(ctx.wt, "HEAD");
     const fixUp = await ctx.requestStageFix(ctx.wt, findings);
-    const folded = await foldCommitsSince(ctx.wt, fixBase);
-    if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
+    await foldFollowUpCommits(ctx, fixBase);
     if (fixUp?.aborted) return ctx.finishAbortedTick();
     if (fixUp) {
       summary = extractSummary(fixUp.finalText) ?? summary;

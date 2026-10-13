@@ -366,9 +366,9 @@ PRINCIPLES.md edit is a finding for a non-steward role only".
 
 ## The harness owns every commit
 
-### INV-H1: a tick's authoring and stage-fix runs cannot add a commit of their own to the landed history
+### INV-H1: a tick's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the landed history
 
-**Guarantee.** Whatever commits an authoring or stage-fix run makes in its worktree are folded
+**Guarantee.** Whatever commits an authoring, SUMMARY follow-up, or stage-fix run makes in its worktree are folded
 (`git reset --soft` to the pre-run HEAD) before the verdict is read, so they land inside the
 tick's single harness-stamped commit, and a clean tree after such a run is not `no_change`.
 
@@ -376,7 +376,9 @@ tick's single harness-stamped commit, and a clean tree after such a run is not `
 
 **Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits lands
 as one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
-two `foldCommitsSince` unit tests.
+two `foldCommitsSince` unit tests; `test/tick-stage.test.ts` — "a commit made in the missing-SUMMARY
+follow-up folds into the harness commit" and "a commit made in the over-long-SUMMARY follow-up folds
+into the harness commit".
 
 ## The reviewer cannot author the landing
 
