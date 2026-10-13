@@ -234,6 +234,8 @@ Usage:
                                    stdin), refused when empty, over the length cap, or
                                    containing a tumwater:prompt marker; commits that one
                                    file on main; no wake
+  tumwater brief --edit [--json]   Open the initial prompt in $VISUAL/$EDITOR and save it as
+                                   --file would; an unchanged buffer writes nothing
   tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
                                    find text, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is

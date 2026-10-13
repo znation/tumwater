@@ -163,7 +163,7 @@ passes a readable one".
 ### INV-B5: an operator-filed entry is committed on main under the primary-worktree lock
 
 **Guarantee.** `tumwater bug`/`tumwater plan`, the dashboard's New form, the TUI's Ctrl+N, and
-`tumwater brief --file` and the dashboard's initial-prompt Save (the brief file, as `tumwater(operator): Edit initial prompt`)
+`tumwater brief --file`/`--edit` and the dashboard's initial-prompt Save (the brief file, as `tumwater(operator): Edit initial prompt`)
 commit the one file they wrote as `tumwater(operator): File <kind>: <title>` while
 holding the primary-worktree lock `ffMainTo` takes, so the entry reaches main and the primary
 checkout stays clean for the next fast-forward. Only that file is committed (other staged paths

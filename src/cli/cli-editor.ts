@@ -10,10 +10,10 @@ import { fail } from "./cli-output.js";
  * return the saved text. The editor value runs through `sh -c` (git's convention) so one with
  * arguments, like `code -w`, works. There is no `vi` fallback: a script without a TTY must fail
  * rather than hang. A missing editor, a spawn error, a non-zero exit, or a signal fails the
- * command; the temp dir is removed either way. */
-export function editInEditor(initial: string, fileName: string): string {
+ * command (`fallback` ends the no-editor message); the temp dir is removed either way. */
+export function editInEditor(initial: string, fileName: string, fallback = "pass the new text or --file <path>"): string {
   const editor = (process.env.VISUAL || process.env.EDITOR || "").trim();
-  if (editor === "") fail("no editor: set $VISUAL or $EDITOR, or pass the new text or --file <path>");
+  if (editor === "") fail(`no editor: set $VISUAL or $EDITOR, or ${fallback}`);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-edit-"));
   try {
     const file = path.join(dir, fileName);

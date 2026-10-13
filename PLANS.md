@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater brief --edit` opens the initial prompt in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12)
+_None yet._
+
+## Done
+
+### `tumwater brief --edit` opens the initial prompt in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12) (done 2026-10-12)
 
 **Goal.** The brief is the one thing the operator is meant to write, yet changing it from the
 CLI means exporting it to a file, editing that, and running `brief --file <path>`. Let
@@ -56,7 +60,6 @@ node-script `stub` pattern from `test/backlog-write-edit-editor.test.ts` via `cl
   `{file, changed, committed}`.
 - `npm run test` passes.
 
-## Done
 
 ### `plan|bug --edit <n>` with no text opens the entry in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12) (done 2026-10-12)
 
