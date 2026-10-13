@@ -6,7 +6,55 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater brief --edit` opens the initial prompt in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12)
+
+**Goal.** The brief is the one thing the operator is meant to write, yet changing it from the
+CLI means exporting it to a file, editing that, and running `brief --file <path>`. Let
+`tumwater brief --edit` open the current initial prompt in the operator's editor and write the
+saved buffer back through the same checks and commit as `--file`, the way bare
+`plan|bug --edit <n>` already does for backlog entries.
+
+**Approach.**
+- `src/cli/brief-command.ts` (`cmdBrief`): add an `EDIT_SPEC = { names: ["--edit"] }` boolean
+  flag to the `rejectUnknownArgs` list. `--edit` together with `--file` fails with
+  `pass --edit or --file, not both`. With `--edit`: after `readBrief` (keep its no-brief
+  failure), call `editInEditor(brief.prompt, "brief.md", "pass --file <path>")`. When
+  `after.trim() === brief.prompt.trim()`, print `initial prompt unchanged` (or with `--json`,
+  `{file, changed: false, committed: false}`, `file` being `path.basename` of `brief.file` as
+  `editInitialPrompt` reports it) and return without calling `editInitialPrompt`. Otherwise pass
+  `after` to `editInitialPrompt` and reuse the existing outcome/print path unchanged, so
+  empty, over-long, and marker-bearing buffers are refused exactly as `--file` refuses them.
+- `src/cli/cli-editor.ts` (`editInEditor`): add a third parameter
+  `fallback = "pass the new text or --file <path>"` and use it in the no-editor message
+  (`no editor: set $VISUAL or $EDITOR, or ${fallback}`), so `brief` does not advertise a
+  positional it rejects. The `plan|bug` caller in `src/backlog/backlog-write.ts` keeps the
+  default.
+- `src/cli/help.ts`: add a `tumwater brief --edit [--json]` usage line after the `--file`
+  form ("Open the initial prompt in $VISUAL/$EDITOR and save it as --file would; an unchanged
+  buffer writes nothing"). Completion derives from help text, so it needs no edit — confirm
+  `tumwater completion bash` lists `--edit` for `brief`.
+- `docs/cli.md`: in the "Steer the project" row, mention `tumwater brief --edit` next to
+  `brief --file`. `docs/invariants.md`: add `tumwater brief --edit` beside `tumwater brief --file`
+  in the operator-write list (it shares `editInitialPrompt`, so no new guarantee).
+
+**Files touched.** `src/cli/brief-command.ts`, `src/cli/cli-editor.ts`, `src/cli/help.ts`,
+`docs/cli.md`, `docs/invariants.md`, `test/brief-command.test.ts` (new cases reusing the
+node-script `stub` pattern from `test/backlog-write-edit-editor.test.ts` via `cliWithEnv`).
+
+**Acceptance criteria.**
+- With `EDITOR` set to a stub that rewrites the buffer, `brief --edit` replaces the prompt,
+  the stub received the current prompt text, and main gains a
+  `tumwater(operator): Edit initial prompt` commit; `brief` then shows the new text.
+- A stub that saves the buffer untouched prints `initial prompt unchanged` and adds no commit.
+- A stub that empties the buffer fails with `the new initial prompt is empty` and leaves the
+  brief file byte-for-byte as before; a stub exiting non-zero fails with
+  `editor exited with status …; nothing changed`.
+- With neither `VISUAL` nor `EDITOR` set, `brief --edit` fails with
+  `no editor: set $VISUAL or $EDITOR, or pass --file <path>`; the existing `plan --edit 1`
+  no-editor test still passes with its message unchanged.
+- `brief --edit --file x` fails without opening an editor; `brief --edit --json` prints
+  `{file, changed, committed}`.
+- `npm run test` passes.
 
 ## Done
 
