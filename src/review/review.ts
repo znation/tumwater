@@ -43,6 +43,16 @@ function withRuns(r: GateResult, run: PiRunResult, followUp: PiRunResult | null,
   };
 }
 
+/** Put the worktree back on the exact head the gate reviewed: the reviewer's only output is its
+ * verdict, so a commit it made must never reach the landing pin or the next re-review. */
+async function restoreReviewedHead(wt: string, head: string, root: string, role: string): Promise<void> {
+  const now = await headOf(wt, "HEAD").catch(() => null);
+  if (now && now !== head) {
+    warnEventBestEffort(root, role, `the reviewer moved HEAD to ${shortSha(now)} during review; restored the reviewed head ${shortSha(head)}`);
+  }
+  await git(wt, "reset", "--hard", head);
+}
+
 /** Consecutive failed reviews of one branch HEAD after which the leftover is discarded with
  * a warning: a misconfigured reviewer model must not be able to wedge a loop into re-reviewing
  * the same commit forever. */
@@ -395,13 +405,18 @@ export async function reviewAheadOfMain(
   const rerun = suiteRerunWarning(reviewerCalls);
   if (rerun) warnEventBestEffort(root, role, rerun);
 
+  // Every exit below that keeps the change leaves the worktree at the head this gate reviewed.
+  const keep = async (r: GateResult): Promise<GateResult> => {
+    await restoreReviewedHead(wt, head, root, role);
+    return r;
+  };
   if (pi.aborted) {
     // Shutdown mid-review: fail closed — the commit stays on the branch and the
     // resumed/following tick re-reviews it via the combined ahead-of-main diff. Any resume
     // marker from an earlier attempt is dropped: an abort says nothing about the diff, and the
     // next attempt starts clean rather than inheriting a half-counted session.
     state.reviewResume = undefined;
-    return withRuns({ decision: "failed", aborted: true }, pi, null, null);
+    return keep(withRuns({ decision: "failed", aborted: true }, pi, null, null));
   }
 
   // The bounded nudge (BUGS.md 2026-10-02): the reviewer broke the no-re-run rule despite a
@@ -414,7 +429,7 @@ export async function reviewAheadOfMain(
     const nudgeCalls: ToolCallStart[] = [];
     nudge = await requestNoRerun(followupCtx, rerun, nudgeCalls);
     if (nudge?.aborted) {
-      return withRuns({ decision: "failed", aborted: true }, pi, null, nudge);
+      return keep(withRuns({ decision: "failed", aborted: true }, pi, null, nudge));
     }
     nudgeRepeat = nudge ? (suiteRerunWarning(nudgeCalls) ?? null) : null;
     if (nudgeRepeat) {
@@ -447,7 +462,7 @@ export async function reviewAheadOfMain(
   let followUp: PiRunResult | null = null;
   if (!verdict && pi.ok && !nudge) {
     followUp = await requestVerdict(followupCtx);
-    if (followUp?.aborted) return withRuns({ decision: "failed", aborted: true }, pi, followUp, nudge);
+    if (followUp?.aborted) return keep(withRuns({ decision: "failed", aborted: true }, pi, followUp, nudge));
     const recovered = followUp ? parseVerdict(followUp.verdictText ?? "") : null;
     if (recovered) {
       verdict = recovered;
@@ -463,7 +478,7 @@ export async function reviewAheadOfMain(
     logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     state.reviewResume = undefined;
     recordReview(state, "failed", [message], head);
-    return withRuns({ decision: "failed", detail: message }, pi, followUp, nudge);
+    return keep(withRuns({ decision: "failed", detail: message }, pi, followUp, nudge));
   }
 
   if (!verdict) {
@@ -537,11 +552,13 @@ export async function reviewAheadOfMain(
       }
       recordReview(state, "failed", [message], head);
       const configError = pi.configError || Boolean(followUp?.configError) || Boolean(nudge?.configError);
-      return withRuns(
-        { decision: "failed", detail: message, ...(configError ? { configError: true } : {}) },
-        pi,
-        followUp,
-        nudge,
+      return keep(
+        withRuns(
+          { decision: "failed", detail: message, ...(configError ? { configError: true } : {}) },
+          pi,
+          followUp,
+          nudge,
+        ),
       );
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
@@ -558,7 +575,8 @@ export async function reviewAheadOfMain(
       discarded = true;
       warnEventBestEffort(root, role, `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`);
     }
-    return { ...withRuns({ decision: "failed", detail: message }, pi, followUp, nudge), ...(discarded ? { discarded: true } : {}) };
+    const failed = { ...withRuns({ decision: "failed", detail: message }, pi, followUp, nudge), ...(discarded ? { discarded: true } : {}) };
+    return discarded ? failed : keep(failed);
   }
 
   if (verdict.verdict === "reject") {
@@ -574,7 +592,7 @@ export async function reviewAheadOfMain(
   state.reviewResume = undefined;
   recordReview(state, "approve", verdict.reasons, head);
   state.unreviewFailures = 0;
-  await git(wt, "reset", "--hard", "HEAD");
+  await restoreReviewedHead(wt, head, root, role);
   logEventBestEffort(root, {
     loop: role,
     type: "review_verdict",

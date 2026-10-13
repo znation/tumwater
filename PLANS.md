@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A reviewer run that moves HEAD cannot change what lands: the gate restores the head it reviewed (planned 2026-10-12 by plan; independent of every other entry, including the done "harness folds commits the agent made during a tick" plan, which covers authoring and stage-fix runs and names vet-slot review runs out of scope)
+_None yet._
+
+
+## Done
+
+### A reviewer run that moves HEAD cannot change what lands: the gate restores the head it reviewed (planned 2026-10-12 by plan; independent of every other entry, including the done "harness folds commits the agent made during a tick" plan, which covers authoring and stage-fix runs and names vet-slot review runs out of scope) (done 2026-10-12)
 
 **Goal.** `reviewAheadOfMain` (`src/review/review.ts`) reads `head = headOf(wt, "HEAD")`, then
 gives the reviewer pi a worktree holding that commit. The reviewer is told its only output
@@ -86,8 +91,6 @@ covers.
   unchanged.
 - `npm run test` passes, and the new invariant cites both new test names.
 
-
-## Done
 
 ### The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 

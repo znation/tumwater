@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
-import { aheadOfMain, patchId } from "../src/git/git.js";
+import { aheadOfMain, headOf, patchId } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, REVIEW_RESUME_LIMIT } from "../src/loop/loop-state.js";
@@ -50,6 +50,33 @@ test("gate approves a good diff, records the HEAD, and discards the reviewer's s
       assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), committed);
       // Reviewer usage is surfaced for folding into the loop totals.
       assert.equal(result.run?.outputTokens, 17);
+      assert.equal(warningMessages(root).filter((m) => m.includes("reviewer moved HEAD")).length, 0);
+  });
+});
+
+const COMMITTING =
+  `echo extra > extra.txt && git add extra.txt && git -c user.name=t -c user.email=t@t commit -qm reviewer\n`;
+
+test("a reviewer's own commit is dropped on approve: the worktree returns to the reviewed head", async () => {
+  const { root, wt, head } = await gateFixture();
+  await withPi(COMMITTING + `printf '%s\n' '${assistantLine("VERDICT: approve\n1. fine")}'`, async () => {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.equal(await headOf(wt, "HEAD"), head);
+    assert.equal(fs.existsSync(path.join(wt, "extra.txt")), false);
+    assert.equal(state.lastApprovedHead, head);
+    assert.ok(warningMessages(root).some((m) => m.includes("reviewer moved HEAD")));
+  });
+});
+
+test("a reviewer's own commit is dropped when the review fails strike-free", async () => {
+  const { root, wt, head } = await gateFixture();
+  await withPi(COMMITTING + `exit 1`, async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "failed");
+    assert.ok(!result.discarded);
+    assert.equal(await headOf(wt, "HEAD"), head);
+    assert.equal(fs.existsSync(path.join(wt, "extra.txt")), false);
   });
 });
 

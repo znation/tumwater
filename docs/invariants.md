@@ -377,3 +377,18 @@ tick's single harness-stamped commit, and a clean tree after such a run is not `
 **Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits lands
 as one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
 two `foldCommitsSince` unit tests.
+
+## The reviewer cannot author the landing
+
+### INV-I1: a gate exit that keeps the change leaves the worktree at the head the gate reviewed
+
+**Guarantee.** A gate exit that keeps the change after the reviewer ran (approved, or failed
+without discard) resets the worktree to the head the gate reviewed, so neither the landing pin
+nor the next re-review can include a commit the reviewer made. The reject and strike-cap discard
+paths reset to main instead.
+
+**Binds.** `src/review/review.ts`.
+
+**Pinned by.** `test/review.test.ts` — "a reviewer's own commit is dropped on approve: the
+worktree returns to the reviewed head" and "a reviewer's own commit is dropped when the review
+fails strike-free".
