@@ -13,8 +13,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - the TUI backlog pane's Ctrl+X, Ctrl+E, and Ctrl+A (the same three `try*` call sites in `createTuiKeys`, `src/ui/tui/tui-keys.ts`).
 A cancelled entry still reads as eligible on main, and an answered question stays open in every loop's worktree)
 
-**Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed (no `src/backlog/backlog-commit.ts` / `commitOperatorBacklogEdit` exists); re-open once it does**
-
 **Goal.** Each of those writes commits its one file on main, exactly as part 1/2's filings do.
 
 **Approach.** After each successful write, call `commitOperatorBacklogEdit(root, file, subject)`:
