@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `plan|bug --edit <n>` with no text opens the entry in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12)
+_None yet._
+
+## Done
+
+### `plan|bug --edit <n>` with no text opens the entry in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12) (done 2026-10-12)
 
 **Goal.** Revising a multi-line plan from the CLI today takes three steps: `tumwater plan --show 2 > f.md`,
 edit `f.md`, then `tumwater plan --edit 2 --file f.md`. `git commit` and `crontab -e` do this in one
@@ -53,8 +57,6 @@ no working invocation changes meaning.
 - The existing `--edit <n> "<text>"` and `--edit <n> --file` tests pass unchanged.
 - `npm run test` is green.
 
-
-## Done
 
 ### `tumwater plan|bug --show <n>` prints one entry as an editable markdown file that `--edit <n> --file` takes back unchanged (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 

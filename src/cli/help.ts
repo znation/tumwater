@@ -167,6 +167,10 @@ Usage:
                                    stdin): the first non-blank line is the title (symptom), the rest
                                    the body kept line for line; position and original stamp
                                    kept; no wake; --json prints {file, title}
+  tumwater bug --edit <n> [--json]
+                                   With neither text nor --file, open the Nth entry as --show
+                                   prints it in $VISUAL or $EDITOR and write it back on save;
+                                   an unchanged buffer writes nothing
   tumwater bug --list [--json]     List the entries in BUGS.md ## Open, numbered (the read
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
@@ -199,6 +203,10 @@ Usage:
                                    stdin): the first non-blank line is the title, the rest
                                    the body kept line for line; position and original stamp
                                    kept; no wake; --json prints {file, title}
+  tumwater plan --edit <n> [--json]
+                                   With neither text nor --file, open the Nth entry as --show
+                                   prints it in $VISUAL or $EDITOR and write it back on save;
+                                   an unchanged buffer writes nothing
   tumwater plan --list [--json]    List the entries in PLANS.md ## Planned, numbered (the
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,

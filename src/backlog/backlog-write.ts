@@ -23,6 +23,7 @@ import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } fro
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-repo-gate.js";
+import { editInEditor } from "../cli/cli-editor.js";
 import { requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { withStateLock } from "../concurrency/lock.js";
@@ -871,7 +872,13 @@ export function showAndAnnounce(root: string, args: string[], command: "bug" | "
   if (position === null) fail(`--show needs a position (usage: tumwater ${command} --show <n>)`);
   const shown = showEntry(root, command, position);
   if (json) sayJson(shown);
-  else say(shown.body === "" ? shown.title : `${shown.title}\n\n${shown.body}`);
+  else say(renderShownEntry(shown));
+}
+
+/** The prose `--show` prints: the title, a blank line, then the body (the title alone when the
+ * body is empty). */
+function renderShownEntry(shown: { title: string; body: string }): string {
+  return shown.body === "" ? shown.title : `${shown.title}\n\n${shown.body}`;
 }
 
 /** The shared shell of the `bug --edit` and `plan --edit` CLI cases, mirroring
@@ -883,11 +890,15 @@ export function showAndAnnounce(root: string, args: string[], command: "bug" | "
  * `edited <command> in <file>: <title>` or the `--json` payload {file, title}. Unlike
  * fileAndAnnounce there is no wake: an edit adds no work for a loop to pick up. With
  * `--file <path>` (`-` reads stdin) the new entry comes from a markdown file instead of
- * positionals: `editText` receives its text, and any positional alongside --file is refused. */
+ * positionals: `editText` receives its text, and any positional alongside --file is refused.
+ * With neither positionals nor --file the entry, rendered as `--show` prints it, opens in
+ * $VISUAL/$EDITOR and the saved buffer goes through `editText`; an unchanged buffer writes and
+ * commits nothing (`unchanged <command> <n>: <title>`), and an out-of-range position fails
+ * before the editor launches. */
 export async function editAndAnnounce(
   root: string,
   args: string[],
-  command: string,
+  command: "bug" | "plan",
   edit: (n: number, positionals: string[]) => { file: string; title: string },
   editText: (n: number, text: string) => { file: string; title: string },
 ): Promise<void> {
@@ -905,7 +916,20 @@ export async function editAndAnnounce(
   }
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
   await requireReadyRepo(root);
-  const edited = path === null ? edit(position, positionals) : editText(position, readPromptFileArg(path));
+  let text: string | null = null;
+  if (path === null && positionals.length === 0) {
+    const shown = showEntry(root, command, position);
+    const before = renderShownEntry(shown);
+    const after = editInEditor(before, `${command}-${position}.md`);
+    if (after.trim() === before.trim()) {
+      const file = command === "bug" ? "BUGS.md" : "PLANS.md";
+      if (json) sayJson({ file, title: shown.title, changed: false });
+      else say(`unchanged ${command} ${position}: ${shown.title}`);
+      return;
+    }
+    text = after;
+  } else if (path !== null) text = readPromptFileArg(path);
+  const edited = text === null ? edit(position, positionals) : editText(position, text);
   await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`));
   if (json) sayJson({ file: edited.file, title: edited.title });
   else say(`edited ${command} in ${edited.file}: ${edited.title}`);

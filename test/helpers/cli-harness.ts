@@ -27,6 +27,8 @@ export function cliWithEnv(cwd: string, env: NodeJS.ProcessEnv, args: string[]):
   // Hermeticity: the supervised marker leaks from any tumwater orchestrator into pi's (and
   // this test process') environment; without stripping it, `run` skips its supervisor half.
   delete merged[SUPERVISED_ENV];
+  // Likewise a developer's own editor must never open inside the suite: `--edit <n>` launches it.
+  for (const name of ["VISUAL", "EDITOR"]) if (!(name in env)) delete merged[name];
   return new Promise((resolve) => {
     execFile(process.execPath, [CLI, ...args], { cwd, env: merged, timeout: 20_000 }, (err, stdout, stderr) => {
       resolve({ code: err ? Number(err.code ?? 1) : 0, stdout, stderr });
