@@ -119,7 +119,7 @@ discards a role's in-flight landing.
   once: gate, landing, batch, and main-baseline checks share it, the rest queue, and landings go
   first.
 - A maintenance role whose last tick did nothing is deferred until feature, bugfix, director, or
-  human work lands on main, and stays deferred while PLANS.md or BUGS.md has open work. `qa` is
+  human work lands on main, and stays deferred while PLANS.md or BUGS.md has work a feature or bugfix runner can take (refused, needs-review/replan and blocked entries do not count). `qa` is
   never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no open bugs it has
   nothing assigned and defers like one — with the difference that any feature/bugfix/director/
   human landing wakes it (a deferral only holds while no qualifying work has landed), and that

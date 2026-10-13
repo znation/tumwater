@@ -12,7 +12,8 @@ import { modelPairName } from "../budget/budget.js";
 import { roleSeamTier, reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
-import { openBugs, plannedPlans } from "../backlog/backlog.js";
+import { openBugs } from "../backlog/backlog.js";
+import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
@@ -462,14 +463,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         );
       }
 
-      // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main is
-      // non-empty, idle maintenance ticks stay deferred — queued feature/bugfix work outranks
+      // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main
+      // holds an entry feature or bugfix may take (eligibleEntries), idle maintenance ticks stay deferred — queued feature/bugfix work outranks
       // them regardless of what landed. Stat-cached reads (backlog.ts): one stat per file per
       // poll while the files are unchanged. bugfix is not a maintenance role, but while BUGS.md
       // `## Open` is empty it defers like one (deferTick) — openBugsNow is that emptiness, read
       // once here and reused for both predicates.
       const openBugsNow = openBugs(root).length > 0;
-      const workBacklogOpen = plannedPlans(root).length > 0 || openBugsNow;
+      const workBacklogOpen = eligibleEntries(root, "feature").length > 0 || eligibleEntries(root, "bugfix").length > 0;
       const plansFull = planBacklogFull(root, liveConfig);
 
       // A demoted fallback's half-open window (part 5c/8): the pair whose probe is due, and

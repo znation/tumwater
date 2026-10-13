@@ -7,6 +7,9 @@
  * - Need over idleness: a due maintenance role whose last tick did nothing stays deferred
  *   while the backlog is open — in once mode the deferral is the role's round answer
  *   ("deferred"), the tick_deferred event logs the episode, and no tick runs.
+ * - Held entries are not need: a backlog whose entries are all refused/needs-review/blocked
+ *   holds nothing feature or bugfix can take, so it does not defer a maintenance role — the
+ *   work-landed verdict decides instead.
  * - Demand over need: a fresh operator wake (`wokenAt` newer than the last tick's end — the
  *   same predicate isEligible's min-gap exemption keys on) overrides the deferral; an explicit
  *   "try again now" is a demand, not idle maintenance, so the role ticks even with the backlog
@@ -74,6 +77,20 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
       "the deferral is logged once on the transition in, not silent",
     );
     assert.equal(loadLoopState(repo, "clean").skipReason, "deferred-backlog");
+  });
+});
+
+test("once: a backlog of only held entries does not defer a maintenance role — it defers on the work-landed verdict instead", async () => {
+  const repo = await makeFastRepo("once unit held backlog test", ["clean"]);
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n### a held feature (planned 2026-09-30)\n\n**Refused 2026-10-12 by feature: test**\n",
+  );
+  saveLoopState(repo, idleDueState(repo));
+  await withIdlePi(async () => {
+    const exit = await onceRound(repo);
+    assert.equal(exit.settled?.get("clean"), "deferred");
+    assert.equal(loadLoopState(repo, "clean").skipReason, "deferred-no-work");
   });
 });
 
