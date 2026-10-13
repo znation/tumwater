@@ -6,7 +6,81 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### An over-long SUMMARY gets one shortening follow-up turn instead of a mid-word "…" subject (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** The reply contract (`SUMMARY_BLOCK` in `src/verdict/reply-contract.ts`) asks for a
+SUMMARY of at most 72 characters. `extractSummary` in `src/git/commit-message.ts` caps it at
+`COMMIT_SUMMARY_MAX` (100) with `truncate`, and that cut lands mid-word. Since 2026-10-05,
+66 of the 1,550 `tumwater(<role>):` subjects on main end in "…". Examples: "…with a
+regression…", "…mark 5f/5 d…", "…grow it without bou…". The full sentence is gone from the
+commit, the history views, the failure digest, and the landing feed. The tick already has a
+bounded follow-up turn in its own warm session for a *missing* SUMMARY: `requestSummary` (in
+`src/loop/loop-pi.ts`, prompt `buildSummaryRequestPrompt` in `src/prompt/prompt-followup.ts`).
+An over-long SUMMARY gets no such turn. After this change, a SUMMARY too long for the cap gets
+one follow-up asking for it restated within 72 characters. The truncated original is the
+fallback only when that turn yields nothing that fits.
+
+**Approach.**
+1. `src/git/commit-message.ts`: export `summaryOverCap(finalText: string): number | null`.
+   It returns the untruncated `labeledLine(finalText, "SUMMARY")` length when that length
+   exceeds `COMMIT_SUMMARY_MAX`, else null (also null when there is no SUMMARY line).
+   `extractSummary` is unchanged.
+2. `src/prompt/prompt-followup.ts`: give `buildSummaryRequestPrompt` an optional
+   `overLength?: number`. Without it the text is unchanged. With it, the opening says: "Your
+   final reply's SUMMARY line is <n> characters; the commit subject holds at most 72, so the
+   harness would cut it mid-word." It then asks for ONLY the closing block, with the SUMMARY
+   restated in at most 72 characters, no tool calls and no other text, followed by the same
+   `SUMMARY_BLOCK`.
+3. `src/loop/loop-pi.ts`: `requestSummary(wt, config?, overLength?)` passes `overLength` to
+   `buildSummaryRequestPrompt`. It uses the same `requestFollowUp` call, suffix, and caps.
+   `src/tick/tick-stage.ts` `TickStageContext.requestSummary` becomes
+   `requestSummary(wt: string, overLength?: number)`. The wiring in
+   `src/loop/loop-tick.ts` becomes `(w, n) => ctx.pi.requestSummary(w, cfg, n)`.
+4. `stageTickLanding` (`src/tick/tick-stage.ts`): right after the existing missing-SUMMARY
+   block, when the authoring reply had a SUMMARY (that block did not run) and
+   `summaryOverCap(ctx.finalText)` is a number `n`:
+   - call `ctx.requestSummary(ctx.wt, n)`;
+   - an aborted follow-up returns `ctx.finishAbortedTick()`, as the missing-SUMMARY path does;
+   - when the follow-up's `summaryOverCap` is null and its `extractSummary` is non-null, that
+     becomes `summary`; the body stays the authoring reply's (`body ?? extractCommitBody(...)`
+     of the follow-up, as today);
+   - otherwise keep the truncated original;
+   - warn either "SUMMARY was <n> characters — shortened with a follow-up turn" or "SUMMARY was
+     <n> characters — follow-up gave no shorter one; subject truncated".
+   A reply whose SUMMARY is 73–100 characters triggers nothing. Only a SUMMARY the cap would
+   cut costs a turn (about 4% of ticks by the count above).
+
+**Out of scope.** Changing `COMMIT_SUMMARY_MAX` or the 72-character contract; word-boundary
+truncation; the summary of a review follow-up (`src/review/review-followup.ts`).
+
+**Files touched.** `src/git/commit-message.ts`, `src/prompt/prompt-followup.ts`,
+`src/loop/loop-pi.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`,
+`test/commit-message.test.ts`, `test/prompt-followup.test.ts`, `test/tick-stage.test.ts`
+(its `makeCtx` / `buildCtx` recorder learns to record `overLength` beside the worktree in
+`summaryRequests`).
+
+**Acceptance criteria.**
+- `summaryOverCap`: null for no SUMMARY line, null for a 100-character SUMMARY, 101 for a
+  101-character one.
+- `buildSummaryRequestPrompt()` text is unchanged: the existing "buildSummaryRequestPrompt asks
+  for exactly the closing block and nothing else" test passes untouched.
+  `buildSummaryRequestPrompt(140)` names 140, asks for at most 72 characters, still lists
+  SUMMARY/WHY/RISK/VERIFIED, and contains no `VERDICT`.
+- tick-stage test "an over-long SUMMARY is shortened with one follow-up turn": the reply's
+  SUMMARY is 140 characters, and the follow-up replies `SUMMARY: short form`. The outcome is
+  `queued` with summary `short form`, one summary request carrying `overLength` 140, the
+  queued landing's summary is `short form`, and the "shortened with a follow-up turn" warning
+  is recorded.
+- tick-stage test "a follow-up that stays over the cap keeps the truncated subject": the
+  follow-up's SUMMARY is also over 100 characters. The summary is `truncate(original, 100)`
+  (ends in "…"), and the "subject truncated" warning is recorded. A null follow-up (no
+  session) gives the same result.
+- tick-stage test "a SUMMARY within the cap asks no follow-up": an 80-character SUMMARY makes
+  zero summary requests.
+- The existing missing-SUMMARY tests ("a missing SUMMARY is recovered with one follow-up
+  turn", "a follow-up that yields no SUMMARY falls back to the changed files", and the
+  `test/loop.test.ts` ones) pass unchanged.
+- `npm run test` passes.
 
 
 ## Done
