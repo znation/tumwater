@@ -4,7 +4,7 @@
  * surfaces. Each command owns its argument gate, ready-repo gating decision, and output shape,
  * with the wording and gating order moved verbatim from main()'s cases. */
 
-import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { fail, say, sayJson, sayJsonOrRender, warnIfUncommitted } from "./cli-output.js";
 import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
@@ -216,7 +216,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (file !== undefined) {
     if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
     const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
-    await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`));
+    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md");
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
     return;
   }
@@ -230,7 +230,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     );
     if (edited.trim() === "") fail("questions answer needs a decision: the editor left it blank; nothing changed");
     const answered = answerQuestionFromText(root, n, edited, question.title);
-    await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`));
+    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md");
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
     return;
   }
@@ -239,7 +239,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   // answerQuestion collapses the free-form decision to one line before writing it; report
   // that landed text in the --json payload so it matches the file, not the caller's spacing.
   const { title, decision: landedDecision } = answerQuestion(root, n, decision);
-  await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`));
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`)), "QUESTIONS.md");
   sayAnswered(n, title, jsonFlag, landedDecision);
 }
 

@@ -367,7 +367,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       const title = input ? input.value.trim() : "";
       if (!title) return;
       const bodyBox = $("backlognewbody");
-      await postAction("/api/backlog-file", { kind: freshSave.dataset.kind, title, body: bodyBox ? bodyBox.value : "" }, (d) => "Filed: " + d.title);
+      await postAction("/api/backlog-file", { kind: freshSave.dataset.kind, title, body: bodyBox ? bodyBox.value : "" }, (d) => "Filed: " + d.title + (d.committed === false ? ", but NOT committed to main (uncommitted in the checkout)" : ""));
       endBacklogNew();
       return;
     }

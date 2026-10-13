@@ -109,7 +109,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       postAction("/api/question-answer", { position: Number(arg) + 1, title: q, decision }, (d) => {
         closeDrawer();
         return d && d.status === "answered"
-          ? "Answered “" + splitTitle(q).title + "” — moved to ## Answered"
+          ? "Answered “" + splitTitle(q).title + "” — moved to ## Answered" + (d.committed === false ? ", but NOT committed to main (QUESTIONS.md is uncommitted in the checkout)" : "")
           : "That question was already answered or moved — refreshed";
       });
     } else if (act === "entry-cancel") {
@@ -121,7 +121,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       postAction("/api/backlog-cancel", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "cancelled"
-          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md")
+          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + (d.committed === false ? ", but NOT committed to main (uncommitted in the checkout)" : "")
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-edit") {
@@ -145,7 +145,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
         stopEntryEdit();
         closeDrawer();
         return d && d.status === "edited"
-          ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md")
+          ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + (d.committed === false ? ", but NOT committed to main (uncommitted in the checkout)" : "")
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "note-edit") {

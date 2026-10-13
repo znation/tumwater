@@ -879,7 +879,7 @@ test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bod
 
   const ok = await serve({ position: 1, title: T1, decision: "use\nink" });
   assert.equal(ok.captured.status, 200);
-  assert.deepEqual(ok.data, { ok: true, status: "answered", question: T1, decision: "use\nink" });
+  assert.deepEqual(ok.data, { ok: true, status: "answered", question: T1, decision: "use\nink", committed: false });
   const md = fs.readFileSync(file, "utf8");
   assert.match(md, new RegExp(`## Answered[\\s\\S]*### ${T1}[\\s\\S]*\\*\\*Answered \\d{4}-\\d{2}-\\d{2} by operator:\\*\\*\\n\\nuse\\nink\\n`));
 
@@ -928,13 +928,13 @@ test("handleBacklogFile files a bug or plan and wakes its loop, and 400s bad inp
 
   const bug = await serveBacklogFile(root, { kind: "bug", title: "  x  y " });
   assert.equal(bug.captured.status, 200);
-  assert.deepEqual(bug.data, { ok: true, file: "BUGS.md", title: "x y" });
+  assert.deepEqual(bug.data, { ok: true, file: "BUGS.md", title: "x y", committed: false });
   assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), new RegExp(`### x y \\(reported by the operator ${today}`));
   assert.deepEqual(queuedTexts(root, "bugfix"), [bugWakeText("x y")]);
 
   const plan = await serveBacklogFile(root, { kind: "plan", title: "add z" });
   assert.equal(plan.captured.status, 200);
-  assert.deepEqual(plan.data, { ok: true, file: "PLANS.md", title: "add z" });
+  assert.deepEqual(plan.data, { ok: true, file: "PLANS.md", title: "add z", committed: false });
   assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the operator/);
   assert.deepEqual(queuedTexts(root, "feature"), [planWakeText("add z")]);
 
@@ -998,12 +998,12 @@ test("handleBacklogCancel removes the entry, answers gone for a stale title, 400
 
   const done = await serve({ kind: "bug", position: 2, title: "two (found by x 2026-10-01)" });
   assert.equal(done.captured.status, 200);
-  assert.deepEqual(done.data, { ok: true, status: "cancelled", file: "BUGS.md", title: "two (found by x 2026-10-01)" });
+  assert.deepEqual(done.data, { ok: true, status: "cancelled", file: "BUGS.md", title: "two (found by x 2026-10-01)", committed: false });
   assert.ok(!fs.readFileSync(bugsPath, "utf8").includes("### two"));
   assert.ok(fs.readFileSync(bugsPath, "utf8").includes("### one"));
 
   const plan = await serve({ kind: "plan", position: 1, title: "p1" });
-  assert.deepEqual(plan.data, { ok: true, status: "cancelled", file: "PLANS.md", title: "p1" });
+  assert.deepEqual(plan.data, { ok: true, status: "cancelled", file: "PLANS.md", title: "p1", committed: false });
   assert.ok(!fs.readFileSync(path.join(root, "PLANS.md"), "utf8").includes("### p1"));
 
   const bugsNow = fs.readFileSync(bugsPath, "utf8");
@@ -1045,7 +1045,7 @@ test("handleBacklogEdit rewrites the entry, answers gone for a stale title, 400s
 
   const done = await serve({ kind: "plan", position: 1, title: "p1 (planned 2026-10-01 by plan)", newTitle: "p2", newBody: "l1\n\nl2" });
   assert.equal(done.captured.status, 200);
-  assert.deepEqual(done.data, { ok: true, status: "edited", file: "PLANS.md", title: "p2" });
+  assert.deepEqual(done.data, { ok: true, status: "edited", file: "PLANS.md", title: "p2", committed: false });
   assert.ok(fs.readFileSync(plansPath, "utf8").includes("### p2 (planned 2026-10-01 by plan)\n\nl1\n\nl2"));
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
 });

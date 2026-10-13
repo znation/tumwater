@@ -13,7 +13,7 @@ import { fencedHeadingTitle, fenceTracker, headingMetadata, nextSectionHeading }
 import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } from "./backlog-structure.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
 import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
 import { plannedPlanEntries, openBugEntries } from "./backlog.js";
@@ -481,7 +481,7 @@ async function announceFiled(
   wakeText: (title: string) => string,
   json: boolean,
 ): Promise<void> {
-  await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${command}: ${filed.title}`));
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${command}: ${filed.title}`)), filed.file);
   const wake = submitRolePromptAndWake(root, role, wakeText(filed.title));
   sayFiled(command, filed, json);
   if (!json) say(wake);
@@ -697,7 +697,7 @@ export async function cancelAndAnnounce(
   if (position === null) fail(`--cancel needs a position (usage: tumwater ${command} --cancel <n>)`);
   await requireReadyRepo(root);
   const removed = cancel(position);
-  await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`));
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`)), removed.file);
   if (json) sayJson({ file: removed.file, title: removed.title });
   else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
 }
@@ -755,7 +755,7 @@ export async function releaseAndAnnounce(
   if (position === null) fail(`--release needs a position (usage: tumwater ${command} --release <n>)`);
   await requireReadyRepo(root);
   const released = release(position);
-  await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`));
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`)), released.file);
   const wake = requestWake(root, [role]);
   if (json) sayJson({ file: released.file, title: released.title });
   else {
@@ -930,7 +930,7 @@ export async function editAndAnnounce(
     text = after;
   } else if (path !== null) text = readPromptFileArg(path);
   const edited = text === null ? edit(position, positionals) : editText(position, text);
-  await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`));
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`)), edited.file);
   if (json) sayJson({ file: edited.file, title: edited.title });
   else say(`edited ${command} in ${edited.file}: ${edited.title}`);
 }

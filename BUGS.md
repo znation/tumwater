@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### An operator write through the running dashboard generation is committed best-effort and reports success regardless, so an answered question landed as an unstaged `QUESTIONS.md` edit (observed by operator session 2026-10-12)
+_None yet._
+
+## Fixed
+
+### An operator write through the running dashboard generation is committed best-effort and reports success regardless, so an answered question landed as an unstaged `QUESTIONS.md` edit (observed by operator session 2026-10-12, fixed 2026-10-13)
 
 - **Symptom:** the dashboard's answer form accepted the decision for the open "Release the stale refusal on \"Operator backlog writes land on main, part 2/2\"?" question and flashed "Answered … — moved to ## Answered", but `git status` showed only ` M QUESTIONS.md` and no `Answer question:` commit existed on main. The entry moved in the file; nothing committed it.
 - **Reproduce:** `dist/build-info.json` names sha `40c94752` (committed 18:54:35 PDT, built 18:54:45). The harness's last `restart` event moved `2f592fd6 → 40c94752` at 18:56:13 PDT, and the next is inside the 12 h cooldown (`restart_forced` 18:55:59, `build_stale` + `warning … auto-restart of 2b6db61c deferred — cooldown until 2026-10-13T13:56:13.185Z` at 18:57:47). The commit-on-answer call landed later, at 19:46:30 in e6b696fc. So that generation's `handleQuestionAnswer` (dist/src/gui/gui-endpoint-commands.js) is the pre-fix one: no `commitOperatorBacklogEdit` anywhere in it but `handleFileEntry`. Offline, grep the served tree: `grep commitOperatorBacklogEdit dist/src/gui/gui-endpoint-commands.js` finds only the file-entry call, while `src/` has it at line 260. Answer a question from that page and the file changes with no commit.
@@ -16,7 +20,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Split 2026-10-13 by plan:** the `doctor` row for a dirty operator backlog file is planned on its own in PLANS.md ("`tumwater doctor` names uncommitted backlog edits in the primary checkout"); this bug's fix is the caller-side checks.
 - **Expected / fix sketch:** make the commit result observable instead of best-effort-silent: every caller checks the boolean — the CLI `fail`s, the GUI returns 200 with `committed:false` (or 5xx) with a flash naming it, the TUI flashes a warning — and add a `doctor` row for a dirty operator backlog file (`plan`/`bug`/`questions` writes are supposed to leave the checkout clean). Separately, consider refusing an operator *write* from a surface whose `build-info.json` sha is behind main's, so a stale generation cannot silently apply superseded write behavior.
 
-## Fixed
+- **Fixed 2026-10-13:** the CLI file/cancel/release/edit/answer writes warn on stderr (`warnIfUncommitted`, src/cli/cli-output.ts) when the commit returns false; `/api/question-answer` returns `committed` and the dashboard flash says so. The GUI file/cancel/edit endpoints return `committed` (flash says so on false) and the four TUI call sites flash a warning. The `doctor` dirty-checkout row is tracked in PLANS.md; refusing writes from a stale generation was a speculative "consider" and is not done.
+- **Validation gap:** none — the existing off-base-branch CLI test reproduced the silent success.
 
 ### Bare `prompt --edit <n>` queued a blank prompt when the editor buffer was emptied (found by bugfix 2026-10-12, fixed 2026-10-12)
 

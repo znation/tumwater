@@ -23,6 +23,15 @@ export function say(text: string): void {
   writeLine(stripTerminalControls(text));
 }
 
+/** Tell the operator, on stderr, that an operator backlog write landed in the working tree but
+ * was not committed to main (commitOperatorBacklogEdit returned false: the primary is off the
+ * base branch, or git failed). The write itself succeeded, so this warns instead of failing;
+ * a no-op when the commit landed. */
+export function warnIfUncommitted(committed: boolean, file: string): void {
+  if (committed) return;
+  process.stderr.write(`warning: ${file} was written but not committed to main — commit it before the next fast-forward\n`);
+}
+
 /** Print a value as pretty-printed (2-space) JSON — the `--json` output every CLI query
  * command (status, history, report, config) renders through: the pretty-print spelling
  * (indent 2) decided once so the machine-readable surface cannot drift per command. Writes

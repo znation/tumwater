@@ -1416,7 +1416,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
             try {
               const outcome = tryCancelEntry(root, kind, position, armed.title);
               if (outcome.status === "cancelled") {
-                void commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`));
+                void commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`)).then((committed) => { if (!committed) flashMessage(`${outcome.file} written but NOT committed to main — commit it before the next fast-forward`); });
               }
               selectedEntry = null;
               entryScroll = 0;
@@ -1883,7 +1883,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
               flashMessage(problem);
             } else {
               const filed = fileEntryWithBody(root, target.kind, input, "");
-              void commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${target.kind}: ${filed.title}`));
+              void commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${target.kind}: ${filed.title}`)).then((committed) => { if (!committed) flashMessage(`${filed.file} written but NOT committed to main — commit it before the next fast-forward`); });
               submitRolePromptAndWake(root, role, wakeText(filed.title));
               exitEntryEdit();
               flashMessage(`filed ${target.kind}: ${filed.title} — woke ${role}`);
@@ -1902,7 +1902,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
                 : ({ status: "moved", title: "" } as const);
             exitEntryEdit();
             if (outcome.status === "edited") {
-              void commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${target.kind}: ${outcome.title}`));
+              void commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${target.kind}: ${outcome.title}`)).then((committed) => { if (!committed) flashMessage(`${outcome.file} written but NOT committed to main — commit it before the next fast-forward`); });
               flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
             } else {
               selectedEntry = null;
@@ -1928,7 +1928,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
               flashMessage(UNCLOSED_FENCE_MESSAGE);
             } else {
               if (outcome.status === "answered") {
-                void commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`));
+                void commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`)).then((committed) => { if (!committed) flashMessage(`QUESTIONS.md written but NOT committed to main — commit it before the next fast-forward`); });
               }
               exitAnswerMode();
               selectedEntry = null;

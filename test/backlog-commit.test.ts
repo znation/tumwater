@@ -47,7 +47,9 @@ test("off the base branch the entry stays uncommitted, and the helper returns fa
   const cfg = loadConfig(repo);
   cfg.baseBranch = "main";
   writeConfig(repo, cfg);
-  assert.equal((await cli(repo, "bug", "q")).code, 0);
+  const filed = await cli(repo, "bug", "q");
+  assert.equal(filed.code, 0);
+  assert.match(filed.stderr, /warning: BUGS\.md was written but not committed to main/);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
   assert.match(sh(repo, "git", "status", "--porcelain"), /BUGS\.md/);
   assert.equal(await commitOperatorBacklogEdit(repo, "BUGS.md", "tumwater(operator): x"), false);
@@ -107,7 +109,9 @@ test("bug --cancel, plan --edit, and questions answer each commit on main; a mis
   const head = sh(repo, "git", "rev-parse", "HEAD");
   assert.notEqual((await cli(repo, "bug", "--cancel", "9")).code, 0);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
-  assert.equal((await cli(repo, "bug", "--cancel", "1")).code, 0);
+  const cancelled = await cli(repo, "bug", "--cancel", "1");
+  assert.equal(cancelled.code, 0);
+  assert.equal(cancelled.stderr, "");
   assertClean(repo);
   assert.match(subject(repo), /^tumwater\(operator\): Cancel bug: b1/);
   assert.equal((await cli(repo, "plan", "--edit", "1", "z")).code, 0);

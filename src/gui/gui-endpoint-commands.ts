@@ -257,8 +257,8 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
     return;
   }
   if (outcome.status === "answered") {
-    await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`));
-    sendJson(res, 200, { ok: true, status: "answered", question: outcome.title, decision: outcome.decision });
+    const committed = await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`));
+    sendJson(res, 200, { ok: true, status: "answered", question: outcome.title, decision: outcome.decision, committed });
   } else if (outcome.status === "fenced") {
     sendJson(res, 409, { ok: false, error: UNCLOSED_FENCE_MESSAGE });
   } else {
@@ -496,9 +496,9 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
     return;
   }
   const filed = fileEntryWithBody(root, kind, rawTitle, entryBody);
-  await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${kind}: ${filed.title}`));
+  const committed = await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${kind}: ${filed.title}`));
   submitRolePromptAndWake(root, role, wakeText(filed.title));
-  sendJson(res, 200, { ok: true, file: filed.file, title: filed.title });
+  sendJson(res, 200, { ok: true, file: filed.file, title: filed.title, committed });
 }
 
 /** Handle POST /api/backlog-cancel: the entry drawer's cancel — the same lock and splice as
@@ -530,8 +530,8 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
     return;
   }
   if (outcome.status === "cancelled") {
-    await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`));
-    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title });
+    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`));
+    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed });
   } else {
     sendJson(res, 200, { ok: true, status: "gone" });
   }
@@ -579,8 +579,8 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
     return;
   }
   if (outcome.status === "edited") {
-    await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`));
-    sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title });
+    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`));
+    sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed });
   } else {
     sendJson(res, 200, { ok: true, status: "gone" });
   }
