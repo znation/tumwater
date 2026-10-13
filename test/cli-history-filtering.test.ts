@@ -341,3 +341,37 @@ test("history --result fails with its own wording for a missing or unknown class
   assert.match(bogus.stderr, /changes, none, problems/);
   assert.match(bogus.stderr, /got "bogus"/);
 });
+
+test("history --summary tallies each loop's outcomes over the rows the table would print", async () => {
+  const repo = await seededHistoryRepo();
+  const text = await cli(repo, "history", "--summary");
+  assert.equal(text.code, 0);
+  assert.deepEqual(text.stdout.split("\n").map((l) => l.trimEnd()), [
+    "loop     ticks  changes  none  problems",
+    "bugfix       1        0     0         1",
+    "clean        1        0     1         0",
+    "feature      1        1     0         0",
+    "total        3        1     1         1",
+    "",
+  ]);
+
+  const json = await cli(repo, "history", "--summary", "--json");
+  const payload = JSON.parse(json.stdout) as { loops: unknown[]; total: unknown };
+  assert.equal(payload.loops.length, 3);
+  assert.deepEqual(payload.total, { loop: "total", ticks: 3, changes: 1, none: 1, problems: 1 });
+
+  const scoped = await cli(repo, "history", "--summary", "--role", "feature");
+  assert.equal(scoped.stdout.trim().split("\n").length, 3);
+  assert.match(scoped.stdout, /^feature /m);
+
+  const problems = await cli(repo, "history", "--summary", "--result", "problems");
+  assert.match(problems.stdout, /^total +1 +0 +0 +1$/m);
+  assert.doesNotMatch(problems.stdout, /^clean/m);
+});
+
+test("history --summary keeps the empty-state output on an empty log", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history summary empty");
+  assert.equal((await cli(repo, "history", "--summary")).stdout, "no ticks yet\n");
+  assert.deepEqual(JSON.parse((await cli(repo, "history", "--summary", "--json")).stdout), { rows: [] });
+});

@@ -247,6 +247,10 @@ export const JSON_FLAG: FlagSpec = { names: ["--json"] };
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
 
+/** The `--summary` flag spec, accepted by `history`: tally each loop's tick outcomes instead of
+ * printing the rows. Value-less, like STAT_FLAG. */
+export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
+
 /** The `--force` flag spec, accepted by `retire` (the only override-the-rails command): one
  * definition of the flag's spelling beside ROLE_FLAG and JSON_FLAG, so the gate's accepted
  * vocabulary cannot drift from the command body's `args.includes("--force")`. */

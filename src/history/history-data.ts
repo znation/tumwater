@@ -41,6 +41,35 @@ export function historyClass(result: string): HistoryResultClass {
   return "problems";
 }
 
+/** One loop's tick tally by outcome class (the HISTORY_RESULT_CLASSES buckets); `ticks` is their
+ * sum. The `total` line of a summary uses the loop name "total". */
+export interface HistorySummaryRow {
+  loop: string;
+  ticks: number;
+  changes: number;
+  none: number;
+  problems: number;
+}
+
+/** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
+ * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
+export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]; total: HistorySummaryRow } {
+  const blank = (loop: string): HistorySummaryRow => ({ loop, ticks: 0, changes: 0, none: 0, problems: 0 });
+  const byLoop = new Map<string, HistorySummaryRow>();
+  const total = blank("total");
+  for (const row of rows) {
+    let entry = byLoop.get(row.loop);
+    if (!entry) byLoop.set(row.loop, (entry = blank(row.loop)));
+    const cls = historyClass(row.result);
+    for (const t of [entry, total]) {
+      t.ticks += 1;
+      t[cls] += 1;
+    }
+  }
+  const loops = [...byLoop.values()].sort((a, b) => (a.loop < b.loop ? -1 : a.loop > b.loop ? 1 : 0));
+  return { loops, total };
+}
+
 /** How much of a tick's summary or error a row keeps. Long enough to name the work, short
  * enough that the row stays one terminal line next to its other columns. */
 const DETAIL_MAX = 72;

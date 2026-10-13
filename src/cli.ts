@@ -27,6 +27,7 @@ import {
   RUN_FLAG_SPECS,
   sinceFlagSpec,
   STAT_FLAG,
+  SUMMARY_FLAG,
   FORCE_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
@@ -186,6 +187,7 @@ async function main(): Promise<void> {
         resultFlagSpec(HISTORY_RESULT_VALUE_ERROR),
         JSON_FLAG,
         ROLE_FLAG,
+        SUMMARY_FLAG,
       ]);
       await requireReadyRepo(root);
       await cmdHistory(root, args);

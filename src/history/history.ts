@@ -1,7 +1,7 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, tickRowCells, tickRowLine, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, summarizeTickRows, type HistorySummaryRow, tickRowCells, tickRowLine, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
 
@@ -54,6 +54,18 @@ function widestWidths(rows: TickRow[]): RowWidths {
  * two cannot disagree about which field sits where. */
 function renderRow(row: TickRow, widths: RowWidths): string {
   return tickRowLine(row, (column, value) => padToWidth(value, widths[column]));
+}
+
+/** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
+ * display width; each number column right-aligns under its header. */
+function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
+  const all = [...summary.loops, summary.total];
+  const loopWidth = Math.max(...["loop", ...all.map((r) => r.loop)].map(displayWidth));
+  const cols = ["ticks", "changes", "none", "problems"] as const;
+  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => String(r[c]).length)));
+  const line = (loop: string, cells: string[]): string =>
+    [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0))].join("  ").trimEnd();
+  return [line("loop", [...cols]), ...all.map((r) => line(r.loop, cols.map((c) => String(r[c]))))].join("\n");
 }
 
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so
@@ -137,8 +149,9 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no ticks yet`,
   // the report --json precedent: the flag's output must be parseable in every exit-0 case).
+  const summary = rest.includes("--summary") && rows.length > 0;
   if (rest.includes("--json")) {
-    sayJson({ rows });
+    sayJson(summary ? summarizeTickRows(rows) : { rows });
     return;
   }
   if (rows.length === 0) {
@@ -164,8 +177,11 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     );
     return;
   }
-  const widths = widestWidths(rows);
-  say(rows.map((r) => renderRow(r, widths)).join("\n"));
+  if (summary) say(renderSummary(summarizeTickRows(rows)));
+  else {
+    const widths = widestWidths(rows);
+    say(rows.map((r) => renderRow(r, widths)).join("\n"));
+  }
   // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows
   // (an empty window returned above), it never touches --json output, and it is the shared
   // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly

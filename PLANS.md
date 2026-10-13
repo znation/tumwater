@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater history --summary` tallies each loop's tick outcomes (ticks, changes, none, problems) over the same rows the table would print (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above)
+## Done
+
+### `tumwater history --summary` tallies each loop's tick outcomes (ticks, changes, none, problems) over the same rows the table would print (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above) — done 2026-10-12
 
 **Goal.** Make it easy to see which loops are producing work, idling, or failing. Today an operator has to count rows by eye in `tumwater history --since 24h`. `tumwater report` counts ticks and commits per role, and `report --failures` lists failures, but nothing tallies outcome classes per loop. `history --summary` swaps the row table for one line per loop: its tick count split into the three `HISTORY_RESULT_CLASSES` buckets (`historyClass` in `src/history/history-data.ts`). It reads the same rows the table would print, so it composes with `--role`, `-n`, `--since`, `--grep`, `--result`, and `--json` with no new rival-shape rule.
 
@@ -69,8 +71,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - **Edges.** On an empty log, `history --summary` prints `no ticks yet`, and `history --summary --json` prints `{"rows":[]}`.
 - **Unchanged output.** Without `--summary`, `history`'s output is unchanged: the existing tests in test/cli-history.test.ts and test/cli-history-filtering.test.ts pass unmodified, apart from the help-stanza regex in "history rejects unknown flags…", which is updated for the new `[--summary]` usage token.
 - **Check.** `npm run test` passes.
-
-## Done
 
 ### The TUI's History tick trail (Ctrl+N) ends with the tick commit's per-file stat, matching `tumwater tick <role> <n> --stat` and the dashboard drill-down (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. TUI sibling of the Done "dashboard's History drill-down shows the tick commit's per-file stat" plan, done 2026-10-12)
 

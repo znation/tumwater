@@ -89,7 +89,7 @@ Usage:
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
   tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]
-                   [--result <changes|none|problems>] [--json]
+                   [--result <changes|none|problems>] [--summary] [--json]
                                    One row per completed tick, newest first — time, loop,
                                    tick number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
@@ -101,7 +101,9 @@ Usage:
                                    problems (everything else) — composed with --role, --since,
                                    -n, and --grep; --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
-                                   kept raw, the GUI's /api/history payload
+                                   kept raw, the GUI's /api/history payload; --summary prints one line per loop
+                                   counting its ticks by outcome class (and a total line)
+                                   instead of the rows; with --json, { loops, total }
   tumwater tick <role> [<n>] [--last] [--stat] [--json]
                                    One completed tick's full event trail — a summary header
                                    (result or in-flight, duration, tokens/cost, the pinned
