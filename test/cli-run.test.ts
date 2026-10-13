@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { armDeadlineTimer, guiChildPlan, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, onceFailures, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
@@ -277,4 +277,26 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
     onceSummary(root, ["improve"], new Map([["improve", 1]]), new Map()),
     "once: 0 ticks — nothing ran, 1 skipped (resume pending)",
   );
+});
+
+test("onceFailures reports roles that ticked this round and ended in a failure result", () => {
+  const root = makeRepo();
+  saveLoopState(root, state("clean", { ticks: 1, lastResult: "error" }));
+  assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }]);
+  assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 0]])), [], "did not tick this round");
+  assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 0]])), [{ role: "clean", result: "error" }]);
+  assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 1]])), [], "no new tick");
+  assert.deepEqual(onceFailures(root, [], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }], "ticks-run-only role");
+});
+
+test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the rest", () => {
+  const root = makeRepo();
+  for (const result of ONCE_FAILURE_RESULTS) {
+    saveLoopState(root, state("clean", { ticks: 1, lastResult: result }));
+    assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result }]);
+  }
+  for (const result of ["rejected", "refused", "no_change", "changed"] as const) {
+    saveLoopState(root, state("clean", { ticks: 1, lastResult: result }));
+    assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [], result);
+  }
 });

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fastConfig } from "./fixtures/orchestrator-fixtures.js";
-import { withIdlePi } from "./fakes/fake-pi.js";
+import { withIdlePi, withPi } from "./fakes/fake-pi.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -34,5 +34,17 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
     assert.doesNotMatch(r.stdout, /\bdry\b/, `the unscoped role must be invisible: ${r.stdout}`);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the scoped role ticked exactly once");
     assert.equal(loadLoopState(repo, "dry").ticks, 0, "the unscoped role never ran");
+  });
+});
+
+test("run --once exits 3 and names the role when its tick ended in error", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run once failed");
+  writeConfig(repo, fastConfig(["clean"]));
+  await withPi("exit 1", async () => {
+    const r = await cli(repo, "run", "--once", "--role", "clean");
+    assert.equal(loadLoopState(repo, "clean").lastResult, "error");
+    assert.equal(r.code, 3, `exit 3 (stderr: ${r.stderr})`);
+    assert.match(r.stdout, /once: failed — clean error/);
   });
 });

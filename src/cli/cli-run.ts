@@ -27,6 +27,7 @@ import { logEvent, subscribeEvents } from "../events/events.js";
 import { notifyFleetDown } from "../events/notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -127,7 +128,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
   // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
   // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
-  const { SUPERVISED_ENV, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
+  const { SUPERVISED_ENV, ONCE_FAILED_EXIT_CODE, startParentDeathWatch, expectedSupervisorPid } = await import("../process/supervisor.js");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
@@ -208,6 +209,13 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     unsubscribe();
   }
   if (once || forMs !== null) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
+  if (once) {
+    const failures = onceFailures(root, roles, ticksBefore, exit.ticksRun);
+    if (failures.length > 0) {
+      say(`once: failed — ${failures.map((f) => `${f.role} ${f.result}`).join(", ")}`);
+      process.exitCode = ONCE_FAILED_EXIT_CODE;
+    }
+  }
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
@@ -254,6 +262,45 @@ export function parseRunWindow(args: string[], once: boolean): number | null {
   return ms;
 }
 
+/** Results that mean the harness or the project's check failed and the round's work did not
+ * land: a `--once` round with a role ending in one exits ONCE_FAILED_EXIT_CODE. `rejected` and
+ * `refused` are the review gate and the agent working as designed; `aborted`, `quiet_killed`, and
+ * `user_aborted` only reach a once round on a shutdown or operator abort, which exit their own way. */
+export const ONCE_FAILURE_RESULTS: ReadonlySet<TickResult> = new Set<TickResult>([
+  "error",
+  "review_error",
+  "merge_conflict",
+  "merge_blocked",
+  "main_red",
+]);
+
+function ticksThisRound(
+  s: { ticks: number },
+  role: string,
+  ticksBefore: Map<string, number>,
+  ticksRun?: ReadonlyMap<string, number>,
+): number {
+  return ticksRun ? (ticksRun.get(role) ?? 0) : s.ticks - (ticksBefore.get(role) ?? 0);
+}
+
+/** The roles that ticked this round and whose last result is in ONCE_FAILURE_RESULTS. */
+export function onceFailures(
+  root: string,
+  roles: string[],
+  ticksBefore: Map<string, number>,
+  ticksRun?: ReadonlyMap<string, number>,
+): { role: string; result: TickResult }[] {
+  const out: { role: string; result: TickResult }[] = [];
+  const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
+  for (const role of [...roles, ...extra]) {
+    const s = loadLoopState(root, role);
+    if (ticksThisRound(s, role, ticksBefore, ticksRun) > 0 && s.lastResult && ONCE_FAILURE_RESULTS.has(s.lastResult)) {
+      out.push({ role, result: s.lastResult });
+    }
+  }
+  return out;
+}
+
 /** The once round's one-line summary, read from the runners' persisted loop state plus the
  * orchestrator's own settle reasons — a cron job's log shows what the round did without parsing
  * events. Roles whose tick counter advanced bucket by their last completed result; the rest are
@@ -286,7 +333,7 @@ export function onceSummary(
   const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
   for (const role of [...roles, ...extra]) {
     const s = loadLoopState(root, role);
-    const ran = ticksRun ? (ticksRun.get(role) ?? 0) : s.ticks - (ticksBefore.get(role) ?? 0);
+    const ran = ticksThisRound(s, role, ticksBefore, ticksRun);
     if (ran > 0) {
       ticks += ran;
       const key = s.lastResult ?? "no_change";

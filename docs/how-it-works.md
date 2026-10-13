@@ -16,7 +16,9 @@ file to edit instead. The prompt is capped at 4096 characters because it rides i
 
 `tumwater run` then starts one loop per enabled role. `tumwater run --once` runs one full
 round — every enabled role ticks at most once, every landing that round produced merges — and
-then exits, for cron and CI and for trying one round before committing to a fleet.
+then exits, for cron and CI and for trying one round before committing to a fleet. It exits 3
+when a role that ticked ended in `error`, `review_error`, `merge_conflict`, `merge_blocked`, or
+`main_red`, so a failing round is distinguishable from a quiet one.
 
 ## A loop tick
 

@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater run --once` exits 3 when a role's round ended in a harness failure, so a cron or CI step can tell a broken round from a quiet one (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 and of the waiting "`tumwater queue` marks the entries the landing pipeline is working on" plan. It touches no `src/backlog`, `src/landing`, or queue-render file. README and `help.ts` sell `--once` as "for cron/CI", but `cmdRun` in `src/cli/cli-run.ts` exits 0 after every round that does not request a restart. A round where every tick errored, the review gate could not parse a verdict, or main was red prints its `once: …` summary and still exits 0, so the CI job stays green)
+## Done
+
+### `tumwater run --once` exits 3 when a role's round ended in a harness failure, so a cron or CI step can tell a broken round from a quiet one (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 and of the waiting "`tumwater queue` marks the entries the landing pipeline is working on" plan. It touches no `src/backlog`, `src/landing`, or queue-render file. README and `help.ts` sell `--once` as "for cron/CI", but `cmdRun` in `src/cli/cli-run.ts` exits 0 after every round that does not request a restart. A round where every tick errored, the review gate could not parse a verdict, or main was red prints its `once: …` summary and still exits 0, so the CI job stays green) (done 2026-10-12)
 
 **Goal.** After a `--once` round, the process exits 3 (`ONCE_FAILED_EXIT_CODE`) when at least one role that ticked this round ended with a failure result. It also prints one line naming those roles. A quiet round, a productive one, and one whose only bad news is a rejection or refusal still exit 0. The summary line itself does not change.
 
@@ -52,8 +54,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - Supervisor test: a child exiting `ONCE_FAILED_EXIT_CODE` makes `superviseRun` return 3 without calling `onFleetDown`. The existing tests, including "a generation that dies unasked is reported through onFleetDown" with its exit code, pass unchanged.
 - `run --for` exit behavior is unchanged: grep shows that `onceFailures` is called only under `once`.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater queue` marks the entries the landing pipeline is working on right now (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above — it touches no `src/backlog` file. The queue view lists every waiting landing with its age, but it does not say which entries a vet or the merge holds right now, or which stage each is in. Only the per-loop rows in `status`, the TUI, and the dashboard show that (`loopPhase`'s `landing 2m · reviewing` / `vetted, awaiting merge`). So an operator reading `tumwater queue` cannot tell a stuck head from one that is being reviewed)
 

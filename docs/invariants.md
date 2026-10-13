@@ -282,12 +282,14 @@ injected timeout".
 **Guarantee.** When the supervisor logs `supervisor_exit` (a generation died unasked or the
 crash-loop guard tripped), it runs the `notify` command from tumwater.json once, with no
 throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing and never throws.
+A once round's `ONCE_FAILED_EXIT_CODE` is an asked-for ending and pages nothing.
 
 **Binds.** `src/events/notify.ts` (`notifyFleetDown`) and `src/cli/cli-run.ts`
 (`superviseRunCommand`'s `onFleetDown`).
 
 **Pinned by.** `test/cli-run-shutdown.test.ts` — "a fleet that goes down unasked runs the notify
-hook once"; `test/notify.test.ts` — the `notifyFleetDown` tests.
+hook once"; `test/notify.test.ts` — the `notifyFleetDown` tests; `test/supervisor.test.ts` — "a
+once round's failed exit code passes through without paging".
 
 ### INV-E3: a notify hook that exits nonzero leaves a warning naming the paged type
 

@@ -19,6 +19,7 @@ import {
   SUPERVISOR_PID_ENV,
   spawnRunChild,
   superviseRun,
+  ONCE_FAILED_EXIT_CODE,
 } from "../src/process/supervisor.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -51,6 +52,17 @@ test("superviseRun respawns on the restart code and exits with the final generat
   assert.equal(code, 0);
   assert.equal(child.spawns, 3, "two restarts, then a clean exit");
   assert.deepEqual(generations, [2, 3]);
+});
+
+test("a once round's failed exit code passes through without paging", async () => {
+  const child = scripted([ONCE_FAILED_EXIT_CODE]);
+  let paged = 0;
+  const code = await superviseRun(
+    { spawnChild: child.spawnChild, stopping: () => false, onFleetDown: () => { paged += 1; } },
+    new AbortController().signal,
+  );
+  assert.equal(code, ONCE_FAILED_EXIT_CODE);
+  assert.equal(paged, 0);
 });
 
 test("superviseRun passes a failing child's exit straight through (no respawn)", async () => {

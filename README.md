@@ -52,7 +52,7 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 tumwater run                # start the loops (Ctrl+C to stop)
 tumwater run --gui          # ... and serve the browser dashboard at http://127.0.0.1:7180 from the same process
 tumwater run --for 2h       # run for a bounded window (capped at 90d), then drain and exit like Ctrl+C would
-tumwater run --once         # one full round of ticks, drains its landings, and exits (for cron/CI);
+tumwater run --once         # one full round of ticks, drains its landings, and exits (for cron/CI); exits 3 if a loop's tick failed;
                             # add --role <id> to scope the round to one loop
 ```
 

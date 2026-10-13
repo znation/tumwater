@@ -16,6 +16,8 @@ Usage:
                                    Run all enabled loops (headless; Ctrl+C stops);
                                    --once runs one full round of ticks, drains the
                                    landings it produced, and exits (for cron/CI);
+                                   exits 3 when a tick ended in error, review_error,
+                                   merge_conflict, merge_blocked, or main_red;
                                    --once --role <id> scopes that round to one loop;
                                    --for <duration> runs for that window then drains
                                    and exits like Ctrl+C would (for an overnight
