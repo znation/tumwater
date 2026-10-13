@@ -1,6 +1,8 @@
 /** Shell completion derived from the help text. The spec is parsed from the same HELP stanzas
  * `tumwater help <command>` and the unknown-command suggestion use, so a new command or flag
  * completes the moment it gains a help stanza and can never drift from the listing. */
+import { knownRoleIds, loadConfig } from "../config/config.js";
+import { allRoleIds } from "../roles/roles.js";
 import { HELP, helpStanzas } from "./help.js";
 
 export const SUPPORTED_SHELLS = ["bash", "zsh"] as const;
@@ -52,6 +54,16 @@ export function completionSpec(help: string = HELP): CompletionSpec {
   return { commands, subcommands, flags };
 }
 
+/** The ids `--role` completes: this repo's loop ids, or the built-in catalog when tumwater.json is
+ * unreadable (a broken config must not write errors into the operator's prompt). */
+export function completionRoleIds(root: string): string[] {
+  try {
+    return knownRoleIds(loadConfig(root));
+  } catch {
+    return allRoleIds();
+  }
+}
+
 function bashScript(help: string): string {
   const spec = completionSpec(help);
   const arms = spec.commands.map((command) => {
@@ -75,7 +87,12 @@ function bashScript(help: string): string {
     `# tumwater completion (generated from \`tumwater help\`)`,
     `_tumwater() {`,
     `  local cur="\${COMP_WORDS[COMP_CWORD]}"`,
+    `  local prev="\${COMP_WORDS[COMP_CWORD-1]}"`,
     `  COMPREPLY=()`,
+    `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == tick ]] && [[ "$cur" != -* ]]; }; then`,
+    `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$COMP_CWORD" -eq 1 ]; then`,
     `    COMPREPLY=( $(compgen -W "${spec.commands.join(" ")}" -- "$cur") )`,
     `    return 0`,

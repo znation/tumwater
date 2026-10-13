@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "`tumwater completion <bash|zsh>` prints a shell completion script derived from the help text", and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, `test/completion.test.ts`, and one README sentence. Today `bashScript` in `src/cli/completion.ts` completes only command names, `usageWords` subcommands, and flags. The value after `--role`, which 26 help lines take, and the `<id>`/`<role>` positional of `role` and `tick` complete nothing, so the operator types `feature-2` or a custom loop name by hand. A grep for `--roles` or `COMP_CWORD-1` under `src/` finds nothing)
+_None yet._
+
+
+## Done
+
+### Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "`tumwater completion <bash|zsh>` prints a shell completion script derived from the help text", and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, `test/completion.test.ts`, and one README sentence. Today `bashScript` in `src/cli/completion.ts` completes only command names, `usageWords` subcommands, and flags. The value after `--role`, which 26 help lines take, and the `<id>`/`<role>` positional of `role` and `tick` complete nothing, so the operator types `feature-2` or a custom loop name by hand. A grep for `--roles` or `COMP_CWORD-1` under `src/` finds nothing) (done 2026-10-12)
 
 **Goal.** Make `tumwater <cmd> --role <TAB>`, `tumwater role <TAB>`, and `tumwater tick <TAB>` offer the current repo's loop ids. Those are the catalog roles, the director, the custom loops, and enabled instance ids such as `feature-2`. Outside a repo, or when `tumwater.json` is broken, they offer the built-in catalog instead.
 
@@ -22,9 +27,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `cli(dir, "completion", "--roles")`, run in a tmp git repo whose `tumwater.json` sets `roles.feature.instances` to 2, exits 0. Its stdout lines include `feature`, `feature-2`, and `director`.
 - With a malformed `tumwater.json` (e.g. `{`), the same command exits 0 with empty stderr. Its stdout lines equal `allRoleIds()`.
 - `completion --roles bash` and `completion fish` still exit nonzero with `bash or zsh` in stderr. `completionSpec().flags.completion` includes `--roles`.
-- `bash -n` still accepts the generated bash script, and `npm run test` passes.
-
-## Done
 
 ### The dashboard's Usage view shows notional (subscription) spend: a per-loop chart and the Spent tile's notional figure (planned 2026-10-12 by plan; independent of every other entry, including the completion plan. It touches only `src/ui/gui/gui-client-report.ts`, `test/gui-report.test.ts`, and one README sentence. Since the 2026-10-12 Done entry "`tumwater report` names each role's notional (subscription) spend…", `/api/report`'s JSON (`collectReport`'s `ReportData`, served by `handleReport` in `src/gui/gui-endpoints.ts`) already carries `ReportDay.notionalByRole`, `ReportDay.notionalCostUsd`, and `totals.notionalCostUsd`, each present only when nonzero. The browser client ignores all three: a grep for `notional` under `src/ui/` finds nothing. So on a claude.ai-subscription fleet the Usage view's "Spent" tile reads `$0.00` and its "Spend by loop" chart is empty, while the CLI day report names the per-role notional spend. No Planned or Done entry covers the dashboard side) (done 2026-10-12)
 

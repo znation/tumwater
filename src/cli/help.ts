@@ -290,6 +290,7 @@ Usage:
                                    Stop a running fleet (drains in-flight ticks, like Ctrl+C);
                                    --in schedules the stop, --cancel drops it
   tumwater completion <bash|zsh>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc)
+  tumwater completion --roles      Print the loop ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
 
