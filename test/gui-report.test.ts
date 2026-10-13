@@ -602,3 +602,71 @@ test("the report window pickers normalize a persisted value outside their menu",
   assert.equal(offMenuSince.urls[0], "/api/report?days=14", "an off-menu trailing window falls back to the day window");
   assert.ok(offMenuSince.marks.some(([attr, cur]) => attr === "days" && cur === 14), "the day window is the active one");
 });
+
+test("the Usage notional chart and Spent-tile figure render only when notional spend exists", async () => {
+  type Builders = {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartCostByRole(d: ReportData): string;
+    chartNotionalByRole(d: ReportData): string;
+  };
+  const { reportRoleOrder, chartTicksByRole, chartCostByRole, chartNotionalByRole } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartCostByRole", "chartNotionalByRole"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay>): ReportDay => ({
+    date, tokensOut: 0, ticksByRole: { feature: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 };
+  const data: ReportData = {
+    days: 2, from: "2026-09-01", to: "2026-09-02",
+    series: [
+      mkDay("2026-09-01", { notionalByRole: { feature: 1.5, plan: 0.5 }, notionalCostUsd: 2 }),
+      mkDay("2026-09-02", {}),
+    ],
+    totals: { ...totals, notionalCostUsd: 2 }, coversFullWindow: true,
+  };
+  const rects = (svg: string) => svg.match(/<rect /g)?.length ?? 0;
+  assert.equal(rects(chartNotionalByRole(data)), 2, "one segment per (day, loop) with notional spend");
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartNotionalByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["plan", 0]], "a notional-only loop ranks after loops with ticks");
+  assert.equal(rects(chartCostByRole(data)), 0, "absent costByRole renders no segments");
+
+  const render = async (report: unknown): Promise<string> => {
+    const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(): void }> = {};
+    for (const id of ["report", "usagebody", "usagewindow", "failures", "failbody", "failwindow"]) {
+      els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
+    }
+    const inject = {
+      document: { getElementById: (id: string) => els[id] ?? null },
+      $: (id: string) => els[id] ?? null,
+      markActive: () => {}, recall: () => null, store: () => {}, lastStatus: null,
+      getJson: async () => report,
+      errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
+      clickClosest: () => null, renderMarkdown: (md: string) => md, icon: iconStub,
+      plural: (n: number, one: string) => `${n} ${one}`,
+      workSplit: () => "0 work / 0 maintenance",
+      fmtTokens: (n: number) => String(n),
+      fmtUsd: (n: number) => "$" + n.toFixed(2),
+    };
+    const keys = Object.keys(inject);
+    const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+      ...args: unknown[]
+    ) => { fetchReport(throttled?: boolean): Promise<void> };
+    await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
+    return els.usagebody!.innerHTML;
+  };
+  const withNotional = await render({
+    ...data, totals: { ...totals, notionalCostUsd: 12.5 },
+  });
+  for (const s of ["Notional spend by loop", "API-equivalent, not in the cap", "$12.50 notional"]) {
+    assert.ok(withNotional.includes(s), s);
+  }
+  const without = await render({
+    ...data, series: data.series.map((d) => mkDay(d.date, {})), totals,
+  });
+  for (const s of ["Notional spend by loop", "API-equivalent, not in the cap", "notional"]) {
+    assert.ok(!without.includes(s), s);
+  }
+});

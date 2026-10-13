@@ -32,6 +32,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     for (const d of data.series) {
       for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (Object.hasOwn(byRole, role) ? byRole[role] : 0) + n;
       for (const role of Object.keys(d.costByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.notionalByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
     }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -116,7 +117,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       data.series,
       (d) => roles.map(([role], i) => {
         // hasOwn again: an absent role must read 0, not Object.prototype's inherited value.
-        const value = Object.hasOwn(d[field], role) ? d[field][role] : 0;
+        const m = d[field] || {};
+        const value = Object.hasOwn(m, role) ? m[role] : 0;
         return { value, color: colorOf(i), title: d.date + " · " + role + ": " + fmt(value) };
       }),
       fmtAxis,
@@ -134,6 +136,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   function chartCostByRole(data) {
     return roleStackChart(data, "costByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+  }
+
+  // The API-equivalent (notional) spend of subscription runs, per loop, on the same axis as the cap spend.
+  function chartNotionalByRole(data) {
+    return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
   // report-chart:end
 
@@ -199,7 +206,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       ]),
       tile("Ticks", "refresh", String(t.ticks), perDay(t.ticks, Math.round)),
       tile("Output tokens", "bars", fmtTokens(t.tokensOut), perDay(t.tokensOut, (v) => fmtTokens(Math.round(v)))),
-      tile("Spent", "dollar", fmtUsd(t.costUsd), perDay(t.costUsd, fmtUsd)),
+      tile("Spent", "dollar", fmtUsd(t.costUsd), perDay(t.costUsd, fmtUsd),
+        t.notionalCostUsd > 0 ? " · " + fmtUsd(t.notionalCostUsd) + " notional" : undefined),
     ].join("");
   }
 
@@ -378,13 +386,15 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         const md = String(d.markdown).replace(/^# .*\n+/, "");
         return "<article class='card md'>" + renderMarkdown(md, true) + "</article>";
       }
-      const block = (title, svg) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
-        "</h2><span class='muted'>per day</span></header><div class='chart'>" + svg + "</div></section>";
+      const block = (title, svg, sub) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
+        "</h2><span class='muted'>" + esc(sub || "per day") + "</span></header><div class='chart'>" + svg + "</div></section>";
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The fleet-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
-        block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) + "</div>" +
+        block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) +
+        (d.totals.notionalCostUsd > 0
+          ? block("Notional spend by loop", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Loop scope: " + esc(d.role) +
           " · landing runs and backlog tallies (features done / bugs fixed) are fleet-wide and omitted.</p>" : "") +
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +

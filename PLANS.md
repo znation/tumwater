@@ -6,7 +6,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The dashboard's Usage view shows notional (subscription) spend: a per-loop chart and the Spent tile's notional figure (planned 2026-10-12 by plan; independent of every other entry, including the completion plan. It touches only `src/ui/gui/gui-client-report.ts`, `test/gui-report.test.ts`, and one README sentence. Since the 2026-10-12 Done entry "`tumwater report` names each role's notional (subscription) spend…", `/api/report`'s JSON (`collectReport`'s `ReportData`, served by `handleReport` in `src/gui/gui-endpoints.ts`) already carries `ReportDay.notionalByRole`, `ReportDay.notionalCostUsd`, and `totals.notionalCostUsd`, each present only when nonzero. The browser client ignores all three: a grep for `notional` under `src/ui/` finds nothing. So on a claude.ai-subscription fleet the Usage view's "Spent" tile reads `$0.00` and its "Spend by loop" chart is empty, while the CLI day report names the per-role notional spend. No Planned or Done entry covers the dashboard side)
+## Done
+
+### The dashboard's Usage view shows notional (subscription) spend: a per-loop chart and the Spent tile's notional figure (planned 2026-10-12 by plan; independent of every other entry, including the completion plan. It touches only `src/ui/gui/gui-client-report.ts`, `test/gui-report.test.ts`, and one README sentence. Since the 2026-10-12 Done entry "`tumwater report` names each role's notional (subscription) spend…", `/api/report`'s JSON (`collectReport`'s `ReportData`, served by `handleReport` in `src/gui/gui-endpoints.ts`) already carries `ReportDay.notionalByRole`, `ReportDay.notionalCostUsd`, and `totals.notionalCostUsd`, each present only when nonzero. The browser client ignores all three: a grep for `notional` under `src/ui/` finds nothing. So on a claude.ai-subscription fleet the Usage view's "Spent" tile reads `$0.00` and its "Spend by loop" chart is empty, while the CLI day report names the per-role notional spend. No Planned or Done entry covers the dashboard side) (done 2026-10-12)
 
 **Goal.** An operator watching the dashboard on a subscription fleet sees what each loop would have cost at API prices, labelled as notional so it is never read as cap spend. A window with no notional spend renders byte-for-byte as today.
 
@@ -27,7 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A render test in the pattern of "the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim" (running `fetchReport` with injected stand-ins): with `totals.notionalCostUsd: 12.5` and a day carrying `notionalByRole`, `usagebody` contains `Notional spend by loop`, `API-equivalent, not in the cap`, and `$12.50 notional`. With the same report minus every notional field, it contains none of the three.
 - The project's check (`npm run test`) passes.
 
-## Done
 
 ### `tumwater completion <bash|zsh>` prints a shell completion script derived from the help text (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/orchestrator`, or UI file. The help lists 31 commands and 37 distinct long flags, spread over per-command usage forms, and the operator types every one by hand: a grep for `complete -F`, `compdef`, or `bashcompinit` under `src/` finds nothing, and no Planned or Done entry covers shell completion; done 2026-10-12 by feature)
 
