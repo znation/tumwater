@@ -6,7 +6,74 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Bare `tumwater prompt --edit <n>` opens the queued prompt in `$VISUAL`/`$EDITOR` (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** `plan|bug --edit <n>` and `brief --edit` already open their text in the operator's
+editor. `prompt --edit <n>` still fails with `edit text required` when no text follows, so the
+operator has to retype a long queued prompt to fix one word. When no text and no `--file`
+follow, bare `prompt --edit <n>` should open the prompt's current body in the editor and write
+the saved buffer back through the same edit path.
+
+**Approach.**
+- `src/cli/cli-command-args.ts`: widen `PromptArgs`' edit arm to `text: string | null`. In
+  `parsePromptArgs`' `editFlag` branch, an empty joined `text` (no `--file`) returns
+  `{ mode: "edit", role, position: n, text: null, attachPaths }` instead of failing. Leave
+  the preceding-token refusal and the `--file` path as they are. Fix the branch's doc
+  comment and the `edit text required` usage string (now unreachable, so delete it).
+- `src/inbox/prompt-commands.ts` (`cmdPrompt`'s `parsed.mode === "edit"` branch): when
+  `parsed.text === null`, resolve the loop first. With `--role`, use the target the branch
+  already computes. With no `--role`, use `resolveListedQueue(root, listWideScope(root),
+  parsed.position)` (exported from `src/inbox/inbox-cancel.ts`) and fail on `ambiguous` and
+  `missing` with the same two messages `sayListedOutcome` uses. Factor those two `fail` lines
+  into a small helper so they can't drift. Then take
+  `path.basename(queuedFileAtPosition(root, role, position))` inside `runRolePromptCommand`'s
+  try/fail, so an out-of-range position fails as `--role` cancel does. Read the body with
+  `readQueuedPromptBody(root, role, name)`; `null` reports through `sayPromptOutcome`'s `gone`
+  wording. Run `editInEditor(body, "prompt.md")` from `src/cli/cli-editor.ts`, keeping the
+  default fallback hint `pass the new text or --file <path>`, which fits `prompt`. If
+  `after.trim() === body.trim()` and there are no `--attach` paths, print
+  `prompt <n> unchanged` and write nothing. Otherwise call
+  `editQueuedFile(root, role, name, after, images)` (inside a try that `fail`s with
+  `errorMessage`) and print through `sayPromptOutcome(position, role, outcome, role was not
+  given)`. Addressing the write by file name instead of position matters: while the editor is
+  open, the loop may dequeue an earlier prompt and shift the numbering. A by-name write then
+  reports `gone` or edits the right file, never a neighbour. The body excludes the deferral
+  marker and the image reference lines, and `editPromptAtFile` carries both over, so neither
+  can be edited away.
+- `src/cli/help.ts`: add a `tumwater prompt --edit <n> [--attach <path>]` usage line after the
+  `--file` form: "Open the Nth queued prompt in $VISUAL/$EDITOR and save it as the text form
+  would; an unchanged buffer writes nothing; --role <id> disambiguates like --edit". Completion
+  is derived from the help text, so it needs no edit.
+- `docs/cli.md` "Steer the project" row: after the `prompt --edit <n> --file <path>` clause,
+  mention that bare `--edit <n>` opens the prompt in `$VISUAL`/`$EDITOR`. `docs/invariants.md`
+  names no prompt edit entry point (grep `editPromptAtFile`/`prompt --edit` finds none), and
+  this shares `editPromptAtFile`, so it needs no edit.
+
+**Files touched.** `src/cli/cli-command-args.ts`, `src/inbox/prompt-commands.ts`,
+`src/cli/help.ts`, `docs/cli.md`,
+`test/cli-command-args.test.ts`, and `test/prompt-commands.test.ts`. The new cases use
+`cliWithEnv` with the node-script editor stub pattern from
+`test/backlog-write-edit-editor.test.ts`.
+
+**Acceptance criteria.**
+- `parsePromptArgs(["--edit", "1"])` returns `{ mode: "edit", position: 1, text: null, … }`.
+  The old `edit text required` assertion in `test/cli-command-args.test.ts` is replaced to
+  match. `["x", "--edit", "1"]` is still refused as a stray argument.
+- With `EDITOR` set to a stub that rewrites the buffer, `prompt --edit 1` replaces the queued
+  prompt's text. The stub received the current body without the not-before marker or
+  `[image attached: …]` lines, and a prompt queued with `--at 1h` and an attachment keeps
+  both after the edit. `prompt --list` shows the new text in the same position.
+- A stub that saves the buffer untouched prints `prompt 1 unchanged`, and the queue file stays
+  byte-for-byte as before.
+- A stub that exits non-zero fails with `editor exited with status …; nothing changed`, and the
+  queue file is unchanged. With neither `VISUAL` nor `EDITOR` set, the command fails with
+  `no editor: set $VISUAL or $EDITOR, or pass the new text or --file <path>`.
+- With no `--role`, a position held by two loops fails with the `more than one loop` message
+  before any editor runs (the stub records nothing). A position no queue holds fails with
+  `no prompt at position`.
+- A stub that removes the queue file before saving (simulating a dequeue) makes the command
+  report `prompt 1 is no longer queued` and exit 0, and no file is recreated.
+- `npm run test` passes.
 
 ## Done
 
