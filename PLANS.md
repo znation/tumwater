@@ -6,6 +6,103 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### A feature runner with no plan to take stands down instead of ticking, and settles its `run --once` round (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** Stop running model ticks that can only end with `TUMWATER_NOTHING_TO_DO`, and fix a
+`run --once` round that never exits.
+
+- **Primary runner.** The feature charter (`src/roles/role-catalog.ts`) says "If PLANS.md is
+  empty or everything is done, there is nothing to do". Feature skips blocked, refused,
+  needs-review and needs-replan entries. Even so, `pollRunnerReasons`
+  (`src/orchestrator/orchestrator-scheduling.ts`) admits a due feature runner whenever its
+  clock or a main move makes it due, even when `eligibleEntries(root, "feature")` is empty.
+  - In a multi-runner group, the claim block's comment says "the primary runs unassigned as
+    today".
+  - A single-runner fleet has no claim group at all.
+  - Each such tick costs a full model run that reads the backlog and stops.
+- **Extra instance under `run --once`.** An extra instance with no free entry is skipped via
+  `noteSkip(root, runner, "no-free-entry")` and `continue`, but nothing settles its once
+  round:
+  - `OnceRound.settle` (`src/scheduling/once-round.ts`) is called only for a pause and a
+    deferral.
+  - `settleSkipped` runs only when `isEligible` says not due.
+  - In once mode `isEligible` returns due for every runner with `backoffSeconds === 0`.
+
+  So `tumwater run --once` with `roles.feature.instances` above the number of eligible
+  plans never reaches `OnceRound.exitReady`. This was found by reading the code and has not
+  been reproduced. The second acceptance test below reproduces it.
+
+**Approach.** Everything lives in `pollRunnerReasons`. No new `SkipReason`, `DeferReason` or
+ctx field is added, so this does not touch the unions the plans-full deferral above extends.
+
+- **Stand-down check.** Insert it just before the claim block (`const claimGroup =
+  claimGroups.get(...)`). A runner stands down when all of these hold:
+  - `baseRoleOf(runner.role) === "feature"`. Bugfix is excluded: with no open bug it
+    searches for bugs.
+  - `reason === "scheduled" || reason === "main moved"`. This matches the deferral block's
+    gate, so `startup`, `inbox` and `resume` ticks still run.
+  - No fresh operator wake. Use the same `s.wokenAt !== undefined && s.wokenAt >
+    (s.lastTickEndedAt ?? 0)` test `deferTickReason` uses: `tumwater wake feature` always
+    gets its tick.
+  - `runner.state.claim === undefined && !hasOutstandingWork(runner.state)`. A revision,
+    retry or claimed entry finishes.
+  - The poll's feature eligible list is empty. Read it as
+    `claimGroups.get("feature")?.eligible`, falling back to one `eligibleEntries(root,
+    "feature")` call that is memoized in a local variable for the rest of the poll. A
+    single-runner fleet then reads PLANS.md at most once per poll, and only when a feature
+    runner reaches this check.
+- **What standing down does.** It does what the extra-instance branch does:
+  - `noteSkip(root, runner, "no-free-entry")`, so `loopPhase` (`src/ui/status-model.ts`)
+    already renders `idle: no unclaimed plans`;
+  - `runner.state.heldElsewhere = undefined`;
+  - `if (once.active) once.settle(runner.role, "no free entry")`;
+  - `continue`.
+
+  `nextRunAt` and `backoffSeconds` stay untouched. The runner re-checks every poll and ticks
+  on the first poll after a plan becomes eligible (a landing moves main, which makes it due
+  as "main moved").
+- **Once-round fix.** The existing extra-instance branch (`instanceIndex(runner.role) >= 2`,
+  `noteSkip(root, runner, "no-free-entry")`) also calls
+  `if (once.active) once.settle(runner.role, "no free entry")` before its `continue`. That
+  covers `bugfix-2` and other bugfix extras too.
+- **Comments.** Update the claim block's "the primary runs unassigned as today" comment to say
+  the primary runs unassigned only while some eligible entry exists (all of them held by
+  siblings), and add a comment to the new check pointing at the feature charter's
+  nothing-to-do rule.
+
+**Files.** `src/orchestrator/orchestrator-scheduling.ts`,
+`test/orchestrator-scheduling.test.ts`, `docs/how-it-works.md` (the "Parallel work instances"
+bullet: after "An extra instance with no unclaimed eligible entry is skipped without climbing
+its backoff", add that a feature runner, primary included, skips its scheduled and main-moved
+ticks while no plan is eligible at all, so an operator wake, a queued prompt or a resume still
+runs; and that a `run --once` round settles a skipped runner as `no free entry`).
+
+**Acceptance criteria.** All in `test/orchestrator-scheduling.test.ts`, using its
+`fakeRunner`/`schedulingCtx` helpers:
+- **Single runner, nothing eligible.** A runner with `ticks: 1` and `nextRunAt` in the past,
+  in a root whose PLANS.md holds only a plan carrying a `**Refused …**` note (and, in a second
+  case, no PLANS.md), is not admitted. Its `skipReason` is `"no-free-entry"` in memory and on
+  disk (`loadLoopState`), and its `nextRunAt`/`backoffSeconds` are unchanged.
+- **Once round, extra instance.** With `ONE_BLOCKED_PLAN` and two feature instances, a ctx
+  whose `once` is `new OnceRound([feature, feature2], true)` has
+  `once.reasons.get("feature-2") === "no free entry"` after one poll, and
+  `once.isSettled(feature2)` is true. This fails before the change.
+- **Once round, primary.** With no eligible plan, the primary is settled the same way in once
+  mode once `ticks >= 1` (reason `"scheduled"`).
+- **Still admitted.** The same nothing-eligible runner is admitted when:
+  - its `wokenAt` is newer than `lastTickEndedAt`;
+  - `ticks === 0` (reason `"startup"`);
+  - it has a queued prompt in its inbox;
+  - it carries a `revision`;
+  - PLANS.md holds one eligible plan.
+- **Unchanged tests.** The existing tests "an extra instance with no free entry is skipped and
+  keeps its schedule", "an unassigned primary is told the entries its siblings hold, and the
+  prompt names them" and "the bootstrap hold blocks maintenance through scheduling but admits
+  plan and feature" pass without edits.
+- **The project's check passes.** Any e2e test that relied on an unwoken feature tick against
+  an empty backlog is adjusted to seed an eligible plan, and the entry names each such test in
+  its Done note.
+
 ### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
 - `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
 - `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
