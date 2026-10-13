@@ -157,7 +157,8 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
 }
 
 /** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears
- * a Refused note, so the entry stays parked until a human or the director edits it, and the
+ * a Refused note, so the entry stays parked until a human or the director edits it, or an
+ * operator releases it with `--release <n>`, and the
  * only other signs are the `[refused]` marks in the backlog listings. Reads the tree at `root`
  * — the primary checkout IS main's tree — like checkFixClaims, in `--list` order (PLANS.md
  * Planned, then BUGS.md Open). A warn, never a fail: a refusal is operator signal, not a broken
@@ -186,6 +187,6 @@ export function checkRefusedEntries(root: string): CheckOutcome {
     : "";
   return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${more} — no loop takes a refused entry until it is edited: ` +
-      `answer the objection and delete the note, or retract the entry with ` +
-      `\`tumwater ${first.command} --cancel ${first.position}\``);
+      `answer the objection and release the entry with \`tumwater ${first.command} --release ${first.position}\`, ` +
+      `or retract it with \`tumwater ${first.command} --cancel ${first.position}\``);
 }

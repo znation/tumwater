@@ -212,7 +212,7 @@ test("checkRefusedEntries warns naming the first refused entry, the rest, and ho
   assert.equal(out.level, "warn");
   assert.match(out.detail, /PLANS\.md plan #2 "Parked plan \(planned 2026-10-12\)" is held by a Refused note \(Refused 2026-10-12 by feature: /);
   assert.ok(out.detail.includes('(and 1 more: BUGS.md bug #1 "Parked bug")'));
-  assert.ok(out.detail.endsWith("`tumwater plan --cancel 2`"));
+  assert.ok(out.detail.endsWith("release the entry with `tumwater plan --release 2`, or retract it with `tumwater plan --cancel 2`"));
 });
 
 test("checkRefusedEntries reads ok with no notes, with no files, and ignores Done and Fixed", () => {

@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater plan|bug --release <n>` lifts a stale **Refused** note and commits the release on main (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. It touches `src/backlog/backlog-write.ts` and `src/cli.ts`, which that plan also touches, but in different functions and `case` arms. Today a Refused note can only be cleared by hand-editing the file, or by rewriting the whole entry with `--edit <n> --file`. Both leave an uncommitted edit in the primary checkout. `checkRefusedEntries`' remedy says "answer the objection and delete the note" but names no command for it. The part 2/2 entry above is stuck this way right now: its refusal cites a missing `src/backlog/backlog-commit.ts`, and that file has since landed. A grep for `--release` or `unrefuse` under `src/` finds nothing, and the `reopen` hits there are about the budget gate and drawers, not backlog entries)
+## Done
+
+### `tumwater plan|bug --release <n>` lifts a stale **Refused** note and commits the release on main (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. It touches `src/backlog/backlog-write.ts` and `src/cli.ts`, which that plan also touches, but in different functions and `case` arms. Today a Refused note can only be cleared by hand-editing the file, or by rewriting the whole entry with `--edit <n> --file`. Both leave an uncommitted edit in the primary checkout. `checkRefusedEntries`' remedy says "answer the objection and delete the note" but names no command for it. The part 2/2 entry above is stuck this way right now: its refusal cites a missing `src/backlog/backlog-commit.ts`, and that file has since landed. A grep for `--release` or `unrefuse` under `src/` finds nothing, and the `reopen` hits there are about the budget gate and drawers, not backlog entries) — done 2026-10-12
 
 **Goal.** The operator releases a refused entry with one command. `tumwater plan --release 1` (and `bug --release <n>`) deletes the Nth entry's Refused note line, commits the file on main, wakes the loop that will now pick the entry up, and prints `released plan in PLANS.md: <title>`. The doctor refusals row names this command as the remedy.
 
@@ -56,11 +58,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - In a repo on main with a PLANS.md holding a refused plan at position 2: `tumwater plan --release 2` leaves `git status --porcelain` empty. HEAD's subject is `tumwater(operator): Release plan: <title>` as `stampedSubject` builds it. The entry's body no longer holds the note, every other line of the file is unchanged, and `tumwater plan --list` no longer marks the entry `[refused]`.
 - `tumwater bug --release 1` on a refused open bug behaves the same for BUGS.md (subject `… Release bug: <symptom>`).
 - `--release 1` on an entry without a Refused note, or `--release 9` past the end, exits non-zero with the wording above. The file is unchanged and HEAD is unchanged.
-- `--json` prints exactly `{"file":"PLANS.md","title":"<title>"}`, with no wake line on stdout.
+- `--json` prints exactly the object `{file: "PLANS.md", title: "<title>"}` (as `sayJson` formats it, like `--cancel`), with no wake line on stdout.
 - `checkRefusedEntries`' warn detail ends with `` release the entry with `tumwater plan --release 1`, or retract it with `tumwater plan --cancel 1` `` for a refused first plan.
 - Existing tests in `test/backlog-write-cancel.test.ts`, `test/backlog-write-edit.test.ts`, and `test/backlog-commit.test.ts` pass unchanged.
-
-## Done
 
 ### The TUI schedules and cancels a graceful fleet stop with Ctrl+Q (`tumwater stop --in` / `--cancel` parity) (planned 2026-10-12 by plan; independent of every other entry; follows the landed "The dashboard schedules and cancels a graceful fleet stop" entry in Done) — done 2026-10-12
 

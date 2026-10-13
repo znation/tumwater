@@ -56,6 +56,23 @@ export function refusalNote(body: string): string | null {
   return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
 }
 
+/** `lines` without any Refused note line (the same line-prefix rule hasNoteLine applies). When a
+ * dropped note sat between two blank lines, the blank line after it goes too, so releasing
+ * leaves one blank line where the note was. Every other line, Needs-review and needs-replan
+ * notes included, is kept. */
+export function withoutRefusalNotes(lines: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] as string;
+    if (!line.trimStart().startsWith(REFUSED_PREFIX)) {
+      out.push(line);
+      continue;
+    }
+    if ((lines[i - 1] ?? "x").trim() === "" && (lines[i + 1] ?? "x").trim() === "") i++;
+  }
+  return out;
+}
+
 /** One prerequisite ref, resolved against the entry's own series when it names none. */
 function parseRef(chunk: string, ownSeries: string | null): PartRef[] {
   const text = chunk.trim().replace(/^parts?\s+/i, "");

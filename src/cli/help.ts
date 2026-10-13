@@ -151,6 +151,10 @@ Usage:
                                    File a bug from a markdown file ("-" reads stdin): the first
                                    non-blank line is the symptom, the rest is the body kept
                                    line for line; wakes the bugfix loop
+  tumwater bug --release <n> [--json]
+                                   Lift the Refused note from the Nth entry in BUGS.md ## Open
+                                   (as \`tumwater bug --list\` lists it), commit it on main,
+                                   and wake the bugfix loop; --json prints {file, title}
   tumwater bug --cancel <n> [--json]
                                    Remove the Nth entry in BUGS.md ## Open (as \`tumwater
                                    bug --list\` lists it); no wake; --json prints {file, title}
@@ -176,6 +180,10 @@ Usage:
                                    File a plan request from a markdown file ("-" reads stdin):
                                    the first non-blank line is the title, the rest is the body
                                    kept line for line; wakes the feature loop
+  tumwater plan --release <n> [--json]
+                                   Lift the Refused note from the Nth entry in PLANS.md ## Planned
+                                   (as \`tumwater plan --list\` lists it), commit it on main,
+                                   and wake the feature loop; --json prints {file, title}
   tumwater plan --cancel <n> [--json]
                                    Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
                                    plan --list\` lists it); no wake; --json prints {file, title}
@@ -340,13 +348,13 @@ export function helpTopic(command: string, help: string = HELP): string | null {
 
 /** The free-form text commands and the flags that take a separate value token, for
  * helpTopicForArgs: a valued flag's value is plumbing (`prompt --role qa --help`, `bug
- * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`
- * and `--file`. */
+ * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`,
+ * `--file` and `--release`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
   init: ["--branch", "--template", "--file"],
-  bug: ["--cancel", "--edit", "--file"],
-  plan: ["--cancel", "--edit", "--file"],
+  bug: ["--cancel", "--edit", "--file", "--release"],
+  plan: ["--cancel", "--edit", "--file", "--release"],
 };
 
 /** The `--help`/`-h` request cli.ts answers before dispatch: the topic text for `command`

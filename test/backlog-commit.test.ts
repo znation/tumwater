@@ -66,3 +66,32 @@ test("POST /api/backlog-file commits the entry on main", async () => {
   assertClean(repo);
   assert.equal(subject(repo), "tumwater(operator): File bug: dash");
 });
+
+test("plan and bug --release lift the Refused note and commit it on main", async () => {
+  const repo = await initializedRepo();
+  const note = "**Refused 2026-10-12 by feature: nope**";
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), plans.replace("## Planned\n", `## Planned\n\n### first\n\nbody\n\n### parked\n\n${note}\n\n**Goal.** g\n`));
+  const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  fs.writeFileSync(path.join(repo, "BUGS.md"), bugs.replace("## Open\n", `## Open\n\n### broken\n${note}\n`));
+  sh(repo, "git", "commit", "-qam", "seed");
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const none = await cli(repo, "plan", "--release", "1");
+  assert.notEqual(none.code, 0);
+  assert.match(none.stderr, /plan #1 "first" carries no Refused note/);
+  assert.notEqual((await cli(repo, "plan", "--release", "9")).code, 0);
+  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+  assertClean(repo);
+  const out = await cli(repo, "plan", "--release", "2");
+  assert.equal(out.code, 0);
+  assert.match(out.stdout, /released plan in PLANS\.md: parked/);
+  assertClean(repo);
+  assert.equal(subject(repo), "tumwater(operator): Release plan: parked");
+  assert.ok(!fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("**Refused"));
+  assert.ok(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("### parked\n\n**Goal.** g"));
+  const json = await cli(repo, "bug", "--release", "1", "--json");
+  assert.equal(json.code, 0);
+  assert.deepEqual(JSON.parse(json.stdout), { file: "BUGS.md", title: "broken" });
+  assertClean(repo);
+  assert.equal(subject(repo), "tumwater(operator): Release bug: broken");
+});

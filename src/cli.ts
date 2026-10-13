@@ -224,7 +224,7 @@ async function main(): Promise<void> {
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
     case "bug": {
-      const { OPERATOR_FILE_KINDS, bugTitleOf, bugWakeText, cancelAndAnnounce, cancelBug, editAndAnnounce, editBug, editBugFromText, fileBug, fileBugFromText, fileAndAnnounce, listAndAnnounce } =
+      const { OPERATOR_FILE_KINDS, bugTitleOf, bugWakeText, cancelAndAnnounce, cancelBug, releaseAndAnnounce, releaseEntry, editAndAnnounce, editBug, editBugFromText, fileBug, fileBugFromText, fileAndAnnounce, listAndAnnounce } =
         await import("./backlog/backlog-write.js");
       const usage = 'tumwater bug "<symptom>"';
       if (args.includes("--list")) {
@@ -241,6 +241,10 @@ async function main(): Promise<void> {
         await cancelAndAnnounce(root, args, "bug", (n) => cancelBug(root, n));
         break;
       }
+      if (args.includes("--release")) {
+        await releaseAndAnnounce(root, args, "bug", (n) => releaseEntry(root, "bug", n), OPERATOR_FILE_KINDS.bug.role);
+        break;
+      }
       await fileAndAnnounce(
         root,
         args,
@@ -254,7 +258,7 @@ async function main(): Promise<void> {
       break;
     }
     case "plan": {
-      const { OPERATOR_FILE_KINDS, cancelAndAnnounce, cancelPlan, editAndAnnounce, editPlan, editPlanFromText, filePlan, filePlanFromText, fileAndAnnounce, listAndAnnounce, planTitleOf, planWakeText } =
+      const { OPERATOR_FILE_KINDS, cancelAndAnnounce, cancelPlan, releaseAndAnnounce, releaseEntry, editAndAnnounce, editPlan, editPlanFromText, filePlan, filePlanFromText, fileAndAnnounce, listAndAnnounce, planTitleOf, planWakeText } =
         await import("./backlog/backlog-write.js");
       const usage = 'tumwater plan "<title>" [body...]';
       if (args.includes("--list")) {
@@ -270,6 +274,10 @@ async function main(): Promise<void> {
       }
       if (args.includes("--cancel")) {
         await cancelAndAnnounce(root, args, "plan", (n) => cancelPlan(root, n));
+        break;
+      }
+      if (args.includes("--release")) {
+        await releaseAndAnnounce(root, args, "plan", (n) => releaseEntry(root, "plan", n), OPERATOR_FILE_KINDS.plan.role);
         break;
       }
       await fileAndAnnounce(

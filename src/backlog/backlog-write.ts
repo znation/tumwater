@@ -17,13 +17,13 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
 import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
 import { plannedPlanEntries, openBugEntries } from "./backlog.js";
-import { backlogHolds, holdMark } from "./backlog-eligibility.js";
+import { backlogHolds, holdMark, withoutRefusalNotes } from "./backlog-eligibility.js";
 import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-repo-gate.js";
-import { submitRolePromptAndWake } from "../operator/operator-intent.js";
+import { requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { primaryWorktreeLockPath } from "../paths.js";
@@ -695,6 +695,68 @@ export async function cancelAndAnnounce(
   const removed = cancel(position);
   if (json) sayJson({ file: removed.file, title: removed.title });
   else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
+}
+
+/** Lift the Refused note from the `n`th entry (1-based, as `--list` numbers them) of the
+ * kind's open section and write the file, under the same lock the cancel and edit writers hold.
+ * An out-of-range position fails with locateEntry's wording; an entry without a Refused note
+ * fails too, writing nothing. */
+export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
+  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
+  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  return withStateLock(primaryWorktreeLockPath(root), () => {
+    const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
+    const slice = lines.slice(entry.start - 1, entry.end);
+    const kept = withoutRefusalNotes(slice);
+    if (kept.length === slice.length) fail(`${kind} #${n} "${entry.title}" carries no Refused note`);
+    lines.splice(entry.start - 1, slice.length, ...kept);
+    writeTextAtomic(file, lines.join("\n"));
+    return { file: fileName, title: entry.title };
+  });
+}
+
+/** The shell of the `bug --release` and `plan --release` CLI cases, parsed as cancelAndAnnounce
+ * parses `--cancel`: `--release <n>`, an optional `--json`, anything else refused. After
+ * requireReadyRepo it releases the entry, commits the file on main, and wakes `role` (the
+ * released entry is eligible now, and that loop may be backed off) with no queued prompt. Prints
+ * `released <command> in <file>: <title>` plus the wake line, or only the `--json` payload. */
+export async function releaseAndAnnounce(
+  root: string,
+  args: string[],
+  command: "bug" | "plan",
+  release: (n: number) => { file: string; title: string },
+  role: string,
+): Promise<void> {
+  let position: number | null = null;
+  let json = false;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (arg === "--release") {
+      rejectRepeatFlag(position !== null, "--release");
+      position = parsePositionFlag("--release", args[i + 1], "--release 2");
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg as string);
+  }
+  rejectUnknownArgs(command, rest, []);
+  if (position === null) fail(`--release needs a position (usage: tumwater ${command} --release <n>)`);
+  await requireReadyRepo(root);
+  const released = release(position);
+  await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`));
+  const wake = requestWake(root, [role]);
+  if (json) sayJson({ file: released.file, title: released.title });
+  else {
+    say(`released ${command} in ${released.file}: ${released.title}`);
+    say(wake);
+  }
 }
 
 /** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the

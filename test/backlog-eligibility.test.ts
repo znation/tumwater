@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  withoutRefusalNotes,
   backlogHolds,
   eligibleEntries,
   entryHold,
@@ -285,4 +286,13 @@ test("prerequisitesLanded returns the refs only when none is still planned", () 
   assert.deepEqual(prerequisitesLanded(title, planned), []);
   assert.deepEqual(prerequisitesLanded("S, part 2/2: x (planned 2026-10-12)", new Set()), []);
   assert.deepEqual(prerequisitesLanded("S, part 2/2: x (planned 2026-10-12; requires part 1/2 landed. More", new Set()), refs);
+});
+
+test("withoutRefusalNotes drops Refused note lines and the blank line after one between blanks", () => {
+  const note = "**Refused 2026-10-12 by feature: x**";
+  assert.deepEqual(withoutRefusalNotes(["### t", "", note, "", "**Goal.** g"]), ["### t", "", "**Goal.** g"]);
+  assert.deepEqual(withoutRefusalNotes(["### t", "", `  ${note}`, "", "**Goal.** g"]), ["### t", "", "**Goal.** g"]);
+  assert.deepEqual(withoutRefusalNotes(["### t", note, "g"]), ["### t", "g"]);
+  const kept = ["### t", "see **Refused 2026** here", "**Needs review 2026-10-12 by feature: big**"];
+  assert.deepEqual(withoutRefusalNotes(kept), kept);
 });
