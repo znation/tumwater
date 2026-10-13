@@ -139,6 +139,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
 function answeredOrFail(n: number, outcome: AnswerOutcome): { title: string; decision: string } {
   if (outcome.status === "missing") fail(`no question at position ${n} (${outcome.open} open)`);
   if (outcome.status === "fenced") fail(UNCLOSED_FENCE_MESSAGE);
+  if (outcome.status === "moved") fail(`question ${n} is now "${outcome.title}" — the list changed while you edited; nothing changed`);
   if (outcome.status !== "answered") fail(`no question at position ${n}`);
   return { title: outcome.title, decision: outcome.decision };
 }
@@ -146,12 +147,29 @@ function answeredOrFail(n: number, outcome: AnswerOutcome): { title: string; dec
 /** `tumwater questions answer <n> --file <path>`: the decision's lines kept (normalizeEntryBody),
  * behind the same structural guard `plan --file` uses, so a stray `## ` line cannot grow a
  * phantom section. Refusals exit 1 through `fail`. */
-export function answerQuestionFromText(root: string, n: number, text: string): { title: string; decision: string } {
+export function answerQuestionFromText(root: string, n: number, text: string, expectedTitle?: string): { title: string; decision: string } {
   const body = normalizeEntryBody(text);
   if (body === "") fail("questions answer needs a decision: the file is blank");
   const problem = bodyStructureProblem(body);
   if (problem !== null) fail(`questions answer --file: ${problem}`);
-  return answeredOrFail(n, tryAnswerQuestion(root, n, body, undefined, true));
+  return answeredOrFail(n, tryAnswerQuestion(root, n, body, expectedTitle, true));
+}
+
+/** The line that ends the decision area of the `questions answer <n>` editor buffer. */
+export const ANSWER_EDITOR_CUT = "<!-- tumwater: write your decision above this line; this line and everything below it are dropped -->";
+
+/** The editor buffer for bare `questions answer <n>`: an empty decision area, the cut line, then
+ * the question's heading and body for reference. */
+export function answerEditorBuffer(title: string, body: string): string {
+  return ["", "", ANSWER_EDITOR_CUT, `### ${title}`, body].join("\n");
+}
+
+/** The decision an edited `answerEditorBuffer` holds: the text before the first cut line (all of
+ * it when the operator deleted the line). */
+export function decisionFromEditorBuffer(text: string): string {
+  const lines = text.split("\n");
+  const cut = lines.findIndex((l) => l.trim() === ANSWER_EDITOR_CUT);
+  return (cut === -1 ? lines : lines.slice(0, cut)).join("\n");
 }
 
 /** The non-exiting answer core, for callers (the dashboard server) that must not end the

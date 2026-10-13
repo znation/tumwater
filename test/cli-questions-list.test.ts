@@ -63,7 +63,7 @@ test("questions rejects a non-answer subcommand and an answer with no decision",
     path.join(repo, "QUESTIONS.md"),
     "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n",
   );
-  const noDecision = await cli(repo, "questions", "answer", "1");
+  const noDecision = await cli(repo, "questions", "answer", "1", "");
   assert.equal(noDecision.code, 1);
   assert.match(noDecision.stderr, /needs a decision/);
   const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");

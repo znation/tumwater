@@ -31,7 +31,8 @@ import { errorMessage } from "../text/text.js";
 import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { answerQuestion, answerQuestionFromText, sayAnswered, sayQuestionList } from "./question-commands.js";
+import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, questionListPayload, sayAnswered, sayQuestionList } from "./question-commands.js";
+import { editInEditor } from "./cli-editor.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
 const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
@@ -220,6 +221,19 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     return;
   }
   const decision = words.slice(2).join(" ").trim();
+  if (words.length === 2) {
+    const open = questionListPayload(root).questions;
+    const question = open[n - 1];
+    if (question === undefined) fail(`no question at position ${n} (${open.length} open)`);
+    const edited = decisionFromEditorBuffer(
+      editInEditor(answerEditorBuffer(question.title, question.body), `answer-${n}.md`, "pass a decision or --file <path>"),
+    );
+    if (edited.trim() === "") fail("questions answer needs a decision: the editor left it blank; nothing changed");
+    const answered = answerQuestionFromText(root, n, edited, question.title);
+    await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`));
+    sayAnswered(n, answered.title, jsonFlag, answered.decision);
+    return;
+  }
   if (decision === "")
     fail('questions answer needs a decision: questions answer <n> "<decision>"');
   // answerQuestion collapses the free-form decision to one line before writing it; report

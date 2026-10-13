@@ -228,6 +228,9 @@ Usage:
                                    Read the decision from the file (- for stdin) with its
                                    lines kept; a ## or ### heading line outside a code fence,
                                    or an unclosed fence, is refused
+  tumwater questions answer [--json] <n>
+                                   With no decision, open the question in $VISUAL/$EDITOR;
+                                   only the text above the marker line is recorded
   tumwater brief [--json]          Show the project's initial prompt and the file that holds it
   tumwater brief --file <path> [--json]
                                    Replace the initial prompt with the file's text (- for

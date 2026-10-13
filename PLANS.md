@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Bare `tumwater questions answer <n>` opens the question in `$VISUAL`/`$EDITOR` and records the saved decision (planned 2026-10-12 by plan; independent of every other entry)
+_None yet._
+
+
+## Done
+
+### Bare `tumwater questions answer <n>` opens the question in `$VISUAL`/`$EDITOR` and records the saved decision (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** The operator types every answer as one argv string or prepares a file for `--file`. Today
 `questions answer 1` with no decision fails with `questions answer needs a decision` (the
@@ -76,8 +81,6 @@ with two `## Open` entries after `initProject`.
   in-process.
 - The existing `test/question-commands.test.ts`, `test/cli-questions-strictness.test.ts`, and
   `test/completion.test.ts` pass unchanged. `npm run test` is green.
-
-## Done
 
 ### Bare `tumwater prompt --edit <n>` opens the queued prompt in `$VISUAL`/`$EDITOR` (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
