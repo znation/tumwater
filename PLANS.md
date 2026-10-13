@@ -6,7 +6,51 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### A commit the agent makes in a SUMMARY follow-up turn folds into the tick's harness commit too (planned 2026-10-12 by plan; independent of every other entry. It extends the Done entry "The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit" (INV-H1), which covered the authoring run and the stage-fix turn)
+
+**Goal.** INV-H1 says the harness owns every commit, but `stageTickLanding` in `src/tick/tick-stage.ts` calls
+`foldCommitsSince` (`src/git/git.ts`) only around `ctx.requestStageFix`. The two `ctx.requestSummary`
+calls (the missing-SUMMARY recovery, and the over-long-SUMMARY shortening turn added 2026-10-12) also
+continue the author's session in the tick's worktree. Both run before `commitAll`, and neither is
+followed by a fold. Both go through `LoopPi.requestFollowUp` in `src/loop/loop-pi.ts`, the same runner
+the stage-fix turn uses. When the agent commits during one of these turns:
+- If the tree is left clean, `commitAll`'s plain `git commit -m` has nothing to commit and fails.
+- Otherwise the agent's unstamped commit lands under the harness commit as a second commit.
+Close the hole with the pattern the stage-fix site already uses.
+
+**Approach.**
+- In `src/tick/tick-stage.ts`, add one small local helper used at all three follow-up sites:
+  `async function foldFollowUpCommits(ctx, base: string): Promise<void>`. It calls
+  `foldCommitsSince(ctx.wt, base)` and, when the count is above 0, emits the existing warning text
+  `agent made N commit(s) during the tick; folded into the harness commit` (same `plural(...)`
+  wording). Replace the stage-fix site's inline fold-and-warn with it.
+- At each `ctx.requestSummary` call, take `const base = await headOf(ctx.wt, "HEAD")` before the call,
+  then `await foldFollowUpCommits(ctx, base)` right after it returns. The fold goes BEFORE the
+  `followUp?.aborted` check, matching the stage-fix site's order, so an aborted turn's commit is
+  folded back into a worktree the next tick can resume.
+- No change to `foldCommitsSince`, `LoopPi`, or the prompt text.
+- Update INV-H1 in `docs/invariants.md`: the guarantee names "authoring, SUMMARY follow-up, and
+  stage-fix runs", and the Pinned-by line lists the new tests.
+
+**Files touched.** `src/tick/tick-stage.ts`, `test/tick-stage.test.ts`, `docs/invariants.md`.
+
+**Acceptance criteria.**
+- New tests in `test/tick-stage.test.ts`. Each uses `makeCtx`, with a `requestSummary` override that
+  commits in the worktree (`git add -A && git commit`, as `PI_COMMIT` does in
+  `test/agent-commit-fold.test.ts`) before returning its `okPi` reply:
+  - "a commit made in the missing-SUMMARY follow-up folds into the harness commit": `finalText` has
+    no SUMMARY, and the follow-up commits every change, leaving the tree clean. The outcome is
+    `queued`. `git rev-list --count <setup HEAD>..<calls.pins[0].sha>` is 1, that commit's subject is the stamped `tumwater(improve): …` one, and a warning contains
+    `folded into the harness commit`.
+  - "a commit made in the over-long-SUMMARY follow-up folds into the harness commit": the same
+    check, starting from a 140-character SUMMARY.
+  - The existing tests "a missing SUMMARY is recovered with one follow-up turn" and
+    "an over-long SUMMARY is shortened with one follow-up turn" still pass unchanged, and they warn
+    no fold, because their follow-ups make no commit.
+- The stage-fix tests in `test/tick-stage.test.ts` and all of `test/agent-commit-fold.test.ts` pass
+  unchanged.
+- `grep -n "foldCommitsSince" src/tick/tick-stage.ts` shows the one call inside the helper.
+- `npm run test` passes.
 
 
 ## Done
