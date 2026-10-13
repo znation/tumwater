@@ -1,3 +1,4 @@
+import { formatTimestamp } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
@@ -57,15 +58,19 @@ function renderRow(row: TickRow, widths: RowWidths): string {
 }
 
 /** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
- * display width; each number column right-aligns under its header. */
+ * display width; each number column right-aligns under its header; the last column, `last change`,
+ * is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
 function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
   const all = [...summary.loops, summary.total];
   const loopWidth = Math.max(...["loop", ...all.map((r) => r.loop)].map(displayWidth));
   const cols = ["ticks", "changes", "none", "problems"] as const;
   const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => String(r[c]).length)));
-  const line = (loop: string, cells: string[]): string =>
-    [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0))].join("  ").trimEnd();
-  return [line("loop", [...cols]), ...all.map((r) => line(r.loop, cols.map((c) => String(r[c]))))].join("\n");
+  const line = (loop: string, cells: string[], lastChange: string): string =>
+    [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
+  return [
+    line("loop", [...cols], "last change"),
+    ...all.map((r) => line(r.loop, cols.map((c) => String(r[c])), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
+  ].join("\n");
 }
 
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so

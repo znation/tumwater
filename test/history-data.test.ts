@@ -496,21 +496,23 @@ test("covered is false while the log starts inside the window, true once an even
 });
 
 test("summarizeTickRows tallies each loop's outcome classes in name order with a total", () => {
-  const row = (loop: string, result: string): TickRow => ({
-    ts: 0, time: "", loop, tick: 1, result, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
+  const row = (loop: string, result: string, ts = 0): TickRow => ({
+    ts, time: "", loop, tick: 1, result, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
   const summary = summarizeTickRows([
-    row("feature", "changed"),
-    row("bugfix", "queued"),
-    row("feature", "no_change"),
-    row("bugfix", "skipped"),
-    row("feature", "error"),
-    row("bugfix", "rejected"),
+    row("feature", "changed", 100),
+    row("bugfix", "queued", 300),
+    row("feature", "no_change", 900),
+    row("bugfix", "skipped", 800),
+    row("feature", "error", 700),
+    row("bugfix", "rejected", 600),
   ]);
   assert.deepEqual(summary.loops, [
-    { loop: "bugfix", ticks: 3, changes: 1, none: 1, problems: 1 },
-    { loop: "feature", ticks: 3, changes: 1, none: 1, problems: 1 },
+    { loop: "bugfix", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 300 },
+    { loop: "feature", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 100 },
   ]);
-  assert.deepEqual(summary.total, { loop: "total", ticks: 6, changes: 2, none: 2, problems: 2 });
-  assert.deepEqual(summarizeTickRows([]), { loops: [], total: { loop: "total", ticks: 0, changes: 0, none: 0, problems: 0 } });
+  assert.deepEqual(summary.total, { loop: "total", ticks: 6, changes: 2, none: 2, problems: 2, lastChangeTs: 300 });
+  assert.deepEqual(summarizeTickRows([]), { loops: [], total: { loop: "total", ticks: 0, changes: 0, none: 0, problems: 0, lastChangeTs: null } });
+  const newest = summarizeTickRows([row("a", "changed", 5), row("a", "changed", 9), row("a", "changed", 7)]);
+  assert.equal(newest.loops[0]?.lastChangeTs, 9);
 });

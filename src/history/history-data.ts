@@ -42,19 +42,21 @@ export function historyClass(result: string): HistoryResultClass {
 }
 
 /** One loop's tick tally by outcome class (the HISTORY_RESULT_CLASSES buckets); `ticks` is their
- * sum. The `total` line of a summary uses the loop name "total". */
+ * sum. `lastChangeTs` is the newest changes-class row's `ts`, or null when the loop had none among
+ * the rows. The `total` line of a summary uses the loop name "total". */
 export interface HistorySummaryRow {
   loop: string;
   ticks: number;
   changes: number;
   none: number;
   problems: number;
+  lastChangeTs: number | null;
 }
 
 /** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
  * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
 export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]; total: HistorySummaryRow } {
-  const blank = (loop: string): HistorySummaryRow => ({ loop, ticks: 0, changes: 0, none: 0, problems: 0 });
+  const blank = (loop: string): HistorySummaryRow => ({ loop, ticks: 0, changes: 0, none: 0, problems: 0, lastChangeTs: null });
   const byLoop = new Map<string, HistorySummaryRow>();
   const total = blank("total");
   for (const row of rows) {
@@ -64,6 +66,7 @@ export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]
     for (const t of [entry, total]) {
       t.ticks += 1;
       t[cls] += 1;
+      if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }
   const loops = [...byLoop.values()].sort((a, b) => (a.loop < b.loop ? -1 : a.loop > b.loop ? 1 : 0));

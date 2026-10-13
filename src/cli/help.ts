@@ -102,7 +102,7 @@ Usage:
                                    -n, and --grep; --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload; --summary prints one line per loop
-                                   counting its ticks by outcome class (and a total line)
+                                   counting its ticks by outcome class, with the time of its newest change (and a total line)
                                    instead of the rows; with --json, { loops, total }
   tumwater tick <role> [<n>] [--last] [--stat] [--json]
                                    One completed tick's full event trail — a summary header

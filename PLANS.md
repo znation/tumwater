@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater history --summary` names when each loop last produced a change: a `last change` column and `lastChangeTs` in the JSON (planned 2026-10-12 by plan; extends the Done "`tumwater history --summary` tallies each loop's tick outcomes" entry; independent of the refused "Operator backlog writes land on main" part 2/2 above)
+## Done
+
+### `tumwater history --summary` names when each loop last produced a change: a `last change` column and `lastChangeTs` in the JSON (done 2026-10-12; planned 2026-10-12 by plan; extends the Done "`tumwater history --summary` tallies each loop's tick outcomes" entry; independent of the refused "Operator backlog writes land on main" part 2/2 above)
 
 **Goal.** `history --summary` counts each loop's changes, but it does not say *when* the newest one happened. A loop showing `changes 1` over `--since 7d` may have landed an hour ago or six days ago. No surface says when a loop last landed: `LoopState` (src/loop/loop-state.ts) keeps only `lastResult`/`lastTickEndedAt`, and `status` shows the last tick, not the last change. Add the timestamp of each loop's newest changes-class row to the summary.
 
@@ -65,7 +67,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - **Unchanged output.** Without `--summary`, `history`'s output is unchanged, and "history --summary keeps the empty-state output on an empty log" passes unmodified.
 - **Check.** `npm run test` passes.
 
-## Done
 
 ### `tumwater history --summary` tallies each loop's tick outcomes (ticks, changes, none, problems) over the same rows the table would print (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above) — done 2026-10-12
 
