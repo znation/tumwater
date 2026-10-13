@@ -34,7 +34,7 @@ import { consecutiveFailuresWarning } from "../text/phrases.js";
  * own git steps — the stack's assembly, the in-lock re-check's rebase, and the fast-forward onto
  * main. Everything else a landing does (verdict parsing, state saves) is sub-second bookkeeping
  * between these. */
-export type LandingStage =
+type LandingStage =
   | "rebasing"
   | "check-wait"
   | "build-check"
@@ -42,6 +42,17 @@ export type LandingStage =
   | "resolve-wait"
   | "resolving"
   | "merging";
+
+/** How each landing stage names itself in the landing cell. */
+export const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
+  rebasing: "rebasing",
+  "check-wait": "waiting for a check slot",
+  "build-check": "build check",
+  reviewing: "reviewing",
+  "resolve-wait": "waiting to resolve conflicts",
+  resolving: "resolving conflicts",
+  merging: "merging",
+};
 
 /** Where one change stands in the landing pipeline (land-queue speed 2c) — the per-change status
  * the marker carries, so each role's row says what the pipeline is doing with ITS change rather

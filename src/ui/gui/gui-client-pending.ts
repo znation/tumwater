@@ -53,7 +53,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   // skips, so a positive depth with no readable list states the count instead of inventing rows.
   // Pure: the age comes from the passed now, and a malformed entry renders a stand-in rather
   // than undefined/NaN. Null/absent/zero-depth reads as empty.
-  function pendingQueueHtml(landQueue, now) {
+  function pendingQueueHtml(landQueue, now, labels) {
     const depth = landQueue && Number.isFinite(landQueue.depth) ? landQueue.depth : 0;
     const entries = landQueue && Array.isArray(landQueue.entries) ? landQueue.entries : [];
     let body;
@@ -67,7 +67,8 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
         const tick = Number.isFinite(e.tick) ? e.tick : "?";
         return "<div class='mono clamp1' style='padding:3px 0'>" + (i + 1) + ". " + esc(e.role || "?") +
           " tick #" + esc(tick) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
-          " ago · " + esc(e.summary || "—") + "</div>";
+          " ago" + (Array.isArray(labels) && labels[i] && typeof labels[i] === "string" ? " · [" + esc(labels[i]) + "]" : "") +
+          " · " + esc(e.summary || "—") + "</div>";
       }).join("") + "</div>";
     }
     return "<div class='card-head'><h2>Land queue</h2></div>" + body;
@@ -78,7 +79,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   function renderPendingQueue(status) {
     const card = $("pendingqueue");
     if (!card) return;
-    card.innerHTML = pendingQueueHtml(status && status.landQueue, Date.now());
+    card.innerHTML = pendingQueueHtml(status && status.landQueue, Date.now(), status && status.landQueueLabels);
   }
   function buildPendingView() {
     if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every loop's unlanded change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +

@@ -20,6 +20,8 @@ import { collectFleetChanges, collectRoleChange } from "../change/change-data.js
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
 import { renderLandingQueue } from "../landing/landing-queue-render.js";
+import { orchestratorAlive } from "../fleet/orchestrator-info.js";
+import { queueInFlight } from "../status/status-polls.js";
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
@@ -118,7 +120,11 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // The JSON branch prints the reader's own document — raw sha and numeric enqueuedAt, not
   // the render's short sha and age — and the render is the collector's view with one clock
   // read, so `tumwater queue` and `tumwater status --json`'s landQueue cannot drift.
-  sayJsonOrRender(args, readLandingQueue(root), (view) => renderLandingQueue(view, Date.now()));
+  // The in-flight marker rides along only while an orchestrator runs and the marker names a
+  // queued entry (queueInFlight) — status --json's landQueue.inFlight, so the two agree.
+  const view = readLandingQueue(root);
+  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
+  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, (v) => renderLandingQueue(v, Date.now(), inFlight));
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */

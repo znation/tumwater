@@ -340,7 +340,8 @@ validation, and atomic write, so an operator never has to hand-edit the file.
   async so the trail shows at once); the tab strip reads `Tick` and `Ctrl+N` again returns to the rows.
   The Pending pane shows the durable land queue above the pending-change roster, reading and
   rendering it through the same `readLandingQueue`/`renderLandingQueue` pair `tumwater queue`
-  prints, so the queue's order, age, skips, and wording match the CLI.
+  prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
+  landing label (`[landing 2m · reviewing]`, `[vetted, awaiting merge]`) on an entry a running fleet is landing.
   The Queued pane lists every loop's queued prompts, reading through the same queue traversal
   and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
   per-loop numbering, or the queued-age/deferred-countdown suffix. Up/Down select a queued

@@ -21,7 +21,7 @@ import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeWindowEntry } from "../agent/claude/claude-account.js";
 import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath, piPairFree, readPiProviders } from "../pi/pi-models.js";
-import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
+import { configForStatus, queueInFlight, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
@@ -32,7 +32,7 @@ import {
   readOrchestratorInfo,
   type DiskStatus,
 } from "../fleet/orchestrator-info.js";
-import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
+import type { LandingInFlight } from "../landing/landing-slot.js";
 import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
@@ -441,7 +441,6 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // and needs no cleanup pass).
   const queue = readLandingQueue(root);
   const landings = queue.entries;
-  const landingMarker = readLandingMarker(root);
   const landQueue: StatusSnapshot["landQueue"] = {
     depth: landings.length + queue.unreadable,
   };
@@ -454,8 +453,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       enqueuedAt: e.enqueuedAt,
     }));
   }
-  const inFlight =
-    running && landingMarker ? liveLandingMarker(landingMarker, new Set(landings.map((e) => e.sha))) : undefined;
+  const inFlight = queueInFlight(root, landings, running);
   if (inFlight) landQueue.inFlight = inFlight;
   // The running orchestrator's published gate figures (read once above, with the pid and the
   // demotion): the scheduler's own sum over its live runner states. Only while running — the

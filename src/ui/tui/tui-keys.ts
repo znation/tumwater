@@ -23,6 +23,8 @@ import { renderDoctor } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { readLandingQueue } from "../../landing/landing-queue.js";
 import { renderLandingQueue } from "../../landing/landing-queue-render.js";
+import { orchestratorAlive } from "../../fleet/orchestrator-info.js";
+import { queueInFlight } from "../../status/status-polls.js";
 import { promptLengthProblem, submitPrompt } from "../../inbox/inbox-submit.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";
@@ -1433,7 +1435,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // pane the same index names, must not have this resolution overwrite the pane now shown.
           // The default collector degrades rather than throws, so the rejection arm only covers an
           // injected seam (or an unexpected throw).
-          const queueText = renderLandingQueue(readLandingQueue(root), now());
+          const queueView = readLandingQueue(root);
+          const queueText = renderLandingQueue(queueView, now(), queueInFlight(root, queueView.entries, orchestratorAlive(root)));
           paneCache = queueText;
           void collectPending(root).then(
             (fleet) => {

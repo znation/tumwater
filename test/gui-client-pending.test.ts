@@ -94,6 +94,23 @@ test("pendingQueueHtml lists each queued landing in order with position, role, t
   assert.ok(html.indexOf("1. feature") < html.indexOf("2. bugfix"), "array order is the row order");
 });
 
+test("pendingQueueHtml adds a landing label per row, escaped, and ignores absent labels", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number, labels?: unknown): string }>(
+    ["format", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", tick: 1, summary: "a", enqueuedAt: now },
+    { role: "bugfix", sha: "0123456789abcdef", tick: 2, summary: "b", enqueuedAt: now },
+  ] };
+  const html = pendingQueueHtml(q, now, ["landing 2m · reviewing", "<b>x</b>"]);
+  assert.match(html, /0s ago · \[landing 2m · reviewing\] · a/);
+  assert.match(html, /\[&lt;b&gt;x&lt;\/b&gt;\] · b/);
+  assert.equal(pendingQueueHtml(q, now, "nope"), pendingQueueHtml(q, now));
+  assert.doesNotMatch(pendingQueueHtml(q, now, ["", ""]), /\[/);
+});
+
 test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
     ["format", "pending-table"],

@@ -15,7 +15,7 @@ import {
   tickProgress,
   workingDetail,
 } from "./tick-progress-model.js";
-import { landingChanges, type LandingChange, type LandingStage } from "../landing/landing-slot.js";
+import { landingChanges, LANDING_STAGE_LABELS, type LandingChange } from "../landing/landing-slot.js";
 
 /** The status DISPLAY MODEL: the loop's cycle position (the phase ladder), its landing cell,
  * and its per-loop row derivation (the header badges live next door in badges.ts, the
@@ -44,17 +44,6 @@ export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: str
     ? { status: change.status, startedAt: change.startedAt, stage: change.stage }
     : null;
 }
-
-/** How each landing stage names itself in the landing cell. */
-const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
-  rebasing: "rebasing",
-  "check-wait": "waiting for a check slot",
-  "build-check": "build check",
-  reviewing: "reviewing",
-  "resolve-wait": "waiting to resolve conflicts",
-  resolving: "resolving conflicts",
-  merging: "merging",
-};
 
 /** The work text a row shows in place of live progress while it is idle or landing
  * (plans/parallel-work-instances.md "Observability", part 6/7): the claim's heading when the

@@ -129,7 +129,9 @@ Usage:
                                    collector's payload as machine-readable data
   tumwater queue [--json]          List the durable land queue in execution order (oldest
                                    first): one line per waiting landing — position, loop, tick
-                                   number, short pinned sha, age, and summary; an empty queue
+                                   number, short pinned sha, age, and summary — plus a bracketed
+                                   \`[landing 2m · reviewing]\` / \`[vetted, awaiting merge]\`
+                                   label while a running fleet works on it; an empty queue
                                    prints \`land queue empty\`, and any torn/foreign queue file
                                    the reader skipped is counted on a trailing line; --json
                                    prints the collector's own {entries, unreadable} document

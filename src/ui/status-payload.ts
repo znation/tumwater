@@ -4,6 +4,7 @@ import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
+import { queueEntryLandingLabel } from "../landing/landing-queue-render.js";
 import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells } from "./status-model.js";
@@ -127,6 +128,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // preformatted through badges.ts's landingBadge, so the page cannot re-derive it.
     landQueue: snap.landQueue,
     landingBadge: landingBadge(snap.landQueue),
+    // One bracketed landing label per land-queue entry (queueEntryLandingLabel, "" for none),
+    // parallel to landQueue.entries — display-ready like landingBadge, since browser JS cannot
+    // import the TypeScript stage labels.
+    landQueueLabels: (snap.landQueue.entries ?? []).map((e) => queueEntryLandingLabel(e.sha, snap.landQueue.inFlight, now)),
     // Main's newest merge-scope check: the
     // raw block is machine-readable for `status --json`, and the header badge is
     // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status

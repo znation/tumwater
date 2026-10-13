@@ -1,6 +1,7 @@
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { isLandingChange, type LandingInFlight } from "../landing/landing-slot.js";
+import { isLandingChange, readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
+import type { LandingEntry } from "../landing/landing-queue.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -207,6 +208,15 @@ export function liveLandingMarker(marker: LandingInFlight, queued: ReadonlySet<s
   // hand-edited marker would otherwise throw out of the every-second status poll.
   const changes = marker.changes.filter(isLandingChange).filter((c) => queued.has(c.sha));
   return changes.some((c) => c.status !== "done") ? { ...marker, changes } : undefined;
+}
+
+/** The marker observers display for a queue read: undefined unless the orchestrator is running
+ * (`running`) and the marker has a live record for a queued entry (liveLandingMarker). The one
+ * home of this cross-check for the status snapshot, `tumwater queue`, and the TUI Pending pane. */
+export function queueInFlight(root: string, entries: readonly LandingEntry[], running: boolean): LandingInFlight | undefined {
+  if (!running) return undefined;
+  const marker = readLandingMarker(root);
+  return marker ? liveLandingMarker(marker, new Set(entries.map((e) => e.sha))) : undefined;
 }
 
 // The last config each root loaded successfully. snapshot is polled every second by the

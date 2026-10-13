@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater queue` marks the entries the landing pipeline is working on right now (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above — it touches no `src/backlog` file. The queue view lists every waiting landing with its age, but it does not say which entries a vet or the merge holds right now, or which stage each is in. Only the per-loop rows in `status`, the TUI, and the dashboard show that (`loopPhase`'s `landing 2m · reviewing` / `vetted, awaiting merge`). So an operator reading `tumwater queue` cannot tell a stuck head from one that is being reviewed)
+## Done
+
+### `tumwater queue` marks the entries the landing pipeline is working on right now (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above — it touches no `src/backlog` file. The queue view lists every waiting landing with its age, but it does not say which entries a vet or the merge holds right now, or which stage each is in. Only the per-loop rows in `status`, the TUI, and the dashboard show that (`loopPhase`'s `landing 2m · reviewing` / `vetted, awaiting merge`). So an operator reading `tumwater queue` cannot tell a stuck head from one that is being reviewed)
 
 **Goal.** Each queue line whose change has a live record in the in-flight landing marker ends its metadata with a bracketed label in the same wording the loop rows use. The three queue surfaces get it together: `tumwater queue`, the TUI Pending pane (it renders through the same `renderLandingQueue`), and the dashboard's Land queue card (`pendingQueueHtml`). Their shared-wording claim stays true. Example: `  1. feature tick #3 · abc1234 · 5m ago · [landing 2m · reviewing] · Add X`, or `[vetted, awaiting merge]`. An entry with no record, or a `done` record, keeps today's line byte for byte.
 
@@ -57,8 +59,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - `loopPhase` output is unchanged: the existing status-model tests pass without edits.
 - `tumwater queue` and `tumwater queue --json` print exactly today's output when no orchestrator is alive, even with a marker file present. `test/cli-queue.test.ts` gains this case, and its existing cases and the TUI Pending pane tests in `test/tui-keys.test.ts` pass unchanged (`test/help.test.ts` is updated only if it pins the `queue` help line).
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater history --summary` names when each loop last produced a change: a `last change` column and `lastChangeTs` in the JSON (done 2026-10-12; planned 2026-10-12 by plan; extends the Done "`tumwater history --summary` tallies each loop's tick outcomes" entry; independent of the refused "Operator backlog writes land on main" part 2/2 above)
 

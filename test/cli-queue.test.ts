@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
 import { enqueueLanding, type LandingEntry } from "../src/landing/landing-queue.js";
-import { landQueueDir } from "../src/paths.js";
+import path from "node:path";
+import { landQueueDir, landingStatePath, orchestratorStatePath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -65,4 +66,23 @@ test("queue rejects an unknown flag, naming it", async () => {
   const r = await cli(repo, "queue", "--wat");
   assert.equal(r.code, 1);
   assert.ok(r.stderr.includes("--wat"));
+});
+
+test("queue prints the in-flight label only while an orchestrator is alive", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue inflight test");
+  const sha = "a".repeat(40);
+  enqueueLanding(repo, entry("improve", sha, 3, "tidy the parser"));
+  const marker = { role: "improve", sha, summary: "tidy", startedAt: Date.now() - 120_000, stage: "reviewing" };
+  fs.mkdirSync(path.dirname(landingStatePath(repo)), { recursive: true });
+  fs.writeFileSync(landingStatePath(repo), JSON.stringify(marker));
+  const stopped = await cli(repo, "queue");
+  assert.doesNotMatch(stopped.stdout, /\[landing/, "no orchestrator alive: today's line");
+  assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight, undefined);
+  // This test process stands in for a live orchestrator (its pid is alive).
+  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  fs.writeFileSync(orchestratorStatePath(repo), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+  const live = await cli(repo, "queue");
+  assert.match(live.stdout, /ago · \[landing 2m · reviewing\] · tidy the parser/);
+  assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight.sha, sha);
 });

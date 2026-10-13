@@ -17,7 +17,7 @@ import {
   readLandingQueue,
   staleHeadFile,
 } from "../src/landing/landing-queue.js";
-import { renderLandingQueue } from "../src/landing/landing-queue-render.js";
+import { queueEntryLandingLabel, renderLandingQueue } from "../src/landing/landing-queue-render.js";
 import { landQueueDir } from "../src/paths.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
@@ -280,4 +280,36 @@ test("readLandingQueue reads a missing queue dir as empty with no skips", () => 
   const repo = makeRepo();
   assert.ok(!fs.existsSync(landQueueDir(repo)), "no queue dir before the first enqueue");
   assert.deepEqual(readLandingQueue(repo), { entries: [], unreadable: 0 });
+});
+
+test("renderLandingQueue marks entries with a live in-flight record and leaves the rest alone", () => {
+  const now = 1_000_000_000;
+  const mk = (role: string, sha: string): LandingEntry => ({ role, sha, tick: 1, summary: `s ${role}`, enqueuedAt: now - 300_000 });
+  const view = { entries: [mk("a", "1".repeat(40)), mk("b", "2".repeat(40)), mk("c", "3".repeat(40))], unreadable: 0 };
+  const base = { role: "a", sha: "1".repeat(40), summary: "s", startedAt: now - 120_000 };
+  const inFlight = {
+    ...base,
+    changes: [
+      { role: "a", sha: "1".repeat(40), summary: "s", status: "landing" as const, startedAt: now - 120_000, stage: "reviewing" as const },
+      { role: "b", sha: "2".repeat(40), summary: "s", status: "vetted" as const },
+    ],
+  };
+  const lines = renderLandingQueue(view, now, inFlight).split("\n");
+  assert.match(lines[1]!, / · 5m ago · \[landing 2m · reviewing\] · s a$/);
+  assert.match(lines[2]!, / · 5m ago · \[vetted, awaiting merge\] · s b$/);
+  assert.equal(lines[3], renderLandingQueue(view, now).split("\n")[3]);
+  const plain = renderLandingQueue(view, now);
+  const done = { ...inFlight, changes: [{ ...inFlight.changes[0]!, status: "done" as const }] };
+  assert.equal(renderLandingQueue(view, now, done), plain);
+  assert.equal(renderLandingQueue(view, now, { ...base, sha: "9".repeat(40), changes: undefined }), plain);
+  assert.equal(renderLandingQueue(view, now, undefined), plain);
+  const noStage = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stage: undefined }] };
+  assert.match(renderLandingQueue(view, now, noStage), /\[landing 2m\] · s a/);
+});
+
+test("queueEntryLandingLabel reads an older-generation marker with no changes array as one landing record", () => {
+  const now = 1_000_000_000;
+  const old = { role: "a", sha: "1".repeat(40), summary: "s", startedAt: now - 60_000, stage: "merging" as const };
+  assert.equal(queueEntryLandingLabel("1".repeat(40), old, now), "landing 1m · merging");
+  assert.equal(queueEntryLandingLabel("2".repeat(40), old, now), "");
 });
