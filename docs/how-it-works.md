@@ -104,7 +104,10 @@ discards a role's in-flight landing.
   serial scheduler assigns each due instance one eligible backlog entry and holds the claim
   until the entry lands, the instance gives it up, or it sits idle past 24 h; two instances
   never work the same entry. An extra instance with no unclaimed eligible entry is skipped
-  without climbing its backoff (the scaling rule), and the plan loop keeps
+  without climbing its backoff (the scaling rule). A feature runner, primary included, skips
+  its scheduled and main-moved ticks while no plan is eligible at all, so an operator wake, a
+  queued prompt or a resume still runs; a `run --once` round settles a skipped runner as
+  `no free entry`. The plan loop keeps
   `instances(feature) + 1` eligible plans ahead so every feature instance has something to
   take (a due plan tick defers while that many are waiting and none is marked needs-review or
   needs-replan). `tumwater status`, the TUI and the dashboard name each instance's claimed entry while

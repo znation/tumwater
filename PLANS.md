@@ -6,7 +6,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### A feature runner with no plan to take stands down instead of ticking, and settles its `run --once` round (planned 2026-10-12 by plan; independent of every other entry)
+### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
+- `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
+- `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
+- the dashboard's drawer cancel, edit, and question answer (`tryCancelEntry`/`tryEditEntry`/`tryAnswerQuestion` call sites in `src/gui/gui-endpoint-commands.ts`);
+- the TUI backlog pane's Ctrl+X, Ctrl+E, and Ctrl+A (the same three `try*` call sites in `createTuiKeys`, `src/ui/tui/tui-keys.ts`).
+A cancelled entry still reads as eligible on main, and an answered question stays open in every loop's worktree)
+
+**Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed (no `src/backlog/backlog-commit.ts` / `commitOperatorBacklogEdit` exists); re-open once it does**
+
+**Goal.** Each of those writes commits its one file on main, exactly as part 1/2's filings do.
+
+**Approach.** After each successful write, call `commitOperatorBacklogEdit(root, file, subject)`:
+- **Subjects.** All built with `stampedSubject("operator", …)`: `Cancel <kind>: <title>`, `Edit <kind>: <title>` (the new title), and `Answer question: <title>`.
+- **Where to await.** The CLI announce functions and the dashboard handlers are async and await it. The TUI key branches call it fire-and-forget (`void …`), as part 1/2's Ctrl+N does.
+- **Failures.** A refused or no-op outcome (stale position, title mismatch, `UNCLOSED_FENCE_MESSAGE`) writes nothing and commits nothing.
+- **Unchanged.** No change to the sync `try*`/`cancel*`/`edit*`/`answerQuestion*` writers, or to any printed output or JSON payload.
+
+**Files.** `src/backlog/backlog-write.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/tui/tui-keys.ts`, the `backlog-commit.test.ts` part 1/2 adds, README.md (the same "Steer the project" and "Answer open questions" rows), docs/invariants.md (widen part 1/2's INV entry to name cancel, edit, and answer).
+
+**Acceptance criteria.**
+- In a repo on main, `tumwater bug --cancel 1`, `tumwater plan --edit 1 "z"`, and `tumwater questions answer 1 "yes"` each leave `git status --porcelain` empty, with the matching `tumwater(operator): …` subject as HEAD's subject.
+- A `--cancel` naming a missing position fails as today and adds no commit (HEAD unchanged).
+- The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
+- Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
+
+## Done
+
+### A feature runner with no plan to take stands down instead of ticking, and settles its `run --once` round (planned 2026-10-12 by plan; independent of every other entry; done 2026-10-12)
 
 **Goal.** Stop running model ticks that can only end with `TUMWATER_NOTHING_TO_DO`, and fix a
 `run --once` round that never exits.
@@ -103,32 +130,8 @@ runs; and that a `run --once` round settles a skipped runner as `no free entry`)
   an empty backlog is adjusted to seed an eligible plan, and the entry names each such test in
   its Done note.
 
-### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
-- `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
-- `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
-- the dashboard's drawer cancel, edit, and question answer (`tryCancelEntry`/`tryEditEntry`/`tryAnswerQuestion` call sites in `src/gui/gui-endpoint-commands.ts`);
-- the TUI backlog pane's Ctrl+X, Ctrl+E, and Ctrl+A (the same three `try*` call sites in `createTuiKeys`, `src/ui/tui/tui-keys.ts`).
-A cancelled entry still reads as eligible on main, and an answered question stays open in every loop's worktree)
 
-**Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed (no `src/backlog/backlog-commit.ts` / `commitOperatorBacklogEdit` exists); re-open once it does**
-
-**Goal.** Each of those writes commits its one file on main, exactly as part 1/2's filings do.
-
-**Approach.** After each successful write, call `commitOperatorBacklogEdit(root, file, subject)`:
-- **Subjects.** All built with `stampedSubject("operator", …)`: `Cancel <kind>: <title>`, `Edit <kind>: <title>` (the new title), and `Answer question: <title>`.
-- **Where to await.** The CLI announce functions and the dashboard handlers are async and await it. The TUI key branches call it fire-and-forget (`void …`), as part 1/2's Ctrl+N does.
-- **Failures.** A refused or no-op outcome (stale position, title mismatch, `UNCLOSED_FENCE_MESSAGE`) writes nothing and commits nothing.
-- **Unchanged.** No change to the sync `try*`/`cancel*`/`edit*`/`answerQuestion*` writers, or to any printed output or JSON payload.
-
-**Files.** `src/backlog/backlog-write.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/tui/tui-keys.ts`, the `backlog-commit.test.ts` part 1/2 adds, README.md (the same "Steer the project" and "Answer open questions" rows), docs/invariants.md (widen part 1/2's INV entry to name cancel, edit, and answer).
-
-**Acceptance criteria.**
-- In a repo on main, `tumwater bug --cancel 1`, `tumwater plan --edit 1 "z"`, and `tumwater questions answer 1 "yes"` each leave `git status --porcelain` empty, with the matching `tumwater(operator): …` subject as HEAD's subject.
-- A `--cancel` naming a missing position fails as today and adds no commit (HEAD unchanged).
-- The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
-- Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
-
-## Done
+**Done 2026-10-12.** Landed as planned. The e2e test adjusted to seed an eligible plan: `ticks on the engaged fallback feed the breaker` in `test/orchestrator-fallback.test.ts`.
 
 ### Defer the plan loop's due ticks while PLANS.md already holds its eligible-plan target (planned 2026-10-12 by plan; independent of the backlog-writes series; done 2026-10-12)
 

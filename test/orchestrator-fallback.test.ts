@@ -25,6 +25,7 @@ import { loadLoopState } from "../src/loop/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet/orchestrator-info.js";
 import { FAST_POLL_MS, deadFallbackScenario, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 
 test("ticks on the engaged fallback feed the breaker: three dead-backend errors demote it", async () => {
@@ -34,6 +35,8 @@ test("ticks on the engaged fallback feed the breaker: three dead-backend errors 
   cfg.fallbackModel = { provider: "free", model: "qwen-free" };
   const cfgPath = path.join(repo, "tumwater.json");
   fs.writeFileSync(cfgPath, JSON.stringify(cfg));
+  // An eligible plan keeps the feature runner ticking: with none it stands down.
+  fs.writeFileSync(path.join(repo, "PLANS.md"), twoPlansDoc());
 
   // The dead-free-fallback scenario: the modelsPath seam keeps the test off the real ~/.pi
   // definitions, and the fake pi dies on the fallback pair whose demotion the breaker detects.

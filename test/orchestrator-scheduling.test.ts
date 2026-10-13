@@ -17,6 +17,7 @@ import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
+import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { HOUR } from "./helpers/oracles.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
@@ -588,4 +589,83 @@ test("a stale held-entries list is cleared once the role has no claim group", as
   feature.state.heldElsewhere = ["alpha"];
   await pollRunnerReasons(schedulingCtx(root, [feature], new Map([["feature", undefined]])));
   assert.equal(feature.state.heldElsewhere, undefined);
+});
+
+// The feature stand-down: a feature runner with no eligible plan skips its scheduled and
+// main-moved ticks, and a `run --once` round settles every skipped feature runner.
+const ONE_REFUSED_PLAN = [
+  "# Plans",
+  "",
+  "## Planned",
+  "",
+  "### Refused thing (planned 2026-01-01 by operator)",
+  "",
+  "**Refused 2026-01-02 by feature: no**",
+  "",
+  "Body.",
+  "",
+  "## Done",
+  "",
+].join("\n");
+
+function tickedFeature(config: TumwaterConfig, role = "feature"): LoopRunner {
+  const r = fakeRunner(role, config);
+  r.state.ticks = 1;
+  r.state.nextRunAt = T0;
+  r.state.backoffSeconds = 30;
+  return r;
+}
+
+for (const [label, plans] of [["a refused-only PLANS.md", ONE_REFUSED_PLAN], ["no PLANS.md", undefined]] as const) {
+  test(`a single feature runner stands down with ${label}`, async () => {
+    const root = tmpdir("tumwater-scheduling-standdown-");
+    if (plans) fs.writeFileSync(path.join(root, "PLANS.md"), plans);
+    const feature = tickedFeature(defaultConfig());
+    const reasons = await pollRunnerReasons(schedulingCtx(root, [feature], new Map([["feature", undefined]])));
+    assert.equal(reasons.has(feature), false);
+    assert.equal(feature.state.skipReason, "no-free-entry");
+    assert.equal(loadLoopState(root, "feature").skipReason, "no-free-entry");
+    assert.equal(feature.state.nextRunAt, T0);
+    assert.equal(feature.state.backoffSeconds, 30);
+  });
+}
+
+test("a once round settles an extra feature instance with no free entry", async () => {
+  const root = tmpdir("tumwater-scheduling-once-extra-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), ONE_BLOCKED_PLAN);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const ctx = schedulingCtx(root, [feature, feature2], new Map([["feature", undefined], ["feature-2", undefined]]));
+  ctx.once = new OnceRound([feature, feature2], true);
+  await pollRunnerReasons(ctx);
+  assert.equal(ctx.once.reasons.get("feature-2"), "no free entry");
+  assert.equal(ctx.once.isSettled(feature2), true);
+});
+
+test("a once round settles a primary feature runner with no eligible plan", async () => {
+  const root = tmpdir("tumwater-scheduling-once-primary-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), ONE_REFUSED_PLAN);
+  const feature = tickedFeature(defaultConfig());
+  const ctx = schedulingCtx(root, [feature], new Map([["feature", undefined]]));
+  ctx.once = new OnceRound([feature], true);
+  await pollRunnerReasons(ctx);
+  assert.equal(ctx.once.reasons.get("feature"), "no free entry");
+});
+
+test("a nothing-eligible feature runner is still admitted on demand, startup, revision, or an eligible plan", async () => {
+  const admitted = async (setup: (r: LoopRunner, root: string) => void, plans = ONE_REFUSED_PLAN) => {
+    const root = tmpdir("tumwater-scheduling-standdown-admit-");
+    fs.writeFileSync(path.join(root, "PLANS.md"), plans);
+    const r = tickedFeature(defaultConfig());
+    setup(r, root);
+    const reasons = await pollRunnerReasons(schedulingCtx(root, [r], new Map([["feature", undefined]])));
+    return reasons.has(r);
+  };
+  assert.equal(await admitted(() => {}), false, "control: stands down");
+  assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastTickEndedAt = T0; }), true, "wake");
+  assert.equal(await admitted((r) => { r.state.ticks = 0; }), true, "startup");
+  assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "feature", "hi"); }), true, "queued prompt");
+  assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
+  assert.equal(await admitted(() => {}, TWO_PLANS), true, "an eligible plan");
 });
