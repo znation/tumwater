@@ -59,32 +59,13 @@ file backlog entries, and `tumwater pause`, `resume`, `wake`, and `stop` control
 so pair it with `--token <secret>`.
 
 Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
-same list, and `tumwater completion bash|zsh` prints shell completion (including loop ids after `--role` and keys after `config get|set|unset`, file paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, and result classes after `--result`). Settings live in
+same list, and `tumwater completion bash|zsh` prints shell completion. Settings live in
 `tumwater.json` and edits apply live while the fleet runs; see [docs/config.md](docs/config.md).
 
-**Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to
-one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a map of tiers
-`small`/`default`/`strong`. A role whose primary keeps failing with provider-class errors
-(three consecutive 429s or backend failures) runs its next ticks on its tier's resolved
-`fallback` pair and probes the primary once the 5-minute cooldown elapses, returning to it
-when a probe answers; `tumwater status`, the TUI, the dashboard, and `tumwater role <id>` name
-the off-model episode. Set `agent` to run bare selectors and the no-model default on another
-backend — `claude` runs on Claude Code, with per-tier defaults (`claude-sonnet-5-5` and
-friends) and per-backend `agents.claude.bin`/`agents.claude.args` overrides; a selector whose
-provider names a backend id (`claude/claude-opus-5-5`) always routes there. A claude run's
-cost comes from the CLI's own price table. A run paid by a claude.ai subscription is exempt
-from the daily dollar cap: its API-equivalent cost is tracked as notional spend and shown on
-its own line in `tumwater report` (the day report also breaks it down by role and per landed commit, and the dashboard's Usage view charts it per loop), never in the cap; a run billed to an API key — or one that
-saw `isUsingOverage` — counts against the cap like a priced pi model. A subscription claude
-model with no overage also counts as free for the budget badge and fallback decisions, so at
-the cap it stays put while priced pi seams move to their fallback. A rejected claude.ai
-subscription usage window holds subscription claude seams until it resets (a first
-`allowed_warning` is logged too); `tumwater status`, the TUI, the dashboard, and
-`tumwater role <id>` show the window in place of the daily spend on a subscription-only fleet
-(or beside it on a mixed one, where the daily spend covers priced seams only), and a run cut off
-by a rejected window keeps its session and worktree edits and resumes once the window resets.
-See
-[docs/backends.md](docs/backends.md) for requirements and a worked setup.
+**Backends:** any OpenAI-compatible model pi can reach works, chosen by `model` in `tumwater.json`
+with a `fallback` that a failing role switches to. `agent: "claude"` runs bare selectors on Claude
+Code instead. Requirements, the fallback and usage-window behavior, and how subscription runs are
+billed (as notional spend, outside the daily cap) are in [docs/backends.md](docs/backends.md).
 
 For how the loops, review gate, scheduling, and self-redeploy work, see
 [docs/how-it-works.md](docs/how-it-works.md). For a measured comparison of tumwater's own
