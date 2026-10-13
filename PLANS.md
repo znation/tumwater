@@ -31,6 +31,50 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### The dashboard schedules and cancels a graceful fleet stop (`tumwater stop --in` / `--cancel` parity) (planned 2026-10-12 by plan; independent of every other entry; follows the landed "`tumwater stop --in <duration>`" entry in Done)
+
+**Goal.** `tumwater stop --in 2h` and `stop --cancel` exist only on the CLI. The dashboard shows the resulting `stops in …` row but can neither set nor drop it. Its row also always reads "This run was started with run --for", even when the deadline came from a `stop --in` marker. An operator watching the dashboard should be able to say "wind down in 2 hours", or take that back, without a terminal.
+
+**Approach.**
+- **Shared core (`src/operator/operator-intent.ts`).** Add two functions beside `requestRestart`, so the CLI and the dashboard cannot drift:
+  - `requestScheduledStop(root, inMs): RequestResult` returns `{ ok: false, error: NO_HARNESS_ERROR }` unless `orchestratorAlive(root)`. Otherwise it calls `scheduleStop(root, Date.now() + inMs)` (from `src/fleet/fleet-state.ts`) and returns `cmdStop`'s current confirmation as `message`: `` stop scheduled in ${durationLabel(inMs)} — the fleet drains its in-flight ticks and exits then; `tumwater stop --cancel` drops it ``.
+  - `cancelScheduledStopMessage(root): string` returns `cancelScheduledStop(root) ? "scheduled stop cancelled" : "no stop scheduled"`.
+- **`cmdStop` in `src/operator/operator-commands.ts`.**
+  - The `--cancel` branch says `cancelScheduledStopMessage(root)`.
+  - The `--in` branch keeps its `parseDurationFlag`/`failOverDurationCap` validation, then calls `requestScheduledStop`: it `say`s the message on ok and `fail`s with the error otherwise. Move the `--in` branch ahead of the plain-stop liveness gate, so the gate no longer runs twice.
+  - Plain `stop` is unchanged. So is every printed string (the existing `test/scheduled-stop.test.ts` cases pin them).
+- **Route (`src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`).** Add `handleStopSchedule` and register it as `"POST /api/stop-schedule"` in the route table next to `/api/restart`.
+  - Read the body with `readPostBody(req, res, '{"inSeconds": 7200}')`.
+  - `{"cancel": true}` answers 200 `{ ok: true, message: cancelScheduledStopMessage(root) }`. Like the CLI, cancel does not need a live fleet.
+  - Otherwise `inSeconds` is required: an absent one answers 400 `{ error: "inSeconds or cancel is required" }`. A present one goes through the existing `wakeInSecondsMs`, which already enforces positive, finite, and the `PAUSE_FOR_MAX_MS` cap with its 400 wording. Then send `sendRequestResult(res, requestScheduledStop(root, ms))`, so a stopped fleet answers 409 with `NO_HARNESS_ERROR`.
+  - `cancel` together with `inSeconds` answers 400 `{ error: "cancel and inSeconds cannot be combined" }` and writes nothing.
+- **Payload (`src/status/status-data.ts`, `src/ui/status-payload.ts`).** Add `scheduledStopAt?: number` to the snapshot. It is `scheduledStopAt(root)`, set only while `running`, beside the existing `runStopsAt` merge. `statusPayload` spreads it as a raw field with the same omit-when-undefined idiom `runStopsAt` uses. `runStopsAt` and `runWindowBadge` are unchanged.
+- **Client (`src/ui/gui/gui-page.ts`, `src/ui/gui/gui-client-operator.ts`, `src/ui/gui/gui-client-fleet.ts`, `src/ui/gui/gui-client-boot.ts`).**
+  - Add `<div class="menu-anchor up" id="stopwrap"></div>` after `pausewrap` in `.side-controls`.
+  - In `gui-client-operator.ts`, add a `stop-control:start`/`:end` block modelled on the pause control (`openPopover`, a `stopMenuOpen` flag, and a `renderStopControl(d)` called wherever `renderPauseBadge` is):
+    - With `!d || !d.running`, the panel is empty.
+    - With `d.scheduledStopAt` set, the panel is a `btn btn-warn` with `id='stopbadge'` that reads "Cancel scheduled stop". Clicking it posts `{cancel: true}`.
+    - Otherwise, the panel is a `btn` with `id='stopbadge'` reading "Stop the fleet later". It opens a menu of `STOP_CHOICES = [[3600, "In 1 hour"], [7200, "In 2 hours"], [14400, "In 4 hours"], [28800, "In 8 hours"]]` as `data-stopin` items, plus the hint "In-flight ticks finish, then the fleet exits."
+    - Both post through `postAction("/api/stop-schedule", …, (d) => d && typeof d.message === "string" ? d.message : "…")`.
+    - The control offers no immediate stop: when the dashboard is served by `run --gui`, an immediate stop would take the page down mid-click.
+  - In `gui-client-fleet.ts`, the `runWindowBadge` row's explanation reads "A scheduled stop (tumwater stop --in) — the fleet drains in-flight work and exits then." when `d.scheduledStopAt === d.runStopsAt`, and keeps today's `run --for` text otherwise.
+- **Docs.** In README.md's "Control the loops" row, at the `stop --in` mention, add that the dashboard's "Stop the fleet later" control sets and cancels it. In `docs/invariants.md`, add no new guarantee: the marker's semantics are unchanged.
+
+**Files touched.** `src/operator/operator-intent.ts`, `src/operator/operator-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/gui/gui-server.ts`, `src/status/status-data.ts`, `src/ui/status-payload.ts`, `src/ui/gui/gui-page.ts`, `src/ui/gui/gui-client-operator.ts`, `src/ui/gui/gui-client-fleet.ts`, `README.md`, `test/gui-endpoints.test.ts`, `test/gui-client-sidebar.test.ts`, `test/status-payload.test.ts`.
+
+**Acceptance criteria.**
+- In `test/gui-endpoints.test.ts`, using its `fakeReq`/`captureJson` helpers and a `seedFleet`-style live info file (pid = `process.pid`):
+  - `handleStopSchedule` with `{"inSeconds": 7200}` answers 200 with a message matching `/stop scheduled in 2h/`. Afterwards `scheduledStopAt(root)` is within a few seconds of `Date.now() + 7_200_000`.
+  - With no info file, the same body answers 409 matching `/no harness is running/` and writes no marker.
+  - `{"cancel": true}` answers `scheduled stop cancelled` and removes the marker. A second call answers `no stop scheduled`.
+  - `{}`, `{"inSeconds": -1}`, `{"inSeconds": 8000000}` (over 90 days), and `{"cancel": true, "inSeconds": 60}` each answer 400 and leave no marker.
+  - The live server routes `POST /api/stop-schedule`, and a `GET` of that path is refused, as the `/api/restart` routing test checks.
+- In `test/status-payload.test.ts`, a running snapshot with a stop marker carries `scheduledStopAt` in the payload. A stopped one omits it.
+- In `test/gui-client-sidebar.test.ts` (or the operator-control test that already exercises `renderPauseBadge`, whichever scope exposes it):
+  - The stop control is empty when not running. It reads "Stop the fleet later" when running with no marker, and "Cancel scheduled stop" when `scheduledStopAt` is set.
+  - The `Stops in` row's explanation names `stop --in` when `scheduledStopAt === runStopsAt`, and `run --for` otherwise.
+- The `stop` tests in `test/scheduled-stop.test.ts` and `test/cli-operators-fleet.test.ts` pass unchanged, so the CLI output is unchanged.
+
 ## Done
 
 ### `tumwater retire --role <id> --dry-run` previews what retire would remove and whether its safety rails would refuse (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
