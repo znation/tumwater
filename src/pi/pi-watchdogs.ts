@@ -164,6 +164,50 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // required. One warning per stalled call — the interval keeps firing until the kill or
   // the call ends.
   const warnedStalledCalls = new Set<string>();
+  // Warn once per call that has been open past its threshold.
+  const warnStalledToolCalls = () => {
+    for (const call of deps.openToolCalls()) {
+      if (warnedStalledCalls.has(call.id)) continue;
+      // A command whose stdout is piped or redirected holds its bytes away from
+      // pi until it exits, so "no output" there is the prescribed shape, not
+      // evidence of a hang (BUGS.md 2026-09-28: the tick prompt tells every loop
+      // to pipe its verification through `tail`, and the resulting false alarms
+      // were the digest's top warning cluster, drowning real hangs). Silence is
+      // not the only way such a command hangs, though: a leaked grandchild
+      // holding the pipe open keeps `tail` from ever seeing EOF (BUGS.md
+      // 2026-10-06: a 19-min piped verify raised no warning and held a restart's
+      // drain). So a buffered call gets a wall-clock threshold instead — open
+      // far longer than any healthy verify run — with the duration, not
+      // silence, named as the evidence. The call's full raw command is
+      // classified, never its display label: the label truncates at 32 chars,
+      // so an operator past that point would be invisible there.
+      // claude never sends content updates, so silence carries no hang signal for
+      // ANY of its calls — every one is judged by the buffered wall-clock threshold
+      // (plans/agent-backends.md "Watchdogs and progress"); pi keeps its per-command
+      // classification, where only a piped or redirected command is buffered.
+      if (deps.agent === "claude" || commandBuffersOutput(call.command || call.label)) {
+        const openMs = Date.now() - call.lastActivityAt;
+        const bufferedStallMs = bufferedCommandStallMs(deps.stallMs);
+        if (openMs >= bufferedStallMs) {
+          warnedStalledCalls.add(call.id);
+          deps.onToolCallStalled?.(
+            `tool call stalled: ${call.label} — no exit for ${Math.round(openMs / 60_000)}m`,
+          );
+        }
+        continue;
+      }
+      const silentMs = Date.now() - call.lastActivityAt;
+      if (silentMs >= deps.stallMs) {
+        warnedStalledCalls.add(call.id);
+        // Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds.
+        const silent =
+          silentMs < 60_000
+            ? `${Math.round(silentMs / 1000)}s`
+            : `${Math.round(silentMs / 60_000)}m`;
+        deps.onToolCallStalled?.(`tool call stalled: ${call.label} — no output for ${silent}`);
+      }
+    }
+  };
   const checkEveryMs = deps.quietMs > 0 ? deps.quietMs : deps.stallMs;
   const quietCheck =
     checkEveryMs > 0
@@ -176,49 +220,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
               quietKilled = true;
               deps.kill();
             }
-            if (deps.stallMs > 0) {
-              for (const call of deps.openToolCalls()) {
-                if (warnedStalledCalls.has(call.id)) continue;
-                // A command whose stdout is piped or redirected holds its bytes away from
-                // pi until it exits, so "no output" there is the prescribed shape, not
-                // evidence of a hang (BUGS.md 2026-09-28: the tick prompt tells every loop
-                // to pipe its verification through `tail`, and the resulting false alarms
-                // were the digest's top warning cluster, drowning real hangs). Silence is
-                // not the only way such a command hangs, though: a leaked grandchild
-                // holding the pipe open keeps `tail` from ever seeing EOF (BUGS.md
-                // 2026-10-06: a 19-min piped verify raised no warning and held a restart's
-                // drain). So a buffered call gets a wall-clock threshold instead — open
-                // far longer than any healthy verify run — with the duration, not
-                // silence, named as the evidence. The call's full raw command is
-                // classified, never its display label: the label truncates at 32 chars,
-                // so an operator past that point would be invisible there.
-                // claude never sends content updates, so silence carries no hang signal for
-                // ANY of its calls — every one is judged by the buffered wall-clock threshold
-                // (plans/agent-backends.md "Watchdogs and progress"); pi keeps its per-command
-                // classification, where only a piped or redirected command is buffered.
-                if (deps.agent === "claude" || commandBuffersOutput(call.command || call.label)) {
-                  const openMs = Date.now() - call.lastActivityAt;
-                  const bufferedStallMs = bufferedCommandStallMs(deps.stallMs);
-                  if (openMs >= bufferedStallMs) {
-                    warnedStalledCalls.add(call.id);
-                    deps.onToolCallStalled?.(
-                      `tool call stalled: ${call.label} — no exit for ${Math.round(openMs / 60_000)}m`,
-                    );
-                  }
-                  continue;
-                }
-                const silentMs = Date.now() - call.lastActivityAt;
-                if (silentMs >= deps.stallMs) {
-                  warnedStalledCalls.add(call.id);
-                  // Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds.
-                  const silent =
-                    silentMs < 60_000
-                      ? `${Math.round(silentMs / 1000)}s`
-                      : `${Math.round(silentMs / 60_000)}m`;
-                  deps.onToolCallStalled?.(`tool call stalled: ${call.label} — no output for ${silent}`);
-                }
-              }
-            }
+            if (deps.stallMs > 0) warnStalledToolCalls();
           },
           Math.min(Math.max(checkEveryMs / 2, 250), 30_000),
         )
