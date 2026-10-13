@@ -3,7 +3,7 @@
  * Fixed actually has code behind it — commit 9cea8c3 landed a Fix paragraph naming
  * `runScriptGroup`/`signalTree` with no source anywhere in main's history. This module
  * cross-checks the diff against the tree being landed: a `## Fixed` entry that is new in
- * the diff must name at least one symbol or path that exists on the tree — identifier-like
+ * the diff must name only symbols or paths that exist on the tree — identifier-like
  * backticked spans are substring-matched against the tree's code files, path-like spans
  * against the tree itself. An entry whose Fix paragraph names nothing checkable is left
  * alone: pure-documentation fixes are legitimate and must keep landing md-only.
@@ -22,14 +22,32 @@
  * a Fix paragraph placed there) never faced the symbol check. Both readers now see fences
  * through parseEntryDetails — backlog-md.ts's fence-aware entry parser, the same one the
  * dashboards read — with one scanner serving headings and bodies alike (as of 2026-09-29,
- * replacing the earlier hand-rolled fenceTracker walk), so the two cannot drift apart. */
+ * replacing the earlier hand-rolled fenceTracker walk), so the two cannot drift apart.
+ *
+ * A fourth (BUGS.md 2026-10-13): the compressed one-line records below the newest-ten full
+ * entries have no `### ` heading, so the parser read the whole archive as the LAST full entry's
+ * body. Every steward compression makes a different entry last, so that entry's body "changed"
+ * and all ~170 records' names faced its symbol check — two prose names no code ever held
+ * rejected three compressions in a row. fixedSection now ends an entry's own body at its first
+ * one-line record and checks records on their own: a record the diff adds or edits may carry
+ * forward any name the base's Fixed section already holds, and nothing else unbacked. */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { readTextOrNull, walkFiles } from "../files/files.js";
-import { parseEntryDetails, type BacklogEntry } from "../backlog/backlog-md.js";
+import {
+  fenceTracker,
+  parseEntryDetails,
+  sectionLines,
+  trailingParenthetical,
+  type BacklogEntry,
+} from "../backlog/backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
-import { collapseWhitespace } from "../text/text.js";
+import { collapseWhitespace, truncate } from "../text/text.js";
+
+/** How much of a one-line record a rejection quotes: the record is one line by construction but
+ * can run to several hundred characters, and the reason rides in a one-line event. */
+const RECORD_QUOTE_MAX = 160;
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
  * when it moves an entry, so a heading compares equal across the Open→Fixed move. The
@@ -51,18 +69,55 @@ export function fixedHeadings(doc: string): string[] {
   return fixedEntries(doc).map((entry) => entry.title);
 }
 
-/** The `## Fixed` section's parsed entries, in document order — one parse that headings and
- * bodies both read from. Callers that need more than one heading's body (falseFixReason's
- * base-vs-head comparison, the doctor's checkFixClaims) iterate this once instead of calling
- * the per-heading lookups, each of which re-parsed the whole document: with ~200 Fixed
- * entries, building the base body map and walking the head section re-parsed BUGS.md ~400
- * times per check, and the doctor's newest-10 scan re-parsed it once per heading. */
+/** The `## Fixed` section's parsed entries, in document order, each with only its own body
+ * (fixedSection) — one parse that headings and bodies both read from. Callers that need more
+ * than one heading's body (falseFixReason's base-vs-head comparison, the doctor's
+ * checkFixClaims) iterate this once instead of calling the per-heading lookups, each of which
+ * re-parsed the whole document: with ~200 Fixed entries, building the base body map and
+ * walking the head section re-parsed BUGS.md ~400 times per check, and the doctor's newest-10
+ * scan re-parsed it once per heading. */
 export function fixedEntries(doc: string): BacklogEntry[] {
-  return parseEntryDetails(doc, "Fixed");
+  return fixedSection(doc).entries;
 }
 
-/** The body of one `### ` entry in a BUGS.md document: everything from after its heading to
- * the next `### ` or `## ` heading. Empty when the heading is absent. Fence-aware: a heading
+/** Whether `line` is a compressed one-line Fixed record — the steward's
+ * `- <headline> (<date clause>; commit <sha>; gap: <tag>)` form and the variants its rules allow
+ * (src/roles/role-catalog.ts: no dates, no commit, no gap): a `- ` line whose trailing
+ * parenthetical carries a `commit` reference or a `gap:` tag. The commit half is backlog-md.ts
+ * entryDates' epitaph guard. A labelled body bullet (`- **Fix:** …`) never is one, whatever its
+ * parenthetical says. */
+export function isOneLineRecord(line: string): boolean {
+  if (!line.startsWith("- ") || line.startsWith("- **")) return false;
+  return /\bcommits?\b|\bgap:/.test(trailingParenthetical(line));
+}
+
+/** The `## Fixed` section split the way the false-fix check reads it: each `### ` entry with
+ * only its OWN body, and the one-line records apart, trimmed, blank lines dropped. The parser
+ * opens an entry only at a `### ` line, so the headingless records after the full entries parse
+ * as the last full entry's body; here an entry's own body ends at its first unfenced one-line
+ * record, and that line and every line after it up to the next heading are archive lines. An
+ * entry body's fence state starts closed (its heading line was outside any fence), so a fresh
+ * tracker reads the body in step with the document. */
+export function fixedSection(doc: string): { entries: BacklogEntry[]; archive: string[] } {
+  const entries: BacklogEntry[] = [];
+  const archive: string[] = [];
+  for (const entry of parseEntryDetails(doc, "Fixed")) {
+    const lines = entry.body.split("\n");
+    const fenced = fenceTracker();
+    const start = lines.findIndex((line) => !fenced.inside(line) && isOneLineRecord(line));
+    if (start === -1) {
+      entries.push(entry);
+      continue;
+    }
+    entries.push({ title: entry.title, body: lines.slice(0, start).join("\n").trim() });
+    for (const line of lines.slice(start)) if (line.trim()) archive.push(line.trim());
+  }
+  return { entries, archive };
+}
+
+/** The own body of one `### ` entry in a BUGS.md document: everything from after its heading to
+ * the next `### ` or `## ` heading, or to its first one-line record (fixedSection). Empty when
+ * the heading is absent. Fence-aware: a heading
  * line inside a fenced code block is quoted content, never a boundary, and a fence inside
  * the entry itself (an entry quoting a markdown template) is body content the entry keeps —
  * the body runs to the next heading outside the fence, not to the fence's first quoted
@@ -188,16 +243,44 @@ export async function falseFixReason(
   // Fixed — an Open bug added, a narrative touched elsewhere — so the gate and the in-lock
   // recheck each paid that walk for a check that never reached a symbol.
   let haystack: string | undefined;
-  for (const { title: heading, body } of fixedEntries(head)) {
-    if (baseBodies.get(normalizeFixedHeading(heading)) === body) continue;
+  const { entries, archive } = fixedSection(head);
+  for (const { title: heading, body } of entries) {
+    const baseBody = baseBodies.get(normalizeFixedHeading(heading));
+    if (baseBody === body) continue;
     haystack ??= sourceHaystack(wt);
     const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
     if (missing.length === 0) continue;
     const names = missingSymbolNames(missing);
+    // The rejection says which shape it saw: the old message called every rewrite of an
+    // already-Fixed entry a move "to Fixed", so an author could not find the move it named and
+    // resubmitted the same diff as a false positive (BUGS.md 2026-10-13).
+    return baseBody === undefined
+      ? `md-only BUGS.md edit moves "${heading}" to Fixed, but its Fix paragraph names code ` +
+          `that exists nowhere on this tree: ${names} — land the fix in the same commit, ` +
+          `or keep the bug Open until the code exists`
+      : `md-only BUGS.md edit rewrites the already-Fixed entry "${heading}", and its Fix ` +
+          `paragraph now names code that exists nowhere on this tree: ${names} — land that ` +
+          `code in the same commit, or leave the entry's text as it was`;
+  }
+  // One-line records are compressions of entries the base already holds as Fixed, and history
+  // keeps a renamed symbol's old name, so a record the diff adds or edits may carry forward any
+  // name the base's Fixed section already records. A name it introduces must exist on the tree:
+  // a bug moved straight from Open into a one-line record faces the same check as a full entry.
+  const baseLines = sectionLines(base, "Fixed").map((line) => line.trim());
+  const seen = new Set(baseLines);
+  const baseText = baseLines.join("\n");
+  for (const record of archive) {
+    if (seen.has(record)) continue;
+    const introduced = fixSymbols(record).filter((symbol) => !baseText.includes(symbol));
+    if (introduced.length === 0) continue;
+    haystack ??= sourceHaystack(wt);
+    const missing = unbackedSymbols(wt, introduced, haystack);
+    if (missing.length === 0) continue;
     return (
-      `md-only BUGS.md edit moves "${heading}" to Fixed, but none of the symbols its ` +
-      `Fix paragraph names exist on this tree: ${names} — land the fix in the same commit, ` +
-      `or keep the bug Open until the code exists`
+      `md-only BUGS.md edit adds the one-line Fixed record "${truncate(record, RECORD_QUOTE_MAX)}", ` +
+      `which names code that exists nowhere on this tree or in the base's Fixed section: ` +
+      `${missingSymbolNames(missing)} — copy names from the entry it compresses, or land the ` +
+      `code in the same commit`
     );
   }
   return undefined;

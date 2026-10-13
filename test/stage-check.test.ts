@@ -56,7 +56,7 @@ test("an md-only false-fix edit yields its symbol finding", async () => {
   const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
 
   assert.equal(findings.length, 1);
-  assert.match(findings[0]!, /none of the symbols its Fix paragraph names exist/);
+  assert.match(findings[0]!, /its Fix paragraph names code that exists nowhere on this tree/);
   assert.match(findings[0]!, /missingSymbolXyz/);
 });
 

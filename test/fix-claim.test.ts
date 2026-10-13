@@ -7,6 +7,8 @@ import {
   falseFixReason,
   fixSymbols,
   fixedHeadings,
+  fixedSection,
+  isOneLineRecord,
   missingSymbolNames,
   normalizeFixedHeading,
   sourceHaystack,
@@ -133,6 +135,34 @@ test("bugEntryBody ends an entry at a `## ` section heading and reads only the F
 
 test("bugEntryBody returns an empty body for a heading the doc does not carry", () => {
   assert.equal(bugEntryBody(DOC, "No such bug: details (found by qa 2026-09-29)"), "");
+});
+
+test("isOneLineRecord matches the compressed record forms and never a body bullet", () => {
+  assert.ok(isOneLineRecord("- A bug (found by qa 2026-09-29, fixed 2026-09-29; commit 0165c3b6; gap: no-fake)"));
+  assert.ok(isOneLineRecord("- A bug (fixed 2026-09-29; commit 0165c3b6)"));
+  assert.ok(isOneLineRecord("- A bug (commit f09b3d74)"), "a heading with no dates keeps only the commit");
+  assert.ok(isOneLineRecord("- A bug (found 2026-09-29, fixed 2026-09-29; gap: slow-check)"), "no landing commit");
+  assert.ok(!isOneLineRecord("- **Fix:** `realFix` now handles it (commit 0165c3b6)."), "a labelled bullet");
+  assert.ok(!isOneLineRecord("- same shape as the sibling bug (fixed 2026-09-24)"), "a body bullet");
+  assert.ok(!isOneLineRecord("A bug (commit 0165c3b6)"), "not a bullet");
+});
+
+test("fixedSection ends an entry's own body at its first one-line record", () => {
+  // The archive of headingless one-line records parses as the last full entry's body; the
+  // false-fix check must read that entry's own text and the records apart (BUGS.md 2026-10-13).
+  const doc =
+    "## Fixed\n\n### A full entry (fixed 2026-10-01)\n\n**Fix:** `realFix` handles it.\n\n" +
+    "```md\n- A quoted record (fixed 2026-01-01; commit abc12345)\n```\n\n" +
+    "- An old bug (fixed 2026-09-01; commit 1234abcd)\n\n- Another (fixed 2026-09-02; gap: no-fake)\n";
+  const { entries, archive } = fixedSection(doc);
+  assert.equal(entries.length, 1);
+  assert.match(entries[0]!.body, /^\*\*Fix:\*\* `realFix` handles it\.\n\n```md\n- A quoted record/);
+  assert.ok(entries[0]!.body.endsWith("```"), "a record quoted in a fence stays body text");
+  assert.deepEqual(archive, [
+    "- An old bug (fixed 2026-09-01; commit 1234abcd)",
+    "- Another (fixed 2026-09-02; gap: no-fake)",
+  ]);
+  assert.equal(bugEntryBody(doc, "A full entry (fixed 2026-10-01)"), entries[0]!.body);
 });
 
 test("missingSymbolNames truncates a long missing list to three names plus an ellipsis", () => {
@@ -350,6 +380,7 @@ test("falseFixReason checks an already-Fixed entry whose narrative the diff rewr
   );
   const reason = await falseFixReason(root, "main", ["BUGS.md"]);
   assert.match(reason!, /runScriptGroup/);
+  assert.match(reason!, /rewrites the already-Fixed entry "A bug/, "a rewrite is not called a move");
 });
 
 test("falseFixReason leaves an already-Fixed entry with an untouched body alone", async () => {
@@ -416,6 +447,62 @@ test("falseFixReason checks a Fixed entry whose narrative after its quoted fence
   );
   const reason = await falseFixReason(root, "main", ["BUGS.md"]);
   assert.match(reason!, /runScriptGroup/);
+});
+
+// ── The one-line record archive (BUGS.md 2026-10-13) ────────────────────────────────────
+// The headingless records below the full Fixed entries parsed as the LAST full entry's body.
+// Compressing the oldest full entries made a different entry last, its body "changed", and
+// every record's names faced the symbol check: two prose names no code ever held rejected
+// three steward compressions in a row.
+
+/** A Fixed section of full entries (newest first) over a one-line record archive whose first
+ * record names `ghostName`, a prose name no code holds. The full entries write `Fix:` without
+ * the bold label, so the old reader scanned a last entry's whole body, archive included. */
+function archiveDoc(full: string[], records: string[]): string {
+  const entries = full.map((name) => `### ${name} broke (fixed 2026-10-01)\n\nFix: \`${name}Fn\` handles it.\n`);
+  return `## Fixed\n\n${entries.join("\n")}\n${records.join("\n")}\n`;
+}
+
+const GHOST_RECORD = "- An old leak: `ghostName` never existed (fixed 2026-09-01; commit 1234abcd)";
+
+function archiveRepo(): string {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export const newerFn = 1, olderFn = 2;\n");
+  fs.writeFileSync(path.join(root, "BUGS.md"), archiveDoc(["newer", "older"], [GHOST_RECORD]));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed: two full entries over the archive");
+  return root;
+}
+
+test("falseFixReason passes a compression that makes a different full entry last", async () => {
+  const root = archiveRepo();
+  // The older full entry becomes a record; `newer`'s own body is untouched, but it now sits
+  // directly above the archive.
+  const compressed = "- older broke: `olderFn` handles it (fixed 2026-10-01; commit 5678abcd)";
+  fs.writeFileSync(path.join(root, "BUGS.md"), archiveDoc(["newer"], [compressed, GHOST_RECORD]));
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+test("falseFixReason lets an edited record carry a name the base's Fixed section already holds", async () => {
+  const root = archiveRepo();
+  // History keeps a renamed symbol's old name: rewording the ghost record is no new claim.
+  const reworded = "- An old leak, reworded: `ghostName` (fixed 2026-09-01; commit 1234abcd)";
+  fs.writeFileSync(path.join(root, "BUGS.md"), archiveDoc(["newer", "older"], [reworded]));
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+test("falseFixReason flags a new one-line record that introduces a name the tree lacks", async () => {
+  const root = archiveRepo();
+  // A bug moved straight from Open into a record faces the same check a full entry does.
+  const phantom = "- A new bug: `phantomRecordFn` fixes it (fixed 2026-10-13; commit 9abcdef0)";
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    archiveDoc(["newer", "older"], [phantom, GHOST_RECORD]),
+  );
+  const reason = await falseFixReason(root, "main", ["BUGS.md"]);
+  assert.match(reason!, /adds the one-line Fixed record "- A new bug/);
+  assert.match(reason!, /: phantomRecordFn — /);
 });
 
 // ── Gate orchestration ──────────────────────────────────────────────────────────────────
