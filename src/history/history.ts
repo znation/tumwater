@@ -60,7 +60,7 @@ function renderRow(row: TickRow, widths: RowWidths): string {
 /** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
  * display width; each number column right-aligns under its header; the last column, `last change`,
  * is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
-function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
+export function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
   const all = [...summary.loops, summary.total];
   const loopWidth = Math.max(...["loop", ...all.map((r) => r.loop)].map(displayWidth));
   const cols = ["ticks", "changes", "none", "problems"] as const;

@@ -31,6 +31,9 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
+import { readTickRowsSince, summarizeTickRows, type HistorySummaryRow } from "../history/history-data.js";
+import { renderSummary } from "../history/history.js";
+import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init/init.ts does the
  * work; this prints the report). --dry-run prints the would-be actions without writing
@@ -192,6 +195,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
+  const windowStart = Date.now();
   let exit;
   try {
     exit = await (await import("../orchestrator/orchestrator.js")).runOrchestrator({
@@ -208,7 +212,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   if (deadlineTimer) deadlineTimer.clear();
     unsubscribe();
   }
-  if (once || forMs !== null) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
+  if (once) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
+  else if (forMs !== null) {
+    const { rows, covered } = readTickRowsSince(root, Date.now() - windowStart, null);
+    say(windowSummary(durationLabel(forMs), summarizeTickRows(rows), covered));
+  }
   if (once) {
     const failures = onceFailures(root, roles, ticksBefore, exit.ticksRun);
     if (failures.length > 0) {
@@ -219,6 +227,22 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
+}
+
+/** The `run --for` exit summary: a window line, then the `history --summary` table for the ticks
+ * that ended since this generation booted — every tick counted once by its outcome class. A
+ * mid-window self-redeploy prints this before handing off, covering that generation's ticks; the
+ * next generation restarts its deadline and window start. */
+export function windowSummary(label: string, summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): string {
+  const { total } = summary;
+  const lines = [
+    total.ticks === 0
+      ? `for ${label}: 0 ticks — nothing ran`
+      : `for ${label}: ${plural(total.ticks, "tick")} — ${total.changes} changes, ${total.none} none, ${total.problems} problems`,
+  ];
+  if (total.ticks > 0) lines.push(renderSummary(summary));
+  if (!covered) lines.push(SPARSE_WINDOW_NOTE);
+  return lines.join("\n");
 }
 
 /** Arm the windowed run's deadline timer: the one home of the arming `cmdRun` does for

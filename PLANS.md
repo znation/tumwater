@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### `tumwater run --for` ends with a per-loop summary of every tick in its window, not the once round's last-result line (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator file. Today `cmdRun` in `src/cli/cli-run.ts` prints `onceSummary(...)` under `once || forMs !== null`. That line counts ticks from each role's `ticks` delta, but it buckets each role by its *last* result only. A two-hour window where `feature` ran 12 ticks prints `once: 12 ticks — 1 changed`, so the outcome counts do not add up to the tick count. The window's work is invisible, and the line is labelled `once:` for a run that was not one round. `test/cli-run.test.ts` already pins the mismatch for the once path: `"once: 5 ticks — 1 changed, 1 error, 1 no_change"`)
+## Done
+
+### `tumwater run --for` ends with a per-loop summary of every tick in its window, not the once round's last-result line (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator file. Today `cmdRun` in `src/cli/cli-run.ts` prints `onceSummary(...)` under `once || forMs !== null`. That line counts ticks from each role's `ticks` delta, but it buckets each role by its *last* result only. A two-hour window where `feature` ran 12 ticks prints `once: 12 ticks — 1 changed`, so the outcome counts do not add up to the tick count. The window's work is invisible, and the line is labelled `once:` for a run that was not one round. `test/cli-run.test.ts` already pins the mismatch for the once path: `"once: 5 ticks — 1 changed, 1 error, 1 no_change"`)
 
 **Goal.** When a `run --for` generation exits, it prints a window line and then the `history --summary` table for the ticks that ended since that generation booted. Every tick counts once, by its outcome class. `--once` output does not change.
 
@@ -53,8 +55,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - test/cli-run-window.test.ts's `run --for boots, stops itself at the deadline, and prints the summary` now asserts `/for 3s: \d+ ticks?/` and asserts that no line starts with `once:`.
 - The existing `onceSummary` tests and test/cli-run-once.test.ts pass unchanged, so `--once` output stays the same.
 - `tumwater history --summary` output is unchanged (its tests pass unchanged); the only edit there is the `export` keyword.
-
-## Done
 
 ### `tumwater run --once` exits 3 when a role's round ended in a harness failure, so a cron or CI step can tell a broken round from a quiet one (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 and of the waiting "`tumwater queue` marks the entries the landing pipeline is working on" plan. It touches no `src/backlog`, `src/landing`, or queue-render file. README and `help.ts` sell `--once` as "for cron/CI", but `cmdRun` in `src/cli/cli-run.ts` exits 0 after every round that does not request a restart. A round where every tick errored, the review gate could not parse a verdict, or main was red prints its `once: …` summary and still exits 0, so the CI job stays green) (done 2026-10-12)
 

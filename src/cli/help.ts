@@ -19,7 +19,7 @@ Usage:
                                    exits 3 when a tick ended in error, review_error,
                                    merge_conflict, merge_blocked, or main_red;
                                    --once --role <id> scopes that round to one loop;
-                                   --for <duration> runs for that window then drains
+                                   --for <duration> runs for that window then drains, prints a per-loop summary,
                                    and exits like Ctrl+C would (for an overnight
                                    trial, a demo, a CI step);
                                    --gui also serves the browser dashboard at

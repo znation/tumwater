@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
+import { logEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
@@ -82,6 +83,8 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
   await initProject(repo, "cli run for window");
 
   onlyCleanRole(repo);
+  // A tick that ended before the window opened must not be counted in the window's summary.
+  logEvent(repo, { ts: Date.now() - 3_600_000, loop: "ghost", type: "tick_end", tick: 1, result: "changed" } as never);
   const restore = fakePi("exit 0");
   const s = spawnCli(repo, ["run", "--for", "3s"]);
   try {
@@ -90,7 +93,9 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
     assert.match(s.out(), /tumwater running on branch main · for 3s ·/);
     assert.match(s.out(), /deadline reached — stopping/);
     assert.match(s.out(), /stopping — waiting for in-flight ticks/);
-    assert.match(s.out(), /once: \d+ ticks?/);
+    assert.match(s.out(), /for 3s: \d+ ticks?/);
+    assert.ok(!s.out().includes("ghost"), `a pre-window tick leaked into the summary:\n${s.out()}`);
+    assert.ok(!s.out().split("\n").some((l) => l.startsWith("once:")), "no once: line under --for");
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
     // A deadline stop the run asked for is not the fleet dying: no supervisor_exit trace.
     assert.equal(eventsOfType(repo, "supervisor_exit").length, 0,

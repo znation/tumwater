@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, onceFailures, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-run.js";
+import { summarizeTickRows, type TickRow } from "../src/history/history-data.js";
+import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
@@ -299,4 +301,21 @@ test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the res
     saveLoopState(root, state("clean", { ticks: 1, lastResult: result }));
     assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [], result);
   }
+});
+
+const tickRow = (loop: string, result: string, tick: number): TickRow =>
+  ({ ts: 1_700_000_000_000 + tick, time: "", loop, tick, result, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
+
+test("windowSummary counts every tick once by outcome class, with the history table", () => {
+  const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("qa", "error", 1)]), true);
+  const lines = out.split("\n");
+  assert.equal(lines[0], "for 2h: 3 ticks — 1 changes, 1 none, 1 problems");
+  assert.match(lines[1] ?? "", /^loop\s+ticks\s+changes\s+none\s+problems\s+last change$/);
+  assert.deepEqual(lines.slice(2).map((l) => l.split(/\s+/)[0]), ["clean", "qa", "total"]);
+});
+
+test("windowSummary says nothing ran for an empty window and notes a sparse one", () => {
+  assert.equal(windowSummary("2h", summarizeTickRows([]), true), "for 2h: 0 ticks — nothing ran");
+  assert.equal(windowSummary("2h", summarizeTickRows([]), false), `for 2h: 0 ticks — nothing ran\n${SPARSE_WINDOW_NOTE}`);
+  assert.ok(windowSummary("2h", summarizeTickRows([tickRow("a", "changed", 1)]), false).endsWith(SPARSE_WINDOW_NOTE));
 });
