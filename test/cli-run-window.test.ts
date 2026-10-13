@@ -86,8 +86,19 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
   // A tick that ended before the window opened must not be counted in the window's summary.
   logEvent(repo, { ts: Date.now() - 3_600_000, loop: "ghost", type: "tick_end", tick: 1, result: "changed" } as never);
   const restore = fakePi("exit 0");
+  const spawnedAt = Date.now();
   const s = spawnCli(repo, ["run", "--for", "3s"]);
   try {
+    let stopsAt: unknown;
+    const polled = Date.now() + 2500;
+    while (stopsAt === undefined && Date.now() < polled) {
+      try {
+        stopsAt = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")).stopsAt;
+      } catch { /* not written yet, or torn */ }
+      if (stopsAt === undefined) await sleep(50);
+    }
+    assert.equal(typeof stopsAt, "number", "the info file publishes the window's deadline");
+    assert.ok(Math.abs((stopsAt as number) - (spawnedAt + 3000)) < 5000, `stopsAt ${String(stopsAt)} near spawn + 3s`);
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
     assert.match(s.out(), /tumwater running on branch main · for 3s ·/);

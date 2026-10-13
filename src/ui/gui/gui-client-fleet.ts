@@ -82,6 +82,11 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
               ? "Free space is below the " + esc(String(d.disk.reclaimGB)) + " GB reclaim threshold; idle build outputs are being cleaned."
               : "The last build-output reclaim freed space on the worktrees volume.");
       }
+      // The run --for deadline: the payload's preformatted runWindowBadge, like the disk row.
+      if (d.runWindowBadge) {
+        rows += row("blue", icon("info"), esc(badgeLabel(d.runWindowBadge)),
+          "This run was started with run --for; at the deadline it drains in-flight work, prints a per-loop summary, and exits.");
+      }
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
       // inside/outside wording the TUI/status header's quietBadge carries, derived from the

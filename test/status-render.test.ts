@@ -658,3 +658,15 @@ test("sanitizeFrameLines strips the status table's currentWork in the TUI frame"
   assert.ok(!/[\u001b\u0007\u009b]/.test(frame), `TUI frame leaks control bytes: ${JSON.stringify(frame)}`);
   assert.ok(frame.includes("fix ]52;c;AAAA now"), `the stripped work item still renders: ${JSON.stringify(frame)}`);
 });
+
+test("renderStatus shows the run --for countdown only on a running windowed fleet", () => {
+  const snap = snapshotWith([{ role: "clean" }]);
+  snap.running = true;
+  snap.pid = 4242;
+  const plain = headerOf(renderStatus(tmpdir(), snap));
+  assert.doesNotMatch(plain, /stops in/);
+  snap.runStopsAt = Date.now() + 90 * 60_000;
+  assert.match(headerOf(renderStatus(tmpdir(), snap)), /\(pid 4242\) · stops in 2h/);
+  snap.running = false;
+  assert.doesNotMatch(headerOf(renderStatus(tmpdir(), snap)), /stops in/);
+});

@@ -6,7 +6,7 @@ import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { queueEntryLandingLabel } from "../landing/landing-queue-render.js";
 import { snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { fleetAlerts } from "./fleet-alerts.js";
@@ -122,6 +122,9 @@ export function statusPayload(root: string, now = Date.now()): object {
     // has published one — the same omit-undefined idiom as pausedUntil.
     ...(snap.disk ? { disk: snap.disk } : {}),
     diskBadge: diskBadge(snap.disk, now),
+    // The `run --for` deadline: raw epoch ms (only when windowed) plus the display-ready badge.
+    ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
+    runWindowBadge: runWindowBadge(snap.runStopsAt, now),
     // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge

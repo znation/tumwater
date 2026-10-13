@@ -319,6 +319,9 @@ export interface StatusSnapshot {
    * orchestrator runs, its build predates the field, or statfs could not measure the volume —
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
+  /** The `run --for` window's deadline (epoch ms) from the running orchestrator's info file;
+   * absent for an unbounded run or a stopped fleet. */
+  runStopsAt?: number;
 }
 
 /** The claude subscription-window block for a poll (see StatusSnapshot.claudeWindow): absent
@@ -582,5 +585,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // must not speak for a stopped fleet — and only when the last poll could measure the
     // volume. Absent otherwise, so the surfaces render exactly as before.
     disk: running && info?.disk ? info.disk : undefined,
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
+    runStopsAt: running && info?.stopsAt !== undefined ? info.stopsAt : undefined,
   };
 }

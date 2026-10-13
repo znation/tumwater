@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -291,4 +291,11 @@ test("loopWakeMarker names the earliest future wake that names the loop", () => 
   assert.equal(loopWakeMarker(both, "plan", undefined, now), " · wake in 1h", "latest-first still yields the earliest");
   assert.equal(loopWakeMarker([{ roles: ["feature"], atMs: now }], "feature", undefined, now), "");
   assert.equal(loopWakeMarker(undefined, "feature", undefined, now), "");
+});
+
+test("runWindowBadge counts down to the deadline, then reads stopping, and is empty unwindowed", () => {
+  const now = 1_000_000;
+  assert.equal(runWindowBadge(undefined, now), "");
+  assert.equal(runWindowBadge(now + 2 * 3600_000, now), " · stops in 2h");
+  assert.equal(runWindowBadge(now - 1, now), " · stopping");
 });

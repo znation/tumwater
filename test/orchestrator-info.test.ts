@@ -149,3 +149,15 @@ test("readOrchestratorInfo drops nested fields with a foreign shape and keeps we
   assert.deepEqual(ok?.budget, { spentUsd: 1.5, capUsd: 10 }, "a well-formed budget stays");
   assert.deepEqual(ok?.disk, disk, "a well-formed disk stays");
 });
+
+test("readOrchestratorInfo keeps a numeric stopsAt and drops a string one", () => {
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: 1, roles: ["a"], stopsAt: 123 }));
+  assert.equal(readOrchestratorInfo(root)?.stopsAt, 123);
+  fs.writeFileSync(file, JSON.stringify({ pid: process.pid, startedAt: 1, roles: ["a"], stopsAt: "soon" }));
+  const info = readOrchestratorInfo(root);
+  assert.equal(info?.stopsAt, undefined);
+  assert.deepEqual(info?.roles, ["a"]);
+});

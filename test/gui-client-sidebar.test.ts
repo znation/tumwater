@@ -142,3 +142,11 @@ test("the sidebar's disk row mirrors the header badge, hold and last reclaim nam
   renderSidebar({ running: true, pid: 123, diskBadge: "" });
   assert.doesNotMatch(panels.statuschips!, /Disk /, "an empty badge leaves the sidebar unchanged");
 });
+
+test("the sidebar shows a Stops in row only for a windowed run", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h" });
+  assert.match(panels.statuschips!, /Stops in 2h/);
+  renderSidebar({ running: true, pid: 123, runWindowBadge: "" });
+  assert.doesNotMatch(panels.statuschips!, /Stops in/);
+});

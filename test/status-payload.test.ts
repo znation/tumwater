@@ -561,3 +561,19 @@ test("status payload and header show a pending scheduled wake only while one sta
   assert.deepEqual(payload.scheduledWake?.roles, ["feature"]);
   assert.match(renderStatus(repo, snapshot(repo)), /wake scheduled in/);
 });
+
+test("status payload carries the run --for deadline and its badge only when windowed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload window test");
+  const now = Date.now();
+  const write = (extra: object) =>
+    writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [], ...extra });
+  write({ stopsAt: now + 2 * 3600_000 });
+  let payload = statusPayload(repo, now) as { runStopsAt?: number; runWindowBadge: string };
+  assert.equal(payload.runStopsAt, now + 2 * 3600_000);
+  assert.equal(payload.runWindowBadge, " · stops in 2h");
+  write({});
+  payload = statusPayload(repo, now) as typeof payload;
+  assert.equal(payload.runStopsAt, undefined);
+  assert.equal(payload.runWindowBadge, "");
+});

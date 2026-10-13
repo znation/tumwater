@@ -67,6 +67,10 @@ export interface OrchestratorInfo {
    * pass. Written by the orchestrator's poll whenever it changes; absent when statfs cannot
    * measure the volume or on an older orchestrator, which renders exactly as before. */
   disk?: DiskStatus;
+  /** The `tumwater run --for` window's deadline (epoch ms): when the fleet stops itself. Absent
+   * for an unbounded run or a `--once` round. Written once at startup, so every self-redeploy
+   * generation publishes the same inherited deadline. */
+  stopsAt?: number;
 }
 
 /** Assign one field of the orchestrator info file in place, but only when the value differs
@@ -164,6 +168,8 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
 
   const budget = rec.budget;
   if (!isJsonObject(budget) || !isFiniteNumber(budget.spentUsd)) delete rec.budget;
+
+  if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
 
   const disk = rec.disk;
   if (

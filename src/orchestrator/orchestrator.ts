@@ -95,6 +95,9 @@ interface RunOptions {
    * land queue still drains fully before exit. cmdRun validates the id against the enabled
    * set before booting, so an unreachable-without-filter guard upstream is not re-checked. */
   roleFilter?: string;
+  /** The `run --for` window's deadline (epoch ms), published in the info file so observers can
+   * show when the fleet stops. The deadline timer itself lives in cmdRun. */
+  stopsAt?: number;
 }
 
 /** How runOrchestrator ended: `restart` means dist/ now holds a newer build and the caller should
@@ -168,6 +171,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   if (redeploy) info.build = redeploy.status();
+  if (opts.stopsAt !== undefined) info.stopsAt = opts.stopsAt;
   writeOrchestratorInfo(root, info);
   // Best-effort, like every other event write in this function (see `emit` below): this runs
   // BEFORE the try/finally and its cleanup, so a raw logEvent throw here would not just stop

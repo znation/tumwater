@@ -210,6 +210,13 @@ export function landingBadge(landQueue: { depth: number }): string {
   return landQueue.depth > 0 ? ` · land queue: ${landQueue.depth}` : "";
 }
 
+/** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is
+ * ahead, ` · stopping` once it has passed (the drain), empty for an unwindowed fleet. */
+export function runWindowBadge(stopsAt: number | undefined, now: number): string {
+  if (stopsAt === undefined) return "";
+  return stopsAt > now ? ` · stops in ${humanSeconds(secondsUntil(stopsAt, now))}` : " · stopping";
+}
+
 /** The header's scheduled-wake fragment: `· wake scheduled in <duration> (<roles>)` while a
  * `wake --in` marker stands, empty otherwise. It exists because a scheduled wake is otherwise
  * invisible between the CLI writing it and the consumer applying it. */

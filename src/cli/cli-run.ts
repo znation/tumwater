@@ -208,6 +208,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       launchServicesWatch,
       once,
       roleFilter: roleFilter ?? undefined,
+      stopsAt: forMs !== null ? windowStart + forMs : undefined,
     });
   } finally {
   if (deadlineTimer) deadlineTimer.clear();

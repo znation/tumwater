@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### A `run --for` fleet shows when it stops: `tumwater status`, the TUI header, and the dashboard sidebar carry a `stops in <duration>` countdown (planned 2026-10-12 by plan; follows the landed "`tumwater run --for` keeps one window across self-redeploys" plan; independent of the refused "Operator backlog writes land on main" part 2/2 — it touches no `src/backlog` file)
+## Done
+
+### A `run --for` fleet shows when it stops: `tumwater status`, the TUI header, and the dashboard sidebar carry a `stops in <duration>` countdown (planned 2026-10-12 by plan; follows the landed "`tumwater run --for` keeps one window across self-redeploys" plan; independent of the refused "Operator backlog writes land on main" part 2/2 — it touches no `src/backlog` file) (done 2026-10-12)
 
 **Goal.** A fleet started with `tumwater run --for 8h` stops itself at a deadline that only the starting terminal knows: its banner prints `for 8h` once, and every observer (`tumwater status`, `status --json`, the TUI, the dashboard) shows it as a plain running fleet. An operator who checks in from another terminal cannot tell whether the fleet will still be running tonight. After this change, every observer shows the deadline while a windowed fleet runs, the way they show a timed pause's countdown.
 
@@ -51,8 +53,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - `statusPayload` carries `runStopsAt` and a non-empty `runWindowBadge` for a windowed snapshot, and neither key's value is set for an unwindowed one (`runWindowBadge` is `""`).
 - The dashboard's fleet sidebar renders a `Stops in …` row (badgeLabel capitalizes the first letter) for a payload with `runWindowBadge`, and no such row without it.
 - In test/cli-run-window.test.ts's "run --for boots, stops itself at the deadline, and prints the summary" test, polling `orchestratorStatePath(repo)` while the 3 s window runs (the file is removed at exit) finds a `stopsAt` within a few seconds of the spawn time plus 3000 ms.
-
-## Done
 
 ### `tumwater run --for` keeps one window across self-redeploys: the deadline and the summary span every generation (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator code. It builds on the landed "`run --for` ends with a per-loop summary" plan)
 
