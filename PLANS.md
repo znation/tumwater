@@ -31,6 +31,27 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### A landed refusal note pages the operator: a new `entry_refused` event joins the notify allowlist (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above)
+
+**Goal.** When a tick's **Refused** note lands on main, the operator hears about it the same way they hear about a posted question. Only a human or the director can lift a refusal (`tumwater plan|bug --release <n>`). Until then the entry is held, and a fully refused backlog leaves feature or bugfix with nothing to do. Today the only trace is a `tick_end` with result `refused`, which is not a notify type. So a refusal nobody reads holds an entry until someone happens to run `tumwater doctor`, as the refused part 2/2 above shows.
+
+**Approach.**
+- **Context.** `RefusalContext` in `src/verdict/refusal.ts` gains `root: string`. `resolveTickVerdict` in `src/tick/tick-verdict.ts` passes `ctx.root` (its `TickVerdictContext` already carries `root`).
+- **Emission.** In `handleRefusal`, after `ctx.merge(...)` returns `"changed"` (the branch that already calls `clearSupersededRejection`), call `logEventBestEffort(ctx.root, { loop: ctx.role, type: "entry_refused", reason, files: notes })`. `notes` is the `.md` list the note commit staged. No event is logged on the paths that land nothing: the no-commit reset and a merge result other than `"changed"`. Best-effort, because the note has already landed.
+- **Type.** Add `| "entry_refused"` to `HarnessEvent["type"]` in `src/events/events.ts`, with a trailing comment in that union's style: "a refusal tick's objection note landed on main (src/verdict/refusal.ts handleRefusal); carries reason and files — the entry stays held until a human or the director lifts it".
+- **Rendering.** `formatEvent` in `src/events/event-format.ts` gets a `case "entry_refused"` rendering `entry refused: <reason> (<files joined by ", ">)`, using `textOr` for the reason. There is no warning prefix, matching `question_posted`.
+- **Kind.** `eventKind` in `src/ui/tone.ts` and its browser twin `eventKind` in `src/ui/gui/gui-client-model.ts` both return `"attention"` for `entry_refused`, next to the `question_posted` line.
+- **Notify.** Append `"entry_refused"` to `NOTIFY_EVENT_TYPES` in `src/events/notify.ts`, with the comment "a refusal note landed — the entry is held until a human or the director releases it". Add it to the allowlist list in the `notify` doc comment in `src/config/config-schema.ts`. Add "a refused backlog entry" to README.md's notify sentence, after "a posted question".
+
+**Files.** `src/verdict/refusal.ts`, `src/tick/tick-verdict.ts`, `src/events/events.ts`, `src/events/event-format.ts`, `src/ui/tone.ts`, `src/ui/gui/gui-client-model.ts`, `src/events/notify.ts`, `src/config/config-schema.ts`, README.md, `test/refusal.test.ts`, `test/event-format.test.ts`, `test/notify.test.ts`, `test/gui-client.test.ts`.
+
+**Acceptance criteria.**
+- `test/refusal.test.ts`: `makeCtx` takes the fixture's `root` (from `initializedWorktree`). The note-landing test then finds exactly one `entry_refused` event in `readEvents(root)`, with `loop: "improve"`, `reason: "it would delete user data"`, and `files` containing `PLANS.md`. "a refusal with no note resets the worktree and never merges" and "a failed note merge records lastError and still reports the commit" each find none.
+- `test/event-format.test.ts`: a new test shows `formatEvent` rendering an `entry_refused` event as `entry refused: <reason> (PLANS.md)`, with no `warning` substring.
+- `test/notify.test.ts`: the pinned `NOTIFY_EVENT_TYPES` list includes `"entry_refused"`.
+- `test/gui-client.test.ts`: `kind("entry_refused")` is `"attention"`, and `eventKind("entry_refused")` from `src/ui/tone.ts` agrees.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater plan|bug --release <n>` lifts a stale **Refused** note and commits the release on main (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. It touches `src/backlog/backlog-write.ts` and `src/cli.ts`, which that plan also touches, but in different functions and `case` arms. Today a Refused note can only be cleared by hand-editing the file, or by rewriting the whole entry with `--edit <n> --file`. Both leave an uncommitted edit in the primary checkout. `checkRefusedEntries`' remedy says "answer the objection and delete the note" but names no command for it. The part 2/2 entry above is stuck this way right now: its refusal cites a missing `src/backlog/backlog-commit.ts`, and that file has since landed. A grep for `--release` or `unrefuse` under `src/` finds nothing, and the `reopen` hits there are about the budget gate and drawers, not backlog entries) — done 2026-10-12
