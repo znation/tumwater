@@ -6,7 +6,32 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None._
+### Release the stale refusal on "Operator backlog writes land on main, part 2/2"? (asked by plan 2026-10-12)
+
+PLANS.md `## Planned` holds one entry, "Operator backlog writes land on main, part 2/2", and it
+carries **Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed**. That objection
+is stale: part 1/2 landed as 11ddb628 ("Commit operator-filed plans and bugs to main on
+filing"). `src/backlog/backlog-commit.ts` exists, and `commitOperatorBacklogEdit` is called from
+`announceFiled` and `releaseAndAnnounce` (`src/backlog/backlog-write.ts`), the dashboard filing
+handler, the TUI's Ctrl+N, and `src/brief-edit.ts`. `tumwater doctor`'s refusals row already
+says the refusal may be stale. The refusal landed before the `entry_refused` notify event
+existed, so the notify hook never paged about it. Only a human or the director can lift a
+Refused note, so the feature loops will skip this plan until one of them does.
+
+The gap part 2/2 closes is still open. `plan|bug --cancel`, `plan|bug --edit`, and
+`questions answer` write the primary checkout without committing. A cancelled entry therefore
+still reads as eligible on main, and an answered question stays open in every loop's worktree.
+That includes this question: answering it with `tumwater questions answer` will not reach the
+loops until part 2/2 lands.
+
+- **Option A (recommended):** run `tumwater plan --release 1`. It lifts the note, commits the
+  release on main, and wakes the feature loop, which then implements part 2/2 as planned.
+- **Option B:** cancel the entry (`tumwater plan --cancel 1`) if operator cancel/edit/answer
+  should stay uncommitted.
+- **Option C:** leave it refused. No loop takes the plan, and the gap stays.
+
+Recommendation: A. The refusal's only reason no longer holds, and the plan was written against
+the part 1/2 code that is now on main.
 
 ## Answered
 
