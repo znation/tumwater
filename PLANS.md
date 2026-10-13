@@ -6,7 +6,69 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater doctor` names uncommitted backlog edits in the primary checkout: an "uncommitted backlog" check (planned 2026-10-13 by plan; independent of every other entry. It is split out of the open BUGS.md entry "An operator write through the running dashboard generation is committed best-effort and reports success regardless…", whose fix sketch asks for this doctor row; that bug keeps the caller-side checks of `commitOperatorBacklogEdit`'s result, and this plan touches none of those call sites)
+
+**Goal.** An operator write to PLANS.md, BUGS.md, QUESTIONS.md, or the brief file is meant to
+leave the primary checkout clean: `commitOperatorBacklogEdit` (`src/backlog/backlog-commit.ts`)
+commits it on main. When that commit does not happen, the edit stays uncommitted and nothing
+reports it. Causes include a stale dashboard generation, a refused commit, or a hand edit. Two
+things then go wrong quietly. First, no loop worktree sees the edit, because they branch from
+main. Second, `ffMainTo`'s working-tree arm (`src/landing/landing-git.ts`) runs
+`git merge --ff-only` in the primary, and git refuses that merge when a landing touches a file
+with local changes. So the landing comes back `merge_blocked`. `tumwater doctor` has no row for
+this today: no check under `src/doctor/` runs `git status`, and a grep for `porcelain` or `dirty`
+there finds nothing. On 2026-10-12 the operator found exactly this leftover ` M QUESTIONS.md`
+only by running `git status` by hand.
+
+**Approach.**
+- In `src/doctor/doctor-backlog.ts`, add
+  `export async function checkUncommittedBacklog(root: string, config: TumwaterConfig | undefined): Promise<CheckOutcome>`:
+  - Resolve `primary = await currentBranch(root)` and `base = targetBranch(config?.baseBranch, primary)`
+    (both from `src/git/git.ts`). Use the same rule `commitOperatorBacklogEdit` applies. When
+    `primary` is null or differs from `base`, return
+    `okOutcome("primary checkout is not on <base>; operator backlog writes are not committed from it")`.
+    Here `<base>` is the resolved branch name. In that case the ref-push arm of `ffMainTo` lands
+    without touching this working tree, so a dirty file there blocks nothing.
+  - The watched files are the entries of `BACKLOG_FILES` (`src/backlog/backlog-md.ts`) plus
+    `briefFile(root)` (`src/brief.ts`) when it is non-null, de-duplicated.
+  - Import `TumwaterConfig` from `src/config/config-schema.ts`, as `doctor-checks.ts` does.
+  - Run `gitTry(root, "status", "--porcelain", "--", ...files)` (`src/git/git-run.ts`). When it
+    returns null, return `okOutcome("could not read git status; skipped")`. Do not let a git
+    failure warn about a dirty file.
+  - Parse each porcelain line. Take the path from column 4 onward. Skip `??` lines, because an
+    untracked file is not an uncommitted edit of a tracked one.
+  - With no dirty file, return `okOutcome("PLANS.md, BUGS.md, QUESTIONS.md and <brief> are committed")`.
+    Name the files actually watched.
+  - Otherwise return `warnOutcome` naming every dirty file, comma-separated in watched order:
+    `<files> has uncommitted changes in the primary checkout — loops branch from main and do not see them, and a landing that touches one cannot fast-forward the checkout (merge_blocked); review them with \`git diff -- <files>\` and commit them on <base>`.
+    Use "have" instead of "has" when more than one file is dirty. It is a warn, never a fail,
+    matching the module's other checks: damaged backlog state is operator signal.
+- Extend the module's header comment, which lists the checks the module holds, to include this one.
+- In `src/doctor/doctor.ts`'s `runDoctor`, add
+  `{ name: "uncommitted backlog", ...(await checkUncommittedBacklog(root, config)) }`
+  right after the `"refusals"` row, and add the import.
+
+**Files touched.** `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, `test/doctor-backlog.test.ts`.
+
+**Acceptance criteria.**
+- New tests in `test/doctor-backlog.test.ts` build a repo with `makeRepo` from
+  `test/fixtures/repo-fixtures.ts`, then commit PLANS.md, BUGS.md, and QUESTIONS.md with
+  `seedCommit`:
+  - "checkUncommittedBacklog reads ok on a clean checkout": the level is `ok`.
+  - "checkUncommittedBacklog warns naming each modified backlog file": modify QUESTIONS.md, then
+    PLANS.md as well. The level is `warn`. The detail names both files in watched order, with
+    `have uncommitted changes`, and contains `merge_blocked`.
+  - "checkUncommittedBacklog ignores untracked and unwatched files": an untracked new file, and a
+    modification to a tracked file outside the watched set (committed with `seedCommit`), both
+    leave the result `ok`.
+  - "checkUncommittedBacklog skips a primary that is not on the base branch": check out another
+    branch, modify BUGS.md, and the result is `ok` with detail containing `not on`.
+  - A test that the brief file counts: commit a README.md carrying the prompt markers, modify it,
+    and the warn names `README.md`.
+- The ordered row-name list in `test/doctor.test.ts` gains `"uncommitted backlog"` right after
+  `"refusals"`. Every other existing test in `test/doctor-backlog.test.ts` and
+  `test/doctor.test.ts` passes unchanged.
+- `npm run test` passes.
 
 
 ## Done
