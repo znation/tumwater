@@ -6,7 +6,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Shell completion completes flag values: paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, result classes after `--result` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entries "Shell completion completes loop ids after `--role`…" and "Shell completion completes config keys…", and touches only `src/cli/completion.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `bashScript` in `src/cli/completion.ts` registers `complete -F _tumwater tumwater` with no `-o default`, and its per-command arms complete only flags (when `$cur` starts with `-`) and `usageWords` subcommands at word 2. So `tumwater plan --file <TAB>`, `tumwater prompt --attach <TAB>`, and `tumwater role qa --notes-file <TAB>` complete no file name at all — worse than having no completion installed, where bash falls back to paths. `tumwater init --template <TAB>` and `tumwater history --result <TAB>` complete nothing either, though both value sets are closed and compiled in. A grep for `compgen -f` under `src/` and `test/` finds nothing)
+
+**Goal.** After a flag whose value is a path, completion offers file names; after `--template` it offers the init template ids; after `--result` it offers the history result classes.
+
+**Approach.** All in `bashScript` (`src/cli/completion.ts`), as `$prev` guards placed directly after the existing `--role` guard and before the `config get|set|unset` guard, each ending in `return 0`:
+- `--file`, `--attach`, `--notes-file`: `COMPREPLY=( $(compgen -f -- "$cur") )`. Do not use `compopt` (absent from macOS's bash 3.2) and do not change the `complete -F _tumwater tumwater` line (two tests assert it verbatim).
+- `--template`: `compgen -W "<ids>"` with the ids embedded at generation time from `templateIds()` (exported by `src/init/init-templates.ts`) — no runtime `tumwater completion --…` call, since the catalog is compiled into the binary.
+- `--result`: `compgen -W` over `HISTORY_RESULT_CLASSES` (exported by `src/history/history-data.ts`), embedded the same way.
+Keep the three path flags in one exported-or-local constant (e.g. `PATH_FLAGS`) so the guard reads `case "$prev" in --file|--attach|--notes-file)`-style or an `||` chain; the implementer picks either form. No new `tumwater completion` subcommand, no help-stanza change (the `completion` stanza in `src/cli/help.ts` describes scripts, not their contents).
+
+**Files touched.** `src/cli/completion.ts` (guards + two imports); `test/completion.test.ts`; README.md (the `tumwater completion bash|zsh` sentence that names loop ids and config keys) and docs/cli.md (the matching sentence) gain "file paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, and result classes after `--result`".
+
+**Acceptance criteria.**
+- New test in `test/completion.test.ts` using the existing `complete()` helper, run with the bash child's working directory set to a temp dir (via `tmpdir()` from `test/fixtures/repo-fixtures.ts`) holding `brief.md` and `notes.txt` — extend `complete()` with an optional `cwd` argument rather than a second helper: `["tumwater", "plan", "--file", "br"]` at cword 3 yields `["brief.md"]`; `["tumwater", "prompt", "--attach", "no"]` yields `["notes.txt"]`; `["tumwater", "role", "qa", "--notes-file", "b"]` at cword 4 yields `["brief.md"]`.
+- `["tumwater", "init", "--template", ""]` at cword 3 yields exactly `templateIds()` (compare sorted); `["tumwater", "history", "--result", "p"]` yields `["problems"]`.
+- The existing completion tests pass unchanged (`--role`, config-key, command, subcommand, and flag completion unaffected).
+- `bash -n` over the generated script still passes (the existing test covers this).
+- `npm run test` passes.
+
 
 
 ## Done
