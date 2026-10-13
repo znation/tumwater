@@ -29,6 +29,8 @@ import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
+import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
+import { stampedSubject } from "../git/commit-message.js";
 import { answerQuestion, answerQuestionFromText, sayAnswered, sayQuestionList } from "./question-commands.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
@@ -213,6 +215,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (file !== undefined) {
     if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
     const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
+    await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`));
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
     return;
   }
@@ -222,6 +225,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   // answerQuestion collapses the free-form decision to one line before writing it; report
   // that landed text in the --json payload so it matches the file, not the caller's spacing.
   const { title, decision: landedDecision } = answerQuestion(root, n, decision);
+  await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`));
   sayAnswered(n, title, jsonFlag, landedDecision);
 }
 

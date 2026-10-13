@@ -95,3 +95,25 @@ test("plan and bug --release lift the Refused note and commit it on main", async
   assertClean(repo);
   assert.equal(subject(repo), "tumwater(operator): Release bug: broken");
 });
+
+test("bug --cancel, plan --edit, and questions answer each commit on main; a missing position commits nothing", async () => {
+  const repo = await initializedRepo();
+  assert.equal((await cli(repo, "bug", "b1")).code, 0);
+  assert.equal((await cli(repo, "plan", "p1")).code, 0);
+  fs.appendFileSync(path.join(repo, "QUESTIONS.md"), "");
+  const q = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), q.replace(/## Open\n(\s*_None yet\._\n)?/, "## Open\n\n### ask?\n\ncontext\n\n"));
+  sh(repo, "git", "commit", "-qam", "seed question");
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  assert.notEqual((await cli(repo, "bug", "--cancel", "9")).code, 0);
+  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+  assert.equal((await cli(repo, "bug", "--cancel", "1")).code, 0);
+  assertClean(repo);
+  assert.match(subject(repo), /^tumwater\(operator\): Cancel bug: b1/);
+  assert.equal((await cli(repo, "plan", "--edit", "1", "z")).code, 0);
+  assertClean(repo);
+  assert.equal(subject(repo), "tumwater(operator): Edit plan: z");
+  assert.equal((await cli(repo, "questions", "answer", "1", "yes")).code, 0);
+  assertClean(repo);
+  assert.equal(subject(repo), "tumwater(operator): Answer question: ask?");
+});

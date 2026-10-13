@@ -1415,6 +1415,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
             // changed since the arm reports `moved` instead of being cancelled.
             try {
               const outcome = tryCancelEntry(root, kind, position, armed.title);
+              if (outcome.status === "cancelled") {
+                void commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`));
+              }
               selectedEntry = null;
               entryScroll = 0;
               flashMessage(
@@ -1899,6 +1902,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
                 : ({ status: "moved", title: "" } as const);
             exitEntryEdit();
             if (outcome.status === "edited") {
+              void commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${target.kind}: ${outcome.title}`));
               flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
             } else {
               selectedEntry = null;
@@ -1923,6 +1927,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
             if (outcome.status === "fenced") {
               flashMessage(UNCLOSED_FENCE_MESSAGE);
             } else {
+              if (outcome.status === "answered") {
+                void commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`));
+              }
               exitAnswerMode();
               selectedEntry = null;
               flashMessage(

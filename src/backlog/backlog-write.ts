@@ -693,6 +693,7 @@ export async function cancelAndAnnounce(
   if (position === null) fail(`--cancel needs a position (usage: tumwater ${command} --cancel <n>)`);
   await requireReadyRepo(root);
   const removed = cancel(position);
+  await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`));
   if (json) sayJson({ file: removed.file, title: removed.title });
   else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
 }
@@ -852,6 +853,7 @@ export async function editAndAnnounce(
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
   await requireReadyRepo(root);
   const edited = path === null ? edit(position, positionals) : editText(position, readPromptFileArg(path));
+  await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`));
   if (json) sayJson({ file: edited.file, title: edited.title });
   else say(`edited ${command} in ${edited.file}: ${edited.title}`);
 }
