@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START } from "../src/brief.js";
-import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { assertClean, initializedRepo, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // INV-B5: `tumwater brief --file` commits the brief file on main.
@@ -57,4 +57,18 @@ test("brief edits TUMWATER.md when it owns the block, and refuses a positional",
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), readme);
   assertClean(repo);
   assert.notEqual((await cli(repo, "brief", "extra")).code, 0);
+});
+
+test("editInitialPrompt refuses a repo with no brief and trims the text it writes", async () => {
+  const { editInitialPrompt } = await import("../src/brief-edit.js");
+  const none = await editInitialPrompt(makeRepo(), "Anything.");
+  assert.equal(none.ok, false);
+  assert.match(none.ok ? "" : none.error, /no project brief with a prompt block found/);
+  const repo = await initializedRepo();
+  const done = await editInitialPrompt(repo, "  Fresh text.  ");
+  assert.equal(done.ok, true);
+  const readme = fs.readFileSync(path.join(repo, "README.md"), "utf8");
+  assert.match(readme, /\nFresh text\.\n/);
+  assert.doesNotMatch(readme, / {2}Fresh text\./);
+  assertClean(repo);
 });
