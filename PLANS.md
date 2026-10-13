@@ -31,6 +31,89 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### A bugfix runner whose open bugs are all held stands down instead of ticking (planned 2026-10-12 by plan; independent of every other entry; extends the landed feature stand-down in Done, "A feature runner with no plan to take stands down instead of ticking")
+
+**Goal.** Stop paying for bugfix model runs that can only end in `TUMWATER_NOTHING_TO_DO`.
+
+- **The charter's rule.** The bugfix charter (`src/roles/role-catalog.ts`, the `bugfix`
+  entry's `find`) says "Skip BUGS.md entries carrying a Refused note: when every open entry
+  carries one, there is nothing to do." It hunts for latent bugs only when `## Open` holds no
+  entries at all.
+- **What the scheduler does instead.** The poll body in `src/orchestrator/orchestrator.ts`
+  computes `openBugsNow = openBugs(root).length > 0`, and `openBugs` counts held entries too.
+  So when every open bug is held (refused, needs-review, needs-replan, or blocked on a plan
+  part, per `entryHold` in `src/backlog/backlog-eligibility.ts`):
+  - `deferTickReason` in `src/scheduling/scheduling.ts` is not in search mode
+    (`searchBugfix` is false);
+  - bugfix is not in `DEFERRABLE_ROLES`, so the tick is never deferred;
+  - the feature stand-down in `pollRunnerReasons`
+    (`src/orchestrator/orchestrator-scheduling.ts`) covers only `baseRoleOf(runner.role) ===
+    "feature"`.
+
+  Every scheduled and main-moved bugfix tick therefore runs a full model run that reads the
+  index and stops. A refused bug stays open until a human or the director edits it, so this
+  can go on for days.
+
+**Approach.** Everything lives in `pollRunnerReasons`. Search mode (no open bugs at all) keeps
+today's `deferTickReason` path, because the charter still wants the latent-bug hunt there.
+
+- **Widen the stand-down check.** It is the `if` block that sets `featureEligibleMemo`.
+  - Its role test becomes `base === "feature" || (base === BUGFIX_ROLE && openBugsNow)`,
+    where `base` is `baseRoleOf(runner.role)`. `openBugsNow` is already destructured from the
+    ctx at the top of `pollRunnerReasons`.
+  - The other conditions are unchanged: reason `scheduled` or `main moved`, no fresh wake, no
+    claim, `!hasOutstandingWork`.
+- **One memo per base role.** Replace `let featureEligibleMemo` with
+  `const eligibleMemo = new Map<string, EligibleEntry[]>()`, keyed by base role. Fill each
+  entry from `claimGroups.get(base)?.eligible ?? eligibleEntries(root, base)`, so BUGS.md is
+  read at most once per poll.
+- **Standing down does what it does for feature.**
+  - `noteSkip(root, runner, "no-free-entry")`, which `loopPhase` (`src/ui/status-model.ts`)
+    already renders as `idle: no unclaimed bugs`;
+  - `runner.state.heldElsewhere = undefined`;
+  - `if (once.active) once.settle(runner.role, "no free entry")`;
+  - `continue`.
+
+  `nextRunAt` and `backoffSeconds` stay put. Releasing or fixing a held bug through
+  `tumwater bug --release` commits to main, so the runner becomes due as "main moved" and
+  ticks on the next poll.
+- **Comments.**
+  - Update the stand-down comment to cite both charters' nothing-to-do rules.
+  - Update the closing sentence of `deferTickReason`'s doc comment ("With one or more open
+    bugs it has real work and never defers"). It should say that with open bugs bugfix never
+    defers, and that `pollRunnerReasons` stands it down while all of them are held.
+  - Update the `BUGFIX_ROLE` doc comment in `src/roles/roles.ts` the same way.
+
+**Files.** `src/orchestrator/orchestrator-scheduling.ts`, `src/scheduling/scheduling.ts`
+(comment only), `src/roles/roles.ts` (comment only), `test/orchestrator-scheduling.test.ts`,
+and `docs/how-it-works.md`. In its "Parallel work instances" bullet, the sentence "A feature
+runner, primary included, skips its scheduled and main-moved ticks while no plan is eligible at
+all" gains: a bugfix runner does the same while BUGS.md has open bugs but none is eligible
+(with no open bugs at all it keeps searching for latent bugs).
+
+**Acceptance criteria.** All new tests go in `test/orchestrator-scheduling.test.ts`, using
+its `fakeRunner`/`schedulingCtx` helpers and a ticked runner like `tickedFeature` (generalize
+it, or add a bugfix twin):
+- **Held bugs only.** A `bugfix` runner with `ticks: 1`, `nextRunAt` in the past, and
+  `openBugsNow: true` on the ctx is not admitted when BUGS.md's `## Open` holds only a bug
+  carrying a `**Refused …**` note. Its `skipReason` is `"no-free-entry"` in memory and in
+  `loadLoopState`, and `nextRunAt`/`backoffSeconds` are unchanged.
+- **Once round.** In the same setup with `ctx.once = new OnceRound([bugfix], true)`,
+  `once.reasons.get("bugfix") === "no free entry"` after one poll.
+- **Still admitted.** The same runner is admitted:
+  - with a fresh `wokenAt`;
+  - at `ticks === 0`;
+  - with a queued inbox prompt;
+  - with a `revision`;
+  - when BUGS.md also holds one eligible open bug.
+- **Search mode unchanged.** With no BUGS.md and `openBugsNow: false`, the runner is not
+  given `skipReason` `"no-free-entry"`: it is admitted, or deferred through
+  `deferTickReason`, exactly as before.
+- **Existing tests.** The feature stand-down tests and every test in
+  `test/orchestrator-defer.test.ts` pass without edits.
+- **The project's check passes.** Any e2e test that relied on an unwoken bugfix tick against
+  a held-only BUGS.md is adjusted, and the Done note names it.
+
 ## Done
 
 ### Maintenance loops stop deferring on a backlog made only of held entries (planned 2026-10-12 by plan; independent of every other entry; done 2026-10-12)
