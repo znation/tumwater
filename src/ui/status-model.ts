@@ -218,6 +218,8 @@ export function loopPhase(
       return "deferred (backlog open)";
     case "deferred-no-work":
       return "deferred (no new work)";
+    case "deferred-plans-full":
+      return "deferred (plans full)";
     default:
       return "queued";
   }

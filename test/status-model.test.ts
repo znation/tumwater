@@ -763,6 +763,7 @@ test("loopPhase names the scheduling poll's skip for a due, idle loop", () => {
   assert.equal(loopPhase(due("feature", { skipReason: "claim-hold" }), true), "idle: sibling mid-entry");
   assert.equal(loopPhase(due("clean", { skipReason: "deferred-backlog" }), true), "deferred (backlog open)");
   assert.equal(loopPhase(due("clean", { skipReason: "deferred-no-work" }), true), "deferred (no new work)");
+  assert.equal(loopPhase(due("plan", { skipReason: "deferred-plans-full" }), true), "deferred (plans full)");
   assert.equal(loopPhase(due("clean", {}), true), "queued");
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", nextRunAt: Date.now() + 600_000 }), true), /^sleeping \(/);
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", running: true, lastTickStartedAt: Date.now() - 90_000 }), true), /^working/);

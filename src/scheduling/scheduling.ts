@@ -9,7 +9,7 @@
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
 import type { LoopRunner } from "../loop/loop.js";
-import type { LoopState } from "../loop/loop-state.js";
+import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
@@ -207,7 +207,21 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * ("no-work"). The `tick_deferred` event carries it, so the feed and the failure digest name
  * the clause that actually held the role back instead of spelling the no-work case over a
  * need-based deferral. */
-export type DeferReason = "backlog" | "no-work";
+export type DeferReason = "backlog" | "no-work" | "plans-full";
+
+/** The plan loop's own deferral: a due tick (no fresh wake, nothing outstanding, main seen
+ * before, inside DEFER_MAX_MS) while PLANS.md already holds its eligible-plan target
+ * (planBacklogFull). `lastResult` does not matter: the charter would stop either way. */
+function planDeferral(s: LoopState, planBacklogFull: boolean, now: number): DeferReason | null {
+  const woken = s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0);
+  return planBacklogFull &&
+    !woken &&
+    !hasOutstandingWork(s) &&
+    s.lastMainHead !== "" &&
+    !deferralExpired(s, now)
+    ? "plans-full"
+    : null;
+}
 
 /** The deferral verdict as its clause, or null when the tick is admitted. The one home of the
  * predicate (deferTick is this function's null test) and of the clause order: a deferrable
@@ -221,8 +235,10 @@ export function deferTickReason(
   workBacklogOpen: boolean,
   openBugsNow: boolean,
   now: number,
+  planBacklogFull = false,
 ): DeferReason | null {
   const base = baseRoleOf(role);
+  if (base === "plan") return planDeferral(s, planBacklogFull, now);
   const searchBugfix = base === BUGFIX_ROLE && !openBugsNow;
   const due =
     !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&

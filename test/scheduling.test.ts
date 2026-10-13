@@ -581,3 +581,25 @@ test("once mode still honors a raised backoff, which shares nextRunAt with the c
   });
   assert.equal(isEligible(r, now, "abc", 0, { once: true }).run, false);
 });
+
+test("deferTickReason: a due plan tick defers only while the plan backlog is full", () => {
+  const NOW = Date.now();
+  const s = freshLoopState("plan");
+  s.lastResult = "changed";
+  s.lastMainHead = "abc123";
+  assert.equal(deferTickReason(s, "plan", true, true, false, NOW, true), "plans-full");
+  assert.equal(deferTickReason(s, "plan", true, true, false, NOW, false), null);
+  assert.equal(deferTickReason(s, "plan", true, true, false, NOW), null);
+  assert.equal(
+    deferTickReason({ ...s, wokenAt: NOW, lastTickEndedAt: NOW - 1000 }, "plan", true, true, false, NOW, true),
+    null,
+    "a fresh wake runs",
+  );
+  assert.equal(deferTickReason({ ...s, resumePending: true }, "plan", true, true, false, NOW, true), null);
+  assert.equal(
+    deferTickReason({ ...s, nextRunAt: NOW - DEFER_MAX_MS - 1 }, "plan", true, true, false, NOW, true),
+    null,
+    "the cap forces a re-check",
+  );
+  assert.equal(deferTickReason({ ...s, lastMainHead: "" }, "plan", true, true, false, NOW, true), null);
+});

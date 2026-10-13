@@ -47,7 +47,7 @@ import {
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../fleet/reclaim.js";
 import { heldProviders } from "../fleet/fleet-hold.js";
-import { workReserveCount } from "../scheduling/claims.js";
+import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
 
 const POLL_MS = 2000;
 
@@ -470,6 +470,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // once here and reused for both predicates.
       const openBugsNow = openBugs(root).length > 0;
       const workBacklogOpen = plannedPlans(root).length > 0 || openBugsNow;
+      const plansFull = planBacklogFull(root, liveConfig);
 
       // A demoted fallback's half-open window (part 5c/8): the pair whose probe is due, and
       // the roles whose model tier WOULD run on that pair absent the demotion (the price-based
@@ -518,6 +519,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         roleProviders,
         openBugsNow,
         workBacklogOpen,
+        planBacklogFull: plansFull,
         deferredDue,
         workLandedSince,
       });

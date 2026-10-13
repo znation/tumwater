@@ -69,6 +69,7 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     roleProviders,
     openBugsNow: false,
     workBacklogOpen: false,
+    planBacklogFull: false,
     holdForRestart: false,
     diskHeld: false,
     deferredDue: new Map<string, boolean>(),
@@ -329,6 +330,7 @@ test("a deferred maintenance role records its deferral once per episode", async 
   const ctx = () => ({
     ...schedulingCtx(root, [clean], new Map([["clean", undefined]])),
     workBacklogOpen: true,
+    planBacklogFull: false,
   });
   const reasons = await pollRunnerReasons(ctx());
   assert.equal(reasons.has(clean), false, "the open backlog defers the due role");

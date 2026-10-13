@@ -257,13 +257,14 @@ export interface LoopState {
 }
 
 /** Why a due loop was skipped by the scheduling poll (LoopState.skipReason). */
-export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work";
+export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work" | "deferred-plans-full";
 
 const SKIP_REASONS: readonly string[] = [
   "no-free-entry",
   "claim-hold",
   "deferred-backlog",
   "deferred-no-work",
+  "deferred-plans-full",
 ];
 
 /** A new LoopState for one role, before its first tick. */

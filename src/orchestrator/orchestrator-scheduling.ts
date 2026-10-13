@@ -83,6 +83,8 @@ interface SchedulingPassCtx {
   diskHeld: boolean;
   /** PLANS.md `## Planned` or BUGS.md `## Open` non-empty, read once per poll by the poll body. */
   workBacklogOpen: boolean;
+  /** PLANS.md already holds the plan loop's eligible-plan target (planBacklogFull). */
+  planBacklogFull: boolean;
   /** Per-role deferred-due memory (one-shot tick_deferred events), advanced in place. */
   deferredDue: Map<string, boolean>;
   workLandedSince: WorkLandedCache;
@@ -124,6 +126,7 @@ export async function pollRunnerReasons(
     roleProviders,
     openBugsNow,
     workBacklogOpen,
+    planBacklogFull,
     holdForRestart,
     diskHeld,
     deferredDue,
@@ -353,6 +356,7 @@ export async function pollRunnerReasons(
         workBacklogOpen,
         openBugsNow,
         now,
+        planBacklogFull,
       );
       const deferredNow = deferral !== null;
       if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
@@ -364,7 +368,15 @@ export async function pollRunnerReasons(
         // Once mode: a deferred maintenance tick decided not to run — its once-round
         // answer, so it settles instead of holding the round open for DEFER_MAX_MS.
         if (once.active) once.settle(runner.role, "deferred");
-        noteSkip(root, runner, deferral === "backlog" ? "deferred-backlog" : "deferred-no-work");
+        noteSkip(
+          root,
+          runner,
+          deferral === "backlog"
+            ? "deferred-backlog"
+            : deferral === "plans-full"
+              ? "deferred-plans-full"
+              : "deferred-no-work",
+        );
         continue;
       }
     } else if (deferredDue.get(runner.role)) {

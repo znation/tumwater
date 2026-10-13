@@ -405,6 +405,8 @@ test("formatEvent renders tick_deferred with the clause that deferred it", () =>
     /clean\s+deferred — no work landed since last tick$/,
     `a no-work deferral must say so: ${noWork}`,
   );
+  const full = formatEvent({ ts: 0, loop: "plan", type: "tick_deferred", reason: "plans-full" } as never);
+  assert.match(full, /plan\s+deferred — plan backlog at its target$/);
   // A torn line or a pre-field event has no clause recorded: fall back to the old spelling.
   const legacy = formatEvent({ ts: 0, loop: "clean", type: "tick_deferred" } as never);
   assert.match(

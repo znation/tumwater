@@ -100,11 +100,12 @@ export function outcomeText(e: HarnessEvent): string {
 }
 
 /** Why a `tick_deferred` event fired, as the clause that can follow "deferred — ": scheduling's
- * reason ("backlog" or "no-work"). Shared by the event feed (eventMessage) and the failure
+ * reason ("backlog", "no-work" or "plans-full"). Shared by the event feed (eventMessage) and the failure
  * digest (describeStateChange) so the two cannot disagree on the deferral's cause. A missing or
  * unknown value — a torn line, or an event written before the field existed — reads as the
  * no-work spelling, the only clause the pre-field builds could log. */
 export function deferredReasonText(e: HarnessEvent): string {
+  if (e.reason === "plans-full") return "plan backlog at its target";
   return e.reason === "backlog" ? "feature/bugfix backlog open" : "no work landed since last tick";
 }
 

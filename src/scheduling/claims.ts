@@ -9,7 +9,7 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
-import { type EligibleEntry, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
+import { type EligibleEntry, backlogHolds, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
@@ -27,6 +27,15 @@ export const CLAIM_IDLE_MAX_MS = 24 * 60 * 60 * 1000;
  * always used (plans/parallel-work-instances.md "…keeping the plan loop ahead", part 5c/7). */
 export function planBacklogTarget(config: TumwaterConfig): number {
   return configuredInstances(config, "feature") + 1;
+}
+
+/** Does PLANS.md already hold the plan loop's target (planBacklogTarget eligible plans), with no
+ * plan marked needs-review or needs-replan? The charter makes splitting or replanning a marked
+ * plan outrank the stop, so a marked entry keeps the plan loop running; otherwise a plan tick can
+ * only end in TUMWATER_NOTHING_TO_DO and the scheduler defers it (deferTickReason). */
+export function planBacklogFull(root: string, config: TumwaterConfig): boolean {
+  if (eligibleEntries(root, "feature").length < planBacklogTarget(config)) return false;
+  return !backlogHolds(root).plans.some((h) => h === "needs-review" || h === "needs-replan");
 }
 
 /** The runner fields the claim policies read (structural stand-in for LoopRunner, so claims.ts

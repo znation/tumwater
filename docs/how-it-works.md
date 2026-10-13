@@ -106,7 +106,8 @@ discards a role's in-flight landing.
   never work the same entry. An extra instance with no unclaimed eligible entry is skipped
   without climbing its backoff (the scaling rule), and the plan loop keeps
   `instances(feature) + 1` eligible plans ahead so every feature instance has something to
-  take. `tumwater status`, the TUI and the dashboard name each instance's claimed entry while
+  take (a due plan tick defers while that many are waiting and none is marked needs-review or
+  needs-replan). `tumwater status`, the TUI and the dashboard name each instance's claimed entry while
   it is idle or landing, `tumwater logs` renders the `claim` assigned/released events, and
   `tumwater doctor`'s `work instances` check warns on a claim whose entry is gone or stale.
 - `maxConcurrent` caps parallel ticks and landing vets together. Landings get slots first, then

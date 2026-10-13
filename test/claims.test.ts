@@ -12,10 +12,12 @@ import {
   heldKeys,
   listedKeys,
   movedOutEntries,
+  planBacklogFull,
   stagedMovedEntries,
   workReserveCount,
   type ClaimRunner,
 } from "../src/scheduling/claims.js";
+import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { buildAssignmentNote } from "../src/prompt/gate-prompts.js";
 import { makeRepo, commitIn } from "./fixtures/repo-fixtures.js";
@@ -225,5 +227,42 @@ test("workReserveCount caps at a third of maxConcurrent and counts claim holders
   assert.equal(
     workReserveCount(repo2, [runner("feature", state()), runner("feature-2", state({ ...claimA }))], opts),
     1,
+  );
+});
+
+test("planBacklogFull: eligible plans reach the target and no plan is marked", () => {
+  const plans = (...entries: string[]) => {
+    const repo = makeRepo();
+    fs.writeFileSync(
+      path.join(repo, "PLANS.md"),
+      `# Plans\n\n## Planned\n\n${entries.join("\n")}\n## Done\n\n_None yet._\n`,
+    );
+    return repo;
+  };
+  const cfg = defaultConfig();
+  const entry = (title: string, note = "") => `### ${title} (planned 2026-01-01 by plan)\n${note}\nBody.\n`;
+  assert.equal(planBacklogFull(plans(entry("A"), entry("B")), cfg), true);
+  assert.equal(planBacklogFull(plans(entry("A")), cfg), false);
+  assert.equal(
+    planBacklogFull(plans(entry("A"), entry("B"), entry("C", "**Needs review 2026-01-02 by feature: too large for one run**\n")), cfg),
+    false,
+    "a needs-review mark keeps the plan loop running",
+  );
+  assert.equal(
+    planBacklogFull(plans(entry("A"), entry("B", "**Refused 2026-01-02 by feature: no**\n")), cfg),
+    false,
+    "a refused plan does not count",
+  );
+  assert.equal(
+    planBacklogFull(
+      plans(
+        entry("A"),
+        entry("B, part 1/2: x", "**Refused 2026-01-02 by feature: no**\n"),
+        `### B, part 2/2: x (planned 2026-01-01 by plan; requires part 1/2 landed)\nBody.\n`,
+      ),
+      cfg,
+    ),
+    false,
+    "a plan blocked by a prerequisite does not count",
   );
 });
