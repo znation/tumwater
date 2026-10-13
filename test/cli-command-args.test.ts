@@ -540,15 +540,16 @@ test("parsePromptArgs --edit refuses tokens preceding the position instead of dr
   );
 });
 
-test("parsePromptArgs --edit: missing or non-numeric position, missing replacement text", () => {
+test("parsePromptArgs --edit: missing or non-numeric position, bare form opens the editor", () => {
   const missing = expectFail(() => parsePromptArgs(["--edit"]));
   assert.match(missing.stderr, /--edit needs a position number/);
 
   const nonNumeric = expectFail(() => parsePromptArgs(["--edit", "x", "text"]));
   assert.match(nonNumeric.stderr, /--edit needs a positive integer/);
 
-  const noText = expectFail(() => parsePromptArgs(["--edit", "1"]));
-  assert.match(noText.stderr, /edit text required — usage: tumwater prompt --edit/);
+  // No text and no --file is the editor form.
+  assert.deepEqual(parsePromptArgs(["--edit", "1"]), { mode: "edit", role: null, position: 1, text: null, attachPaths: [] });
+  assert.match(expectFail(() => parsePromptArgs(["x", "--edit", "1"])).stderr, /unexpected argument "x"/);
 });
 
 test("parsePromptArgs --edit refuses the sibling modes and --at", () => {

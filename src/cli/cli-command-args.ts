@@ -204,7 +204,7 @@ type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
   | { mode: "list"; role: string | null; json: boolean }
   | { mode: "cancel"; role: string | null; position: number }
-  | { mode: "edit"; role: string | null; position: number; text: string; attachPaths: string[] };
+  | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[] };
 
 /** The stdin prompt read once per process: cli.ts pre-parses prompt's args and cmdPrompt
  * re-parses them, and a second readFileSync(0) on a drained pipe would see an empty prompt. */
@@ -336,7 +336,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // claims. Tokens preceding --edit (other than a claimed flag) would be silently dropped —
     // a mistyped command would edit prompt N with only the trailing fragment — so they are
     // refused here by the same stray-argument wording the sibling modes use; tokens after the
-    // position are the replacement text, minus any claimed attach pair.
+    // position are the replacement text, minus any claimed attach pair (none: edit in $EDITOR).
     const fileClaim = fileFlag >= 0 ? [fileFlag, fileFlag + 1] : [];
     for (let i = 0; i < editFlag; i++) {
       if (roleClaim.includes(i) || attachClaims.includes(i) || fileClaim.includes(i)) continue;
@@ -355,9 +355,8 @@ export function parsePromptArgs(args: string[]): PromptArgs {
       textTokens.push(args[i] as string);
     }
     const text = textTokens.join(" ").trim();
-    if (!text)
-      fail('edit text required — usage: tumwater prompt --edit <n> "<new text>" (add --role <id> to aim it at one loop)');
-    return { mode: "edit", role, position: n, text, attachPaths };
+    // No text and no --file: the caller opens the prompt's current body in the editor.
+    return { mode: "edit", role, position: n, text: text === "" ? null : text, attachPaths };
   }
 
   if (fileFlag >= 0) {

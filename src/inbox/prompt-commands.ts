@@ -14,16 +14,21 @@ import { parsePromptArgs } from "../cli/cli-command-args.js";
 import {
   type CancelOutcome,
   type ListedCancelOutcome,
+  type ListedQueueMiss,
   cancelListedPrompt,
   cancelRolePrompt,
+  resolveListedQueue,
 } from "./inbox-cancel.js";
 import {
   type EditOutcome,
   type ListedEditOutcome,
   editListedPrompt,
+  editQueuedFile,
   editRolePrompt,
+  readQueuedPromptBody,
 } from "./inbox-edit.js";
-import { listWideScope, promptPreview, queuedListRows, renderQueuedList } from "./inbox.js";
+import { editInEditor } from "../cli/cli-editor.js";
+import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, renderQueuedList } from "./inbox.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
@@ -37,19 +42,27 @@ import {
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 
+/** Fail with the ambiguity or miss message of a list-wide position resolution, else return
+ * the resolved value narrowed. Shared by sayListedOutcome and the editor form so the wordings
+ * cannot drift. */
+function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss, position: number): T {
+  if (listed.status === "ambiguous") {
+    fail(`position ${position} is queued for more than one loop (${(listed as { roles: string[] }).roles.join(", ")}) — name one with --role <id>`);
+  }
+  if (listed.status === "missing") {
+    fail(`no prompt at position ${position} (longest queue holds ${(listed as { queued: number }).queued})`);
+  }
+  return listed as T;
+}
+
 /** The shared tail of the list-wide cancel/edit branches: report an ambiguity (naming the
  * rival loops, with the `--role` escape hatch) or a miss (carrying the length of the longest
  * queue, the highest position numbering any loop can hold), else render the resolved outcome
  * through sayPromptOutcome. One helper so the
  * two verbs' handling of the miss shapes cannot drift. */
 function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, position: number): void {
-  if (listed.status === "ambiguous") {
-    fail(`position ${position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
-  }
-  if (listed.status === "missing") {
-    fail(`no prompt at position ${position} (longest queue holds ${listed.queued})`);
-  }
-  sayPromptOutcome(position, listed.role, listed.outcome, true);
+  const found = failQueueMiss(listed, position);
+  sayPromptOutcome(position, found.role, found.outcome, true);
 }
 
 /** Run one loop-targeted queue verb (cancelRolePrompt/editRolePrompt) for a `--role`-scoped
@@ -208,15 +221,50 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // `--attach` list is read through the same helper the enqueue form uses and appended to
     // the prompt's images in place.
     const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
+    const typed = parsed.text;
+    if (typed === null) {
+      // Bare `--edit <n>`: open the prompt's body in the editor. The loop is resolved first
+      // and the write goes by file name, so a dequeue while the editor is open reports gone
+      // instead of editing the neighbour that shifted into the position.
+      let target = role;
+      if (target === null) {
+        const resolved = resolveListedQueue(root, listWideScope(root), parsed.position);
+        target = failQueueMiss(resolved, parsed.position).role;
+      }
+      const loop = target;
+      let name: string;
+      let body: string | null;
+      try {
+        name = path.basename(queuedFileAtPosition(root, loop, parsed.position));
+        body = readQueuedPromptBody(root, loop, name);
+      } catch (err) {
+        return fail(errorMessage(err));
+      }
+      if (body === null) {
+        sayPromptOutcome(parsed.position, loop, { status: "gone" }, role === null);
+        return;
+      }
+      const after = editInEditor(body, "prompt.md");
+      if (after.trim() === body.trim() && images === undefined) {
+        say(`prompt ${parsed.position} unchanged`);
+        return;
+      }
+      try {
+        sayPromptOutcome(parsed.position, loop, editQueuedFile(root, loop, name, after, images), role === null);
+      } catch (err) {
+        fail(errorMessage(err));
+      }
+      return;
+    }
     if (role === null) {
-      sayListedOutcome(editListedPrompt(root, listWideScope(root), parsed.position, parsed.text, images), parsed.position);
+      sayListedOutcome(editListedPrompt(root, listWideScope(root), parsed.position, typed, images), parsed.position);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
     sayPromptOutcome(
       parsed.position,
       target,
-      runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, parsed.text, images)),
+      runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, typed, images)),
       false,
     );
     return;

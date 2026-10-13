@@ -278,6 +278,10 @@ Usage:
                                    contents ("-" reads stdin), kept line for line; position,
                                    age, and a pending --at deferral are kept, and --role <id>
                                    disambiguates like --edit
+  tumwater prompt --edit <n> [--attach <path>]
+                                   Open the Nth queued prompt in $VISUAL/$EDITOR and save it
+                                   as the text form would; an unchanged buffer writes
+                                   nothing; --role <id> disambiguates like --edit
   tumwater reset-counters [--role <id>]
                                    Zero lifetime ticks/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the

@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Bare `tumwater prompt --edit <n>` opens the queued prompt in `$VISUAL`/`$EDITOR` (planned 2026-10-12 by plan; independent of every other entry)
+_None yet._
+
+## Done
+
+### Bare `tumwater prompt --edit <n>` opens the queued prompt in `$VISUAL`/`$EDITOR` (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** `plan|bug --edit <n>` and `brief --edit` already open their text in the operator's
 editor. `prompt --edit <n>` still fails with `edit text required` when no text follows, so the
@@ -74,8 +78,6 @@ the saved buffer back through the same edit path.
 - A stub that removes the queue file before saving (simulating a dequeue) makes the command
   report `prompt 1 is no longer queued` and exit 0, and no file is recreated.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater brief --edit` opens the initial prompt in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12) (done 2026-10-12)
 

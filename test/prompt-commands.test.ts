@@ -504,3 +504,93 @@ test("prompt --edit --attach fails on a bad path by name with the queue untouche
   assert.deepEqual(queuedRolePrompts(root, "bugfix"), ["queued"], "the queue is untouched");
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
+
+// --- bare --edit <n> opens $VISUAL/$EDITOR ---
+
+/** Run `fn` with VISUAL unset and EDITOR a node stub that records the buffer it got, then runs
+ * `body` (JS over `file` and `text`). */
+async function withEditor<T>(root: string, body: string | null, fn: () => Promise<T>): Promise<{ result: T; received: string | null }> {
+  const received = path.join(root, "editor.received");
+  const script = path.join(root, "editor.cjs");
+  fs.writeFileSync(
+    script,
+    `const fs = require("fs"); const file = process.argv[2]; const text = fs.readFileSync(file, "utf8");\n` +
+      `fs.writeFileSync(${JSON.stringify(received)}, text);\n${body ?? ""}\n`,
+  );
+  const saved = { VISUAL: process.env.VISUAL, EDITOR: process.env.EDITOR };
+  delete process.env.VISUAL;
+  if (body === null) delete process.env.EDITOR;
+  else process.env.EDITOR = `"${process.execPath}" "${script}"`;
+  try {
+    const result = await fn();
+    return { result, received: fs.existsSync(received) ? fs.readFileSync(received, "utf8") : null };
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+test("prompt --edit <n> with no text edits in $EDITOR, keeping the deferral marker and images", async () => {
+  const root = makeRoot();
+  const img = path.join(root, "shot.png");
+  fs.writeFileSync(img, Buffer.from("png-bytes"));
+  await expectOk(() => cmdPrompt(root, ["--role", "feature", "--at", "1h", "--attach", img, "old text"]));
+  const file = path.join(dirOf(root, "feature"), fs.readdirSync(dirOf(root, "feature")).find((f) => f.endsWith(".md")) as string);
+  const before = fs.readFileSync(file, "utf8");
+  const { result, received } = await withEditor(root, `fs.writeFileSync(file, "new text\\n");`, () => expectOk(() => cmdPrompt(root, ["--edit", "1"])));
+  assert.equal((received as string).trim(), "old text");
+  assert.match(result.stdout, /^edited \(feature\): new text/);
+  const after = fs.readFileSync(file, "utf8");
+  assert.match(after, /new text/);
+  assert.doesNotMatch(after, /old text/);
+  assert.equal(notBeforeMs(after) !== null, notBeforeMs(before) !== null);
+  assert.equal(imageReferencePaths(after).length, 1);
+  assert.match((await expectOk(() => cmdPrompt(root, ["--list"]))).stdout, /new text/);
+});
+
+test("prompt --edit <n> with an untouched buffer prints unchanged and leaves the file as it was", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "same text"]));
+  const dir = dirOf(root, "clean");
+  const file = path.join(dir, fs.readdirSync(dir)[0] as string);
+  const before = fs.readFileSync(file);
+  const { result } = await withEditor(root, "", () => expectOk(() => cmdPrompt(root, ["--role", "clean", "--edit", "1"])));
+  assert.match(result.stdout, /prompt 1 unchanged/);
+  assert.ok(before.equals(fs.readFileSync(file)));
+});
+
+test("prompt --edit <n> fails on editor failure and on no editor, leaving the queue alone", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "keep me"]));
+  const dir = dirOf(root, "clean");
+  const file = path.join(dir, fs.readdirSync(dir)[0] as string);
+  const before = fs.readFileSync(file);
+  const bad = await withEditor(root, "process.exit(3);", () => expectFailAsync(() => cmdPrompt(root, ["--edit", "1"])));
+  assert.match(bad.result, /editor exited with status 3; nothing changed/);
+  const none = await withEditor(root, null, () => expectFailAsync(() => cmdPrompt(root, ["--edit", "1"])));
+  assert.match(none.result, /no editor: set \$VISUAL or \$EDITOR, or pass the new text or --file <path>/);
+  assert.ok(before.equals(fs.readFileSync(file)));
+});
+
+test("prompt --edit <n> with no text fails on an ambiguous or missing position before any editor runs", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "a"]));
+  await expectOk(() => cmdPrompt(root, ["--role", "feature", "b"]));
+  const amb = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--edit", "1"])));
+  assert.match(amb.result, /more than one loop/);
+  assert.equal(amb.received, null);
+  const miss = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--edit", "5"])));
+  assert.match(miss.result, /no prompt at position/);
+  assert.equal(miss.received, null);
+});
+
+test("prompt --edit <n> reports gone when the file is dequeued while the editor is open", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "vanishing"]));
+  const dir = dirOf(root, "clean");
+  const { result } = await withEditor(root, `fs.rmSync(${JSON.stringify(path.join(dir, fs.readdirSync(dir)[0] as string))}); fs.writeFileSync(file, "changed\\n");`, () => expectOk(() => cmdPrompt(root, ["--edit", "1"])));
+  assert.match(result.stdout, /prompt 1 is no longer queued/);
+  assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith(".md")).length, 0);
+});
