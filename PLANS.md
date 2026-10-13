@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### A bugfix runner whose open bugs are all held stands down instead of ticking (planned 2026-10-12 by plan; independent of every other entry; extends the landed feature stand-down in Done, "A feature runner with no plan to take stands down instead of ticking")
+## Done
+
+### A bugfix runner whose open bugs are all held stands down instead of ticking (planned 2026-10-12 by plan; done 2026-10-12; independent of every other entry; extends the landed feature stand-down in Done, "A feature runner with no plan to take stands down instead of ticking")
 
 **Goal.** Stop paying for bugfix model runs that can only end in `TUMWATER_NOTHING_TO_DO`.
 
@@ -114,7 +116,7 @@ it, or add a bugfix twin):
 - **The project's check passes.** Any e2e test that relied on an unwoken bugfix tick against
   a held-only BUGS.md is adjusted, and the Done note names it.
 
-## Done
+**Done 2026-10-12 by feature.** `pollRunnerReasons` stand-down widened to a bugfix runner with open bugs and none eligible, one eligible-list memo per base role. Tests in test/orchestrator-scheduling.test.ts; no e2e test needed adjusting.
 
 ### Maintenance loops stop deferring on a backlog made only of held entries (planned 2026-10-12 by plan; independent of every other entry; done 2026-10-12)
 

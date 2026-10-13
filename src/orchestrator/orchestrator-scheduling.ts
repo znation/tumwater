@@ -248,8 +248,8 @@ export async function pollRunnerReasons(
   // the remaining `allowance - used` slots, reset every pass, so two due maintenance loops
   // cannot start in the same poll and overshoot the allowance.
   let maintenanceQuotaAdmitted = 0;
-  // The feature stand-down's eligible list, read at most once per poll (see the check below).
-  let featureEligibleMemo: EligibleEntry[] | undefined;
+  // The stand-down's eligible lists per base role, read at most once per poll (see the check below).
+  const eligibleMemo = new Map<string, EligibleEntry[]>();
   for (const runner of runners) {
     // Once mode: a paused role runs no tick this round and must be reported as skipped,
     // so it settles here — before the gates that would otherwise skip it silently (a
@@ -406,21 +406,27 @@ export async function pollRunnerReasons(
     // extra instance with none free is skipped without touching its backoff, and the primary
     // runs unassigned only while some eligible entry exists (all of them held by siblings).
     // Stand-down: the feature charter says "If PLANS.md is empty or everything is done, there is
-    // nothing to do", so a feature runner (primary included) with no eligible plan at all skips
-    // its scheduled and main-moved ticks instead of paying a model run that can only end in
+    // nothing to do" and the bugfix charter says "when every open entry carries [a Refused note],
+    // there is nothing to do", so a feature runner (primary included) with no eligible plan at all,
+    // or a bugfix runner whose open bugs are all held (no open bugs at all is search mode, which
+    // still runs), skips its scheduled and main-moved ticks instead of paying a model run that can only end in
     // nothing-to-do. Startup, inbox and resume ticks, a fresh operator wake, and a runner with a
     // claim or outstanding work still run. nextRunAt and backoff stay put, so the first poll
     // after a plan turns eligible ticks it.
+    const standDownBase = baseRoleOf(runner.role);
     if (
-      baseRoleOf(runner.role) === "feature" &&
+      (standDownBase === "feature" || (standDownBase === BUGFIX_ROLE && openBugsNow)) &&
       (reason === "scheduled" || reason === "main moved") &&
       !(runner.state.wokenAt !== undefined && runner.state.wokenAt > (runner.state.lastTickEndedAt ?? 0)) &&
       runner.state.claim === undefined &&
       !hasOutstandingWork(runner.state)
     ) {
-      featureEligibleMemo ??=
-        claimGroups.get("feature")?.eligible ?? eligibleEntries(root, "feature");
-      if (featureEligibleMemo.length === 0) {
+      let eligible = eligibleMemo.get(standDownBase);
+      if (eligible === undefined) {
+        eligible = claimGroups.get(standDownBase)?.eligible ?? eligibleEntries(root, standDownBase);
+        eligibleMemo.set(standDownBase, eligible);
+      }
+      if (eligible.length === 0) {
         noteSkip(root, runner, "no-free-entry");
         runner.state.heldElsewhere = undefined;
         if (once.active) once.settle(runner.role, "no free entry");

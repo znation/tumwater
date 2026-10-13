@@ -107,7 +107,8 @@ discards a role's in-flight landing.
   without climbing its backoff (the scaling rule). A feature runner, primary included, skips
   its scheduled and main-moved ticks while no plan is eligible at all, so an operator wake, a
   queued prompt or a resume still runs; a `run --once` round settles a skipped runner as
-  `no free entry`. The plan loop keeps
+  `no free entry`. A bugfix runner does the same while BUGS.md has open bugs but none is
+  eligible (with no open bugs at all it keeps searching for latent bugs). The plan loop keeps
   `instances(feature) + 1` eligible plans ahead so every feature instance has something to
   take (a due plan tick defers while that many are waiting and none is marked needs-review or
   needs-replan). `tumwater status`, the TUI and the dashboard name each instance's claimed entry while

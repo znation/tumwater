@@ -200,7 +200,8 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * except the backlog-open clause is dropped: its backlog is empty by precondition, so it defers
  * only while no feature/bugfix/director/human commit landed since its last tick (a feature
  * landing is exactly the kind of change that creates bugs, so it wakes the search). With one or
- * more open bugs it has real work and never defers, today's behavior.
+ * more open bugs it never defers here; pollRunnerReasons stands it down while all of them are
+ * held (refused, needs-review, blocked).
  */
 /** Which clause deferred a due tick: the open feature/bugfix backlog ("backlog"), or no
  * feature/bugfix/director/human commit having landed since its last no-change tick

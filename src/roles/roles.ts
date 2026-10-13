@@ -19,7 +19,8 @@ export type { Role };
 export const DIRECTOR_ROLE = "director";
 
 /** The bugfix loop's id. It is the one work role that also defers like a maintenance role while its
- * backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. */
+ * backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. With open
+ * bugs it never defers, but pollRunnerReasons stands it down while all of them are held. */
 export const BUGFIX_ROLE = "bugfix";
 
 /** Work-tier roles (need-based prioritization): they

@@ -669,3 +669,49 @@ test("a nothing-eligible feature runner is still admitted on demand, startup, re
   assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
   assert.equal(await admitted(() => {}, TWO_PLANS), true, "an eligible plan");
 });
+
+// The bugfix stand-down: open bugs that are all held leave nothing for the charter to do.
+const bugsFile = (...entries: string[]) => ["# Bugs", "", "## Open", "", ...entries, "## Fixed", ""].join("\n");
+const REFUSED_BUG = "### Held bug (found by x 2026-01-01)\n\n**Refused 2026-01-02 by bugfix: no**\n\nBody.\n";
+const OPEN_BUG = "### Live bug (found by x 2026-01-01)\n\nBody.\n";
+
+test("a bugfix runner whose open bugs are all held stands down", async () => {
+  const root = tmpdir("tumwater-scheduling-bugfix-standdown-");
+  fs.writeFileSync(path.join(root, "BUGS.md"), bugsFile(REFUSED_BUG));
+  const bugfix = tickedFeature(defaultConfig(), "bugfix");
+  const ctx = schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]]));
+  ctx.openBugsNow = true;
+  ctx.once = new OnceRound([bugfix], true);
+  const reasons = await pollRunnerReasons(ctx);
+  assert.equal(reasons.has(bugfix), false);
+  assert.equal(bugfix.state.skipReason, "no-free-entry");
+  assert.equal(loadLoopState(root, "bugfix").skipReason, "no-free-entry");
+  assert.equal(bugfix.state.nextRunAt, T0);
+  assert.equal(bugfix.state.backoffSeconds, 30);
+  assert.equal(ctx.once.reasons.get("bugfix"), "no free entry");
+});
+
+test("a held-only bugfix runner is still admitted on demand, startup, revision, or an eligible bug", async () => {
+  const admitted = async (setup: (r: LoopRunner, root: string) => void, bugs = bugsFile(REFUSED_BUG)) => {
+    const root = tmpdir("tumwater-scheduling-bugfix-admit-");
+    fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
+    const r = tickedFeature(defaultConfig(), "bugfix");
+    setup(r, root);
+    const ctx = schedulingCtx(root, [r], new Map([["bugfix", undefined]]));
+    ctx.openBugsNow = true;
+    return (await pollRunnerReasons(ctx)).has(r);
+  };
+  assert.equal(await admitted(() => {}), false, "control: stands down");
+  assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastTickEndedAt = T0; }), true, "wake");
+  assert.equal(await admitted((r) => { r.state.ticks = 0; }), true, "startup");
+  assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "bugfix", "hi"); }), true, "queued prompt");
+  assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
+  assert.equal(await admitted(() => {}, bugsFile(REFUSED_BUG, OPEN_BUG)), true, "an eligible bug");
+});
+
+test("a bugfix runner in search mode is not stood down", async () => {
+  const root = tmpdir("tumwater-scheduling-bugfix-search-");
+  const bugfix = tickedFeature(defaultConfig(), "bugfix");
+  await pollRunnerReasons(schedulingCtx(root, [bugfix], new Map([["bugfix", undefined]])));
+  assert.notEqual(bugfix.state.skipReason, "no-free-entry");
+});
