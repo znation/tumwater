@@ -31,6 +31,27 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater run --for` keeps one window across self-redeploys: the deadline and the summary span every generation (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator code. It builds on the landed "`run --for` ends with a per-loop summary" plan)
+
+**Goal.** Today each orchestrator generation re-parses `--for` and arms a fresh deadline. `cmdRun`'s doc comment in `src/cli/cli-run.ts` calls this "the window is per-generation". So `tumwater run --for 2h` on a fleet that self-redeploys every hour never stops. Each generation's `windowSummary` also covers only its own ticks. After this change, the window opens once, when the supervisor starts. Every generation stops at that one deadline, and only the final exit prints the summary, covering the whole window.
+
+**Approach.**
+- **The mark.** Add `export const RUN_WINDOW_START_ENV = "TUMWATER_RUN_WINDOW_START"` to `src/process/supervisor.ts`, next to `SUPERVISOR_PID_ENV`, with a doc comment. Its value is the window's start as epoch ms. Give `spawnRunChild(signal, extraArgs = [], env: NodeJS.ProcessEnv = {})` a third parameter and spread it into the env it passes `spawnSupervised`, after `SUPERVISED_ENV` and `SUPERVISOR_PID_ENV`.
+- **Supervisor side.** Pass `forMs` from `cmdRun` into `superviseRunCommand(root, args, branchArg, forMs)`. Before `superviseRun`, take `const windowStart = Date.now()` once. When `forMs !== null`, the `spawnChild` closure passes `{ [RUN_WINDOW_START_ENV]: String(windowStart) }`. Otherwise it passes `{}`. Every respawn reuses the closure, so every generation gets the same start.
+- **Child side.** Add an exported pure helper `inheritedWindowStart(raw: string | undefined, now: number): number` in `src/cli/cli-run.ts`. It returns `Number(raw)` when that is a finite integer > 0 and ≤ `now`. Otherwise (absent, malformed, or in the future) it returns `now`. In `cmdRun`'s supervised half, compute `windowStart` this way, before the deadline timer. Arm `armDeadlineTimer(Math.max(0, windowStart + forMs - Date.now()), …)`. Move the existing `const windowStart = Date.now()` line next to `ticksBefore` up to this one computation. The `readTickRowsSince` call keeps using `windowStart`. A generation that boots after the deadline has passed arms 0 ms, stops at once, and prints the summary.
+- **Summary only at the end.** In the `else if (forMs !== null)` branch, print `windowSummary` only when `!exit.restart`. A redeploying generation prints nothing of its own; the supervisor's "restarting on the new build" line already says what happened. The final generation's summary spans the whole window, because `windowStart` is inherited.
+- **Unchanged.** The banner's `· for <label>` note, `windowSummary`'s output format, `--once`, the exit codes, and `parseRunWindow`.
+- **Docs.** Rewrite the tail of `cmdRun`'s doc comment ("so the deadline restarts in the new generation — the window is per-generation…") and `windowSummary`'s doc comment ("A mid-window self-redeploy prints this before handing off…") to say what the code now does. In README.md, extend the `tumwater run --for 2h` usage comment with "(one window across self-redeploys)". In `src/cli/help.ts`, add the same phrase to the `--for <duration>` help lines.
+
+**Files.** `src/process/supervisor.ts`, `src/cli/cli-run.ts`, `src/cli/help.ts`, README.md, `test/cli-run.test.ts`, `test/supervisor.test.ts`.
+
+**Acceptance criteria.**
+- test/cli-run.test.ts adds `inheritedWindowStart` cases: undefined → now; `"abc"` → now; `"0"` → now; a value greater than now → now; a valid past value → that value.
+- test/supervisor.test.ts: `probeScript` also records `process.env[RUN_WINDOW_START_ENV]`. A new test shows `spawnRunChild(signal, [], { [RUN_WINDOW_START_ENV]: "123" })` hands the child `"123"` while `SUPERVISED_ENV` stays `"1"`. The existing `spawnRunChild runs the same script…` test still passes unchanged.
+- test/cli-run-window.test.ts's `run --for boots, stops itself at the deadline, and prints the summary` passes unchanged. Its pre-window `ghost` tick is still excluded.
+- `grep -n "per-generation" src/cli/cli-run.ts` finds nothing.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater run --for` ends with a per-loop summary of every tick in its window, not the once round's last-result line (done 2026-10-12; planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator file. Today `cmdRun` in `src/cli/cli-run.ts` prints `onceSummary(...)` under `once || forMs !== null`. That line counts ticks from each role's `ticks` delta, but it buckets each role by its *last* result only. A two-hour window where `feature` ran 12 ticks prints `once: 12 ticks — 1 changed`, so the outcome counts do not add up to the tick count. The window's work is invisible, and the line is labelled `once:` for a run that was not one round. `test/cli-run.test.ts` already pins the mismatch for the once path: `"once: 5 ticks — 1 changed, 1 error, 1 no_change"`)
