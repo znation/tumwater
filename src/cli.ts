@@ -41,6 +41,7 @@ import { repoToplevel } from "./git/git.js";
 
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
+import { completionScript, SUPPORTED_SHELLS, type CompletionShell } from "./cli/completion.js";
 import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
@@ -342,6 +343,14 @@ async function main(): Promise<void> {
       rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG]);
       await requireReadyRepo(root);
       await (await import("./operator/operator-commands.js")).cmdStop(root, args);
+      break;
+    }
+    case "completion": {
+      // Works outside a repo: no requireReadyRepo.
+      const shell = args[0];
+      if (args.length !== 1 || !SUPPORTED_SHELLS.includes(shell as CompletionShell))
+        fail(`completion takes one shell: bash or zsh${gotSuffix(args.length > 1 ? args[1] : shell)}`);
+      say(completionScript(shell as CompletionShell));
       break;
     }
     case "version":

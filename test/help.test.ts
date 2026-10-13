@@ -33,6 +33,7 @@ const ALL_COMMANDS = [
   "reclaim",
   "retire",
   "stop",
+  "completion",
   "help",
   "version",
 ] as const;
