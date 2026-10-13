@@ -6,7 +6,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The organize loop starts from production size outliers: a module several times the project's median file size is its first candidate, ahead of test-file splits (planned 2026-10-13 by plan; independent of every other entry. It touches only the `organize` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`)
+
+**Goal.** docs/code-metrics.md (as of 2026-09-30) credits organize with keeping file size down: "no file tops 500 lines". On 2026-10-13, `wc -l` over the 293 `.ts`/`.tsx` files under `src/` puts the median at 192 lines. 23 files top 500. `src/ui/tui/tui-keys.ts` is 2099 lines (about 11× the median), and `src/backlog/backlog-write.ts` is 945. Meanwhile organize's landings since 2026-10-11 have all been test-file splits (`git log --since=2026-10-11 --grep='tumwater(organize)'`), plus one move of gate-prompts. Today the `organize` `find` text names "a file that has grown too many responsibilities" with no signal for finding one. Its only size cue is `searchGuidance`'s generic "`wc -l` over the source files (size outliers)", which says nothing about production versus test files. So the loop takes the easy test splits and leaves the production outliers alone. The fix is to name a size signal. It must be ecosystem-neutral (no fixed line count): init dropped the seeded "under ~500 lines" principle on purpose, because the prompt runs in other people's repos (`test/init.test.ts` asserts the seed has no `500 lines`).
+
+**Approach.** This is a prompt-only change to the `organize` entry's `find` template string in `ROLES` (`src/roles/role-catalog.ts`). It adds no code path, config knob or runtime dependency, and `searchGuidance` (shared by seven roles) stays unchanged.
+1. In step 1 ("First look for a minor improvement…"), put the size signal before the list of minor improvements. Rank the production source files (not tests) by `wc -l`. A production module several times the project's median file size almost always holds more than one responsibility, so the largest such module is the first candidate. Prefer it over a test file of similar size, because a test file's shape follows the module it covers.
+2. Add one sentence for the outlier that is mostly one large function or closure, which cannot be split in one run: do not start the split. Land it as a plan under `## Planned`, using the existing "When it is too large to finish in one run, do not start it: write it as a plan…" rule. The plan states the target structure, for example which state and handlers move into which module. So the giant module turns into backlog work instead of being skipped every tick.
+3. Leave the rest of the `find` text as it is: the major-refactor bar, the land-whole rule and the stale-reference sweep sentence.
+
+Do not edit docs/code-metrics.md (a dated measurement) or PRINCIPLES.md (director/steward only).
+
+**Files touched.** `src/roles/role-catalog.ts` (the `organize` entry's `find` only) and `test/prompt-roles.test.ts`.
+
+**Acceptance criteria.**
+- `oneLine(roleById("organize")!.find)` tells the loop to rank production source files by `wc -l` and to treat a module several times the project's median file size as its first candidate, ahead of test files.
+- The same text says what to do with an outlier too large to split in one run: write it as a plan with its target structure.
+- The organize text gains no fixed line threshold. A test asserts that `roleById("organize")!.find` does not match `/\b500\b/`.
+- A new test in `test/prompt-roles.test.ts`, beside "organize, dry, and clean each end with a whole-tree sweep for what they changed", asserts the first two points against `oneLine(roleById("organize")!.find)`. That existing test passes unchanged.
+- `npm run test` passes.
 
 
 ## Done
