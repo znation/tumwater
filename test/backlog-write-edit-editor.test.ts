@@ -96,3 +96,15 @@ test("an out-of-range position fails before the editor runs", async () => {
   assert.match(r.stderr, /no planned feature at position 9/);
   assert.equal(fs.existsSync(marker), false);
 });
+
+test("an editor killed by a signal fails naming the signal, leaves the file alone, and removes its temp dir", async () => {
+  const { repo, dir } = await seeded();
+  const before = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  const where = path.join(dir, "buffer-path");
+  const s = stub(dir, "k", `fs.writeFileSync(${JSON.stringify(where)}, file); process.kill(process.pid, "SIGKILL");`);
+  const r = await cliWithEnv(repo, s.env, ["plan", "--edit", "1"]);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /editor exited with signal SIGKILL; nothing changed/);
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), before);
+  assert.ok(!fs.existsSync(path.dirname(fs.readFileSync(where, "utf8"))));
+});
