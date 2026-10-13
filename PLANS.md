@@ -6,7 +6,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Shell completion completes config keys for `config get|set|unset <key>` (planned 2026-10-12 by plan; independent of every other entry. It follows the landed Done entry "Shell completion completes loop ids after `--role` and for `role <id>` / `tick <role>`", reuses that entry's runtime-list pattern (`tumwater completion --roles`), and touches only `src/cli/completion.ts`, the `completion` arm of `src/cli.ts`, the `completion` stanza in `src/cli/help.ts`, one export in `src/config/config-write.ts`, `test/completion.test.ts`, and the completion sentence in README.md and docs/cli.md. Today `tumwater config set <TAB>` completes nothing, so the operator types `maxDailyCostUsdPerRole.feature` or `roles.qa.model` by hand, and a typo surfaces only as an `unknown config key` error after the command runs. A grep for `config-keys` under `src/`, `test/`, and PLANS.md finds nothing)
+
+**Goal.** In bash and zsh, the word after `tumwater config get`, `config set`, or `config unset` completes against every key form `parseConfigKey` and `screenOperableKey` (`src/cli/config-commands.ts`) accept, including the role-scoped dotted keys of this repo's roles and custom loops.
+
+**Approach.**
+- `src/config/config-write.ts`: export `DOTTED_MAP_KEYS` (today module-private; no other change).
+- `src/cli/completion.ts`: add `export function completionConfigKeys(root: string): string[]` returning, in this order:
+  1. every entry of `TOP_LEVEL_KEYS` (`src/config/config-schema.ts`);
+  2. `model.<tier>` for each of `MODEL_TIERS`;
+  3. `agents.<id>.<field>` for each of `AGENT_IDS` × `AGENT_KEYS`;
+  4. `<map>.<id>` for each of `DOTTED_MAP_KEYS` × the base role ids;
+  5. `roles.<id>.<field>` for each base role id × `ROLE_ENTRY_KEYS`.
+  The base role ids are `[...allRoleIds(), ...customLoopNames(config)]` (both already exported). Use them, not `knownRoleIds`, because per-role settings belong to the role and not to an instance id like `feature-2`. Read the config with `loadConfig(root)` inside try/catch, and fall back to `allRoleIds()` on any error, as `completionRoleIds` does: a broken tumwater.json must not write errors into the prompt. Dedupe while keeping the first occurrence.
+- `bashScript`: right after the existing `--role` guard and before the `COMP_CWORD -eq 1` branch, add a guard. When `$COMP_CWORD` is 3, `${COMP_WORDS[1]}` is `config`, `${COMP_WORDS[2]}` is `get`, `set`, or `unset`, and `$cur` does not start with `-`, set `COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )` and `return 0`. `.` is not in bash's default `COMP_WORDBREAKS`, so a dotted prefix such as `roles.q` completes as one word. The zsh script wraps the bash one through `completionScript` and needs no change of its own.
+- `src/cli.ts` `case "completion"`: next to the `--roles` arm, `args.length === 1 && args[0] === "--config-keys"` prints `completionConfigKeys(root)` one per line and breaks. Like `--roles`, it has no `requireReadyRepo` gate. Any other shape still falls through to the existing `bash or zsh` failure.
+- `src/cli/help.ts`: add one line under the `completion` stanza, after the `--roles` line: `tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)`. `completionSpec` then picks up `--config-keys` as a `completion` flag on its own.
+- README.md: extend "(including loop ids after `--role`)" to also name config keys. docs/cli.md: add the same clause to the `tumwater completion bash|zsh` sentence.
+
+**Acceptance criteria** (in `test/completion.test.ts`, reusing its `complete()` helper, whose shim `tumwater()` function must also answer `completion --config-keys`; for example, print a fixed key list when `$2` is `--config-keys`):
+- `complete(script, ["tumwater", "config", "set", "maxDaily"], 3)` returns exactly the shim's `maxDaily…` keys, and `["tumwater", "config", "get", "roles.q"]` returns the shim's `roles.qa.…` keys.
+- Word 2 still completes subcommands: `["tumwater", "config", "u"]` at cword 2 stays `["unset"]`. Word 4 (`config set model <TAB>`) completes no key.
+- `tumwater completion --config-keys` in a git repo whose tumwater.json declares a custom loop `docs-bot` prints `maxDailyCostUsd`, `model.strong`, `agents.claude.bin`, `quietHoursPerRole.feature`, `roles.qa.model`, and `roles.docs-bot.enabled`, and prints no `roles.feature-2.` key even with `roles.feature.instances: 2`. With a malformed tumwater.json (`{`), it exits 0 with empty stderr and still prints `roles.feature.enabled`.
+- Every line `completionConfigKeys` prints is accepted by `parseConfigKey` (none has `kind: "error"`): a test loops over the output and asserts it.
+- `completionSpec().flags.completion` includes `--config-keys`, and `tumwater completion --config-keys bash` fails with the `bash or zsh` message.
 
 
 ## Done
