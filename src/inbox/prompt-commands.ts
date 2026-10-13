@@ -245,6 +245,9 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
         return;
       }
       const after = editInEditor(body, "prompt.md");
+      // An emptied buffer is an abort, not a blank prompt: the queue would otherwise hold a
+      // prompt with no text, which the enqueue forms refuse.
+      if (after.trim() === "" && body.trim() !== "") fail("the edited prompt is empty; nothing changed (use --cancel <n> to drop it)");
       if (after.trim() === body.trim() && images === undefined) {
         say(`prompt ${parsed.position} unchanged`);
         return;

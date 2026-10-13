@@ -561,6 +561,17 @@ test("prompt --edit <n> with an untouched buffer prints unchanged and leaves the
   assert.ok(before.equals(fs.readFileSync(file)));
 });
 
+test("prompt --edit <n> refuses a buffer emptied in the editor, leaving the queue alone", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "keep me"]));
+  const dir = dirOf(root, "clean");
+  const file = path.join(dir, fs.readdirSync(dir)[0] as string);
+  const before = fs.readFileSync(file);
+  const { result } = await withEditor(root, `fs.writeFileSync(file, "  \\n");`, () => expectFailAsync(() => cmdPrompt(root, ["--edit", "1"])));
+  assert.match(result, /edited prompt is empty; nothing changed/);
+  assert.ok(before.equals(fs.readFileSync(file)));
+});
+
 test("prompt --edit <n> fails on editor failure and on no editor, leaving the queue alone", async () => {
   const root = makeRoot();
   await expectOk(() => cmdPrompt(root, ["--role", "clean", "keep me"]));

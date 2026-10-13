@@ -5,8 +5,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+_None yet._
 
 ## Fixed
+
+### Bare `prompt --edit <n>` queued a blank prompt when the editor buffer was emptied (found by bugfix 2026-10-12, fixed 2026-10-12)
+
+Clearing the buffer in $EDITOR rewrote the queued prompt with empty text (the typed forms refuse an empty prompt). `cmdPrompt` (src/inbox/prompt-commands.ts) now fails with "the edited prompt is empty; nothing changed" and leaves the file alone. Regression test: "prompt --edit <n> refuses a buffer emptied in the editor" in test/prompt-commands.test.ts.
+
+**Validation gap:** none — the existing editor-stub harness reproduced it directly.
 
 ### The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot: idle extra instances with nothing to claim, need-based deferrals and claim-group holds. With one of six slots busy it read as a scheduling bug (found by operator session 2026-10-12)
 
